@@ -53,7 +53,11 @@ export const githubGraphqlSchemaRule = defineRule({
         }
         const [argument] = node.arguments;
         const document = staticText(argument);
-        if (document === null || node.arguments.length !== 1) {
+        if (
+          argument === undefined ||
+          document === null ||
+          node.arguments.length !== 1
+        ) {
           context.report({ node, messageId: "staticDocument" });
           return;
         }

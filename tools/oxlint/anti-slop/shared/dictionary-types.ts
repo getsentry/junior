@@ -240,7 +240,7 @@ function unsafeDirectValue(
     if (unsafeMembers.includes("any")) return "any";
     return unsafeMembers.length > 0 &&
       unsafeMembers.every((member) => member !== null)
-      ? unsafeMembers[0]
+      ? (unsafeMembers[0] ?? null)
       : null;
   }
   if (unwrapped.type !== "TSTypeReference") return null;

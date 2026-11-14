@@ -26,10 +26,5 @@
     "incremental": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": [
-    "dist",
-    "node_modules",
-    "tests/unit/workflow/**/*.test.ts",
-    "tests/integration/workflow/**/*.test.ts"
-  ]
+  "exclude": ["dist", "node_modules"]
 }

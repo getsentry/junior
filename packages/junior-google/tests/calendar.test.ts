@@ -392,8 +392,8 @@ describe("Google Calendar tools", () => {
       Response.json({ timeZone: LA }),
     );
 
-    const result = await tools.findMeetingTimes.execute(
-      tools.findMeetingTimes.prepareArguments!({
+    const result = await tools["findMeetingTimes"].execute(
+      tools["findMeetingTimes"].prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
         max_results: 1,
         optional_attendees: [REQUESTER],
@@ -448,8 +448,8 @@ describe("Google Calendar tools", () => {
     const { fetch, tools } = calendarTools();
 
     await expect(
-      tools.createCalendarEvent.execute(
-        tools.createCalendarEvent.prepareArguments!({
+      tools["createCalendarEvent"].execute(
+        tools["createCalendarEvent"].prepareArguments!({
           attendees: ["mallory@elsewhere.com"],
           end: "2026-10-12T10:30:00-07:00",
           start: "2026-10-12T10:00:00-07:00",
@@ -485,8 +485,8 @@ describe("Google Calendar tools", () => {
       title: "Sync",
     };
     const first = calendarTools(Response.json({ ...event, id: "x" }));
-    await first.tools.createCalendarEvent.execute(
-      first.tools.createCalendarEvent.prepareArguments!(input),
+    await first.tools["createCalendarEvent"].execute(
+      first.tools["createCalendarEvent"].prepareArguments!(input),
       { toolCallId: "call-3" },
     );
     const create = first.fetch.mock.calls[0][0];
@@ -516,8 +516,8 @@ describe("Google Calendar tools", () => {
       Response.json({ error: { message: "duplicate" } }, { status: 409 }),
       Response.json({ ...event, id: body.id }),
     );
-    const result = await retry.tools.createCalendarEvent.execute(
-      retry.tools.createCalendarEvent.prepareArguments!(input),
+    const result = await retry.tools["createCalendarEvent"].execute(
+      retry.tools["createCalendarEvent"].prepareArguments!(input),
       { toolCallId: "call-3" },
     );
     expect((await retry.fetch.mock.calls[0][0].request.json()).id).toBe(
@@ -614,8 +614,8 @@ describe("Google Calendar tools", () => {
       time_zone: "America/Los_Angeles",
     };
 
-    const result = await tools.listCalendarEvents.execute(
-      tools.listCalendarEvents.prepareArguments!(input),
+    const result = await tools["listCalendarEvents"].execute(
+      tools["listCalendarEvents"].prepareArguments!(input),
       { toolCallId: "call-4" },
     );
     const call = fetch.mock.calls[0][0];
@@ -655,8 +655,8 @@ describe("Google Calendar tools", () => {
     });
     expect(result.events[1]).not.toHaveProperty("title");
 
-    const hidden = await tools.listCalendarEvents.execute(
-      tools.listCalendarEvents.prepareArguments!(input),
+    const hidden = await tools["listCalendarEvents"].execute(
+      tools["listCalendarEvents"].prepareArguments!(input),
       { toolCallId: "call-5" },
     );
     expect(hidden).toMatchObject({ events: [], visible: false });
@@ -665,8 +665,8 @@ describe("Google Calendar tools", () => {
   it("reads Junior's own calendar when no calendar is given", async () => {
     const { fetch, tools } = calendarTools(Response.json({ items: [] }));
 
-    const result = await tools.listCalendarEvents.execute(
-      tools.listCalendarEvents.prepareArguments!({
+    const result = await tools["listCalendarEvents"].execute(
+      tools["listCalendarEvents"].prepareArguments!({
         time_max: "2026-10-13T00:00:00Z",
         time_min: "2026-10-12T00:00:00Z",
         time_zone: "America/Los_Angeles",
@@ -711,8 +711,8 @@ describe("Google Calendar tools", () => {
       Response.json({ ...event, attendees: [{ email: "bob@example.com" }] }),
     );
     await expect(
-      outsider.tools.updateCalendarEvent.execute(
-        outsider.tools.updateCalendarEvent.prepareArguments!(input),
+      outsider.tools["updateCalendarEvent"].execute(
+        outsider.tools["updateCalendarEvent"].prepareArguments!(input),
         { toolCallId: "call-6" },
       ),
     ).rejects.toBeInstanceOf(PluginToolInputError);
@@ -734,8 +734,8 @@ describe("Google Calendar tools", () => {
         updated: "2026-10-08T12:00:00.000Z",
       }),
     );
-    const result = await tools.updateCalendarEvent.execute(
-      tools.updateCalendarEvent.prepareArguments!(input),
+    const result = await tools["updateCalendarEvent"].execute(
+      tools["updateCalendarEvent"].prepareArguments!(input),
       { toolCallId: "call-7" },
     );
     const patch = fetch.mock.calls[1][0];
@@ -792,8 +792,8 @@ describe("Google Calendar tools", () => {
       time_zone: "America/Los_Angeles",
     };
     const cancel = (tools: ReturnType<typeof calendarTools>["tools"]) =>
-      tools.cancelCalendarEvent.execute(
-        tools.cancelCalendarEvent.prepareArguments!(input),
+      tools["cancelCalendarEvent"].execute(
+        tools["cancelCalendarEvent"].prepareArguments!(input),
         { toolCallId: "call-cancel" },
       );
 

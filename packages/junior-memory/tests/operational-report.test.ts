@@ -137,7 +137,7 @@ describe("memory operational report", () => {
       expect(report.widgets?.[0]?.categories).toHaveLength(90);
       expect(
         report.widgets?.[1]?.categories.every((day) => {
-          return day.values.private === 0 && day.values.public === 0;
+          return day.values["private"] === 0 && day.values["public"] === 0;
         }),
       ).toBe(true);
     } finally {

@@ -1572,7 +1572,7 @@ describe("GitHub webhook events", () => {
         botEmail: "41898282+junior-test[bot]@users.noreply.github.com",
         deliveryId: "delivery-issue-mention",
         eventName: "issue_comment",
-      })[0]?.data?.mentionsBot;
+      })[0]?.data?.["mentionsBot"];
     expect(mentionData("@junior-test please triage")).toBe(true);
     expect(mentionData("cc @Junior-Test.")).toBe(true);
     expect(mentionData("@junior-tester or me@junior-test")).toBe(false);
@@ -2801,8 +2801,8 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       const loaded = () => {
         const fields = published.map((event) => [
-          event.data?.openerRole,
-          event.data?.authors,
+          event.data?.["openerRole"],
+          event.data?.["authors"],
         ]);
         published.length = 0;
         return fields;
@@ -2867,7 +2867,7 @@ describe("GitHub-owned pull request outcomes", () => {
       http.get(
         "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
         ({ params }) => {
-          const login = String(params.login);
+          const login = String(params["login"]);
           roleLogins.push(login);
           const role = login === "dcramer" ? "admin" : "none";
           return HttpResponse.json({ permission: role, role_name: role });
@@ -2957,7 +2957,10 @@ describe("GitHub-owned pull request outcomes", () => {
     const openerFields = () => {
       const fields = published
         .filter((event) => event.eventType === "pull_request.opened")
-        .map((event) => [event.data?.openerUsername, event.data?.openerRole]);
+        .map((event) => [
+          event.data?.["openerUsername"],
+          event.data?.["openerRole"],
+        ]);
       published.length = 0;
       return fields;
     };
@@ -3054,7 +3057,7 @@ describe("GitHub-owned pull request outcomes", () => {
         );
         return route.handler(signedRequest(opened)).then(() => response);
       };
-      await tools.createPullRequest.execute(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-create",
       });
       expect(openerFields()).toEqual([
@@ -3070,7 +3073,7 @@ describe("GitHub-owned pull request outcomes", () => {
       // The call can stop after it saves its completed state but before it
       // saves the opener. A retry of the same call saves the opener.
       await db.delete(juniorGitHubPullRequestRequesters);
-      await tools.createPullRequest.execute(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-create",
       });
       expect(await savedRequesters()).toEqual([
@@ -3085,7 +3088,7 @@ describe("GitHub-owned pull request outcomes", () => {
           { status: 422 },
         );
       await expect(
-        tools.createPullRequest.execute(createInput, {
+        tools["createPullRequest"].execute(createInput, {
           toolCallId: "call-rejected",
         }),
       ).rejects.toThrow("HTTP 422");
@@ -3094,7 +3097,7 @@ describe("GitHub-owned pull request outcomes", () => {
       ]);
 
       // An update adds a requester. The opener does not change.
-      await tools.updatePullRequest.execute(
+      await tools["updatePullRequest"].execute(
         { body: "Updated", number: 946, repo: "getsentry/junior" },
         { toolCallId: "call-update" },
       );
@@ -3126,7 +3129,7 @@ describe("GitHub-owned pull request outcomes", () => {
           },
           { status: 201 },
         );
-      await tools.createPullRequest.execute(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-unlinked",
       });
       await route.handler(signedRequest(reused));

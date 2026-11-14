@@ -13,7 +13,7 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm file-length:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm file-length:check && pnpm typecheck-coverage:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "oxlint --fix",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
@@ -40,7 +40,8 @@
     "evals:integration": "pnpm --filter @sentry/junior-evals evals:integration",
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck-coverage:check": "node scripts/check-typecheck-coverage.mjs",
+    "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint",
     "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "simple-git-hooks": {

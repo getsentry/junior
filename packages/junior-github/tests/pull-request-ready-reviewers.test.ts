@@ -183,7 +183,7 @@ describe("review request when a draft is ready", () => {
   ): Promise<string[]> {
     const operations: string[] = [];
     const tool = bindPluginTool(
-      githubPlugin().hooks!.tools!().createPullRequest,
+      githubPlugin().hooks!.tools!()["createPullRequest"],
       {
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
         conversationId: CONVERSATION_ID,

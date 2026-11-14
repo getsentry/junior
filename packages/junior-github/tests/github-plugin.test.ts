@@ -940,7 +940,7 @@ describe("github plugin", () => {
   });
 
   it("creates issues with deterministic requester attribution", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -952,7 +952,7 @@ describe("github plugin", () => {
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1024,7 +1024,7 @@ describe("github plugin", () => {
   });
 
   it("accumulates requester attribution instead of overwriting prior requesters", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "Jane Doe",
@@ -1036,7 +1036,7 @@ describe("github plugin", () => {
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1057,7 +1057,7 @@ describe("github plugin", () => {
   });
 
   it("does not duplicate a requester already present in the attribution block", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -1069,7 +1069,7 @@ describe("github plugin", () => {
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1090,7 +1090,7 @@ describe("github plugin", () => {
   });
 
   it("keeps a comma-containing display name intact when accumulating", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "Jane Doe",
@@ -1102,7 +1102,7 @@ describe("github plugin", () => {
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1123,7 +1123,7 @@ describe("github plugin", () => {
   });
 
   it("attributes automation writes to the Automation run", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = {
       ...githubToolsContext({
         actor: { platform: "system", name: "junior" },
@@ -1137,7 +1137,7 @@ describe("github plugin", () => {
       automationLink: { url: "https://junior.example.com/automations/evt_1" },
     };
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createIssue,
+      githubPlugin().hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1160,7 +1160,7 @@ describe("github plugin", () => {
   it("keeps issue annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext();
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createIssue,
+      githubPlugin().hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1179,15 +1179,15 @@ describe("github plugin", () => {
   });
 
   it("adds dashboard and Sentry session links to issue footers when configured", async () => {
-    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
-    process.env.SENTRY_ORG_SLUG = "acme";
+    process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
+    process.env["SENTRY_ORG_SLUG"] = "acme";
     const ctx = githubToolsContext({
       conversationId: "slack:C123:1712345.0001",
       conversationLink: "https://junior.example.com/conversations/session",
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1218,7 +1218,7 @@ describe("github plugin", () => {
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1256,7 +1256,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1291,7 +1291,7 @@ Conversation: \`local:test:old-conversation\`
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     ctx.setState("createIssue:local:test:github-tool:call-pending-create", {
@@ -1318,7 +1318,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1357,7 +1357,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1404,7 +1404,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1435,7 +1435,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1462,7 +1462,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
     const input = {
@@ -1492,7 +1492,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createIssue,
+      plugin.hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
@@ -1521,7 +1521,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("creates pull requests with deterministic requester attribution", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -1544,7 +1544,7 @@ Conversation: \`local:test:old-conversation\`
       pullRequestEvents: { subscribeAfterCreate: false },
     });
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1637,7 +1637,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("subscribes configured events after creating a pull request", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({
       events,
       id: "subscription-1",
@@ -1654,7 +1654,7 @@ Conversation: \`local:test:old-conversation\`
             intent: "Report failed checks and requested changes.",
           },
         },
-      }).hooks?.tools?.()?.createPullRequest,
+      }).hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1714,14 +1714,14 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("gives the Watch of a draft its passing checks", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({
       events,
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1749,14 +1749,14 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("subscribes the default maintenance Watch when the app configures none", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({
       events,
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1785,7 +1785,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const warn = vi.fn();
     const subscribe = vi.fn(async () => {
       throw new Error("subscription store unavailable");
@@ -1800,7 +1800,7 @@ Conversation: \`local:test:old-conversation\`
             intent: "Report failed checks.",
           },
         },
-      }).hooks?.tools?.()?.createPullRequest,
+      }).hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1876,7 +1876,7 @@ Conversation: \`local:test:old-conversation\`
             ),
     });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1945,7 +1945,7 @@ Conversation: \`local:test:old-conversation\`
           : Response.json({}),
     });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -1980,7 +1980,7 @@ Conversation: \`local:test:old-conversation\`
   it("rejects an invalid reviewer before it opens the pull request", async () => {
     const ctx = githubToolsContext();
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2061,7 +2061,7 @@ Conversation: \`local:test:old-conversation\`
         },
       });
       const tool = bindPluginTool(
-        githubPlugin().hooks?.tools?.()?.createPullRequest,
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
         ctx as any,
       );
 
@@ -2128,7 +2128,7 @@ Conversation: \`local:test:old-conversation\`
         },
       });
       const tool = bindPluginTool(
-        githubPlugin().hooks?.tools?.()?.createPullRequest,
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
         ctx as any,
       );
 
@@ -2180,7 +2180,7 @@ Conversation: \`local:test:old-conversation\`
         ),
     });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2216,7 +2216,7 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2254,7 +2254,7 @@ Conversation: \`local:test:old-conversation\`
         ),
     });
     const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2287,7 +2287,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2309,8 +2309,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("adds a Sentry session link to pull request footers when configured", async () => {
-    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
-    process.env.SENTRY_ORG_SLUG = "acme";
+    process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
+    process.env["SENTRY_ORG_SLUG"] = "acme";
     const ctx = githubToolsContext({
       conversationId: "slack:C123:1712345.0001",
       egressFetch: async () =>
@@ -2324,7 +2324,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2357,7 +2357,7 @@ Conversation: \`local:test:old-conversation\`
   it.each(["rejected", "ignored", "network", "auth"])(
     "returns and replays the created pull request after %s assignment and review request",
     async (failure) => {
-      process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+      process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
       let handle = "dcramer";
       const ctx = githubToolsContext({
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
@@ -2413,7 +2413,7 @@ Conversation: \`local:test:old-conversation\`
       });
       const plugin = githubPlugin();
       const tool = bindPluginTool(
-        plugin.hooks?.tools?.()?.createPullRequest,
+        plugin.hooks?.tools?.()?.["createPullRequest"],
         ctx as any,
       );
       const input = {
@@ -2496,11 +2496,11 @@ Conversation: \`local:test:old-conversation\`
   );
 
   it("returns legacy stored pull request results without stored input", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
     ctx.setState(
@@ -2538,7 +2538,7 @@ Conversation: \`local:test:old-conversation\`
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
     ctx.setState(
@@ -2583,7 +2583,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
-      plugin.hooks?.tools?.()?.createPullRequest,
+      plugin.hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
@@ -2954,9 +2954,9 @@ Conversation: \`local:test:old-conversation\`
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    process.env["GITHUB_APP_ID"] = "123";
+    process.env["GITHUB_INSTALLATION_ID"] = "456";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
     const requests = mockGitHubInstallationApi();
     const plugin = githubPlugin({
       appPermissions: {
@@ -2991,9 +2991,9 @@ Conversation: \`local:test:old-conversation\`
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    process.env["GITHUB_APP_ID"] = "123";
+    process.env["GITHUB_INSTALLATION_ID"] = "456";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
 
     const requests = mockGitHubInstallationApi();
 
@@ -3048,9 +3048,9 @@ Conversation: \`local:test:old-conversation\`
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    process.env["GITHUB_APP_ID"] = "123";
+    process.env["GITHUB_INSTALLATION_ID"] = "456";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
 
     const requests = mockGitHubInstallationApi();
 
@@ -3211,8 +3211,10 @@ Conversation: \`local:test:old-conversation\`
       url: "https://api.github.com/user",
       method: "GET",
     });
-    expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
-    expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
+    expect(requests[0]?.headers["authorization"]).toBe("Bearer user-token");
+    expect(emailRequests[0]?.headers["authorization"]).toBe(
+      "Bearer user-token",
+    );
   });
 
   it.each([
@@ -3308,8 +3310,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("requires reauthorization when GitHub user token refresh is rejected", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     mockGitHubRefresh(400, { error: "bad_refresh_token" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3340,8 +3342,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("uses tokens refreshed by another request before refreshing a stale token", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
 
     const staleToken = {
       accessToken: "stale-token",
@@ -3403,8 +3405,8 @@ Conversation: \`local:test:old-conversation\`
     const refreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(now);
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     const refreshRequests = mockGitHubRefresh(200, {
       access_token: "fresh-token",
       expires_in: 3600,
@@ -3486,8 +3488,8 @@ Conversation: \`local:test:old-conversation\`
     const now = new Date("2026-06-01T12:00:00Z");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(now);
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     const oldRefreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
     mockGitHubRefresh(200, {
       access_token: "fresh-token",
@@ -3543,8 +3545,8 @@ Conversation: \`local:test:old-conversation\`
   it.each(["bad_refresh_token", "invalid_grant"])(
     "requires reauthorization when GitHub returns %s in a successful refresh response",
     async (errorCode) => {
-      process.env.GITHUB_APP_CLIENT_ID = "client-id";
-      process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+      process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+      process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
       mockGitHubRefresh(200, { error: errorCode });
 
       const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3576,8 +3578,8 @@ Conversation: \`local:test:old-conversation\`
   );
 
   it("requires reauthorization when GitHub returns a malformed successful refresh response", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     mockGitHubRefresh(200, { error_description: "refresh token expired" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3608,8 +3610,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("surfaces operational GitHub user token refresh failures", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     mockGitHubRefresh(500, { error: "server_error" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3633,8 +3635,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("surfaces successful GitHub refresh responses with operational OAuth errors", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     mockGitHubRefresh(200, { error: "server_error" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3658,8 +3660,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("surfaces malformed successful GitHub refresh token responses after access token parsing", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "client-id";
-    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    process.env["GITHUB_APP_CLIENT_ID"] = "client-id";
+    process.env["GITHUB_APP_CLIENT_SECRET"] = "client-secret";
     mockGitHubRefresh(200, { access_token: "new-access-token" });
 
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -3796,8 +3798,8 @@ Conversation: \`local:test:old-conversation\`
         .filter((run) => run.env)
         .every(
           (run) =>
-            run.env?.GIT_CONFIG_GLOBAL === "/dev/null" &&
-            run.env.GIT_CONFIG_NOSYSTEM === "1",
+            run.env?.["GIT_CONFIG_GLOBAL"] === "/dev/null" &&
+            run.env["GIT_CONFIG_NOSYSTEM"] === "1",
         ),
     ).toBe(true);
   });
@@ -4145,8 +4147,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("throws GitHubPluginSetupError when bot identity environment variables are missing", async () => {
-    delete process.env.GITHUB_APP_BOT_NAME;
-    delete process.env.GITHUB_APP_BOT_EMAIL;
+    delete process.env["GITHUB_APP_BOT_NAME"];
+    delete process.env["GITHUB_APP_BOT_EMAIL"];
 
     const plugin = githubPlugin();
     const before = beforeToolContext({
@@ -4162,8 +4164,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("injects Junior author and committer identity", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const before = beforeToolContext({
@@ -4184,7 +4186,7 @@ Conversation: \`local:test:old-conversation\`
       JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
       JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
     });
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <david@example.com>",
     );
   });
@@ -4215,8 +4217,8 @@ Conversation: \`local:test:old-conversation\`
   ])(
     "redirects bash Git commands on a best-effort basis: %s",
     async (command, redirectMessage) => {
-      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+      process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+      process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
       const before = beforeToolContext({
         fullName: "David Cramer",
@@ -4237,8 +4239,8 @@ Conversation: \`local:test:old-conversation\`
   );
 
   it("prefers linked GitHub noreply emails for the current actor", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const before = beforeToolContext(
@@ -4273,7 +4275,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <1473041+dcramer@users.noreply.github.com>",
     );
   });
@@ -4285,8 +4287,8 @@ Conversation: \`local:test:old-conversation\`
     const { join } = await import("node:path");
     const { spawnSync } = await import("node:child_process");
 
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const hook = await prepareCommitMsgHookFixture("unused\n");
     const before = beforeToolContext({
@@ -4346,8 +4348,8 @@ Conversation: \`local:test:old-conversation\`
     const { join } = await import("node:path");
     const { spawnSync } = await import("node:child_process");
 
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const hook = await prepareCommitMsgHookFixture("unused\n");
     const human = beforeToolContext({
@@ -4362,7 +4364,7 @@ Conversation: \`local:test:old-conversation\`
     const event = beforeToolContext({ platform: "system", name: "event" });
     event.ctx.juniorRoot = hook.juniorRoot;
     await githubPlugin().hooks?.beforeToolExecute?.(event.ctx as never);
-    expect(event.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+    expect(event.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe("");
 
     const repoDir = mkdtempSync(join(tmpdir(), "junior-github-rewrite-"));
     const git = (env: Record<string, string>, ...args: string[]) =>
@@ -4492,8 +4494,8 @@ Conversation: \`local:test:old-conversation\`
       const { join } = await import("node:path");
       const { spawnSync } = await import("node:child_process");
 
-      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+      process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+      process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
       const hook = await prepareCommitMsgHookFixture("unused\n");
       const before = beforeToolContext({
@@ -4558,8 +4560,8 @@ Conversation: \`local:test:old-conversation\`
   );
 
   it("credits the primary and additional run actors as co-author trailers", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const runActor: TestActor = {
@@ -4588,20 +4590,20 @@ Conversation: \`local:test:old-conversation\`
         userId: "U3",
       },
     ]);
-    before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
+    before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"] =
       "Co-Authored-By: Model Supplied <model@example.com>";
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.blocked).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
     );
   });
 
   it("omits a steering actor without a resolvable name or email, without denying the commit", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const runActor: TestActor = {
@@ -4632,14 +4634,14 @@ Conversation: \`local:test:old-conversation\`
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.blocked).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
   });
 
   it("uses a later resolvable profile for a duplicate actor identity", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const runActor: TestActor = {
@@ -4660,14 +4662,14 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
   });
 
   it("dedups additional actors by resolved email and drops one matching the bot email", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const runActor: TestActor = {
@@ -4707,14 +4709,14 @@ Conversation: \`local:test:old-conversation\`
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.blocked).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>",
     );
   });
 
   it("credits the primary actor in a single-actor run", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const runActor: TestActor = {
@@ -4725,13 +4727,13 @@ Conversation: \`local:test:old-conversation\`
       userId: "U1",
     };
     const before = beforeToolContext(runActor, [runActor]);
-    before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
+    before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"] =
       "Co-Authored-By: Model Supplied <model@example.com>";
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.blocked).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
   });
@@ -4860,8 +4862,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("uses Junior author identity when the human actor is unresolved", async () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    process.env["GITHUB_APP_BOT_NAME"] = "sentry-junior[bot]";
+    process.env["GITHUB_APP_BOT_EMAIL"] = "bot@example.com";
 
     const plugin = githubPlugin();
     const before = beforeToolContext({
@@ -4881,6 +4883,6 @@ Conversation: \`local:test:old-conversation\`
       JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
       JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
     });
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+    expect(before.env["JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"]).toBe("");
   });
 });

@@ -717,7 +717,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   // Up and Down move the selection while details are open. Stepping between
   // runs with a Conversation keeps the open drawer instead of a new one.
   await details.evaluate((element) => {
-    element.dataset.stepped = "";
+    element.dataset["stepped"] = "";
   });
   await page.keyboard.press("ArrowUp");
   await expect(page).toHaveURL(/run=scheduled-1-run-1$/);

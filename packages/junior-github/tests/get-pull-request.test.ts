@@ -255,7 +255,7 @@ describe("getPullRequest", () => {
         { repo: "getsentry/junior", number: 691 },
         { toolCallId: "get-pr" },
       )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
-      return result.objectAnnotations[0]?.facts.previewImageUrls;
+      return result.objectAnnotations[0]?.facts["previewImageUrls"];
     };
 
     expect(await preview()).toEqual([attachment, artifact, after]);
@@ -291,7 +291,7 @@ describe("getPullRequest", () => {
       { toolCallId: "get-pr" },
     )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
     const facts = result.objectAnnotations[0].facts;
-    const saved = facts.previewImageUrls as string[];
+    const saved = facts["previewImageUrls"] as string[];
 
     const bytes = (value: unknown) =>
       new TextEncoder().encode(JSON.stringify(value)).length;

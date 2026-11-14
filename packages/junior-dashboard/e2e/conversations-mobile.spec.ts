@@ -888,10 +888,10 @@ test("keeps the message in view while earlier history and late content load", as
   // corrections make the transcript jump.
   await transcript.evaluate((element) => {
     const scrollTo = element.scrollTo.bind(element);
-    element.dataset.scrollCorrections = "0";
+    element.dataset["scrollCorrections"] = "0";
     element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
-      element.dataset.scrollCorrections = String(
-        Number(element.dataset.scrollCorrections) + 1,
+      element.dataset["scrollCorrections"] = String(
+        Number(element.dataset["scrollCorrections"]) + 1,
       );
       scrollTo(...args);
     };

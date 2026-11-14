@@ -38,6 +38,8 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
-    "tests/**/*.tsx"
+    "tests/**/*.tsx",
+    "oxlint/**/*.ts",
+    "*.config.ts"
   ]
 }

@@ -480,8 +480,8 @@ describe("GitHub event data", () => {
       }),
     ).toEqual([]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.
-    expect(new Set(events.flatMap((event) => event.data?.tag ?? []))).toEqual(
-      new Set(["v1.2.0", "release/Ü1", "release/ü1"]),
-    );
+    expect(
+      new Set(events.flatMap((event) => event.data?.["tag"] ?? [])),
+    ).toEqual(new Set(["v1.2.0", "release/Ü1", "release/ü1"]));
   });
 });
