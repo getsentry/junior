@@ -247,6 +247,8 @@ function dashboardHostRoutePaths(
     "/api/personal-tokens/*",
     "/api/service-accounts",
     "/api/service-accounts/*",
+    "/api/cache-warming",
+    "/api/cache-warming/*",
     "/api/workspaces",
     "/api/workspaces/*",
     "/api/config",

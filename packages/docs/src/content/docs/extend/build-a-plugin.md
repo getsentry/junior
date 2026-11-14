@@ -286,7 +286,8 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
 | `afterToolExecute(ctx)`  | Check a finished tool call, such as the files it changed. Add guidance to its result or reject the result.                                                                                   |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
+| `tools()`                | Return the plugin's tool definitions. They take no Turn context. Tool names must be plugin-local camelCase names.                                                                            |
+| `disabledTools(ctx)`     | Return a reason for each tool that the current Turn cannot use, keyed by plugin-local tool name.                                                                                             |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
@@ -324,11 +325,17 @@ checkout paths. To run a check in some Workspaces only, return early when
 
 A hook that throws is logged, and the tool result stays unchanged.
 
-`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
-`ctx.users.resolveActor()` only when a tool needs the active actor's linked
+`tools()` takes no arguments and returns the same definitions in every Turn.
+Junior reads them for the static tool registry with no Turn. Each tool gets the active
+Turn context as the third argument of `execute(input, options, ctx)`, with
+`ctx.state` and `ctx.log`. Call `ctx.users.resolveActor()` only when a tool needs the active actor's linked
 identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
 active actor's IANA timezone. It returns the install default when Junior does
-not know the person's timezone. Return tool definitions keyed by the plugin-local tool
+not know the person's timezone. A tool that sends model text to your provider
+must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
+reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
+rewrites every string in `input`, outside Markdown code. A Slack user becomes
+`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -353,7 +360,7 @@ export function myProviderPlugin() {
       description: "My provider integration",
     },
     hooks: {
-      tools(ctx) {
+      tools() {
         return {
           ping: zodTool({
             approvalMode: "auto",
@@ -367,7 +374,7 @@ export function myProviderPlugin() {
             privateTraceResult: (result) => ({
               latency_ms: result.latency_ms,
             }),
-            execute: async () => {
+            execute: async (_input, _options, ctx) => {
               ctx.log.info("Running my-provider ping");
               return {
                 latency_ms: 12,
@@ -388,8 +395,10 @@ onto the agent runtime's separate result channels.
 
 `approvalMode` sets whether Guardian reviews a call before the tool runs:
 
-- `auto` is the default. Junior sets it when you omit the field. Guardian
-  reviews each call of a plugin tool in this mode.
+- `auto` is the default. Junior sets it when you omit the field. A tool with
+  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+  Guardian reviews each call of every other tool in this mode. Set
+  `readOnlyHint: true` only when the tool never writes.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
@@ -413,11 +422,19 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
-Return the same tools from `tools(ctx)` in every Turn of a Conversation. A
-change to the tool list invalidates the model provider's prompt cache. When one
-Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
+`tools()` cannot read the Turn, so the tool list stays the same in every Turn.
+A change to the tool list invalidates the model provider's prompt cache. When
+one Turn cannot use a tool, return a reason for it from `disabledTools(ctx)`.
 Junior keeps the tool in the tool list, lists it as disabled in the Turn
 context, and rejects its calls before review or execution.
+
+```ts
+disabledTools(ctx) {
+  return ctx.source.kind === "agent_invocation"
+    ? { ping: "Child agents cannot ping my-provider." }
+    : {};
+},
+```
 
 Every hook context has `ctx.cache`. Use it to keep short-lived copies of
 provider reads, such as a user's role. It is not durable. Junior can drop an
@@ -437,7 +454,8 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, and `ctx.codeChanges` as from a plugin route.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.reviewItems` as
+from a plugin route.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -478,7 +496,8 @@ the dispatch Conversation. When you omit it, Junior generates one from
 A link type turns a URL in a reply into an object card in the dashboard. It
 works like an Android `<intent-filter>`. You declare static filters, and
 Junior matches each URL against them without your code. Then Junior calls
-`resolve` of the most specific match.
+`canView` of the most specific match, and calls its `resolve` only when
+`canView` returns true.
 
 ```ts title="index.ts"
 defineJuniorPlugin({
@@ -487,8 +506,11 @@ defineJuniorPlugin({
     {
       objectType: "task",
       filters: [{ host: "tracker.example.com", pathPattern: "/issues/*" }],
+      async canView(ctx, url) {
+        return await viewerCanOpenIssue(ctx.viewer, url);
+      },
       async resolve(ctx, url) {
-        const issue = await readIssueAsViewer(ctx.viewer, url);
+        const issue = await readIssue(ctx, url);
         if (!issue) return undefined;
         return {
           kind: "object",
@@ -511,19 +533,32 @@ defineJuniorPlugin({
   segment matches one segment), or `pathPrefix`. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
-  startup.
-- **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
-  object. Do not show that it exists. `ctx.egress` calls your provider as a
-  system Actor. It gets only credentials that your plugin owns, never the
-  viewer's, so check the viewer's access before you return a card. Junior
-  caches the card for one minute for each viewer and URL, and does not save
-  it on a Conversation.
+  startup. An `https` URL that no link type claims gets a `web_page` card from core,
+  from its oEmbed provider or its Open Graph tags. Your filter always wins
+  over it.
+- **Access.** `canView` is required. Return true only when `ctx.viewer` can
+  open the object, and false when you cannot tell. For a public object,
+  return true. `ctx.egress` calls your provider as a system Actor. It gets
+  only credentials that your plugin owns, never the viewer's, so `canView`
+  must check the viewer, not only that the call works.
+  `ctx.viewerEgress` uses only the viewer's own stored OAuth token for your
+  provider. It never asks the viewer to connect. A viewer without a token
+  gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
+  can open the object. Junior calls `canView` before each card read and
+  again on each Attach.
+- **Resolver.** Return the card, or `undefined` for a missing object. To
+  share one provider read with `canView`, read through `ctx.cache` with a
+  short TTL. Junior caches the card for one minute for each viewer and URL,
+  and does not save it on a Conversation.
+- **People.** For a profile link of a provider account, return
+  `await ctx.findPerson({ provider, handle })` when it finds a card. That is
+  the Junior person card of the one known person who linked that account.
 - **Facts and icon.** Return the facts of `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
   icon to `scripts/generate-object-icons.mjs`.
-- **Test.** Test the resolver for a viewer that can read the object, and for
-  a viewer that cannot.
+- **Test.** Test `canView` and the resolver for a viewer that can read the
+  object, and for a viewer that cannot.
 
 ## Validate
 

@@ -7,8 +7,9 @@ export const piMessageSchema = z
     role: z.string(),
   })
   .passthrough()
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  .transform((value) => value as AgentMessage);
+  // Asserting to an intersection is valid for every Pi message type, so this
+  // boundary cast needs no `@ts-expect-error` when Pi changes its types.
+  .transform((value): AgentMessage => value as typeof value & AgentMessage);
 
 /** Durable Pi transcript message stored across turns. */
 export type PiMessage = z.output<typeof piMessageSchema>;
@@ -20,5 +21,4 @@ export const piContentMessageSchema = z
     role: z.string().min(1),
   })
   .passthrough()
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  .transform((value) => value as PiMessage);
+  .transform((value): PiMessage => value as typeof value & PiMessage);

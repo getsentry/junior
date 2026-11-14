@@ -546,7 +546,13 @@ describe("Conversation mailbox Turn work", () => {
           ]);
         }
         return createModelStream([
-          { type: "text", text: "Handled the event." },
+          {
+            type: "toolCall",
+            name: "noReply",
+            arguments: { note: "Handled the event." },
+          },
+          // A yield after noReply would resume the Turn and post this.
+          { type: "text", text: "Nothing was posted." },
         ]);
       }),
     );
@@ -569,12 +575,14 @@ describe("Conversation mailbox Turn work", () => {
       state: "paused",
     });
 
+    // The step that calls noReply ends the Turn, so it does not yield.
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         nowMs: () => 20,
         queue,
         run,
+        softYieldAfterMs: 0,
         state,
       }),
     ).resolves.toEqual({ status: "completed" });
@@ -614,6 +622,7 @@ describe("Conversation mailbox Turn work", () => {
               source: event.data.meta?.source,
               eventType: event.data.meta?.eventType,
               trustedSummary: event.data.meta?.trustedSummary,
+              quiet: event.data.meta?.quiet,
               text: event.data.text,
             },
           ]
@@ -625,6 +634,7 @@ describe("Conversation mailbox Turn work", () => {
         source: undefined,
         eventType: "check_suite.completed",
         trustedSummary: "Code change checks failed",
+        quiet: undefined,
         text: "Code change checks failed",
       },
       {
@@ -632,6 +642,8 @@ describe("Conversation mailbox Turn work", () => {
         source: undefined,
         eventType: undefined,
         trustedSummary: undefined,
+        // The noReply note, kept as a Quiet message.
+        quiet: true,
         text: "Handled the event.",
       },
     ]);

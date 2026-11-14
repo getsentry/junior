@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -23,7 +24,7 @@ const SEARCH_DOC = {
 function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),
@@ -119,7 +120,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     });
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
-    const doc = await run(tools, "readGoogleDoc", { document: link });
+    const doc = await run(tools, "readGoogleFile", { file: link });
     const [get, revision, exported] = [2, 3, 4].map(
       (index) => fetch.mock.calls[index]![0],
     );
@@ -138,10 +139,11 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     }
     expect(doc).toMatchObject({
       content: "# Q4 plan\n\nShip it.",
-      document_id: DOC_ID,
+      file_id: DOC_ID,
       revision_id: "rev-1",
       title: "Q4 plan",
       truncated: false,
+      type: "document",
     });
 
     const comments = await run(tools, "listGoogleFileComments", {
@@ -191,10 +193,11 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         headers: { "content-type": "text/markdown" },
       }),
     );
-    const unrevised = await run(noDocsApi.tools, "readGoogleDoc", {
-      document: DOC_ID,
+    // A bare file id takes its type from Drive.
+    const unrevised = await run(noDocsApi.tools, "readGoogleFile", {
+      file: DOC_ID,
     });
-    expect(unrevised).toMatchObject({ content: "# Q4 plan" });
+    expect(unrevised).toMatchObject({ content: "# Q4 plan", type: "document" });
     expect(unrevised).not.toHaveProperty("revision_id");
   });
 
@@ -253,12 +256,22 @@ describe("Google Docs, Sheets, and Slides tools", () => {
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
-    const { tools } = docsTools(
+    const { fetch, tools } = docsTools(
       Response.json({ error: { message: "File not found" } }, { status: 404 }),
       Response.json({
         id: DOC_ID,
         mimeType: "application/vnd.google-apps.spreadsheet",
         name: "Budget",
+      }),
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/pdf",
+        name: "Scan",
+      }),
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
       }),
       Response.json(
         {
@@ -271,16 +284,29 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       ),
     );
 
-    const hidden = run(tools, "readGoogleDoc", { document: DOC_ID });
+    const hidden = run(tools, "readGoogleFile", { file: DOC_ID });
     await expect(hidden).rejects.toThrow(PluginToolInputError);
     await expect(hidden).rejects.toThrow(
       `Your Google account (${ACCOUNT_EMAIL}) cannot open this file`,
     );
+    // A Docs link must open a Doc, even when Drive has another type.
     await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow('"Budget" is not a Google Doc');
+      run(tools, "readGoogleFile", {
+        file: `https://docs.google.com/document/d/${DOC_ID}/edit`,
+      }),
+    ).rejects.toThrow('"Budget" is not a Google Doc (');
     await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
+      run(tools, "readGoogleFile", { file: DOC_ID }),
+    ).rejects.toThrow(
+      '"Scan" is not a Google Doc or Google Slides presentation or Google Sheet (application/pdf).',
+    );
+    // A range is only for a Sheet, so the Doc is not read.
+    await expect(
+      run(tools, "readGoogleFile", { file: DOC_ID, range: "A1:B2" }),
+    ).rejects.toThrow('"Q4 plan" is not a Google Sheet, so it has no range.');
+    expect(fetch).toHaveBeenCalledTimes(4);
+    await expect(
+      run(tools, "readGoogleFile", { file: DOC_ID }),
     ).rejects.toThrow("An admin must reconnect it");
   });
 
@@ -357,8 +383,8 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       }),
     );
 
-    const sheet = await run(tools, "readGoogleSheet", {
-      spreadsheet: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
+    const sheet = await run(tools, "readGoogleFile", {
+      file: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
     });
     const batchGet = new URL(fetch.mock.calls[2]![0].request.url);
     expect(batchGet.host).toBe("sheets.googleapis.com");
@@ -379,20 +405,21 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           truncated: false,
         },
       ],
-      spreadsheet_id: SHEET_ID,
+      file_id: SHEET_ID,
       tabs: ["Q4", "Bob's tab"],
       title: "Budget",
       truncated: false,
+      type: "spreadsheet",
     });
 
-    const slides = await run(tools, "readGoogleSlides", {
-      presentation: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
+    const slides = await run(tools, "readGoogleFile", {
+      file: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
     });
     expect(new URL(fetch.mock.calls[4]![0].request.url).host).toBe(
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({
-      presentation_id: SLIDES_ID,
+      file_id: SLIDES_ID,
       slide_count: 2,
       slides: [
         { notes: "Say hello.", slide_number: 1, text: "Kickoff\nQ4 | Ship" },
@@ -400,6 +427,53 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       ],
       title: "Kickoff",
       truncated: false,
+      type: "presentation",
     });
+  });
+
+  it("reads a Sheet with one range and Slides from a bare file id", async () => {
+    const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
+    const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
+    const { fetch, tools } = docsTools(
+      Response.json({
+        id: SHEET_ID,
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        name: "Budget",
+      }),
+      Response.json({ sheets: [{ properties: { title: "Q4" } }] }),
+      Response.json({
+        valueRanges: [{ range: "Q4!A1:A1", values: [["Item"]] }],
+      }),
+      Response.json({
+        id: SLIDES_ID,
+        mimeType: "application/vnd.google-apps.presentation",
+        name: "Kickoff",
+      }),
+      Response.json({ slides: [{ pageElements: [textBox("Hi")] }] }),
+    );
+
+    const sheet = await run(tools, "readGoogleFile", {
+      file: SHEET_ID,
+      range: "Q4!A1:A1",
+    });
+    expect(
+      new URL(fetch.mock.calls[2]![0].request.url).searchParams.getAll(
+        "ranges",
+      ),
+    ).toEqual(["Q4!A1:A1"]);
+    expect(sheet).toMatchObject({
+      file_id: SHEET_ID,
+      ranges: [{ content: "Item", range: "Q4!A1:A1" }],
+      type: "spreadsheet",
+    });
+    expect(sheet).not.toHaveProperty("content");
+
+    const slides = await run(tools, "readGoogleFile", { file: SLIDES_ID });
+    expect(slides).toMatchObject({
+      file_id: SLIDES_ID,
+      slides: [{ slide_number: 1, text: "Hi" }],
+      type: "presentation",
+    });
+    expect(slides).not.toHaveProperty("ranges");
   });
 });

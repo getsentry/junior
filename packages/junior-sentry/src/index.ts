@@ -20,6 +20,8 @@ import {
   SENTRY_METRIC_ALERT_MATCH_FIELDS,
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
+import { sentryIssueLinks } from "./links/issues.js";
+import { linkifySentryShortIds } from "./links/short-ids.js";
 import {
   SENTRY_API_DOMAINS,
   issueSentryCredential,
@@ -75,6 +77,7 @@ export function sentryPlugin(): PluginRegistration {
       isEnabled: () => Boolean(sentryWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
+    objectLinks: [sentryIssueLinks],
     manifest: {
       commandEnv: {
         SENTRY_AUTH_TOKEN: "host_managed_credential",
@@ -113,6 +116,7 @@ export function sentryPlugin(): PluginRegistration {
       ],
     },
     hooks: {
+      formatMarkdown: ({ config, text }) => linkifySentryShortIds(text, config),
       grantForEgress: sentryGrantForEgress,
       issueCredential: issueSentryCredential,
       resolveOAuthAccount: resolveSentryOAuthAccount,

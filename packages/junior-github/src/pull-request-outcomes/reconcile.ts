@@ -14,12 +14,14 @@ import type {
   CodeChangePublisher,
   EventPublisher,
   PluginConversationAnnotations,
+  PluginConversationReviewItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
+import { closeGitHubConflictNotice } from "../merge-conflict-checks/policy.js";
 import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
@@ -100,6 +102,7 @@ interface ReconcileArgs {
   }): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 
@@ -245,6 +248,19 @@ async function reconcileRepository(
       for (const event of events) {
         await args.events.publish({ ...event, objectType: "code_change" });
       }
+      // No webhook closed the merge conflict notice either. Like the
+      // publish, a failed close keeps the row open for the next reconcile.
+      await closeGitHubConflictNotice({
+        db: args.db,
+        ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
+        reviewItems: args.reviewItems,
+        ...(pullRequest.merged
+          ? { reason: "The pull request merged.", status: "done" }
+          : {
+              reason: "The pull request closed without merging.",
+              status: "dismissed",
+            }),
+      });
       await applyGitHubPullRequestOutcome({
         annotations: args.annotations,
         codeChanges: args.codeChanges,

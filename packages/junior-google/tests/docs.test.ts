@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -11,7 +12,7 @@ const DOC_LINK = `https://docs.google.com/document/d/${DOC_ID}/edit`;
 function docTools(responses: Response[], requester: string | null = REQUESTER) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     users: {
       resolveActor: async () =>

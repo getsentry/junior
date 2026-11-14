@@ -243,9 +243,13 @@ function unknownProviderSuggestions(
   return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
 }
 
-/** Create the progressive MCP catalog search tool used before callMcpTool. */
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
+/**
+ * Create the progressive MCP catalog search tool used before callMcpTool.
+ *
+ * @runBuilt searchMcpTools
+ */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
     annotations: {

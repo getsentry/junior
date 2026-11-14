@@ -3,8 +3,8 @@
  *
  * Junior's own Google account reads the event from its own calendar, so the
  * card shows only when the viewer organizes, created, or is invited to the
- * event. Any unclear case gets no card. The card shows the title and time,
- * never the guests or the description.
+ * event. Any unclear case gets no card. The card shows the title, the time,
+ * and the start of the description, never the guests.
  */
 import type {
   ObjectAnnotation,
@@ -19,6 +19,7 @@ import {
   googleApiRequest,
   isTimeZone,
 } from "../tools/shared";
+import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 
@@ -32,6 +33,7 @@ const linkedEventSchema = z.object({
   // Google leaves out `email` for some guests.
   attendees: z.array(z.object({ email: z.string().optional() })).optional(),
   creator: z.object({ email: z.string().optional() }).optional(),
+  description: z.string().optional(),
   end: eventTimeSchema,
   id: z.string(),
   organizer: z.object({ email: z.string().optional() }).optional(),
@@ -102,28 +104,60 @@ function viewerIsOnEvent(event: LinkedEvent, viewer: string): boolean {
   ].some((email) => email?.toLowerCase() === viewer);
 }
 
-async function resolveGoogleCalendarLink(
+// Long enough that the access check and the card share one Calendar read.
+const EVENT_READ_TTL_MS = 10_000;
+
+/**
+ * Read the linked event from Junior's calendar. Nothing for an event on
+ * another calendar, or a deleted or cancelled one.
+ */
+async function readLinkedEvent(
   ctx: ObjectLinkContext,
   url: URL,
-): Promise<ObjectAnnotation | undefined> {
+): Promise<LinkedEvent | null> {
   const config = readGoogleConfig();
   const eventId = config && parseEventLink(url, config.accountEmail);
-  if (!eventId) return undefined;
+  if (!eventId) return null;
+  return await ctx.cache.getOrLoad(`calendar-event:${eventId}`, async () => ({
+    value: await fetchLinkedEvent(ctx, eventId),
+    ttlMs: EVENT_READ_TTL_MS,
+  }));
+}
+
+async function fetchLinkedEvent(
+  ctx: ObjectLinkContext,
+  eventId: string,
+): Promise<LinkedEvent | null> {
   const response = await googleApiRequest(ctx, {
     operation: "google.calendar.event.get",
     path: `/calendar/v3/calendars/primary/events/${eventId}`,
   });
   // Google answers 404 for an event that is not on Junior's calendar, and
   // 410 for a deleted one.
-  if ([403, 404, 410].includes(response.status)) return undefined;
+  if ([403, 404, 410].includes(response.status)) return null;
   if (response.status !== 200) {
     throw googleApiError("google.calendar.event.get", response);
   }
   const parsed = linkedEventSchema.safeParse(response.body);
-  if (!parsed.success || parsed.data.status === "cancelled") return undefined;
-  const event = parsed.data;
-  const viewer = ctx.viewer.email.toLowerCase();
-  if (!viewerIsOnEvent(event, viewer)) return undefined;
+  return parsed.success && parsed.data.status !== "cancelled"
+    ? parsed.data
+    : null;
+}
+
+async function canViewGoogleCalendarLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<boolean> {
+  const event = await readLinkedEvent(ctx, url);
+  return !!event && viewerIsOnEvent(event, ctx.viewer.email.toLowerCase());
+}
+
+async function resolveGoogleCalendarLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const event = await readLinkedEvent(ctx, url);
+  if (!event) return undefined;
   const title = event.summary?.trim() || "Untitled event";
   return {
     kind: "object",
@@ -133,7 +167,11 @@ async function resolveGoogleCalendarLink(
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
-    facts: { type: "calendar_event", when: eventWhen(event) },
+    facts: {
+      type: "calendar_event",
+      summary: htmlSummary(event.description),
+      when: eventWhen(event),
+    },
   };
 }
 
@@ -145,6 +183,7 @@ export const googleCalendarLinks: PluginObjectLinkDefinition = {
     { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
     { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
   ],
+  canView: canViewGoogleCalendarLink,
   objectType: "calendar_event",
   resolve: resolveGoogleCalendarLink,
 };

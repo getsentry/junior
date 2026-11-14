@@ -71,7 +71,11 @@ function imageParts(message: Message): ImageContent[] {
   if (message.role === "assistant" || typeof message.content === "string") {
     return [];
   }
-  return message.content.filter((part) => part.type === "image");
+  const images: ImageContent[] = [];
+  for (const part of message.content) {
+    if (part.type === "image") images.push(part);
+  }
+  return images;
 }
 
 // Keep only the tool fields that Pi sends to the provider. `toRef` replaces

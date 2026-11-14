@@ -151,7 +151,24 @@ export async function selectSandboxEgressGrant(input: {
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  /**
+   * Use only the credential subject's own stored OAuth token. Plugin grants
+   * are skipped, because they can issue an install or app credential.
+   */
+  userOAuthOnly?: boolean;
 }): Promise<SandboxEgressGrantSelection> {
+  if (input.userOAuthOnly) {
+    const manifest = pluginCatalogRuntime.getDefinition(
+      input.provider,
+    )?.manifest;
+    // Without OAuth the broker falls back to an environment token.
+    if (!manifest?.credentials || !manifest.oauth) {
+      throw new Error(
+        `Plugin "${input.provider}" has no user OAuth for user-only egress`,
+      );
+    }
+    return defaultGrantForProvider(input);
+  }
   if (!hasEgressCredentialHooks(input.provider)) {
     return defaultGrantForProvider(input);
   }

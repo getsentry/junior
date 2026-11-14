@@ -1,5 +1,105 @@
 # Changelog
 
+## 0.301.0
+
+Users gain memory-aware replies, safer previews, faster recovery, accessible transcripts, broader embeds, and more capable plugin testing.
+
+### New Features ✨
+
+Replies show memory chips; admins reopen warming; GitHub adds access-controlled previews and links; readOnlyHint-only MCP tools skip Guardian; plugins must add canView.
+
+#### Dashboard
+
+- Show a Turn's memories under its reply by @betegon with @sentry-junior in [#3309](https://github.com/getsentry/junior/pull/3309)
+- Let admins turn cache warming back on after the breaker opens by @BYK with @sentry-junior in [#3375](https://github.com/getsentry/junior/pull/3375)
+
+#### Github
+
+- Load PR description images through the image proxy by @BYK with @sentry-junior in [#3370](https://github.com/getsentry/junior/pull/3370)
+- Link GitHub references and accounts in Slack and the dashboard by @BYK with @sentry-junior in [#3343](https://github.com/getsentry/junior/pull/3343)
+
+#### Other
+
+- (guardian) Skip review of read-only auto tools by @dcramer with @sentry-junior in [#3332](https://github.com/getsentry/junior/pull/3332)
+- (links) Require a canView access check on every link type by @BYK with @sentry-junior in [#3376](https://github.com/getsentry/junior/pull/3376)
+
+### Bug Fixes 🐛
+
+- (cache-warming) Pause warming for 30 minutes when the breaker opens by @BYK with @sentry-junior in [#3371](https://github.com/getsentry/junior/pull/3371)
+- (dashboard) Hide transcript focus ring after a click by @betegon with @sentry-junior in [#3378](https://github.com/getsentry/junior/pull/3378)
+- (deps) Upgrade @vercel/sandbox to 4.0.0 by @sentry-junior in [#3366](https://github.com/getsentry/junior/pull/3366)
+
+### Internal Changes 🔧
+
+- (objects) Replace the generated oEmbed list with a short hand-kept one by @BYK with @sentry-junior in [#3369](https://github.com/getsentry/junior/pull/3369)
+- (testing) Share one Postgres harness for plugin packages by @sentry-junior in [#3144](https://github.com/getsentry/junior/pull/3144)
+
+## 0.300.0
+
+The release broadens file, attachment, image, review, tracing, linting, and meeting workflows while making execution, scheduling, and publishing more dependable.
+
+### New Features ✨
+
+Migrate removed Google tools to readGoogleFile; shared image paths require signed proxy; attachments, reviews, link cards, tracing, bot overrides, and linting improve.
+
+#### Attachments
+
+- Stream large Slack files instead of storing them by @thomasjiangcy with @sentry-junior in [#3339](https://github.com/getsentry/junior/pull/3339)
+- Stream Slack files and loadAttachment, and raise the file cap to 250 MB by @thomasjiangcy with @sentry-junior in [#3336](https://github.com/getsentry/junior/pull/3336)
+
+#### Dashboard
+
+- Link Review item questions and answers with a reply line by @BYK with @sentry-junior in [#3359](https://github.com/getsentry/junior/pull/3359)
+- Show a Review item answer as a reply, not a second card by @BYK with @sentry-junior in [#3341](https://github.com/getsentry/junior/pull/3341)
+
+#### Google
+
+- One read tool for Docs, Sheets and Slides by @BYK with @sentry-junior in [#3364](https://github.com/getsentry/junior/pull/3364)
+- Resolve Docs and Calendar links as cards by @BYK with @sentry-junior in [#3313](https://github.com/getsentry/junior/pull/3313)
+
+#### Objects
+
+- Preview any web link with oEmbed and Open Graph by @sentry-junior in [#3356](https://github.com/getsentry/junior/pull/3356)
+- Attach a linked object to the Conversation by @BYK with @sentry-junior in [#3349](https://github.com/getsentry/junior/pull/3349)
+- Show a short summary on Doc and Calendar cards by @BYK with @sentry-junior in [#3342](https://github.com/getsentry/junior/pull/3342)
+
+#### Telemetry
+
+- Record gateway ids on direct completion spans by @BYK with @sentry-junior in [#3354](https://github.com/getsentry/junior/pull/3354)
+- Record why a dispatch continuation stops by @thomasjiangcy with @sentry-junior in [#3324](https://github.com/getsentry/junior/pull/3324)
+
+#### Other
+
+- (config) Add botName option to createApp by @dcramer with @sentry-junior in [#3323](https://github.com/getsentry/junior/pull/3323)
+- (images) One proxy for every external image by @BYK with @sentry-junior in [#3318](https://github.com/getsentry/junior/pull/3318)
+- (lint) Check tool and param description length and field names by @dcramer with @sentry-junior in [#3327](https://github.com/getsentry/junior/pull/3327)
+
+### Bug Fixes 🐛
+
+Pi-aligned execution, unblocked scheduling, preserved dashboard choices, cleaner evals, quieter GitHub checks, updated Google and Slack attachment handling, and clearer prompt guidance.
+
+- (agent) Adapt the step boundary to Pi 0.85.1 by @thomasjiangcy with @sentry-junior in [#3338](https://github.com/getsentry/junior/pull/3338)
+- (automations) Fail the dispatch when its Conversation work stops by @thomasjiangcy with @sentry-junior in [#3276](https://github.com/getsentry/junior/pull/3276)
+- (dashboard) Keep the saved details choice while a home send is pending by @sentry-junior in [#3346](https://github.com/getsentry/junior/pull/3346)
+- (deps) Regenerate the lockfile for Pi 0.85.1 with zod and drizzle-orm aligned by @thomasjiangcy with @sentry-junior in [#3351](https://github.com/getsentry/junior/pull/3351)
+- (evals) Reset the user cache before each eval by @thomasjiangcy with @sentry-junior in [#3355](https://github.com/getsentry/junior/pull/3355)
+- (github) Stay silent while a draft's required checks are unfinished by @BYK with @sentry-junior in [#3363](https://github.com/getsentry/junior/pull/3363)
+- (objects) Name readGoogleFile for an attached Google file by @sentry-junior in [#3365](https://github.com/getsentry/junior/pull/3365)
+- (prompt) Steer calls that need no judgment into one codemode script by @thomasjiangcy with @sentry-junior in [#3326](https://github.com/getsentry/junior/pull/3326)
+- (slack) Give video, audio, and other non-image files a loadAttachment pointer by @thomasjiangcy with @sentry-junior in [#3333](https://github.com/getsentry/junior/pull/3333)
+
+### Internal Changes 🔧
+
+Meeting rules rely on tool-result roles; release workflows use v3.3.0 and client-id; agent turns, skills, Pi compatibility, and permissions improve.
+
+- (agent) Do step work in an awaited turn_end listener by @thomasjiangcy with @sentry-junior in [#3325](https://github.com/getsentry/junior/pull/3325)
+- (agents) Let the agent decide which child agent updates to post by @dcramer with @sentry-junior in [#3292](https://github.com/getsentry/junior/pull/3292)
+- (dashboard) Set the 14px root before load in the Linked work side test by @BYK with @sentry-junior in [#3321](https://github.com/getsentry/junior/pull/3321)
+- (evals) Load a skill that a deploy adds after the first turn by @thomasjiangcy with @sentry-junior in [#3291](https://github.com/getsentry/junior/pull/3291)
+- (google) Rely on the tool result role for meeting records by @dcramer with @sentry-junior in [#3328](https://github.com/getsentry/junior/pull/3328)
+- (pi) Prepare Junior's Pi types and agent history for Pi 0.99.2 by @thomasjiangcy with @sentry-junior in [#3362](https://github.com/getsentry/junior/pull/3362)
+- (release) Apply release token permissions with create-github-app-token v3 by @BYK with @sentry-junior in [#3340](https://github.com/getsentry/junior/pull/3340)
+
 ## 0.299.0
 
 Junior expands what people can do, prevents several unsafe or confusing failures, and makes routine operations more consistent behind the scenes.

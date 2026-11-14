@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it } from "vitest";
-import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
+import { gitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
@@ -7,7 +8,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetRepositoryTool, ctx) };
 }
 
 describe("getRepository", () => {
@@ -66,6 +67,7 @@ describe("getRepository", () => {
           "issue.reopened",
           "issue.updated",
           "pull_request.checks.failed",
+          "pull_request.checks.passed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
           "pull_request.opened",

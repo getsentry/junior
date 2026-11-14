@@ -1,9 +1,13 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubReactToIssueTool } from "../src/tools/react-to-issue";
+import { gitHubReactToIssueTool } from "../src/tools/react-to-issue";
 
 function toolContext(response: Response) {
   const fetch = vi.fn(async () => response);
-  return { fetch, tool: createGitHubReactToIssueTool({ fetch }) };
+  return {
+    fetch,
+    tool: bindPluginTool(gitHubReactToIssueTool, { egress: { fetch } }),
+  };
 }
 
 describe("reactToIssue", () => {

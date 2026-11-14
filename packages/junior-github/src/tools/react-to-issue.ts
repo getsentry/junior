@@ -53,42 +53,44 @@ interface Result extends PluginToolOutput {
 }
 
 /** Add the App bot's reaction to an issue or pull request itself. */
-export function createGitHubReactToIssueTool(egress: PluginEgress) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      // GitHub returns the existing reaction when the bot already added it.
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "React with an emoji to a GitHub issue or pull request itself, for example to show that you started work on it. Reacting again with the same content changes nothing.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await githubApi(egress, {
-        operation: "github.issue.reaction.create",
-        method: "POST",
-        path: `${repoPath(repo)}/issues/${input.number}/reactions`,
-        body: { content: input.content },
-      });
-      if (!response.ok) {
-        const message = `GitHub issue reaction failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
-        if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+export const gitHubReactToIssueTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    // GitHub returns the existing reaction when the bot already added it.
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "React with an emoji to a GitHub issue or pull request itself, for example to show that you started work on it. Reacting again with the same content changes nothing.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    { egress }: { egress: PluginEgress },
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(egress, {
+      operation: "github.issue.reaction.create",
+      method: "POST",
+      path: `${repoPath(repo)}/issues/${input.number}/reactions`,
+      body: { content: input.content },
+    });
+    if (!response.ok) {
+      const message = `GitHub issue reaction failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+      if (response.status === 404 || response.status === 422) {
+        throw new PluginToolInputError(message);
       }
-      const reaction = z.object({ id: z.number() }).parse(response.body);
-      return {
-        target: "reactToIssue",
-        repo: repo.ref,
-        number: input.number,
-        content: input.content,
-        reaction_id: reaction.id,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const reaction = z.object({ id: z.number() }).parse(response.body);
+    return {
+      target: "reactToIssue",
+      repo: repo.ref,
+      number: input.number,
+      content: input.content,
+      reaction_id: reaction.id,
+    };
+  },
+});
