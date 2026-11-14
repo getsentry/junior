@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   CONVERSATION_FEED_LINK_LIMIT,
   CONVERSATION_FEED_MEDIA_LIMIT,
@@ -7,19 +7,17 @@ import {
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAttachments,
-  juniorConversationEvents,
+  juniorConversationLinks,
   juniorConversations,
 } from "@/db/schema";
 
 /** Extra feed row content that a request asks for with `include=`. */
 export type ConversationFeedInclude = "links" | "media";
 
-// Links come from each Conversation's newest messages only, so a page reads
-// a bounded number of rows through the (conversation, type, seq) index.
-const RECENT_MESSAGE_LIMIT = 50;
-// Slack wraps links as <url|label>, and Markdown as (url), so the match
-// stops at those delimiters. Trailing punctuation is trimmed after.
-const URL_PATTERN = String.raw`https?://[^\s<>|"'\x60]+`;
+// Links come from each Conversation's newest link matches only, so a page
+// reads a bounded range of the links primary key. Repeats and links that the
+// row already shows are dropped after, so this reads more than the row shows.
+const RECENT_LINK_LIMIT = 50;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}*_~]+$/;
 
 function cleanUrl(match: string): string | undefined {
@@ -56,11 +54,11 @@ export function annotationUrls(
 
 function pickLinks(
   conversationId: string,
-  urlsByMessage: readonly (readonly string[])[],
+  matches: readonly string[],
   shown: ReadonlySet<string>,
 ): string[] {
   const links: string[] = [];
-  for (const match of urlsByMessage.flat()) {
+  for (const match of matches) {
     const href = cleanUrl(match);
     if (
       !href ||
@@ -136,53 +134,48 @@ export async function readFeedMediaAndLinks(
     .from(recentFiles)
     .as("files");
 
-  const text = sql`${juniorConversationEvents.payload}->>'text'`;
-  const recentMessages = db
+  const recentLinks = db
     .select({
-      seq: juniorConversationEvents.seq,
-      urls: sql<
-        string[]
-      >`array(select match[1] from regexp_matches(${text}, ${URL_PATTERN}, 'g') as match)`.as(
-        "urls",
-      ),
+      position: juniorConversationLinks.position,
+      seq: juniorConversationLinks.seq,
+      url: juniorConversationLinks.url,
     })
-    .from(juniorConversationEvents)
+    .from(juniorConversationLinks)
     .where(
       and(
         eq(
-          juniorConversationEvents.conversationId,
+          juniorConversationLinks.conversationId,
           juniorConversations.conversationId,
         ),
-        eq(juniorConversationEvents.type, "message"),
-        // Channel messages that did not mention Junior stay out, as in the
-        // transcript.
-        sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'explicitMention', 'true') <> 'false'`,
         skip("links"),
       ),
     )
-    .orderBy(desc(juniorConversationEvents.seq))
-    .limit(RECENT_MESSAGE_LIMIT)
-    .as("recent_messages");
-  const messageUrls = db
+    .orderBy(
+      desc(juniorConversationLinks.seq),
+      asc(juniorConversationLinks.position),
+    )
+    .limit(RECENT_LINK_LIMIT)
+    .as("recent_links");
+  const linkUrls = db
     .select({
       urls: sql<
-        string[][] | null
-      >`jsonb_agg(${recentMessages.urls} order by ${recentMessages.seq} desc) filter (where cardinality(${recentMessages.urls}) > 0)`.as(
+        string[] | null
+      >`array_agg(${recentLinks.url} order by ${recentLinks.seq} desc, ${recentLinks.position})`.as(
         "urls",
       ),
     })
-    .from(recentMessages)
-    .as("message_urls");
+    .from(recentLinks)
+    .as("link_urls");
 
   const rows = await db
     .select({
       conversationId: juniorConversations.conversationId,
       files: files.files,
-      urls: messageUrls.urls,
+      urls: linkUrls.urls,
     })
     .from(juniorConversations)
     .leftJoinLateral(files, sql`true`)
-    .leftJoinLateral(messageUrls, sql`true`)
+    .leftJoinLateral(linkUrls, sql`true`)
     .where(
       inArray(
         juniorConversations.conversationId,

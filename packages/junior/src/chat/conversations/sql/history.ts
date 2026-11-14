@@ -34,7 +34,8 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversationLinks } from "@/db/schema";
+import { messageLinkRows } from "../message-links";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
@@ -260,8 +261,24 @@ class SqlConversationEventStore implements ConversationEventStore {
           );
         }
         const db = this.executor.db();
+        // Links go in the same statement as their messages, so a message is
+        // never stored without its links.
+        const links = rows.flatMap(messageLinkRows);
+        const linkInsert =
+          links.length > 0
+            ? [
+                db
+                  .$with("message_links")
+                  .as(
+                    db
+                      .insert(juniorConversationLinks)
+                      .values(links)
+                      .returning({ seq: juniorConversationLinks.seq }),
+                  ),
+              ]
+            : [];
         await db
-          .with(conversationDetailTouch(db, [conversationId]))
+          .with(conversationDetailTouch(db, [conversationId]), ...linkInsert)
           .insert(juniorConversationEvents)
           .values(rows);
         if (

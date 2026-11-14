@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
 import { conversationFeedSchema } from "@/api/schema";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { purgeConversation } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
@@ -89,6 +90,15 @@ describe("conversation list API links", () => {
       ]);
       expect(conversations.get(privateId)).toBeDefined();
       expect(conversations.get(privateId)?.links).toBeUndefined();
+
+      // A transcript purge deletes the links with the messages.
+      await purgeConversation(getSqlExecutor(), publicId);
+      expect(
+        await fixture.sql.query(
+          `SELECT 1 FROM junior_conversation_links WHERE conversation_id = $1`,
+          [publicId],
+        ),
+      ).toEqual([]);
     } finally {
       await fixture.close();
     }
