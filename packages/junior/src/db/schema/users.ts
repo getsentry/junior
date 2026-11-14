@@ -36,6 +36,8 @@ export const juniorUsers = pgTable(
     autoArchiveGraceHours: integer("auto_archive_grace_hours")
       .notNull()
       .default(AUTO_ARCHIVE_DEFAULT_GRACE_HOURS),
+    /** Show the new dashboard UI instead of the current one. */
+    experimentalUi: boolean("experimental_ui").notNull().default(false),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },
