@@ -41,7 +41,7 @@
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck-coverage:check": "node scripts/check-typecheck-coverage.mjs",
-    "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint",
+    "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint && tsc --noEmit -p tools/configs",
     "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "simple-git-hooks": {

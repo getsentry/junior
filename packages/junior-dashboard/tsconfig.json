@@ -40,6 +40,6 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "oxlint/**/*.ts",
-    "*.config.ts"
+    "playwright.config.ts"
   ]
 }
