@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Ban,
   Circle,
+  CircleAlert,
   CircleCheck,
   CircleDashed,
-  CirclePause,
+  CircleX,
   Ellipsis,
   LockKeyhole,
   type LucideIcon,
@@ -50,9 +50,9 @@ export function useConversationPlan(conversationId: string) {
 const statusIcons: Record<ConversationPlanItem["status"], LucideIcon> = {
   pending: Circle,
   in_progress: CircleDashed,
-  blocked: CirclePause,
+  blocked: CircleAlert,
   done: CircleCheck,
-  cancelled: Ban,
+  cancelled: CircleX,
 };
 
 const statusLabels: Record<ConversationPlanItem["status"], string> = {
@@ -116,8 +116,10 @@ function PlanItemRow(props: {
           aria-label={statusLabels[item.status]}
           className={cn(
             "size-3.5",
+            // Same tones as the Thread and Task status icons.
             item.status === "in_progress" && "text-dashboard-accent",
-            item.status === "blocked" && "text-dashboard-warning",
+            item.status === "blocked" && "text-amber-400",
+            closed && "text-dashboard-text-faint",
           )}
           role="img"
         />

@@ -123,7 +123,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   };
 }
 
-const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+export const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";

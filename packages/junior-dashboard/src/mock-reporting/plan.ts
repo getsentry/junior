@@ -4,6 +4,7 @@ import type {
   PlanItemStatusBody,
 } from "@sentry/junior/api/schema";
 import {
+  ACTIVE_CONVERSATION_ID,
   DASHBOARD_QA_CONVERSATION_ID,
   DASHBOARD_QA_PLAN_ID,
   readMockConversationDetail,
@@ -16,15 +17,53 @@ function iso(offsetMs: number): string {
 }
 
 /** Process-local status changes, so mock QA can close and reopen items. */
-const mockPlanStatuses = new Map<number, ConversationPlanItem["status"]>();
+const mockPlanStatuses = new Map<string, ConversationPlanItem["status"]>();
 
 /** Clear mock plan changes so tests sharing a worker do not leak state. */
 export function resetMockPlan(): void {
   mockPlanStatuses.clear();
 }
 
-function qaPlanItems(): ConversationPlanItem[] {
-  const items: ConversationPlanItem[] = [
+// The dashboard QA Conversation has one item of each shape: its own agent, a
+// child agent, a person, a private item, and a closed item. The viewer takes
+// part in the active one, so its rows show the status menu.
+const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
+  [ACTIVE_CONVERSATION_ID]: () => [
+    {
+      id: 11,
+      title: "Find the slow checkout span",
+      status: "in_progress",
+      assignee: { kind: "self" },
+      updatedAt: iso(-3 * MINUTE_MS),
+    },
+    {
+      id: 12,
+      title: "Compare p95 with last week",
+      notes: "Use the same region filter as the alert.",
+      status: "in_progress",
+      assignee: {
+        kind: "agent",
+        conversationId: "junior:local:checkout-latency:latency-sleuth",
+        name: "latency-sleuth",
+      },
+      updatedAt: iso(-5 * MINUTE_MS),
+    },
+    {
+      id: 13,
+      title: "Confirm the rollback window",
+      status: "blocked",
+      assignee: { kind: "user", name: "Morgan Lee" },
+      updatedAt: iso(-6 * MINUTE_MS),
+    },
+    {
+      id: 10,
+      title: "Pull the checkout traces",
+      status: "done",
+      assignee: { kind: "self" },
+      updatedAt: iso(-9 * MINUTE_MS),
+    },
+  ],
+  [DASHBOARD_QA_CONVERSATION_ID]: () => [
     {
       id: 41,
       title: "Fix the failing dashboard checks",
@@ -66,25 +105,22 @@ function qaPlanItems(): ConversationPlanItem[] {
       changedBy: "Morgan Lee",
       updatedAt: iso(-40 * MINUTE_MS),
     },
-  ];
-  return items.map((item) => ({
-    ...item,
-    status: mockPlanStatuses.get(item.id) ?? item.status,
-  }));
-}
+  ],
+};
 
-/**
- * Return the Plan of one mock Conversation. The dashboard QA Conversation has
- * one item of each shape: its own agent, a child agent, a person, a private
- * item, and a closed item.
- */
+/** Return the Plan of one mock Conversation. */
 export function readMockConversationPlan(
   conversationId: string,
 ): ConversationPlanReport | undefined {
   if (!readMockConversationDetail(conversationId)) return undefined;
+  const items = MOCK_PLANS[conversationId]?.() ?? [];
   return {
     conversationId,
-    items: conversationId === DASHBOARD_QA_CONVERSATION_ID ? qaPlanItems() : [],
+    items: items.map((item) => ({
+      ...item,
+      status:
+        mockPlanStatuses.get(`${conversationId}:${item.id}`) ?? item.status,
+    })),
   };
 }
 
@@ -98,6 +134,6 @@ export function setMockPlanItemStatus(
     (candidate) => candidate.id === itemId,
   );
   if (!item) return undefined;
-  mockPlanStatuses.set(itemId, body.status);
+  mockPlanStatuses.set(`${conversationId}:${itemId}`, body.status);
   return { ...item, status: body.status, updatedAt: iso(0) };
 }
