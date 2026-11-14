@@ -219,7 +219,10 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("treats queued explicit mentions as part of the subscribed turn", async () => {
     let classifierCalled = false;
-    const replyCalls: Array<{ piMessages?: unknown[]; prompt: string }> = [];
+    const replyCalls: Array<{
+      piMessages?: unknown[] | undefined;
+      prompt: string;
+    }> = [];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -887,7 +890,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     const state = (await thread.state) ?? {};
-    const conversation = state.conversation as {
+    const conversation = state["conversation"] as {
       processing?: { activeTurnId?: string };
     };
     expect(ack).toHaveBeenCalledTimes(1);
@@ -937,7 +940,7 @@ describe("Slack behavior: subscribed messages", () => {
       id: "slack:C0REGRESS:1700010000.003",
     });
     // Subscribe first so opt-out has something to unsubscribe from.
-    thread.subscribe();
+    await thread.subscribe();
 
     await slackRuntime.handleSubscribedMessage(
       thread,

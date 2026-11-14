@@ -93,7 +93,7 @@ export function mockAnthropicStream(
           events
             .map(
               (event) =>
-                `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                `event: ${event["type"]}\ndata: ${JSON.stringify(event)}\n\n`,
             )
             .join(""),
           { headers: { "content-type": "text/event-stream" } },

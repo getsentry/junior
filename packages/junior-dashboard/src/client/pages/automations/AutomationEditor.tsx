@@ -90,7 +90,7 @@ export function AutomationEditor(props: {
         description: "Changes apply to future work.",
         type: "success",
       });
-      navigate(props.returnPath);
+      void navigate(props.returnPath);
     },
     onError: (error) => {
       setFields(error instanceof DashboardApiError ? (error.fields ?? {}) : {});

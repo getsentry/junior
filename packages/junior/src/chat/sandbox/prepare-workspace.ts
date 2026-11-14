@@ -17,7 +17,7 @@ const WORKSPACE_SETUP_NODE_OPTIONS = "--max-old-space-size=4096";
 interface PrepareWorkspaceParams {
   sandbox: SandboxSession;
   workspace: Workspace;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,

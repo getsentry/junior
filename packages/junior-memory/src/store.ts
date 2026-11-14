@@ -334,7 +334,7 @@ export interface MemorySupersessionDecider {
 }
 
 export interface MemoryStoreOptions {
-  embedder?: MemoryEmbeddingProvider;
+  embedder?: MemoryEmbeddingProvider | undefined;
   now?: () => number;
   supersessionDecider?: MemorySupersessionDecider;
 }
@@ -546,7 +546,7 @@ async function findByIdempotencyKey(args: {
 async function archiveExpiredMemoryBatch(args: {
   db: MemoryDb;
   idempotencyKey?: string;
-  limit?: number;
+  limit?: number | undefined;
   nowMs: number;
 }): Promise<ArchiveExpiredMemoriesResult> {
   const filters = publicScopeFilters();
@@ -577,7 +577,7 @@ export async function archiveExpiredMemoriesInAllScopes(args: {
 async function archiveExpiredRows(args: {
   db: MemoryDb;
   filters: SQL[];
-  limit?: number;
+  limit?: number | undefined;
   nowMs: number;
 }): Promise<ArchiveExpiredMemoriesResult> {
   const predicates: SQL[] = [
@@ -667,7 +667,7 @@ async function storeEmbedding(args: {
   content: string;
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
-  embedding?: MemoryEmbedding;
+  embedding?: MemoryEmbedding | undefined;
   memoryId: string;
   nowMs: number;
 }): Promise<void> {
@@ -994,7 +994,7 @@ async function adjudicateCandidate(args: {
 /** List active public records. */
 async function listVisibleMemories(args: {
   db: MemoryDb;
-  limit?: number;
+  limit?: number | undefined;
   nowMs: number;
 }): Promise<MemoryRecord[]> {
   const predicate = activeVisiblePredicate(args.nowMs);

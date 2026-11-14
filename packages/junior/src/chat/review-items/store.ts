@@ -99,7 +99,7 @@ export interface ReviewItemContent {
   conversationIds: string[];
   kind: ReviewItemKind;
   request?: UserInputRequest;
-  subject?: ReviewItemSubject;
+  subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
 }

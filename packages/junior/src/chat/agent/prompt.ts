@@ -100,13 +100,13 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  userCustomization?: string;
+  userCustomization?: string | undefined;
   workspaces?: Workspace[];
 }
 
 interface PromptReplayArgs {
-  existingSessionPiMessages?: PiMessage[];
-  existingTurnStartMessageIndex?: number;
+  existingSessionPiMessages?: PiMessage[] | undefined;
+  existingTurnStartMessageIndex?: number | undefined;
   resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
@@ -233,7 +233,7 @@ function buildOmittedImageAttachmentNotice(count: number): string {
 function buildUserTurnInput(args: {
   inputParts: readonly string[];
   omittedImageAttachmentCount: number;
-  userAttachments?: AgentAttachment[];
+  userAttachments?: AgentAttachment[] | undefined;
 }): PromptInput {
   const userContentParts: UserContentPart[] = args.inputParts.map((text) => ({
     type: "text",
@@ -324,7 +324,7 @@ export function buildSteeringPiMessage(
     role: "user",
     content: userContentParts,
     timestamp: message.timestampMs ?? Date.now(),
-  } as PiMessage;
+  };
 }
 
 /**
@@ -367,7 +367,7 @@ export function withoutSavedSteeringMessages<T>(
 function withoutTrailingUncheckpointedUserPrompt(
   messages: PiMessage[] | undefined,
   userContentParts: UserContentPart[],
-): { messages: PiMessage[]; promptTimestamp?: number } {
+): { messages: PiMessage[]; promptTimestamp?: number | undefined } {
   if (!messages || messages.length === 0) {
     return { messages: [] };
   }
@@ -532,7 +532,7 @@ function planPromptReplay(args: PromptReplayArgs) {
 export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
     context: PromptHookContext;
-    currentActor?: Actor;
+    currentActor?: Actor | undefined;
     turnId: string;
   },
 ): Promise<PromptTurnContext> {
@@ -569,19 +569,19 @@ export async function loadPromptTurnContext(
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   contextContentParts: UserContentPart[];
-  conversationPrivacy?: ConversationPrivacy;
-  existingSessionPiMessages?: PiMessage[];
-  existingTurnStartMessageIndex?: number;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  existingSessionPiMessages?: PiMessage[] | undefined;
+  existingTurnStartMessageIndex?: number | undefined;
   explicitSkill: Skill | null;
-  priorPiMessages?: PiMessage[];
+  priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
   /** AGENTS.md read from the sandbox when this slice started. */
-  repositoryInstructions?: RepositoryInstructions;
+  repositoryInstructions?: RepositoryInstructions | undefined;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,

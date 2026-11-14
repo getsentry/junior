@@ -16,7 +16,7 @@ const htmlToMarkdownConverter = new NodeHtmlMarkdown({
 
 export interface WebFetchResponseContent {
   content: string;
-  title?: string;
+  title?: string | undefined;
 }
 
 export type WebFetchResponse = {

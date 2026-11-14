@@ -161,7 +161,7 @@ function capturedChip(
 /** Show memory chips. A chip with an anchor opens its memories. */
 export function TranscriptMemoryChips(props: {
   chips: MemoryChip[];
-  className?: string;
+  className?: string | undefined;
   state: ConversationMemoryState | undefined;
 }) {
   const { state } = props;
@@ -245,8 +245,8 @@ export function TranscriptRecalledMemories(props: {
  */
 export function TranscriptCapturedMemories(props: {
   fallback: ReactNode;
-  timestamp?: number;
-  turnId?: string;
+  timestamp?: number | undefined;
+  turnId?: string | undefined;
 }) {
   const state = useConversationMemoryState();
   const chip = state ? capturedChip(state.list, props.turnId) : undefined;

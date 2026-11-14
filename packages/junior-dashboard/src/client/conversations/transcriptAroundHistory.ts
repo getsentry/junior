@@ -105,6 +105,8 @@ export function useHistoryAround(input: {
     queryKey: ["conversation", conversationId, "around", startKey, "newer"],
     queryFn: ({ pageParam, signal }) =>
       readConversationEventsFrom(conversationId, pageParam, signal),
+    // Without the cast, TanStack Query infers the page param from this value.
+    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
     initialPageParam: (start ?? { around: "" }) as NewerPageParam,
     // The page that came with the detail. Without it, the query reads it.
     ...(input.startPage && start

@@ -8,14 +8,14 @@ import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
-  actorIdentity?: ActorIdentity;
+  actorIdentity?: ActorIdentity | undefined;
   createdAt: string;
   idempotencyKey: string;
   /**
    * Sent while Junior was idle and the queue was empty. The transcript shows
    * the row in place, so it does not pass through the queue first.
    */
-  inline?: boolean;
+  inline?: boolean | undefined;
   /** Client time when the accept response arrived. */
   acceptedAtMs?: number;
   message: string;
@@ -54,11 +54,11 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 
 /** Build one optimistic outbox row for a composer submit. */
 export function conversationOutboxMessageForSubmit(input: {
-  actorIdentity?: ActorIdentity;
+  actorIdentity?: ActorIdentity | undefined;
   idempotencyKey: string;
   inline?: boolean;
   message: string;
-  files?: File[];
+  files?: File[] | undefined;
   messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
@@ -229,7 +229,7 @@ export function settleConversationOutboxMessages(
   snapshot: {
     events: readonly ConversationReportEvent[];
     /** Client time when the snapshot started its mailbox read. */
-    mailboxReadAtMs?: number;
+    mailboxReadAtMs?: number | undefined;
     queued: readonly ConversationPendingMessage[];
   },
 ): ConversationOutboxMessage[] {

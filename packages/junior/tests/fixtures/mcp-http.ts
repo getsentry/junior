@@ -112,7 +112,7 @@ export async function openMcpConsentPage(
   consentUrl: string,
   email: string,
 ): Promise<{
-  csrf?: string;
+  csrf?: string | undefined;
   html: string;
   referrerPolicy: string | null;
   status: number;

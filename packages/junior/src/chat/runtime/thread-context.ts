@@ -35,7 +35,7 @@ function readOptionalStringField(
 }
 
 interface StripLeadingBotMentionOptions {
-  botUserId?: string;
+  botUserId?: string | undefined;
   stripLeadingSlackMentionToken?: boolean;
 }
 

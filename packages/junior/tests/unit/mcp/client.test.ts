@@ -42,9 +42,9 @@ vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => {
   }
 
   class StreamableHTTPClientTransport {
-    fetch?: typeof fetch;
+    fetch?: typeof fetch | undefined;
     protocolVersion?: string;
-    sessionId?: string;
+    sessionId?: string | undefined;
 
     constructor(
       _url: URL,

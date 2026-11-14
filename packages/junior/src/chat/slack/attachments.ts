@@ -111,13 +111,15 @@ export function slackAttachmentsVersionQuery(
 
 /** Read the Slack file identity retained by the Chat SDK. */
 export function getSlackFileId(attachment: Attachment): string | undefined {
-  const metadataId = attachment.fetchMetadata?.fileId;
+  const metadataId = attachment.fetchMetadata?.["fileId"];
   if (metadataId) return metadataId;
   // Slack file ids are upper case. Matching case-insensitively would take
   // the `files` segment of `/files-pri/T…-F…/name` as the id.
-  const match = (attachment.url ?? attachment.fetchMetadata?.url ?? "").match(
-    /(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/,
-  );
+  const match = (
+    attachment.url ??
+    attachment.fetchMetadata?.["url"] ??
+    ""
+  ).match(/(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/);
   return match?.[1];
 }
 

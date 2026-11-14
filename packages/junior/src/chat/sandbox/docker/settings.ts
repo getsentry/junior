@@ -12,7 +12,7 @@ export const DOCKER_SANDBOX_LABEL = "dev.junior.sandbox";
  * `JUNIOR_DOCKER_SANDBOX_DIR` overrides the default.
  */
 export function dockerSandboxDir(): string {
-  const configured = process.env.JUNIOR_DOCKER_SANDBOX_DIR?.trim();
+  const configured = process.env["JUNIOR_DOCKER_SANDBOX_DIR"]?.trim();
   if (configured) return configured;
   return path.join(os.homedir(), ".cache", "junior", "docker-sandbox");
 }
@@ -25,5 +25,7 @@ export function dockerSandboxDir(): string {
  * verify the certificates that this proxy shows.
  */
 export function dockerSandboxExtraCaFile(): string | undefined {
-  return process.env.JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS?.trim() || undefined;
+  return (
+    process.env["JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS"]?.trim() || undefined
+  );
 }

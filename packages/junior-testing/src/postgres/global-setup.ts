@@ -38,7 +38,7 @@ async function applyMigrations(
 export default async function setup(
   project: TestProject,
 ): Promise<() => Promise<void>> {
-  const databaseUrl = process.env.DATABASE_URL ?? COMPOSE_DATABASE_URL;
+  const databaseUrl = process.env["DATABASE_URL"] ?? COMPOSE_DATABASE_URL;
   assertLocalPostgresUrl(databaseUrl);
   const root = project.config.root;
   const skip = new Set(project.getProvidedContext().postgresSkipMigrations);

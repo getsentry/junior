@@ -6,6 +6,7 @@ import {
   streamAnthropic,
   streamSimpleAnthropic,
   type CacheRetention,
+  type Api,
   type Message,
   type Model,
   type ThinkingLevel,
@@ -73,7 +74,7 @@ const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 // Pi's bundled catalog can lag behind the gateway. Keep missing models and
 // metadata corrections here until the catalog includes them. Remove these
 // overrides when Pi supplies the same metadata or Junior uses a live catalog.
-const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
   // Metadata from https://ai-gateway.vercel.sh/v1/models.
   "anthropic/claude-opus-5.5": {
     id: "anthropic/claude-opus-5.5",
@@ -248,11 +249,11 @@ function extractText(message: {
 }
 
 /** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<any> {
+export function resolveGatewayModel(modelId: string): Model<Api> {
   const matched =
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
-      (model: Model<any>) => model.id === modelId,
+      (model: Model<Api>) => model.id === modelId,
     );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
@@ -268,7 +269,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
 export async function completeText(params: {
   modelId: string;
-  system?: string;
+  system?: string | undefined;
   messages: Message[];
   /** Tool definitions to send. They are part of the cached prompt prefix. */
   tools?: Tool[];
@@ -276,7 +277,7 @@ export async function completeText(params: {
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
   /** AI Gateway session ID. Pass the Conversation ID to share its session. */
@@ -430,17 +431,21 @@ function logContextFromMetadata(
   metadata: Record<string, unknown> | undefined,
 ): LogContext {
   const conversationId =
-    typeof metadata?.conversationId === "string"
-      ? metadata.conversationId
-      : typeof metadata?.threadId === "string"
-        ? metadata.threadId
+    typeof metadata?.["conversationId"] === "string"
+      ? metadata["conversationId"]
+      : typeof metadata?.["threadId"] === "string"
+        ? metadata["threadId"]
         : undefined;
   const messageConversationId =
-    typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+    typeof metadata?.["threadId"] === "string"
+      ? metadata["threadId"]
+      : undefined;
   const destinationName =
-    typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
+    typeof metadata?.["channelId"] === "string"
+      ? metadata["channelId"]
+      : undefined;
   const runId =
-    typeof metadata?.runId === "string" ? metadata.runId : undefined;
+    typeof metadata?.["runId"] === "string" ? metadata["runId"] : undefined;
 
   return {
     modelId,
@@ -525,7 +530,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   prompt: string;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
@@ -600,7 +605,7 @@ export async function completeDecision<
   modelId: string;
   state: Experimental_DecisionState;
   questions: TQuestions;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{
@@ -681,7 +686,7 @@ export async function embedTexts(params: {
   inputType?: "document" | "query";
   modelId: string;
   texts: string[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
 }): Promise<{
   costUsd?: number;

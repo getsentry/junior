@@ -238,9 +238,9 @@ function proxy(
 
 describe("sandbox egress proxy composition", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "test-secret";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "test-secret";
     activeCredentialToken = undefined;
     getProvidersMock.mockReturnValue([sentryPlugin()]);
     getDefinitionMock.mockReset();
@@ -269,10 +269,10 @@ describe("sandbox egress proxy composition", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
-    delete process.env.SENTRY_BOT_EMAIL;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
+    delete process.env["SENTRY_BOT_EMAIL"];
     vi.restoreAllMocks();
   });
 
@@ -327,8 +327,8 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("does not reuse Slack signing secret for sandbox egress tokens", () => {
-    delete process.env.JUNIOR_SECRET;
-    process.env.SLACK_SIGNING_SECRET = "test-slack-signing-secret";
+    delete process.env["JUNIOR_SECRET"];
+    process.env["SLACK_SIGNING_SECRET"] = "test-slack-signing-secret";
 
     expect(() =>
       createSandboxEgressCredentialToken({
@@ -366,7 +366,8 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("resolves host env bindings for sandbox commands", async () => {
-    process.env.SENTRY_BOT_EMAIL = "123+sentry[bot]@users.noreply.github.com";
+    process.env["SENTRY_BOT_EMAIL"] =
+      "123+sentry[bot]@users.noreply.github.com";
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       SENTRY_AUTHOR_EMAIL: "123+sentry[bot]@users.noreply.github.com",
@@ -549,7 +550,7 @@ describe("sandbox egress proxy composition", () => {
     const req = egressRequest({ method: "OPTIONS", body: "" });
     await req.arrayBuffer(); // req.bodyUsed is now true
     const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
-    const response = await proxy(req, fetchMock as typeof fetch);
+    const response = await proxy(req, fetchMock);
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

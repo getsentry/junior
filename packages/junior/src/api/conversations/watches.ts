@@ -16,7 +16,7 @@ import { readConversationAccessFromSql } from "./access";
  */
 export async function requireConversationWatches(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationWatchesReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");

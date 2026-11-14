@@ -289,7 +289,7 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
             ? indexes.map((index) => ({
                 ...selection,
                 alias: { kind: Kind.NAME, value: `pr${index}` },
-                arguments: selection.arguments?.map((argument) => ({
+                arguments: (selection.arguments ?? []).map((argument) => ({
                   ...argument,
                   value: variable(index),
                 })),

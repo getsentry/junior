@@ -98,7 +98,7 @@ import { readRootConversation } from "@/chat/agent-invocations/root-conversation
 interface RunSandboxArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live projection of the run's committed instruction-authority actors so far. */
   currentActors?: () => Actor[];
   durability: Pick<AgentDurability, "onSandboxRefChanged">;
@@ -160,7 +160,7 @@ export async function createRunSandbox(
 
 /** Build the context that plugin prompt hooks read, before tool wiring exists. */
 export function createPromptHookContext(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: AgentRun;
   userInput: string;
 }): PromptHookContext {
@@ -180,7 +180,7 @@ interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
   behavior: TurnBehavior;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
@@ -190,12 +190,12 @@ interface ToolWiringArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy?: ConversationPrivacy | undefined;
   durability: AgentDurability;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
@@ -214,7 +214,7 @@ interface ToolWiringArgs {
 
 /** Record optional reporting without changing the loadSkill outcome. */
 async function tryRecordSkillLoadStat(skill: Skill) {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: skill.pluginProvider ?? "junior",
@@ -245,7 +245,7 @@ type ToolRuntimeRoute =
       "actor" | "destination" | "source"
     >
   | {
-      actor?: Actor;
+      actor?: Actor | undefined;
       destination: Destination;
       source:
         | AgentInvocationSource
@@ -257,7 +257,7 @@ type ToolRuntimeRoute =
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: Pick<
     AgentRun,
     "destination" | "source" | "slackActionToken" | "toolChannelId"
@@ -565,9 +565,7 @@ export async function wireAgentTools(
     },
   );
 
-  const plannedToolExposure = planToolExposure(
-    tools as Record<string, AnyToolDefinition>,
-  );
+  const plannedToolExposure = planToolExposure(tools);
   const disabledTools = Object.entries(
     tools as Record<string, AnyToolDefinition>,
   ).flatMap(([name, definition]) =>

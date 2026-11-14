@@ -22,7 +22,7 @@ export function bindPluginTool<TTool extends PluginToolLike>(
   return {
     ...tool,
     execute: (input, options) =>
-      execute.call(tool, input, options, ctx as never) as ReturnType<
+      execute.call(tool, input, options, ctx) as ReturnType<
         NonNullable<TTool["execute"]>
       >,
   };

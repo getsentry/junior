@@ -8,7 +8,7 @@ import { useSheet } from "./ui/useSheet";
 export function BottomSheet(props: {
   children: ReactNode;
   label: string;
-  title?: string;
+  title?: string | undefined;
   size?: "full" | "content";
   onClose(): void;
 }) {

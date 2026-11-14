@@ -77,7 +77,9 @@ test("switches desktop navigation between adaptive, top bar, and sidebar", async
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
   await expect(sidebar).toBeVisible();
-  await (await openMenu())
+  await (
+    await openMenu()
+  )
     .getByRole("menuitemradio", { name: "Top bar navigation" })
     .click();
   await expect(sidebar).toHaveCount(0);

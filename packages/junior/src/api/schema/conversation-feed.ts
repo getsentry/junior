@@ -21,8 +21,8 @@ export type ConversationFeedBrief = z.infer<typeof conversationFeedBriefSchema>;
 
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
-  brief?: ConversationFeedBrief;
-  threads?: ConversationFeedItem[];
+  brief?: ConversationFeedBrief | undefined;
+  threads?: ConversationFeedItem[] | undefined;
 };
 
 /**

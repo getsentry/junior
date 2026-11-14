@@ -129,7 +129,7 @@ function htmlResponse(
 async function wakeAuthorizedMcpTurn(args: {
   authSession: McpAuthSessionState;
   provider: string;
-  queue?: ConversationWorkQueue;
+  queue?: ConversationWorkQueue | undefined;
 }): Promise<void> {
   const { authSession, provider } = args;
   if (!authSession.destination) return;

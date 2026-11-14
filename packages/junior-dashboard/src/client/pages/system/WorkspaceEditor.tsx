@@ -21,7 +21,7 @@ type WorkspaceEditorProps = {
   cancelPath: string;
   defaultVcpus: number | null;
   draft: WorkspaceDraft;
-  error?: string;
+  error?: string | undefined;
   editing: boolean;
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;

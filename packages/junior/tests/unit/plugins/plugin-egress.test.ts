@@ -27,7 +27,7 @@ describe("plugin egress", () => {
     | undefined;
 
   beforeEach(() => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     restoreCatalog = {
       previous: pluginCatalogRuntime.setConfig({
         inlineManifests: [{ manifest: githubManifest() }],

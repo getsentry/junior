@@ -154,11 +154,11 @@ export function requireEventAutomationTrigger(
   catalog: EventCatalog,
   input: {
     events: readonly string[];
-    identifier?: string | null;
+    identifier?: string | null | undefined;
     label: string;
-    match?: EventAutomation["trigger"]["match"];
+    match?: EventAutomation["trigger"]["match"] | undefined;
     namespace: string;
-    resourceType?: string | null;
+    resourceType?: string | null | undefined;
   },
   options?: { inputKeys: boolean },
 ): EventAutomation["trigger"] {

@@ -15,13 +15,13 @@ export class SlackApiOutbox {
   /** Authorization links that Junior sent to `userId` in private, oldest first. */
   authorizationLinks(userId: string): string[] {
     return this.calls("chat.postEphemeral").flatMap((call) => {
-      const blocks = (call.params.blocks ?? []) as Array<{
+      const blocks = (call.params["blocks"] ?? []) as Array<{
         accessory?: { action_id?: string; url?: string };
       }>;
       const url = blocks.find(
         (block) => block.accessory?.action_id === "oauth_connect",
       )?.accessory?.url;
-      return call.params.user === userId && url ? [url] : [];
+      return call.params["user"] === userId && url ? [url] : [];
     });
   }
 

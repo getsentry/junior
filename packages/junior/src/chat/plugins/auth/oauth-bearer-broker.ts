@@ -60,9 +60,9 @@ async function refreshAccessToken(
 ): Promise<{
   accessToken: string;
   refreshToken: string;
-  expiresAt?: number;
-  refreshTokenExpiresAt?: number;
-  scope?: string;
+  expiresAt?: number | undefined;
+  refreshTokenExpiresAt?: number | undefined;
+  scope?: string | undefined;
 }> {
   const clientId = process.env[oauth.clientIdEnv]?.trim();
   const clientSecret = process.env[oauth.clientSecretEnv]?.trim();
@@ -265,7 +265,9 @@ export function createOAuthBearerBroker(
                       ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
                       : undefined),
                     ...refreshed,
-                    ...(latest.account ? { account: latest.account } : undefined),
+                    ...(latest.account
+                      ? { account: latest.account }
+                      : undefined),
                   };
                   await deps.userTokenStore.set(
                     userSubjectId,

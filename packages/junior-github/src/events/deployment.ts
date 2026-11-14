@@ -67,7 +67,7 @@ export const GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER = {
 /** Build the stable deployment-source identity shared by tools and webhooks. */
 export function gitHubDeploymentSourceResource(input: {
   commitSha: string;
-  environment?: string;
+  environment?: string | undefined;
   repo: string;
 }): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const commitSha = input.commitSha.toLowerCase();
@@ -90,7 +90,7 @@ export function gitHubDeploymentSourceSubscribable(input: {
   /** `ctx.events.canSubscribe` from the tool context. */
   canSubscribe: boolean;
   commitSha: string;
-  environment?: string;
+  environment?: string | undefined;
   repo: string;
 }): SubscribableResource | undefined {
   if (!input.canSubscribe) return undefined;
