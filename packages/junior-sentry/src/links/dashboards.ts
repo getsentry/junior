@@ -452,7 +452,7 @@ async function resolveSentryWidgetLink(
 export const sentryDashboardLinks: PluginObjectLinkDefinition = {
   canView: async (ctx, url) => (await viewerDashboard(ctx, url)) !== null,
   filters: SENTRY_DASHBOARD_LINK_FILTERS,
-  objectType: "dashboard",
+  objectTypes: ["dashboard"],
   resolve: resolveSentryDashboardLink,
 };
 
@@ -460,6 +460,6 @@ export const sentryDashboardLinks: PluginObjectLinkDefinition = {
 export const sentryDashboardWidgetLinks: PluginObjectLinkDefinition = {
   canView: async (ctx, url) => (await viewerWidget(ctx, url)) !== null,
   filters: SENTRY_DASHBOARD_WIDGET_LINK_FILTERS,
-  objectType: "chart",
+  objectTypes: ["chart"],
   resolve: resolveSentryWidgetLink,
 };
