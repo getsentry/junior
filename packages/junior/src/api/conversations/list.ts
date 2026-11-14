@@ -65,6 +65,11 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
+import {
+  annotationUrls,
+  readFeedMediaAndLinks,
+  type ConversationFeedInclude,
+} from "./feed-media-links";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -442,6 +447,8 @@ export async function readConversationFeedFromSql(
     codeRepositoryId?: string;
     /** `nextCursor` of the previous page. */
     cursor?: string | undefined;
+    /** Extra row content that costs a query. */
+    include?: readonly ConversationFeedInclude[];
     limit?: number;
     q?: string | undefined;
     status?: "active" | "archived";
@@ -574,7 +581,11 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [sidebarAnnotationsByConversation, threadsByRoot] = await Promise.all([
+  const [
+    sidebarAnnotationsByConversation,
+    threadsByRoot,
+    { links: linksByConversation, media: mediaByConversation },
+  ] = await Promise.all([
     listConversationSidebarAnnotations(
       conversationIds,
       visibleAnnotationsByConversation,
@@ -588,6 +599,22 @@ export async function readConversationFeedFromSql(
           access: accessByConversation.get(conversationId),
           conversationId,
         })),
+    ),
+    // Files and links are private content.
+    readFeedMediaAndLinks(
+      db,
+      conversationIds
+        .filter(
+          (conversationId) =>
+            accessByConversation.get(conversationId)?.canViewPrivateContent,
+        )
+        .map((conversationId) => ({
+          conversationId,
+          shownUrls: annotationUrls(
+            visibleAnnotationsByConversation.get(conversationId),
+          ),
+        })),
+      new Set(options.include),
     ),
   ]);
   const assignedWork = new Set(conversationWork.assignedIds);
@@ -648,6 +675,8 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
+      const media = mediaByConversation.get(conversation.conversationId);
+      const links = linksByConversation.get(conversation.conversationId);
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -662,6 +691,8 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
+        ...(media ? { media } : undefined),
+        ...(links ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
@@ -707,6 +738,7 @@ export async function readConversationFeed(
     actorEmail?: string;
     codeRepositoryId?: string;
     cursor?: string;
+    include?: readonly ConversationFeedInclude[];
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
