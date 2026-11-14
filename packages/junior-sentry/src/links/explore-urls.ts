@@ -88,20 +88,44 @@ function periodMs(period: string): number | undefined {
   return Number(match[1]) * UNIT_MS[match[2] as keyof typeof UNIT_MS];
 }
 
-function rangeMs(params: URLSearchParams): number {
-  const start = Date.parse(params.get("start") ?? "");
-  const end = Date.parse(params.get("end") ?? "");
-  if (!Number.isNaN(start) && !Number.isNaN(end)) {
-    return Math.max(end - start, 0);
+// Sentry writes `start` and `end` in UTC, without a zone.
+function utcMs(value: string | null): number {
+  if (!value) return Number.NaN;
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(value) ? value : `${value}Z`);
+}
+
+type TimeRange = { statsPeriod: string } | { start: string; end: string };
+
+// Sentry's page filters treat a valid `statsPeriod` as a live window, even
+// when the URL keeps stale `start` and `end` beside it. The bounds count
+// only as a pair.
+function timeRange(params: URLSearchParams): TimeRange {
+  const period = params.get("statsPeriod") ?? "";
+  if (periodMs(period) !== undefined) return { statsPeriod: period };
+  const start = utcMs(params.get("start"));
+  const end = utcMs(params.get("end"));
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+    return { statsPeriod: DEFAULT_PERIOD };
   }
-  return periodMs(params.get("statsPeriod") || DEFAULT_PERIOD) ?? 0;
+  return {
+    start: new Date(start).toISOString(),
+    end: new Date(end).toISOString(),
+  };
+}
+
+function rangeMs(range: TimeRange): number {
+  return "statsPeriod" in range
+    ? periodMs(range.statsPeriod)!
+    : Date.parse(range.end) - Date.parse(range.start);
 }
 
 // A stale URL can ask for an interval finer than its range allows, and
 // `events-timeseries` refuses that many buckets. Use the smallest allowed.
-function chartInterval(params: URLSearchParams): string {
-  const range = rangeMs(params);
-  const minimum = INTERVAL_LADDER.find(([threshold]) => range >= threshold)![1];
+function chartInterval(params: URLSearchParams, range: TimeRange): string {
+  const rangeLength = rangeMs(range);
+  const minimum = INTERVAL_LADDER.find(
+    ([threshold]) => rangeLength >= threshold,
+  )![1];
   const requested = params.get("interval") ?? "";
   const requestedMs = periodMs(requested);
   return requestedMs !== undefined && requestedMs >= periodMs(minimum)!
@@ -265,6 +289,7 @@ export function parseSentryExploreLink(
     ? chart.sort[0]
     : undefined;
   const grouped = chart.groupBy.length > 0;
+  const range = timeRange(params);
   return {
     org: orgPath.org,
     dataset: config.dataset,
@@ -277,11 +302,7 @@ export function parseSentryExploreLink(
     topEvents: grouped ? TOP_N : undefined,
     project: params.getAll("project"),
     environment: params.getAll("environment"),
-    statsPeriod:
-      params.get("statsPeriod") ||
-      (params.get("start") ? undefined : DEFAULT_PERIOD),
-    start: params.get("start") ?? undefined,
-    end: params.get("end") ?? undefined,
-    interval: chartInterval(params),
+    ...range,
+    interval: chartInterval(params, range),
   };
 }

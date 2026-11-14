@@ -33,7 +33,7 @@ const EXPLORE_URL = (() => {
 })();
 
 // Each series: `[group, points]`. Sentry lists the top groups by `order`.
-function timeSeries(groups: Array<[string | null, number[]]>) {
+function timeSeries(groups: Array<[string | null, Array<number | null>]>) {
   return {
     timeSeries: groups.map(([group, points], order) => ({
       yAxis: "p95(span.duration)",
@@ -231,6 +231,35 @@ describe("Sentry chart link cards", () => {
 
     expect(objects).toHaveLength(1);
     expect(queries).toHaveLength(1);
+  });
+
+  it("draws across empty buckets and names a custom range in UTC", async () => {
+    // Sentry writes custom bounds in UTC without a zone. Junior's own zone
+    // must not shift them.
+    vi.stubEnv("TZ", "America/New_York");
+    const { queries } = fakeSentry(
+      { alice: ["11"] },
+      timeSeries([["http.client", [null, 12, null, 18, null]]]),
+    );
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url = new URL(EXPLORE_URL);
+    url.searchParams.delete("statsPeriod");
+    url.searchParams.set("start", "2026-11-13T00:00:00");
+    url.searchParams.set("end", "2026-11-13T12:00:00");
+
+    const { objects } = await readCards(alice, [url.href]);
+
+    expect(objects[0]?.object.facts).toMatchObject({
+      range: "2026-11-13 00:00 to 2026-11-13 12:00 UTC",
+      // A bucket with no samples is not a zero.
+      series: [{ label: "http.client", points: [12, 12, 15, 18, 18] }],
+    });
+    const sent = new URLSearchParams(queries[0]!.split("?")[1]);
+    expect([sent.get("start"), sent.get("end")]).toEqual([
+      "2026-11-13T00:00:00.000Z",
+      "2026-11-13T12:00:00.000Z",
+    ]);
   });
 
   it("fits long series in the card facts limit", async () => {
