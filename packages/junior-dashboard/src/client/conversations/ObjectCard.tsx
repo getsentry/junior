@@ -68,15 +68,17 @@ function PreviewImage({
 
 // A web page names its site, then its author, such as "YouTube · Sentry".
 // Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event or a release ends with when it happened, in the
-// viewer's time.
+// its title. An event or a release ends with when it happened, and a
+// monitor with when it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
   const time =
     card.facts?.type === "event"
       ? card.facts.occurredAt
       : card.facts?.type === "release"
         ? card.facts.releasedAt
-        : undefined;
+        : card.facts?.type === "monitor"
+          ? card.facts.lastCheckedAt
+          : undefined;
   const parts =
     card.objectType === "web_page"
       ? [
@@ -212,12 +214,13 @@ export function ObjectCard({
             {displayPlainText(card.facts.summary)}
           </p>
         )}
-        {card.facts?.type === "task" && card.facts.trend && (
-          <Sparkline
-            label={card.facts.trend.label}
-            series={[card.facts.trend]}
-          />
-        )}
+        {(card.facts?.type === "task" || card.facts?.type === "monitor") &&
+          card.facts.trend && (
+            <Sparkline
+              label={card.facts.trend.label}
+              series={[card.facts.trend]}
+            />
+          )}
         {card.facts?.type === "chart" && (
           <Sparkline
             display={card.facts.display}
