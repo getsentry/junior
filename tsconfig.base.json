@@ -22,6 +22,6 @@
     "allowUnusedLabels": false,
 
     /* Completeness */
-    "skipLibCheck": true
+    "skipLibCheck": false
   }
 }
