@@ -87,7 +87,10 @@ export function isNotionPageId(value: string): boolean {
 
 /** Return the page id of a Notion link. A peeked page `?p=` wins. */
 export function notionPageId(url: URL): string | undefined {
-  const segment = url.searchParams.get("p") ?? url.pathname.split("/").at(-1);
+  // Link filters ignore a trailing slash, so the id is in the last segment
+  // that is not empty.
+  const segment =
+    url.searchParams.get("p") ?? url.pathname.split("/").filter(Boolean).at(-1);
   const match = segment?.match(PAGE_ID_PATTERN)?.[1];
   return match?.replaceAll("-", "").toLowerCase();
 }

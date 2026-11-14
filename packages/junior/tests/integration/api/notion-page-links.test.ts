@@ -332,7 +332,12 @@ describe("Notion page link cards", () => {
         },
       },
     ]);
-    // The access check and the card share one `notion-fetch` call.
+    // The access check and the card share one `notion-fetch` call, and a
+    // link with a trailing slash reads the same page from the cache.
+    const { objects: slashed } = await readCards(alice, [`${LAUNCH_URL}/`]);
+    expect(slashed.map((card) => card.object.title)).toEqual([
+      "🚀 Launch plan",
+    ]);
     expect(notion.calls).toEqual([`alice notion-fetch ${LAUNCH_ID}`]);
 
     // The cover goes through the image proxy, which checks each viewer.

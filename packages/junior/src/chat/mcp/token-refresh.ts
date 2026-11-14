@@ -104,7 +104,9 @@ export function serializeMcpTokenRefresh(
         });
         return response;
       },
-      { ttlMs: REFRESH_LOCK_TTL_MS, waitMs: REFRESH_WAIT_MS },
+      // Keep the lock while Notion answers: a lost lock after a rotation
+      // would drop the new tokens.
+      { keepAlive: true, ttlMs: REFRESH_LOCK_TTL_MS, waitMs: REFRESH_WAIT_MS },
     );
     if (!attempt.acquired) {
       throw new Error(
