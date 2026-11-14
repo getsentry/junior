@@ -1342,8 +1342,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-user",
       role: "user",
-      // A pasted GitHub issue link without an Annotation: the API resolves it.
-      text: "Release the package, update the example app, and open a PR. It closes https://github.com/getsentry/junior/issues/2188",
+      text: "Release the package, update the example app, and open a PR.",
     }),
   ];
   let nextSeq = 2;
