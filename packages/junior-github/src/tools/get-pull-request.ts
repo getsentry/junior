@@ -262,103 +262,103 @@ async function readRelatedConversations(
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
-export function createGitHubGetPullRequestTool(ctx: {
-  conversations?: PluginConversationToolContext;
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
+export const gitHubGetPullRequestTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      conversations?: PluginConversationToolContext;
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
     },
-    description:
-      "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await githubApi(ctx.egress, {
-        operation: "github.pull.get",
-        path: `${repoPath(repo)}/pulls/${input.number}`,
-      });
-      if (!response.ok) {
-        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
-        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
-        if (response.status === 404) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.get",
+      path: `${repoPath(repo)}/pulls/${input.number}`,
+    });
+    if (!response.ok) {
+      const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+      // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(message);
       }
-      const providerResult = z
-        .object({
-          base: z.object({ ref: z.string() }),
-          draft: z.boolean(),
-          head: z.object({ ref: z.string(), sha: commitShaSchema }),
-          html_url: z.string(),
-          merged: z.boolean().optional().default(false),
-          number: z.number(),
-          state: z.string(),
-          title: z.string(),
-        })
-        .parse(response.body);
-      const annotation = githubObjectAnnotation({
-        repo: repo.ref,
-        number: providerResult.number,
-        title: providerResult.title,
-        url: providerResult.html_url,
-        objectType: "code_change",
-        status: providerResult.merged
-          ? "merged"
-          : providerResult.state === "open" && providerResult.draft
-            ? "draft"
-            : providerResult.state,
-        ...githubObjectFacts("code_change", response.body),
-      });
-      const [checks, relatedConversations] = await Promise.all([
-        readPullRequestChecks(ctx.egress, repo, providerResult.number),
-        readRelatedConversations(ctx.conversations, annotation.key),
-      ]);
-      // Only a draft can still ask its code owners by being marked ready.
-      const readiness =
-        providerResult.draft && providerResult.state === "open"
-          ? await readDraftReadiness(ctx.egress, repo, {
-              base: providerResult.base.ref,
-              number: providerResult.number,
-            })
-          : undefined;
-      const subscribable = gitHubPullRequestSubscribable({
-        canSubscribe: ctx.events.canSubscribe,
-        number: providerResult.number,
-        repo: repo.ref,
-      });
-      const data: PullRequest = {
-        base: providerResult.base.ref,
-        ...(readiness?.agentsMd
-          ? { agents_md: readiness.agentsMd }
-          : undefined),
-        checks,
-        ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
-        draft: providerResult.draft,
-        head: providerResult.head.ref,
-        head_sha: providerResult.head.sha.toLowerCase(),
-        merged: providerResult.merged,
-        number: providerResult.number,
-        ...(relatedConversations.length > 0
-          ? { related_conversations: relatedConversations }
-          : undefined),
-        state: providerResult.state,
-        ...(subscribable ? { subscribable } : undefined),
-        title: providerResult.title,
-        url: providerResult.html_url,
-      };
-      return {
-        objectAnnotations: [annotation],
-        target: "getPullRequest",
-        ...data,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const providerResult = z
+      .object({
+        base: z.object({ ref: z.string() }),
+        draft: z.boolean(),
+        head: z.object({ ref: z.string(), sha: commitShaSchema }),
+        html_url: z.string(),
+        merged: z.boolean().optional().default(false),
+        number: z.number(),
+        state: z.string(),
+        title: z.string(),
+      })
+      .parse(response.body);
+    const annotation = githubObjectAnnotation({
+      repo: repo.ref,
+      number: providerResult.number,
+      title: providerResult.title,
+      url: providerResult.html_url,
+      objectType: "code_change",
+      status: providerResult.merged
+        ? "merged"
+        : providerResult.state === "open" && providerResult.draft
+          ? "draft"
+          : providerResult.state,
+      ...githubObjectFacts("code_change", response.body),
+    });
+    const [checks, relatedConversations] = await Promise.all([
+      readPullRequestChecks(ctx.egress, repo, providerResult.number),
+      readRelatedConversations(ctx.conversations, annotation.key),
+    ]);
+    // Only a draft can still ask its code owners by being marked ready.
+    const readiness =
+      providerResult.draft && providerResult.state === "open"
+        ? await readDraftReadiness(ctx.egress, repo, {
+            base: providerResult.base.ref,
+            number: providerResult.number,
+          })
+        : undefined;
+    const subscribable = gitHubPullRequestSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      number: providerResult.number,
+      repo: repo.ref,
+    });
+    const data: PullRequest = {
+      base: providerResult.base.ref,
+      ...(readiness?.agentsMd ? { agents_md: readiness.agentsMd } : undefined),
+      checks,
+      ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
+      draft: providerResult.draft,
+      head: providerResult.head.ref,
+      head_sha: providerResult.head.sha.toLowerCase(),
+      merged: providerResult.merged,
+      number: providerResult.number,
+      ...(relatedConversations.length > 0
+        ? { related_conversations: relatedConversations }
+        : undefined),
+      state: providerResult.state,
+      ...(subscribable ? { subscribable } : undefined),
+      title: providerResult.title,
+      url: providerResult.html_url,
+    };
+    return {
+      objectAnnotations: [annotation],
+      target: "getPullRequest",
+      ...data,
+    };
+  },
+});

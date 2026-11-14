@@ -1,6 +1,7 @@
 import type { PluginConversationMatch } from "@sentry/junior-plugin-api";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
+import { gitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -93,7 +94,7 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe },
   };
-  return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetPullRequestTool, ctx) };
 }
 
 describe("getPullRequest", () => {
@@ -171,7 +172,7 @@ describe("getPullRequest", () => {
       pullRequestResponse(),
       checksResponse({ contexts: [] }),
     ]);
-    const tool = createGitHubGetPullRequestTool({
+    const tool = bindPluginTool(gitHubGetPullRequestTool, {
       conversations: {
         async search(input) {
           searches.push(input);
