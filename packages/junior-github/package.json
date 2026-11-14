@@ -43,7 +43,7 @@
     "drizzle-orm": "catalog:",
     "ignore": "^7.0.5",
     "marked": "^18.1.2",
-    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm": "^3.1.0",
     "micromark-extension-gfm": "^3.0.0",
     "parse5": "^7.3.0",

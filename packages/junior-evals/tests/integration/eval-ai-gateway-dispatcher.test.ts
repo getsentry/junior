@@ -94,7 +94,7 @@ describe("eval AI Gateway dispatcher", () => {
       expect(failedAssistant).toMatchObject({
         role: "assistant",
         stopReason: "error",
-        errorMessage: "terminated",
+        errorMessage: "terminated: Body Timeout Error (UND_ERR_BODY_TIMEOUT)",
       });
       expect(
         nextProviderRetry({
