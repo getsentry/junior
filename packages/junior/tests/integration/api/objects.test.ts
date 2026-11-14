@@ -280,7 +280,7 @@ describe("object links API", () => {
       ),
       http.get(`${api}/collaborators/:login/permission`, ({ params }) =>
         HttpResponse.json({
-          permission: params.login === "alice_acme" ? "read" : "none",
+          permission: params["login"] === "alice_acme" ? "read" : "none",
         }),
       ),
       http.get(
@@ -298,8 +298,8 @@ describe("object links API", () => {
         }),
       ),
       http.get(`${api}/issues/:number`, ({ params }) => {
-        reads.push(`issues/${params.number}`);
-        if (params.number === "12") {
+        reads.push(`issues/${params["number"]}`);
+        if (params["number"] === "12") {
           return HttpResponse.json({
             assignees: [{ login: "alice_acme" }],
             body: "Pasted links show as plain links.",
@@ -312,7 +312,7 @@ describe("object links API", () => {
             user: { login: "byk" },
           });
         }
-        if (params.number === "56") {
+        if (params["number"] === "56") {
           return new HttpResponse(null, {
             headers: {
               location: "https://api.github.com/repositories/999/issues/56",
@@ -320,7 +320,7 @@ describe("object links API", () => {
             status: 301,
           });
         }
-        if (params.number === "34") {
+        if (params["number"] === "34") {
           return HttpResponse.json({
             html_url: `${repo}/pull/34`,
             number: 34,
