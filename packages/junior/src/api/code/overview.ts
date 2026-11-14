@@ -429,7 +429,8 @@ export async function readCodeOverview(nowMs = Date.now()) {
  */
 const personCodeCursorSchema = z
   .object({
-    id: z.string().min(1),
+    // Any value Postgres reads as a uuid, so a bad id answers 400.
+    id: z.guid(),
     idleSince: z.iso.datetime().optional(),
     updatedAt: z.iso.datetime(),
   })

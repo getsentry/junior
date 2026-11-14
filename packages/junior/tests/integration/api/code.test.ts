@@ -286,6 +286,17 @@ describe("code API", () => {
           )
         ).status,
       ).toBe(400);
+      // A well-formed cursor whose id is not a code change id is bad too.
+      const notAnId = Buffer.from(
+        JSON.stringify({ id: "nope", updatedAt: new Date().toISOString() }),
+      ).toString("base64url");
+      expect(
+        (
+          await api.request(
+            `http://localhost/api/people/alice@example.com/code?cursor=${notAnId}`,
+          )
+        ).status,
+      ).toBe(400);
     } finally {
       vi.useRealTimers();
       await fixture.close();
