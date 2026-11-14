@@ -6,12 +6,12 @@ import {
   createJuniorApi,
   jsonResponse,
   readViewerAvatarUrl,
-  DEFAULT_AUTO_ARCHIVE_SETTINGS,
-  readUserAutoArchiveSettings,
+  DEFAULT_USER_SETTINGS,
+  readUserSettings,
   resolveViewerUser,
-  updateUserAutoArchiveSettings,
+  updateUserSettings,
   updateViewerDisplayName,
-  type AutoArchiveSettings,
+  type UserSettings,
   type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
@@ -82,7 +82,7 @@ const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
 /** Process-local profile settings for mock reporting only. */
 const mockDisplayNamesByEmail = new Map<string, string>();
-const mockAutoArchiveSettingsByEmail = new Map<string, AutoArchiveSettings>();
+const mockUserSettingsByEmail = new Map<string, UserSettings>();
 
 /**
  * Clear process-local mock reporting state so tests sharing a worker do not
@@ -94,7 +94,7 @@ const mockAutoArchiveSettingsByEmail = new Map<string, AutoArchiveSettings>();
 export function resetMockDashboardState(): void {
   mockDisplayNamesByEmail.clear();
   resetMockConversationViewerState();
-  mockAutoArchiveSettingsByEmail.clear();
+  mockUserSettingsByEmail.clear();
   resetMockReadPositions();
   resetMockReviewItems();
   resetMockSends();
@@ -658,15 +658,14 @@ export function createDashboardApp(
     userId && !options.mockConversations
       ? await readViewerAvatarUrl(userId)
       : undefined;
-  async function readViewerAutoArchiveSettings(viewer: {
+  async function readViewerSettings(viewer: {
     email: string;
     id: string;
-  }): Promise<AutoArchiveSettings> {
+  }): Promise<UserSettings> {
     return (
       (options.mockConversations
-        ? mockAutoArchiveSettingsByEmail.get(viewer.email)
-        : await readUserAutoArchiveSettings(viewer.id)) ??
-      DEFAULT_AUTO_ARCHIVE_SETTINGS
+        ? mockUserSettingsByEmail.get(viewer.email)
+        : await readUserSettings(viewer.id)) ?? DEFAULT_USER_SETTINGS
     );
   }
   async function dashboardIdentity(
@@ -675,7 +674,7 @@ export function createDashboardApp(
   ): Promise<DashboardIdentity> {
     const avatarUrl = await viewerAvatarUrl(viewer?.id);
     return {
-      ...(viewer ? await readViewerAutoArchiveSettings(viewer) : undefined),
+      ...(viewer ? await readViewerSettings(viewer) : undefined),
       user: {
         ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
@@ -719,22 +718,22 @@ export function createDashboardApp(
       );
     }
     const session = c.get("authSession");
-    const { displayName, ...autoArchive } = parsed.data;
+    const { displayName, ...settings } = parsed.data;
     // Parsed bodies omit settings the request did not send.
-    const changesAutoArchive = Object.keys(autoArchive).length > 0;
+    const changesSettings = Object.keys(settings).length > 0;
     // Mock reporting keeps profile edits process-local and out of SQL.
     if (options.mockConversations) {
       if (displayName !== undefined) {
         mockDisplayNamesByEmail.set(viewer.email, displayName);
       }
-      if (changesAutoArchive) {
-        mockAutoArchiveSettingsByEmail.set(viewer.email, {
-          ...(await readViewerAutoArchiveSettings(viewer)),
-          ...autoArchive,
+      if (changesSettings) {
+        mockUserSettingsByEmail.set(viewer.email, {
+          ...(await readViewerSettings(viewer)),
+          ...settings,
         });
       }
       return jsonResponse(dashboardIdentitySchema, {
-        ...(await readViewerAutoArchiveSettings(viewer)),
+        ...(await readViewerSettings(viewer)),
         user: {
           email: session.user.email,
           emailVerified: session.user.emailVerified,
@@ -755,10 +754,10 @@ export function createDashboardApp(
       );
     }
     const avatarUrl = await viewerAvatarUrl(updated.id);
-    const savedAutoArchive = changesAutoArchive
-      ? await updateUserAutoArchiveSettings(viewer.id, autoArchive)
-      : await readUserAutoArchiveSettings(viewer.id);
-    if (!savedAutoArchive) {
+    const savedSettings = changesSettings
+      ? await updateUserSettings(viewer.id, settings)
+      : await readUserSettings(viewer.id);
+    if (!savedSettings) {
       return jsonResponse(
         apiErrorSchema,
         { error: "User not found." },
@@ -766,7 +765,7 @@ export function createDashboardApp(
       );
     }
     return jsonResponse(dashboardIdentitySchema, {
-      ...savedAutoArchive,
+      ...savedSettings,
       user: {
         ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
