@@ -367,7 +367,9 @@ export async function resolveViewerTaskCandidate(
   const [row] = await getDb()
     .select()
     .from(juniorAutomations)
-    .where(eq(juniorAutomations.id, id))
+    .where(
+      and(eq(juniorAutomations.id, id), eq(juniorAutomations.action, "run")),
+    )
     .limit(1);
   if (!row) return undefined;
   let candidate: TaskCandidate;
@@ -480,7 +482,12 @@ export async function readTaskCandidates(
     ? await getDb()
         .select()
         .from(juniorAutomations)
-        .where(inArray(juniorAutomations.id, [...ids]))
+        .where(
+          and(
+            inArray(juniorAutomations.id, [...ids]),
+            eq(juniorAutomations.action, "run"),
+          ),
+        )
     : [];
   const candidates = new Map<string, TaskCandidate>();
   for (const row of stored) {

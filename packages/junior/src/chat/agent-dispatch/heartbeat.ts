@@ -1,6 +1,8 @@
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { settleDueWakeAutomations } from "@/chat/wake-automations/store";
 import {
   createPluginEventPublisher,
   getPlugins,
@@ -247,6 +249,17 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "scheduled_automations.heartbeat.failed");
+  }
+  try {
+    // Reads already treat a due timer as fired; this only settles status.
+    const woke = await settleDueWakeAutomations(getDb(), args.nowMs);
+    if (woke > 0) {
+      logInfo("wake_automations.heartbeat.settled", {
+        "app.wake_automation.count": woke,
+      });
+    }
+  } catch (error) {
+    logException(error, "wake_automations.heartbeat.failed");
   }
   try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });

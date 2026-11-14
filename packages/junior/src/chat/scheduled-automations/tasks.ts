@@ -121,6 +121,7 @@ export async function readScheduledAutomation(
       and(
         eq(juniorAutomations.id, taskId),
         eq(juniorAutomations.kind, "scheduled"),
+        eq(juniorAutomations.action, "run"),
       ),
     )
     .limit(1);
@@ -140,6 +141,7 @@ export async function readScheduledAutomations(
       and(
         inArray(juniorAutomations.id, [...ids]),
         eq(juniorAutomations.kind, "scheduled"),
+        eq(juniorAutomations.action, "run"),
       ),
     );
   const tasks = new Map(
@@ -164,6 +166,7 @@ async function readListedScheduledAutomations(
     .where(
       and(
         eq(juniorAutomations.kind, "scheduled"),
+        eq(juniorAutomations.action, "run"),
         ne(juniorAutomations.status, "deleted"),
         teamId === undefined ? undefined : eq(juniorAutomations.teamId, teamId),
       ),

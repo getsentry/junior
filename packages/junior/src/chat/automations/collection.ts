@@ -116,7 +116,14 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
-    .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
+    .where(
+      and(
+        // The list shows run Automations. Snoozes are not listed here yet.
+        eq(automation.action, "run"),
+        ne(automation.status, "deleted"),
+        or(owned, sharedToViewer),
+      ),
+    )
     .as("accessible_automations");
 }
 
