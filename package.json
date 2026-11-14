@@ -52,7 +52,7 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}": "oxlint --fix",
-    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": [
+    "*.{js,jsx,ts,tsx,mjs,cjs,json,yml,yaml}": [
       "pnpm file-length:check",
       "pnpm test-architecture:check",
       "pnpm dashboard-style:check",

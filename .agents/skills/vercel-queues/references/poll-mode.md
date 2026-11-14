@@ -25,13 +25,11 @@ Region is required because messages can only be consumed in the region they were
 ## Receive behavior
 
 `receive(topic, consumerGroup, handler, options)`:
-
 - auto-ack on successful handler completion
 - retry on thrown errors
 - options include `limit`, `visibilityTimeoutSeconds`, and `messageId`
 
 Handle empty queue as normal control flow:
-
 - `!result.ok && result.reason === "empty"`
 
 ## Mixed mode

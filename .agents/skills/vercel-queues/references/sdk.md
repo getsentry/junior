@@ -12,7 +12,6 @@ Source: https://vercel.com/docs/queues/sdk (Last updated March 5, 2026)
 ## Send options
 
 `send(topic, payload, options)` options commonly used:
-
 - `region`
 - `retentionSeconds` (default 24h; min 60s; max 24h)
 - `delaySeconds`
@@ -37,7 +36,6 @@ Use `handleCallback(handler, { visibilityTimeoutSeconds, retry })`.
 Use `PollingQueueClient({ region })` and call `receive(topic, consumerGroup, handler, options)`.
 
 Common receive options:
-
 - `limit` (default 1, max 10)
 - `visibilityTimeoutSeconds`
 - `messageId`
@@ -47,7 +45,6 @@ Treat `!result.ok && result.reason === "empty"` as a normal no-work result.
 ## Transports
 
 `QueueClient` supports:
-
 - `JsonTransport` (default)
 - `BufferTransport`
 - `StreamTransport`

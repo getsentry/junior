@@ -6,6 +6,8 @@
     "pnpm-lock.yaml",
     "packages/junior-evals/src/fixture/database-docs/",
     "packages/junior-evals/fixtures/",
-    "**/migrations/meta/"
+    "**/migrations/meta/",
+    "**/*.md",
+    "**/*.mdx"
   ]
 }

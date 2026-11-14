@@ -131,7 +131,7 @@ usage and spend attribute to this project instead of showing as `unknown`.
 2. Do **not** set `AI_GATEWAY_API_KEY` in production unless you need a non-OIDC
    fallback. When both are present, Junior prefers OIDC.
 3. For local development without OIDC, either run `vercel link` + `vercel env
-   pull` or set `AI_GATEWAY_API_KEY`.
+pull` or set `AI_GATEWAY_API_KEY`.
 
 `AI_GATEWAY_API_KEY` remains supported for CI and non-Vercel hosts. Team-scoped
 keys without a `projectId` will still show as `unknown` in the AI Gateway

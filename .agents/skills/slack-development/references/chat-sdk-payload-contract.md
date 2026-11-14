@@ -9,11 +9,9 @@ Canonical payload guidance for `chat` handlers in this repository so routing cod
 From the Chat SDK `Message` contract:
 
 1. `message.author`:
-
 - `id` (string)
 - `name` (string)
 - `isMe` (boolean)
-
 2. `message.text` (optional string)
 3. `message.attachments` (optional array)
 4. `message.isMention` (optional boolean)
@@ -23,13 +21,10 @@ When a documented field exists for a decision, use it before custom parsing.
 ## Handler routing contract in this repo
 
 1. `onNewMention(thread, message)`:
-
 - treat as explicit mention path
 - subscribe thread
 - respond
-
 2. `onSubscribedMessage(thread, message)`:
-
 - use `message.isMention` for deterministic explicit-mention bypass
 - only run passive classifier when `isMention` is false
 

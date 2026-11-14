@@ -17,7 +17,6 @@ Legacy compatibility reference. Prefer the split guides below for implementation
 3. Convert newline intent explicitly with `\n`.
 4. Do not rely on native ordered/unordered Markdown list parsing; format lists as plain lines (for example, `- item`).
 5. Use Slack entity syntax when behavior must be deterministic:
-
 - Links: `<https://example.com|label>`
 - User mentions: `<@U123456>`
 - Channel links: `<#C123456>`
