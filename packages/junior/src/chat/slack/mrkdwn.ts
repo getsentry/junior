@@ -15,11 +15,13 @@ export function escapeSlackMrkdwnText(text: string): string {
 /**
  * Escape untrusted text for a Slack `markdown` block, such as a title that a
  * person chose. Backslashes keep Markdown syntax literal and break Slack
- * `<!channel>` and `<@U123>` tokens. A word joiner after `@` stops reply
- * normalization from turning a bare `@U123` into a mention.
+ * `<!channel>` and `<@U123>` tokens. Escaped parentheses keep `](` out of
+ * the text, so reply normalization cannot read a second link inside a link
+ * label. A word joiner after `@` stops reply normalization from turning a bare
+ * `@U123` into a mention.
  */
 export function escapeSlackMarkdownText(text: string): string {
-  return text.replace(/[\\`*_~[\]<>&#]/g, "\\$&").replaceAll("@", "@\u2060");
+  return text.replace(/[\\`*_~[\]()<>&#]/g, "\\$&").replaceAll("@", "@\u2060");
 }
 
 /** Escape a URL for Slack explicit link syntax while preserving query semantics. */

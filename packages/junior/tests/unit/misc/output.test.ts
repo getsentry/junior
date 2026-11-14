@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { slackOutputPolicy, splitSlackReplyText } from "@/chat/slack/output";
 import {
   ensureBlockSpacing,
+  escapeSlackMarkdownText,
   normalizeSlackReplyMarkdown,
 } from "@/chat/slack/mrkdwn";
 
@@ -71,6 +72,15 @@ describe("normalizeSlackReplyMarkdown", () => {
     expect(
       normalizeSlackReplyMarkdown("[PR](https://github.com/org/repo/pull/1)"),
     ).toBe("[PR](https://github.com/org/repo/pull/1)");
+  });
+
+  it("keeps an escaped label from adding a second link", () => {
+    const label = escapeSlackMarkdownText("x](https://evil.example) y");
+    expect(
+      normalizeSlackReplyMarkdown(`**[${label}](https://junior.example/c/1)**`),
+    ).toBe(
+      "**[x\\]\\(https://evil.example\\) y](https://junior.example/c/1)**",
+    );
   });
 
   it("peels trailing sentence punctuation outside the URL", () => {
