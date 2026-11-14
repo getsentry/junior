@@ -43,7 +43,7 @@ const PROJECTS = [
  * `project` narrows the release to one project the viewer can see.
  * Junior's org read token reads no release.
  */
-function fakeSentry(access: Record<string, number[]>) {
+function fakeSentry(access: Record<string, number[]>, version = VERSION) {
   const queries: string[] = [];
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
@@ -62,7 +62,7 @@ function fakeSentry(access: Record<string, number[]>) {
           ? PROJECTS.filter(({ id }) => String(id) === project)
           : PROJECTS;
         if (
-          params.version !== VERSION ||
+          params.version !== version ||
           !PROJECTS.some(({ id }) => visible.includes(id)) ||
           (project && !visible.includes(Number(project)))
         ) {
@@ -70,7 +70,7 @@ function fakeSentry(access: Record<string, number[]>) {
         }
         const health = url.searchParams.get("health") === "1";
         return HttpResponse.json({
-          version: VERSION,
+          version,
           shortVersion: "4.2.0 (9f1c2ab)",
           dateCreated: "2026-11-13T18:00:00.000Z",
           dateReleased: "2026-11-13T18:05:00.000Z",
@@ -155,7 +155,7 @@ describe("Sentry release link cards", () => {
           kind: "object",
           objectType: "release",
           plugin: "sentry",
-          key: `release:sentry/:${VERSION}`,
+          key: expect.stringMatching(/^release:sentry\/:[0-9a-f]{32}$/),
           label: "4.2.0 (9f1c2ab)",
           title: VERSION,
           url: RELEASE_URL,
@@ -196,7 +196,7 @@ describe("Sentry release link cards", () => {
 
     expect(objects.map(({ object }) => [object.key, object.facts])).toEqual([
       [
-        `release:sentry/12:${VERSION}`,
+        expect.stringMatching(/^release:sentry\/12:[0-9a-f]{32}$/),
         expect.objectContaining({
           projects: ["payments"],
           newIssues: 1,
@@ -204,6 +204,18 @@ describe("Sentry release link cards", () => {
         }),
       ],
     ]);
+  });
+
+  it("draws a release with the longest version that Sentry allows", async () => {
+    const version = `checkout@${"9".repeat(241)}`;
+    fakeSentry({ alice: [11] }, version);
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url = `https://sentry.sentry.io/releases/${encodeURIComponent(version)}/`;
+
+    const { objects } = await readCards(alice, [url]);
+
+    expect(objects.map(({ object }) => object.objectType)).toEqual(["release"]);
   });
 
   it("shows nothing of a release to a viewer who cannot see its projects", async () => {

@@ -8,6 +8,7 @@
  * `canView` reads the release, and `resolve` draws the card from the same
  * entry. Junior's org read token only finds the org's region host.
  */
+import { createHash } from "node:crypto";
 import type {
   ObjectAnnotation,
   ObjectLinkContext,
@@ -105,6 +106,10 @@ function sentryRelease(data: z.infer<typeof releaseSchema>): SentryRelease {
   };
 }
 
+function versionHash(version: string): string {
+  return createHash("sha256").update(version).digest("hex").slice(0, 32);
+}
+
 /** Read the release with the viewer's token. Nothing when Sentry refuses. */
 async function readRelease(
   ctx: ObjectLinkContext,
@@ -164,7 +169,8 @@ async function resolveSentryReleaseLink(
   return {
     kind: "object",
     objectType: "release",
-    key: `release:${link.org}/${link.project ?? ""}:${link.version}`,
+    // A version can be 250 characters, longer than a key allows.
+    key: `release:${link.org}/${link.project ?? ""}:${versionHash(link.version)}`,
     label: release.shortVersion,
     title: release.version,
     url: url.href.length <= 2048 ? url.href : null,
