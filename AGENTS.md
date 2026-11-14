@@ -29,6 +29,16 @@ Read the reference files at the end when your work touches their area.
   boundary changes. Delete completed plans. Plans in `openspec/changes/`
   cannot override policy.
 
+## Enforcement
+
+To prevent a problem or correct an agent, use the first of these that works:
+
+1. A check that fails in CI: an oxlint or ast-grep rule, or a `*:check`
+   script.
+2. Directory structure and semantic names.
+3. Steering text: this file, `policies/`, prompts, and tool descriptions.
+   `policies/agent-steering.md` owns how to write it.
+
 ## Testing
 
 - Runtime behavior: integration tests through real Junior wiring. Fake only
