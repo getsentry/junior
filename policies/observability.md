@@ -19,19 +19,18 @@ recipes.
 - Use OpenTelemetry semantic attributes when one exists. Use `app.*` for
   Junior attributes.
 - Do not add app-specific keys under `user.*`. Put request facts in `app.*`.
-- Event names: `<domain>.<operation>[.<suboperation>].<outcome>`, lowercase,
-  dot-separated, snake case inside a component.
 - Use singular nouns (`message`, `tool_call`). Use a plural only for a batch
   or a canonical external term (`embeddings`).
-- The outcome is a past participle for a transition (`started`, `completed`,
-  `failed`, `rejected`, `skipped`, `requeued`), a present participle for work
-  in progress (`retrying`), or a state term (`busy`, `empty`, `missing`,
-  `invalid`, `provider_error`). Never a base verb (`retry`) or direction
-  (`in`, `out`).
+- The last segment of an event name is the outcome: a past participle for a
+  transition (`started`, `completed`, `failed`, `rejected`, `skipped`,
+  `requeued`), a present participle for work in progress (`retrying`), or a
+  state term (`busy`, `empty`, `missing`, `invalid`, `provider_error`). Never
+  a base verb (`retry`) or direction (`in`, `out`).
 - Prefer the shared outcomes: `started`, `completed`, `failed`, `exception`,
   `timed_out`, `retrying`, `exhausted`, `rejected`, `denied`, `skipped`.
-- Use `.exception` for a captured exception and `.failed` for an unsuccessful
-  domain outcome.
+- Use `.failed` for an unsuccessful outcome, including a captured exception.
+  Use `.exception` only where a top-level handler catches an exception that
+  no owner handled.
 - Event and span names are stable and low-cardinality. Put ids, provider
   names, and user values in attributes.
 - Record safe correlation ids (conversation, run, task, plugin, provider,
