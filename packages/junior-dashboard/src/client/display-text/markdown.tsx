@@ -21,7 +21,7 @@ import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
-import { ObjectCard } from "../conversations/ObjectCard";
+import { ObjectRow } from "../conversations/ObjectRow";
 import {
   mediaThumbnail,
   ObjectLinkPreview,
@@ -444,7 +444,7 @@ function ResolvedParagraph(props: {
   return <PlainParagraph>{props.children}</PlainParagraph>;
 }
 
-// A link alone on its line shows the full card. A video or image page shows
+// A link alone on its line shows a compact row. A video or image page shows
 // only its thumbnail.
 function StandaloneObject(props: {
   card: OwnedObjectAnnotation;
@@ -455,7 +455,7 @@ function StandaloneObject(props: {
   if (thumbnail) {
     return <ObjectThumbnailLink {...props} src={thumbnail} />;
   }
-  return <ObjectCard card={props.card} live={props.live} />;
+  return <ObjectRow card={props.card} live={props.live} />;
 }
 
 // The saved card replaces the link, so no visible link asks for the card.

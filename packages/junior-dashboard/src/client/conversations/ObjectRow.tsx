@@ -1,0 +1,132 @@
+import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
+import {
+  objectFactFields,
+  objectPresentation,
+} from "@sentry/junior-plugin-api";
+import { CircleAlert } from "lucide-react";
+
+import { ActorAvatar } from "../components/ActorAvatar";
+import { ObjectIcon } from "../components/ObjectIcon";
+import { OutboundLink } from "../components/OutboundLink";
+import { StatusChip } from "../components/StatusChip";
+import { ObjectAttachAction } from "./ObjectAttach";
+import { ObjectCard, webPageMeta } from "./ObjectCard";
+import { ObjectImage } from "./ObjectImage";
+import { useSavedObject } from "./savedObjects";
+
+/**
+ * Show an object inside a reply as one row, like a Thread card: icon, title,
+ * reference, state, and up to two thumbnails. The whole row opens the
+ * source. A reply with several objects stays short; the link preview of an
+ * object chip still shows the full card.
+ */
+export function ObjectRow(props: {
+  card: OwnedObjectAnnotation;
+  live?: boolean;
+}) {
+  const { card } = props;
+  const previews = useSavedObject(card).previewImages;
+  // An automation has its own card with its prompt and schedule, and a chart
+  // or a trace is only worth showing as its picture.
+  if (
+    (card.plugin === "junior" && card.objectType === "automation") ||
+    card.facts?.type === "chart" ||
+    card.facts?.type === "trace"
+  ) {
+    return <ObjectCard card={card} live={props.live} />;
+  }
+  const presentation = objectPresentation(card);
+  const type = card.displayType ?? presentation.label;
+  // A web page names its site and author, as its full card does. Another
+  // label that repeats the title says nothing, so a fact names the object.
+  const reference =
+    card.objectType === "web_page"
+      ? (webPageMeta(card) ?? type)
+      : card.label === card.title
+        ? (objectFactFields(card.facts)[0]?.value ?? type)
+        : card.label;
+  const images = [
+    ...((card.facts?.type === "document" || card.facts?.type === "web_page") &&
+    card.facts.thumbnailUrl
+      ? [{ alt: "", src: card.facts.thumbnailUrl, srcSet: undefined }]
+      : []),
+    ...previews.map((image, index) => ({
+      ...image,
+      alt: `Description image ${index + 1}`,
+    })),
+  ].slice(0, 2);
+  return (
+    <section
+      aria-label={`${type}: ${card.title}`}
+      className="relative my-1 flex w-full min-w-0 max-w-[37.5rem] items-center gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2 font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover"
+    >
+      {card.facts?.type === "person" && card.facts.avatarUrl ? (
+        <ActorAvatar
+          imageUrl={card.facts.avatarUrl}
+          name={card.title}
+          size="list"
+        />
+      ) : (
+        <ObjectIcon {...card} size={16} />
+      )}
+      {/* The title truncates first, so a long title keeps the reference. */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+        {card.url ? (
+          <OutboundLink
+            // The link covers the row, so the whole row opens the source.
+            className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
+            href={card.url}
+            title={card.title}
+          >
+            {card.title}
+          </OutboundLink>
+        ) : (
+          <span
+            className="min-w-0 truncate font-medium text-dashboard-text"
+            title={card.title}
+          >
+            {card.title}
+          </span>
+        )}
+        <span className="max-w-1/2 shrink-0 truncate text-xs text-dashboard-text-faint">
+          {reference}
+        </span>
+      </div>
+      {card.warning ? (
+        // Positioned above the row's link so a pointer gets the tooltip.
+        <span
+          aria-label={card.warning}
+          className="relative shrink-0"
+          role="img"
+          title={card.warning}
+        >
+          <CircleAlert aria-hidden className="size-3.5 text-amber-500" />
+        </span>
+      ) : null}
+      {card.status ? (
+        <StatusChip
+          className="shrink-0"
+          size="compact"
+          tone={presentation.tone}
+        >
+          {card.status}
+        </StatusChip>
+      ) : null}
+      {images.map((image) => (
+        <ObjectImage
+          key={image.src}
+          alt={image.alt}
+          className="h-6 w-10 shrink-0 rounded"
+          src={image.src}
+          srcSet={image.srcSet}
+        />
+      ))}
+      {props.live && card.objectType !== "person" ? (
+        // Above the row link, so the action does not open the source.
+        <span className="relative z-10 shrink-0">
+          <ObjectAttachAction card={card} />
+        </span>
+      ) : null}
+    </section>
+  );
+}

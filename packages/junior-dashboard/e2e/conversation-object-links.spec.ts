@@ -55,7 +55,7 @@ function linksParagraph(page: Page) {
   return page.locator("p", { hasText: "Deployment is ready." });
 }
 
-test("links to saved objects show as a titled link, a hover card, and a card", async ({
+test("links to saved objects show as a titled link, a hover card, and a row", async ({
   page,
   dashboard,
 }) => {
@@ -78,7 +78,7 @@ test("links to saved objects show as a titled link, a hover card, and a card", a
     page.getByText("https://github.com/getsentry/junior/pull/2201"),
   ).toHaveCount(0);
 
-  // A bare URL on its own line is the full card. Its description images
+  // A bare URL on its own line is an object row. Its description images
   // load through the Junior image route, never from their own host.
   const card = page.getByRole("region", {
     name: "Pull request: Pin the release train to payments 4.2",
@@ -408,7 +408,7 @@ test("a Sentry trace link resolves to a titled link, a waterfall card, and a hov
   });
 });
 
-test("a Sentry event link resolves to a titled link, an event card, and a hover card", async ({
+test("a Sentry event link resolves to a titled link, an event row, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -422,11 +422,24 @@ test("a Sentry event link resolves to a titled link, an event card, and a hover 
     name: "TypeError: cart.total is undefined (7d3e9b1a)",
   });
   await expect(link).toHaveAttribute("href", url);
-  // The reply also links to it on its own line, which shows the card.
+  // The reply also links to it on its own line, which shows a compact row.
   const card = page.getByRole("region", {
     name: "Sentry event: TypeError: cart.total is undefined",
   });
   await expect(card).toHaveCount(1);
+  await expect(card).not.toContainText("junior@4.2.0");
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-event-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  // The hover card shows the facts of the event.
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  const preview = card.nth(1);
   for (const text of [
     "Level",
     "error",
@@ -437,26 +450,15 @@ test("a Sentry event link resolves to a titled link, an event card, and a hover 
     "Environment",
     "production",
   ]) {
-    await expect(card).toContainText(text);
+    await expect(preview).toContainText(text);
   }
   // The header shows when the event happened, in the viewer's time.
-  await expect(card).toContainText(
+  await expect(preview).toContainText(
     new Date(1770021650_000).toLocaleString("en-US", {
       dateStyle: "medium",
       timeStyle: "short",
     }),
   );
-  await card.scrollIntoViewIfNeeded();
-  await screenshot(page, "conversation-sentry-event-card", {
-    lightTheme: true,
-    target: card,
-    view: "desktop",
-  });
-
-  await waitForResolvedLinks(page);
-  await link.hover();
-  await expect(card).toHaveCount(2);
-  await expect(card.nth(1)).toContainText("junior@4.2.0");
   await screenshot(page, "conversation-sentry-event-link", {
     lightTheme: true,
     view: "desktop",
@@ -610,9 +612,10 @@ test("one request asks for the cards of every link in a message", async ({
     async (route) => {
       const response = await route.fetch();
       const text = await response.text();
+      // A pull request description also says "picks up", so match the reply.
       const body = text.replace(
-        " picks up ",
-        ` picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
+        "dev%40example.com picks up ",
+        `dev%40example.com picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
       );
       await route.fulfill({ body, response });
     },
@@ -644,7 +647,7 @@ test("one request asks for the cards of every link in a message", async ({
   );
 });
 
-test("a Slack message link resolves to a link, a card, and a hover card", async ({
+test("a Slack message link resolves to a link, a row, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -659,22 +662,24 @@ test("a Slack message link resolves to a link, a card, and a hover card", async 
     "href",
     "https://acme.slack.com/archives/CQA456/p1770021700000100",
   );
-  // The reply also links to it on its own line, which shows the card.
+  // The reply also links to it on its own line, which shows the row.
   const card = page.getByRole("region", {
     name: /^Message: Release notes are ready for review/,
   });
   await expect(card).toHaveCount(1);
-  await expect(card).toContainText("Morgan Lee");
+  await expect(card).toContainText("#proj-release");
   await waitForResolvedLinks(page);
+  // The hover card shows the full card, with the author.
   await link.hover();
   await expect(card).toHaveCount(2);
+  await expect(card.last()).toContainText("Morgan Lee");
   await screenshot(page, "conversation-slack-message-link", {
     lightTheme: true,
     view: "desktop",
   });
 });
 
-test("a public web page link resolves to a link, a card, and a hover card", async ({
+test("a public web page link resolves to a link, a row, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -682,7 +687,8 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare URL on its own line is the full card, with its thumbnail.
+  // A bare URL on its own line is an object row, with its site and
+  // thumbnail.
   const post = page.getByRole("region", {
     name: "Web page: What's new in Release 4.2",
   });
