@@ -97,7 +97,7 @@ const pullRequestSchema = z.object({
     .array(relatedConversationSchema)
     .optional()
     .describe(
-      "Other conversations that created or changed this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
+      "Other conversations about this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
     ),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
@@ -269,7 +269,7 @@ export const gitHubGetPullRequestTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+    "Get a GitHub pull request with its required checks, merge state, and related conversations, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
   inputSchema,
   outputSchema,
   async execute(
