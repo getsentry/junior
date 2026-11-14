@@ -54,7 +54,7 @@ describe("Watches", () => {
 
     // getPullRequest reads the draft, and the Turn ends with noReply. Neither
     // the read nor the note posts anything to the thread.
-    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
     expect(delivery.replies).toEqual([]);
   });
