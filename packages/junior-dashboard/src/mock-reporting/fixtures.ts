@@ -137,7 +137,7 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
-const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
+export const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
 const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";
