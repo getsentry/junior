@@ -6,16 +6,27 @@ import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-r
 // Reads only what the status needs, so other result fields can change.
 const planOutputSchema = z.object({
   items: z.array(
-    z.object({ assignee: z.string(), status: z.string(), title: z.string() }),
+    z.object({
+      id: z.number(),
+      assignee: z.string(),
+      status: z.string(),
+      title: z.string(),
+    }),
   ),
+  removed_ids: z.array(z.number()).optional(),
 });
 
-/** Items of the plan's own agent in an `updatePlan` result. */
-function ownPlanItems(output: unknown) {
-  const parsed = planOutputSchema.safeParse(output);
-  return parsed.success
-    ? parsed.data.items.filter((item) => item.assignee === SELF_PLAN_ASSIGNEE)
-    : [];
+type PlanOutputItem = z.output<typeof planOutputSchema>["items"][number];
+
+function isOwnActiveItem(item: PlanOutputItem): boolean {
+  return item.assignee === SELF_PLAN_ASSIGNEE && item.status === "in_progress";
+}
+
+function planItemStatus(
+  item: PlanOutputItem | undefined,
+): AssistantStatusSpec | undefined {
+  const text = item?.title.trim();
+  return text ? { text } : undefined;
 }
 
 /** Convert a `reportProgress` tool payload into assistant status text. */
@@ -46,11 +57,10 @@ export function buildReportedProgressStatus(
 export function buildPlanStatus(
   output: unknown,
 ): AssistantStatusSpec | undefined {
-  const active = ownPlanItems(output).find(
-    (item) => item.status === "in_progress",
-  );
-  const text = active?.title.trim();
-  return text ? { text } : undefined;
+  const parsed = planOutputSchema.safeParse(output);
+  return parsed.success
+    ? planItemStatus(parsed.data.items.find(isOwnActiveItem))
+    : undefined;
 }
 
 const textPartSchema = z.object({ text: z.string() });
@@ -76,6 +86,10 @@ function toolResultOutput(message: {
 export function latestProgressStatus(
   messages: readonly PiMessage[],
 ): AssistantStatusSpec | undefined {
+  // A result lists only the items that its call changed, so a newer result
+  // overrides an older one item by item.
+  const newerItemIds = new Set<number>();
+  let sawOwnPlanItem = false;
   for (
     let messageIndex = messages.length - 1;
     messageIndex >= 0;
@@ -87,13 +101,21 @@ export function latestProgressStatus(
       isError?: unknown;
       toolName?: unknown;
     };
-    // A result that changed an item of the plan's own agent sets the status,
-    // and clears it when no item of that agent is in progress.
     if (message.role === "toolResult" && message.toolName === "updatePlan") {
-      const output = toolResultOutput(message);
-      if (ownPlanItems(output).length > 0) {
-        return buildPlanStatus(output);
-      }
+      const parsed = planOutputSchema.safeParse(toolResultOutput(message));
+      if (!parsed.success) continue;
+      const { items, removed_ids: removedIds = [] } = parsed.data;
+      const status = planItemStatus(
+        items.find(
+          (item) => !newerItemIds.has(item.id) && isOwnActiveItem(item),
+        ),
+      );
+      if (status) return status;
+      for (const item of items) newerItemIds.add(item.id);
+      for (const id of removedIds) newerItemIds.add(id);
+      sawOwnPlanItem ||= items.some(
+        (item) => item.assignee === SELF_PLAN_ASSIGNEE,
+      );
       continue;
     }
     if (message.role !== "assistant" || !Array.isArray(message.content)) {
@@ -116,7 +138,8 @@ export function latestProgressStatus(
       if (toolCall.type !== "toolCall") {
         continue;
       }
-      if (toolCall.name === "reportProgress") {
+      // The plan of the agent replaces older progress text.
+      if (toolCall.name === "reportProgress" && !sawOwnPlanItem) {
         const status = buildReportedProgressStatus(toolCall.arguments);
         if (status) {
           return status;

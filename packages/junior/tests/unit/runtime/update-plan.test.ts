@@ -48,7 +48,7 @@ describe("plan status", () => {
     ).toBeUndefined();
   });
 
-  it("recovers the status from the latest result that changed an own item", () => {
+  it("recovers the status from the latest result that set an own item in progress", () => {
     expect(
       latestProgressStatus([
         fauxAssistantMessage(
@@ -56,8 +56,22 @@ describe("plan status", () => {
           { stopReason: "toolUse" },
         ),
         ...planResult(output),
-        // Changing only a child's item keeps the status.
+        // Changing only a child's item, or another own item, keeps it. A
+        // result lists only the items that its call changed.
         ...planResult({ items: [output.items[0]] }, "plan-2"),
+        ...planResult(
+          {
+            items: [
+              {
+                id: 6,
+                title: "Write docs",
+                status: "pending",
+                assignee: "self",
+              },
+            ],
+          },
+          "plan-3",
+        ),
       ]),
     ).toEqual({ text: "Implement the MVP" });
     // Closing the own item clears the status, without reviving older ones.
