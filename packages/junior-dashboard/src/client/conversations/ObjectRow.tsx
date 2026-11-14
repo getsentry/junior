@@ -26,8 +26,12 @@ export function ObjectRow(props: {
 }) {
   const { card } = props;
   const previews = useSavedObject(card).previewImages;
-  // An automation has its own card with its prompt and schedule.
-  if (card.plugin === "junior" && card.objectType === "automation") {
+  // An automation has its own card with its prompt and schedule, and a chart
+  // is only worth showing as its chart.
+  if (
+    (card.plugin === "junior" && card.objectType === "automation") ||
+    card.facts?.type === "chart"
+  ) {
     return <ObjectCard card={card} live={props.live} />;
   }
   const presentation = objectPresentation(card);

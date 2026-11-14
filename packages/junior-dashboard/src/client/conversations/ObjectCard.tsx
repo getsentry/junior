@@ -33,7 +33,8 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
     [
       type,
       objectSource(card.plugin),
-      card.label === card.title ? "" : card.label,
+      // A label that repeats the title or the type says nothing new.
+      [card.title, type].includes(card.label) ? "" : card.label,
     ]
       .filter(Boolean)
       .join(" · ") || type
@@ -90,11 +91,12 @@ export function ObjectCard({
       />
     );
   }
-  // The header already names the site and author of a web page.
-  const fields = objectFactFields(card.facts).filter(
-    (field) =>
-      card.facts?.type !== "web_page" ||
-      (field.key !== "siteName" && field.key !== "author"),
+  // The header already names the site and author of a web page, and the
+  // chart caption shows its range.
+  const fields = objectFactFields(card.facts).filter((field) =>
+    card.facts?.type === "web_page"
+      ? field.key !== "siteName" && field.key !== "author"
+      : card.facts?.type !== "chart" || field.key !== "range",
   );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
@@ -164,7 +166,18 @@ export function ObjectCard({
           </p>
         )}
         {card.facts?.type === "task" && card.facts.trend && (
-          <Sparkline {...card.facts.trend} />
+          <Sparkline
+            label={card.facts.trend.label}
+            series={[card.facts.trend]}
+          />
+        )}
+        {card.facts?.type === "chart" && (
+          <Sparkline
+            display={card.facts.display}
+            label={card.facts.range}
+            series={card.facts.series}
+            tall
+          />
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.

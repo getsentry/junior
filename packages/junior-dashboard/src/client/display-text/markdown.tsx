@@ -444,7 +444,7 @@ function ResolvedParagraph(props: {
   return <PlainParagraph>{props.children}</PlainParagraph>;
 }
 
-// A link alone on its line shows the full card. A video or image page shows
+// A link alone on its line shows a compact row. A video or image page shows
 // only its thumbnail.
 function StandaloneObject(props: {
   card: OwnedObjectAnnotation;

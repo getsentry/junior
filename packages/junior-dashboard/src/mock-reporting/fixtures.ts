@@ -1418,6 +1418,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
         "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+        "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
@@ -1427,11 +1428,13 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message shows a card, and the repeated pull request shows
-        // no second card.
+        // Slack message and the chart show a card, and the repeated pull
+        // request shows no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
