@@ -330,7 +330,10 @@ export const pluginToolReplySchema = z
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
-    /** Object results to save and show with the next reply. Omit for silent updates. */
+    /**
+     * Object results to save. Core shows their cards with the next reply only
+     * when the tool is not read-only. Omit for silent updates.
+     */
     objectAnnotations: z.array(objectAnnotationSchema).optional(),
     /**
      * Reply the tool posted for Junior, such as a pull request comment. Core

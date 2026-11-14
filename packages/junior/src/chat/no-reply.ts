@@ -15,7 +15,7 @@ const noReplySchema = z.object({
 
 /**
  * A Turn that ended with no reply. `note` is the outcome that the agent kept
- * for the Conversation: an Event Turn stores it as a Quiet message.
+ * in its history. It is not a Message: nothing is delivered or shown.
  */
 export type NoReply = z.output<typeof noReplySchema>;
 

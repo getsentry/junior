@@ -321,7 +321,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and end with no reply", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -336,11 +336,9 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    // A routine fix that worked needs nobody, so it posts nothing to Slack.
-    // The quiet reply stays in the Conversation.
+    // A routine fix that worked needs nobody, so it posts nothing.
     expect(delivery.replies).toEqual([]);
-    expect(delivery.quietReplies).toHaveLength(1);
-    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
+    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -543,8 +541,6 @@ describe("Watches", () => {
       }),
     );
 
-    // The person must hear about the merge, so the reply is not quiet.
-    expect(delivery.quietReplies).toEqual([]);
     expect(delivery.replies).toHaveLength(1);
   });
 
