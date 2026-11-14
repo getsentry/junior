@@ -1,4 +1,5 @@
 import * as z from "zod";
+import type { ConversationEmbedder } from "@/chat/conversations/embedding";
 import {
   briefLinkSchema,
   briefOutcomeStatusSchema,
@@ -152,7 +153,9 @@ function searchConversationsInputSchema(
         .max(200)
         .nullable()
         .optional()
-        .describe("Words to match in the latest Brief or the title."),
+        .describe(
+          "Words or meaning to match in the latest Brief, or words in the title.",
+        ),
       annotation: z
         .string()
         .trim()
@@ -229,6 +232,8 @@ function searchConversationsInputSchema(
 export function createSearchConversationsTool(context: {
   channels?: ConversationSearchChannelPort;
   conversationId: string;
+  /** Embeds a query to also match Briefs by meaning. */
+  embedder?: ConversationEmbedder;
 }) {
   const { channels } = context;
   return zodTool({
@@ -268,6 +273,7 @@ export function createSearchConversationsTool(context: {
           ? await channels.resolveChannel(channelInput)
           : undefined;
       const matches = await searchConversations(getDb(), {
+        ...(context.embedder ? { embedder: context.embedder } : undefined),
         requesterConversationId: context.conversationId,
         search: {
           ...(afterMs !== undefined ? { afterMs } : undefined),
