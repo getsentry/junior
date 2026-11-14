@@ -3,10 +3,12 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getAgentBinding } from "./bindings";
+import { spawnChildAgent } from "./create";
 import { AgentDepthLimitError } from "./errors";
 import {
   getAgentInvocationId,
@@ -116,28 +118,38 @@ export function bindSpawnAgent(
     }
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
-    const invocation = await createAndEnqueueAgentInvocation(
-      {
-        actor,
-        ...(input.name ? { agentName: input.name } : undefined),
-        ...(input.agentType ? { agentType: input.agentType } : undefined),
-        ...(input.fork ? { fork: true as const } : undefined),
-        ...(run.credentialContext
-          ? { credentialContext: run.credentialContext }
-          : undefined),
-        destination: toolInvocationDestination(run),
-        idempotencyKey,
-        input: input.task,
-        ...(input.kind ? { kind: input.kind } : undefined),
-        parentConversationId: run.conversationId,
-        parentToolCallId: call.toolCallId,
-        ...(input.reasoningLevel
-          ? { reasoningLevel: input.reasoningLevel }
-          : undefined),
-        ...(input.title ? { title: input.title } : undefined),
-      },
-      { ...options, queue },
-    );
+    const createInput = {
+      actor,
+      ...(input.name ? { agentName: input.name } : undefined),
+      ...(input.agentType ? { agentType: input.agentType } : undefined),
+      ...(input.fork ? { fork: true as const } : undefined),
+      ...(run.credentialContext
+        ? { credentialContext: run.credentialContext }
+        : undefined),
+      destination: toolInvocationDestination(run),
+      idempotencyKey,
+      input: input.task,
+      ...(input.kind ? { kind: input.kind } : undefined),
+      parentConversationId: run.conversationId,
+      parentToolCallId: call.toolCallId,
+      ...(input.reasoningLevel
+        ? { reasoningLevel: input.reasoningLevel }
+        : undefined),
+      ...(input.title ? { title: input.title } : undefined),
+    };
+    // A spawn that already wrote an Agent invocation replays through it.
+    if (
+      isExperimentalFeatureEnabled("child-agents-without-agent-invocations") &&
+      !(await getAgentInvocation(
+        getAgentInvocationId(run.conversationId, idempotencyKey),
+      ))
+    ) {
+      return await spawnChildAgent(createInput, { ...options, queue });
+    }
+    const invocation = await createAndEnqueueAgentInvocation(createInput, {
+      ...options,
+      queue,
+    });
     return {
       childConversationId: invocation.childConversationId,
     };

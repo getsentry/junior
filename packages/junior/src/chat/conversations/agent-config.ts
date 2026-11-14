@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getSqlExecutor } from "@/chat/db";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { juniorConversations } from "@/db/schema";
@@ -37,4 +38,22 @@ export async function readAgentConfig(
   return row?.agentConfig
     ? agentConfigSchema.parse(row.agentConfig)
     : undefined;
+}
+
+/**
+ * Store the agent config of a Conversation that a spawn just created. Call
+ * it once, in the transaction that creates the Conversation.
+ */
+export async function writeAgentConfig(
+  conversationId: string,
+  agentConfig: AgentConfig,
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorConversations)
+    .set({
+      agentConfig: agentConfigSchema.parse(agentConfig),
+      detailVersion: nextDetailVersion,
+    })
+    .where(eq(juniorConversations.conversationId, conversationId));
 }

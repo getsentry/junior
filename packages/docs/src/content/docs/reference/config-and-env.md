@@ -215,6 +215,9 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
+    // spawnAgent and messageAgent give child agents their work as parent
+    // messages and write no Agent invocation.
+    "child-agents-without-agent-invocations": true,
   },
 });
 ```

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
@@ -20,6 +21,7 @@ import {
   prepareSlackParentConversation,
   slackDestination,
   slackInvocationInput,
+  slackParentConversationId,
 } from "./agent-invocations";
 import { webTestActor } from "./conversation";
 import { createConversationWorkHarness } from "./conversation-work";
@@ -215,6 +217,36 @@ export async function startThread(
     },
   );
   return created.childConversationId;
+}
+
+/**
+ * Spawn a named Thread from the parent's Turn, as `spawnAgent` does. With
+ * `child-agents-without-agent-invocations` on, it writes no Agent
+ * invocation.
+ */
+export async function spawnThread(harness: Harness, toolCallId: string) {
+  const parentRun: AgentRun = {
+    actor: slackInvocationInput.actor,
+    conversationId: slackParentConversationId,
+    destination: slackDestination,
+    instruction: { text: "Coordinate the work." },
+    source: createSlackSource({
+      channelId: "C123",
+      teamId: "T123",
+      threadTs: "1712345.0001",
+      visibility: "public",
+    }),
+    turnId: "parent-turn",
+  };
+  const { childConversationId } = await bindSpawnAgent(parentRun, {
+    conversationStore: harness.conversationStore,
+    queue: harness.queue,
+    state: harness.state,
+  })!(
+    { kind: "thread", name: harness.agentName, task: "Check the deploy." },
+    { toolCallId },
+  );
+  return childConversationId;
 }
 
 export async function sendPersonMessage(

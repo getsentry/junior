@@ -5,6 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
@@ -54,9 +55,11 @@ import {
   finishInvocation,
   sendPersonMessage,
   savePersonTurn,
+  spawnThread,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
+import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 /** Give the Thread more work from its parent agent, like messageAgent. */
 async function sendParentMessage(harness: Harness, toolCallId: string) {
@@ -481,6 +484,50 @@ describe("Thread input", () => {
         turnId: personTurnId,
       });
       expect(later.at(-1)?.agentInvocationId).toEqual(expect.any(String));
+      expect(harness.otherOpenTurns).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("runs the parent's input apart from a person's in a Thread with no Agent invocation", async () => {
+    setExperimentalFeatures({
+      ...SUITE_EXPERIMENTAL,
+      "child-agents-without-agent-invocations": true,
+    });
+    const harness = await createHarness();
+    try {
+      const threadId = await spawnThread(harness, "call-spawn");
+      await sendParentMessage(harness, "call-message");
+      await sendPersonMessage(harness, threadId, "person-1");
+      // Each Turn ends blocked on a sign-in that it cannot ask for.
+      harness.onPersonRun(endBlocked);
+      await harness.drain(threadId);
+
+      // The parent's task and message share one Turn, as the Actor of the
+      // parent's Turn. The person's Message runs in a Turn of its own.
+      const turnIds = (platform: string) => [
+        ...new Set(
+          harness.runs
+            .filter((run) => run.actor?.platform === platform)
+            .map((run) => run.turnId),
+        ),
+      ];
+      expect(turnIds("slack")).toHaveLength(1);
+      expect(turnIds("web")).toHaveLength(1);
+      const parentRun = harness.runs.find(
+        (run) => run.actor?.platform === "slack",
+      )!;
+      expect(parentRun).toMatchObject({ actor: slackInvocationInput.actor });
+      expect(parentRun.agentInvocationId).toBeUndefined();
+      expect(parentRun.instruction.text).toContain("Check the deploy.");
+      expect(parentRun.instruction.text).toContain(
+        "Also check the retry path.",
+      );
+      expect(
+        harness.runs.find((run) => run.actor?.platform === "web")!.instruction
+          .text,
+      ).not.toContain("Check the deploy.");
       expect(harness.otherOpenTurns).toEqual([]);
     } finally {
       await harness.close();

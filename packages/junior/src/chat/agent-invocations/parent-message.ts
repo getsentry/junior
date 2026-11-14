@@ -1,15 +1,32 @@
-import { actorSchema } from "@sentry/junior-plugin-api";
+import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { and, desc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
-import { credentialContextSchema } from "@/chat/credentials/context";
+import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  getConversationStoppedAtMs,
+  isSkippedAfterConversationStop,
+  resumeStoppedConversationTree,
+} from "@/chat/conversations/session-stop";
+import {
+  credentialContextSchema,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { InboundMessage } from "@/chat/task-execution/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import {
+  appendInboundMessage,
+  dropPendingMessages,
+  getConversationWorkState,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { loadForkHistory } from "./fork-history";
+import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_PARENT_MESSAGE_EVENT_TYPE,
@@ -47,6 +64,109 @@ export type ParentMessage = z.output<typeof parentMessageSchema>;
  */
 export function parentMessageAuthorId(parentConversationId: string): string {
   return `parent-agent:${parentConversationId}`;
+}
+
+/**
+ * Build the parent message that gives one task or message to a child that no
+ * Agent invocation names. It has the mailbox id that an Agent invocation with
+ * the same idempotency key would have, so a replay is a duplicate.
+ */
+export function buildParentMessage(args: {
+  actor: Actor;
+  childConversationId: string;
+  credentialContext?: CredentialContext | undefined;
+  fork?: true | undefined;
+  idempotencyKey: string;
+  nowMs: number;
+  parentConversationId: string;
+  parentToolCallId: string;
+  text: string;
+  trustedSummary: string;
+}): InboundMessage {
+  const inboundMessageId = getAgentInvocationMessageId(
+    getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
+  );
+  return {
+    conversationId: args.childConversationId,
+    createdAtMs: args.nowMs,
+    delivery: "defer",
+    inboundMessageId,
+    input: {
+      authorId: parentMessageAuthorId(args.parentConversationId),
+      // A parent agent wrote the text, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
+      metadata: {
+        actor: args.actor,
+        ...(args.credentialContext
+          ? { credentialContext: args.credentialContext }
+          : undefined),
+        event: {
+          eventKey: inboundMessageId,
+          eventType: AGENT_PARENT_MESSAGE_EVENT_TYPE,
+          identifier: args.parentConversationId,
+          namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+          trustedSummary: args.trustedSummary,
+        },
+        ...(args.fork ? { fork: true } : undefined),
+        kind: "event",
+        parentToolCallId: args.parentToolCallId,
+      },
+      text: args.text,
+    },
+    receivedAtMs: args.nowMs,
+    source: "event",
+  };
+}
+
+/**
+ * Append one parent message to its child's mailbox without a wake. New work
+ * from the parent ends the stop of the child and of the child agents below
+ * it, as an Agent invocation does. The parent messages that the stop skipped
+ * stay skipped: they leave the mailbox first. A message that already reached
+ * the mailbox changes nothing, so a replay does not end a later stop.
+ */
+export async function appendParentMessage(
+  message: InboundMessage,
+  options: {
+    conversationStore?: ConversationStore | undefined;
+    state?: StateAdapter | undefined;
+  },
+): Promise<void> {
+  const conversationId = message.conversationId;
+  const work = await getConversationWorkState({
+    conversationId,
+    state: options.state,
+  });
+  if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
+    return;
+  }
+  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+  if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
+    const skipped = (work?.messages ?? []).filter(
+      (pending) =>
+        readParentMessage(pending) !== undefined &&
+        isSkippedAfterConversationStop(pending, stoppedAtMs),
+    );
+    if (skipped.length > 0) {
+      await dropPendingMessages({
+        conversationId,
+        inboundMessageIds: skipped.map((pending) => pending.inboundMessageId),
+        ...(options.state ? { state: options.state } : undefined),
+      });
+      for (const pending of skipped) {
+        logDroppedParentMessage(pending, readParentMessage(pending)!);
+      }
+    }
+    await resumeStoppedConversationTree(conversationId, message.createdAtMs);
+  }
+  await appendInboundMessage({
+    message,
+    ...(options.conversationStore
+      ? { conversationStore: options.conversationStore }
+      : undefined),
+    nowMs: message.receivedAtMs,
+    ...(options.state ? { state: options.state } : undefined),
+  });
 }
 
 /**
@@ -160,6 +280,29 @@ export async function readLastParentMessageAtMs(
     .orderBy(desc(juniorConversationEvents.createdAt))
     .limit(1);
   return row?.createdAt.getTime();
+}
+
+/**
+ * Return whether a child got a parent message sent after `afterMs`: one that
+ * waits in its mailbox, or one that its Turn saved.
+ */
+export async function hasParentMessageAfter(
+  conversationId: string,
+  afterMs: number,
+  state?: StateAdapter,
+): Promise<boolean> {
+  const pending =
+    (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
+  if (
+    pending.some(
+      (message) =>
+        readParentMessage(message) !== undefined &&
+        message.createdAtMs > afterMs,
+    )
+  ) {
+    return true;
+  }
+  return ((await readLastParentMessageAtMs(conversationId)) ?? 0) > afterMs;
 }
 
 /**

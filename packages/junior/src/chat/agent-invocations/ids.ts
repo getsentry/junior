@@ -31,6 +31,21 @@ export function getUnnamedAgentConversationId(invocationId: string): string {
   return stableId("agent", invocationId);
 }
 
+/**
+ * Return the stable child identity for one spawn that writes no Agent
+ * invocation, with a name or without. The spawn's idempotency key names it,
+ * so a replay finds the same child. It equals the id of an unnamed child
+ * with an Agent invocation for the same key.
+ */
+export function getSpawnedChildConversationId(
+  parentConversationId: string,
+  idempotencyKey: string,
+): string {
+  return getUnnamedAgentConversationId(
+    getAgentInvocationId(parentConversationId, idempotencyKey),
+  );
+}
+
 /** Return the stable child identity for one named binding. */
 export function getNamedAgentConversationId(
   parentConversationId: string,

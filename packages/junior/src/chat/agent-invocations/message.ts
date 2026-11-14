@@ -6,12 +6,13 @@ import type {
   MessageAgentInput,
 } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
-import { createAgentInvocationForMessage } from "./create";
+import { createAgentInvocationForMessage, messageChildAgent } from "./create";
 import {
   getActiveAgentInvocationForConversation,
   getLatestAgentInvocationForConversation,
@@ -88,17 +89,35 @@ export function bindMessageAgent(
       });
       return { conversationId: input.to, delivery: "queued" };
     }
-    const { invocation, queued } = await createAgentInvocationForMessage({
+    const message = {
       actor,
       childConversationId,
       ...(run.credentialContext
         ? { credentialContext: run.credentialContext }
         : undefined),
-      destination: toolInvocationDestination(run),
       idempotencyKey: `${run.turnId}:${call.toolCallId}`,
       input: input.text,
       parentConversationId: run.conversationId,
       parentToolCallId: call.toolCallId,
+    };
+    // A child that has an Agent invocation keeps getting its work as Agent
+    // invocations, so one child's work never runs on both paths.
+    if (
+      isExperimentalFeatureEnabled("child-agents-without-agent-invocations") &&
+      !(await getLatestAgentInvocationForConversation(childConversationId))
+    ) {
+      const { queued } = await messageChildAgent(message, {
+        ...options,
+        queue,
+      });
+      return {
+        conversationId: childConversationId,
+        delivery: queued ? "queued" : "started",
+      };
+    }
+    const { invocation, queued } = await createAgentInvocationForMessage({
+      ...message,
+      destination: toolInvocationDestination(run),
     });
     await enqueueAgentInvocation(invocation, { ...options, queue });
     return {
