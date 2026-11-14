@@ -8,7 +8,6 @@ import {
   PluginToolInputError,
   type WatchResult,
   type SubscribableResource,
-  type PluginDecider,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
@@ -538,10 +537,9 @@ async function gitHubPullRequestStructuredResult(
 
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(
-  ctx: ToolRegistrationHookContext,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
   /** Set when the description check experiment is on. */
-  descriptionDecider?: PluginDecider,
+  descriptionChecks = false,
 ) {
   return definePluginTool({
     annotations: {
@@ -558,6 +556,7 @@ export function createGitHubPullRequestTool(
     async execute(
       input: CreateGitHubPullRequestInput,
       options: PluginToolExecuteOptions,
+      ctx: ToolRegistrationHookContext,
     ) {
       const parsedInput = parseCreatePullRequestInput(input);
       // Reject a bad login before GitHub opens the pull request.
@@ -605,9 +604,9 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          if (descriptionDecider) {
+          if (descriptionChecks) {
             await checkPullRequestDescription(
-              descriptionDecider,
+              ctx.decider,
               parsedInput.body ?? "",
             );
           }
