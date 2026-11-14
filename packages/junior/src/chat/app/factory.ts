@@ -108,6 +108,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     assistantUserName: botConfig.userName,
     cancelWatches,
     getBotUserId: () => options.getSlackAdapter().botUserId,
+    getSlackAdapter: options.getSlackAdapter,
     modelId: botConfig.modelId,
     now: options.now ?? (() => Date.now()),
     prepareTurnState,

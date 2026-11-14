@@ -28,6 +28,7 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/providers/slack/runtime";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { getTurnInputSpanAttributes } from "@/chat/task-execution/turn-telemetry";
 import {
   createTestDestination,
@@ -42,6 +43,11 @@ function createDeps(): SlackTurnRuntimeDependencies<unknown> {
     assistantUserName: "test-bot",
     cancelWatches: vi.fn().mockResolvedValue(undefined),
     getBotUserId: () => "U0APP",
+    getSlackAdapter: () =>
+      createJuniorSlackAdapter({
+        botToken: "xoxb-test",
+        signingSecret: "test",
+      }),
     modelId: "test-model",
     now: () => TURN_STARTED_AT_MS,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),

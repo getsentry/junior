@@ -376,6 +376,8 @@ describe("Slack behavior: subscribed messages", () => {
       [],
     );
     expect(slackApiOutbox.messages().at(-1)?.params).toMatchObject({
+      channel: "C0BEHAVIOR",
+      thread_ts: "1700002002.500",
       text: expect.stringContaining(
         "I'll stay out of this thread unless someone @mentions me again.",
       ),

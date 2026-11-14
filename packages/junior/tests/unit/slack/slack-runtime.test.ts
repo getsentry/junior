@@ -3,6 +3,7 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/providers/slack/runtime";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import {
   createTestThread,
@@ -28,6 +29,11 @@ function createMockDeps(
     assistantUserName: "test-bot",
     cancelWatches: vi.fn().mockResolvedValue(undefined),
     getBotUserId: () => "U0APP",
+    getSlackAdapter: () =>
+      createJuniorSlackAdapter({
+        botToken: "xoxb-test",
+        signingSecret: "test",
+      }),
     modelId: "test-model",
     now: () => 1700000000000,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
@@ -242,6 +248,48 @@ describe("createSlackTurnRuntime", () => {
         "I'll stay out of this thread",
       );
     });
+
+    it.each([
+      {
+        name: "in the thread",
+        threadId: "slack:C0OPTOUT:1700000000.100",
+        channel: "C0OPTOUT",
+        threadTs: "1700000000.100",
+      },
+      {
+        name: "top-level when the Thread has no thread ts",
+        threadId: "slack:D0OPTOUT:",
+        channel: "D0OPTOUT",
+        threadTs: undefined,
+      },
+    ])(
+      "posts the opt-out ack $name",
+      async ({ threadId, channel, threadTs }) => {
+        const deps = createMockDeps({
+          decideSubscribedReply: vi.fn().mockResolvedValue({
+            shouldReply: false,
+            shouldUnsubscribe: true,
+            reason: "explicit stop",
+          }),
+        });
+        const runtime = createSlackTurnRuntime<TestState>(deps);
+        const thread = await createTestThread({ id: threadId });
+        await thread.subscribe();
+
+        await runtime.handleSubscribedMessage(thread, createTestMessage({}), {
+          destination: createTestDestination(thread),
+        });
+
+        expect(thread.subscribed).toBe(false);
+        expect(slackApiOutbox.messages()).toHaveLength(1);
+        const ack = slackApiOutbox.messages()[0]?.params;
+        expect(ack).toMatchObject({
+          channel,
+          text: expect.stringContaining("I'll stay out of this thread"),
+        });
+        expect(ack?.["thread_ts"]).toBe(threadTs);
+      },
+    );
 
     it("removes the leading bot mention before preparing the turn", async () => {
       const deps = createMockDeps({

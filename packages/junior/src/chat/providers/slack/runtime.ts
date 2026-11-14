@@ -15,6 +15,7 @@ import {
 } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import { SlackActionError } from "@/chat/slack/client";
 import {
   buildDeterministicTurnId,
@@ -139,6 +140,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
   cancelWatches: (input: { conversationId: string }) => Promise<void>;
   getBotUserId: () => string | undefined;
+  getSlackAdapter: () => SlackAdapter;
   getPreparedConversationContext: (
     preparedState: TPreparedState,
   ) => string | undefined;
@@ -383,7 +385,6 @@ export function createSlackTurnRuntime<
     beforeFirstResponsePost?: (() => Promise<void>) | undefined;
     conversationId: string;
     decision?: { shouldUnsubscribe?: boolean };
-    message: Message;
     thread: Thread;
   }): Promise<boolean> => {
     if (!args.decision?.shouldUnsubscribe) {
@@ -393,13 +394,12 @@ export function createSlackTurnRuntime<
     await deps.cancelWatches({ conversationId: args.thread.id });
     await args.thread.unsubscribe();
     await args.beforeFirstResponsePost?.();
-    const channelId = getChannelId(args.thread, args.message);
-    if (!channelId) {
-      throw new Error("Slack opt-out acknowledgement requires a channel id");
-    }
-    const threadTs = getThreadTs(getThreadId(args.thread, args.message));
+    // Decode the target the way `thread.post` did, from the Thread ID alone.
+    const { channel, threadTs } = deps
+      .getSlackAdapter()
+      .decodeThreadId(args.thread.id);
     await sendSlackReply({
-      channelId,
+      channelId: channel,
       conversationId: args.conversationId,
       text: THREAD_OPTOUT_ACK,
       ...(threadTs ? { threadTs } : undefined),
@@ -674,7 +674,6 @@ export function createSlackTurnRuntime<
         conversationId: args.conversationId,
         thread: args.thread,
         decision: skipped.decision,
-        message: skipped.message,
         beforeFirstResponsePost: args.beforeFirstResponsePost,
       });
       logSkippedSubscribedDecision(skipped);
@@ -1005,7 +1004,6 @@ export function createSlackTurnRuntime<
               conversationId,
               thread,
               decision,
-              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             });
             await skipSubscribedMessage({
@@ -1061,7 +1059,6 @@ export function createSlackTurnRuntime<
               conversationId,
               thread,
               decision,
-              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             });
             await skipSubscribedMessage({
@@ -1110,7 +1107,6 @@ export function createSlackTurnRuntime<
               conversationId,
               thread,
               decision,
-              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             })
           ) {
