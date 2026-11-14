@@ -849,10 +849,14 @@ export function createMockReportingApi(): Hono<{
   });
   app.get("/review-items/count", (c) =>
     jsonResponse(reviewItemCountSchema, {
-      automations: mockAutomationCollection(
-        readMockAutomationList(),
-        new URLSearchParams({ owner: "me", scope: "attention" }),
-      ).total,
+      ...(c.req.query("include") === "automations"
+        ? {
+            automations: mockAutomationCollection(
+              readMockAutomationList(),
+              new URLSearchParams({ owner: "me", scope: "attention" }),
+            ).total,
+          }
+        : undefined),
       ...readMockReviewItemCounts(
         NOW_MS,
         (c.req.query("snoozed") ?? "").split(",").filter(Boolean),

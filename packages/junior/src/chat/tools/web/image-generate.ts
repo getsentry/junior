@@ -265,6 +265,7 @@ export function createImageGenerateTool(
           // The model id comes from app config, so the agent cannot fix it.
           throw new Error(
             `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`,
+            { cause: error },
           );
         } else {
           throw error;

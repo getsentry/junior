@@ -32,8 +32,7 @@ import {
 } from "@/chat/review-items/actions";
 import {
   countOpenReviewItemsForUser,
-  countReviewItemBundlesNeedingUser,
-  countReviewItemsNeedingUser,
+  countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
   type ReviewItem,
@@ -42,6 +41,7 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -152,6 +152,15 @@ const ERROR_STATUS = {
   not_found: 404,
 } as const;
 
+// The plugin that owns a link type recognizes the subject, such as a pull
+// request from the GitHub plugin, so core keeps no provider URL rules.
+function subjectPayload(
+  subject: NonNullable<ReviewItem["subject"]>,
+): NonNullable<ReviewItemPayload["subject"]> {
+  const objectType = subject.url && readLinkObjectType(subject.url);
+  return { ...subject, ...(objectType ? { objectType } : undefined) };
+}
+
 /** Build the API payload of one Review item for its viewer. */
 function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
   return {
@@ -177,7 +186,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
     ...(item.request ? { request: item.request } : undefined),
-    ...(item.subject ? { subject: item.subject } : undefined),
+    ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
 }
 
@@ -311,20 +320,40 @@ export function createReviewItemRoutes(services: {
     ),
     async (context) => {
       const viewer = context.get("viewer");
+      const query = context.req.valid("query");
       const db = getDb();
-      const [needsViewer, bundles, snoozed, automations] = await Promise.all([
-        countReviewItemsNeedingUser(db, viewer.id),
-        countReviewItemBundlesNeedingUser(db, viewer.id),
+      // One query counts the badge and both bundles. The snoozed and
+      // Automation counts run only when the request asks for them, so the
+      // current dashboard pays for one query.
+      const [subjects, snoozed, automations] = await Promise.all([
+        countReviewItemsNeedingUserBySubject(db, viewer.id),
         countOpenReviewItemsForUser(
           db,
           { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          context.req.valid("query").snoozed,
+          query.snoozed,
         ),
-        countOwnedAutomationsNeedingAttention(viewer),
+        query.include === "automations"
+          ? countOwnedAutomationsNeedingAttention(viewer)
+          : undefined,
       ]);
+      const linkTypes = readObjectLinkTypes();
+      let codeChanges = 0;
+      let decisions = 0;
+      let needsViewer = 0;
+      for (const subject of subjects) {
+        needsViewer += subject.total;
+        decisions += subject.decisions;
+        if (
+          subject.subjectUrl &&
+          readLinkObjectType(subject.subjectUrl, linkTypes) === "code_change"
+        ) {
+          codeChanges += subject.total;
+        }
+      }
       return jsonResponse(reviewItemCountSchema, {
-        automations,
-        ...bundles,
+        ...(automations === undefined ? undefined : { automations }),
+        codeChanges,
+        decisions,
         needsViewer,
         snoozed,
       });

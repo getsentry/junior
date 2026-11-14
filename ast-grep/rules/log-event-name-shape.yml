@@ -1,0 +1,16 @@
+id: log-event-name-shape
+language: TypeScript
+severity: error
+message: >-
+  Log event names use the shape <domain>.<operation>[.<suboperation>].<outcome>:
+  lowercase, at least three dot-separated segments, and only a-z, 0-9, and _
+  in a segment. Example: slack.thread.post.failed, not slack.post_failed or
+  Slack.Thread.Failed. A stable shape keeps telemetry consistent and lets one
+  query find every event for a domain or an outcome.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+rule:
+  matches: log-event-name
+  not:
+    regex: '^["''][a-z0-9_]+(\.[a-z0-9_]+){2,}["'']$'

@@ -199,9 +199,10 @@ export function useReviewItemCountData(enabled: boolean) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
-        snoozed
-          ? `/api/review-items/count?${new URLSearchParams({ snoozed })}`
-          : "/api/review-items/count",
+        `/api/review-items/count?${new URLSearchParams({
+          include: "automations",
+          ...(snoozed ? { snoozed } : undefined),
+        })}`,
         signal,
       ),
     retry: false,

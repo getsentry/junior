@@ -120,10 +120,22 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
     .as("accessible_automations");
 }
 
+// `eventTriggerProblems` decides, the same check that the tools and the
+// dashboard use, so SQL does not keep its own copy of the rules.
+function eventTriggerAvailable(
+  catalog: ReturnType<typeof automationEventCatalog>,
+  trigger: unknown,
+): boolean {
+  const parsed = eventAutomationTriggerSchema.safeParse(trigger);
+  return (
+    parsed.success &&
+    registeredEventTriggerProblems(catalog, parsed.data).length === 0
+  );
+}
+
 /**
  * List the accessible event automations whose trigger cannot work with the
- * enabled plugins. `eventTriggerProblems` decides, the same check that the
- * tools and the dashboard use, so SQL does not keep its own copy of the rules.
+ * enabled plugins.
  */
 async function unavailableEventAutomationIds(
   collection: ReturnType<typeof viewerAutomationCollection>,
@@ -133,13 +145,9 @@ async function unavailableEventAutomationIds(
     .select({ id: collection.id, trigger: collection.trigger })
     .from(collection)
     .where(eq(collection.kind, "event"));
-  return rows.flatMap((row) => {
-    const trigger = eventAutomationTriggerSchema.safeParse(row.trigger);
-    const available =
-      trigger.success &&
-      registeredEventTriggerProblems(catalog, trigger.data).length === 0;
-    return available ? [] : [row.id];
-  });
+  return rows.flatMap((row) =>
+    eventTriggerAvailable(catalog, row.trigger) ? [] : [row.id],
+  );
 }
 
 /**
@@ -168,18 +176,39 @@ async function attentionFilters(
 
 /**
  * Count the viewer's own Automations that need attention, the rows that the
- * Inbox lists from `scope=attention&owner=me`.
+ * Inbox lists from `scope=attention&owner=me`. One query reads the owned
+ * candidates, and the trigger check runs on the event ones.
  */
 export async function countOwnedAutomationsNeedingAttention(
   viewer: AutomationViewer,
 ): Promise<number> {
   const collection = viewerAutomationCollection(viewer);
-  const { attention } = await attentionFilters(collection);
-  const [row] = await getDb()
-    .select({ total: count() })
+  const rows = await getDb()
+    .select({
+      kind: collection.kind,
+      lastRunNeedsAttention: collection.lastRunNeedsAttention,
+      state: collection.state,
+      trigger: collection.trigger,
+    })
     .from(collection)
-    .where(and(eq(collection.owned, true), attention));
-  return row!.total;
+    .where(
+      and(
+        eq(collection.owned, true),
+        notInArray(collection.state, ["paused", "completed"]),
+        or(
+          eq(collection.state, "blocked"),
+          eq(collection.kind, "event"),
+          eq(collection.lastRunNeedsAttention, true),
+        ),
+      ),
+    );
+  const catalog = automationEventCatalog(getEventCatalog());
+  return rows.filter(
+    (row) =>
+      row.state === "blocked" ||
+      row.lastRunNeedsAttention ||
+      (row.kind === "event" && !eventTriggerAvailable(catalog, row.trigger)),
+  ).length;
 }
 
 /** Read an SQL page and complete, access-scoped counts and filter options. */

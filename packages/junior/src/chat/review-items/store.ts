@@ -648,39 +648,26 @@ function searchConditions(
   return conditions;
 }
 
-/** Count the open Review items that need a User (`reviewItemNeedsUser`). */
-export async function countReviewItemsNeedingUser(
-  db: JuniorDatabase,
-  userId: string,
-): Promise<number> {
-  const rows = await db
-    .select({ count: count() })
-    .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
-  return rows[0]?.count ?? 0;
-}
-
 /**
- * Count the open Review items that need a User for each Inbox bundle, by
- * the badge's rule (`reviewItemNeedsUser`): `decisions` ask with a form,
- * and `prs` have a pull request as their subject.
+ * Count the open Review items that need a User (`reviewItemNeedsUser`), one
+ * row per subject URL, with the ones that ask with a form as `decisions`.
+ * The nav count and the Inbox bundle counts all read this one query.
  */
-export async function countReviewItemBundlesNeedingUser(
+export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
   userId: string,
-): Promise<{ decisions: number; prs: number }> {
-  const rows = await db
+): Promise<
+  Array<{ decisions: number; subjectUrl: string | null; total: number }>
+> {
+  return await db
     .select({
-      decisions: count(
-        sql`case when ${juniorReviewItems.request} is not null then 1 end`,
-      ),
-      prs: count(
-        sql`case when ${juniorReviewItems.subjectUrl} ~ '/pull/[0-9]+' then 1 end`,
-      ),
+      decisions: count(juniorReviewItems.request),
+      subjectUrl: juniorReviewItems.subjectUrl,
+      total: count(),
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
-  return { decisions: rows[0]?.decisions ?? 0, prs: rows[0]?.prs ?? 0 };
+    .where(reviewItemNeedsUser(userId))
+    .groupBy(juniorReviewItems.subjectUrl);
 }
 
 /**

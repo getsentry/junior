@@ -495,7 +495,7 @@ export function readMockReviewItemCounts(
   return {
     decisions: needsViewer.filter((item) => item.request).length,
     needsViewer: needsViewer.length,
-    prs: needsViewer.filter((item) =>
+    codeChanges: needsViewer.filter((item) =>
       /\/pull\/\d+/.test(item.subject?.url ?? ""),
     ).length,
     snoozed: readMockReviewItems(nowMs, {}).filter((item) =>

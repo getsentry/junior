@@ -1,7 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import {
   getConversationEventStore,
@@ -299,10 +301,9 @@ describe("review item actions API", () => {
 
     const anaCount = await (await api(fixture, ana).get("/count")).json();
     expect(anaCount).toEqual({
-      automations: 0,
       decisions: 1,
       needsViewer: 1,
-      prs: 0,
+      codeChanges: 0,
       snoozed: 0,
     });
     // The Conversations of the action item wait on Ana, but not on Cal.
@@ -386,10 +387,9 @@ describe("review item actions API", () => {
       (await api(fixture, ben).act(id, { action: "dismiss" })).status,
     ).toBe(409);
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
-      automations: 0,
       decisions: 0,
       needsViewer: 0,
-      prs: 0,
+      codeChanges: 0,
       snoozed: 0,
     });
     expect(
@@ -447,10 +447,9 @@ describe("review item actions API", () => {
     expect((await api(fixture, ana).get("?status=open,done")).status).toBe(400);
     // Closed items never count.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
-      automations: 0,
       decisions: 0,
       needsViewer: 0,
-      prs: 0,
+      codeChanges: 0,
       snoozed: 0,
     });
   });
@@ -533,6 +532,8 @@ describe("review item actions API", () => {
   });
 
   it("counts each Inbox bundle across every page", async () => {
+    // The GitHub plugin's link types recognize pull request subjects.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
     const ana = await user("ana@example.com");
@@ -591,6 +592,16 @@ describe("review item actions API", () => {
     ).json();
     expect(first.items).toHaveLength(25);
     expect(first.nextCursor).toBeDefined();
+    // Newest first: the two pull requests, then the decisions.
+    expect(
+      first.items
+        .slice(0, 3)
+        .map((listed: { subject?: { objectType?: string } }) => listed.subject),
+    ).toEqual([
+      expect.objectContaining({ objectType: "code_change" }),
+      expect.objectContaining({ objectType: "code_change" }),
+      undefined,
+    ]);
 
     // The counts cover every page. Of the snoozed rows, only open items
     // that Ana's Inbox lists count.
@@ -598,17 +609,15 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, ana).get(`/count?snoozed=${snoozed}`)).json(),
     ).toEqual({
-      automations: 0,
       decisions: 27,
       needsViewer: 29,
-      prs: 2,
+      codeChanges: 2,
       snoozed: 1,
     });
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
-      automations: 0,
       decisions: 0,
       needsViewer: 1,
-      prs: 1,
+      codeChanges: 1,
       snoozed: 0,
     });
   });
@@ -630,10 +639,9 @@ describe("review item actions API", () => {
     expect(list.items).toMatchObject([{ id, canAct: true, canTake: true }]);
     // An item for Everyone needs no one until a person takes it.
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
-      automations: 0,
       decisions: 0,
       needsViewer: 0,
-      prs: 0,
+      codeChanges: 0,
       snoozed: 0,
     });
     expect(
@@ -685,10 +693,9 @@ describe("review item actions API", () => {
       status: "open",
     });
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
-      automations: 0,
       decisions: 1,
       needsViewer: 1,
-      prs: 0,
+      codeChanges: 0,
       snoozed: 0,
     });
     expect(

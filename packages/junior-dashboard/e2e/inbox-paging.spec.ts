@@ -113,14 +113,14 @@ test("To do lists its rows while the count is pending or failed", async ({
   const todo = page.getByRole("region", { name: "To do" });
   const row = todo.getByRole("link", { name: new RegExp(license.title) });
   // A failed count leaves the badge without a number, not To do empty.
-  await page.route("**/api/review-items/count", (route) =>
+  await page.route("**/api/review-items/count**", (route) =>
     route.fulfill({ json: { error: "Failed" }, status: 500 }),
   );
   await page.goto(`${dashboard.baseURL}/`);
   await expect(row).toBeVisible();
   // A count that never answers does the same.
-  await page.unroute("**/api/review-items/count");
-  await page.route("**/api/review-items/count", () => undefined);
+  await page.unroute("**/api/review-items/count**");
+  await page.route("**/api/review-items/count**", () => undefined);
   await page.reload();
   await expect(row).toBeVisible();
 });

@@ -240,7 +240,7 @@ export async function mockReviewItems(
           decisions: needsViewer.filter((i) => "request" in i && i.request)
             .length,
           needsViewer: needsViewer.length,
-          prs: needsViewer.filter((i) =>
+          codeChanges: needsViewer.filter((i) =>
             /\/pull\/\d+/.test(i.subject?.url ?? ""),
           ).length,
           snoozed: open.filter((i) => snoozed.includes(i.id)).length,

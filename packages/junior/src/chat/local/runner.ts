@@ -491,6 +491,7 @@ async function runLocalAgentTurnInContext(
       throw new AggregateError(
         [error, persistenceError],
         "Local turn failure state could not be persisted",
+        { cause: persistenceError },
       );
     }
     await lifecycle.fail({

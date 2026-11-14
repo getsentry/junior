@@ -311,6 +311,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
 
   apps/example:
     dependencies:
@@ -377,19 +380,19 @@ importers:
         version: 0.9.9(typescript@6.0.3)
       '@astrojs/mdx':
         specifier: ^7.0.5
-        version: 7.0.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))
+        version: 7.0.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       '@astrojs/starlight':
         specifier: ^0.41.5
-        version: 0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))(typescript@6.0.3)
+        version: 0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3)
       '@fontsource/caveat':
         specifier: ^5.3.0
         version: 5.3.0
       '@sentry/starlight-theme':
         specifier: 'catalog:'
-        version: 0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))(typescript@6.0.3))
+        version: 0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3))
       astro:
         specifier: ^7.3.3
-        version: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)
+        version: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -730,7 +733,7 @@ importers:
         version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)(unrun@0.3.1)
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)(yaml@2.9.1)
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -742,7 +745,7 @@ importers:
         version: 0.3.1
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-datadog: {}
 
@@ -807,7 +810,7 @@ importers:
         version: 7.30.1
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
       vitest-evals:
         specifier: 0.16.1
         version: 0.16.1(ai@7.0.153(zod@4.6.7))(tinyrainbow@3.1.0)(vitest@4.1.12)(zod@4.6.7)
@@ -885,7 +888,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-google:
     dependencies:
@@ -928,7 +931,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-hex: {}
 
@@ -955,7 +958,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-maintenance: {}
 
@@ -1000,7 +1003,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-notion:
     dependencies:
@@ -1081,7 +1084,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-testing:
     dependencies:
@@ -1109,7 +1112,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-tts: {}
 
@@ -1136,7 +1139,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)
+        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   packages/junior-xdotcom: {}
 
@@ -8299,6 +8302,7 @@ packages:
   lint-staged@17.0.5:
     resolution: {integrity: sha512-d12yC+/e8RhBjZtaxZn71FyrgU/P5e+uAPifhCLwdosQZP/zamSdKRWDC30ocVIbzDKiFG1McHc/LUgB92GIPw==}
     engines: {node: '>=22.22.1'}
+    hasBin: true
 
   listr2@10.2.2:
     resolution: {integrity: sha512-JtNtbZj8q5BnDMR7trpwvwk3RIrANtIVzEUm8w7amp6xelLgyuq+4WZoTH913XaQAoH/cNdYhaNzBPA2U3xbDw==}
@@ -11426,13 +11430,13 @@ snapshots:
       github-slugger: 2.0.0
       satteri: 0.10.5
 
-  '@astrojs/mdx@7.0.5(@astrojs/markdown-satteri@0.3.4)(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))':
+  '@astrojs/mdx@7.0.5(@astrojs/markdown-satteri@0.3.4)(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))':
     dependencies:
       '@astrojs/internal-helpers': 0.10.2
       '@astrojs/markdown-remark': 7.2.2
       '@mdx-js/mdx': 3.1.1
       acorn: 8.16.0
-      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)
+      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       es-module-lexer: 2.3.1
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -11448,13 +11452,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/mdx@7.0.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))':
+  '@astrojs/mdx@7.0.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))':
     dependencies:
       '@astrojs/internal-helpers': 0.10.2
       '@astrojs/markdown-remark': 7.2.2
       '@mdx-js/mdx': 3.1.1
       acorn: 8.16.0
-      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)
+      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       es-module-lexer: 2.3.1
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -11478,17 +11482,17 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 4.6.7
 
-  '@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))(typescript@6.0.3)':
+  '@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3)':
     dependencies:
       '@astrojs/markdown-satteri': 0.3.4
-      '@astrojs/mdx': 7.0.5(@astrojs/markdown-satteri@0.3.4)(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))
+      '@astrojs/mdx': 7.0.5(@astrojs/markdown-satteri@0.3.4)(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       '@astrojs/sitemap': 3.7.2
       '@pagefind/default-ui': 1.5.2
       '@types/hast': 3.0.5
       '@types/js-yaml': 4.0.9
       '@types/mdast': 4.0.4
-      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)
-      astro-expressive-code: 0.44.1(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))
+      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
+      astro-expressive-code: 0.44.1(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       bcp-47: 2.1.0
       hast-util-from-html: 2.0.3
       hast-util-select: 6.0.4
@@ -14654,7 +14658,7 @@ snapshots:
       '@electric-sql/pglite': 0.4.6
       drizzle-orm: 0.45.4(@electric-sql/pglite@0.4.6)(@types/pg@8.15.6)(pg@8.21.0)
       pg: 8.21.0
-      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -14692,7 +14696,7 @@ snapshots:
       '@electric-sql/pglite': 0.4.6
       drizzle-orm: 0.45.4(@electric-sql/pglite@0.4.6)(pg@8.21.0)
       pg: 8.21.0
-      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -14771,7 +14775,7 @@ snapshots:
       sharp: 0.35.5(@types/node@24.19.2)
       undici: 7.30.1
       web-push: 3.6.7
-      yaml: 2.9.0
+      yaml: 2.9.1
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -14880,7 +14884,7 @@ snapshots:
       sharp: 0.35.5(@types/node@24.19.2)
       undici: 7.30.1
       web-push: 3.6.7
-      yaml: 2.9.0
+      yaml: 2.9.1
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -14988,7 +14992,7 @@ snapshots:
       sharp: 0.35.5(@types/node@24.19.2)
       undici: 7.30.1
       web-push: 3.6.7
-      yaml: 2.9.0
+      yaml: 2.9.1
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -15133,7 +15137,7 @@ snapshots:
 
   '@sentry/roach@0.3.0(vitest@4.1.12)':
     optionalDependencies:
-      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
 
   '@sentry/server-runtime-injection@11.10.0':
     dependencies:
@@ -15146,9 +15150,9 @@ snapshots:
       '@sentry/conventions': 0.29.0
       '@sentry/core': 11.10.0
 
-  '@sentry/starlight-theme@0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))(typescript@6.0.3))':
+  '@sentry/starlight-theme@0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3))':
     dependencies:
-      '@astrojs/starlight': 0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3))(typescript@6.0.3)
+      '@astrojs/starlight': 0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3)
       '@fontsource-variable/rubik': 5.2.8
       '@fontsource/ibm-plex-mono': 5.2.7
       ultrahtml: 1.6.0
@@ -16125,22 +16129,22 @@ snapshots:
       msw: 2.14.6(@types/node@24.19.2)(typescript@7.0.2)
       vite: 8.0.14(@types/node@24.19.2)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
 
-  '@vitest/mocker@4.1.12(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3))':
+  '@vitest/mocker@4.1.12(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))':
     dependencies:
       '@vitest/spy': 4.1.12
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       msw: 2.14.6(@types/node@24.19.2)(typescript@7.0.2)
-      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
-  '@vitest/mocker@4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3))':
+  '@vitest/mocker@4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))':
     dependencies:
       '@vitest/spy': 4.1.12
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
 
   '@vitest/pretty-format@4.1.12':
     dependencies:
@@ -16383,13 +16387,13 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.44.1(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)):
+  astro-expressive-code@0.44.1(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)):
     dependencies:
-      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)
+      astro: 7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       rehype-expressive-code: 0.44.1
       url-extras: 0.1.0
 
-  astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3):
+  astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       '@astrojs/compiler-rs': 0.4.1
       '@astrojs/internal-helpers': 0.11.0
@@ -16439,8 +16443,8 @@ snapshots:
       unifont: 0.7.5
       unstorage: 1.17.5
       verkit: 0.4.1
-      vite: 8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)
-      vitefu: 1.1.3(vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3))
+      vite: 8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)(yaml@2.9.1)
+      vitefu: 1.1.3(vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)(yaml@2.9.1))
       xxhash-wasm: 1.1.0
       yargs-parser: 22.0.0
       zod: 4.6.7
@@ -16612,7 +16616,7 @@ snapshots:
       pg: 8.21.0
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
-      vitest: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)(yaml@2.9.1)
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -16638,7 +16642,7 @@ snapshots:
     optionalDependencies:
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
       pg: 8.21.0
-      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -18614,7 +18618,7 @@ snapshots:
       sprintf-js: 1.1.3
       sql.js: 1.14.1
       turndown: 7.2.4
-      yaml: 2.9.0
+      yaml: 2.9.1
     optionalDependencies:
       '@mongodb-js/zstd': 7.0.0
       node-liblzma: 2.2.0
@@ -20178,11 +20182,12 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  postcss-load-config@6.0.1(tsx@4.22.3):
+  postcss-load-config@6.0.1(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       tsx: 4.22.3
+      yaml: 2.9.1
 
   postcss-nested@6.2.0(postcss@8.5.25):
     dependencies:
@@ -21646,7 +21651,7 @@ snapshots:
 
   tslib@2.9.1: {}
 
-  tsup@8.5.1(tsx@4.22.3)(typescript@7.0.2):
+  tsup@8.5.1(tsx@4.22.3)(typescript@7.0.2)(yaml@2.9.1):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -21657,7 +21662,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(tsx@4.22.3)
+      postcss-load-config: 6.0.1(tsx@4.22.3)(yaml@2.9.1)
       resolve-from: 5.0.0
       rollup: 4.60.4
       source-map: 0.7.6
@@ -22021,7 +22026,7 @@ snapshots:
       d3-time: 3.1.0
       d3-timer: 3.0.1
 
-  vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3):
+  vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -22033,6 +22038,7 @@ snapshots:
       esbuild: 0.28.1
       fsevents: 2.3.3
       tsx: 4.22.3
+      yaml: 2.9.1
 
   vite@8.0.14(@types/node@24.19.2)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
@@ -22048,7 +22054,7 @@ snapshots:
       tsx: 4.22.3
       yaml: 2.9.0
 
-  vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3):
+  vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -22059,17 +22065,18 @@ snapshots:
       '@types/node': 24.19.2
       fsevents: 2.3.3
       tsx: 4.22.3
+      yaml: 2.9.1
 
-  vitefu@1.1.3(vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)):
+  vitefu@1.1.3(vite@8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)(yaml@2.9.1)):
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(esbuild@0.28.1)(tsx@4.22.3)(yaml@2.9.1)
 
   vitest-evals@0.16.1(ai@7.0.153(zod@4.6.7))(tinyrainbow@3.1.0)(vitest@4.1.12)(zod@4.6.7):
     dependencies:
       '@vitest-evals/core': 0.16.1
       '@vitest-evals/report-ui': 0.16.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
     optionalDependencies:
       ai: 7.0.153(zod@4.6.7)
       zod: 4.6.7
@@ -22113,10 +22120,10 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3):
+  vitest@4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       '@vitest/expect': 4.1.12
-      '@vitest/mocker': 4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3))
+      '@vitest/mocker': 4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       '@vitest/pretty-format': 4.1.12
       '@vitest/runner': 4.1.12
       '@vitest/snapshot': 4.1.12
@@ -22133,7 +22140,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.19.2
@@ -22152,10 +22159,10 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3):
+  vitest@4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       '@vitest/expect': 4.1.12
-      '@vitest/mocker': 4.1.12(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3))
+      '@vitest/mocker': 4.1.12(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       '@vitest/pretty-format': 4.1.12
       '@vitest/runner': 4.1.12
       '@vitest/snapshot': 4.1.12
@@ -22172,7 +22179,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.19.2
@@ -22190,10 +22197,10 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.12(@types/node@24.19.2)(tsx@4.22.3):
+  vitest@4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1):
     dependencies:
       '@vitest/expect': 4.1.12
-      '@vitest/mocker': 4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3))
+      '@vitest/mocker': 4.1.12(vite@8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))
       '@vitest/pretty-format': 4.1.12
       '@vitest/runner': 4.1.12
       '@vitest/snapshot': 4.1.12
@@ -22210,7 +22217,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)
+      vite: 8.0.14(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.19.2

@@ -208,7 +208,7 @@ function useBuildInboxData(input: {
     automations: serverCounts?.automations,
     decisions: serverCounts?.decisions,
     inbox: todoCount,
-    prs: serverCounts?.prs,
+    prs: serverCounts?.codeChanges,
     snoozed: serverCounts?.snoozed,
   };
 

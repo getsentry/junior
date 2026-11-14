@@ -64,6 +64,10 @@ const CHART_DATASETS: Record<string, SentryExploreLink["dataset"]> = {
 };
 const CHART_DISPLAYS = new Set<string>(["line", "area", "bar"]);
 
+function isChartDisplay(display: string): display is ExploreDisplay {
+  return CHART_DISPLAYS.has(display);
+}
+
 type DashboardFacts = Extract<ObjectFacts, { type: "dashboard" }>;
 
 const widgetSchema = z.object({
@@ -131,7 +135,7 @@ function text(value: string, empty: string): string {
 // Sentry names display types in snake case, such as `big_number`.
 function displayName(display: string | null | undefined): string {
   if (!display) return "Line chart";
-  if (CHART_DISPLAYS.has(display)) {
+  if (isChartDisplay(display)) {
     return `${display[0]!.toUpperCase()}${display.slice(1)} chart`;
   }
   const words = display.replaceAll("_", " ");
@@ -204,7 +208,7 @@ function widgetChart(
   const display = widget.displayType ?? "line";
   const query = widget.queries.find((item) => !item.isHidden);
   const yAxes = query?.aggregates ?? [];
-  if (!dataset || !CHART_DISPLAYS.has(display) || !query || !yAxes.length) {
+  if (!dataset || !isChartDisplay(display) || !query || !yAxes.length) {
     return undefined;
   }
   const groupBy = query.columns ?? [];
@@ -212,7 +216,7 @@ function widgetChart(
   return {
     org,
     dataset,
-    display: display as ExploreDisplay,
+    display,
     pageTitle: "Dashboard widget",
     yAxes,
     groupBy,

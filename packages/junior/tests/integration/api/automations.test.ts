@@ -672,13 +672,13 @@ describe("Automations API", () => {
       ).toEqual(["event_automations_api", "sched_tasks_api"]);
       // The Inbox badge counts the same two, so it matches To do.
       const count = await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/review-items/count",
+        "http://localhost/api/review-items/count?include=automations",
       );
       expect(await count.json()).toEqual({
         automations: 2,
+        codeChanges: 0,
         decisions: 0,
         needsViewer: 0,
-        prs: 0,
         snoozed: 0,
       });
       expect((await list("state=unavailable")).total).toBe(2);

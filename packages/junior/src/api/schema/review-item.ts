@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 const answerSchema = z
@@ -45,6 +46,11 @@ export const reviewItemSchema = z
     subject: z
       .object({
         id: z.string().min(1),
+        /**
+         * The object type of the link type that claims `url`, such as
+         * `code_change` for a pull request. Unset when none claims it.
+         */
+        objectType: objectTypeSchema.optional(),
         title: z.string().min(1).optional(),
         url: z.string().min(1).optional(),
       })
@@ -123,6 +129,8 @@ export const reviewItemListSchema = z
 /** `GET /api/review-items/count` query. */
 export const reviewItemCountQuerySchema = z
   .object({
+    /** `automations` also counts the viewer's Automations that need attention. */
+    include: z.enum(["automations"]).optional(),
     /**
      * The newest item of each snoozed Inbox row, comma separated. Snoozes
      * live in the browser, so the server counts only the ids it is given.
@@ -143,9 +151,11 @@ export const reviewItemCountSchema = z
   .object({
     /**
      * The viewer's own Automations that need attention, as the Inbox lists
-     * them (`scope=attention&owner=me`).
+     * them (`scope=attention&owner=me`). Only with `include=automations`.
      */
-    automations: z.number().int().nonnegative(),
+    automations: z.number().int().nonnegative().optional(),
+    /** The `needsViewer` items whose subject is a code change. */
+    codeChanges: z.number().int().nonnegative(),
     /** The `needsViewer` items that ask with a form. */
     decisions: z.number().int().nonnegative(),
     /**
@@ -153,8 +163,6 @@ export const reviewItemCountSchema = z
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
      */
     needsViewer: z.number().int().nonnegative(),
-    /** The `needsViewer` items whose subject is a pull request. */
-    prs: z.number().int().nonnegative(),
     /** The `snoozed` ids that are open and listed for the viewer. */
     snoozed: z.number().int().nonnegative(),
   })
