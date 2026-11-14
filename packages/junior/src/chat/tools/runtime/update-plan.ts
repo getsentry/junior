@@ -156,10 +156,7 @@ async function resolvePlanAssignee(
   findMentionedUserId: FindMentionedUserId,
 ): Promise<StoredPlanAssignee> {
   const text = value.trim();
-  if (
-    text.toLowerCase() === SELF_ASSIGNEE ||
-    text === context.conversationId
-  ) {
+  if (text.toLowerCase() === SELF_ASSIGNEE || text === context.conversationId) {
     return { conversationId: context.conversationId };
   }
   const childConversationId = await findChildAgentConversationId({

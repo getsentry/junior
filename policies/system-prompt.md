@@ -80,6 +80,9 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
   (`CAPABILITY_SECTION_TAG`) only when it differs from the latest copy in
   history. An empty section that had a copy says "none". Context compaction
   keeps the latest copy of each.
+- A Turn adds `<plan-delta>` only for plan changes that others made after the
+  latest plan version in history. Context compaction replaces the deltas with
+  one `<plan>` snapshot of the open items.
 
 ### Changes
 

@@ -10,6 +10,10 @@ import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
+import { createModelStream } from "../fixtures/model-stream";
+import { signedInViewer } from "../fixtures/user";
+import { getSqlExecutor } from "@/chat/db";
+import { listPlanItems, setPlanItemStatusByUser } from "@/chat/plan/store";
 
 const originalBotConfig = { ...botConfig };
 
@@ -20,11 +24,7 @@ describe("model message history", () => {
   });
   it("preserves native messages and provider request prefixes across Turns", async () => {
     const toolArguments = {
-      explanation: "Check the result\u0000before replying.",
-      plan: [
-        { status: "in_progress", step: "Check the result" },
-        { status: "pending", step: "Reply to the user" },
-      ],
+      message: "Checking the result\u0000before replying.",
     };
     mockTitleModel("Conversation title");
     const requests = mockAnthropicStream("openai/gpt-6-astra", [
@@ -37,8 +37,8 @@ describe("model message history", () => {
         { type: "redacted_thinking", data: "opaque-redacted-data" },
         {
           type: "tool_use",
-          id: "plan-call",
-          name: "updatePlan",
+          id: "progress-call",
+          name: "reportProgress",
           input: toolArguments,
         },
       ],
@@ -160,5 +160,70 @@ describe("model message history", () => {
     expect(count(undone, "available-skills")).toBe(1);
     expect(undone).not.toContain("release-notes");
     expect(undone).toContain("<workspaces>\\nnone\\n</workspaces>");
+  });
+
+  it("sends plan changes that a person made once, and none for the agent's own", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      modelStream: createModelStream([
+        {
+          type: "toolCall",
+          name: "updatePlan",
+          arguments: {
+            add: [
+              { title: "Draft the brief", status: "in_progress" },
+              { title: "Send the brief" },
+            ],
+          },
+        },
+        { type: "text", text: "First." },
+        { type: "text", text: "Second." },
+        { type: "text", text: "Third." },
+        { type: "text", text: "Fourth." },
+      ]),
+    });
+    const newText = (
+      before: { messages: unknown[] },
+      after: { messages: unknown[] },
+    ) => JSON.stringify(after.messages.slice(before.messages.length));
+    const deltas = (text: string) => text.split("<plan-delta ").length - 1;
+
+    await agent.run("first");
+    const first = agent.snapshot();
+    // The plan is in the database, not only in the tool call.
+    const [draft, send] = await listPlanItems(
+      getSqlExecutor(),
+      agent.conversationId(),
+    );
+    expect([draft?.title, send?.title]).toEqual([
+      "Draft the brief",
+      "Send the brief",
+    ]);
+    expect(deltas(JSON.stringify(first.messages))).toBe(0);
+
+    // The agent's own changes are already in its tool results.
+    await agent.run("second");
+    const second = agent.snapshot();
+    expect(deltas(newText(first, second))).toBe(0);
+
+    const person = await signedInViewer("person@example.com");
+    await setPlanItemStatusByUser(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      id: send!.id,
+      nowMs: Date.now(),
+      status: "cancelled",
+      userId: person.id,
+    });
+    await agent.run("third");
+    const third = agent.snapshot();
+    const delta = newText(second, third);
+    expect(deltas(delta)).toBe(1);
+    expect(delta).toContain(
+      `<item id=\\"${send!.id}\\" status=\\"cancelled\\" assignee=\\"self\\" author=\\"person@example.com\\" email=\\"person@example.com\\">Send the brief</item>`,
+    );
+    expect(delta).not.toContain("Draft the brief");
+
+    await agent.run("fourth");
+    expect(deltas(newText(third, agent.snapshot()))).toBe(0);
   });
 });

@@ -148,11 +148,15 @@ const SKILL_POLICY_RULES = [
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];
 
-/** Block 5, `<planning>`: when to keep a plan and how to update it. */
+/**
+ * Block 5, `<planning>`: what goes on the durable plan, across Turns and
+ * child agents. How to call `updatePlan` goes in its description.
+ */
 const PLANNING_RULES = [
-  "- Use `updatePlan` for substantial work with dependent steps, or when the user asks for a plan. Skip it for short answers, simple lookups, and routine actions.",
-  "- Use short, verifiable steps that describe outcomes you can complete. Update the plan when a major step finishes or the scope changes, not before every command.",
-  "- The tool displays the plan. Do not repeat it in chat, and do not finish with a plan when you can complete the work now.",
+  "- Use `updatePlan` for substantial work with dependent steps, and for each piece of work that this Turn does not finish: work someone asked for, work you queue for later, and work you hand to a child agent, with that child as assignee. Skip it for short answers, simple lookups, and routine actions that you finish now.",
+  "- The plan is your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
+  "- Close an item when its work ends, such as when a child agent's result arrives. After a compaction, `<plan>` lists the open items. `<plan-delta>` shows items that people changed since you last saw them.",
+  "- Do not repeat the plan in chat, and do not end a Turn with a plan when you can do the work now.",
 ];
 
 /**

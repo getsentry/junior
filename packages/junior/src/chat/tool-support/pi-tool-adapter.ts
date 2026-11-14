@@ -452,7 +452,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     });
     // The plan is in the database, so only the result knows the active item.
     const planStatus =
-      toolName === "updatePlan" ? buildPlanStatus(toolResult.details) : undefined;
+      toolName === "updatePlan"
+        ? buildPlanStatus(toolResult.details)
+        : undefined;
     if (planStatus) {
       await onStatus?.(planStatus);
     }
