@@ -19,7 +19,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeConversationFixture } from "../../../fixtures/conversation";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversationLinks, juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
@@ -156,7 +156,7 @@ describe("conversation forks", () => {
     const source = "local:web:fork-source";
     const reply = await storeAnsweredTurn(source, {
       question: "Remember the blue option.",
-      answer: "First answer.",
+      answer: "First answer: https://example.com/blue",
       turn: "source",
     });
     const events = getConversationEventStore();
@@ -204,6 +204,20 @@ describe("conversation forks", () => {
     );
     const forkId = results[0]!.conversationId;
     expect(results[1]!.conversationId).toBe(forkId);
+    // The fork keeps the links of the messages it copies, for the feed.
+    const links = (conversationId: string) =>
+      getDb()
+        .select({
+          position: juniorConversationLinks.position,
+          seq: juniorConversationLinks.seq,
+          url: juniorConversationLinks.url,
+        })
+        .from(juniorConversationLinks)
+        .where(eq(juniorConversationLinks.conversationId, conversationId));
+    expect(await links(forkId)).toEqual(await links(source));
+    expect(await links(forkId)).toMatchObject([
+      { url: "https://example.com/blue" },
+    ]);
     const projection = await openConversationProjection({
       conversationId: forkId,
     });
@@ -241,7 +255,7 @@ describe("conversation forks", () => {
     expect(visibleEvents(detail)).toEqual([
       "user: Remember the blue option.",
       "turn",
-      "assistant: First answer.",
+      "assistant: First answer: https://example.com/blue",
       "turn",
     ]);
 
@@ -280,7 +294,7 @@ describe("conversation forks", () => {
     expect(visibleEvents(await readDetail(later.conversationId))).toEqual([
       "user: Remember the blue option.",
       "turn",
-      "assistant: First answer.",
+      "assistant: First answer: https://example.com/blue",
       "turn",
       "user: Now compare the red option.",
       "turn",
