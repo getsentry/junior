@@ -502,6 +502,8 @@ function bestEffortObjectCompletionCost(
   try {
     return objectCompletionCost(modelId, usage);
   } catch (error) {
+    // best-effort: decision (secondary write). The cost estimate is a dashboard
+    // record for a call that already ran. See the PR decisions.
     logWarn("ai.completion.cost_estimate.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),

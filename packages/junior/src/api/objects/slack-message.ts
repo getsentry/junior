@@ -148,6 +148,9 @@ export async function resolveSlackMessageLink(
     try {
       domain = await run(() => resolveSlackTeamDomain(teamId));
     } catch (error) {
+      // best-effort: external edge. The link names a Slack workspace that this
+      // install may not reach. The loop tries the next workspace, and the link
+      // shows unresolved if none work.
       // A workspace that removed Junior has no token. Check the next one.
       logWarn("object_link.slack_team.unavailable", {
         "app.slack.team_id": teamId,

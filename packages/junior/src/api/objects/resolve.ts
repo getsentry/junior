@@ -231,6 +231,9 @@ export async function resolveObjectLinks(
               }));
         return object ? [{ object, url }] : [];
       } catch (error) {
+        // best-effort: external edge. One object link that fails to resolve
+        // must not fail the preview of the other links in the same request; the
+        // link shows unresolved.
         // One failed provider read must not hide the other cards.
         logException(error, "object_link.resolve.failed", {
           "app.plugin.name": linkType.owner,

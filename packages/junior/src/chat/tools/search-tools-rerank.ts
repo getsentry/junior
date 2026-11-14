@@ -101,6 +101,7 @@ export async function rerankSearchCandidates(args: {
     });
     names = object.tool_names;
   } catch (error) {
+    // best-effort: recovery. Search falls back to the lexical ranking below.
     // A stopped Turn and failures that are not transient belong to the
     // tool call. A timeout or a transient provider failure keeps the word
     // match.

@@ -83,6 +83,8 @@ async function retryOnLockTimeout(
       await apply();
       return;
     } catch (error) {
+      // best-effort: retry. The loop retries this lock timeout, and the last
+      // attempt throws.
       if (attempt >= LOCK_ATTEMPTS || !isLockTimeout(error)) {
         throw error;
       }

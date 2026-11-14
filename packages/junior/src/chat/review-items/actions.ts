@@ -272,6 +272,9 @@ export async function closeReviewItemsAnsweredByReply(args: {
       text: args.text,
     });
   } catch (error) {
+    // best-effort: decision (optional context). Reply matching only links a
+    // thread reply to an item; a throw would fail the reply. See the PR
+    // decisions.
     // The reply is already saved, so the agent still gets it.
     logWarn("review_item.reply_match.failed", {
       "exception.message":

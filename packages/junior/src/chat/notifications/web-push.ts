@@ -103,6 +103,8 @@ async function sendToDevice(
         }));
         outcome = "delivered";
       } catch (error) {
+        // best-effort: typed result. The failed outcome is returned and
+        // recorded on the span; the push service has no retry contract.
         statusCode =
           error instanceof WebPushError ? error.statusCode : undefined;
         outcome = statusCode === 404 || statusCode === 410 ? "gone" : "failed";

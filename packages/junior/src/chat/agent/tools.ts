@@ -222,6 +222,8 @@ async function tryRecordSkillLoadStat(skill: Skill) {
       name: skill.name,
     });
   } catch (error) {
+    // best-effort: decision (secondary write). Skill load stats feed the
+    // dashboard only; a throw would fail the skill load. See the PR decisions.
     logWarn("skill.load.stat.failed", {
       "app.skill.name": skill.name,
       "app.plugin.name": skill.pluginProvider,
@@ -641,6 +643,8 @@ export async function wireAgentTools(
         toolName,
       });
     } catch (error) {
+      // best-effort: decision (secondary write). Tool observers watch a call
+      // that already ran; a throw would fail its result. See the PR decisions.
       logWarn("tool.invocation.observer.failed", {
         "gen_ai.tool.name": toolName,
         "exception.message":
@@ -700,6 +704,8 @@ export async function wireAgentTools(
       try {
         await mcpToolManager.close();
       } catch (closeError) {
+        // best-effort: cleanup. close runs after the turn has its result or
+        // error; a throw here would replace that outcome.
         logWarn("mcp.tool_manager.close.failed", {
           ...getMcpProviderErrorAttributes(closeError),
           "exception.message": getMcpAwareTelemetryMessage(

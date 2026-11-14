@@ -180,6 +180,8 @@ export async function deliverPrivateMessage(input: {
       }
       return "in_context";
     } catch (error) {
+      // best-effort: recovery. The private delivery failed, so the code below
+      // falls back to the public OAuth prompt.
       logWarn("oauth.private_delivery.failed", {
         "app.slack.error":
           error instanceof Error ? error.message : String(error),

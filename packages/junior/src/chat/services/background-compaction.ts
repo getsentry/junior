@@ -201,6 +201,8 @@ export async function requestBackgroundCompaction(args: {
   try {
     await requestAboveMark({ ...args, inputSize, queue: args.queue });
   } catch (error) {
+    // best-effort: retried. The next turn requests compaction again, and the
+    // turn does not wait on it.
     logWarn("context_compaction.background.request_failed", {
       "error.type": error instanceof Error ? error.name : typeof error,
     });

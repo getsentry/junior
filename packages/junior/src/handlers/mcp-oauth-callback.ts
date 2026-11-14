@@ -286,6 +286,8 @@ export async function GET(
             },
           );
         } catch (cleanupError) {
+          // best-effort: error path. The provider already returned an error,
+          // and the page shows it; this is a second failure while cleaning up.
           if (!(cleanupError instanceof McpOAuthAttemptExpiredError)) {
             logException(
               cleanupError,
@@ -297,6 +299,8 @@ export async function GET(
         await deleteMcpAuthSession(pendingSession.authSessionId);
       }
     } catch (cleanupError) {
+      // best-effort: error path. The provider already returned an error, and
+      // the page shows it; this is a second failure while cleaning up.
       logException(
         cleanupError,
         "mcp.oauth_callback.provider_error_cleanup.failed",
@@ -354,6 +358,9 @@ export async function GET(
         ...(providerLabel ? { providerLabel } : undefined),
       });
     } catch (error) {
+      // best-effort: decision (secondary write). The credential is already
+      // stored; a throw would show a failed connect for a working connection.
+      // See the PR decisions.
       logException(error, "mcp.oauth_callback.authentication_event.failed", {
         "app.credential.provider": provider,
       });
@@ -361,6 +368,8 @@ export async function GET(
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {
+      // best-effort: decision (cleanup leak). The credential is already stored;
+      // the session expires on its own. See the PR decisions.
       logException(cleanupError, "mcp.oauth_callback.session_cleanup.failed", {
         "app.credential.provider": provider,
       });

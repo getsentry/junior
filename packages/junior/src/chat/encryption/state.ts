@@ -30,6 +30,8 @@ function decode(key: string, envelope: string): EncryptedStateRead | undefined {
   try {
     decrypted = decryptSecret(envelope, key);
   } catch (error) {
+    // best-effort: expected state. A value from a retired or altered key reads
+    // as missing, so the owner asks for the credential again.
     if (!(error instanceof UnreadableSecretError)) throw error;
     logWarn("encryption.secret.unreadable", { "error.type": error.reason });
     return undefined;

@@ -264,6 +264,9 @@ export async function readMcpPendingWorkAfterSend(
   try {
     return await readMcpPendingWork(user, conversationId);
   } catch (error) {
+    // best-effort: after commit. The steering message is already stored. A
+    // throw would make the MCP client resend it as a duplicate, so the reply
+    // omits the pending-work summary.
     logException(error, "mcp.pending_work.read.failed", {
       "gen_ai.conversation.id": conversationId,
     });

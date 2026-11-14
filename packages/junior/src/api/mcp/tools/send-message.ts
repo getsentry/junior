@@ -90,6 +90,8 @@ export function registerSendMessageTool(
             },
           );
         } catch (error) {
+          // best-effort: after commit. The message is already stored. A throw
+          // would make the MCP client resend it as a duplicate.
           logException(error, "mcp.send_message.steer.failed", {
             "gen_ai.conversation.id": conversationId,
           });

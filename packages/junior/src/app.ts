@@ -312,7 +312,11 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
     // Outside Vercel (e.g. local dev via node-server), fire-and-forget.
     return (task) => {
       const promise = typeof task === "function" ? task() : task;
-      promise.catch(console.error);
+      promise.catch((error: unknown) => {
+        // best-effort: owning boundary. Outside Vercel there is no waitUntil
+        // to own the task, so this handler is the last code that sees it.
+        console.error(error);
+      });
     };
   }
 }

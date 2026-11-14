@@ -593,6 +593,9 @@ async function executeAgentRunInPrivacyContext(
           toolName: event.toolName,
         });
       } catch (error) {
+        // best-effort: decision (secondary write). The session log is a copy of
+        // the turn for the dashboard; a throw would fail a turn the user
+        // already has. See the PR decisions.
         // Host-only activity events are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
         logException(error, "agent.turn.session_log_append.failed", {
@@ -768,6 +771,9 @@ async function executeAgentRunInPrivacyContext(
           turnId,
         });
       } catch (error) {
+        // best-effort: decision (secondary write). The repository instructions
+        // event is a dashboard record; a throw would fail the turn. See the PR
+        // decisions.
         // Host-only transcript markers are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
         logException(error, "agent.agents_instructions_event.append.failed");
@@ -1009,6 +1015,9 @@ async function executeAgentRunInPrivacyContext(
           });
         }
       } catch (error) {
+        // best-effort: retried. Steering messages are consumed only after the
+        // agent accepts them, so a failed drain leaves them queued for the next
+        // drain.
         if (isTurnInputCommitLostError(error)) {
           throw error;
         }

@@ -247,6 +247,8 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     try {
       await onToolResult?.(report);
     } catch (error) {
+      // best-effort: decision (secondary write). Result observers watch a call
+      // that already ran; a throw would fail its result. See the PR decisions.
       logWarn("tool.result.observer.failed", {
         "gen_ai.tool.name": report.toolName,
         "exception.message":
@@ -408,6 +410,8 @@ export function createToolPipeline(options: ToolPipelineOptions) {
           toolDef.privateTraceResult(resultAttributeValue);
         hasProjectedPrivateResult = projectedPrivateResult !== undefined;
       } catch (error) {
+        // best-effort: decision (secondary write). The private trace projection
+        // is a dashboard copy of a call that already ran. See the PR decisions.
         logWarn("tool.private.trace_projection.failed", {
           "error.type": error instanceof Error ? error.name : typeof error,
           "gen_ai.tool.name": toolName,

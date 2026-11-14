@@ -33,7 +33,8 @@ export async function ingestEvent(
     try {
       mentions = await resolveEventMentions(event, options.slackTeamId);
     } catch (error) {
-      // People only add mentions. Deliver the Event without them.
+      // best-effort: external edge. People resolution only enriches the event;
+      // a throw would drop the provider event, which has no retrier.
       logException(error, "event.people.resolve.failed", {
         "app.event.event_type": event.eventType,
         "app.event.namespace": event.namespace,

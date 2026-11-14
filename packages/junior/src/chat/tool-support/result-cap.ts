@@ -65,6 +65,8 @@ async function saveFullText(
     await workspace.writeFiles([{ content: fileText(text), path }]);
     return path;
   } catch (error) {
+    // best-effort: decision (optional context). The capped result still reaches
+    // the model; only the full-text copy is lost. See the PR decisions.
     logWarn("tool.result.full_text.write.failed", {
       "exception.message": String(error),
     });

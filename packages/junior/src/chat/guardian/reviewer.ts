@@ -192,6 +192,8 @@ export function createGuardianActionReviewer(options: {
       try {
         result = await completeReview();
       } catch (error) {
+        // best-effort: retry. The loop retries this transient review failure,
+        // and the last attempt throws.
         if (
           signal.aborted ||
           !(error instanceof ProviderError) ||
