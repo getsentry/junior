@@ -27,10 +27,11 @@ export function ObjectRow(props: {
   const { card } = props;
   const previews = useSavedObject(card).previewImages;
   // An automation has its own card with its prompt and schedule, and a chart
-  // is only worth showing as its chart.
+  // or a trace is only worth showing as its picture.
   if (
     (card.plugin === "junior" && card.objectType === "automation") ||
-    card.facts?.type === "chart"
+    card.facts?.type === "chart" ||
+    card.facts?.type === "trace"
   ) {
     return <ObjectCard card={card} live={props.live} />;
   }

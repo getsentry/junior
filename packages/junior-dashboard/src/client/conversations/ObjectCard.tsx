@@ -9,6 +9,7 @@ import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { Sparkline } from "../components/charts/Sparkline";
+import { TraceWaterfall } from "../components/charts/TraceWaterfall";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -26,7 +27,8 @@ import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
-// web page is its title.
+// web page is its title. An event ends with when it happened, in the
+// viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
   if (card.objectType === "web_page") return webPageMeta(card) ?? type;
   return (
@@ -35,6 +37,12 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
       objectSource(card.plugin),
       // A label that repeats the title or the type says nothing new.
       [card.title, type].includes(card.label) ? "" : card.label,
+      card.facts?.type === "event" && card.facts.occurredAt
+        ? new Date(card.facts.occurredAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })
+        : undefined,
     ]
       .filter(Boolean)
       .join(" · ") || type
@@ -66,10 +74,12 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  */
 export function ObjectCard({
   card,
+  className,
   fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  className?: string;
   fill?: boolean;
   live?: boolean;
 }) {
@@ -80,6 +90,7 @@ export function ObjectCard({
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
+        className={className}
         card={{
           id: card.key,
           title: card.title,
@@ -103,7 +114,7 @@ export function ObjectCard({
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
-      className={cn("my-1", fill && "my-0 flex h-full flex-col")}
+      className={cn("my-1", fill && "my-0 flex h-full flex-col", className)}
     >
       <MessageCardHeader
         icon={
@@ -177,6 +188,13 @@ export function ObjectCard({
             label={card.facts.range}
             series={card.facts.series}
             tall
+          />
+        )}
+        {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
+          <TraceWaterfall
+            durationMs={card.facts.durationMs}
+            label="Top-level spans"
+            spans={card.facts.spans}
           />
         )}
         {(card.status || fields.length > 0) && (

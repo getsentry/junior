@@ -304,3 +304,92 @@ test("keeps System navigation usable on mobile", async ({
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
 });
+
+test("shows what cache warming saved in the range", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Effectiveness", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText(/of possible savings had no warm state/),
+  ).toBeVisible();
+  await expect(
+    panel.getByText(/Excludes 8 days without warmup cost/),
+  ).toBeVisible();
+  await expect(
+    panel.getByLabel("Cache warming net savings and effectiveness per day"),
+  ).toBeVisible();
+  await expect(
+    panel
+      .getByLabel("Cache warming chart legend")
+      .getByText("Daily effectiveness", { exact: true }),
+  ).toBeVisible();
+  // Only admins can re-fill history.
+  await expect(
+    panel.getByRole("button", { name: "Re-fill history" }),
+  ).toHaveCount(0);
+  await screenshot(page, "system-cache-warming", { target: panel });
+
+  const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  expect((await week).ok()).toBe(true);
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+});
+
+test("lets an admin re-fill cache warming savings from history", async ({
+  page,
+  dashboard,
+}) => {
+  // The page shell embeds the viewer, so make that viewer an admin.
+  await page.addInitScript(() => {
+    let bootstrap: { me?: { user?: { isAdmin?: boolean } } } | undefined;
+    Object.defineProperty(window, "__JUNIOR_DASHBOARD_BOOTSTRAP__", {
+      configurable: true,
+      get: () => bootstrap,
+      set: (value) => {
+        if (value?.me?.user) value.me.user.isAdmin = true;
+        bootstrap = value;
+      },
+    });
+  });
+  let refill: Record<string, unknown> = {
+    status: "done",
+    startedAt: new Date(NOW_MS - 3 * 60 * 60 * 1_000).toISOString(),
+    finishedAt: new Date(NOW_MS - 2 * 60 * 60 * 1_000).toISOString(),
+    scannedConversations: 1_284,
+    totalConversations: 1_284,
+  };
+  const starts: string[] = [];
+  await page.route("**/api/cache-warming/savings/refill", async (route) => {
+    if (route.request().method() === "POST") {
+      starts.push(route.request().method());
+      refill = {
+        status: "running",
+        startedAt: new Date(NOW_MS).toISOString(),
+        scannedConversations: 420,
+        totalConversations: 1_310,
+      };
+      await route.fulfill({ status: 202, json: { refill } });
+      return;
+    }
+    await route.fulfill({ json: { refill } });
+  });
+
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  const button = panel.getByRole("button", { name: "Re-fill history" });
+  await expect(button).toBeEnabled();
+  await expect(panel.getByText(/Last re-fill finished/)).toBeVisible();
+  await screenshot(page, "system-cache-warming-refill", { target: panel });
+
+  await button.click();
+  await expect(panel.getByText(/Re-filling history: 420 of/)).toBeVisible();
+  await expect(button).toBeDisabled();
+  await screenshot(page, "system-cache-warming-refill-running", {
+    target: panel,
+  });
+  expect(starts).toEqual(["POST"]);
+});

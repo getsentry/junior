@@ -24,26 +24,25 @@ function savedObjectKey(object: { key: string; plugin: string }): string {
 /**
  * Index the saved objects of a Conversation. Annotations come newest first,
  * so the newest save of an object wins. A link Annotation can share the key
- * of an object Annotation but has no preview images, so images come from the
- * newest Annotation that has them.
+ * of an object Annotation. The object Annotation holds the facts and preview
+ * images, so it wins over a newer link.
  */
 export function savedObjectsFromAnnotations(
   annotations: ConversationDetailReport["annotations"],
 ): SavedObjects {
   const objects = new Map<string, SavedObject>();
+  const links = new Set<string>();
   for (const annotation of annotations ?? []) {
     const key = savedObjectKey(annotation);
-    const saved = objects.get(key);
-    if (saved) {
-      if (!saved.previewImages.length && annotation.previewImages) {
-        saved.previewImages = annotation.previewImages;
-      }
+    if (objects.has(key) && !(links.has(key) && annotation.kind === "object")) {
       continue;
     }
     objects.set(key, {
       previewImages: annotation.previewImages ?? [],
       updatedAt: annotation.updatedAt,
     });
+    if (annotation.kind === "object") links.delete(key);
+    else links.add(key);
   }
   return objects;
 }
