@@ -14,8 +14,9 @@ function format(text: string, provider?: string): string {
  * as GitHub reference and `@login` links that show as object cards. A reply
  * posted to a provider, and the summary of an Event from one, is that
  * provider's text. In a chat reply, a bare `@U123` is a Slack user, as in
- * Slack, and not an account of a plugin's provider. Raw Event text and user
- * text show as written.
+ * Slack, and not an account of a plugin's provider. A person's message gets
+ * the same links, so a typed `owner/repo#12` shows the card that a pasted
+ * URL shows. Raw Event text shows as written.
  */
 export function formatConversationEventText(
   event: ConversationReportEvent,
@@ -52,10 +53,8 @@ export function formatConversationEventText(
       },
     };
   }
-  return data.role === "assistant" && data.text !== undefined
-    ? {
-        ...event,
-        data: { ...data, text: format(wrapBareSlackUserIds(data.text)) },
-      }
-    : event;
+  if (data.text === undefined || data.role === "system") return event;
+  const text =
+    data.role === "assistant" ? wrapBareSlackUserIds(data.text) : data.text;
+  return { ...event, data: { ...data, text: format(text) } };
 }

@@ -438,7 +438,7 @@ describe("image API", () => {
           objectLinks: [
             {
               filters: [{ host: "files.example.com", pathPrefix: "/f/" }],
-              objectType: "document",
+              objectTypes: ["document"],
               canView: async (ctx) => allowed(ctx.viewer.email),
               resolve: async (ctx, url) => ({
                 kind: "object",
