@@ -7,6 +7,7 @@ import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { authSuite } from "./src/suites/auth";
 import { codingSuite } from "./src/suites/coding";
 import { googleSuite } from "./src/suites/google";
+import { sdkReproSuite } from "./src/suites/sdk-repro";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -88,6 +89,8 @@ const authSuiteRoot = "evals/integration/auth";
 const codingSuiteRoot = "evals/integration/coding";
 // The integration directory of the Google suite. See `src/suites/google.ts`.
 const googleSuiteRoot = "evals/integration/google";
+// The directory of the sdk-repro suite. See `src/suites/sdk-repro.ts`.
+const sdkReproSuiteRoot = "evals/integration/sdk-repro";
 
 export default defineConfig({
   resolve,
@@ -120,6 +123,7 @@ export default defineConfig({
             `${authSuiteRoot}/**`,
             `${codingSuiteRoot}/**`,
             `${googleSuiteRoot}/**`,
+            `${sdkReproSuiteRoot}/**`,
           ],
         },
       },
@@ -145,6 +149,14 @@ export default defineConfig({
           ...projectTest,
           ...googleSuite,
           include: [`${googleSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...sdkReproSuite,
+          include: [`${sdkReproSuiteRoot}/**/*.eval.ts`],
         },
       },
     ],

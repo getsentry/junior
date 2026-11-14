@@ -3,6 +3,10 @@ import {
   interceptTestGitHubDraftsHttp,
   resetTestGitHubDraftFixtures,
 } from "./github-drafts";
+import {
+  interceptTestGitHubSdkReproHttp,
+  resetTestGitHubSdkReproFixtures,
+} from "./github-sdk-repro";
 
 const GITHUB_API_HOST = "api.github.com";
 
@@ -30,6 +34,7 @@ export function resetTestGitHubHttpFixtures(): void {
   nextIssueNumber = 101;
   issues.clear();
   resetTestGitHubDraftFixtures();
+  resetTestGitHubSdkReproFixtures();
 }
 
 function base64(input: string): string {
@@ -429,6 +434,11 @@ export async function interceptTestGitHubHttp(input: {
     input.upstreamUrl,
   );
   if (drafts) return drafts;
+  const sdkRepro = await interceptTestGitHubSdkReproHttp(
+    input.request,
+    input.upstreamUrl,
+  );
+  if (sdkRepro) return sdkRepro;
   if (input.upstreamUrl.hostname !== GITHUB_API_HOST) return undefined;
   return await githubResponse(input.request, input.upstreamUrl);
 }

@@ -6,6 +6,7 @@ import { mswServer } from "@junior-tests/msw/server";
 import {
   interceptTestHttp,
   readTestEvalOAuthIdentityRequests,
+  readTestGitHubSdkReproWrites,
   resetTestEvalOAuthHttpFixtures,
   resetTestGitHubHttpFixtures,
 } from "@sentry/junior-testing/http";
@@ -128,6 +129,7 @@ export default async function setup(
       readFixtureState: () => ({
         evalOAuthIdentityRequests: readTestEvalOAuthIdentityRequests(),
         evalOAuthRefreshTokens: readEvalOAuthRefreshTokens(),
+        githubSdkReproWrites: readTestGitHubSdkReproWrites(),
       }),
       resetFixtures: ({ nowMs }) => {
         evalClock.set(nowMs);

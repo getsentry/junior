@@ -237,7 +237,8 @@ export async function insertEventAutomation(args: {
   createdBy?: SlackAuthor;
   credentialMode?: "creator" | "system";
   destination: SlackChannel;
-  task: string;
+  /** An instruction, or the task of a skill run. */
+  task: string | AutomationTask;
   trigger: EventAutomation["trigger"];
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
@@ -257,7 +258,10 @@ export async function insertEventAutomation(args: {
     destination: args.destination,
     destinationVisibility: "public",
     outcomes: [{ action: "send_message", destination: args.destination }],
-    task: { kind: "instruction", instruction: args.task },
+    task:
+      typeof args.task === "string"
+        ? { kind: "instruction", instruction: args.task }
+        : args.task,
     trigger: args.trigger,
   });
   return { id };

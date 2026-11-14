@@ -1,9 +1,15 @@
 import { http, HttpResponse } from "msw";
-import { interceptTestGitHubChecksHttp } from "@sentry/junior-testing/http";
+import {
+  interceptTestGitHubChecksHttp,
+  interceptTestGitHubSdkReproHttp,
+  resetTestGitHubSdkReproFixtures,
+} from "@sentry/junior-testing/http";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 
-export function resetGitHubApiMockState(): void {}
+export function resetGitHubApiMockState(): void {
+  resetTestGitHubSdkReproFixtures();
+}
 
 export const githubApiHandlers = [
   http.get(`${GITHUB_API_ORIGIN}/repos/:owner/:repo/deployments`, () =>
@@ -32,10 +38,10 @@ export const githubApiHandlers = [
       }),
   ),
   http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
-    const response = await interceptTestGitHubChecksHttp(
-      request,
-      new URL(request.url),
-    );
+    const url = new URL(request.url);
+    const response =
+      (await interceptTestGitHubChecksHttp(request, url)) ??
+      (await interceptTestGitHubSdkReproHttp(request, url));
     if (response) return response;
     // A matched MSW handler that returns undefined bypasses the network guard.
     throw new Error(
