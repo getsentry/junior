@@ -66,6 +66,9 @@ export function createSlackAdapterStatusSender(args: {
         ),
       );
     } catch (error) {
+      // best-effort: decision (silent side effect). The assistant status is a
+      // loading hint; a throw would fail the turn over it. See the PR
+      // decisions.
       logAssistantStatusFailure({
         status: text,
         error,
@@ -115,6 +118,9 @@ export function createSlackWebApiStatusSender(args: {
         }),
       );
     } catch (error) {
+      // best-effort: decision (silent side effect). The assistant status is a
+      // loading hint; a throw would fail the turn over it. See the PR
+      // decisions.
       logAssistantStatusFailure({
         status: text,
         error,

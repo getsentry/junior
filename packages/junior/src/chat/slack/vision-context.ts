@@ -333,6 +333,8 @@ async function storeSlackFile(args: {
     });
     return stored.id;
   } catch (error) {
+    // best-effort: decision (optional context). The attachment is still read;
+    // only its stored copy is lost. See the PR decisions.
     logWarn("attachment.storage.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
@@ -444,6 +446,8 @@ async function resolveUserAttachmentsWithDeps(
         continue;
       }
     } catch (error) {
+      // best-effort: recovery. The attachment is skipped, and the prompt says
+      // it could not be read.
       logWarn("attachment.resolution.failed", {
         "exception.message":
           error instanceof Error ? error.message : String(error),
@@ -593,6 +597,8 @@ async function resolveUserAttachmentsWithDeps(
           });
         }
       } catch (error) {
+        // best-effort: recovery. The image is skipped, and the prompt says it
+        // could not be read.
         const attachmentError =
           error instanceof ImageAttachmentProcessingError
             ? error
@@ -677,6 +683,8 @@ async function summarizeConversationImage(
     }
     return truncateVisionSummary(summary);
   } catch (error) {
+    // best-effort: decision (optional context). Image descriptions are extra
+    // context for the turn. See the PR decisions.
     logWarn("conversation.image.vision.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
@@ -743,6 +751,8 @@ async function hydrateConversationVisionContextWithDeps(
       targetMessageTs: [...messagesByTs.keys()],
     });
   } catch (error) {
+    // best-effort: decision (optional context). Image descriptions are extra
+    // context for the turn. See the PR decisions.
     logWarn("conversation.image.replies_fetch.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
@@ -833,6 +843,8 @@ async function hydrateConversationVisionContextWithDeps(
       try {
         imageData = await deps.downloadFile(downloadUrl);
       } catch (error) {
+        // best-effort: decision (optional context). Image descriptions are
+        // extra context for the turn. See the PR decisions.
         logWarn("conversation.image.download.failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),

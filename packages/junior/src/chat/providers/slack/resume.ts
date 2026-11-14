@@ -227,6 +227,8 @@ async function handleResumeFailure(args: {
   try {
     await args.resume.onFailure?.(args.error);
   } catch (persistError) {
+    // best-effort: error path. The resume already failed and that error is
+    // reported; this is a second failure while recording it.
     const persistEventId = logException(
       persistError,
       "slack.resume.failure_state_persist.failed",
@@ -241,6 +243,8 @@ async function handleResumeFailure(args: {
         ...(persistEventId ? { eventId: persistEventId } : undefined),
       });
     } catch (lifecycleError) {
+      // best-effort: error path. The resume already failed and that error is
+      // reported; this is a second failure while recording it.
       logException(
         lifecycleError,
         "slack.resume.failure_lifecycle_persist.failed",
@@ -269,6 +273,8 @@ async function handleResumeFailure(args: {
         ...(deliveryEventId ? { eventId: deliveryEventId } : undefined),
       });
     } catch (lifecycleError) {
+      // best-effort: error path. The resume already failed and that error is
+      // reported; this is a second failure while recording it.
       logException(
         lifecycleError,
         "slack.resume.failure_lifecycle_persist.failed",
@@ -601,6 +607,9 @@ async function resumeSlackTurnInContext(
           }),
         );
       } catch (error) {
+        // best-effort: after delivery. The reply already reached the user and
+        // the persist already retried; a throw would post a second, failed
+        // reply.
         logException(
           error,
           "slack.resume.assistant_message_post_delivery_persist.failed",
@@ -623,6 +632,9 @@ async function resumeSlackTurnInContext(
             }),
           );
         } catch (error) {
+          // best-effort: decision (secondary write). The receipt write follows
+          // a delivered reply; a throw would post a second, failed reply. See
+          // the PR decisions.
           logException(error, "agent.turn.delivery_receipt_persist.failed");
         }
       }
@@ -787,6 +799,9 @@ async function resumeSlackTurnInContext(
           scheduleSessionCompletedPluginTasks
         )(params);
       } catch (scheduleError) {
+        // best-effort: decision (secondary write). plugin isolation. A plugin
+        // task failure must not fail the turn that already completed, and no
+        // plugin code is left to catch it. See the PR decisions.
         logException(
           scheduleError,
           "plugin.session.completed_task_schedule.failed",
@@ -816,6 +831,8 @@ async function resumeSlackTurnInContext(
       try {
         await runArgs.onPostDeliveryCommitFailure?.(error);
       } catch (terminalizeError) {
+        // best-effort: error path. The turn already has its outcome; this is a
+        // second failure while terminalizing it.
         logException(
           terminalizeError,
           "slack.resume.post_delivery_terminalize.failed",

@@ -126,6 +126,9 @@ async function grantChannelCanvasAccess(
       },
     );
   } catch {
+    // best-effort: decision (silent side effect). The canvas is already
+    // created; a throw would fail the tool over its access setting. See the PR
+    // decisions.
     logWarn("slack.canvas.access_set.failed", {
       "app.slack.action": "canvases.access.set",
       "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),

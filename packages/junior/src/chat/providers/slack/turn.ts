@@ -461,6 +461,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               text,
             });
           } catch (error) {
+            // best-effort: decision (silent side effect). The turn is already
+            // paused for auth; a throw would fail the pause over its notice.
+            // See the PR decisions.
             logException(error, "slack.auth_pause.notice_post.failed", {
               "app.slack.reply_stage": "thread_reply_auth_pause_notice",
               ...(messageTs
@@ -712,6 +715,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             source,
             traceId: getActiveTraceId(),
           }).catch((error) => {
+            // best-effort: decision (secondary write). The turn summary is a
+            // dashboard record for a turn the user already has. See the PR
+            // decisions.
             logException(error, "agent.turn.summary_record.failed", {
               "app.agent.turn.state": "running",
             });
@@ -936,6 +942,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             );
             await options.onTurnStatePersisted?.();
           } catch (error) {
+            // best-effort: after delivery. The reply already reached the user
+            // and the persist already retried; a throw would post a second,
+            // failed reply.
             logException(
               error,
               "slack.assistant.message_post_delivery_persist.failed",
@@ -963,6 +972,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 }),
               );
             } catch (error) {
+              // best-effort: decision (secondary write). The receipt write
+              // follows a delivered reply; a throw would post a second, failed
+              // reply. See the PR decisions.
               logException(error, "agent.turn.delivery_receipt_persist.failed");
             }
           }
@@ -1029,6 +1041,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               });
             })
             .catch((error) => {
+              // best-effort: owning boundary. The title projection runs in
+              // waitUntil after the turn; no caller can receive the error.
               logException(error, "conversation.title.task.failed");
             });
           deps.waitUntil?.(titleProjection);
@@ -1287,6 +1301,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 update: automatedTurnLimit,
               });
             } catch (saveError) {
+              // best-effort: typed result. saveFailed below returns a
+              // persistence_failed outcome with this event id; the user already
+              // saw the reply.
               // The user already saw the reply. Record the save failure without
               // posting a second error reply.
               saveFailed = true;
@@ -1436,6 +1453,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 deps.sendPluginTask ? { send: deps.sendPluginTask } : undefined,
               );
             } catch (error) {
+              // best-effort: decision (secondary write). plugin isolation. A
+              // plugin task failure must not fail the turn that already
+              // completed, and no plugin code is left to catch it. See the PR
+              // decisions.
               logException(
                 error,
                 "plugin.session.completed_task_schedule.failed",
@@ -1458,6 +1479,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             try {
               await notifyTurnCompleted();
             } catch (completionError) {
+              // best-effort: error path. The reply is delivered and committed;
+              // this reports a failed completion callback without a second
+              // reply.
               logException(
                 completionError,
                 "slack.reply.post_delivery_completion_callback.failed",
@@ -1583,6 +1607,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   });
                 }
               } catch (recordError) {
+                // best-effort: error path. The turn already failed and that
+                // error is reported; this is a second failure while recording
+                // it.
                 logException(
                   recordError,
                   "agent.turn.failed_session_record_persist.failed",

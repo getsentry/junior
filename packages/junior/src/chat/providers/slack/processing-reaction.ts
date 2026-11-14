@@ -160,6 +160,9 @@ export async function startProcessingReactionForMessage(args: {
           emoji: getChatConfig().slack.completedReactionEmoji,
         });
       } catch (error) {
+        // best-effort: decision (silent side effect). The reply is already
+        // delivered; a throw would fail the turn over a reaction. See the PR
+        // decisions.
         logProcessingReactionFailure(
           error,
           "slack.processing.reaction_complete.failed",

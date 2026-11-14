@@ -530,6 +530,8 @@ export async function withSlackRetries<T>(
         },
       );
     } catch (error) {
+      // best-effort: retry. The loop retries this Slack call, and the last
+      // attempt throws.
       const mapped = mapSlackError(error);
       const retryClass = classifySlackRetry(error, mapped);
       const isRetryable =

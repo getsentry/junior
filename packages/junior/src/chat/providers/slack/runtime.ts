@@ -691,6 +691,8 @@ export function createSlackTurnRuntime<
         });
       }
     } catch (error) {
+      // best-effort: decision (secondary write). The steering flush follows a
+      // turn the user already has. See the PR decisions.
       withLogContext(args.context, () => {
         logException(error, "agent.turn.steering_flush.failed");
       });
@@ -809,6 +811,9 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
+        // best-effort: owning boundary. This is the mention turn's failure
+        // boundary. It records the failure, replies with the event id, and lets
+        // the mailbox redeliver attempts that are not final.
         const failureLogContext = logContext({
           threadId: getThreadId(thread, message),
           actorId: message.author.userId,
@@ -1191,6 +1196,9 @@ export function createSlackTurnRuntime<
           });
         });
       } catch (error) {
+        // best-effort: owning boundary. This is the subscribed turn's failure
+        // boundary. It records the failure, replies with the event id, and lets
+        // the mailbox redeliver attempts that are not final.
         const failureLogContext = logContext({
           threadId: getThreadId(thread, message),
           actorId: message.author.userId,

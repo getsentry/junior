@@ -22,6 +22,8 @@ async function releaseFailedNoticeClaim(args: {
   try {
     await clearAutomatedTurnLimitNoticeClaim(args);
   } catch (error) {
+    // best-effort: error path. The notice post already failed and is reported;
+    // this is a second failure while clearing its claim.
     logException(error, "automated_turn_limit.notice.claim_clear_failed");
   }
 }

@@ -60,6 +60,8 @@ async function resolveReplyMentions(
   try {
     return await resolveHandleMentions(text, teamId);
   } catch (error) {
+    // best-effort: decision (optional context). Mention resolution only formats
+    // names; the reply is sent with raw ids. See the PR decisions.
     logWarn("slack.reply.mentions.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
