@@ -3,10 +3,7 @@ import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
-import {
-  countOpenParentMessages,
-  listOpenChildAgentsWithoutAgentInvocations,
-} from "./list";
+import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   AgentInvocationLimitError,
@@ -34,8 +31,9 @@ import {
 /** Cap concurrent non-terminal children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 /**
- * Cap the non-terminal agent invocations of one child, including the one that
- * runs. Each message to a busy child queues one more.
+ * Cap the non-terminal Agent invocations of one child, including the one that
+ * runs. Each message to a busy child with a row queues one more. A child with
+ * no row has no cap: its parent messages wait in its mailbox like any input.
  */
 const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
 
@@ -380,14 +378,11 @@ export async function createAgentInvocationForMessage(
         latest ?? (await readAgentConfig(input.childConversationId)) ?? {};
       const open = await listOpenAgentInvocations(input.parentConversationId);
       await assertCanGiveChildWork(input.parentConversationId, open);
-      // A child that no Agent invocation names counts its open parent
-      // messages instead.
-      const openCount =
-        open.filter(
-          (row) => row.childConversationId === input.childConversationId,
-        ).length +
-        (latest ? 0 : await countOpenParentMessages(input.childConversationId));
-      if (openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
+      const openCount = open.filter(
+        (row) => row.childConversationId === input.childConversationId,
+      ).length;
+      // TODO(#3060 step 7): delete with rows
+      if (latest && openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
         throw new AgentMessageQueueFullError(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
         );

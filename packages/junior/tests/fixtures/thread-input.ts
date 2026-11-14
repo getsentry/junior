@@ -144,17 +144,12 @@ function runInputCheckpoint(run: AgentRun) {
 }
 
 /**
- * Save a run's input as its Turn's first checkpoint, as the agent does
- * before its first model call. The Turn then has a stored record, as a real
- * run's Turn does. Its input stays in the mailbox until the run commits it.
+ * Take a run's input as the agent does before its first model call: save it
+ * as the Turn's first checkpoint, then commit it. The Turn then has a stored
+ * record, as a real run's Turn does.
  */
-export async function saveRunInput(run: AgentRun): Promise<void> {
-  await saveTurnCheckpoint({ ...runInputCheckpoint(run), mode: "running" });
-}
-
-/** Save a run's input as its first checkpoint, then commit it. */
 export async function commitRunInput(run: AgentRun): Promise<void> {
-  await saveRunInput(run);
+  await saveTurnCheckpoint({ ...runInputCheckpoint(run), mode: "running" });
   await run.durability?.onInputCommitted?.();
 }
 
