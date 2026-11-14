@@ -17,11 +17,17 @@ export interface HeartbeatHookContext extends PluginContext {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
+  /** Conversation annotations, as from a plugin route. */
+  annotations: PluginConversationAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: CodeChangePublisher;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
+  /** Review desk items, as from a plugin route. */
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 

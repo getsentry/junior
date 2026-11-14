@@ -7,6 +7,7 @@ import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
+import { readConversationAgentTree } from "./agent-tree";
 import { readFirstHumanMessageTexts } from "./first-message";
 import {
   readConversationEventPage,
@@ -14,6 +15,7 @@ import {
   readConversationEventPageAround,
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import {
   conversationEventHistory,
@@ -37,6 +39,7 @@ import {
   conversationDetailReportSchema,
 } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
+import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
@@ -52,7 +55,6 @@ function projectConversationDetail(args: {
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
   pinnedAtMs?: number;
-  unreadReply?: boolean;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -86,7 +88,6 @@ function projectConversationDetail(args: {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
       pinnedAtMs: args.pinnedAtMs,
-      unreadReply: args.unreadReply,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -152,12 +153,13 @@ async function readConversationDetailFromSql(
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
+  const readAccess = createConversationAccessReader(getDb(), options.viewer);
   const { record, state } =
     options.stored ??
     (await readConversationDetailState(
       conversationId,
       options.viewer,
-      createConversationAccessReader(getDb(), options.viewer),
+      readAccess,
     ));
   if (!record) return undefined;
   const { access, readPosition } = state;
@@ -203,6 +205,7 @@ async function readConversationDetailFromSql(
   };
   // Access is known, so the event page reads beside the metadata.
   const [
+    agentTree,
     annotations,
     automationTitleByConversation,
     auxiliaryCostsByConversation,
@@ -215,7 +218,21 @@ async function readConversationDetailFromSql(
     teamDomainByTeamId,
     page,
   ] = await Promise.all([
-    listConversationAnnotations(getDb(), conversationId),
+    readConversationAgentTree(
+      {
+        conversationId,
+        ...(record.conversation.parentConversationId
+          ? { parentConversationId: record.conversation.parentConversationId }
+          : undefined),
+      },
+      readAccess,
+    ),
+    listConversationAnnotations(getDb(), conversationId).then((saved) =>
+      saved.map((annotation) => {
+        const previewImages = objectPreviewImages(annotation);
+        return previewImages ? { ...annotation, previewImages } : annotation;
+      }),
+    ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
@@ -253,7 +270,7 @@ async function readConversationDetailFromSql(
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
           ...(brief ? { brief } : undefined),
-          events: page.events,
+          events: page.events.map(formatConversationEventText),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The
@@ -302,7 +319,6 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
-    unreadReply: state.unreadReply,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
@@ -344,7 +360,7 @@ async function readConversationDetailFromSql(
   return {
     ...report,
     ...state.forks,
-    ...(state.agentTree ? { agentTree: state.agentTree } : undefined),
+    ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
       : undefined),

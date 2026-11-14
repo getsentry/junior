@@ -1,8 +1,10 @@
 /** Store web input in a Conversation mailbox. */
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { storeInputImages } from "@/chat/attachments/images";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import {
+  recordAttachmentUploads,
+  type VerifiedAttachmentUpload,
+} from "@/chat/attachments/uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -45,7 +47,8 @@ type EnqueueOptions = {
 export interface CreateConversationInput {
   actor: WebActor;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of the first message. */
+  uploads?: VerifiedAttachmentUpload[];
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
   /** Saved title. Title generation runs only when it is omitted. */
@@ -59,7 +62,8 @@ export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of this Message. */
+  uploads?: VerifiedAttachmentUpload[];
   idempotencyKey: string;
   /** Review item change that this Message reports. */
   reviewItemChange?: ReviewItemChangeRecord;
@@ -285,7 +289,7 @@ export async function createAndEnqueueConversation(
       conversationId,
       idempotencyKey: input.idempotencyKey,
       message: input.message,
-      images: input.images,
+      uploads: input.uploads,
       ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
     },
@@ -307,7 +311,7 @@ export async function appendAndEnqueueWebMessage(
   options: EnqueueOptions & { exclusive?: boolean },
 ): Promise<WebMessageResult> {
   const text = input.message.trim();
-  if (!text && !input.images?.length) {
+  if (!text && !input.uploads?.length) {
     throw new Error("Web Message must not be empty");
   }
   if (!input.actor.email) {
@@ -327,13 +331,16 @@ export async function appendAndEnqueueWebMessage(
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
   });
   let attachments: MessageAttachment[] = [];
-  if (input.images?.length) {
+  if (input.uploads?.length) {
     if (!options.attachmentStorage)
       throw new Error("Attachment storage is unavailable.");
-    attachments = await storeInputImages({
+    // The Conversation row exists now, so attachment rows can refer to it.
+    attachments = await recordAttachmentUploads({
       conversationId: input.conversationId,
-      files: input.images,
+      db: getSqlExecutor(),
+      nowMs,
       storage: options.attachmentStorage,
+      uploads: input.uploads,
     });
   }
   const enqueue = options.exclusive

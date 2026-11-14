@@ -105,12 +105,15 @@ async function pendingMessages(conversationId: string) {
   return conversation?.execution.pendingMessages ?? [];
 }
 
-async function savedTakes(conversationId: string) {
+async function savedChanges(
+  conversationId: string,
+  kind: "taken" | "dismissed",
+) {
   const messages = projectConversationMessages(
     await getConversationEventStore().loadMessageHistory(conversationId),
   );
   return messages.filter((message) =>
-    message.meta?.reviewItemChanges?.some((change) => change.kind === "taken"),
+    message.meta?.reviewItemChanges?.some((change) => change.kind === kind),
   );
 }
 
@@ -480,7 +483,7 @@ describe("review item actions API", () => {
     // Message with its record, so the dashboard still shows it, and a later
     // answer does not change what it shows.
     expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
-    expect(await savedTakes("slack:CPUB:1.000001")).toEqual([
+    expect(await savedChanges("slack:CPUB:1.000001", "taken")).toEqual([
       expect.objectContaining({
         text: expect.stringContaining("cal@example.com took review item"),
         meta: expect.objectContaining({
@@ -504,14 +507,19 @@ describe("review item actions API", () => {
       queue: fixture.queue,
     });
     expect(await pendingMessages(CLI_CONVERSATION_ID)).toEqual([]);
-    expect(await savedTakes(CLI_CONVERSATION_ID)).toHaveLength(1);
+    expect(await savedChanges(CLI_CONVERSATION_ID, "taken")).toHaveLength(1);
 
+    // A dismiss also starts no Turn. It is saved the same way.
     const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
     expect(dismissed.status).toBe(200);
-    expect(
-      (await pendingMessages("slack:CPUB:1.000001")).map(
-        (message) => message.input.reviewItemChange,
-      ),
-    ).toEqual([{ kind: "dismissed", reviewItemId: id }]);
+    expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    expect(await savedChanges("slack:CPUB:1.000001", "dismissed")).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("cal@example.com dismissed review item"),
+        meta: expect.objectContaining({
+          reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],
+        }),
+      }),
+    ]);
   });
 });

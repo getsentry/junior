@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
+import { gitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 const linkedUser = {
   displayName: "David Cramer",
@@ -68,14 +69,12 @@ function toolContext(
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
-    slack: {
-      conversationLink: { url: "https://example.com/session" },
-    },
+    conversationLink: { url: "https://example.com/session" },
     users: {
       resolveActor: async () => (user ? { user } : undefined),
     },
   };
-  return { fetch, tool: createGitHubUpdateIssueTool(ctx) };
+  return { fetch, tool: bindPluginTool(gitHubUpdateIssueTool, ctx) };
 }
 
 describe("updateIssue", () => {

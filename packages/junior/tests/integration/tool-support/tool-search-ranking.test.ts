@@ -14,6 +14,9 @@ import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { searchCatalogTools } from "@/chat/tools/search-tools";
+import { planToolExposure } from "@/chat/tool-exposure";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -46,6 +49,8 @@ const RANKING_CASES = [
   ["edit the issue title", "github", "github_updateIssue"],
   ["closing an issue", "github", "github_updateIssue"],
   ["add a comment to an issue", "github", "github_commentOnIssue"],
+  ["edit my issue comment", "github", "github_updateIssueComment"],
+  ["react to an issue", "github", "github_reactToIssue"],
   ["get CI check status for a commit", "github", "github_getStatus"],
   ["get the latest release", "github", "github_getRelease"],
   ["get repository details", "github", "github_getRepository"],
@@ -63,6 +68,7 @@ const RANKING_CASES = [
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
   ["find open review items", "review-desk", "searchReviewItems"],
   ["update a review item", "review-desk", "updateReviewItem"],
+  ["list automations", "automations", "searchAutomations"],
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],
   ["view a pull request", "github", "github_getPullRequest"],
@@ -97,10 +103,33 @@ const NO_MATCH_CASES = [
   ["edit a memory", null],
 ] as const;
 
-// Tools that only a source or provider name can tell apart.
-const COLLISION_CASES = [
-  ["create an issue", ["github_createIssue", "tracker_create_issue"]],
-  ["get issue details", ["github_getIssue", "tracker_get_issue"]],
+// Queries with two actions. The top two tools are the ones that do them.
+const TWO_ACTION_CASES = [
+  [
+    "automation list update channel",
+    "automations",
+    ["searchAutomations", "updateAutomation"],
+  ],
+  [
+    "list then update automation destination",
+    "automations",
+    ["searchAutomations", "updateAutomation"],
+  ],
+] as const;
+
+// Word matches that cannot tell which tool fits, so the model decides.
+const MODEL_DECIDES_CASES = [
+  ["closing a pull request", "github"],
+  ["mark a draft pull request ready for review", "github"],
+  ["closing an issue", "github"],
+  ["add a comment to an issue", "github"],
+  // Issue and issue comment tools share the update action.
+  ["edit my issue comment", "github"],
+  ["remember something", "memory"],
+  ["modify an issue", "github"],
+  ["create repository", "github"],
+  ["create repository", null],
+  ["edit a memory", null],
 ] as const;
 
 function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
@@ -155,26 +184,30 @@ const trackerPlugin = defineJuniorPlugin({
 
 type AgentTools = ReturnType<typeof createPiAgentTools>;
 
+function catalogToolDefinitions() {
+  return createTools(
+    [],
+    {},
+    {
+      turnTools: rootTurnTools,
+      conversationId: CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CONVERSATION_ID },
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      source: createWebSource(CONVERSATION_ID, "public"),
+      workspace: {} as Parameters<typeof createTools>[2]["workspace"],
+    },
+  ) as Record<string, AnyToolDefinition>;
+}
+
 function catalogTools(): AgentTools {
   return createPiAgentTools(
-    createTools(
-      [],
-      {},
-      {
-        turnTools: rootTurnTools,
-        conversationId: CONVERSATION_ID,
-        destination: { platform: "local", conversationId: CONVERSATION_ID },
-        egress: {
-          async fetch() {
-            return new Response("ok");
-          },
-        },
-        source: createWebSource(CONVERSATION_ID, "public"),
-        workspace: {} as Parameters<typeof createTools>[2]["workspace"],
-      },
-    ),
+    catalogToolDefinitions(),
     new SkillSandbox([], []),
-    {},
+    { spanContext: {}, searchToolsCost: { owner: "none" } },
   );
 }
 
@@ -197,6 +230,7 @@ async function search(
 
 describe("tool search ranking", () => {
   let tools: AgentTools;
+  let catalog: Record<string, AnyToolDefinition>;
 
   beforeAll(async () => {
     await createApp({
@@ -207,6 +241,7 @@ describe("tool search ranking", () => {
       ]),
     });
     tools = catalogTools();
+    catalog = planToolExposure(catalogToolDefinitions()).catalogTools;
   });
 
   afterAll(async () => {
@@ -214,37 +249,63 @@ describe("tool search ranking", () => {
   });
 
   // Compare whole tables so one run shows every ranking regression.
-  it("ranks the fitting tool first", async () => {
-    const ranked = [];
-    for (const [query, source] of RANKING_CASES) {
-      const [top] = (await search(tools, query, source)).names;
-      ranked.push([query, source, top]);
-    }
+  it("ranks the fitting tool first", () => {
+    const ranked = RANKING_CASES.map(([query, source]) => [
+      query,
+      source,
+      searchCatalogTools(catalog, query, source).matches[0],
+    ]);
     expect(ranked).toEqual(RANKING_CASES);
   });
 
-  it("returns nothing when no tool fits", async () => {
-    const found = [];
-    for (const [query, source] of NO_MATCH_CASES) {
-      const { names, note } = await search(tools, query, source);
-      found.push([query, names, note]);
-    }
-    expect(found).toEqual(
-      NO_MATCH_CASES.map(([query]) => [
-        query,
-        [],
-        expect.stringContaining("No tool fits"),
-      ]),
+  it("ranks a tool for each action in a two-action query", () => {
+    const found = TWO_ACTION_CASES.map(([query, source]) => [
+      query,
+      source,
+      searchCatalogTools(catalog, query, source).matches.slice(0, 2).sort(),
+    ]);
+    expect(found).toEqual(TWO_ACTION_CASES);
+  });
+
+  it("sends only unclear word matches to the model", () => {
+    const reranked = [...RANKING_CASES, ...NO_MATCH_CASES].flatMap(
+      ([query, source, tool]) => {
+        const { unclearCandidates } = searchCatalogTools(
+          catalog,
+          query,
+          source,
+        );
+        if (unclearCandidates.length === 0) return [];
+        // The model can pick only a candidate, so the fitting tool must be
+        // one.
+        return [[query, source, !tool || unclearCandidates.includes(tool)]];
+      },
+    );
+    expect(reranked).toEqual(
+      MODEL_DECIDES_CASES.map(([query, source]) => [query, source, true]),
     );
   });
 
-  // Two-step search, which picks the source first, is meant to fix these.
-  it("ranks overlapping tools from two plugins together without a source", async () => {
-    const found = [];
-    for (const [query] of COLLISION_CASES) {
-      const top = (await search(tools, query, null)).names.slice(0, 2);
-      found.push([query, top.sort()]);
-    }
-    expect(found).toEqual(COLLISION_CASES);
+  it("returns nothing when no tool fits", async () => {
+    const found = NO_MATCH_CASES.map(([query, source]) => [
+      query,
+      searchCatalogTools(catalog, query, source).matches,
+    ]);
+    expect(found).toEqual(NO_MATCH_CASES.map(([query]) => [query, []]));
+    // A query that matches no tool words gets the note without the model.
+    expect(await search(tools, "book a flight", "github")).toEqual({
+      names: [],
+      note: expect.stringContaining("No tool fits"),
+    });
+  });
+
+  it("skips the model when one tool clearly wins", async () => {
+    // The test has no model, so a model call would fail the search.
+    const { names } = await search(
+      tools,
+      "create a new GitHub issue",
+      "github",
+    );
+    expect(names[0]).toBe("github_createIssue");
   });
 });

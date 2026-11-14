@@ -112,10 +112,10 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
           <DialogFooter>
             <DialogClose
               disabled={fork.isPending}
-              render={<Button>Cancel</Button>}
+              render={<Button variant="outline">Cancel</Button>}
             />
             <Button
-              variant="primary"
+              variant="default"
               type="submit"
               disabled={!message.trim() || fork.isPending}
             >

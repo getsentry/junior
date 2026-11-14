@@ -19,9 +19,9 @@ import {
 } from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
-  SubagentTranscriptDrawer,
-  type SubagentTranscriptTarget,
-} from "../src/client/conversations/SubagentTranscriptDrawer";
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
@@ -51,15 +51,18 @@ import type { ConversationTranscript, SystemData } from "../src/client/types";
 vi.mock("../src/client/components/Drawer", () => ({
   Drawer: ({
     header,
+    subheader,
     actions,
     children,
   }: {
     header: ReactNode;
+    subheader?: ReactNode;
     actions?: ReactNode;
     children: ReactNode;
   }) => (
     <>
       {header}
+      {subheader}
       {actions}
       {children}
     </>
@@ -198,11 +201,13 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
 describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="line">
-        <DisplayText
-          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
-        />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="line">
+          <DisplayText
+            text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
@@ -213,9 +218,11 @@ describe("dashboard canonical-event components", () => {
 
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="docs.sentry.io">
-        <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="docs.sentry.io">
+          <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain("<mark");
@@ -240,9 +247,11 @@ describe("dashboard canonical-event components", () => {
 
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain(
@@ -327,6 +336,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="search">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               input: { query: "regression" },
@@ -350,6 +360,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               name: "webSearch",
@@ -380,7 +391,6 @@ describe("dashboard canonical-event components", () => {
               delivery: () => {},
               eventLog: () => {},
               pin: () => {},
-              read: () => {},
               rename: () => {},
               subscription: () => {},
             },
@@ -392,7 +402,6 @@ describe("dashboard canonical-event components", () => {
               archive: false,
               delivery: false,
               pin: false,
-              read: false,
               subscription: false,
             },
           }}
@@ -404,6 +413,7 @@ describe("dashboard canonical-event components", () => {
           searchMatch={{
             count: 0,
             index: 0,
+            reset: () => {},
             setMatches: () => {},
             step: () => {},
           }}
@@ -446,6 +456,79 @@ describe("dashboard canonical-event components", () => {
     expect(liveHtml).not.toContain(">active</span>");
     expect(quietHtml).not.toContain("Junior is thinking…");
     expect(completedHtml).not.toContain("Junior is thinking…");
+
+    // Once the Turn has activity, its latest step replaces the thinking row.
+    const working = conversation(
+      [
+        event(0, {
+          messageId: "ask",
+          role: "user",
+          text: "Find the slow span.",
+          type: "message",
+        }),
+        event(1, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "spans",
+              name: "bash",
+              status: "running",
+              input: { command: "sentry-cli spans query" },
+            },
+          ],
+          assistant: {
+            parts: [
+              { type: "reasoning", text: "Compare the serializer spans." },
+              { type: "tool_call", toolCallId: "spans" },
+            ],
+          },
+        }),
+      ],
+      { status: "active" },
+    );
+    const workingHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={working} />
+      </QueryClientProvider>,
+    );
+    // The reasoning shows above the announced step line.
+    const step = workingHtml.match(
+      /Compare the serializer spans\.[^]*?aria-live="polite"[^]*?sentry-cli spans query/,
+    )?.[0];
+    expect(step).toContain("Running");
+    expect(workingHtml).toContain("Working for");
+    expect(workingHtml).not.toContain("Junior is thinking…");
+
+    // A running Task line shows that Junior waits on it.
+    const waiting = conversation(
+      [
+        ...working.events,
+        event(2, {
+          type: "subagent",
+          startedSeq: 2,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "internal:span-review",
+          childKind: "task",
+          subagentKind: "advisor",
+          title: "Review the spans",
+          status: "running",
+        }),
+      ],
+      { status: "active" },
+    );
+    const waitingHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={waiting} />
+      </QueryClientProvider>,
+    );
+    expect(waitingHtml).toContain("Review the spans");
+    expect(waitingHtml).not.toContain("Junior is thinking…");
+    const pausedHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live responding={false} transcript={working} />
+      </QueryClientProvider>,
+    );
+    expect(pausedHtml).not.toContain('aria-live="polite"');
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -1146,9 +1229,7 @@ describe("dashboard canonical-event components", () => {
         </TranscriptSearchProvider>
       </QueryClientProvider>,
     );
-    expect(html).toContain("advisor");
-    expect(html).toContain(label);
-    expect(html).toContain('aria-label="Open advisor transcript"');
+    expect(html).toContain(`aria-label="Open advisor transcript (${label})"`);
   });
 
   it("loads child drawers from the ordinary conversation query", () => {
@@ -1164,7 +1245,7 @@ describe("dashboard canonical-event components", () => {
       { conversationId: "child-1", displayTitle: "Advisor review" },
     );
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "completed",
     };
@@ -1172,7 +1253,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1192,7 +1273,7 @@ describe("dashboard canonical-event components", () => {
       status: "completed",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "error",
     };
@@ -1200,7 +1281,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1230,7 +1311,9 @@ describe("dashboard canonical-event components", () => {
       </QueryClientProvider>,
     );
 
-    expect(parentHtml).toContain('aria-label="Open advisor transcript"');
+    expect(parentHtml).toContain(
+      'aria-label="Open advisor transcript (running)"',
+    );
 
     const child = conversation([], {
       conversationId: "child-1",
@@ -1241,7 +1324,8 @@ describe("dashboard canonical-event components", () => {
     const drawerHtml = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer
+          <ConversationDrawer
+            icon={null}
             target={{
               conversationId: "child-1",
               status: "running",
@@ -1281,7 +1365,7 @@ describe("dashboard canonical-event components", () => {
         status: "error",
       },
     );
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-error",
       status: "error",
     };
@@ -1289,7 +1373,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={errorClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1324,7 +1408,7 @@ describe("dashboard canonical-event components", () => {
       fetchStatus: "idle",
       status: "error",
     });
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-stale",
       status: "running",
     };
@@ -1332,7 +1416,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={staleClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );

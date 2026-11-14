@@ -34,6 +34,7 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
@@ -141,8 +142,7 @@ function groupTurns(items: HistoryItem[]): {
       continue;
     }
     // A real turn stores what it read from a file. History has no such data.
-    const files = item.kind === "web_message" ? item.images : item.files;
-    if (files?.length) {
+    if (item.files?.length) {
       throw new Error("history takes no files; send the file in a call");
     }
     // A real turn stores the text that it read from a forwarded message.
@@ -337,7 +337,15 @@ async function historyUserMessage(args: {
       actor,
       agentMessage: {
         role: "user",
-        content: [{ type: "text", text: renderCurrentInstruction(input.text) }],
+        content: [
+          {
+            type: "text",
+            text: renderCurrentInstruction(
+              input.text,
+              instructionActorFor(actor),
+            ),
+          },
+        ],
         timestamp: args.createdAtMs,
       },
       conversationMessage: {

@@ -1,8 +1,7 @@
 import { useState } from "react";
-import {
-  normalizeUserInputAnswer,
-  type ReviewItemActionBody,
-  type ReviewItemPayload,
+import type {
+  ReviewItemActionBody,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
@@ -12,6 +11,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
+import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 
 function personLabel(person: { displayName?: string; email: string }) {
@@ -30,14 +30,7 @@ export function AnswerSummary(props: {
   answer: NonNullable<ReviewItemPayload["answer"]>;
   request: NonNullable<ReviewItemPayload["request"]>;
 }) {
-  const answer = normalizeUserInputAnswer(props.request, props.answer);
-  const rows = props.request.fields.flatMap((field) => {
-    const values = answer.values[field.id];
-    return values?.length
-      ? [{ label: field.label, value: values.join(", ") }]
-      : [];
-  });
-  if (answer.other) rows.push({ label: "Other", value: answer.other });
+  const rows = answerRows(props.request, props.answer);
   return (
     <dl className="m-0 grid gap-2 rounded-md bg-dashboard-fill-soft p-3">
       {rows.map((row) => (
@@ -109,7 +102,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
         <Button
           disabled={action.isPending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
-          variant="quiet"
+          variant="ghost"
         >
           Take
         </Button>
@@ -117,7 +110,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
       <Button
         disabled={action.isPending}
         onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="quiet"
+        variant="ghost"
       >
         Dismiss
       </Button>

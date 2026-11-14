@@ -1,14 +1,15 @@
 import {
   INLINE_VIDEO_TYPES,
   INPUT_IMAGE_TYPES,
-  type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { useMutation } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
 import {
   type ReactNode,
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -17,14 +18,27 @@ import {
   ImageAttachment,
   type PreviewImage,
 } from "../components/ImageAttachment";
+import { Spinner } from "../components/ui/spinner";
+import { DashboardApiError, checkDashboardDownload } from "../http";
 import type { TranscriptViewMessage } from "../types";
 import { TextAttachmentPreview } from "./TextAttachmentPreview";
 import { textPreviewLanguage } from "./textPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-/** Build a data URL that previews an image before the server stores it. */
-export function inputImageSrc(image: InputImage): string {
-  return `data:${image.contentType};base64,${image.data}`;
+/** True for a local file that the transcript can show as an image. */
+export function isImageFile(file: File): boolean {
+  return INPUT_IMAGE_TYPES.some((type) => type === file.type);
+}
+
+/** Object URL that previews a local file while the component shows it. */
+export function useFileUrl(file: File): string | undefined {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
 }
 
 /** Build the private read route for one stored conversation attachment. */
@@ -35,7 +49,8 @@ export function conversationAttachmentUrl(
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
-function formatAttachmentBytes(bytes: number): string {
+/** Short size label, such as `3.2 MB`. */
+export function formatAttachmentBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -141,8 +156,11 @@ export function TranscriptAttachments(props: {
   const search = useTranscriptSearch();
   if (props.attachments.length === 0) return null;
   // Search highlights filenames, so every attachment shows as a file row.
+  // A pending file has no bytes to show yet, so it stays a file row.
   const isMedia = (attachment: MessageAttachment) =>
-    !search.active && (isInlineImage(attachment) || isInlineVideo(attachment));
+    !search.active &&
+    !attachment.pending &&
+    (isInlineImage(attachment) || isInlineVideo(attachment));
   const entries = props.attachments.map((attachment, index) => ({
     attachment,
     key: `${attachment.id}:${index}`,
@@ -177,27 +195,63 @@ export function TranscriptAttachments(props: {
   );
 }
 
-/** Show the images of a send before the server stores them. */
-export function TranscriptLocalImages(props: { images: InputImage[] }) {
+/** Show the files of a send before the server stores them. */
+export function TranscriptLocalFiles(props: { files: File[] }) {
+  const entries = props.files.map((file, index) => ({
+    file,
+    key: `${file.name}:${index}`,
+  }));
+  const images = entries.filter((entry) => isImageFile(entry.file));
+  const files = entries.filter((entry) => !isImageFile(entry.file));
   return (
-    <div className={MEDIA_GRID_CLASS}>
-      {props.images.map((image, index) => (
-        <figure
-          className="grid min-w-0 gap-1"
-          key={`${image.filename}:${index}`}
-        >
-          <ImageAttachment
-            filename={image.filename}
-            imageClassName={TRANSCRIPT_IMAGE_CLASS}
-            src={inputImageSrc(image)}
-            triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
-          />
-          <MediaCaption filename={image.filename} />
-        </figure>
-      ))}
+    <div className="grid min-w-0 gap-2">
+      {images.length > 0 ? (
+        <div className={MEDIA_GRID_CLASS}>
+          {images.map((entry) => (
+            <TranscriptLocalImage file={entry.file} key={entry.key} />
+          ))}
+        </div>
+      ) : null}
+      {files.length > 0 ? (
+        <div className={FILE_GRID_CLASS}>
+          {files.map((entry) => (
+            <div className={FILE_ROW_BASE_CLASS} key={entry.key}>
+              <FileRowLabel
+                filename={entry.file.name}
+                meta={[
+                  entry.file.type || "file",
+                  formatAttachmentBytes(entry.file.size),
+                ].join(" · ")}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
+
+function TranscriptLocalImage(props: { file: File }) {
+  const src = useFileUrl(props.file);
+  return (
+    <figure className="grid min-w-0 gap-1">
+      {src ? (
+        <ImageAttachment
+          filename={props.file.name}
+          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+          src={src}
+          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
+        />
+      ) : (
+        <div className={MEDIA_FRAME_CLASS} />
+      )}
+      <MediaCaption bytes={props.file.size} filename={props.file.name} />
+    </figure>
+  );
+}
+
+const DOWNLOAD_BUTTON_CLASS =
+  "grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus disabled:pointer-events-none";
 
 function MediaCaption(props: {
   bytes?: number;
@@ -217,7 +271,7 @@ function MediaCaption(props: {
       {props.download ? (
         <a
           aria-label={`Download ${props.download.filename}`}
-          className="grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          className={DOWNLOAD_BUTTON_CLASS}
           download={props.download.filename}
           href={props.download.href}
           rel="noreferrer"
@@ -283,9 +337,82 @@ function TranscriptMediaTile(props: {
   );
 }
 
-// Every file row shares this look, as a preview button or a download link.
-const FILE_ROW_CLASS =
-  "grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+// Every file row shares this look. A stored file is a preview button or a
+// download link; a file that is still sending is neither. A large Slack file
+// that Junior never stores has its own Download button.
+const FILE_ROW_SHELL_CLASS =
+  "grid w-full min-w-0 items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
+const FILE_ROW_BASE_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)]`;
+const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus`;
+const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
+
+/**
+ * Render a large Slack file that Junior never stores. Download loads the
+ * file URL in a hidden frame, and the server streams it from Slack. A saved
+ * file never loads a document in the frame. An error response does, and the
+ * conversation page stays in place, so the row then asks the server why.
+ */
+function PendingFileRow(props: {
+  attachment: MessageAttachment;
+  conversationId: string;
+}) {
+  const downloadHref = `${conversationAttachmentUrl(
+    props.conversationId,
+    props.attachment.id,
+  )}?download=true`;
+  const { filename } = props.attachment;
+  const [attempt, setAttempt] = useState(0);
+  const check = useMutation({
+    mutationFn: () => checkDashboardDownload(downloadHref),
+  });
+  const error = check.error
+    ? (check.error instanceof DashboardApiError && check.error.apiError) ||
+      "Could not download the file. Try again."
+    : undefined;
+  return (
+    <div className={PENDING_FILE_ROW_CLASS}>
+      <FileRowLabel
+        filename={filename}
+        meta={attachmentMeta(props.attachment)}
+        status={
+          error
+            ? { error: true, label: error }
+            : { label: "Too large to preview" }
+        }
+      />
+      <button
+        aria-busy={check.isPending}
+        aria-label={`Download ${filename}`}
+        className={DOWNLOAD_BUTTON_CLASS}
+        disabled={check.isPending}
+        onClick={() => {
+          check.reset();
+          setAttempt((value) => value + 1);
+        }}
+        type="button"
+      >
+        {check.isPending ? (
+          <Spinner
+            aria-hidden="true"
+            className="size-3.5"
+            role="presentation"
+          />
+        ) : (
+          <Download size={13} />
+        )}
+      </button>
+      {attempt > 0 ? (
+        <iframe
+          hidden
+          key={attempt}
+          onLoad={() => check.mutate()}
+          src={downloadHref}
+          title={`Download ${filename}`}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 /** Render one stored file as a row that previews text or downloads the file. */
 function TranscriptFileRow(props: {
@@ -300,23 +427,17 @@ function TranscriptFileRow(props: {
   const meta = attachmentMeta(props.attachment);
   const language = textPreviewLanguage(props.attachment);
   const label = (
-    <>
-      <span
-        aria-hidden="true"
-        className="grid size-6 place-items-center text-dashboard-text-muted"
-      >
-        <FileText size={13} />
-      </span>
-      <div className="min-w-0">
-        <div className="truncate font-mono text-xs text-dashboard-text">
-          <HighlightText text={props.attachment.filename} />
-        </div>
-        <div className="truncate font-mono text-xs text-dashboard-text-muted">
-          <HighlightText text={meta} />
-        </div>
-      </div>
-    </>
+    <FileRowLabel filename={props.attachment.filename} meta={meta} />
   );
+
+  if (props.attachment.pending) {
+    return (
+      <PendingFileRow
+        attachment={props.attachment}
+        conversationId={props.conversationId}
+      />
+    );
+  }
 
   if (!language) {
     // `target="_blank"`: an installed iOS home screen app has no back button.
@@ -353,6 +474,41 @@ function TranscriptFileRow(props: {
           onClose={() => setPreviewOpen(false)}
         />
       ) : null}
+    </>
+  );
+}
+
+function FileRowLabel(props: {
+  filename: string;
+  meta: string;
+  /** A line under the meta, such as download progress or its failure. */
+  status?: { error?: boolean; label: string };
+}) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="grid size-6 place-items-center text-dashboard-text-muted"
+      >
+        <FileText size={13} />
+      </span>
+      <div className="min-w-0">
+        <div className="truncate font-mono text-xs text-dashboard-text">
+          <HighlightText text={props.filename} />
+        </div>
+        <div className="truncate font-mono text-xs text-dashboard-text-muted">
+          <HighlightText text={props.meta} />
+        </div>
+        {props.status?.error ? (
+          <div className="font-mono text-xs text-destructive" role="alert">
+            {props.status.label}
+          </div>
+        ) : props.status ? (
+          <div className="truncate font-mono text-xs text-dashboard-text-muted">
+            {props.status.label}
+          </div>
+        ) : null}
+      </div>
     </>
   );
 }

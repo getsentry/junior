@@ -1,4 +1,6 @@
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { buildTurnFailureResponse } from "@/chat/logging";
 
 /** Terminal failure when one turn uses too many execution slices. */
@@ -51,6 +53,16 @@ export const TURN_LIMIT_WRAP_UP_MESSAGE =
   "This Turn used its execution budget, so all tools are disabled, also " +
   `in ${CODEMODE_TOOL_NAME} scripts. Do not call a tool again in this Turn. ` +
   "Reply now with what you finished, what is left, and how to continue.";
+
+/**
+ * The wrap-up result in a gated Turn. Its answer tools still run, so it can
+ * end with its progress.
+ */
+export const GATED_TURN_LIMIT_WRAP_UP_MESSAGE =
+  "This Turn used its execution budget, so every other tool is disabled, also " +
+  `in ${CODEMODE_TOOL_NAME} scripts. Call \`${REPLY_TOOL_NAME}\` now with what you ` +
+  `finished, what is left, and how to continue, or \`${REPORT_BLOCKED_TOOL_NAME}\` ` +
+  "when the work cannot continue.";
 
 /**
  * Check tool calls against the turn limits for one slice.

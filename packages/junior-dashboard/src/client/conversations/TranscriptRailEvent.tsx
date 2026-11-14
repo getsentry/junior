@@ -3,7 +3,6 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
-  Bot,
   Brain,
   Calendar,
   Check,
@@ -31,7 +30,6 @@ type TranscriptRailEventKind =
   | "message_context"
   | "event"
   | "structured_event"
-  | "tasks"
   | "thread";
 
 /**
@@ -110,12 +108,6 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
     return {
       className: "text-violet-200",
       icon: Activity,
-    };
-  }
-  if (kind === "tasks") {
-    return {
-      className: "text-cyan-200",
-      icon: Bot,
     };
   }
   if (kind === "thread") {

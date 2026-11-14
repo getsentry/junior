@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { randomUUID } from "node:crypto";
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import {
@@ -33,10 +34,10 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
-  createMemoryArchiveTool,
-  createMemoryCreateTool,
-  createMemoryListTool,
-  createMemorySearchTool,
+  memoryArchiveTool,
+  memoryCreateTool,
+  memoryListTool,
+  memorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
 import { hashEmbeddedContent } from "../src/embedding";
@@ -79,10 +80,16 @@ function memoryHeartbeatContext(args: {
       dispatch: vi.fn(),
       get: vi.fn(),
     },
+    annotations: { forConversation: vi.fn() },
     cache: {
       async getOrLoad(_key, load) {
         return (await load()).value;
       },
+    },
+    codeChanges: {
+      associateConversations: vi.fn(),
+      record: vi.fn(),
+      recordActivity: vi.fn(),
     },
     db: memoryDb(args.fixture),
     embedder: args.embedder,
@@ -219,26 +226,6 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
     stderr: stderr.join(""),
     stdout: stdout.join(""),
   };
-}
-
-async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
-  await fixture.execute(`
-CREATE TABLE junior_destinations (
-  id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL,
-  provider_tenant_id TEXT NOT NULL,
-  provider_destination_id TEXT NOT NULL
-);
-CREATE TABLE junior_conversations (
-  conversation_id TEXT PRIMARY KEY,
-  root_conversation_id TEXT,
-  destination_id TEXT
-);
-CREATE TABLE junior_conversation_participants (
-  user_id TEXT NOT NULL,
-  root_conversation_id TEXT NOT NULL
-)
-`);
 }
 
 function unitEmbedding(
@@ -684,14 +671,10 @@ describe("memory plugin storage", () => {
     const plugin = memoryPlugin();
     const toolStates = (source: PluginTaskContext["source"]) =>
       Object.fromEntries(
-        Object.entries(
-          plugin.hooks?.tools?.({
-            db: {},
-            model: {},
-            source,
-            users: {},
-          } as any) ?? {},
-        ).map(([name, tool]) => [name, tool.disabledReason ?? "enabled"]),
+        Object.keys(plugin.hooks?.tools?.() ?? {}).map((name) => [
+          name,
+          plugin.hooks?.disabledTools?.({ source } as any)[name] ?? "enabled",
+        ]),
       );
 
     // Every Source gets the same tools, so the cached tool list stays the same.
@@ -2350,7 +2333,6 @@ describe("memory plugin storage", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
     try {
-      await installViewerCoreTables(fixture);
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
       const firstStore = createMemoryStore(memoryDb(fixture), firstContext, {
@@ -3794,10 +3776,10 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         users: memoryUsers(slackContext().userId),
       };
       const tools = {
-        createMemory: createMemoryCreateTool(context),
-        archiveMemory: createMemoryArchiveTool(context),
-        listMemories: createMemoryListTool(context),
-        searchMemories: createMemorySearchTool(context),
+        createMemory: bindPluginTool(memoryCreateTool, context),
+        archiveMemory: bindPluginTool(memoryArchiveTool, context),
+        listMemories: bindPluginTool(memoryListTool, context),
+        searchMemories: bindPluginTool(memorySearchTool, context),
       };
 
       expect(tools.createMemory.approvalMode).toBe("approve");
@@ -3851,7 +3833,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       });
       expect(reviewedRequests[0]).not.toHaveProperty("expiresAtMs");
       await expect(
-        createMemoryCreateTool({
+        bindPluginTool(memoryCreateTool, {
           ...context,
           agent: allowMemory("conversation"),
         }).execute(
@@ -3929,7 +3911,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       ).resolves.toMatchObject({ memories: [] });
 
       await expect(
-        createMemoryCreateTool({
+        bindPluginTool(memoryCreateTool, {
           ...context,
           agent: {
             reviewCreateRequest() {
@@ -3990,7 +3972,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        createMemoryCreateTool({
+        bindPluginTool(memoryCreateTool, {
           agent: rejectMemory,
           db: memoryDb(fixture),
           ...slackContext(),
@@ -4004,7 +3986,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
-        createMemoryCreateTool({
+        bindPluginTool(memoryCreateTool, {
           agent: allowMemory("actor"),
           db: memoryDb(fixture),
           source: slackContext().source,
@@ -4570,13 +4552,13 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     const fixture = await createMemoryFixture();
 
     try {
-      const firstTool = createMemoryCreateTool({
+      const firstTool = bindPluginTool(memoryCreateTool, {
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext(),
         users: memoryUsers(slackContext().userId),
       });
-      const secondTool = createMemoryCreateTool({
+      const secondTool = bindPluginTool(memoryCreateTool, {
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),

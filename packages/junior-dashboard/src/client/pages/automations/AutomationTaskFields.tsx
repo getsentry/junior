@@ -40,7 +40,8 @@ export function AutomationTaskFields(props: {
   const skills = useSkillsData().data;
   return (
     <>
-      <Field>
+      {/* Field stretches its children. The toggle keeps its own width. */}
+      <Field className="*:w-fit">
         <span id="run-label" className="text-sm font-semibold">
           Run
         </span>
@@ -147,7 +148,7 @@ function SkillFields(props: {
           <div className="flex items-center justify-between gap-3">
             <FieldLabel htmlFor="task.context">Additional context</FieldLabel>
             <Button
-              variant="quiet"
+              variant="ghost"
               onClick={() => {
                 props.onChange({ ...task, context: "" });
                 props.onContextOpen(false);
@@ -183,7 +184,7 @@ function SkillFields(props: {
         </Field>
       ) : (
         <Button
-          variant="quiet"
+          variant="ghost"
           className="w-fit"
           onClick={() => props.onContextOpen(true)}
         >

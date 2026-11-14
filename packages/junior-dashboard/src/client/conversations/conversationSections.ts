@@ -24,8 +24,8 @@ type Waiting = Pick<
  * month.
  *
  * Needs you holds the conversations that wait on the viewer: an open Review
- * item in `waiting`, or a Turn that waits on an authorization. Unread and
- * open work do not move a row. A pinned conversation
+ * item in `waiting`, or a Turn that waits on an authorization. Open work
+ * does not move a row. A pinned conversation
  * shows only in Pinned, even when it waits on the viewer. Pinned follows the
  * viewer's order. Needs you lists the longest wait first, so the queue keeps
  * its order while the viewer works it. Every other section lists the newest

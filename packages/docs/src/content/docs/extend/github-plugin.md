@@ -171,7 +171,7 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
@@ -182,6 +182,28 @@ This watch always includes `pull_request.review.approved` and `pull_request.merg
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>experimental</code></summary>
+
+Turns on GitHub plugin behavior that is still being tested.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    experimental: { pullRequestDescriptionChecks: true },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ experimental: { ... } })` in `plugins.ts`
+- **Default:** Off
+- **Required:** No
+- **Environment override:** None
+
+`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has check results, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. The agent gets the fixes and sends the description again.
 
 </details>
 
@@ -307,6 +329,16 @@ Once configured, Junior can:
 - Check githubstatus.com for open or recent incidents when GitHub requests or
   checks fail
 - Watch or automate matching events when webhooks are enabled
+- Link issue, pull request, and commit references and URLs in Slack replies
+  and in the dashboard, as GitHub does. Bare `#123` uses the one repository
+  that the reply names, or else the channel's `github.repo`
+- Turn `@login` into a Slack mention in Slack when the login links to a known
+  person. Other logins become GitHub profile links when the text names a
+  repository, or when it came from GitHub or went to GitHub
+- Show a GitHub profile link in the dashboard as the person card of the known
+  person who linked that login, or else as a GitHub account card
+- Rewrite Slack mentions in text that tools send to GitHub. A person becomes
+  their linked GitHub `@login`, or their name
 
 Bot-owned writes use installation credentials. Personal operations still use
 private user authorization when required. Merge remains outside the write
@@ -342,8 +374,9 @@ lowercase. The filter does not check that the creator can see the repository,
 so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
-To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+Junior watches each pull request that it creates. To change the events or
+the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
+`plugins.ts`, or set it to `false` to turn it off. That watch
 also always gets `pull_request.review.approved`, `pull_request.merged`, and
 `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
@@ -461,7 +494,14 @@ A check suite finished with failure or timeout. Trusted data includes the full h
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+A check suite finished successfully. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Use `pull_request.checks.passed` for that. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.checks.passed</code></summary>
+
+Every check suite on the head commit passed. A suite passes when it finishes with success, neutral, or skipped, and the suite that finishes last can have any of these results. A queued suite with no check runs does not count, because GitHub makes one for each app that can write checks, even when the app adds no check run. GitHub Actions suites always count. Commit statuses do not count. A Watch or event automation gets this event once for each head commit, even when two suites finish at the same time. Trusted data is the same as `pull_request.checks.recovered`, for the suite that finished last. Junior reads the other suites of the commit only when a Watch or event automation wants this event, with one GitHub API read for each 100 suites.
 
 </details>
 
@@ -517,14 +557,17 @@ An inline review comment was added. Trusted data includes `senderId`, `senderLog
 <details class="event">
 <summary><code>pull_request.merged</code></summary>
 
-The pull request was merged.
+The pull request was merged. For a pull request that Junior opened, when
+GitHub does not send this webhook, Junior finds the merge within about two
+days and sends this event then. A Watch gets each merge once.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
-The pull request closed without merging.
+The pull request closed without merging. Junior finds a missed close the
+same way as a missed merge.
 
 </details>
 
@@ -551,6 +594,26 @@ Junior creates after it opens a pull request always gets this event, and the
 default guidance tells the agent to merge the base branch, not rebase. For a
 pull request in a stack, the guidance tells the agent to restack with
 `gh stack rebase`, because a stack merges only with a linear history.
+
+A draft pull request never gets this event. Each event starts an agent turn,
+so for a pull request that Junior opened, the event publishes only while
+people work on it:
+
+- In the first 2 days after the latest push, review, or comment by a person,
+  or after the pull request opened, the event publishes at most once a day
+  and 3 times in total.
+- After that, or after the third event, Junior publishes no event. It adds
+  a review desk notice to the conversation that asked for the pull request.
+  The notice closes when the conflict is gone.
+- After 3 days without activity by a person, Junior does nothing.
+- An approved pull request would be ready to merge but for the conflict. It
+  gets the event after those 2 days too, and without the daily wait, until
+  the total limit. The ready to merge notice needs a clean merge state, so it
+  comes after the fix.
+
+Junior stores none of this. For each conflict, it reads the pull request's
+timeline and review decision from GitHub. Merges and force pushes by a bot
+count as earlier fixes. Each head commit publishes one event.
 
 </details>
 

@@ -86,8 +86,16 @@
       }
     },
     {
+      "files": ["src/**/*.ts", "**/src/**/*.ts"],
+      "rules": {
+        "junior/no-raw-sql-queries": "error",
+        "junior/no-regex-url-parsing": "error"
+      }
+    },
+    {
       "files": ["**/junior-github/src/**/*.ts"],
       "rules": {
+        "junior/github-graphql-schema": "error",
         "junior/use-github-api": "error",
         "no-restricted-imports": [
           "error",

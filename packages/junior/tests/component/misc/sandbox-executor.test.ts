@@ -680,6 +680,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_stopped",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -815,6 +816,26 @@ describe("createTestSandbox", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.vercel.test/sandboxes",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("sends sandbox API requests through the process fetch without a tool signal", async () => {
+    const fetchMock = vi.fn(async () => new Response());
+    vi.stubGlobal("fetch", fetchMock);
+    sandboxCreateMock.mockImplementationOnce(
+      async (params: { fetch?: typeof globalThis.fetch }) => {
+        await params.fetch!("https://api.vercel.test/sandboxes");
+        return makeSandbox("sbx_process_fetch");
+      },
+    );
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    await executor.execute({ toolName: "bash", input: { command: "pwd" } });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.vercel.test/sandboxes",
+      undefined,
     );
   });
 
@@ -1185,6 +1206,7 @@ describe("createTestSandbox", () => {
       token: "sandbox-token",
       teamId: "team_123",
       projectId: "prj_123",
+      fetch: expect.any(Function),
     });
   });
 
@@ -1205,6 +1227,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_old",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
@@ -1402,6 +1425,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_missing_recipe",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
     expect(runtime.sandboxRef()).toEqual({
@@ -1439,6 +1463,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_recipe_changed",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
     expect(getReadyWorkspaceMock).not.toHaveBeenCalled();
@@ -1790,6 +1815,7 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       runtime: "node24",
+      fetch: expect.any(Function),
     });
   });
 
@@ -1807,6 +1833,7 @@ describe("createTestSandbox", () => {
       timeout: 1000 * 60 * 30,
       runtime: "node24",
       resources: { vcpus: 4 },
+      fetch: expect.any(Function),
     });
   });
 
@@ -2679,6 +2706,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: closedSandbox.name,
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -3114,6 +3142,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_cached_first",
       resume: true,
+      fetch: expect.any(Function),
     });
   });
 
@@ -3301,6 +3330,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_existing",
       resume: true,
+      fetch: expect.any(Function),
     });
   });
 
@@ -3329,6 +3359,7 @@ describe("createTestSandbox", () => {
         snapshotId: "snap_123",
       },
       resources: { vcpus: 4 },
+      fetch: expect.any(Function),
     });
   });
 
@@ -3376,6 +3407,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_rebuilt",
       },
+      fetch: expect.any(Function),
     });
   });
 
@@ -3561,6 +3593,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_retry",
       },
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
       timeout: 1000 * 60 * 30,
@@ -3568,6 +3601,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_retry",
       },
+      fetch: expect.any(Function),
     });
   });
 

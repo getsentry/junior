@@ -29,7 +29,7 @@ import {
   expectAccepted,
   jsonRequest,
   steerQueuedWebMessage,
-  webImage,
+  uploadWebFiles,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
 import { actOnWebReviewItem } from "./review-desk";
@@ -64,6 +64,7 @@ import {
   readConversationDetail,
   participantSlackUserIds,
   slackCallReplies,
+  slackThreadEffects,
   toHarnessRun,
   VIEWER_HEADER,
   type FixtureUsage,
@@ -209,6 +210,13 @@ type ConversationRecord = (LoadedConversation | AutomationConversation) & {
 export interface FixtureAgent {
   /** Stop new deliveries and wait for running work. */
   close(): Promise<void>;
+  /**
+   * Replace the app with one that has these options, as a deploy does. Work
+   * that runs finishes on the old app first. Stores, mocks, and the
+   * Conversations of the test stay, so a Conversation continues on the new
+   * app.
+   */
+  redeploy(options: JuniorAppOptions): Promise<void>;
   run: RunAgent;
 }
 
@@ -231,19 +239,21 @@ export async function createFixtureAgent(
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebReplay();
-  const app = await createApp({
-    ...options,
-    conversationWorkQueue: (consume) => queue.connect(consume),
-    // Plugin tasks run in process. A call is idle only after they finish.
-    pluginTaskQueue: (consume) => ({
-      send: async (message) => track(consume(message)),
-    }),
-    // Background compaction jobs also run in process.
-    backgroundCompactionQueue: (consume) => ({
-      send: async (message) => track(consume(message)),
-    }),
-    waitUntil: (task) => track(typeof task === "function" ? task() : task),
-  });
+  const deploy = (appOptions: JuniorAppOptions) =>
+    createApp({
+      ...appOptions,
+      conversationWorkQueue: (consume) => queue.connect(consume),
+      // Plugin tasks run in process. A call is idle only after they finish.
+      pluginTaskQueue: (consume) => ({
+        send: async (message) => track(consume(message)),
+      }),
+      // Background compaction jobs also run in process.
+      backgroundCompactionQueue: (consume) => ({
+        send: async (message) => track(consume(message)),
+      }),
+      waitUntil: (task) => track(typeof task === "function" ? task() : task),
+    });
+  let app = await deploy(options);
   // The dashboard mounts the same API after sign-in. Each request signs in
   // as the person in `x-fixture-viewer`, or as the web person by default.
   const api = new Hono<JuniorApiEnv>();
@@ -434,17 +444,24 @@ export async function createFixtureAgent(
       const path = started
         ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
         : "/api/conversations";
+      const idempotencyKey = started
+        ? fixtureId("web-message", 32)
+        : record.idempotencyKey;
+      const uploadIds = input.files?.length
+        ? await uploadWebFiles(api, {
+            ...(started ? { conversationId: record.conversationId } : {}),
+            files: input.files,
+            idempotencyKey,
+            viewerEmail: record.viewerEmail,
+          })
+        : undefined;
       const accepted = await expectAccepted(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
-            idempotencyKey: started
-              ? fixtureId("web-message", 32)
-              : record.idempotencyKey,
+            idempotencyKey,
             message: input.text,
-            ...(input.images?.length
-              ? { images: input.images.map(webImage) }
-              : undefined),
+            ...(uploadIds ? { uploadIds } : undefined),
           }),
         ),
       );
@@ -708,43 +725,9 @@ export async function createFixtureAgent(
           });
     record.visibleMessages.push(...visibleMessages);
     const thread = record.surface === "slack" ? record : undefined;
-    const slackCalls = thread
-      ? readCapturedSlackApiCalls().slice(slackCallIndex)
-      : [];
-    // Slack reactions are sets; ingress and the worker can add the same one.
-    const reactions = [
-      ...new Set(
-        slackCalls.flatMap((captured) =>
-          captured.method === "reactions.add" &&
-          captured.params.channel === thread?.channelId &&
-          typeof captured.params.name === "string"
-            ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
-            : [],
-        ),
-      ),
-    ].map((key) => key.slice(key.indexOf(":") + 1));
-    const files = slackCalls.flatMap((captured) =>
-      captured.method === "files.completeUploadExternal" &&
-      captured.params.channel_id === thread?.channelId &&
-      captured.params.thread_ts === thread?.threadTs &&
-      Array.isArray(captured.params.files)
-        ? captured.params.files.map((file: { title?: unknown }) =>
-            String(file.title),
-          )
-        : [],
-    );
-    const threadCalls = (method: string) =>
-      slackCalls.filter(
-        (captured) =>
-          captured.method === method &&
-          captured.params.channel_id === thread?.channelId &&
-          captured.params.thread_ts === thread?.threadTs,
-      );
-    const statuses = threadCalls("assistant.threads.setStatus").map(
-      (captured) => String(captured.params.status),
-    );
-    const threadTitles = threadCalls("assistant.threads.setTitle").map(
-      (captured) => String(captured.params.title),
+    const { files, reactions, statuses, threadTitles } = slackThreadEffects(
+      thread ? readCapturedSlackApiCalls().slice(slackCallIndex) : [],
+      thread,
     );
     const authorizationPrompt = await readAuthorizationPrompt(
       api,
@@ -985,5 +968,11 @@ export async function createFixtureAgent(
     );
   };
 
-  return { run, close };
+  const redeploy = async (next: JuniorAppOptions): Promise<void> => {
+    if (closed) throw new Error("redeploy() needs an agent that is not closed");
+    await waitForIdle();
+    app = await deploy(next);
+  };
+
+  return { run, close, redeploy };
 }

@@ -1,7 +1,5 @@
 import {
-  inputImageSchema,
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
@@ -15,6 +13,7 @@ import {
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -22,6 +21,7 @@ import {
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+import { objectPreviewImageSchema } from "./object-preview-image";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -57,6 +57,16 @@ export const conversationAttachmentParamsSchema = z
   .object({
     attachmentId: z.string().min(1),
     conversationId: z.string().min(1),
+  })
+  .strict();
+
+export const conversationAttachmentQuerySchema = z
+  .object({
+    /**
+     * Send `Content-Disposition: attachment` even for a type that previews
+     * inline, so a same-window download link saves the file.
+     */
+    download: z.stringbool().optional(),
   })
   .strict();
 
@@ -129,27 +139,30 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    /** `nextCursor` from the previous page of the same feed. */
+    cursor: z.string().min(1).max(500).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
   .strict();
 
+/** Client key that makes a retried send the same Message. */
+export const idempotencyKeySchema = z.string().trim().min(1).max(200);
+
 export const createConversationMessageBodySchema = z
   .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
+    idempotencyKey: idempotencyKeySchema,
     message: z.string().trim().max(32_000),
-    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
+    /** Uploads from `POST /api/conversations/attachment-uploads`. */
+    uploadIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_INPUT_ATTACHMENTS)
+      .optional(),
   })
   .strict()
   .refine(
-    (body) => Boolean(body.message || body.images?.length),
-    "Add a message or an image.",
-  )
-  .refine(
-    (body) =>
-      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
-      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
-    "Images must total 3 MB or less.",
+    (body) => Boolean(body.message || body.uploadIds?.length),
+    "Add a message or a file.",
   );
 
 export const createConversationBodySchema =
@@ -232,6 +245,7 @@ const conversationAnnotationReportSchema =
       plugin: z.string().min(1),
       createdAt: z.string().datetime(),
       updatedAt: z.string().datetime(),
+      previewImages: z.array(objectPreviewImageSchema).optional(),
     }),
   );
 
@@ -276,13 +290,6 @@ export const conversationSummaryReportSchema = z
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
-    /**
-     * True when the conversation is idle and Junior's latest reply that the
-     * transcript shows is after the viewer's read position. Quiet replies do
-     * not count. Opening the conversation does not move the position; reading
-     * in it, replying, archiving, or Mark as read does.
-     */
-    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -808,6 +815,16 @@ export const conversationAgentTreeNodeSchema = z
     conversationId: z.string().min(1),
     kind: conversationKindSchema,
     label: z.string().min(1),
+    /**
+     * Agent type of a child, such as `explore`. Absent for a root, a child
+     * without a type, or a viewer who cannot see private content.
+     */
+    agentType: agentTypeSchema.optional(),
+    /**
+     * The child started with its parent's history. Absent like `agentType`,
+     * or when the child started fresh.
+     */
+    fork: z.literal(true).optional(),
   })
   .strict();
 

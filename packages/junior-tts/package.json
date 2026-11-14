@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-tts",
-  "version": "0.295.0",
+  "version": "0.301.0",
   "private": false,
   "publishConfig": {
     "access": "public"

@@ -135,7 +135,7 @@ export function useConfirmUnsentAnswers() {
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Go back</AlertDialogCancel>
-          <AlertDialogAction onClick={() => close(true)} variant="danger">
+          <AlertDialogAction onClick={() => close(true)} variant="destructive">
             Send message
           </AlertDialogAction>
         </AlertDialogFooter>

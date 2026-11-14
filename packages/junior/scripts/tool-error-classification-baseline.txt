@@ -14,6 +14,7 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-issue.ts	throw new Error(message);
+packages/junior-github/src/tools/get-pull-request.ts	throw new Error( `GitHub pull request checks lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubErrorMessage(lookupPayload)}`, );
@@ -33,7 +34,12 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubErrorMessage(pullPayload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`, );
-packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`, );
+packages/junior-google/src/tools/create-doc.ts	throw new Error( deleted ? `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc was deleted.` : `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc could not be deleted either. Your own Google account still owns it, so it is not private; delete it from that account's Drive.`, { cause: error }, );
+packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`, { cause: error }, );
+packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message);
+packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
+packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");
+packages/junior-github/src/tools/update-issue-comment.ts	throw new Error(message);
 # Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
 packages/junior-vercel/src/tools/actions.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
@@ -41,8 +47,9 @@ packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot c
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
 packages/junior/src/chat/automations/tools/create.ts	throw new Error("Automation creation requires a tool-call identity.");
 packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
-packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
-packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );
+packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${args.attachmentId} read ${total} bytes, expected ${args.expectedBytes}.`, );
+packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${content.bytes}.`, );
+packages/junior/src/chat/tools/load-attachment.ts	throw new Error(`Failed to ${action}: ${result.stderr}`);
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
 packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of Thread ${childConversationId} returned ${result.status}`, );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
@@ -58,3 +65,5 @@ packages/junior/src/chat/tools/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`, );
 packages/junior/src/chat/tools/web/network.ts	throw new Error("read timed out");
 packages/junior/src/chat/tools/user-customization.ts	throw new Error("User customization target user was not found.");
+packages/junior/src/chat/tools/index.ts	throw new Error("Slack tool bound without a Slack context");
+packages/junior/src/chat/tools/registry.ts	throw new Error("The Turn does not have this tool");

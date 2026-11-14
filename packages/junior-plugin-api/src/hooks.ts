@@ -48,6 +48,29 @@ import type {
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 export interface FormatMarkdownHookContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key, over install defaults. Runtime notices get install defaults.
+   */
+  config: Record<string, string>;
+  /**
+   * Return the destination's mention of the one known person who has this
+   * provider account, or undefined. Core resolves the `@handle` words in
+   * `text` before the hook runs. Insert the result as is. Only Slack text
+   * gets mentions: Slack syntax never goes to another place.
+   */
+  mention(account: { provider: string; handle: string }): string | undefined;
+  /**
+   * Where the text shows: a Slack message, or the dashboard (`web`). The
+   * dashboard shows a bare object link as a card, so keep bare links there.
+   */
+  platform: "slack" | "web";
+  /**
+   * The provider that wrote the text or that it went to, such as `github`
+   * for a GitHub Event or a comment posted to GitHub. In that text, every
+   * `@name` is an account of that provider. Undefined for chat replies.
+   */
+  provider?: string;
   text: string;
 }
 
@@ -171,7 +194,16 @@ export interface PluginHooks {
   ): SlackConversationLink | undefined;
   /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
-  tools?(
-    ctx: ToolRegistrationHookContext,
-  ): Record<string, PluginToolDefinition>;
+  /**
+   * Tools by plugin-local camelCase name. Read only deployment configuration
+   * here, never Turn context: the host reads them with no Turn, and passes
+   * the Turn context to each `execute` call.
+   */
+  tools?(): Record<string, PluginToolDefinition>;
+  /**
+   * Tools from `tools()` that this Turn cannot run, with the reason. The host
+   * keeps them in the tool list, so the cached prompt stays the same, and
+   * rejects their calls.
+   */
+  disabledTools?(ctx: ToolRegistrationHookContext): Record<string, string>;
 }

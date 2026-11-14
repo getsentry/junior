@@ -19,6 +19,7 @@ import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {
+  conversationId: string;
   part: TranscriptViewToolCallPart;
   timestamp?: number;
 }) {
@@ -70,7 +71,13 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
   // shows only when the viewer cannot read the item.
   const reviewItemId = reviewItemIdFromToolCall(props.part);
   if (reviewItemId) {
-    return <ReviewItemAskRow fallback={frame} itemId={reviewItemId} />;
+    return (
+      <ReviewItemAskRow
+        conversationId={props.conversationId}
+        fallback={frame}
+        itemId={reviewItemId}
+      />
+    );
   }
   return <div className="min-w-0">{frame}</div>;
 });

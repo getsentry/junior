@@ -418,15 +418,16 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
+    // A completed child sends nothing, so this one ends blocked.
     const result = (await completeAgentInvocation({
+      errorMessage: "Child needs a token.",
       invocationId: child.invocationId,
-      result: "Child fact: 42.",
-      status: "completed",
+      status: "blocked",
     })) as TerminalAgentInvocation;
     await enqueueAgentInvocationResult(result, { queue, state });
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent_invocation.completed"]);
+    ).resolves.toEqual(["agent_invocation.blocked"]);
 
     const response = await stopRequest(
       fixture,

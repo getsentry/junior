@@ -13,6 +13,8 @@ import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 /**
  * Create the tool that reacts to the current inbound Slack message or to the
  * root message of the Conversation's thread.
+ *
+ * @runBuilt addReaction
  */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,

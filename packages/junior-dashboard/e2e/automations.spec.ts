@@ -15,6 +15,9 @@ function filterOption(page: Page, filter: string, option: string) {
     .getByRole("button", { name: option, exact: true });
 }
 
+/** A link from run details to its Automation, not to one of its versions. */
+const AUTOMATION_LINK = 'a[href^="/automations/"]:not([href*="/versions"])';
+
 test("opens scheduled and event automations in the native Automations view", async ({
   page,
   dashboard,
@@ -154,9 +157,33 @@ test("opens scheduled and event automations in the native Automations view", asy
     exact: true,
   });
   await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
+  // A recent run opens its Conversation over the Overview, not on the Runs tab.
+  const recentRun = recentRuns.getByRole("link", {
+    name: /^Open completed run/,
+  });
+  await expect(recentRun).toHaveAttribute(
+    "href",
+    /^\/automations\/scheduled-1\?run=/,
+  );
+  await recentRun.click();
+  await expect(page).toHaveURL(
+    /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
+  );
+  const recentDetails = page.getByRole("dialog");
   await expect(
-    recentRuns.getByRole("link", { name: /^Open completed run/ }),
-  ).toHaveAttribute("href", /\/automations\/scheduled-1\/runs\?run=/);
+    recentDetails.getByText("completed", { exact: true }),
+  ).toBeVisible();
+  // Details show the run's Conversation, not only its numbers.
+  await expect(
+    recentDetails.getByText("Scheduled operation completed successfully."),
+  ).toBeVisible();
+  await screenshot(page, "automation-overview-run-details", {
+    view: "desktop",
+  });
+  await recentDetails.getByRole("button", { name: "Close transcript" }).click();
+  await expect(recentDetails).toHaveCount(0);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
+  await expect(recentRun).toBeFocused();
   await expect(
     recentRuns.getByRole("link", { name: "Open conversation" }).first(),
   ).toHaveAttribute("href", "/conversations/scheduler%3Adaily-ops-digest");
@@ -238,6 +265,13 @@ test("opens scheduled and event automations in the native Automations view", asy
     .click();
   await expect(deleteButton).toBeFocused();
   await page.getByRole("link", { name: "Back to automations" }).click();
+  // The toggle hides beside the open panel, so focus moves to its close
+  // button and comes back when the panel closes.
+  await page.getByRole("button", { name: /^Filters/ }).press("Enter");
+  const closeFilters = page.getByRole("button", { name: "Close filters" });
+  await expect(closeFilters).toBeFocused();
+  await closeFilters.press("Enter");
+  await expect(page.getByRole("button", { name: /^Filters/ })).toBeFocused();
   await page.getByRole("button", { name: /^Filters/ }).click();
   await filterOption(page, "type", "Event").click();
   await filterOption(page, "creator", "Morgan").click();
@@ -327,6 +361,12 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
         ...automationReport.automations[0]!,
+        // Enough Destinations that the filter needs its search box.
+        destination: {
+          ...automationReport.automations[0]!.destination,
+          channelId: `C-extra-${index}`,
+          label: `#team-${String(index).padStart(2, "0")}`,
+        },
         id: `scheduled-extra-${index}`,
         title: `Weekly summary ${String(index).padStart(2, "0")}`,
       })),
@@ -414,6 +454,16 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await expect(page).toHaveURL(listUrl);
   await expect(active.getByRole("listitem")).toHaveCount(31);
   await page.getByRole("button", { name: /^Filters/ }).click();
+  const findDestination = page.getByLabel("Search destination options");
+  await findDestination.fill("TEAM-07");
+  // The best match follows "All".
+  await expect(
+    page
+      .getByRole("group", { name: "Filter by destination", exact: true })
+      .getByRole("button")
+      .nth(1),
+  ).toHaveText("#team-07");
+  await findDestination.fill("");
   await filterOption(page, "destination", "#project-updates").click();
   await filterOption(page, "state", "Active").click();
   await expect(page).toHaveURL(/state=active/);
@@ -448,7 +498,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });
   await expect(mobileFilters).toHaveAttribute("aria-expanded", "false");
-  await expect(mobileFilters).toHaveText(/Filters\s*4$/);
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await expect(
     page.getByRole("group", { name: "Filter by creator" }),
   ).toHaveCount(0);
@@ -469,7 +519,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     .getByRole("button", { name: "Close", exact: true })
     .click();
   await page.reload();
-  await expect(mobileFilters).toHaveText(/Filters\s*4$/);
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await mobileFilters.click();
   await expect(filterOption(page, "state", "Blocked")).toHaveAttribute(
     "aria-pressed",
@@ -552,6 +602,8 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(filters).toBeVisible();
   await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
+  // Wait for the filtered list before reading its first row.
+  await expect(page.locator('[data-run-id="event-1-run-1"]')).toHaveCount(0);
 
   // Rows open run details in a slide-out panel over the list and filters.
   // The row link still opens the Conversation.
@@ -564,14 +616,14 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/runs?status=failed&run=${encodeURIComponent(runId!)}`,
   );
-  const details = page.getByRole("dialog", { name: "Run details" });
+  const details = page.getByRole("dialog");
   // The Runs list spans Automations, so details name the Automation.
-  await expect(details.getByText("Automation", { exact: true })).toBeVisible();
+  await expect(details.locator(AUTOMATION_LINK)).toHaveCount(1);
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
   await screenshot(page, "automations-runs-filters", { view: "desktop" });
-  await details.getByRole("button", { name: "Close run details" }).click();
+  await details.getByRole("button", { name: "Close transcript" }).click();
   await expect(details).toHaveCount(0);
   await expect(filters).toBeVisible();
   await expect(page).toHaveURL(
@@ -635,12 +687,16 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1/runs?range=90&run=scheduled-1-run-2`,
   );
-  await expect(failedRun).toHaveAttribute("aria-expanded", "true");
-  const details = page.getByRole("dialog", { name: "Run details" });
+  // The modal drawer hides the page from the accessibility tree, so read the
+  // row control by its run.
+  await expect(
+    page.locator('[data-run-id="scheduled-1-run-2"] button[aria-expanded]'),
+  ).toHaveAttribute("aria-expanded", "true");
+  const details = page.getByRole("dialog");
   await expect(
     details.getByRole("heading", { name: "Ship notes for the release train" }),
   ).toBeVisible();
-  await expect(details.getByText("Automation", { exact: true })).toHaveCount(0);
+  await expect(details.locator(AUTOMATION_LINK)).toHaveCount(0);
   await expect(
     details.getByText("Slack rejected the result message: channel_not_found."),
   ).toBeVisible();
@@ -658,7 +714,19 @@ test("opens one automation's runs, filters by result, and redirects old history 
   );
   await screenshot(page, "automation-run-details", { lightTheme: true });
 
-  // Up and Down move the selection while details are open.
+  // Up and Down move the selection while details are open. Stepping between
+  // runs with a Conversation keeps the open drawer instead of a new one.
+  await details.evaluate((element) => {
+    element.dataset.stepped = "";
+  });
+  await page.keyboard.press("ArrowUp");
+  await expect(page).toHaveURL(/run=scheduled-1-run-1$/);
+  await expect(
+    details.getByText("Scheduled operation completed successfully."),
+  ).toBeVisible();
+  await expect(page.locator("[data-stepped]")).toHaveCount(1);
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/run=scheduled-1-run-2$/);
   await page.keyboard.press("ArrowDown");
   await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
   await expect(
@@ -671,7 +739,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
     name: /Weekly project summary/,
   });
 
-  await page.getByRole("button", { name: "Close run details" }).click();
+  await page.getByRole("button", { name: "Close transcript" }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1/runs?range=90`,
   );
@@ -696,7 +764,8 @@ test("opens one automation's runs, filters by result, and redirects old history 
     details.getByText("Ship notes for the release train").first(),
   ).toBeVisible();
   await expect(details.getByText(/not in the loaded runs/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Close run details" }).click();
+  await page.getByRole("button", { name: "Close transcript" }).click();
+  // A filter can change while the drawer closes.
   await result.getByRole("tab", { name: /^Failed/ }).click();
   await result.getByRole("tab", { name: /^All/ }).click();
   await expect(page).not.toHaveURL(/[?&]result=/);

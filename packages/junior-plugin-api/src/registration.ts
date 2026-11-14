@@ -4,7 +4,13 @@ import {
   type PluginConversationEventDefinition,
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
+import type { PluginImageSource } from "./images";
 import type { PluginManifest } from "./manifest";
+import {
+  objectLinkFilterSchema,
+  type PluginObjectLinkDefinition,
+} from "./object-links";
+import { objectTypeSchema } from "./object-presentation";
 import type { PluginTasks } from "./tasks";
 import type { PluginUserPageDefinition } from "./user-pages";
 import { pluginEventsSchema, type PluginEvents } from "./events";
@@ -20,8 +26,12 @@ export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
   conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
+  /** Images that this plugin serves through the Junior image proxy. */
+  images?: PluginImageSource;
   manifest: PluginManifest;
   model?: PluginModelConfig;
+  /** URLs that this plugin shows as object cards. */
+  objectLinks?: PluginObjectLinkDefinition[];
   packageName?: string;
   events?: PluginEvents;
   tasks?: PluginTasks;
@@ -100,6 +110,15 @@ export function defineJuniorPlugin(
       });
     }
   }
+  validateObjectLinks(name, plugin.objectLinks);
+  if (
+    plugin.images !== undefined &&
+    typeof plugin.images.resolve !== "function"
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" images must have a resolve function.`,
+    );
+  }
   const conversationEventIds = new Set<string>();
   for (const event of plugin.conversationEvents ?? []) {
     if (
@@ -176,4 +195,36 @@ export function defineJuniorPlugin(
   return {
     ...plugin,
   };
+}
+
+function validateObjectLinks(
+  name: string,
+  links: PluginObjectLinkDefinition[] | undefined,
+): void {
+  if (links === undefined) return;
+  if (!Array.isArray(links)) {
+    throw new Error(`Junior plugin "${name}" objectLinks must be an array.`);
+  }
+  for (const link of links) {
+    if (
+      !objectTypeSchema.safeParse(link?.objectType).success ||
+      typeof link.canView !== "function" ||
+      typeof link.resolve !== "function" ||
+      !Array.isArray(link.filters) ||
+      link.filters.length === 0
+    ) {
+      throw new Error(
+        `Junior plugin "${name}" object links need an objectType, filters, a canView function, and a resolve function.`,
+      );
+    }
+    for (const filter of link.filters) {
+      const parsed = objectLinkFilterSchema.safeParse(filter);
+      if (!parsed.success) {
+        throw new Error(
+          `Junior plugin "${name}" has an invalid ${link.objectType} link filter.`,
+          { cause: parsed.error },
+        );
+      }
+    }
+  }
 }

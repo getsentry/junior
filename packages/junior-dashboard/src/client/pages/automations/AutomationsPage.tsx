@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
@@ -57,7 +57,6 @@ type AutomationGroup = {
  * answers "is my work healthy" without opening each Automation.
  */
 export function AutomationsPage(props: { enabled: boolean }) {
-  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchText, setSearchText] = useDebouncedSearchParam("q");
@@ -96,30 +95,28 @@ export function AutomationsPage(props: { enabled: boolean }) {
   };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const automations = query.data?.automations ?? EMPTY;
-  const groups = groupAutomations(automations);
   const loading = !query.data && !query.error;
-  // The Automation page keeps the list query, so its back link restores it.
-  const pagePath = (id: string) =>
-    pathWithSearch(automationPath(id), location.search);
 
   return (
     <>
       <PageHeader title="Automations" />
-      <FilterToolbar
-        filters={{
-          active: activeAutomationFilters({ data: query.data, filters }),
-          onRemove: (key) => setFilter(key, ""),
-          onToggle: () => setFiltersOpen((open) => !open),
-          open: filtersOpen,
-        }}
-        search={{
-          label: "Search automations",
-          onChange: setSearchText,
-          placeholder: "Search automations",
-          value: searchText,
-        }}
-      />
       <FilteredList
+        toolbar={
+          <FilterToolbar
+            filters={{
+              active: activeAutomationFilters({ data: query.data, filters }),
+              onRemove: (key) => setFilter(key, ""),
+              onToggle: () => setFiltersOpen((open) => !open),
+              open: filtersOpen,
+            }}
+            search={{
+              label: "Search automations",
+              onChange: setSearchText,
+              placeholder: "Search automations",
+              value: searchText,
+            }}
+          />
+        }
         filters={
           filtersOpen ? (
             <AutomationFilterPanel
@@ -138,7 +135,9 @@ export function AutomationsPage(props: { enabled: boolean }) {
         {query.error ? (
           <InlineError>
             Automations could not be loaded.{" "}
-            <Button onClick={() => void query.refetch()}>Try again</Button>
+            <Button variant="outline" onClick={() => void query.refetch()}>
+              Try again
+            </Button>
           </InlineError>
         ) : null}
         {query.data && automations.length === 0 ? (
@@ -155,14 +154,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             Updating results…
           </span>
         ) : null}
-        {groups.map((group) => (
-          <AutomationGroupSection
-            group={group}
-            key={group.key}
-            onSelect={(id) => navigate(pagePath(id))}
-            pagePath={pagePath}
-          />
-        ))}
+        <AutomationGroups automations={automations} search={location.search} />
         {query.data && query.data.total > automations.length ? (
           <p className="m-0 text-xs text-dashboard-text-muted">
             Showing {automations.length} of {query.data.total}. Search or filter
@@ -173,6 +165,28 @@ export function AutomationsPage(props: { enabled: boolean }) {
     </>
   );
 }
+
+/**
+ * Each search keystroke re-renders the page, and a row has up to 20 run
+ * tooltips. Rows re-render only when the results or the URL change.
+ */
+const AutomationGroups = memo(function AutomationGroups(props: {
+  automations: AutomationSummary[];
+  search: string;
+}) {
+  const navigate = useNavigate();
+  // The Automation page keeps the list query, so its back link restores it.
+  const pagePath = (id: string) =>
+    pathWithSearch(automationPath(id), props.search);
+  return groupAutomations(props.automations).map((group) => (
+    <AutomationGroupSection
+      group={group}
+      key={group.key}
+      onSelect={(id) => navigate(pagePath(id))}
+      pagePath={pagePath}
+    />
+  ));
+});
 
 /**
  * Group by what needs a person, then by what still runs. Every group uses
