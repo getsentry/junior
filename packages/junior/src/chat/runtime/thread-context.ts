@@ -3,12 +3,11 @@ import { botConfig } from "@/chat/config";
 import { toOptionalString } from "@/chat/coerce";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
-import { isSlackTeamId } from "@/chat/slack/ids";
+import { isSlackTeamId, parseSlackThreadId } from "@/chat/slack/ids";
 import {
-  parseSlackThreadId,
   readSlackRawMessageContext,
-  resolveSlackChannelIdFromThreadId,
   resolveSlackChannelIdFromMessage,
+  slackThreadIdOfMessage,
 } from "@/chat/slack/context";
 import {
   parseSlackMessageTs,
@@ -93,15 +92,15 @@ export function getChannelId(
   message: Message,
 ): string | undefined {
   return (
-    resolveSlackChannelIdFromThreadId(toOptionalString(thread.id)) ??
     normalizeSlackConversationId(toOptionalString(thread.channelId)) ??
     resolveSlackChannelIdFromMessage(message)
   );
 }
 
-export function getThreadTs(threadId: string | undefined): string | undefined {
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-  return parseSlackThreadId(threadId)?.threadTs;
+/** Read the Slack thread timestamp of an inbound Slack message. */
+export function getThreadTs(message: Message): SlackMessageTs | undefined {
+  const threadId = slackThreadIdOfMessage(message);
+  return threadId ? parseSlackThreadId(threadId).threadTs : undefined;
 }
 
 /**
@@ -126,16 +125,7 @@ export function getAssistantThreadContext(
       return { channelId, threadTs };
     }
   }
-
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-  const parsedThreadId = parseSlackThreadId(
-    readOptionalStringField(message, "threadId"),
-  );
-  if (!parsedThreadId || isDmChannel(parsedThreadId.channelId)) {
-    return undefined;
-  }
-
-  return parsedThreadId;
+  return undefined;
 }
 
 /** Resolve the native Slack timestamp for a message that can target Slack APIs. */

@@ -480,13 +480,11 @@ export function createSlackTurnRuntime<
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      // Ingress Turns run in the inbound Slack thread, so Thread.id is a Slack
-      // thread id here, not a Conversation id.
       const channelId = getChannelId(args.thread, args.message);
       if (!channelId) {
         throw new Error("Slack fallback error reply requires a channel id");
       }
-      const threadTs = getThreadTs(getThreadId(args.thread, args.message));
+      const threadTs = getThreadTs(args.message);
       await sendSlackReply({
         channelId,
         conversationId: args.conversationId,

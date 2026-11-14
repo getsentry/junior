@@ -1,5 +1,5 @@
 import { normalizeSlackConversationId } from "@/chat/slack/client";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import { parseSlackThreadId, type SlackThreadId } from "@/chat/slack/ids";
 
 /** Slack Events API channel_type values relevant to message surfaces. */
 export type SlackEventChannelType = "channel" | "group" | "mpim" | "im";
@@ -160,16 +160,14 @@ export function resolveSlackConversationContext(input: {
   };
 }
 
-/** Build Slack conversation facts from Junior's persisted Slack thread id. */
+/** Build Slack conversation facts from a Slack thread id. */
 export function resolveSlackConversationContextFromThreadId(input: {
-  threadId?: string;
+  threadId?: SlackThreadId | undefined;
   channelName?: string | undefined;
   visibility?: SlackConversationVisibility;
 }): SlackConversationContext | undefined {
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-  const slackThread = parseSlackThreadId(input.threadId);
   const context = resolveSlackConversationContext({
-    channelId: slackThread?.channelId,
+    channelId: input.threadId && parseSlackThreadId(input.threadId).channelId,
     channelName: input.channelName,
   });
   if (!context || !input.visibility) {

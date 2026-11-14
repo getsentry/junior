@@ -29,7 +29,7 @@ import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import { resolveSlackChannelIdFromMessage } from "@/chat/slack/context";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -513,17 +513,17 @@ export async function clearSlackPendingReactions(args: {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
       if (!metadata || metadata.route !== "mention") continue;
-      const timestamp = getMessageTs(Message.fromJSON(metadata.message));
-      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-      const target = parseSlackThreadId(metadata.thread.id);
-      if (!timestamp || !target) continue;
+      const message = Message.fromJSON(metadata.message);
+      const timestamp = getMessageTs(message);
+      const channelId = resolveSlackChannelIdFromMessage(message);
+      if (!timestamp || !channelId) continue;
       await runWithSlackInstallation({
         adapter: args.getSlackAdapter(),
         installation: metadata.installation ?? {},
         state: args.state,
         task: () =>
           removeReactionFromMessage({
-            channelId: target.channelId,
+            channelId,
             timestamp,
             emoji: getChatConfig().slack.processingReactionEmoji,
           }),

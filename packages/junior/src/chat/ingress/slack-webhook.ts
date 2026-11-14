@@ -69,7 +69,14 @@ import {
 import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import { slackThreadIdOfMessage } from "@/chat/slack/context";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  parseSlackChannelId,
+  parseSlackThreadId,
+  slackThreadId,
+  type SlackThreadId,
+} from "@/chat/slack/ids";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
@@ -230,13 +237,13 @@ async function resolveSlackConversationId(args: {
   claimAtMs?: number;
   conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
+  slackThread: SlackThreadId | undefined;
 }): Promise<string> {
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-  const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
-  if (!providerThread) {
+  if (!args.slackThread) {
     return args.canonicalThreadId;
   }
+  const providerThread = parseSlackThreadId(args.slackThread);
   const ownerId = await findSlackThreadOwnerId({
     channelId: providerThread.channelId,
     conversationStore,
@@ -316,6 +323,7 @@ async function persistSlackMessage(args: {
         : undefined),
       conversationStore: args.conversationStore,
       installation: args.installation,
+      slackThread: slackThreadIdOfMessage(args.message),
     }));
   const { inbound, thread } = await buildSlackInput({
     ...args,
@@ -431,6 +439,7 @@ async function routeParsedMessage(args: {
   }
 
   await bindSlackAuthorIdentity(message, args.installation);
+  const slackThread = slackThreadIdOfMessage(message);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
     ...(route === "mention" && !stopDecision
@@ -438,6 +447,7 @@ async function routeParsedMessage(args: {
       : undefined),
     conversationStore: args.conversationStore,
     installation: args.installation,
+    slackThread,
   });
 
   if (stopDecision) {
@@ -457,8 +467,9 @@ async function routeParsedMessage(args: {
       conversationStore: args.conversationStore,
       queue: args.queue,
       request: inbound,
-      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-      slackThread: parseSlackThreadId(canonicalThreadId),
+      ...(slackThread
+        ? { slackThread: parseSlackThreadId(slackThread) }
+        : undefined),
       state: args.state,
       stopMessage: {
         message,
@@ -678,10 +689,16 @@ async function handleSlackEvent(args: {
             `slack:ingress:slack:${channelId}:${threadTs}`,
             async () => {
               const canonicalThreadId = `slack:${channelId}:${threadTs}`;
+              const slackChannelId = parseSlackChannelId(channelId);
+              const slackThreadTs = parseSlackMessageTs(threadTs);
               const conversationId = await resolveSlackConversationId({
                 canonicalThreadId,
                 conversationStore: args.services.conversationStore,
                 installation,
+                slackThread:
+                  slackChannelId && slackThreadTs
+                    ? slackThreadId(slackChannelId, slackThreadTs)
+                    : undefined,
               });
               await handleSlackStop({
                 adapter,

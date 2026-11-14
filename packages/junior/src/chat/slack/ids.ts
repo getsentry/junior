@@ -1,5 +1,9 @@
 import * as z from "zod";
-import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  parseSlackMessageTs,
+  slackMessageTsSchema,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 // Slack-owned runtime boundaries parse raw strings into branded IDs here.
 // Exact ID parsers reject Junior reference strings; reference parsing stays
@@ -24,10 +28,23 @@ export const slackBotIdSchema = z
   .regex(/^B[A-Z0-9]+$/)
   .brand<"SlackBotId">();
 
+// The brand is a private symbol and the schema is not exported, so no other
+// module can make a SlackThreadId from a Conversation id string.
+declare const slackThreadIdBrand: unique symbol;
+const slackThreadIdSchema = z
+  .string()
+  .regex(/^slack:[CDG][A-Z0-9]+:\d+(?:\.\d+)?$/)
+  .brand<typeof slackThreadIdBrand>();
+
 export type SlackBotId = z.output<typeof slackBotIdSchema>;
 export type SlackChannelId = z.output<typeof slackChannelIdSchema>;
 export type SlackTeamId = z.output<typeof slackTeamIdSchema>;
 export type SlackUserId = z.output<typeof slackUserIdSchema>;
+/**
+ * A Slack thread, as `slack:<channel>:<thread ts>`. A Conversation id is a
+ * plain string, so it is not a SlackThreadId, also when it has this format.
+ */
+export type SlackThreadId = z.output<typeof slackThreadIdSchema>;
 
 const SLACK_CHANNEL_MENTION_RE = /^<#([CDG][A-Z0-9]+)(?:\|[^>]*)?>$/;
 
@@ -92,4 +109,42 @@ export function parseSlackUserId(value: unknown): SlackUserId | undefined {
 /** Return true when a value is exactly a Slack workspace/team id. */
 export function isSlackTeamId(value: string): value is SlackTeamId {
   return value === value.trim() && slackTeamIdSchema.safeParse(value).success;
+}
+
+/** Build the Slack thread id of a verified channel and thread timestamp. */
+export function slackThreadId(
+  channelId: SlackChannelId,
+  threadTs: SlackMessageTs,
+): SlackThreadId {
+  return slackThreadIdSchema.parse(`slack:${channelId}:${threadTs}`);
+}
+
+/** Split a Slack thread id into its channel and thread timestamp. */
+export function parseSlackThreadId(threadId: SlackThreadId): {
+  channelId: SlackChannelId;
+  threadTs: SlackMessageTs;
+} {
+  const [, channelId, threadTs] = threadId.split(":");
+  return {
+    channelId: slackChannelIdSchema.parse(channelId),
+    threadTs: slackMessageTsSchema.parse(threadTs),
+  };
+}
+
+/**
+ * Verify a `slack:<channel>:<ts>` string that has no typed Slack source, such
+ * as model tool input. A Conversation id is not a Slack thread reference: an
+ * Automation Conversation that owns a Slack thread has another id. Read an
+ * inbound thread with `slackThreadIdOfMessage`, and get where to post from
+ * `resolveSlackReplyTarget`.
+ */
+export function parseSlackThreadReference(
+  value: unknown,
+): SlackThreadId | undefined {
+  if (typeof value !== "string") return undefined;
+  const parts = value.trim().split(":");
+  if (parts.length !== 3 || parts[0] !== "slack") return undefined;
+  const channelId = parseSlackChannelId(parts[1]);
+  const threadTs = parseSlackMessageTs(parts[2]);
+  return channelId && threadTs ? slackThreadId(channelId, threadTs) : undefined;
 }

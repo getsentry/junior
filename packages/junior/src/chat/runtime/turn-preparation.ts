@@ -12,7 +12,10 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { setSpanAttributes } from "@/chat/logging";
-import { getThreadTs } from "@/chat/runtime/thread-context";
+import {
+  parseSlackThreadId,
+  parseSlackThreadReference,
+} from "@/chat/slack/ids";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   buildConversationContext,
@@ -241,13 +244,19 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       hasPendingImageHydration(conversation);
 
     if (isVisionEnabled() && shouldHydrateVisionContext) {
+      // TODO(dcramer): Decide whether to read the thread from the message.
+      // A dispatched Turn's thread id is its Conversation id, so it gets no
+      // Slack thread images here.
+      const slackThread = parseSlackThreadReference(args.context.threadId);
       await deps.hydrateConversationVisionContext(conversation, {
         conversationId,
         threadId: args.context.threadId,
         channelId: args.context.channelId,
         actorId: args.context.actorId,
         runId: args.context.runId,
-        threadTs: getThreadTs(args.context.threadId),
+        ...(slackThread
+          ? { threadTs: parseSlackThreadId(slackThread).threadTs }
+          : undefined),
       });
       if (conversationId) {
         await persistConversationVisionCache(

@@ -2,8 +2,11 @@ import * as z from "zod";
 import type { ConversationMessageSearchFilters } from "@/chat/conversations/message-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
-import { parseSlackThreadId } from "@/chat/slack/context";
-import type { SlackTeamId } from "@/chat/slack/ids";
+import {
+  parseSlackThreadId,
+  parseSlackThreadReference,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
@@ -174,8 +177,10 @@ export function createSlackConversationMessageSearchTool(
       });
       const matchesOutput = await Promise.all(
         matches.map(async (match) => {
-          // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-          const reference = parseSlackThreadId(match.conversationId);
+          // TODO(dcramer): Decide whether to read the Location. Results are
+          // Slack chat Conversations, whose ids are Slack thread ids.
+          const slackThread = parseSlackThreadReference(match.conversationId);
+          const reference = slackThread && parseSlackThreadId(slackThread);
           if (
             !reference ||
             reference.channelId !== match.providerDestinationId

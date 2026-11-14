@@ -1,7 +1,10 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
-import { parseSlackThreadId } from "@/chat/slack/context";
-import type { SlackChannelId } from "@/chat/slack/ids";
+import {
+  parseSlackThreadId,
+  parseSlackThreadReference,
+  type SlackChannelId,
+} from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import {
   parseSlackTimestampParam,
@@ -54,15 +57,10 @@ function normalizeRangeTimestamp(
     return timestamp;
   }
 
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  const threadId = parseSlackThreadId(trimmed);
-  const threadTimestamp = threadId
-    ? parseSlackTimestampParam(field, threadId.threadTs)
-    : undefined;
-  if (threadId && threadTimestamp?.ok && threadTimestamp.value) {
-    if (threadId.channelId === targetChannelId) {
-      return threadTimestamp;
-    }
+  const threadId = parseSlackThreadReference(trimmed);
+  const thread = threadId && parseSlackThreadId(threadId);
+  if (thread?.channelId === targetChannelId) {
+    return { ok: true, value: thread.threadTs };
   }
 
   return timestamp;
