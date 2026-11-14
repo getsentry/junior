@@ -44,6 +44,7 @@ async function handleAppHomeDisconnect(args: {
     "chat.app_home_disconnect",
     { userId: args.userId },
     async () => {
+      const errors: unknown[] = [];
       try {
         await unlinkProvider(
           args.userId,
@@ -51,14 +52,23 @@ async function handleAppHomeDisconnect(args: {
           args.userTokenStore,
           getWorkspaceTeamId(),
         );
-      } finally {
-        // Refresh App Home even when the unlink fails, so it shows the real
-        // connection state. The unlink error still reaches the boundary.
+      } catch (error) {
+        errors.push(error);
+      }
+      // Refresh App Home even when the unlink fails, so it shows the real
+      // connection state. Both failures reach the boundary.
+      try {
         await publishAppHomeView(
           getSlackClient(),
           args.userId,
           args.userTokenStore,
         );
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) {
+        throw new AggregateError(errors, "App Home disconnect failed");
       }
     },
   );
