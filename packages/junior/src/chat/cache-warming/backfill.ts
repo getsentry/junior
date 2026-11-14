@@ -35,13 +35,18 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  juniorAgentInvocations,
+  juniorConversationEvents,
+  juniorConversations,
+} from "@/db/schema";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -50,10 +55,12 @@ import {
   NO_REPLY_GAP_MS,
 } from "./model";
 import {
+  ANSWER_TOOL_ENDINGS,
   CONVERSATION_STATE_TTL_MS,
   GLOBAL_GAPS_MAX,
   GLOBAL_GAPS_TTL_MS,
   segmentGapsKey,
+  type TurnEnding,
 } from "./warmup";
 
 // The key names the segment format. A change of the `gapSegment` keys must
@@ -117,6 +124,8 @@ interface EventRow {
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
   stopReason: string | null;
+  /** Names of the tool calls of a `toolUse` assistant message. */
+  toolNames: string[] | null;
   /** Assistant message: Pi sets it when the model request starts. */
   startedAtMs: string | null;
   modelId: string | null;
@@ -127,6 +136,7 @@ interface EventRow {
 /** One idle period of the stored history, as live recording would see it. */
 export interface ReplayedIdlePeriod {
   segment: string;
+  turnEnding: TurnEnding;
   sinceMs: number;
   /** Real time until the call that ended it, or until now. */
   gapMs: number;
@@ -140,7 +150,10 @@ export interface ReplayedIdlePeriod {
  * One tool wait of the stored history: from a `toolUse` call to the next call
  * of its run, as `tool-wait.ts` records it live.
  */
-export type ReplayedToolWait = Omit<ReplayedIdlePeriod, "segment" | "next"> & {
+export type ReplayedToolWait = Omit<
+  ReplayedIdlePeriod,
+  "segment" | "turnEnding" | "next"
+> & {
   next: NonNullable<ReplayedIdlePeriod["next"]>;
 };
 
@@ -227,6 +240,15 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
         boolean | null
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
+      toolNames: sql<string[] | null>`CASE
+        WHEN (${message})->>'stopReason' = 'toolUse'
+          AND jsonb_typeof((${message})->'content') = 'array'
+        THEN (
+          SELECT jsonb_agg(block->>'name')
+          FROM jsonb_array_elements((${message})->'content') AS block
+          WHERE block->>'type' = 'toolCall'
+        )
+      END`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
       modelId: sql<string | null>`(${message})->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
@@ -253,11 +275,36 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
     .orderBy(events.conversationId, events.seq);
 }
 
+interface ChildAgentRow {
+  /** The parent Conversation. */
+  conversationId: string;
+  createdAt: Date;
+  terminalAt: Date | null;
+}
+
+// The child agents of a batch. Live recording starts an Automation idle
+// period only while a child agent still runs.
+async function loadChildAgents(
+  conversationIds: string[],
+): Promise<ChildAgentRow[]> {
+  return await getDb()
+    .select({
+      conversationId: juniorAgentInvocations.parentConversationId,
+      createdAt: juniorAgentInvocations.createdAt,
+      terminalAt: juniorAgentInvocations.terminalAt,
+    })
+    .from(juniorAgentInvocations)
+    .where(
+      inArray(juniorAgentInvocations.parentConversationId, conversationIds),
+    );
+}
+
 /**
  * Replay the model calls of one Conversation the way the recorders in
  * `warmup.ts` and `tool-wait.ts` see them, and return each idle period and
- * tool wait. An idle period starts at a `stop` call and a tool wait at a
- * `toolUse` call, so no pair of calls is in both.
+ * tool wait. An idle period starts at a call that ends the Turn: a `stop`
+ * call or an answer tool call. A tool wait starts at any other `toolUse`
+ * call, so no pair of calls is in both.
  *
  * Live recording measures from the start of the request that ended a Turn to
  * the start of the next recorded request. Here both times are the
@@ -267,18 +314,29 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
 function replayConversation(
   kind: ConversationKind,
   events: EventRow[],
+  children: readonly ChildAgentRow[],
   nowMs: number,
 ): { periods: ReplayedIdlePeriod[]; toolWaits: ReplayedToolWait[] } {
   const periods: ReplayedIdlePeriod[] = [];
   const toolWaits: ReplayedToolWait[] = [];
-  type Idle = Omit<ReplayedIdlePeriod, "gapMs" | "next">;
+  // `waitsOnPendingWork`: an Automation Turn, whose idle period live
+  // recording starts only while a child agent or a Watch can start a later
+  // Turn.
+  type Idle = Omit<ReplayedIdlePeriod, "gapMs" | "next"> & {
+    waitsOnPendingWork: boolean;
+    childRunning: boolean;
+  };
   const close = (
-    idle: Idle,
+    { waitsOnPendingWork, childRunning, ...idle }: Idle,
     untilMs: number,
     next?: ReplayedIdlePeriod["next"],
   ) => {
     const gapMs = untilMs - idle.sinceMs;
     if (gapMs <= 0) return;
+    // An Automation run has its own Conversation, so only a child agent or a
+    // Watch starts a later Turn. History has no Watches: a later Turn without
+    // a running child stands for one.
+    if (waitsOnPendingWork && !childRunning && !next) return;
     const period: ReplayedIdlePeriod = { ...idle, gapMs };
     if (next) period.next = next;
     periods.push(period);
@@ -304,8 +362,16 @@ function replayConversation(
       }
       continue;
     }
+    // An answer tool call ends the Turn like a final response.
+    const answerEnding =
+      event.stopReason === "toolUse"
+        ? event.toolNames
+            ?.map((name) => ANSWER_TOOL_ENDINGS[name])
+            .find((ending) => ending !== undefined)
+        : undefined;
+    const turnEnding = event.stopReason === "stop" ? "reply" : answerEnding;
     // Pi continues the Turn only after a tool call.
-    if (event.stopReason !== "toolUse") inTurn = false;
+    if (event.stopReason !== "toolUse" || answerEnding) inTurn = false;
     // `Number(null)` is 0, so check for a missing time first.
     const startedAtMs =
       event.startedAtMs === null ? Number.NaN : Number(event.startedAtMs);
@@ -324,7 +390,7 @@ function replayConversation(
       });
     }
     waiting =
-      event.stopReason === "toolUse"
+      event.stopReason === "toolUse" && !answerEnding
         ? {
             sinceMs: startedAtMs,
             prefixTokens: next.cacheRead + next.cacheWrite,
@@ -346,11 +412,24 @@ function replayConversation(
       endedTurns = 0;
     }
     lastCallMs = startedAtMs;
-    if (event.stopReason === "stop") {
+    if (turnEnding) {
+      const waitsOnPendingWork =
+        turnBehavior({ kind, personInput: userActor }).promptMode ===
+        "automation";
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),
+        turnEnding,
         prefixTokens: cacheRead + cacheWrite,
+        waitsOnPendingWork,
+        childRunning:
+          waitsOnPendingWork &&
+          children.some(
+            (child) =>
+              child.createdAt.getTime() <= startedAtMs &&
+              (child.terminalAt === null ||
+                child.terminalAt.getTime() > startedAtMs),
+          ),
       };
       endedTurns += 1;
     }
@@ -358,6 +437,18 @@ function replayConversation(
   // An idle period that is still in its horizon has no gap yet.
   if (idle && nowMs - idle.sinceMs >= IDLE_HORIZON_MS) close(idle, nowMs);
   return { periods, toolWaits };
+}
+
+function byConversation<Row extends { conversationId: string }>(
+  rows: readonly Row[],
+): Map<string, Row[]> {
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.conversationId) ?? [];
+    list.push(row);
+    grouped.set(row.conversationId, list);
+  }
+  return grouped;
 }
 
 function isQueryCanceled(error: unknown): boolean {
@@ -401,8 +492,13 @@ async function replayConversations(
     const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
     lastConversationId = batch.at(-1)!.conversationId;
     let rows: EventRow[];
+    let children: ChildAgentRow[];
     try {
-      rows = await loadEvents(batch.map((row) => row.conversationId));
+      const ids = batch.map((row) => row.conversationId);
+      [rows, children] = await Promise.all([
+        loadEvents(ids),
+        loadChildAgents(ids),
+      ]);
     } catch (error) {
       // A batch with too much history for one query is skipped. The budget
       // check still stops the scan in time.
@@ -410,16 +506,13 @@ async function replayConversations(
       canceledBatches += 1;
       continue;
     }
-    const events = new Map<string, EventRow[]>();
-    for (const event of rows) {
-      const list = events.get(event.conversationId) ?? [];
-      list.push(event);
-      events.set(event.conversationId, list);
-    }
+    const events = byConversation(rows);
+    const childrenByParent = byConversation(children);
     for (const conversation of batch) {
       const replayed = replayConversation(
         conversationKindFromRow(conversation),
         events.get(conversation.conversationId) ?? [],
+        childrenByParent.get(conversation.conversationId) ?? [],
         nowMs,
       );
       const inScanWindow = (period: { sinceMs: number }) =>
