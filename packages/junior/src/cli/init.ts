@@ -75,7 +75,7 @@ function writeTsConfig(targetDir: string): void {
     `${JSON.stringify(
       {
         extends: "nitro/tsconfig",
-        compilerOptions: {},
+        compilerOptions: { noUncheckedIndexedAccess: true },
       },
       null,
       2,
@@ -118,14 +118,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install
       - run: pnpm check
+      - run: pnpm typecheck
       # Snapshot warmup needs Vercel OIDC, so the Vercel deploy build runs it.
       - run: pnpm build
         env:
@@ -162,6 +161,8 @@ export async function runInit(
     version: "0.1.0",
     private: true,
     type: "module",
+    packageManager: "pnpm@12.18.0",
+    engines: { node: "24.x" },
     scripts: {
       dev: "nitro dev",
       check: "junior check",
@@ -176,7 +177,7 @@ export async function runInit(
       hono: "^4.13.11",
     },
     devDependencies: {
-      "@types/node": "^25.9.1",
+      "@types/node": "^24.19.2",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^7.0.2",

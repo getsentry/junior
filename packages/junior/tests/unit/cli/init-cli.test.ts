@@ -216,11 +216,14 @@ minimumReleaseAgeExclude:
     const scaffoldPackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
+      packageManager: string;
       scripts: Record<string, string>;
     }>(path.join(target, "package.json"));
     const examplePackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
       scripts: Record<string, string>;
     }>(examplePackageJsonPath);
 
@@ -263,6 +266,14 @@ minimumReleaseAgeExclude:
     expect(scaffoldNonPluginDeps).toEqual(exampleNonPluginDeps);
     expect(scaffoldPackage.devDependencies).toEqual(
       examplePackage.devDependencies,
+    );
+    expect(scaffoldPackage.engines).toEqual(examplePackage.engines);
+    // The scaffold pins the pnpm release that this repo uses.
+    const rootPackage = readJsonFile<{ packageManager: string }>(
+      path.join(repoRoot, "package.json"),
+    );
+    expect(scaffoldPackage.packageManager).toBe(
+      rootPackage.packageManager.split("+")[0],
     );
 
     const scaffoldVercelConfig = readJsonFile<Record<string, unknown>>(
