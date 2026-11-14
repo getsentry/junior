@@ -46,11 +46,14 @@ async function fetchObjects(urls: readonly string[]) {
       ),
     ),
   );
-  return new Map(
-    reports.flatMap((report) =>
-      report.objects.map((item) => [item.url, item.object] as const),
-    ),
+  // Every asked link has an entry, so a link without a card is answered too.
+  const objects = new Map<string, OwnedObjectAnnotation | undefined>(
+    urls.map((url) => [url, undefined]),
   );
+  for (const report of reports) {
+    for (const item of report.objects) objects.set(item.url, item.object);
+  }
+  return objects;
 }
 
 /**
@@ -105,7 +108,9 @@ export function resolvableUrl(href: string | undefined): string | undefined {
  * Return the object card that the API resolves for a link, for this viewer.
  * The request starts only after `request()`, such as when the link scrolls
  * into view or the reader hovers it. Until then, and on failure, there is
- * no card. `settled` is true when a request finished and no newer one runs.
+ * no card. `settled` turns true once an answer covers the link, or a request
+ * fails, and stays true for later requests, such as a refetch or one for new
+ * links.
  */
 export function useResolvedObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
@@ -119,7 +124,7 @@ export function useResolvedObject(href: string | undefined): {
   }, [register, url]);
   // Every link of the message reads the same query, so they share one
   // request.
-  const { data, isFetching } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["object-links", requested],
     queryFn: () => fetchObjects(requested!),
     enabled: requested !== undefined,
@@ -128,11 +133,13 @@ export function useResolvedObject(href: string | undefined): {
     staleTime: 60_000,
     retry: false,
   });
-  return {
-    card: url ? data?.get(url) : undefined,
-    request,
-    settled: requested !== undefined && !isFetching,
-  };
+  // A new query key starts without an error or data, so keep the first
+  // answer for this link.
+  const [settled, setSettled] = useState(false);
+  if (!settled && (isError || (url !== undefined && data?.has(url)))) {
+    setSettled(true);
+  }
+  return { card: url ? data?.get(url) : undefined, request, settled };
 }
 
 /** Return a ref that calls `onVisible` once, when its element first shows. */
