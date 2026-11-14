@@ -806,7 +806,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       recorder.wrap((() => undefined) as never)(model, turnContext, {});
       await recorder.record({
