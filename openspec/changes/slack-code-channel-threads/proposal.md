@@ -61,8 +61,8 @@ These came from the design discussion. David agreed with them.
   archived.
 - In the code channel, Junior answers messages that are for Junior, also
   without a mention. It stays quiet when people talk to each other.
-- No automatic archive in the first version. People archive the code channel,
-  or Junior offers an archive action after a wrap-up summary.
+- No automatic archive in the first version. People archive the code channel
+  in Slack. The first version has no archive action.
 
 ## Scope
 
