@@ -117,9 +117,7 @@ EXECUTE FUNCTION junior_test_block_purge()
       nowMs: BASE_MS + 15 * DAY_MS,
     });
 
-    await expect(run).rejects.toThrow(
-      "Retention purge failed for 1 conversation trees",
-    );
+    await expect(run).rejects.toThrow("Retention purge failures: 1");
     expect(await eventCount(fixture.sql, "expired")).toBe(0);
     expect(await eventCount(fixture.sql, "blocked")).toBe(1);
   });

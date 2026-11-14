@@ -179,6 +179,69 @@ describe("retention purge job: attachments", () => {
     });
   });
 
+  it("reports a failed tree when attachment cleanup also fails", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    for (const conversationId of ["blocked", "with-attachment"]) {
+      await seedConversation(fixture.sql, {
+        conversationId,
+        destinationId,
+        lastActivityAtMs: BASE_MS,
+      });
+    }
+    await fixture.sql.execute(`
+CREATE OR REPLACE FUNCTION junior_test_block_purge()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'purge blocked for test';
+END;
+$$ LANGUAGE plpgsql
+`);
+    await fixture.sql.execute(`
+CREATE TRIGGER junior_test_block_purge
+BEFORE DELETE ON junior_conversation_events
+FOR EACH ROW WHEN (OLD.conversation_id = 'blocked')
+EXECUTE FUNCTION junior_test_block_purge()
+`);
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "attachment-1",
+        conversationId: "with-attachment",
+        storageProvider: "memory",
+        storageKey: "key-1",
+        filename: "report.txt",
+        contentType: "text/plain",
+        bytes: 6,
+        sha256: "digest",
+        createdAt: new Date(BASE_MS),
+      });
+    const storage = {
+      ...createMemoryAttachmentStorage(),
+      delete: async () => {
+        throw new Error("blob delete failed");
+      },
+    };
+
+    const run = runRetentionPurge(fixture.sql, {
+      attachmentStorage: storage,
+      nowMs: BASE_MS + 15 * DAY_MS,
+    });
+
+    await expect(run).rejects.toMatchObject({
+      message: "Retention purge failures: 2",
+      errors: [
+        expect.objectContaining({
+          message: "Retention purge failed for blocked",
+        }),
+        expect.objectContaining({
+          message: "Attachment garbage collection failed",
+          cause: expect.objectContaining({ message: "blob delete failed" }),
+        }),
+      ],
+    });
+  });
+
   it("collects unmarked attachments owned by purged conversations", async () => {
     const destinationId = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {

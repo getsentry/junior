@@ -87,23 +87,37 @@ export async function runRetentionPurge(
       }
     });
   }
-  const attachmentResult = args.attachmentStorage
-    ? await collectAttachmentGarbage({
-        db: executor,
-        nowMs: args.nowMs,
-        storage: args.attachmentStorage,
-      })
-    : { deleted: 0 };
-  const uploadResult = args.attachmentStorage
-    ? await collectAttachmentUploadGarbage({
-        db: executor,
-        nowMs: args.nowMs,
-        storage: args.attachmentStorage,
-      })
-    : { deleted: 0 };
+  // Garbage collection failures join the tree failures, so a later throw
+  // cannot hide the trees that failed.
+  let attachments = 0;
+  let attachmentUploads = 0;
+  if (args.attachmentStorage) {
+    const gcArgs = {
+      db: executor,
+      nowMs: args.nowMs,
+      storage: args.attachmentStorage,
+    };
+    try {
+      attachments = (await collectAttachmentGarbage(gcArgs)).deleted;
+    } catch (error) {
+      errors.push(
+        new Error("Attachment garbage collection failed", { cause: error }),
+      );
+    }
+    try {
+      attachmentUploads = (await collectAttachmentUploadGarbage(gcArgs))
+        .deleted;
+    } catch (error) {
+      errors.push(
+        new Error("Attachment upload garbage collection failed", {
+          cause: error,
+        }),
+      );
+    }
+  }
   logInfo("retention.purge.completed", {
-    "app.retention.attachments": attachmentResult.deleted,
-    "app.retention.attachment_uploads": uploadResult.deleted,
+    "app.retention.attachments": attachments,
+    "app.retention.attachment_uploads": attachmentUploads,
     "app.retention.scanned": roots.length,
     "app.retention.purged": purged,
     "app.retention.failed": errors.length,
@@ -113,14 +127,14 @@ export async function runRetentionPurge(
   if (errors.length > 0) {
     throw new AggregateError(
       errors,
-      `Retention purge failed for ${errors.length} conversation trees`,
+      `Retention purge failures: ${errors.length}`,
     );
   }
   return {
     scanned: roots.length,
     purged,
     conversations,
-    attachments: attachmentResult.deleted,
+    attachments,
   };
 }
 

@@ -64,16 +64,20 @@ export async function recoverConversationWork(args: {
           state: args.state,
         });
       } catch (error) {
+        errors.push(recoveryError(conversationId, error));
         // An invalid record can never become runnable again; drop it from the
         // bounded oldest-first scan so it cannot starve recovery for every
         // other conversation.
         if (isInvalidConversationRecordError(error)) {
-          await pruneActiveConversation({
-            conversationId,
-            state: args.state,
-          });
+          try {
+            await pruneActiveConversation({
+              conversationId,
+              state: args.state,
+            });
+          } catch (pruneError) {
+            errors.push(recoveryError(conversationId, pruneError));
+          }
         }
-        errors.push(recoveryError(conversationId, error));
         return;
       }
       try {

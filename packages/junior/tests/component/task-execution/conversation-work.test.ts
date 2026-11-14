@@ -2481,6 +2481,66 @@ describe("conversation work execution", () => {
     expect(activeIds).toContain(CONVERSATION_ID);
   });
 
+  it("reports both the unreadable record and its failed prune", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const unreadableConversationId = "slack:C123:9999.0002";
+
+    await requestConversationWork({
+      conversationId: unreadableConversationId,
+      destination: SLACK_DESTINATION,
+      nowMs: 500,
+      state,
+    });
+    await state.set(`junior:conversation:v2:${unreadableConversationId}`, {
+      schemaVersion: 2,
+      conversationId: unreadableConversationId,
+      createdAtMs: 500,
+      destination: SLACK_DESTINATION,
+      execution: { status: "bogus" },
+      lastActivityAtMs: 500,
+      updatedAtMs: 500,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    const pruneFails = new Proxy(state, {
+      get(target, prop) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (key.includes(unreadableConversationId)) {
+              throw new Error("prune lock unavailable");
+            }
+            return await target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    const recovery = recoverConversationWork({
+      nowMs: 62_000,
+      queue,
+      state: pruneFails,
+    });
+
+    await expect(recovery).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({ cause: expect.any(Error) }),
+        expect.objectContaining({
+          cause: expect.objectContaining({ message: "prune lock unavailable" }),
+        }),
+      ],
+    });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId: CONVERSATION_ID }),
+    ]);
+  });
+
   it("refuses a stale conversation write after the mutation lock is lost", async () => {
     const state = getStateAdapter();
     await state.connect();
