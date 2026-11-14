@@ -175,14 +175,19 @@ export function useLinkedConversationTitles(
  */
 export function useInboxTodoCount(enabled: boolean): number | undefined {
   const count = useReviewItemCountData(enabled).data;
-  // Alerts put away in this browser leave To do, so they leave its count.
-  const attention = useAutomationAttentionData(enabled).data;
+  const attention = useAutomationAttentionData(enabled);
   const alerts = useAutomationAlerts(Date.now());
-  const putAway = attention?.automations.filter(alerts.hidden).length ?? 0;
-  return count
-    ? // The count read always sends `include=automations`.
-      count.needsViewer + Math.max(0, (count.automations ?? 0) - putAway)
-    : undefined;
+  if (!count) return undefined;
+  // The count read always sends `include=automations`.
+  const automations = count.automations ?? 0;
+  // Alerts put away in this browser leave To do, so they leave its count.
+  // Only the attention list says which Automations they are. Until it
+  // loads, show no count: a count that drops after load marks a false
+  // update on a pinned tab. A failed list cannot say, so all count.
+  if (automations > 0 && alerts.anyPutAway && !attention.data)
+    return attention.error ? count.needsViewer + automations : undefined;
+  const putAway = attention.data?.automations.filter(alerts.hidden).length ?? 0;
+  return count.needsViewer + Math.max(0, automations - putAway);
 }
 
 /**

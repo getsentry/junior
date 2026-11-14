@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
+import { attentionCount, automationReport } from "./automation-fixture";
 import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "./test";
 
@@ -14,6 +16,30 @@ function inboxTab(page: Page) {
   return page
     .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: /^Inbox/ });
+}
+
+// Record every title write. A pinned tab marks each one as an update.
+async function recordTitles(page: Page) {
+  await page.addInitScript(() => {
+    const titles: string[] = [];
+    Object.assign(window, { __titles: titles });
+    const own = Object.getOwnPropertyDescriptor(Document.prototype, "title")!;
+    Object.defineProperty(document, "title", {
+      configurable: true,
+      get: () => own.get!.call(document),
+      set: (value: string) => {
+        titles.push(value);
+        own.set!.call(document, value);
+      },
+    });
+  });
+}
+
+/** The titles written since the page loaded. */
+function recordedTitles(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () => (window as Window & { __titles: string[] }).__titles,
+  );
 }
 
 async function closeCheckoutAsks(page: Page) {
@@ -82,20 +108,7 @@ test("moving between pages never flashes the bare agent name in the tab", async 
   dashboard,
   page,
 }) => {
-  // Record every title write. A pinned tab marks each one as an update.
-  await page.addInitScript(() => {
-    const titles: string[] = [];
-    Object.assign(window, { __titles: titles });
-    const own = Object.getOwnPropertyDescriptor(Document.prototype, "title")!;
-    Object.defineProperty(document, "title", {
-      configurable: true,
-      get: () => own.get!.call(document),
-      set: (value: string) => {
-        titles.push(value);
-        own.set!.call(document, value);
-      },
-    });
-  });
+  await recordTitles(page);
   await mockOneAsk(page);
   await page.goto(`${dashboard.baseURL}/`);
   await expect(page).toHaveTitle("(1) Inbox - Junior");
@@ -107,13 +120,78 @@ test("moving between pages never flashes the bare agent name in the tab", async 
   await inboxTab(page).click();
   await expect(page).toHaveTitle("(1) Inbox - Junior");
 
-  const all = await page.evaluate(
-    () => (window as Window & { __titles: string[] }).__titles,
-  );
+  const all = await recordedTitles(page);
   // From the first counted title on: the count loads after the page title.
   const titles = all.slice(all.indexOf("(1) Inbox - Junior"));
   expect(titles).toContain("(1) Pull requests - Junior");
   expect(titles.filter((title) => /^(\(\d+\) )?Junior$/.test(title))).toEqual(
     [],
   );
+});
+
+test("the tab count waits for the alerts that this browser put away", async ({
+  dashboard,
+  page,
+}) => {
+  const report = structuredClone(automationReport);
+  const blocked = report.automations[1]!;
+  Object.assign(blocked, {
+    lastRunAt: "2026-01-01T10:00:00.000Z",
+    lastRunStatus: "blocked",
+    status: "blocked",
+    statusReason: "GitHub access expired.",
+  });
+  const total = 1 + attentionCount(report);
+  await mockReviewItems(page, {
+    automations: () => attentionCount(report),
+    open: [rollout],
+  });
+  // The attention list can be held, as a slow list is on a real server.
+  let held: Promise<void> | undefined;
+  let release = () => {};
+  await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
+    await held;
+    await route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/`);
+  await expect(page).toHaveTitle(`(${total}) Inbox - Junior`);
+  const todo = page.getByRole("region", { name: "To do" });
+  await todo.getByRole("button", { name: new RegExp(blocked.title) }).click();
+  await page
+    .getByRole("region", { name: `${blocked.title}: attention` })
+    .getByRole("button", { name: "Dismiss", exact: true })
+    .click();
+  await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
+
+  // Reload while the list that says which alert was put away is held.
+  held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await recordTitles(page);
+  const counted = page.waitForResponse((response) =>
+    response.url().includes("/api/review-items/count"),
+  );
+  await page.reload();
+  await counted;
+  await expect(rowHead(page, checkout)).toBeVisible();
+  // Let the count render before the list arrives.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  release();
+  await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
+  // The count never showed the put-away alert, so it never dropped.
+  expect(
+    (await recordedTitles(page)).filter((title) =>
+      title.startsWith(`(${total}) `),
+    ),
+  ).toEqual([]);
 });

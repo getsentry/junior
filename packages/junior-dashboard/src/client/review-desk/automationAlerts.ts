@@ -69,6 +69,10 @@ export function useAutomationAlerts(nowMs: number) {
       [automation.id]: { alert: alertIdentity(automation), untilMs },
     });
   return {
+    /** True while some alert is put away, so a count must wait for the list. */
+    anyPutAway: Object.values(stored).some(
+      (entry) => entry.untilMs === undefined || entry.untilMs > nowMs,
+    ),
     dismiss: (automation: AutomationSummary) => putAway(automation),
     hidden,
     snooze: (automation: AutomationSummary, choice: SnoozeChoice) =>
