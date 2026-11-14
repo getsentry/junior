@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -11,10 +12,13 @@ import {
   getAgentInvocationTurnId,
   getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   completeAgentInvocation,
   getAgentInvocation,
+  getLatestAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import {
   createDeliverToParent,
   enqueueChildResultToParent,
@@ -39,10 +43,12 @@ import {
 } from "@/chat/task-execution/turn-cursor";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
+  destination,
   invocationInput,
   parentConversationId,
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
+import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createConversationWorkHarness,
   runHeartbeatAfterLeasesExpire,
@@ -293,6 +299,66 @@ describe("agent invocation worker crash", () => {
         );
         await expect(
           conversationStore.get({ conversationId: child.childConversationId }),
+        ).resolves.toMatchObject({ execution: { status: "failed" } });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it.each([
+    { kind: "task" as const, notices: 1 },
+    { kind: "thread" as const, notices: 0 },
+  ])(
+    "tells only a Task's parent when every try of a child with no Agent invocation is killed ($kind)",
+    async ({ kind, notices }) => {
+      setExperimentalFeatures({
+        ...SUITE_EXPERIMENTAL,
+        "child-agents-without-agent-invocations": true,
+      });
+      vi.useFakeTimers({
+        now: 1_800_000_000_000,
+        toFake: ["Date", "setInterval", "clearInterval"],
+      });
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const { killWorker, queue, state } = await createConversationWorkHarness(
+        neverRunAgentRunner(),
+      );
+      try {
+        const { childConversationId } = await bindSpawnAgent(
+          {
+            actor: { platform: "local", userId: "local-user" },
+            conversationId: parentConversationId,
+            destination,
+            instruction: { text: "Delegate the investigation." },
+            source: createLocalSource(parentConversationId),
+            turnId: "parent-turn",
+          },
+          { conversationStore, queue, state },
+        )!({ kind, task: "Check the deploy." }, { toolCallId: "call-1" });
+        await expect(
+          getLatestAgentInvocationForConversation(childConversationId),
+        ).resolves.toBeUndefined();
+        for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+          // Injected fault: the worker of this try is killed mid-run.
+          await killWorker(queue.takeMessageFor(childConversationId));
+          await runHeartbeatAfterLeasesExpire(queue);
+        }
+
+        const parent = await getConversationWorkState({
+          conversationId: parentConversationId,
+        });
+        expect(
+          (parent?.messages ?? [])
+            .map((message) => message.input.text)
+            .filter((text) => text.includes("worker failed repeatedly")),
+        ).toEqual(
+          Array.from({ length: notices }, () =>
+            expect.stringMatching(/status="failed"/),
+          ),
+        );
+        await expect(
+          conversationStore.get({ conversationId: childConversationId }),
         ).resolves.toMatchObject({ execution: { status: "failed" } });
       } finally {
         await fixture.close();

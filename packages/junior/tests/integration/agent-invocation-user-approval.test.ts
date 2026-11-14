@@ -23,11 +23,13 @@ import {
   resolveActorIdentityId,
   SYSTEM_IDENTITY_ID,
 } from "@/chat/identities/actor";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { juniorConversations } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -115,6 +117,13 @@ describe("user approval for child agents", () => {
   });
 
   it("reads approval only from the Run's own Conversation", async () => {
+    // Row-only: it reads each child before its first Turn and builds nested
+    // Agent invocations. child-agent-writes-without-agent-invocation.test.ts
+    // checks what Guardian reads in a child with no Agent invocation.
+    setExperimentalFeatures({
+      ...SUITE_EXPERIMENTAL,
+      "child-agents-without-agent-invocations": false,
+    });
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();

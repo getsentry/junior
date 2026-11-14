@@ -107,15 +107,6 @@ export function bindSpawnAgent(
       options.maxAgentDepth ?? botConfig.maxAgentDepth,
     );
     const idempotencyKey = `${run.turnId}:${call.toolCallId}`;
-    const spawned = await findSpawnedChildAgent({
-      ...(input.name ? { agentName: input.name } : undefined),
-      idempotencyKey,
-      parentConversationId: run.conversationId,
-      state: options.state,
-    });
-    if (spawned) {
-      return { childConversationId: spawned };
-    }
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
     const createInput = {
@@ -145,6 +136,17 @@ export function bindSpawnAgent(
       ))
     ) {
       return await spawnChildAgent(createInput, { ...options, queue });
+    }
+    // With the flag off, a spawn that ran without an Agent invocation replays
+    // as it ran.
+    const spawned = await findSpawnedChildAgent({
+      ...(input.name ? { agentName: input.name } : undefined),
+      idempotencyKey,
+      parentConversationId: run.conversationId,
+      state: options.state,
+    });
+    if (spawned) {
+      return { childConversationId: spawned };
     }
     const invocation = await createAndEnqueueAgentInvocation(createInput, {
       ...options,

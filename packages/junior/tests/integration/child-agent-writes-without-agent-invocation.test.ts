@@ -12,6 +12,7 @@ import {
   getSpawnedChildConversationId,
 } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   getAgentInvocation,
@@ -30,7 +31,10 @@ import {
 import { getSqlExecutor } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  CONVERSATION_WORK_MAX_RETRIES,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { juniorAgentBindings } from "@/db/schema";
 import {
@@ -38,7 +42,10 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
-import { deferred } from "../fixtures/conversation-work";
+import {
+  deferred,
+  runHeartbeatAfterLeasesExpire,
+} from "../fixtures/conversation-work";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import { createHarness, type Harness } from "../fixtures/thread-input";
@@ -254,6 +261,73 @@ describe("spawn and messageAgent without Agent invocations", () => {
 
       await expect(last).resolves.toEqual(expect.any(String));
       await expect(over).rejects.toBeInstanceOf(AgentInvocationLimitError);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it.each([
+    { kind: "task" as const, notices: 1 },
+    { kind: "thread" as const, notices: 0 },
+  ])(
+    "tells only a Task's parent when its Turn fails ($kind)",
+    async ({ kind, notices }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await spawn(harness, "call-1", { kind });
+        harness.onPersonRun(async () => {
+          throw new Error("The model is unavailable.");
+        });
+        // The runner throws on each try, so the last try fails the Turn.
+        for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+          await harness.drain(childId);
+          await runHeartbeatAfterLeasesExpire(harness.queue);
+        }
+
+        expect(
+          (await mailboxTexts(harness, slackParentConversationId)).filter(
+            (text) => text.includes('status="failed"'),
+          ),
+        ).toEqual(
+          Array.from({ length: notices }, () =>
+            expect.stringContaining("The model is unavailable."),
+          ),
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it("shows a child's Guardian only its parent's tasks as the user", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1", {
+        name: harness.agentName,
+        task: "List the published images.",
+      });
+      await harness.processUntilRun(childId);
+      await message(harness, harness.agentName, "call-2");
+      await harness.processUntilRun(childId);
+      await expect(
+        getLatestAgentInvocationForConversation(childId),
+      ).resolves.toBeUndefined();
+
+      // An agent writes the child's instructions, so Guardian reads no actor.
+      // A Turn records its input before it runs, so it reads its own task.
+      // Each parent task and message counts as the user, and nothing else.
+      const { messages } = await readRootConversation({
+        actor: undefined,
+        conversationId: childId,
+      });
+      expect(messages.map((entry) => entry.author)).toEqual(
+        messages.map(() => "user"),
+      );
+      for (const task of ["List the published images.", "Check it again."]) {
+        expect(messages.some((entry) => entry.text.includes(task))).toBe(true);
+      }
     } finally {
       await harness.close();
     }

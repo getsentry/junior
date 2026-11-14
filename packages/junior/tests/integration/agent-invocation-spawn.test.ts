@@ -20,6 +20,7 @@ import {
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
@@ -39,6 +40,7 @@ import {
 } from "@/chat/agent-dispatch/heartbeat";
 import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createEventSource,
   createLocalSource,
@@ -166,6 +168,13 @@ describe("agent invocation spawn and result delivery", () => {
   });
 
   it("derives spawn authority from the parent run and replays one tool call", async () => {
+    // Row-only: it reads the Agent invocation and its dashboard marker.
+    // child-agent-writes-without-agent-invocation.test.ts checks the same
+    // authority and replay for a child with no Agent invocation.
+    setExperimentalFeatures({
+      ...SUITE_EXPERIMENTAL,
+      "child-agents-without-agent-invocations": false,
+    });
     const { conversationStore, fixture } = await prepareParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     try {
