@@ -1,4 +1,6 @@
+import { generateKeyPairSync } from "node:crypto";
 import { Hono } from "hono";
+import { http, HttpResponse } from "msw";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
@@ -31,6 +33,7 @@ import {
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { signedInViewer } from "../../fixtures/user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
+import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
@@ -238,6 +241,177 @@ describe("object links API", () => {
       url: "https://github.com/octocat",
     });
     expect(objects.has("https://github.com/features")).toBe(false);
+  });
+
+  it("resolves GitHub issue and pull request links for viewers who can see the repository", async () => {
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv(
+      "GITHUB_APP_PRIVATE_KEY",
+      generateKeyPairSync("rsa", { modulusLength: 2048 })
+        .privateKey.export({ format: "pem", type: "pkcs1" })
+        .toString(),
+    );
+    const repo = "https://github.com/getsentry/junior";
+    const api = "https://api.github.com/repos/getsentry/junior";
+    const reads: string[] = [];
+    const publicPage = (title: string) =>
+      new HttpResponse(
+        `<!doctype html><html><head><meta property="og:title" content="${title}"></head></html>`,
+        { headers: { "content-type": "text/html" } },
+      );
+    mswServer.use(
+      http.get("https://api.github.com/app/installations/456", () =>
+        HttpResponse.json({
+          permissions: {
+            issues: "read",
+            metadata: "read",
+            pull_requests: "read",
+          },
+        }),
+      ),
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            token: "app-token",
+          }),
+      ),
+      http.get(`${api}/collaborators/:login/permission`, ({ params }) =>
+        HttpResponse.json({
+          permission: params.login === "alice_acme" ? "read" : "none",
+        }),
+      ),
+      http.get(`${api}/issues/:number`, ({ params }) => {
+        reads.push(`issues/${params.number}`);
+        if (params.number === "12") {
+          return HttpResponse.json({
+            assignees: [{ login: "alice_acme" }],
+            body: "Pasted links show as plain links.",
+            html_url: `${repo}/issues/12`,
+            labels: [{ name: "bug" }],
+            number: 12,
+            state: "open",
+            title: "Show GitHub links as cards",
+            updated_at: "2026-01-02T03:04:05Z",
+            user: { login: "byk" },
+          });
+        }
+        if (params.number === "34") {
+          return HttpResponse.json({
+            html_url: `${repo}/pull/34`,
+            number: 34,
+            pull_request: { url: `${api}/pulls/34` },
+            state: "open",
+            title: "Add GitHub link cards",
+          });
+        }
+        return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+      }),
+      http.get(`${api}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json({
+          additions: 120,
+          base: { ref: "main" },
+          changed_files: 4,
+          deletions: 8,
+          draft: true,
+          head: { ref: "feat/github-link-cards" },
+          html_url: `${repo}/pull/34`,
+          merged: false,
+          number: 34,
+          state: "open",
+          title: "Add GitHub link cards",
+          user: { login: "byk" },
+        });
+      }),
+      // What GitHub shows signed out.
+      http.get(
+        `${repo}/issues/12`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+      http.get(`${repo}/issues/34`, () => publicPage("Public pull request")),
+      http.get(`${repo}/pull/34`, () => publicPage("Public pull request")),
+    );
+    try {
+      await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      const alice = await linkSlackUser("alice@example.com", "UALICE");
+      await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+        handle: "alice_acme",
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "1001",
+      });
+      const bob = await linkSlackUser("bob@example.com", "UBOB");
+      await upsertLinkedIdentity(getSqlExecutor(), bob.id, {
+        handle: "outsider",
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "1002",
+      });
+
+      const member = await (
+        await viewerApi("alice@example.com")
+      )(
+        `${repo}/issues/12`,
+        `${repo}/pull/34/`,
+        // A linked `getsentry/junior#34` points at the issue URL.
+        `${repo}/issues/34`,
+        `${repo}/issues/99`,
+      );
+      expect(member.objects.get(`${repo}/issues/12`)).toMatchObject({
+        description: "Pasted links show as plain links.",
+        displayType: "Issue",
+        facts: { assignees: ["alice_acme"], labels: ["bug"], type: "task" },
+        key: "getsentry/junior#12",
+        label: "getsentry/junior#12",
+        objectType: "task",
+        plugin: "github",
+        status: "open",
+        title: "Show GitHub links as cards",
+        url: `${repo}/issues/12`,
+      });
+      expect(member.objects.get(`${repo}/pull/34/`)).toMatchObject({
+        displayType: "Pull request",
+        facts: {
+          additions: 120,
+          author: "byk",
+          sourceBranch: "feat/github-link-cards",
+          targetBranch: "main",
+          type: "code_change",
+        },
+        label: "getsentry/junior#34",
+        objectType: "code_change",
+        status: "draft",
+        url: `${repo}/pull/34`,
+      });
+      // A pull request is not an issue, so its issue URL keeps the web page
+      // card.
+      expect(member.objects.get(`${repo}/issues/34`)).toMatchObject({
+        objectType: "web_page",
+        plugin: "junior",
+        title: "Public pull request",
+      });
+      expect(member.objects.has(`${repo}/issues/99`)).toBe(false);
+
+      // A viewer who cannot see the repository gets only what GitHub shows
+      // signed out, and the App reads nothing more for them.
+      const readsBefore = reads.length;
+      const outsider = await (
+        await viewerApi("bob@example.com")
+      )(`${repo}/issues/12`, `${repo}/pull/34`);
+      expect(outsider.objects.has(`${repo}/issues/12`)).toBe(false);
+      expect(outsider.objects.get(`${repo}/pull/34`)).toMatchObject({
+        objectType: "web_page",
+        title: "Public pull request",
+      });
+      expect(outsider.body).not.toContain("GitHub links as cards");
+      expect(reads.slice(readsBefore)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   // Reads in the first seconds after an Identity write skip the cache.

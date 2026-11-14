@@ -251,6 +251,28 @@ const NOTION_PAGE: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "notion",
 };
 
+// The mock release thread pastes one GitHub issue link that has no
+// Annotation, so the GitHub link type resolves it.
+const GITHUB_ISSUE_URL = "https://github.com/getsentry/junior/issues/2188";
+const GITHUB_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "task",
+  key: "getsentry/junior#2188",
+  label: "getsentry/junior#2188",
+  title: "Release the example app with every package release",
+  displayType: "Issue",
+  status: "open",
+  description:
+    "The example app still pins the last release. Bump it in the same train, so a new install gets the new package.",
+  sourceUpdatedAt: "2026-02-01T16:20:00.000Z",
+  facts: {
+    type: "task",
+    assignees: ["dev-example"],
+    labels: ["release", "example-app"],
+  },
+  plugin: "github",
+};
+
 /** The mock photo path for the one mock person who has a photo. */
 const MOCK_AVATAR_PATH = "/api/people/avatars/mock-morgan";
 
@@ -300,6 +322,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url.pathname.endsWith(`-${NOTION_PAGE_ID}`)
   ) {
     return [{ object: { ...NOTION_PAGE, url: href }, url: href }];
+  }
+  if (url.href === GITHUB_ISSUE_URL) {
+    return [{ object: { ...GITHUB_ISSUE, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
