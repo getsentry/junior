@@ -24,7 +24,10 @@ export type PluginModelCostRecorder = (cost: {
 export function createPluginModel(
   pluginName: string,
   options: PluginModelConfig = {},
-  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
+  runtime: {
+    onCost?: PluginModelCostRecorder | undefined;
+    signal?: AbortSignal | undefined;
+  } = {},
 ): PluginModel {
   return {
     async completeObject(input) {
@@ -67,7 +70,10 @@ export function createPluginModel(
 /** Create the host-owned embedding capability exposed to prompt hooks. */
 export function createPluginEmbedder(
   pluginName: string,
-  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
+  runtime: {
+    onCost?: PluginModelCostRecorder | undefined;
+    signal?: AbortSignal | undefined;
+  } = {},
 ): PluginEmbedder {
   return {
     model: botConfig.embeddingModelId,
@@ -99,7 +105,7 @@ export function createPluginEmbedder(
 /** Create the host-owned reranking capability exposed to prompt hooks. */
 export function createPluginReranker(
   pluginName: string,
-  runtime: { onCost?: PluginModelCostRecorder } = {},
+  runtime: { onCost?: PluginModelCostRecorder | undefined } = {},
 ): PluginReranker {
   return {
     async rerank(input) {
@@ -126,7 +132,10 @@ export function createPluginReranker(
 /** Create the host-owned decision model capability exposed to tool hooks. */
 export function createPluginDecider(
   pluginName: string,
-  runtime: { onCost?: PluginModelCostRecorder; signal?: AbortSignal } = {},
+  runtime: {
+    onCost?: PluginModelCostRecorder;
+    signal?: AbortSignal | undefined;
+  } = {},
 ): PluginDecider {
   return {
     async decide<TChoice extends string>(input: {

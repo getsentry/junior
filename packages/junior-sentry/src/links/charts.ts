@@ -42,7 +42,7 @@ interface SentryChart {
   title: string;
   yAxis: string;
   range: string;
-  query?: string;
+  query?: string | undefined;
   series: Series[];
 }
 
@@ -169,7 +169,9 @@ async function readExploreChart(
   const range =
     link.start && link.end
       ? { start: link.start, end: link.end }
-      : { statsPeriod: link.statsPeriod };
+      : link.statsPeriod === undefined
+        ? undefined
+        : { statsPeriod: link.statsPeriod };
   const result = await sentryApi(
     ctx.viewerEgress,
     origin,
@@ -180,12 +182,16 @@ async function readExploreChart(
       dataset: link.dataset,
       interval: link.interval,
       yAxis: link.yAxes,
-      groupBy: link.groupBy.length ? link.groupBy : undefined,
-      project: link.project.length ? link.project : undefined,
-      environment: link.environment.length ? link.environment : undefined,
-      query: link.query,
-      sort: link.sort,
-      topEvents: link.topEvents,
+      ...(link.groupBy.length ? { groupBy: link.groupBy } : undefined),
+      ...(link.project.length ? { project: link.project } : undefined),
+      ...(link.environment.length
+        ? { environment: link.environment }
+        : undefined),
+      ...(link.query === undefined ? undefined : { query: link.query }),
+      ...(link.sort === undefined ? undefined : { sort: link.sort }),
+      ...(link.topEvents === undefined
+        ? undefined
+        : { topEvents: link.topEvents }),
       ...range,
     },
   });

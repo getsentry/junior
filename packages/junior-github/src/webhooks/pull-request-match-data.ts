@@ -57,8 +57,10 @@ interface LookupContext {
   db: GitHubDb;
   deliveryId: string;
   loadAuthors?(target: GitHubPullRequestTarget): Promise<string[]>;
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  loadRole?(target: GitHubRoleTarget): Promise<string>;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  loadRole?: ((target: GitHubRoleTarget) => Promise<string>) | undefined;
   log?: Pick<PluginLogger, "error">;
   /** Pull request number of each Event key. */
   numbers: Map<string, number>;
@@ -233,9 +235,11 @@ export async function withGitHubPullRequestMatchData(args: {
   hasMatch: EventPublisher["hasMatch"];
   loadAuthors?(target: GitHubPullRequestTarget): Promise<string[]>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  loadRole?(target: GitHubRoleTarget): Promise<string>;
-  log?: Pick<PluginLogger, "error">;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  loadRole?: ((target: GitHubRoleTarget) => Promise<string>) | undefined;
+  log?: Pick<PluginLogger, "error"> | undefined;
   neededMatchKeys: EventPublisher["neededMatchKeys"];
 }): Promise<EventInput[]> {
   const parsed = webhookSchema.safeParse(args.body);

@@ -417,8 +417,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -543,7 +543,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -593,7 +596,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 

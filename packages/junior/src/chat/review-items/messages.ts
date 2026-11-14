@@ -255,7 +255,7 @@ async function sendOne(args: {
  */
 export async function sendReviewItemMessages(args: {
   change: ReviewItemChange;
-  exceptConversationId?: string;
+  exceptConversationId?: string | undefined;
   item: ReviewItem;
   nowMs: number;
   queue: ConversationWorkQueue;

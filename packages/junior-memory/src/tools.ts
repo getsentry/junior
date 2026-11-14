@@ -102,7 +102,7 @@ async function memoryRuntimeContext(
 function memoryStore(
   context: MemoryToolContext,
   runtimeContext: MemoryRuntimeContext,
-  options: { supersessionDecider?: MemorySupersessionDecider } = {},
+  options: { supersessionDecider?: MemorySupersessionDecider | undefined } = {},
 ) {
   return createMemoryStore(context.db, runtimeContext, {
     embedder: context.embedder,

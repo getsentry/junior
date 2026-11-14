@@ -93,7 +93,7 @@ export async function startProcessingReaction(args: {
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
   timestamp: SlackMessageTs;
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
 }): Promise<ProcessingReaction> {
   try {
     await addReactionToMessage({

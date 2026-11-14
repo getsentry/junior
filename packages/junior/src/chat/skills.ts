@@ -226,8 +226,8 @@ export interface SkillMetadata {
   name: string;
   description: string;
   skillPath: string;
-  pluginProvider?: string;
-  allowedTools?: string[];
+  pluginProvider?: string | undefined;
+  allowedTools?: string[] | undefined;
   disableModelInvocation?: boolean;
 }
 
@@ -240,7 +240,7 @@ export interface SkillInvocation {
 }
 
 export interface DiscoverSkillsOptions {
-  additionalRoots?: string[];
+  additionalRoots?: string[] | undefined;
 }
 
 let skillCache: {

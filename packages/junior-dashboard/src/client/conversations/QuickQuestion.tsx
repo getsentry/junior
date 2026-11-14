@@ -277,7 +277,7 @@ function useAskQuickQuestion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      forkId?: string;
+      forkId?: string | undefined;
       /** The composer key of this ask, so a retry cannot add the question twice. */
       idempotencyKey: string;
       messageId: string;
@@ -600,7 +600,10 @@ export function QuickQuestionPanel(props: {
 }
 
 /** Keep the hidden fork: it shows in lists and is no longer read-only. */
-function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
+function KeepAsForkButton(props: {
+  disabled: boolean;
+  forkId?: string | undefined;
+}) {
   const navigate = useNavigate();
   const keep = useKeepQuickQuestion();
   const forkId = props.forkId;

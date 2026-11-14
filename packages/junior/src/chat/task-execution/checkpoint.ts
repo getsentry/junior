@@ -76,7 +76,7 @@ export type TurnCheckpoint =
   | {
       resumed: false;
       sliceId: 1;
-      record?: TurnRecord;
+      record?: TurnRecord | undefined;
     };
 
 /**
@@ -89,30 +89,30 @@ interface TurnCheckpointWrite {
   turnId: string;
   messages: PiMessage[];
   /** Required for running/paused; optional for completed/failed (falls back to stored). */
-  sliceId?: number;
+  sliceId?: number | undefined;
   // --- SQL dual-write / restore only ---
-  actor?: Actor;
-  channelName?: string;
-  credentialSubject?: CredentialSubject;
-  destination?: Destination;
-  destinationVisibility?: ConversationPrivacy;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
-  source?: Source;
-  surface?: AgentTurnSurface;
-  turnStartMessageIndex?: number;
+  actor?: Actor | undefined;
+  channelName?: string | undefined;
+  credentialSubject?: CredentialSubject | undefined;
+  destination?: Destination | undefined;
+  destinationVisibility?: ConversationPrivacy | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
+  source?: Source | undefined;
+  surface?: AgentTurnSurface | undefined;
+  turnStartMessageIndex?: number | undefined;
   /** Tool calls charged to this turn; survives history replacement. */
-  cumulativeToolCallCount?: number;
+  cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
-  turnLimitWrappedUp?: boolean;
+  turnLimitWrappedUp?: boolean | undefined;
   /** Times recovery resumed this turn after a lost worker; survives later writes. */
-  lostWorkerResumeCount?: number;
-  trailingMessageProvenance?: ConversationMessageProvenance[];
-  turnContexts?: PluginTurnContext[];
-  durationMs?: number;
-  usage?: AgentTurnUsage;
-  errorMessage?: string;
-  resultMessageId?: string;
+  lostWorkerResumeCount?: number | undefined;
+  trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
+  turnContexts?: PluginTurnContext[] | undefined;
+  durationMs?: number | undefined;
+  usage?: AgentTurnUsage | undefined;
+  errorMessage?: string | undefined;
+  resultMessageId?: string | undefined;
 }
 
 type ProgressCheckpointArgs =

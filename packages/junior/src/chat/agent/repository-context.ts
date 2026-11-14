@@ -27,8 +27,8 @@ type RepositoryInstructionsContextOptions = {
   onTransition?: (
     instructions: RepositoryInstructions | undefined,
   ) => void | Promise<void>;
-  restoredMessages?: PiMessage[];
-  restoredProvenance?: ConversationMessageProvenance[];
+  restoredMessages?: PiMessage[] | undefined;
+  restoredProvenance?: ConversationMessageProvenance[] | undefined;
   promptContextContentParts: UserContentPart[];
   /** History before a new prompt. It can hold AGENTS.md from earlier Turns. */
   promptHistoryMessages: PiMessage[];

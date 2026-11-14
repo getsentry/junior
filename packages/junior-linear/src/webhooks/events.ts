@@ -76,8 +76,8 @@ const issueEventDataSchema = z
   .strict();
 
 function occurredAtMs(input: {
-  createdAt?: string;
-  webhookTimestamp?: number;
+  createdAt?: string | undefined;
+  webhookTimestamp?: number | undefined;
 }): number {
   const createdAt = input.createdAt ? Date.parse(input.createdAt) : Number.NaN;
   if (Number.isFinite(createdAt)) return createdAt;

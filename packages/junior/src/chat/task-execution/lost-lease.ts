@@ -16,7 +16,7 @@ import type { ProcessConversationWorkOptions } from "./worker";
  */
 export async function requestLostLeaseRecovery(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   leaseToken: string;
   nowMs: number;
   options: ProcessConversationWorkOptions;

@@ -48,7 +48,7 @@ type PaletteItem = {
   id: string;
   label: string;
   /** Label indices that the typed text matched. */
-  matches?: number[];
+  matches?: number[] | undefined;
   meta?: string;
   score: number;
   /** Navigation state for the destination page. */
@@ -63,7 +63,7 @@ type PaletteItem = {
  */
 export function CommandPalette(props: {
   /** Left out of the rows: the viewer is already there. */
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -96,7 +96,7 @@ export function CommandPalette(props: {
 
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   onClose(): void;
 }) {
@@ -198,7 +198,7 @@ function CommandPaletteBody(props: {
  * outside the feed. The open conversation is never a row.
  */
 function paletteItems(input: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   feed: Conversation[];
   navItems: DashboardHeaderNavItem[];
   query: string;

@@ -28,34 +28,34 @@ export type SlackActionErrorCode =
 
 export class SlackActionError extends Error {
   code: SlackActionErrorCode;
-  apiError?: string;
-  needed?: string;
-  provided?: string;
-  statusCode?: number;
-  requestId?: string;
-  errorData?: string;
-  retryAfterSeconds?: number;
-  detail?: string;
-  detailLine?: number;
-  detailRule?: string;
+  apiError?: string | undefined;
+  needed?: string | undefined;
+  provided?: string | undefined;
+  statusCode?: number | undefined;
+  requestId?: string | undefined;
+  errorData?: string | undefined;
+  retryAfterSeconds?: number | undefined;
+  detail?: string | undefined;
+  detailLine?: number | undefined;
+  detailRule?: string | undefined;
   /** Network error code, such as `ECONNABORTED`, when no Slack response arrived. */
-  networkCode?: string;
+  networkCode?: string | undefined;
 
   constructor(
     message: string,
     code: SlackActionErrorCode,
     options: {
-      apiError?: string;
-      needed?: string;
-      provided?: string;
-      statusCode?: number;
-      requestId?: string;
-      errorData?: string;
-      retryAfterSeconds?: number;
+      apiError?: string | undefined;
+      needed?: string | undefined;
+      provided?: string | undefined;
+      statusCode?: number | undefined;
+      requestId?: string | undefined;
+      errorData?: string | undefined;
+      retryAfterSeconds?: number | undefined;
       detail?: string;
       detailLine?: number;
       detailRule?: string;
-      networkCode?: string;
+      networkCode?: string | undefined;
     } = {},
   ) {
     super(message);

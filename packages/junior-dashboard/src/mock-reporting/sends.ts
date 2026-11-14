@@ -66,7 +66,7 @@ export function createMockConversation(args: {
   actorIdentity: ActorIdentity;
   idempotencyKey: string;
   message: string;
-  visibility?: "private" | "public";
+  visibility?: "private" | "public" | undefined;
 }): string {
   const conversationId = mockConversationId(
     args.actorIdentity.email ?? "",

@@ -82,7 +82,7 @@ export interface CodeModeScriptRun {
   /** Charge one call to the Turn's durable tool-call total; return the total. */
   countToolCall(): number;
   /** The Run's abort signal. It stops the VM and every pending nested call. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 function deferred<T>() {

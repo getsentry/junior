@@ -26,8 +26,8 @@ function requirePluginWithMcp(provider: string): PluginDefinition {
 export async function createMcpOAuthClientProvider(input: {
   provider: string;
   conversationId: string;
-  destination?: Destination;
-  source?: Source;
+  destination?: Destination | undefined;
+  source?: Source | undefined;
   sessionId: string;
   userId: string;
   userMessage: string;
@@ -35,7 +35,7 @@ export async function createMcpOAuthClientProvider(input: {
   threadTs?: string;
   toolChannelId?: string;
   configuration?: Record<string, unknown>;
-  createAuthorizationState?: () => Promise<string>;
+  createAuthorizationState?: (() => Promise<string>) | undefined;
 }): Promise<StateBackedMcpOAuthClientProvider> {
   const plugin = requirePluginWithMcp(input.provider);
 

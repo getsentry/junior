@@ -28,7 +28,7 @@ function personName(person: ActorIdentity): string | undefined {
  * only when the viewer may see the Brief.
  */
 export function conversationObjectCard(args: {
-  brief?: string;
+  brief?: string | undefined;
   participants: readonly ActorIdentity[];
   summary: Pick<
     ConversationSummaryReport,
@@ -138,11 +138,11 @@ export function messageObjectCard(args: {
  * tags. `thumbnailUrl` must be a Junior image path.
  */
 export function webPageObjectCard(args: {
-  author?: string;
-  description?: string;
-  media?: "video" | "image";
+  author?: string | undefined;
+  description?: string | undefined;
+  media?: "video" | "image" | undefined;
   siteName?: string;
-  thumbnailUrl?: string;
+  thumbnailUrl?: string | undefined;
   title: string;
   url: string;
 }): ObjectAnnotation {

@@ -10,13 +10,13 @@ type Element = DefaultTreeAdapterMap["element"];
 
 /** What the meta tags of one page say about it. */
 export interface PageMeta {
-  author?: string;
-  description?: string;
+  author?: string | undefined;
+  description?: string | undefined;
   /** Image candidates, best first. A page can list one Junior cannot use. */
   images: string[];
-  media?: "video";
-  siteName?: string;
-  title?: string;
+  media?: "video" | undefined;
+  siteName?: string | undefined;
+  title?: string | undefined;
 }
 
 function isElement(node: Node, tagName: string): node is Element {

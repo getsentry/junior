@@ -269,7 +269,7 @@ export function resolveGatewayModel(modelId: string): Model<Api> {
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
 export async function completeText(params: {
   modelId: string;
-  system?: string;
+  system?: string | undefined;
   messages: Message[];
   /** Tool definitions to send. They are part of the cached prompt prefix. */
   tools?: Tool[];
@@ -277,7 +277,7 @@ export async function completeText(params: {
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
   /** AI Gateway session ID. Pass the Conversation ID to share its session. */
@@ -530,7 +530,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   prompt: string;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
@@ -605,7 +605,7 @@ export async function completeDecision<
   modelId: string;
   state: Experimental_DecisionState;
   questions: TQuestions;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{
@@ -686,7 +686,7 @@ export async function embedTexts(params: {
   inputType?: "document" | "query";
   modelId: string;
   texts: string[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
 }): Promise<{
   costUsd?: number;

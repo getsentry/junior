@@ -231,7 +231,10 @@ async function findViewerWebAuthorization(
  */
 export async function readConversationPendingMessages(
   conversationId: string,
-  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
+  options: {
+    readAccess?: ConversationAccessReader;
+    viewer?: User | undefined;
+  } = {},
 ): Promise<ConversationPendingMessagesReport | undefined> {
   // A detail request passes its reader, so it reads access only once.
   const readAccess =
@@ -287,7 +290,10 @@ export async function readConversationPendingMessages(
 /** Load pending mailbox messages or throw a standard API not-found error. */
 export async function requireConversationPendingMessages(
   conversationId: string,
-  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
+  options: {
+    readAccess?: ConversationAccessReader;
+    viewer?: User | undefined;
+  } = {},
 ): Promise<ConversationPendingMessagesReport> {
   const report = await readConversationPendingMessages(conversationId, options);
   if (!report) throwApiError(404, "Conversation not found.");

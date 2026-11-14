@@ -173,7 +173,7 @@ export async function withGitHubPullRequestPeople(args: {
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
   load?(target: GitHubPullRequestPeopleTarget): Promise<EventPerson[]>;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
 }): Promise<EventInput[]> {
   const { hasMatch } = args;
   const peopleEvents = args.events.filter((event) =>

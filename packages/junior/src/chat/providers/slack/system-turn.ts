@@ -15,7 +15,7 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
  */
 export function createSlackSystemTurnDelivery(args: {
   getSlackAdapter: () => SlackAdapter;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): DeliverMessage {
   return async ({ conversationId, location, text, cards }) => {
     if (location.provider !== "slack") {

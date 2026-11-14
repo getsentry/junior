@@ -86,7 +86,7 @@ export function createTestMessage(args: {
   text?: string;
   id?: string;
   threadId?: string;
-  author?: Partial<Author>;
+  author?: Partial<Author> | undefined;
   isMention?: boolean;
   attachments?: Message["attachments"];
   dateSent?: Date;
@@ -242,7 +242,7 @@ export class FakeSlackAdapter extends SlackAdapter {
     channelId: string;
     threadTs: string;
     text: string;
-    loadingMessages?: string[];
+    loadingMessages?: string[] | undefined;
   }> = [];
   readonly promptCalls: Array<{
     channelId: string;

@@ -33,7 +33,7 @@ export function ProfilePluginReports(props: {
 }
 
 function ProfilePluginReport(props: {
-  range?: TimeRangeDays;
+  range?: TimeRangeDays | undefined;
   report: PluginOperationalReport;
 }) {
   const title =

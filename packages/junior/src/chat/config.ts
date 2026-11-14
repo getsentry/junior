@@ -111,8 +111,8 @@ export interface BotConfig {
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
-  refusalFallbackModelId?: string;
-  visionModelId?: string;
+  refusalFallbackModelId?: string | undefined;
+  visionModelId?: string | undefined;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
@@ -144,12 +144,12 @@ export interface ChatConfig {
     statementTimeoutMs: number | false;
   };
   slack: {
-    botToken?: string;
-    clientId?: string;
-    clientSecret?: string;
+    botToken?: string | undefined;
+    clientId?: string | undefined;
+    clientSecret?: string | undefined;
     completedReactionEmoji: string;
     processingReactionEmoji: string;
-    signingSecret?: string;
+    signingSecret?: string | undefined;
   };
   sandbox: {
     /** Sandbox provider for this deployment. `docker` is for local development. */
@@ -157,8 +157,8 @@ export interface ChatConfig {
   };
   state: {
     adapter: "memory" | "redis";
-    keyPrefix?: string;
-    redisUrl?: string;
+    keyPrefix?: string | undefined;
+    redisUrl?: string | undefined;
   };
 }
 
@@ -663,7 +663,7 @@ export function hasRedisConfig(): boolean {
 // ---------------------------------------------------------------------------
 
 export interface RuntimeMetadata {
-  version?: string;
+  version?: string | undefined;
 }
 
 /** Return runtime metadata (version from deploy environment). */

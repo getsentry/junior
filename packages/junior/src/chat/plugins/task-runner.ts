@@ -65,7 +65,7 @@ import type { Lock } from "chat";
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: (message: PluginTaskQueueMessage) => Promise<void>;
+  send?: ((message: PluginTaskQueueMessage) => Promise<void>) | undefined;
 }
 
 interface ProcessPluginTaskOptions {

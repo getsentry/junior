@@ -37,10 +37,10 @@ function dashboardEnabled(
 
 /** Render the virtual config module consumed by createApp(). */
 export function renderVirtualConfig(options: {
-  functionMaxDurationSeconds?: number;
-  dashboard?: JuniorDashboardOptions;
-  plugins?: PluginCatalogConfig;
-  pluginModule?: RuntimePluginModule;
+  functionMaxDurationSeconds?: number | undefined;
+  dashboard?: JuniorDashboardOptions | undefined;
+  plugins?: PluginCatalogConfig | undefined;
+  pluginModule?: RuntimePluginModule | undefined;
   pluginRuntimeRegistrations?: string[];
 }): string {
   const lines = [
@@ -67,9 +67,9 @@ export function injectVirtualConfig(
     functionMaxDurationSeconds?: number;
     loadPluginSet?: () => Promise<JuniorPluginSet | undefined>;
     pluginModule?: RuntimePluginModule;
-    plugins?: PluginCatalogConfig;
+    plugins?: PluginCatalogConfig | undefined;
     pluginRuntimeRegistrations?: string[];
-    dashboard?: JuniorDashboardOptions;
+    dashboard?: JuniorDashboardOptions | undefined;
   } = {},
 ): void {
   nitro.options.virtual["#junior/config"] = async () => {

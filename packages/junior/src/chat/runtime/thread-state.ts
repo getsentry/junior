@@ -12,7 +12,7 @@ import type { SandboxRef } from "@/chat/sandbox/ref";
 
 export interface ThreadStatePatch {
   conversation?: ThreadConversationState;
-  sandboxRef?: SandboxRef | null;
+  sandboxRef?: SandboxRef | null | undefined;
 }
 
 function threadStateKey(threadId: string): string {

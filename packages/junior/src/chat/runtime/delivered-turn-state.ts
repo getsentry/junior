@@ -10,7 +10,7 @@ export function buildDeliveredTurnStatePatch(args: {
   conversation: ThreadConversationState;
   reply: AgentRunResult;
   sessionId: string;
-  userMessageId?: string;
+  userMessageId?: string | undefined;
 }): ThreadStatePatch & { conversation: ThreadConversationState } {
   const conversation = structuredClone(args.conversation);
   clearPendingAuth(conversation, args.sessionId);

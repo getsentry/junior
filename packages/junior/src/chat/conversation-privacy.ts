@@ -24,7 +24,7 @@ const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
  */
 export function resolveConversationPrivacy(input: {
   /** Stored Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): ConversationPrivacy {
   if (input.visibility === undefined) {
     logWarn("conversation.visibility.defaulted");
@@ -35,7 +35,7 @@ export function resolveConversationPrivacy(input: {
 /** Return whether a public Conversation may expose transcript and tool data. */
 export function canExposeConversationPayload(input: {
   /** Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
 }

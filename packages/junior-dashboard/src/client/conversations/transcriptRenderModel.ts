@@ -51,49 +51,49 @@ export type RenderedFailureEntry = {
   failureCode: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedAttachmentsDeliveredEntry = {
   key: string;
   kind: "attachments_delivered";
   part: TranscriptViewAttachmentsDeliveredPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedContextEventEntry = {
   key: string;
   kind: "context";
   part: TranscriptViewContextEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedSubagentEntry = {
   key: string;
   kind: "subagent";
   part: TranscriptViewSubagentPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedStructuredEventEntry = {
   key: string;
   kind: "structured_event";
   part: TranscriptViewStructuredEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedToolEntry = {
   key: string;
   kind: "tool";
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedReasoningEntry = {
   key: string;
   kind: "reasoning";
   part: TranscriptViewReasoningPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedMessageEntry = {

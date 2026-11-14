@@ -56,7 +56,7 @@ export async function githubApi(
       request: new Request(url, {
         method,
         headers,
-        signal: input.signal,
+        signal: input.signal ?? null,
         ...(input.body !== undefined
           ? { body: JSON.stringify(input.body) }
           : undefined),

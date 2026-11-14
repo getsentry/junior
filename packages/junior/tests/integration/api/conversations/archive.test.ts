@@ -434,7 +434,7 @@ describe("conversation archive API", () => {
       conversationId: string,
       messageId: string,
       message: {
-        authorIdentityId?: string;
+        authorIdentityId?: string | undefined;
         meta?: Record<string, unknown>;
         text: string;
       },

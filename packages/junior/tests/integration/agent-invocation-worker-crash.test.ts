@@ -53,7 +53,7 @@ import {
  * Turn saved for it, then stops the run.
  */
 function readingAgentRunner() {
-  const runs: Array<{ run: AgentRun; turn?: TurnRecord }> = [];
+  const runs: Array<{ run: AgentRun; turn?: TurnRecord | undefined }> = [];
   const agentRunner: AgentRunner = {
     run: async (run) => {
       runs.push({

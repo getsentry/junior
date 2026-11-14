@@ -26,7 +26,7 @@ export type PreferenceChoice<T extends string> = {
 /** Label one browser preference and pick its value from icon buttons. */
 export function PreferenceToggle<T extends string>(props: {
   choices: readonly PreferenceChoice<T>[];
-  className?: string;
+  className?: string | undefined;
   /** Accessible name of each button, such as "Light theme". */
   itemLabel(choice: PreferenceChoice<T>): string;
   label: string;
@@ -34,7 +34,7 @@ export function PreferenceToggle<T extends string>(props: {
    * Render the choices as menu radio items, so arrow keys reach them inside
    * a dropdown menu.
    */
-  menu?: boolean;
+  menu?: boolean | undefined;
   onChange(value: T): void;
   value: T;
 }) {

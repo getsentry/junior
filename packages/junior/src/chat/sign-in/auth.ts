@@ -87,7 +87,7 @@ export interface SignInAuthConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   secret?: string;
-  sessionMaxAgeSeconds?: number;
+  sessionMaxAgeSeconds?: number | undefined;
   trustedOrigins: string[];
 }
 

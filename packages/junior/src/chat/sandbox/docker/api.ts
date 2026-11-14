@@ -25,7 +25,7 @@ export interface DockerRequest {
   query?: Record<string, string | number | boolean | undefined>;
   /** JSON body, or raw bytes such as a tar archive. */
   body?: unknown;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Return the unix socket path of the Docker daemon from `DOCKER_HOST`. */

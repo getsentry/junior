@@ -53,9 +53,9 @@ export type StopConversationResult =
  */
 export async function stopConversation(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   /** The message or button press that asked for the stop, if any. */
-  message?: StopRequest;
+  message?: StopRequest | undefined;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<StopConversationResult> {

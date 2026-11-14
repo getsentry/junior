@@ -92,8 +92,8 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
  */
 export function slackChannelMessageTrigger<
   T extends {
-    identifier?: string | null;
-    match?: EventAutomation["trigger"]["match"];
+    identifier?: string | null | undefined;
+    match?: EventAutomation["trigger"]["match"] | undefined;
     namespace: string;
   },
 >(trigger: T, channelId: string): T {
@@ -164,11 +164,11 @@ export type SlackChannelMessageAuthor =
  */
 export function slackChannelMessageEvent(input: {
   author: SlackChannelMessageAuthor;
-  botId?: string;
+  botId?: string | undefined;
   channelId: string;
-  subtype?: string;
-  text?: string;
-  threadTs?: string;
+  subtype?: string | undefined;
+  text?: string | undefined;
+  threadTs?: string | undefined;
   ts: string;
 }): EventInput | undefined {
   const { author } = input;

@@ -48,9 +48,9 @@ export interface SentryExploreLink {
   pageTitle: string;
   yAxes: string[];
   groupBy: string[];
-  query?: string;
-  sort?: string;
-  topEvents?: number;
+  query?: string | undefined;
+  sort?: string | undefined;
+  topEvents?: number | undefined;
   project: string[];
   environment: string[];
   statsPeriod?: string;
@@ -157,7 +157,7 @@ interface Visualization {
   yAxes: string[];
   groupBy: string[];
   chartType?: number;
-  query?: string;
+  query?: string | undefined;
   sort: string[];
 }
 

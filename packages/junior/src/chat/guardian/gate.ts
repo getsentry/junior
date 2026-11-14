@@ -34,9 +34,9 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
-  actor?: Actor;
+  actor?: Actor | undefined;
   conversationId: string;
-  credentialContext?: CredentialContext;
+  credentialContext?: CredentialContext | undefined;
   destination: Destination;
   source: Source;
   userIntent?: () => string;
@@ -132,9 +132,11 @@ function rejectionInstructions(
 export class ToolActionRejectedError extends Error {
   readonly decision: Exclude<ToolActionDecision, "allow">;
   readonly reason: string;
-  readonly reviewedAction?: ToolActionPriorRejection;
-  readonly riskLevel?: ToolActionReviewDecision["riskLevel"];
-  readonly userAuthorization?: ToolActionReviewDecision["userAuthorization"];
+  readonly reviewedAction?: ToolActionPriorRejection | undefined;
+  readonly riskLevel?: ToolActionReviewDecision["riskLevel"] | undefined;
+  readonly userAuthorization?:
+    | ToolActionReviewDecision["userAuthorization"]
+    | undefined;
 
   constructor(
     decision: Exclude<ToolActionDecision, "allow">,

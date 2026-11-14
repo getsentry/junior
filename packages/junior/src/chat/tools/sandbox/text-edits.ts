@@ -124,7 +124,7 @@ export function buildCompactDiff(
   newContent: string,
 ): {
   diff: string;
-  firstChangedLine?: number;
+  firstChangedLine?: number | undefined;
   truncated: boolean;
 } {
   const oldLines = oldContent.split("\n");

@@ -56,7 +56,7 @@ async function loadConversationChain(
  */
 function slackSourceForDestination(args: {
   destination: SlackDestination;
-  source?: SessionSource;
+  source?: SessionSource | undefined;
 }): SessionSource | undefined {
   if (
     args.source?.kind !== "slack" ||
@@ -82,7 +82,7 @@ function slackSourceForDestination(args: {
  */
 export async function resolveConversationRouting(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
 }): Promise<TurnSessionRouting | undefined> {
   const conversationStore =
     args.conversationStore ??
@@ -128,7 +128,7 @@ export async function resolveConversationRouting(args: {
 /** Require the Conversation Destination and Source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
 }): Promise<RequiredTurnSessionRouting> {
   const routing = await resolveConversationRouting(args);
   if (!routing?.destination || !routing.source) {

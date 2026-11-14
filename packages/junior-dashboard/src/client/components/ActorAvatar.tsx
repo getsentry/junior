@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 /** Show an actor's image, with initials when the image is missing or fails. */
 export function ActorAvatar(props: {
   name: string;
-  imageUrl?: string;
+  imageUrl?: string | undefined;
   size: "detail" | "list";
 }) {
   const words = props.name.trim().split(/\s+/).filter(Boolean);

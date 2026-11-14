@@ -10,9 +10,9 @@ export interface ConfigEntry {
   value: ConfigValue;
   scope: "location";
   updatedAt: string;
-  updatedBy?: string;
-  source?: string;
-  expiresAt?: string;
+  updatedBy?: string | undefined;
+  source?: string | undefined;
+  expiresAt?: string | undefined;
 }
 
 /** Entry-level persistence used by Location configuration. */
@@ -29,7 +29,7 @@ export interface LocationConfigurationService {
   set: (input: {
     key: string;
     value: unknown;
-    updatedBy?: string;
+    updatedBy?: string | undefined;
     source?: string;
     expiresAt?: string;
   }) => Promise<ConfigEntry>;

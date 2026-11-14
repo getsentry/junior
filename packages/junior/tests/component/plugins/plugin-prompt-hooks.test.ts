@@ -32,7 +32,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {

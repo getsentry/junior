@@ -12,7 +12,7 @@ import { GitHubMark } from "./GitHubMark";
 import { pluginSource } from "./transcriptSource";
 
 /** Show the plugin's mark for a plugin item, and the Inbox icon otherwise. */
-function WaitingItemMark(props: { plugin?: string }) {
+function WaitingItemMark(props: { plugin?: string | undefined }) {
   return pluginSource(props.plugin) === "github" ? (
     <GitHubMark className="size-3 shrink-0 text-dashboard-text-muted" />
   ) : (

@@ -64,7 +64,7 @@ async function recordRootMessage(
   conversationId: string,
   message: {
     author?: { isBot?: boolean; userId: string };
-    authorIdentityId?: string;
+    authorIdentityId?: string | undefined;
     eventType?: string;
     messageId?: string;
     /** Store no author Identity, like a row that ingress could not resolve. */

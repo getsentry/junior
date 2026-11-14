@@ -125,8 +125,8 @@ const startDateSchema = localDateSchema
 function checkRecurringSchedule(
   schedule: {
     frequency: "daily" | "weekly" | "monthly" | "yearly";
-    weekdays?: unknown;
-    month?: number | null;
+    weekdays?: unknown | undefined;
+    month?: number | null | undefined;
   },
   dayOfMonth: { key: string; value: number | null | undefined },
   context: z.RefinementCtx,

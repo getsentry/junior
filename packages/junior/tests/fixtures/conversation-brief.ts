@@ -8,7 +8,7 @@ import type {
 export function conversationBriefFixture(
   options: {
     links?: BriefLink[];
-    status?: BriefOutcomeStatus;
+    status?: BriefOutcomeStatus | undefined;
     summary?: string;
   } = {},
 ): ConversationBrief {

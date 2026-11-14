@@ -10,7 +10,7 @@ import type { BlockedReport } from "@/chat/agent-invocations/blocked-report";
 
 /** Dispatch facts that decide what a run posts. */
 export type RunDispatch =
-  | { declaresResult?: boolean; outcomes?: readonly unknown[] }
+  | { declaresResult?: boolean; outcomes?: readonly unknown[] | undefined }
   | undefined;
 
 /**
@@ -42,7 +42,7 @@ export function finishedRunReply(
  */
 export function runDispatchOutcome(result: {
   blocked?: BlockedReport;
-  diagnostics: { errorMessage?: string; outcome: string };
+  diagnostics: { errorMessage?: string | undefined; outcome: string };
 }): { errorMessage?: string; outcome: "blocked" | "completed" | "failed" } {
   if (result.diagnostics.outcome !== "success") {
     return {

@@ -25,7 +25,7 @@ import type {
 
 interface JobData {
   payload: unknown;
-  retentionSeconds?: number;
+  retentionSeconds?: number | undefined;
 }
 
 type BullMq = typeof import("bullmq");

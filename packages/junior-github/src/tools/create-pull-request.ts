@@ -154,9 +154,9 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
-  facts?: ObjectAnnotation["facts"];
-  sourceUpdatedAt?: string;
-  description?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  sourceUpdatedAt?: string | undefined;
+  description?: string | undefined;
   number: number;
   url: string;
 }
@@ -554,7 +554,7 @@ export function createGitHubPullRequestTool(
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
-      input: CreateGitHubPullRequestInput,
+      input: z.output<typeof createPullRequestToolInputSchema>,
       options: PluginToolExecuteOptions,
       ctx: ToolRegistrationHookContext,
     ) {
@@ -651,7 +651,15 @@ export function createGitHubPullRequestTool(
           > = {
             ...pendingState,
             status: "completed",
-            ...result,
+            number: result.number,
+            url: result.url,
+            facts: result.facts,
+            ...(result.sourceUpdatedAt === undefined
+              ? undefined
+              : { sourceUpdatedAt: result.sourceUpdatedAt }),
+            ...(result.description === undefined
+              ? undefined
+              : { description: result.description }),
           };
           try {
             await ctx.state.set(

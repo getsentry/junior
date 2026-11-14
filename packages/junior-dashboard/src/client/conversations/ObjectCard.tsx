@@ -106,8 +106,8 @@ export function ObjectCard({
 }: {
   card: OwnedObjectAnnotation;
   className?: string;
-  fill?: boolean;
-  live?: boolean;
+  fill?: boolean | undefined;
+  live?: boolean | undefined;
 }) {
   const saved = useSavedObject(card);
   const images = saved.previewImages;

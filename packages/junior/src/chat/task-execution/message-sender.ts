@@ -21,7 +21,7 @@ export type InboundMessageSenders = Record<string, InboundMessageSender>;
 
 /** Read the sender fields that one inbound message stores, if any. */
 export function readInboundMessageSender(message: {
-  input: { metadata?: Record<string, unknown> };
+  input: { metadata?: Record<string, unknown> | undefined };
 }): InboundMessageSender | undefined {
   const parsed = inboundMessageSenderSchema.safeParse(
     message.input.metadata?.["sender"],
@@ -37,7 +37,7 @@ export function withMessageSenders(
   senders: InboundMessageSenders | undefined,
   messages: readonly {
     inboundMessageId: string;
-    input: { metadata?: Record<string, unknown> };
+    input: { metadata?: Record<string, unknown> | undefined };
   }[],
 ): InboundMessageSenders | undefined {
   let next = senders;

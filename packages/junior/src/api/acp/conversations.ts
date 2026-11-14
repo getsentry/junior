@@ -72,7 +72,7 @@ export type AcpConversations = {
 };
 
 interface ConversationOptions {
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   eventStore: ConversationEventStore;
   queue: ConversationWorkQueue;
   state: StateAdapter;

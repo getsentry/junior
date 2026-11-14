@@ -138,12 +138,12 @@ export async function proposal(input: {
   context: ToolActionProposal["context"];
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
-  priorRejectedActions?: PriorRejectionSnapshot[];
+  priorRejectedActions?: PriorRejectionSnapshot[] | undefined;
   /**
    * Author-labeled root Conversation, as core reads it at review time. For a
    * person's root Run, it is built from the evidence when not given.
    */
-  root?: RootConversationMessage[];
+  root?: RootConversationMessage[] | undefined;
   /** The Code Mode script that made the call, as core bounds it. */
   script?: ToolActionScript;
   tool: SnapshotTool;

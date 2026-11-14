@@ -146,7 +146,7 @@ export function conversationsHistoryPage(
 
 export function conversationsRepliesPage(
   input: {
-    messages?: Array<Record<string, unknown>>;
+    messages?: Array<Record<string, unknown>> | undefined;
     nextCursor?: string;
     threadTs?: string;
   } = {},
@@ -477,7 +477,11 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
 
 /** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
 export function botsInfoOk(
-  input: { botId?: string; deleted?: boolean; userId?: string } = {},
+  input: {
+    botId?: string | undefined;
+    deleted?: boolean;
+    userId?: string;
+  } = {},
 ): { ok: true; bot: Record<string, unknown> } {
   return slackOk({
     bot: {
@@ -494,12 +498,12 @@ export function botsInfoOk(
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {
-    userId?: string;
+    userId?: string | undefined;
     userName?: string;
     realName?: string;
     displayName?: string;
     title?: string;
-    email?: string;
+    email?: string | undefined;
     statusText?: string;
     statusEmoji?: string;
     isBot?: boolean;

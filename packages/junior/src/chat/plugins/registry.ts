@@ -41,7 +41,7 @@ interface PluginCatalogSource {
 
 interface PluginCatalogRuntimeState {
   loadedPluginState?: LoadedPluginState;
-  pluginConfig?: PluginCatalogConfig;
+  pluginConfig?: PluginCatalogConfig | undefined;
 }
 
 export interface PluginCatalogRuntime {

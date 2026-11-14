@@ -60,7 +60,7 @@ const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
 /** Dependencies for the serverless-safe remote ACP HTTP handler. */
 type AcpHttpHandlerOptions = {
-  browserAuth?: { baseURL?: string };
+  browserAuth?: { baseURL?: string | undefined };
   conversations: AcpConversations;
   onError?: ReportAcpError;
   state: AcpState;
@@ -474,7 +474,7 @@ async function handleInitialize(args: {
 }
 
 async function handleConnectedPost(args: {
-  authenticated?: User;
+  authenticated?: User | undefined;
   call: AcpCall;
   connection: AcpConnection;
   connectionId: string;

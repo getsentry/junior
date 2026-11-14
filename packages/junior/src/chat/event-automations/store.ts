@@ -30,7 +30,7 @@ type AutomationRow = typeof juniorAutomations.$inferSelect;
 export type StoredEventAutomation = EventAutomation & {
   status: EventAutomationStatus;
   /** Why a run blocked this automation, until its creator resumes it. */
-  statusReason?: string;
+  statusReason?: string | undefined;
 };
 
 /**

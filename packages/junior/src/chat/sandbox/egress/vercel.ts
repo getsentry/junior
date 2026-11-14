@@ -44,7 +44,7 @@ type VercelSandboxNetworkPolicy =
 
 /** Runtime dependencies for the Vercel side of the sandbox egress proxy. */
 export interface VercelSandboxEgressProxyDeps extends SandboxEgressProxyDeps {
-  verifyOidc?: (token: string) => Promise<JWTPayload>;
+  verifyOidc?: ((token: string) => Promise<JWTPayload>) | undefined;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };

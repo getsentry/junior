@@ -46,7 +46,7 @@ const releaseSourceSchema = z
   .strict();
 type ReleaseSource = z.output<typeof releaseSourceSchema>;
 interface Result extends PluginToolOutput, ReleaseSource {
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
   target: "getRelease";
 }
 const outputSchema = pluginToolOutputSchema.merge(

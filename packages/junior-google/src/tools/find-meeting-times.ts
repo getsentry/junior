@@ -400,7 +400,7 @@ export function findFreeSlots(input: {
   timeMaxMs: number;
   timeMinMs: number;
   timeZone: string;
-  weekdays?: readonly string[];
+  weekdays?: readonly string[] | undefined;
   workdayEnd: string;
   workdayStart: string;
 }): Array<Interval & { optionalConflicts: string[] }> {

@@ -19,7 +19,7 @@ export const gitHubSenderSchema = z.object({
 /** Trusted event data that names who sent a webhook. */
 export function gitHubSenderData(
   sender: z.output<typeof gitHubSenderSchema> | undefined,
-): { senderId?: number; senderLogin?: string } {
+): { senderId?: number | undefined; senderLogin?: string | undefined } {
   return { senderId: sender?.id, senderLogin: sender?.login };
 }
 
@@ -38,8 +38,8 @@ export function nonBlank(value: string | null | undefined): string | undefined {
 
 /** The title and body of an issue or pull request, as untrusted text. */
 export function titleAndBodyText(item: {
-  body?: string | null;
-  title?: string;
+  body?: string | null | undefined;
+  title?: string | undefined;
 }): string | undefined {
   const parts = [
     item.title ? `Title: ${item.title}` : undefined,

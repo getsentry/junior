@@ -5,7 +5,7 @@ export function htmlCallbackResponse(
   title: string,
   message: string,
   status: number,
-  options: { footerMessage?: string } = {},
+  options: { footerMessage?: string | undefined } = {},
 ): Response {
   const footerMessage =
     options.footerMessage ??

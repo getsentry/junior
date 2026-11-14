@@ -48,7 +48,7 @@ export function ConversationList(props: {
 
 function ConversationTableRow(props: {
   conversation: Conversation;
-  search?: string;
+  search?: string | undefined;
   selected?: boolean;
 }) {
   const visualStatus = visualStatusForConversation(props.conversation);

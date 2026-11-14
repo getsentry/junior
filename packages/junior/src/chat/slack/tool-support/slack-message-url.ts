@@ -8,7 +8,7 @@ import {
 export interface SlackMessageReference {
   channelId: SlackChannelId;
   messageTs: SlackMessageTs;
-  threadTs?: SlackMessageTs;
+  threadTs?: SlackMessageTs | undefined;
 }
 
 type ParseResult =

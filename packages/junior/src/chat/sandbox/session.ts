@@ -102,32 +102,40 @@ interface SandboxRuntime {
 
 interface ActiveSandbox {
   session: SandboxSession;
-  networkPolicyKey?: string;
+  networkPolicyKey?: string | undefined;
 }
 interface SandboxCandidate extends ActiveSandbox {
-  profileHash?: string;
+  profileHash?: string | undefined;
   ref: SandboxRef;
-  workspace?: Workspace;
+  workspace?: Workspace | undefined;
 }
 interface SandboxRuntimeOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (
-    egressId: string,
-    traceHeaders?: TracePropagationHeaders,
-  ) => SandboxNetworkPolicy | undefined;
-  onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
-  onWorkspacePrepare?: (
-    sandbox: SandboxSession,
-    workspace: Workspace,
-    signal?: AbortSignal,
-  ) => Promise<WorkspaceFinalize | void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  timeoutMs?: number | undefined;
+  traceContext?: LogContext | undefined;
+  commandEnv?: (() => Promise<Record<string, string>>) | undefined;
+  createNetworkPolicy?:
+    | ((
+        egressId: string,
+        traceHeaders?: TracePropagationHeaders,
+      ) => SandboxNetworkPolicy | undefined)
+    | undefined;
+  onSandboxPrepare?:
+    | ((sandbox: SandboxSession) => void | Promise<void>)
+    | undefined;
+  onWorkspacePrepare?:
+    | ((
+        sandbox: SandboxSession,
+        workspace: Workspace,
+        signal?: AbortSignal,
+      ) => Promise<WorkspaceFinalize | void>)
+    | undefined;
+  onSandboxRefChanged?:
+    | ((sandboxRef: SandboxRef) => void | Promise<void>)
+    | undefined;
 }
 
 function captureOutput(output: string): { value: string; truncated: boolean } {
@@ -388,9 +396,9 @@ export function createSandboxRuntime(
     runtime: string;
     snapshot: Snapshot;
     sandboxName: string;
-    signal?: AbortSignal;
-    workspace?: Workspace;
-    prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
+    signal?: AbortSignal | undefined;
+    workspace?: Workspace | undefined;
+    prepareWorkspace?: ((sandbox: SandboxSession) => Promise<void>) | undefined;
   }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
     const { runtime, snapshot, sandboxName, signal } = params;
     signal?.throwIfAborted();

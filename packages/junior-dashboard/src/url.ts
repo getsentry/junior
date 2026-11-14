@@ -1,5 +1,5 @@
 export interface DashboardBaseURLConfig {
-  baseURL?: string;
+  baseURL?: string | undefined;
 }
 
 export interface DashboardConversationURLConfig extends DashboardBaseURLConfig {

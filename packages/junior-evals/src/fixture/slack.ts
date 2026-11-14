@@ -105,7 +105,7 @@ export interface SlackMock {
    * message channel. A link in another channel is not private.
    */
   authorizationLinks(person: {
-    directMessageChannel?: string;
+    directMessageChannel?: string | undefined;
     userId: string;
   }): string[];
   /** The Slack people of the test. */

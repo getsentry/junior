@@ -37,7 +37,7 @@ import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -63,10 +63,10 @@ export interface AppendWebMessageInput {
   conversationId: string;
   message: string;
   /** Checked uploads of this Message. */
-  uploads?: VerifiedAttachmentUpload[];
+  uploads?: VerifiedAttachmentUpload[] | undefined;
   idempotencyKey: string;
   /** Review item change that this Message reports. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
@@ -151,7 +151,7 @@ export function acceptsWebMessages(
  */
 export function webActorFromUser(
   user: Pick<User, "displayName" | "email" | "id">,
-  profile?: { userName?: string },
+  profile?: { userName?: string | undefined },
 ): WebActor {
   return {
     platform: "web",
@@ -166,11 +166,11 @@ export function webActorFromUser(
 export function buildWebInboundMessage(args: {
   actor: WebActor;
   /** Identity of the web Actor, resolved at ingress. */
-  authorIdentityId?: string;
+  authorIdentityId?: string | undefined;
   conversationId: string;
   createdAtMs?: number;
   /** Existing Conversation Destination. A child's work keeps none. */
-  destination?: Destination;
+  destination?: Destination | undefined;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
@@ -234,7 +234,7 @@ export function buildWebInboundMessage(args: {
 export async function recordWebConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
   rootTitle?: string;

@@ -49,7 +49,7 @@ type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 type PersistedConversationEvent = {
   data: ConversationEventData;
-  idempotencyKey?: string;
+  idempotencyKey?: string | undefined;
   createdAtMs: number;
 };
 

@@ -7,8 +7,8 @@ type OAuthTokenRequestInput = {
   clientId: string;
   clientSecret: string;
   payload: Record<string, string>;
-  tokenAuthMethod?: "body" | "basic";
-  tokenExtraHeaders?: Record<string, string>;
+  tokenAuthMethod?: "body" | "basic" | undefined;
+  tokenExtraHeaders?: Record<string, string> | undefined;
 };
 
 function requireNonEmptyTokenField(
@@ -96,7 +96,7 @@ export function parseOAuthTokenResponse(
   data: unknown,
   requestedScope?: string,
   options?: {
-    treatEmptyScopeAsUnreported?: boolean;
+    treatEmptyScopeAsUnreported?: boolean | undefined;
     refreshToken?: string;
   },
 ): OAuthTokenResponse {

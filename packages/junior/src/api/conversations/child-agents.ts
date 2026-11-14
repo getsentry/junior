@@ -21,7 +21,7 @@ import {
  */
 export async function requireConversationChildAgents(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationChildAgentsReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");

@@ -443,7 +443,7 @@ function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
   /** Docked at the bottom of the narrow home, where the list is above it. */
   docked: boolean;
-  error?: string;
+  error?: string | undefined;
   onSubmit(
     message: string,
     idempotencyKey: string,

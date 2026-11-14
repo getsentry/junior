@@ -28,7 +28,7 @@ interface ReferenceMatch {
   end: number;
   id: string;
   kind: GitHubReference["kind"];
-  repository?: Repository;
+  repository?: Repository | undefined;
   start: number;
 }
 

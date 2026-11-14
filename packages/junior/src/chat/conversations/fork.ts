@@ -102,7 +102,7 @@ export async function forkConversation(input: {
   viewer: User;
   idempotencyKey: string;
   /** Start a hidden, read-only Quick question about this selected text. */
-  quickQuestion?: { quote: string };
+  quickQuestion?: { quote: string } | undefined;
 }): Promise<{ conversationId: string }> {
   const conversationId = createConversationId({
     actorEmail: input.viewer.email,

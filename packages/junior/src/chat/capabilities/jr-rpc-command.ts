@@ -6,8 +6,8 @@ import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
   activeSkill: Skill | null;
-  locationConfiguration?: LocationConfigurationService;
-  actorId?: string;
+  locationConfiguration?: LocationConfigurationService | undefined;
+  actorId?: string | undefined;
   onConfigurationValueChanged?: (
     key: string,
     value: unknown | undefined,

@@ -28,10 +28,10 @@ export const storedSlackActorSchema = z
   .strict();
 
 interface BaseActor {
-  email?: string;
-  fullName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
   userId: string;
-  userName?: string;
+  userName?: string | undefined;
 }
 
 export interface SlackActor extends BaseActor {
@@ -56,9 +56,9 @@ export type UserActor = SlackActor | LocalActor | WebActor;
 export type Actor = UserActor | SystemActor;
 
 export interface SlackActorProfile {
-  email?: string;
-  fullName?: string;
-  userName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
+  userName?: string | undefined;
 }
 
 export type StoredSlackActor = z.output<typeof storedSlackActorSchema>;
@@ -75,12 +75,12 @@ export function isUserActor(actor: Actor | undefined): actor is UserActor {
 }
 
 interface ActorInput {
-  email?: string;
-  fullName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
   platform?: UserActor["platform"];
   teamId?: string;
-  userId?: string;
-  userName?: string;
+  userId?: string | undefined;
+  userName?: string | undefined;
 }
 
 function clean(value: string | undefined): string | undefined {
@@ -141,7 +141,7 @@ export function createActor(
   context: {
     platform?: UserActor["platform"];
     teamId?: string;
-    userId?: string;
+    userId?: string | undefined;
   },
 ): UserActor | undefined {
   const platform = context.platform ?? input?.platform;

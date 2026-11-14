@@ -50,7 +50,9 @@ function findFeedRow(
   items: ConversationFeedItem[],
   conversationId: string,
   parentConversationId?: string,
-): { parentConversationId?: string; row: ConversationFeedItem } | undefined {
+):
+  | { parentConversationId?: string | undefined; row: ConversationFeedItem }
+  | undefined {
   for (const item of items) {
     if (item.conversationId === conversationId) {
       return { parentConversationId, row: item };
@@ -117,7 +119,7 @@ type ArchivedConversationSnapshot = {
   conversation: ConversationFeedItem;
   feedQueryHashes: string[];
   /** Set for a nested Thread: the feed row whose `threads` held it. */
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 };
 
 const archiveConversationMutationKey = [
@@ -141,7 +143,7 @@ type ArchiveConversationMutationContext = {
 
 export type PendingArchiveConversationUpdate = {
   archived: boolean;
-  conversation?: ConversationSummaryReport;
+  conversation?: ConversationSummaryReport | undefined;
   conversationId: string;
 };
 
@@ -447,7 +449,7 @@ export function applyPendingArchiveUpdate(
 }
 
 /** Drop matching Threads from the nested `threads` of rows, at any depth. */
-export function withoutThreads<T extends { threads?: T[] }>(
+export function withoutThreads<T extends { threads?: T[] | undefined }>(
   rows: T[],
   isDropped: (thread: T) => boolean,
 ): T[] {

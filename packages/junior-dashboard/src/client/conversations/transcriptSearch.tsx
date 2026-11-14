@@ -52,7 +52,7 @@ export function TranscriptSearchProvider({
   query,
 }: {
   children: ReactNode;
-  match?: number;
+  match?: number | undefined;
   onMatches?(count: number, prepended: number): void;
   query: string;
 }) {

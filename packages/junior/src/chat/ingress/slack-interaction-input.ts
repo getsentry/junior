@@ -6,7 +6,7 @@ import type { SlackInteractivePayload } from "./slack-payload";
 
 /** Facts that a Slack interaction saves on its input, beside the message. */
 export interface SlackInteractionInputFacts {
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
 }
 
 /**

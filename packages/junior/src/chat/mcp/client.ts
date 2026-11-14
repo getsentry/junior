@@ -82,15 +82,15 @@ function isMissingSessionError(error: unknown): boolean {
 }
 
 export class PluginMcpClient {
-  private client?: Client;
-  private clientPromise?: Promise<Client>;
-  private lastAttemptedTransportSessionId?: string;
+  private client?: Client | undefined;
+  private clientPromise?: Promise<Client> | undefined;
+  private lastAttemptedTransportSessionId?: string | undefined;
   private readonly providerStatusStore = new AsyncLocalStorage<{
     status?: number;
   }>();
-  private transport?: StreamableHTTPClientTransport;
-  private listedTools?: ListedTool[];
-  private readonly resourceHost?: string;
+  private transport?: StreamableHTTPClientTransport | undefined;
+  private listedTools?: ListedTool[] | undefined;
+  private readonly resourceHost?: string | undefined;
 
   private readonly plugin: PluginDefinition;
   private readonly options: PluginMcpClientOptions;

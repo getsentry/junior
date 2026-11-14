@@ -111,7 +111,7 @@ export type EventMailboxMetadata = {
     identifier: string;
     /** Watch that matched the Event. Core Events without a Watch omit it. */
     subscriptionId?: string;
-    objectType?: ObjectType;
+    objectType?: ObjectType | undefined;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
@@ -388,10 +388,10 @@ export function createEventInboundMessage(input: {
  */
 export async function enqueueEventNotification(args: {
   /** Resolved person who did what the Event describes. */
-  doneBy?: EventDoneBy;
+  doneBy?: EventDoneBy | undefined;
   event: EventNotification;
   /** Mentions resolved from the Event people. */
-  people?: readonly string[];
+  people?: readonly string[] | undefined;
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];

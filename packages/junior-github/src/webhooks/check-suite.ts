@@ -295,18 +295,18 @@ const checkSuiteEventDataSchema = z
 
 /** Build the trusted data and summary for one check-suite event. */
 export function buildCheckSuiteEvent(args: {
-  appName?: string;
+  appName?: string | undefined;
   openerEmail?: string;
   openerUsername?: string;
-  checkSuiteId?: number;
+  checkSuiteId?: number | undefined;
   deliveryId: string;
   eventType: CheckSuiteEventType;
-  failingChecks?: GitHubFailingCheck[];
-  githubIncidents?: GitHubStatusIncident[];
+  failingChecks?: GitHubFailingCheck[] | undefined;
+  githubIncidents?: GitHubStatusIncident[] | undefined;
   headBranch?: string;
-  headSha?: string;
+  headSha?: string | undefined;
   isDraft?: boolean;
-  latestCheckRunsCount?: number;
+  latestCheckRunsCount?: number | undefined;
   /** Pull request number when GitHub attached one. */
   pullRequestNumber?: number;
   repo: string;
@@ -647,7 +647,10 @@ export async function wantsCheckSuitePassed(args: {
 /** Read which check suite values still need a GitHub API load. */
 export function parseCheckSuiteFactsTarget(
   body: unknown,
-  options?: { loadCheckSuites?: boolean; loadPullRequestFacts?: boolean },
+  options?: {
+    loadCheckSuites?: boolean | undefined;
+    loadPullRequestFacts?: boolean | undefined;
+  },
 ):
   | {
       checkSuiteId: number;
@@ -798,7 +801,7 @@ export async function loadCheckSuiteFacts(args: {
   /** Open or recent githubstatus.com incidents, shared through a cache. */
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   loadPullRequestFacts?: boolean;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   privateKeyEnv: string;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
   const target = parseCheckSuiteFactsTarget(args.body, {

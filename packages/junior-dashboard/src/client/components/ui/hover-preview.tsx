@@ -22,7 +22,7 @@ type VerticalSide = "top" | "bottom";
  */
 export function HoverPreview(props: {
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
   content: ReactNode;
   trigger: ReactElement;
 }) {

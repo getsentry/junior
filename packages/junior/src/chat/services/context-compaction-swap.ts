@@ -77,7 +77,7 @@ type DiscardReason =
 interface ReplacementEntry {
   message: PiMessage;
   provenance: ConversationMessageProvenance;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Compare a message across a durable commit, which drops undefined fields. */

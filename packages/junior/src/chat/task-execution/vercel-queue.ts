@@ -17,7 +17,7 @@ export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
 export interface VercelConversationWorkQueueOptions {
   client?: Pick<QueueProvider, "send">;
   retentionSeconds?: number;
-  topic?: string;
+  topic?: string | undefined;
 }
 
 let defaultQueue: ConversationWorkQueue | undefined;

@@ -3,15 +3,15 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 export interface TurnContext {
-  channelId?: string;
-  actorId?: string;
+  channelId?: string | undefined;
+  actorId?: string | undefined;
   /**
    * Durable Conversation that owns the Turn. It differs from `threadId` when
    * a Slack thread belongs to another Conversation, such as a task post.
    */
-  conversationId?: string;
-  threadId?: string;
-  runId?: string;
+  conversationId?: string | undefined;
+  threadId?: string | undefined;
+  runId?: string | undefined;
 }
 
 export interface TurnMessageText {
@@ -31,12 +31,12 @@ export interface QueuedTurnMessage extends TurnMessageText {
 
 export interface PrepareTurnStateInput {
   destination: Destination;
-  locationConfiguration?: LocationConfigurationService;
+  locationConfiguration?: LocationConfigurationService | undefined;
   context: TurnContext;
   explicitMention: boolean;
   message: Message;
-  queuedMessages?: QueuedTurnMessage[];
-  skipBackfill?: boolean;
+  queuedMessages?: QueuedTurnMessage[] | undefined;
+  skipBackfill?: boolean | undefined;
   text: TurnMessageText;
   thread: Thread;
 }

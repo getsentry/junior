@@ -220,7 +220,7 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
 }
 
 async function loadPluginRegistrations(args: {
-  pluginSet?: JuniorPluginSet;
+  pluginSet?: JuniorPluginSet | undefined;
   validateConfiguredCommands?: (plugins: PluginRegistration[]) => void;
 }): Promise<{
   cliPlugins: PluginRegistration[];

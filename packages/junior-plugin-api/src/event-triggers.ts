@@ -40,7 +40,7 @@ export interface EventTriggerProblem {
     | "field_not_set"
     | "invalid_value";
   /** The filter with the problem. Missing for a resource type or event problem. */
-  field?: string;
+  field?: string | undefined;
   /** Plain words for the person or agent who changes the selection. */
   message: string;
 }
@@ -51,9 +51,9 @@ export interface EventTriggerProblem {
  * every resource of the source that its filters match.
  */
 export interface EventTriggerSelection {
-  resourceType?: string;
+  resourceType?: string | undefined;
   events: readonly string[];
-  match?: EventMatch;
+  match?: EventMatch | undefined;
 }
 
 /** The enabled resource types of one source, and the reach of each of its events. */

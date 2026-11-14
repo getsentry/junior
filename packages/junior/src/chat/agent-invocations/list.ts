@@ -630,7 +630,7 @@ export type ParentAgent = {
  */
 export async function listAgentRelatives(input: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }): Promise<{
   children: ChildAgent[];
   parent?: ParentAgent;

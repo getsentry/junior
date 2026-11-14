@@ -114,10 +114,12 @@ export type TurnProgress =
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
-  onProgress?: (
-    progress: TurnProgress,
-    actions: { send(input: Input): Promise<void> },
-  ) => void | Promise<void>;
+  onProgress?:
+    | ((
+        progress: TurnProgress,
+        actions: { send(input: Input): Promise<void> },
+      ) => void | Promise<void>)
+    | undefined;
 }
 
 /**

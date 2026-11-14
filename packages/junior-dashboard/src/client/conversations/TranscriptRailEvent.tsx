@@ -43,7 +43,7 @@ export const TranscriptActivityNesting = createContext(false);
 export function TranscriptRailEvent(props: {
   children: ReactNode;
   icon?: LucideIcon;
-  objectType?: ObjectType;
+  objectType?: ObjectType | undefined;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);

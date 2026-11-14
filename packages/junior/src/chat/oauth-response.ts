@@ -44,7 +44,7 @@ export class OAuthProviderError extends Error {
   readonly phase: OAuthProviderErrorPhase;
   readonly provider: string;
   readonly resourceHost: string;
-  readonly status?: number;
+  readonly status?: number | undefined;
 
   constructor(details: OAuthProviderErrorDetails) {
     super(`OAuth provider ${details.phase.replace("_", " ")} failed`);

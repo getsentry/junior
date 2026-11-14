@@ -30,7 +30,7 @@ import {
 
 const TEST = vi.hoisted(() => ({
   calls: [] as Array<{ modelId: string; prompt: string }>,
-  embedCalls: [] as Array<{ inputType?: string; texts: string[] }>,
+  embedCalls: [] as Array<{ inputType?: string | undefined; texts: string[] }>,
   failNextEmbed: false,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
   originalDatabaseUrl: process.env["DATABASE_URL"],

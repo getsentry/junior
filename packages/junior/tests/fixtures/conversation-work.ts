@@ -333,7 +333,7 @@ export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
   text?: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   ts?: string;
   user?: string;
 }) {

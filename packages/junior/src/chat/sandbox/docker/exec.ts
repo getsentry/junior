@@ -38,9 +38,9 @@ async function createExec(
   containerId: string,
   input: {
     cmd: string[];
-    cwd?: string;
-    env?: Record<string, string>;
-    root?: boolean;
+    cwd?: string | undefined;
+    env?: Record<string, string> | undefined;
+    root?: boolean | undefined;
     attach: boolean;
   },
   signal?: AbortSignal,

@@ -360,7 +360,7 @@ describe("provider retry helpers", () => {
       overrides: {
         attempt?: number;
         messages?: PiMessage[];
-        failure?: AssistantMessage;
+        failure?: AssistantMessage | undefined;
       } = {},
     ) =>
       nextProviderRetry({

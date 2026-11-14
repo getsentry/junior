@@ -461,10 +461,12 @@ interface SlackInboxTurnRuntime {
 
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
-  lookupSlackUser?: (
-    teamId: string,
-    userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
+  lookupSlackUser?:
+    | ((
+        teamId: string,
+        userId: string,
+      ) => Promise<SlackActorProfile | null | undefined>)
+    | undefined;
   runNextPausedTurn: (
     conversationId: string,
     options: {
@@ -473,11 +475,11 @@ export interface CreateSlackConversationWorkerOptions {
         turn: TurnRecord,
       ) => NonNullable<AgentDurability["drainSteeringMessages"]>;
       shouldYield: () => boolean;
-      stopSignal?: AbortSignal;
+      stopSignal?: AbortSignal | undefined;
     },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }
 
 function requireSlackAuthorId(message: Message): string {
@@ -883,7 +885,7 @@ export function createSlackConversationWorker(
 /** Return the mailbox id of one Slack message or event in a Conversation. */
 export function slackInboundMessageId(args: {
   conversationId: string;
-  installation?: SlackInstallationContext;
+  installation?: SlackInstallationContext | undefined;
   slackId: string;
 }): string {
   return [
@@ -900,7 +902,7 @@ export function buildSlackInboundMessage(args: {
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {

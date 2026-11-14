@@ -223,8 +223,8 @@ function parseChoiceValue(
 
 /** Read a click on a Review item card, if the action is ours. */
 export function parseSlackReviewItemClick(action: {
-  action_id?: string;
-  value?: string;
+  action_id?: string | undefined;
+  value?: string | undefined;
 }): SlackReviewItemClick | undefined {
   const value = action.value?.trim();
   if (!value || !action.action_id?.startsWith(ACTION_ID_PREFIX)) {

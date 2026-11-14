@@ -56,8 +56,8 @@ import {
  * earlier text of the same message already shows.
  */
 export function MarkdownText(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  compact?: boolean | undefined;
   document?: boolean;
   inline?: boolean;
   shownCardUrls?: readonly string[];
@@ -119,7 +119,7 @@ function normalizeSlackBullets(text: string): string {
 }
 
 type MarkdownNode = {
-  children?: MarkdownNode[];
+  children?: MarkdownNode[] | undefined;
   data?: { hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
@@ -433,7 +433,7 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 function ResolvedParagraph(props: {
   children: ReactNode;
   objectUrl: string;
-  saved?: OwnedObjectAnnotation;
+  saved?: OwnedObjectAnnotation | undefined;
 }) {
   const { card, request } = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, request);
@@ -481,7 +481,7 @@ function PlainParagraph(props: { children: ReactNode }) {
 function TranscriptAnchor(props: {
   bare?: boolean;
   children: ReactNode;
-  href?: string;
+  href?: string | undefined;
 }) {
   const known = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
@@ -513,10 +513,10 @@ function TranscriptAnchor(props: {
 // into view or the reader hovers it. A saved link shows until then. Its hover
 // card keeps one height while the live card can still replace it.
 function ResolvedAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   children: ReactNode;
   href: string;
-  saved?: OwnedObjectAnnotation;
+  saved?: OwnedObjectAnnotation | undefined;
 }) {
   const { card, request, settled } = useResolvedObject(props.href);
   const observe = useWhenVisible(request);
@@ -556,7 +556,7 @@ function ResolvedAnchor(props: {
 }
 
 function ObjectAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   card: OwnedObjectAnnotation;
   children: ReactNode;
   href: string;

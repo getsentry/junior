@@ -26,9 +26,9 @@ export function resetAssistantTitleProjectionForTests(): void {
  * Projection is set-once per DM thread so later turns do not rewrite Slack.
  */
 export async function maybeSyncAssistantTitle(args: {
-  channelId?: string;
+  channelId?: string | undefined;
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantTitle">;
-  threadTs?: string;
+  threadTs?: string | undefined;
   title: string;
 }): Promise<void> {
   const channelId = args.channelId;
@@ -44,7 +44,9 @@ export async function maybeSyncAssistantTitle(args: {
   projectedAssistantTitles.add(key);
 
   try {
-    await args.getSlackAdapter().setAssistantTitle(channelId, threadTs, args.title);
+    await args
+      .getSlackAdapter()
+      .setAssistantTitle(channelId, threadTs, args.title);
   } catch (error) {
     // Allow a later turn to retry after a transient failure. Stable permission
     // denials stay terminal for this process.

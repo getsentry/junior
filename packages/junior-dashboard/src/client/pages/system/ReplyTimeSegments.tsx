@@ -65,7 +65,7 @@ function busiest(segments: Segment[]): string | undefined {
  */
 export function ReplyTimeSegments(props: {
   error: boolean;
-  report?: ReplyTimeSegmentsReport;
+  report?: ReplyTimeSegmentsReport | undefined;
 }) {
   const [group, setGroup] = useState<Group>("user");
   const [selected, setSelected] = useState<string>();

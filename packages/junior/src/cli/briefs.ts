@@ -34,7 +34,7 @@ type PullOptions = {
 type RunOptions = {
   model: string;
   out: string;
-  promptFile?: string;
+  promptFile?: string | undefined;
   snapshots: string[];
   turnByTurn: boolean;
 };

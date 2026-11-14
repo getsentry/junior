@@ -228,7 +228,7 @@ async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
   /** Claim an unowned thread for the Conversation this message starts. */
   claimAtMs?: number;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
 }): Promise<string> {
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
@@ -268,7 +268,7 @@ async function resolveSlackConversationId(args: {
 async function buildSlackInput(args: {
   adapter: SlackAdapter;
   conversationId: string;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
@@ -292,10 +292,10 @@ async function buildSlackInput(args: {
 
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   route: SlackConversationRoute;
@@ -364,7 +364,7 @@ async function routeParsedMessage(args: {
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
@@ -546,7 +546,7 @@ async function ingestChannelMessage(args: {
   author: SlackChannelMessageAuthor;
   event: SlackInboundEvent;
   queue: ConversationWorkQueue;
-  teamId?: string;
+  teamId?: string | undefined;
 }): Promise<void> {
   // Use only `message`: Slack also sends `app_mention` for a mention in code.
   const { event } = args;
@@ -777,7 +777,7 @@ async function handleSlackEvent(args: {
  */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   services: SlackWebhookServices;

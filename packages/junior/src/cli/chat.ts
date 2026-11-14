@@ -398,7 +398,7 @@ async function runInteractive(
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
-  deps: { pluginSet?: JuniorPluginSet | null } = {},
+  deps: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {

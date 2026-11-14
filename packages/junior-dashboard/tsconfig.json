@@ -1,6 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Temporary exception: 164 errors remain under exactOptionalPropertyTypes
+    // (122 in packages/junior, 42 in packages/junior-dashboard). Count them
+    // with `tsc --noEmit -p . --exactOptionalPropertyTypes`. Remove this line
+    // when that command passes.
+    "exactOptionalPropertyTypes": false,
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",

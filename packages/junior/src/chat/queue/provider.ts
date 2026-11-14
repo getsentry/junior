@@ -26,9 +26,9 @@ export interface QueueRetryDirective {
 /** Options for one queue send. */
 export interface QueueSendOptions {
   /** Wait this many seconds before the first delivery. */
-  delaySeconds?: number;
+  delaySeconds?: number | undefined;
   /** Drop a second send with the same key. */
-  idempotencyKey?: string;
+  idempotencyKey?: string | undefined;
   /** Drop the message if it is not delivered within this many seconds. */
   retentionSeconds?: number;
 }
@@ -49,7 +49,7 @@ export interface QueueConsumer {
   ): QueueRetryDirective | undefined;
   topic: string;
   /** Wait this many seconds before a message that is in flight is sent again. */
-  visibilityTimeoutSeconds?: number;
+  visibilityTimeoutSeconds?: number | undefined;
 }
 
 /** Queue operations that each queue provider implements. */

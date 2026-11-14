@@ -509,9 +509,9 @@ export function getPlugins(): PluginRegistration[] {
 /** Conversation facts that plugin Markdown rewrites may use. */
 export interface PluginMarkdownFormat {
   /** Config values by full key. Install defaults fill keys it does not set. */
-  configuration?: Record<string, unknown>;
+  configuration?: Record<string, unknown> | undefined;
   /** Slack mentions of known people, by lowercase `provider:handle`. */
-  mentions?: ReadonlyMap<string, string>;
+  mentions?: ReadonlyMap<string, string> | undefined;
   /** Where the text shows. Defaults to Slack. */
   platform?: "slack" | "web";
   /** The provider that wrote the text or that it went to. */
@@ -1699,9 +1699,9 @@ function normalizeEnv(value: unknown): Record<string, string> {
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
-    actors?: () => Actor[];
+    actors?: (() => Actor[]) | undefined;
     /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
     toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},

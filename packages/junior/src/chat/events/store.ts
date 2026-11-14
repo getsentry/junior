@@ -57,7 +57,7 @@ export interface CreateWatchInput {
   conversationId: string;
   events: string[];
   expiresAtMs: number;
-  guidance?: Partial<Record<string, string>>;
+  guidance?: Partial<Record<string, string>> | undefined;
   intent: string;
   label: string;
   match?: EventMatch;
@@ -191,7 +191,7 @@ async function readSubscriptionIdIndex(
 function buildSubscriptionId(input: {
   conversationId: string;
   events: string[];
-  match?: EventMatch;
+  match?: EventMatch | undefined;
   namespace: string;
   identifier: string;
 }): string {
@@ -283,7 +283,7 @@ function activeAt(subscription: Watch, nowMs: number): boolean {
 function matchesEvent(
   subscription: Watch,
   input: {
-    data?: EventData;
+    data?: EventData | undefined;
     eventType: string;
     nowMs: number;
     namespace: string;
@@ -316,7 +316,7 @@ function watchGuidance(
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,
-  options: { nowMs?: number; state?: StateAdapter } = {},
+  options: { nowMs?: number; state?: StateAdapter | undefined } = {},
 ): Promise<Watch> {
   const state = options.state ?? getStateAdapter();
   await state.connect();
@@ -481,7 +481,7 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
 export async function listWatches(input: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<Watch[]> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
@@ -522,8 +522,8 @@ export async function getWatch(input: {
 export async function cancelWatch(input: {
   conversationId: string;
   id: string;
-  nowMs?: number;
-  state?: StateAdapter;
+  nowMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<Watch | undefined> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
@@ -568,7 +568,7 @@ export async function cancelWatch(input: {
 export async function cancelSubscriptions(input: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const subscriptions = await listWatches(input);
   for (const subscription of subscriptions) {
@@ -590,7 +590,7 @@ export async function collectEventMatchKeys(input: {
   identifiers: string[];
   namespace: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<string[]> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
@@ -630,12 +630,12 @@ export async function collectEventMatchKeys(input: {
 
 /** Find active subscriptions interested in a normalized event. */
 export async function findMatchingWatches(input: {
-  data?: EventData;
+  data?: EventData | undefined;
   eventType: string;
   nowMs?: number;
   namespace: string;
   identifier: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<Watch[]> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
@@ -664,15 +664,15 @@ export async function findMatchingWatches(input: {
 
 /** Recheck and deliver a matched subscription while holding its status lock. */
 export async function deliverWatch(input: {
-  data?: EventData;
+  data?: EventData | undefined;
   deliver: (subscription: Watch) => Promise<boolean>;
   eventType: string;
   nowMs?: number;
   namespace: string;
   identifier: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
   subscription: Watch;
-  terminal?: boolean;
+  terminal?: boolean | undefined;
   waitDeadlineMs?: number;
 }): Promise<boolean> {
   const state = input.state ?? getStateAdapter();

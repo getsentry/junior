@@ -55,7 +55,7 @@ async function findSpawnedChildAgent(args: {
   agentName?: string;
   idempotencyKey: string;
   parentConversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<string | undefined> {
   const invocationId = getAgentInvocationId(
     args.parentConversationId,

@@ -100,7 +100,7 @@ function view(workspace: Workspace) {
 /** Return building status and any already-created snapshot subscription. */
 function buildingWorkspaceResult(input: {
   workspace: z.infer<typeof workspaceSchema>;
-  subscription?: Pick<WatchResult, "id" | "events"> | null;
+  subscription?: Pick<WatchResult, "id" | "events"> | null | undefined;
 }) {
   return {
     workspace: input.workspace,

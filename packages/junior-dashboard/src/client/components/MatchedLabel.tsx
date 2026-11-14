@@ -1,5 +1,8 @@
 /** Show `label` with the matched characters emphasized. */
-export function MatchedLabel(props: { label: string; matches?: number[] }) {
+export function MatchedLabel(props: {
+  label: string;
+  matches?: number[] | undefined;
+}) {
   const { label, matches } = props;
   if (!matches?.length) return <>{label}</>;
   const matched = new Set(matches);

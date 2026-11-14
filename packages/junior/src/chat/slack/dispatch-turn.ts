@@ -23,8 +23,8 @@ type ExecuteSlackTurn = (
     execution: DispatchTurnContext;
     onTurnDeliveryAccepted?: (messageId?: string) => void;
     onTurnOutcome?: (result: DispatchTurnResult) => void;
-    shouldYield?: () => boolean;
-    checkIn?: () => Promise<boolean>;
+    shouldYield?: (() => boolean) | undefined;
+    checkIn?: (() => Promise<boolean>) | undefined;
     skipBackfill?: boolean;
   },
 ) => Promise<void>;

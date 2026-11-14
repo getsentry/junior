@@ -66,7 +66,7 @@ export type ConversationMenu = {
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
   eventLogOpen?: boolean;
-  getMarkdown?: () => Promise<string>;
+  getMarkdown?: (() => Promise<string>) | undefined;
   pending: {
     archive: boolean;
     delivery: boolean;

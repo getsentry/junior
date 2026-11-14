@@ -406,7 +406,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
 /** Create the shared Neon-backed Junior SQL executor. */
 export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
-  onInfo?: (message: string) => void;
+  onInfo?: ((message: string) => void) | undefined;
   statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
   const { onInfo, ...poolArgs } = args;

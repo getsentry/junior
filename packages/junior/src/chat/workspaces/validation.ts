@@ -26,8 +26,8 @@ export class WorkspaceValidationError extends Error {
 /** Normalize and validate one Workspace recipe write payload. */
 export function normalizeWorkspaceRecipe(input: {
   name: string;
-  setupScript?: string;
-  vcpus?: number | null;
+  setupScript?: string | undefined;
+  vcpus?: number | null | undefined;
   repos: Array<{
     provider: string;
     repo: string;

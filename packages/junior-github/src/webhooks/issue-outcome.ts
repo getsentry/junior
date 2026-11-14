@@ -91,7 +91,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 /** Normalize only the fields required for the Junior-owned issue projection. */
 export function normalizeGitHubIssueOutcome(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubIssueOutcomeInput | undefined {
   const lifecycle = issueLifecycleActionSchema.safeParse(args.body);
   if (
@@ -187,7 +187,7 @@ const issueConversationSchema = z
 /** Normalize native conversation ids written to a Junior-owned issue by its bot. */
 export function normalizeGitHubIssueConversations(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubIssueConversationsInput | undefined {
   const parsed = issueConversationSchema.safeParse(args.body);
   if (!parsed.success) return undefined;

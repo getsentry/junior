@@ -39,7 +39,7 @@ export interface McpAuthSessionState {
   userMessage: string;
   channelId?: string;
   threadTs?: string;
-  toolChannelId?: string;
+  toolChannelId?: string | undefined;
   configuration?: Record<string, unknown>;
   authorizationUrl?: string;
   codeVerifier?: string;

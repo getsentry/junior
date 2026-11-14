@@ -53,16 +53,18 @@ interface RefreshUserAccessTokenInput {
   clientIdEnv: string;
   clientSecretEnv: string;
   refreshToken: string;
-  requestedScope?: string;
+  requestedScope?: string | undefined;
 }
 
 interface CredentialLeaseInput {
-  account?: PluginProviderAccount;
-  authorization?: {
-    provider: "github";
-    scope?: string;
-    type: "oauth";
-  };
+  account?: PluginProviderAccount | undefined;
+  authorization?:
+    | {
+        provider: "github";
+        scope?: string;
+        type: "oauth";
+      }
+    | undefined;
   domains?: string[];
   expiresAtMs: number;
   token: string;
@@ -75,7 +77,7 @@ type TokenResolution =
 interface UserCredentialOptions {
   clientIdEnv: string;
   clientSecretEnv: string;
-  userScope?: string;
+  userScope?: string | undefined;
 }
 
 interface InstallationCredentialBaseOptions {

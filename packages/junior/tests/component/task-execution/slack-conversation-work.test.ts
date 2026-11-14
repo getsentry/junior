@@ -464,7 +464,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      telemetry?: TurnInputTelemetry;
+      telemetry?: TurnInputTelemetry | undefined;
     }> = [];
 
     await handleSlackWebhookAndFlush({

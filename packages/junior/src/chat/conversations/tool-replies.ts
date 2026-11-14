@@ -11,7 +11,7 @@ export async function recordToolReply(args: {
   conversationId: string;
   plugin: string;
   result: unknown;
-  toolCallId?: string;
+  toolCallId?: string | undefined;
 }): Promise<unknown> {
   const { result } = args;
   if (!isRecord(result) || result["isError"] === true) return result;

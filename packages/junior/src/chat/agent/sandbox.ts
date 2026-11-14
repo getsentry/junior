@@ -30,17 +30,17 @@ import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   traceContext: LogContext;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
-  egressSignals?: SandboxEgressSignalTransport;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
+  egressSignals?: SandboxEgressSignalTransport | undefined;
   conversationId?: string;
-  credentialEgress?: CredentialContext;
+  credentialEgress?: CredentialContext | undefined;
   credentialAuditSource?: CredentialAuditSource;
-  actor?: Actor;
-  locationConfiguration?: LocationConfigurationService;
+  actor?: Actor | undefined;
+  locationConfiguration?: LocationConfigurationService | undefined;
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;

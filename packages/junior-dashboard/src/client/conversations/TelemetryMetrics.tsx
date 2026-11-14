@@ -358,13 +358,13 @@ export function auxiliaryOperationLabel(
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
-  auxiliaryCosts?: ConversationAuxiliaryCosts;
-  childAgentTotals?: ConversationChildAgentTotals;
+  auxiliaryCosts?: ConversationAuxiliaryCosts | undefined;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: CostUsageSummary | undefined;
-  tooltipPlacement?: "above" | "below";
+  tooltipPlacement?: "above" | "below" | undefined;
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -400,11 +400,11 @@ export function CostMetric(props: {
 /** Render total token usage with a hoverable breakdown. */
 export function TokenMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
-  compactionCount?: number;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
+  compactionCount?: number | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: TokenUsageSummary | undefined;
 }) {
   if (!props.summary) return null;
@@ -433,7 +433,7 @@ export function TokenMetric(props: {
 /** Render a duration value with start/end timestamps in the tooltip. */
 export function DurationMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   durationMs?: number;
   endedAt?: string;
   label: string;

@@ -16,7 +16,7 @@ export interface GuardedRequest {
   /** Sent only to the origin of `url`, never after a redirect to another. */
   headers?: Record<string, string>;
   /** Limit every hop to these hosts and their subdomains. */
-  hosts?: readonly string[];
+  hosts?: readonly string[] | undefined;
   /** A larger body is a `too_large` failure, unless `truncate` is set. */
   maxBytes: number;
   timeoutMs: number;
@@ -29,12 +29,12 @@ export interface GuardedRequest {
 
 /** The body of the last hop, or why Junior did not take it. */
 export type GuardedResponse =
-  | { bytes: Buffer; contentType?: string; url: string }
+  | { bytes: Buffer; contentType?: string | undefined; url: string }
   | { failure: string };
 
 type Hop =
   | { location: string }
-  | { bytes: Buffer; contentType?: string }
+  | { bytes: Buffer; contentType?: string | undefined }
   | { failure: string };
 
 function blockedUrl(url: URL, hosts: readonly string[] | undefined): boolean {

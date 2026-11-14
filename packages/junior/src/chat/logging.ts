@@ -1694,7 +1694,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 
 /** Return the active trace as a durable trace context, if there is one. */
 export function getActiveTraceContext():
-  | { baggage?: string; sentryTrace: string }
+  | { baggage?: string | undefined; sentryTrace: string }
   | undefined {
   const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
   return sentryTrace ? { baggage, sentryTrace } : undefined;

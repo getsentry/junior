@@ -185,7 +185,7 @@ function createEvalEgressServer(options: EvalEgressOptions): {
         const request = new Request(
           new URL(incoming.url ?? "/", `http://${incoming.headers.host}`).href,
           {
-            method: incoming.method,
+            method: incoming.method ?? "GET",
             headers: requestHeadersFromNode(incoming.headers),
             ...(incoming.method === "GET" || incoming.method === "HEAD"
               ? undefined

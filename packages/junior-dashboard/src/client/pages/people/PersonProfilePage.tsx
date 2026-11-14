@@ -75,7 +75,7 @@ export function PersonProfilePage() {
 
 /** Present one actor's activity and dimensions. */
 export function Profile(props: {
-  code?: CodePersonReport;
+  code?: CodePersonReport | undefined;
   codeError?: boolean;
   codeLoading?: boolean;
   pluginReports?: PluginOperationalReport[];

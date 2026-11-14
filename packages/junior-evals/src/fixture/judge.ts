@@ -11,7 +11,7 @@ import { runEvalWork } from "../eval-work";
 /** Pass and fail conditions in product language. */
 export interface Rubric {
   pass: readonly string[];
-  fail?: readonly string[];
+  fail?: readonly string[] | undefined;
 }
 
 /** One user-visible message in a judge transcript. */
@@ -129,7 +129,7 @@ function parseJudgeResult(text: string): {
 
 async function completeJudge(args: {
   prompt: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   system: string;
 }): Promise<string> {
   const { text } = await completeText({

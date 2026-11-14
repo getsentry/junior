@@ -26,7 +26,7 @@ export function createAgentRunner(
     bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
-    tracePropagation?: SandboxEgressTracePropagationConfig;
+    tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;

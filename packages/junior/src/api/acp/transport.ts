@@ -661,7 +661,7 @@ function serializeSseKeepAlive(): Uint8Array {
 export async function openAcpSse(args: {
   conversations: AcpConversations;
   maintain?: () => Promise<void>;
-  onError?: ReportAcpError;
+  onError?: ReportAcpError | undefined;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
   state: AcpState;
@@ -690,7 +690,7 @@ function createSseBody(args: {
   conversations: AcpConversations;
   lock: AcpLock;
   maintain?: () => Promise<void>;
-  onError?: ReportAcpError;
+  onError?: ReportAcpError | undefined;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
   state: AcpState;

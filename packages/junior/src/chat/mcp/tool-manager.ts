@@ -66,8 +66,8 @@ function summarizeStructuredContent(value: unknown): string | undefined {
 function summarizeResourcePart(part: {
   type: "resource";
   resource:
-    | { uri: string; text: string; mimeType?: string }
-    | { uri: string; blob: string; mimeType?: string };
+    | { uri: string; text: string; mimeType?: string | undefined }
+    | { uri: string; blob: string; mimeType?: string | undefined };
 }): string {
   if ("text" in part.resource) {
     return part.resource.text;

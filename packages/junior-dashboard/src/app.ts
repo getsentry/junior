@@ -107,7 +107,7 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   authRequired?: boolean;
   auth?: DashboardAuth;
-  mockConversations?: boolean;
+  mockConversations?: boolean | undefined;
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {

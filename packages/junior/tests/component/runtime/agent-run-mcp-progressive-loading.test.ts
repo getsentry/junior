@@ -148,21 +148,23 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }>;
     };
     private aborted = false;
-    private readonly afterToolCall?: (
-      event: {
-        isError: boolean;
-        result: { content: unknown[]; details: Record<string, unknown> };
-        toolCall: { arguments: unknown; id: string; name: string };
-      },
-      signal?: AbortSignal,
-    ) => Promise<
-      | {
-          content?: unknown[];
-          details?: Record<string, unknown>;
-          isError?: boolean;
-        }
-      | undefined
-    >;
+    private readonly afterToolCall?:
+      | ((
+          event: {
+            isError: boolean;
+            result: { content: unknown[]; details: Record<string, unknown> };
+            toolCall: { arguments: unknown; id: string; name: string };
+          },
+          signal?: AbortSignal,
+        ) => Promise<
+          | {
+              content?: unknown[];
+              details?: Record<string, unknown>;
+              isError?: boolean;
+            }
+          | undefined
+        >)
+      | undefined;
 
     constructor(input: {
       afterToolCall?: MockAgent["afterToolCall"];

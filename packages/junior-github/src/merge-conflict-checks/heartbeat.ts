@@ -77,7 +77,7 @@ const searchResponseSchema = z.object({
 });
 
 type SearchOpenPullRequests = (input: {
-  after?: string;
+  after?: string | undefined;
   repositoryFullName: string;
 }) => Promise<unknown>;
 

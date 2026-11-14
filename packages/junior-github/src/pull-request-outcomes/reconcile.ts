@@ -84,7 +84,7 @@ const lifecyclesResponseSchema = z.object({
 
 interface ReconcileArgs {
   annotations: PluginConversationAnnotations;
-  botEmail?: string;
+  botEmail?: string | undefined;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
   events: EventPublisher;

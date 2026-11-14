@@ -209,7 +209,7 @@ export function resetMockConversationViewerState(): void {
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string; status: string },
 >(
-  report: T & { archivedAt?: string | null },
+  report: T & { archivedAt?: string | null | undefined },
   pinConversationId = report.conversationId,
 ): T & {
   archivedAt: string | undefined;

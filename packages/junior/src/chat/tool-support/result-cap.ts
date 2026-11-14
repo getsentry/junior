@@ -82,7 +82,7 @@ export async function capToolResult<TResult extends { content: ToolContent }>(
   result: TResult,
   options: {
     toolCallId: string;
-    workspace?: Pick<SandboxWorkspace, "writeFiles">;
+    workspace?: Pick<SandboxWorkspace, "writeFiles"> | undefined;
     maxChars?: number;
   },
 ): Promise<TResult> {

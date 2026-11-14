@@ -468,7 +468,7 @@ export async function markScheduledRunCompleted(
   db: JuniorDatabase,
   args: {
     completedAtMs: number;
-    resultMessageTs?: string;
+    resultMessageTs?: string | undefined;
     runId: string;
     startedAtMs: number;
   },
@@ -491,7 +491,7 @@ export async function markScheduledRunFailed(
   args: {
     completedAtMs: number;
     errorMessage: string;
-    startedAtMs?: number;
+    startedAtMs?: number | undefined;
     runId: string;
   },
 ): Promise<ScheduledRun | undefined> {
@@ -555,7 +555,7 @@ export async function markScheduledRunSkipped(
 export async function advanceScheduledAutomationAfterRun(
   db: JuniorDatabase,
   args: {
-    errorMessage?: string;
+    errorMessage?: string | undefined;
     nowMs: number;
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";

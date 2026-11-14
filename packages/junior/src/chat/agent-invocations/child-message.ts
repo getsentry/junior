@@ -121,7 +121,7 @@ async function readLegacyChildMessageSenders(
   const senders = new Map<string, InboundMessageSender>();
   const byAgentInvocation = new Map<
     string,
-    { agentInvocationId: string; turnId?: string }
+    { agentInvocationId: string; turnId?: string | undefined }
   >();
   for (const id of inboundMessageIds) {
     const result = LEGACY_RESULT_ID.exec(id);

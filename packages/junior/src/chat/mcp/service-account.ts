@@ -349,9 +349,9 @@ function signInProvider(input: {
 }) {
   const captured: {
     authorizationUrl?: URL;
-    clientInformation?: OAuthClientInformationMixed;
-    codeVerifier?: string;
-    discoveryState?: OAuthDiscoveryState;
+    clientInformation?: OAuthClientInformationMixed | undefined;
+    codeVerifier?: string | undefined;
+    discoveryState?: OAuthDiscoveryState | undefined;
     tokens?: OAuthTokens;
   } = {
     clientInformation: input.pending?.clientInformation,

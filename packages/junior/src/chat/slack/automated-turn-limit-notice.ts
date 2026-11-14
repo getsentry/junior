@@ -17,7 +17,7 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 
 async function releaseFailedNoticeClaim(args: {
   conversationId: string;
-  nowMs?: number;
+  nowMs?: number | undefined;
 }): Promise<void> {
   try {
     await clearAutomatedTurnLimitNoticeClaim(args);
@@ -30,9 +30,9 @@ async function releaseFailedNoticeClaim(args: {
 export async function postAutomatedTurnLimitNoticeForConversation(args: {
   conversationId: string;
   maxTurns: number;
-  nowMs?: number;
+  nowMs?: number | undefined;
   /** Source of the Turn that hit the limit, when a Turn posts the notice. */
-  source?: Source;
+  source?: Source | undefined;
 }): Promise<boolean> {
   try {
     const conversation = await getConversationStore().get({

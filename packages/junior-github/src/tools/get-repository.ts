@@ -27,7 +27,7 @@ const repositorySchema = z.object({
 type Repository = z.output<typeof repositorySchema>;
 interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   repositorySchema.extend({

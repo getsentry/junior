@@ -219,7 +219,10 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("treats queued explicit mentions as part of the subscribed turn", async () => {
     let classifierCalled = false;
-    const replyCalls: Array<{ piMessages?: unknown[]; prompt: string }> = [];
+    const replyCalls: Array<{
+      piMessages?: unknown[] | undefined;
+      prompt: string;
+    }> = [];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {

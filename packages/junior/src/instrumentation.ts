@@ -56,11 +56,11 @@ function getTracesSampleRate(): number {
 
 /** Browser SDK settings and the current request's trace, for an HTML page. */
 export interface BrowserSentryConfig {
-  baggage?: string;
+  baggage?: string | undefined;
   dsn: string;
-  environment?: string;
-  release?: string;
-  sentryTrace?: string;
+  environment?: string | undefined;
+  release?: string | undefined;
+  sentryTrace?: string | undefined;
   tracesSampleRate: number;
 }
 

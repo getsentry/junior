@@ -4,7 +4,7 @@ import { AutomationEditError } from "./edit-rules";
 import { automationTaskText, type AutomationTask } from "./task";
 
 /** A person account in the workspace of the Automation Destination. */
-type InstructionPerson = { slackUserId: string; fullName?: string };
+type InstructionPerson = { slackUserId: string; fullName?: string | undefined };
 
 function namesPerson(text: string, name: string): boolean {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -41,7 +41,7 @@ function taskTextProblem(
   text: string,
   references: {
     creator: InstructionPerson;
-    requester?: InstructionPerson;
+    requester?: InstructionPerson | undefined;
     previousText: string;
     /** "instruction" or "context". */
     label: string;
@@ -81,9 +81,9 @@ export function requireAutomationTaskText(
   references: {
     creator: InstructionPerson;
     /** The person who edits the task, when it is not a new Automation. */
-    requester?: InstructionPerson;
+    requester?: InstructionPerson | undefined;
     /** The task before this edit. Unset for a new Automation. */
-    current?: AutomationTask;
+    current?: AutomationTask | undefined;
   },
 ): void {
   const text = automationTaskText(task);

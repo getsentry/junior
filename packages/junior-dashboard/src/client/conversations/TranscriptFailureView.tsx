@@ -14,11 +14,11 @@ import { OutboundLink } from "../components/OutboundLink";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
-  eventId?: string;
+  eventId?: string | undefined;
   failureCode: ConversationTurnFailureCode;
-  failureReason?: ConversationTurnFailureReason;
-  sentryEventUrl?: string;
-  timestamp?: number;
+  failureReason?: ConversationTurnFailureReason | undefined;
+  sentryEventUrl?: string | undefined;
+  timestamp?: number | undefined;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const eventReference = props.eventId ? (

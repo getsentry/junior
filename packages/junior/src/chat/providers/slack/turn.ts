@@ -191,7 +191,7 @@ interface LoadedPiMessagesForTurn {
  */
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
-  activeTurnId?: string;
+  activeTurnId?: string | undefined;
 }): Promise<LoadedPiMessagesForTurn> {
   if (!args.conversationId) {
     return {};
@@ -221,7 +221,7 @@ async function loadPiMessagesForTurn(args: {
 
 interface SlackTurnDeps {
   /** Keeps background work, such as title projection, alive after the turn. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
   executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
@@ -229,12 +229,12 @@ interface SlackTurnDeps {
     attachments: Message["attachments"] | undefined,
     context: {
       conversationId?: string;
-      threadId?: string;
-      actorId?: string;
-      channelId?: string;
-      runId?: string;
+      threadId?: string | undefined;
+      actorId?: string | undefined;
+      channelId?: string | undefined;
+      runId?: string | undefined;
       conversation?: PreparedTurnState["conversation"];
-      messageTs?: string;
+      messageTs?: string | undefined;
     },
   ) => Promise<
     Array<{
@@ -245,7 +245,9 @@ interface SlackTurnDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
+  sendPluginTask?:
+    | ScheduleSessionCompletedPluginTasksOptions["send"]
+    | undefined;
 }
 
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
@@ -273,7 +275,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       stopSignal?: AbortSignal;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
-        context?: { conversationContext?: string },
+        context?: { conversationContext?: string | undefined },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
       checkIn?: () => Promise<boolean>;

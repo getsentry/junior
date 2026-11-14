@@ -216,7 +216,7 @@ export interface WorkspacePrepareHookContext extends PluginContext {
 }
 
 export interface SandboxPrepareHookContext extends PluginContext {
-  actor?: Actor;
+  actor?: Actor | undefined;
   sandbox: PluginSandbox;
 }
 
@@ -225,7 +225,7 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   env: PluginEnv;
   /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
   juniorRoot: string;
-  actor?: Actor;
+  actor?: Actor | undefined;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];
   tool: {
@@ -290,7 +290,7 @@ export interface AfterMcpToolHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   result: {
     /** Provider content before model-facing truncation. */
-    content?: PluginMcpContent[];
+    content?: PluginMcpContent[] | undefined;
     structuredContent?: unknown;
   };
   tool: {
@@ -384,11 +384,11 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
  */
 export interface ToolAnnotations {
   [key: string]: unknown;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
-  openWorldHint?: boolean;
-  readOnlyHint?: boolean;
-  title?: string;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
+  readOnlyHint?: boolean | undefined;
+  title?: string | undefined;
 }
 
 export const REQUIRED_TOOL_ANNOTATION_KEYS = [
@@ -415,7 +415,7 @@ export function missingToolAnnotationKeys(
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
   /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode;
+  approvalMode?: ToolApprovalMode | undefined;
   annotations?: ToolAnnotations;
   /**
    * Describe the reviewed semantic action for the review request.
@@ -457,7 +457,7 @@ export interface PluginToolDefinition<
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
-  exposure?: ToolExposure;
+  exposure?: ToolExposure | undefined;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**

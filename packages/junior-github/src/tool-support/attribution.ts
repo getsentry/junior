@@ -95,10 +95,10 @@ function automationLabel(
  */
 function requesterLabel(args: {
   actor: Actor | undefined;
-  automationUrl?: string;
-  identity?: Identity;
-  source?: Source;
-  user?: User;
+  automationUrl?: string | undefined;
+  identity?: Identity | undefined;
+  source?: Source | undefined;
+  user?: User | undefined;
 }): string | undefined {
   const { actor, identity, user } = args;
   const automation = automationLabel(args.source, args.automationUrl);
@@ -224,7 +224,7 @@ export interface GitHubRequester {
  * logged and gives no requester, so it never blocks the write.
  */
 export async function resolveGitHubRequester(ctx: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   log: PluginLogger;
   users: {
     resolveActor(): Promise<GitHubRequester | undefined>;
@@ -251,9 +251,9 @@ export async function resolveGitHubRequester(ctx: {
 export function appendGitHubRequesterAttribution(
   body: string,
   ctx: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     automationLink?: { url: string };
-    source?: Source;
+    source?: Source | undefined;
   },
   requester: GitHubRequester | undefined,
   currentBody?: string,

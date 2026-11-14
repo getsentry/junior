@@ -30,17 +30,17 @@ import {
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
-  durationMs?: number;
-  errorMessage?: string;
-  providerError?: unknown;
+  durationMs?: number | undefined;
+  errorMessage?: string | undefined;
+  providerError?: unknown | undefined;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
   reasoningLevel?: TurnReasoningLevel;
-  stopReason?: string;
+  stopReason?: string | undefined;
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   usedPrimaryText: boolean;
 }
 
@@ -56,8 +56,8 @@ export interface AgentRunResult {
   blocked?: BlockedReport;
   /** Set when the run ended with no reply. */
   noReply?: NoReply;
-  sandboxRef?: SandboxRef;
-  piMessages?: PiMessage[];
+  sandboxRef?: SandboxRef | undefined;
+  piMessages?: PiMessage[] | undefined;
   diagnostics: AgentTurnDiagnostics;
 }
 
@@ -65,12 +65,12 @@ export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
   toolCalls: string[];
-  sandboxRef?: SandboxRef;
+  sandboxRef?: SandboxRef | undefined;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   reasoningLevel: TurnReasoningLevel;
   assistantUserName?: string;
   modelId: string;
@@ -214,9 +214,9 @@ function buildDiagnostics(
   result: {
     outcome: AgentTurnDiagnostics["outcome"];
     usedPrimaryText: boolean;
-    stopReason?: string;
-    errorMessage?: string;
-    lastAssistant?: unknown;
+    stopReason?: string | undefined;
+    errorMessage?: string | undefined;
+    lastAssistant?: unknown | undefined;
   },
 ): AgentTurnDiagnostics {
   const { outcome, errorMessage, lastAssistant } = result;

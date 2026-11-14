@@ -651,7 +651,7 @@ export interface ConversationEventQuery {
   /** Exclusive lower bound on `seq`. */
   afterSeq?: number;
   /** Exclusive upper bound on `seq`. */
-  beforeSeq?: number;
+  beforeSeq?: number | undefined;
   /** Maximum events to return. */
   limit: number;
   /** Optional event-type filter. Empty/undefined returns every type. */

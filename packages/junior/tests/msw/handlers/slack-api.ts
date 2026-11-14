@@ -84,7 +84,7 @@ export type SlackApiMethod = (typeof SUPPORTED_SLACK_API_METHODS)[number];
 
 export interface SlackMockHttpResponse {
   status?: number;
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   /** A stream body lets a file download arrive in chunks. */
   body?: Record<string, unknown> | string | ReadableStream<Uint8Array>;
   /** Optional artificial latency before the HTTP response is returned. */

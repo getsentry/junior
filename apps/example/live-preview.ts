@@ -57,7 +57,7 @@ function escapeHtml(value: string): string {
 }
 
 function errorResponse(error: string, headers?: HeadersInit): Response {
-  return Response.json({ error }, { headers, status: 403 });
+  return Response.json({ error }, { headers: headers ?? {}, status: 403 });
 }
 
 /** Build the Set-Cookie value that keeps the token, or clears it. */

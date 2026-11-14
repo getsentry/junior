@@ -58,11 +58,11 @@ export type ReplyFocusRequest = {
 export const ConversationReplyFooter = memo(ReplyFooter);
 
 function ReplyFooter(props: {
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   committedMessageIds: readonly string[];
   conversationId: string;
   /** A request to focus the message box. */
-  focusRequest?: ReplyFocusRequest;
+  focusRequest?: ReplyFocusRequest | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   /**
@@ -70,7 +70,9 @@ function ReplyFooter(props: {
    * by itself, not by a step or an answer of the reader.
    */
   onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
-  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingAuthorization?:
+    | ConversationPendingMessagesReport["authorization"]
+    | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
   /** Lets the page add a quote of selected text to the draft. */

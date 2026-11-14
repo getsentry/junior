@@ -33,27 +33,27 @@ export type OAuthStatePayload = {
   userId: string;
   provider: string;
   actor?: Actor;
-  channelId?: string;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
-  scope?: string;
+  threadTs?: string | undefined;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
+  scope?: string | undefined;
 };
 
 type OAuthFlowInput = {
   actorId: string;
   actor?: Actor;
-  channelId?: string;
-  destination?: Destination;
-  source?: Source;
-  threadTs?: string;
+  channelId?: string | undefined;
+  destination?: Destination | undefined;
+  source?: Source | undefined;
+  threadTs?: string | undefined;
   activeSkillName?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
   scope?: string;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -142,8 +142,8 @@ export function resolveBaseUrl(): string | undefined {
  * Try in-context private delivery first, then fall back to a DM.
  */
 export async function deliverPrivateMessage(input: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   userId: string;
   text: string;
   blocks?: KnownBlock[];
@@ -220,9 +220,9 @@ export async function deliverPrivateMessage(input: {
 export async function deliverOAuthAuthorization(
   request: OAuthAuthorizationRequest,
   input: {
-    authorization?: OAuthAuthorization;
-    channelId?: string;
-    threadTs?: string;
+    authorization?: OAuthAuthorization | undefined;
+    channelId?: string | undefined;
+    threadTs?: string | undefined;
     userId: string;
   },
 ): Promise<PrivateDeliveryResult> {

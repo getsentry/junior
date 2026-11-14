@@ -7,7 +7,10 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SkillLink } from "../../components/SkillLink";
 import { formatCompactNumber } from "../../format";
 
-type SkillGroup = { pluginProvider?: string; skills: SkillReport[] };
+type SkillGroup = {
+  pluginProvider?: string | undefined;
+  skills: SkillReport[];
+};
 
 /** Present discovered skills independently from the plugin inventory. */
 export function SkillInventory(props: { skills: SkillReport[] }) {

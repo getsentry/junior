@@ -30,7 +30,7 @@ export function ConversationSectionList(props: {
   loading: boolean;
   onReorderError(conversation: Conversation): void;
   /** Leave unset when the list shows only some pins. */
-  onReorderPins?: ReorderPins;
+  onReorderPins?: ReorderPins | undefined;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {

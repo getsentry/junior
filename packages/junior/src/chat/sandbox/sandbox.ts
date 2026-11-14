@@ -91,30 +91,32 @@ export interface SandboxAccess {
 }
 
 export interface SandboxOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
+  timeoutMs?: number | undefined;
+  traceContext?: LogContext | undefined;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   /** Conversation that sandbox egress records for its credentialed requests. */
-  conversationId?: string;
-  credentialEgress?: CredentialContext;
+  conversationId?: string | undefined;
+  credentialEgress?: CredentialContext | undefined;
   /** Run Source that sandbox egress records for its credentialed writes. */
-  credentialAuditSource?: CredentialAuditSource;
-  egressSignals?: SandboxEgressSignalTransport;
-  prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
-  prepareWorkspace?: (
-    workspace: SandboxWorkspace,
-    recipe: Workspace,
-    signal?: AbortSignal,
-  ) => Promise<() => Promise<void>>;
+  credentialAuditSource?: CredentialAuditSource | undefined;
+  egressSignals?: SandboxEgressSignalTransport | undefined;
+  prepare?: ((workspace: SandboxWorkspace) => void | Promise<void>) | undefined;
+  prepareWorkspace?:
+    | ((
+        workspace: SandboxWorkspace,
+        recipe: Workspace,
+        signal?: AbortSignal,
+      ) => Promise<() => Promise<void>>)
+    | undefined;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
 interface SandboxToolCallContext {
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   fileSystem(): Promise<SandboxFileSystem>;
 }
 
