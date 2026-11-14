@@ -109,6 +109,7 @@ export async function ingestEventAutomations(
     [event],
     options.teamId,
     catalog,
+    nowMs,
   );
   // A Snooze wakes before any run limit or dispatch: it runs no Turn.
   await wakeAutomationsForEvent(db, {

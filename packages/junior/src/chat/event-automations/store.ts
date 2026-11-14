@@ -513,6 +513,8 @@ export async function findMatchingEventAutomations(
   events: readonly Event[],
   teamId: string | undefined,
   catalog: EventCatalog,
+  /** Time that decides whether a Snooze's timer already woke it. */
+  nowMs?: number,
 ): Promise<MatchableEventAutomation[][]> {
   const namespace = events[0]?.namespace;
   if (namespace === undefined) return [];
@@ -524,6 +526,7 @@ export async function findMatchingEventAutomations(
     eventTypes: [...new Set(events.map((event) => event.eventType))],
     identifiers: [...new Set(events.map((event) => event.identifier))],
     namespace,
+    nowMs,
     teamId,
   });
   // The read holds rows for every identifier in `events`, so keep only the

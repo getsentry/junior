@@ -131,7 +131,6 @@ export async function createViewerSnooze(
   const root = await visibleRowRoot(user, input.subject);
   return createWakeAutomation(getDb(), {
     creatorIdentityId: [...ids].sort()[0]!,
-    identityIds: ids,
     nowMs,
     subject: {
       conversationId: root,
@@ -140,6 +139,7 @@ export async function createViewerSnooze(
         : undefined),
     },
     triggers: input.triggers,
+    userId: user.id,
   });
 }
 

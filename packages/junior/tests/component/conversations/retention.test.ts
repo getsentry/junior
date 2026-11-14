@@ -252,13 +252,13 @@ describe("retention purge job", () => {
     const snooze = async (nowMs: number, reviewItemId?: string) =>
       await createWakeAutomation(fixture.sql.db(), {
         creatorIdentityId: "identity:snoozer",
-        identityIds: ["identity:snoozer"],
         nowMs,
         subject: {
           conversationId: "snoozed",
           ...(reviewItemId ? { reviewItemId } : undefined),
         },
         triggers: [{ kind: "new_item" }],
+        userId: "user:snoozer",
       });
     const item = await insertReviewItem(fixture.sql.db(), {
       addedByConversationId: "snoozed",

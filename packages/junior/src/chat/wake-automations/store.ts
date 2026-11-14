@@ -115,15 +115,22 @@ export function parseWakeAutomationRow(
   };
 }
 
-/** SQL: active wakes of these identities on this Inbox row. */
+/** SQL: active wakes of any identity of this User on this Inbox row. */
 function activeWakesOnRow(
-  identityIds: readonly string[],
+  tx: Pick<JuniorDatabase, "select">,
+  userId: string,
   subject: WakeSubject,
 ): SQL {
   return and(
     eq(juniorAutomations.action, "wake"),
     eq(juniorAutomations.status, "active"),
-    inArray(juniorAutomations.creatorIdentityId, [...identityIds]),
+    inArray(
+      juniorAutomations.creatorIdentityId,
+      tx
+        .select({ id: juniorIdentities.id })
+        .from(juniorIdentities)
+        .where(eq(juniorIdentities.userId, userId)),
+    ),
     eq(juniorAutomations.subjectConversationId, subject.conversationId),
     subject.reviewItemId
       ? eq(juniorAutomations.subjectReviewItemId, subject.reviewItemId)
@@ -141,8 +148,8 @@ export async function createWakeAutomation(
   db: JuniorDatabase,
   input: {
     creatorIdentityId: string;
-    /** Every identity of the creator's User. */
-    identityIds: readonly string[];
+    /** The creator's User. Its snooze on the row is one per User. */
+    userId: string;
     nowMs: number;
     subject: WakeSubject;
     triggers: WakeTrigger[];
@@ -156,10 +163,11 @@ export async function createWakeAutomation(
   const event = wakeEventTrigger(record.triggers);
   const timer = wakeTimerTrigger(record.triggers);
   // Serialize snoozes of one User on one row, so two overlapping requests
-  // replace in turn and do not collide on `junior_automations_one_wake_idx`.
+  // replace in turn, whatever identity each one writes as. The replace reads
+  // the User's identities under this lock.
   const lockKey = [
     "junior:wake",
-    [...input.identityIds].sort()[0] ?? input.creatorIdentityId,
+    input.userId,
     record.subject.conversationId,
     record.subject.reviewItemId ?? "",
   ].join(":");
@@ -168,7 +176,7 @@ export async function createWakeAutomation(
     await tx
       .update(juniorAutomations)
       .set({ status: "completed", statusReason: WAKE_REASON.replaced })
-      .where(activeWakesOnRow(input.identityIds, record.subject));
+      .where(activeWakesOnRow(tx, input.userId, record.subject));
     const [row] = await tx
       .insert(juniorAutomations)
       .values({

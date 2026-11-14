@@ -1,13 +1,17 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import { upsertLinkedIdentity } from "@/chat/identities/sql";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorAutomations } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
+import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
   addItem,
   api,
@@ -162,6 +166,41 @@ describe("snoozes", () => {
     expect(active).toHaveLength(1);
   });
 
+  it("keeps one active snooze per User, whichever identity makes it", async () => {
+    const linked = await user("ana@example.com");
+    await upsertLinkedIdentity(getSqlExecutor(), linked.id, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "ana-gh",
+    });
+    const ana = (await resolveViewerUserFromSql(getDb(), "ana@example.com"))!;
+    expect(ana.identities).toHaveLength(2);
+    await addItem(ROOT, [ana], "Review acme entry");
+    // Two sessions of one User, each seeing a different identity.
+    const sessions = ana.identities.map((identity) =>
+      api(fixture, { ...ana, identities: [identity] }),
+    );
+    const snoozeAs = (session: (typeof sessions)[number], firesAtMs: number) =>
+      session.snooze({
+        action: "wake",
+        subject: { conversationId: ROOT },
+        triggers: [NEW_ITEM, timer(firesAtMs)],
+      });
+
+    expect((await snoozeAs(sessions[0]!, NOW_MS + 60_000)).status).toBe(201);
+    expect((await snoozeAs(sessions[1]!, NOW_MS + 120_000)).status).toBe(201);
+    const overlapping = await Promise.all([
+      snoozeAs(sessions[0]!, NOW_MS + 180_000),
+      snoozeAs(sessions[1]!, NOW_MS + 240_000),
+    ]);
+    expect(overlapping.map((response) => response.status)).toEqual([201, 201]);
+    const active = await getDb()
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
+      .where(eq(juniorAutomations.status, "active"));
+    expect(active).toHaveLength(1);
+  });
+
   it("does not let a viewer snooze a row they cannot see", async () => {
     const ana = await user("ana@example.com");
     const bob = await user("bob@example.com");
@@ -199,6 +238,50 @@ describe("snoozes", () => {
       expect(await wakeOnPullRequestReview(fixture)).toEqual(
         PULL_REQUEST_REVIEW_WAKES,
       );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("decides an Event wake at the ingest time, not the wall clock", async () => {
+    try {
+      await useGitHubEvents();
+      const ana = await user("ana@example.com");
+      await addItem(ROOT, [ana], "Review junior#7");
+      const created = await api(fixture, ana).snooze({
+        action: "wake",
+        subject: { conversationId: ROOT },
+        triggers: [
+          NEW_ITEM,
+          timer(NOW_MS + 60_000),
+          {
+            kind: "event",
+            namespace: "github",
+            resourceType: "pull_request",
+            identifier: "getsentry/junior#7",
+            events: ["pull_request.review.approved"],
+          },
+        ],
+      });
+      expect(created.status).toBe(201);
+      // The wall clock is past the timer, but the Event came before it.
+      vi.setSystemTime(NOW_MS + 120_000);
+      await ingestEventAutomations(
+        {
+          eventKey: "github:snooze:ingest-time",
+          eventType: "pull_request.review.approved",
+          identifier: "getsentry/junior#7",
+          namespace: "github",
+          occurredAtMs: NOW_MS + 30_000,
+          trustedSummary: "A pull request was reviewed.",
+        },
+        { nowMs: NOW_MS + 30_000, queue: fixture.queue },
+      );
+      const [row] = await getDb()
+        .select({ statusReason: juniorAutomations.statusReason })
+        .from(juniorAutomations)
+        .where(eq(juniorAutomations.action, "wake"));
+      expect(row).toEqual({ statusReason: "pull_request.review.approved" });
     } finally {
       vi.unstubAllEnvs();
     }
