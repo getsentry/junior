@@ -21,6 +21,10 @@ import {
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
 import { sentryChartLinks } from "./links/charts.js";
+import {
+  sentryDashboardLinks,
+  sentryDashboardWidgetLinks,
+} from "./links/dashboards.js";
 import { sentryEventLinks } from "./links/events.js";
 import { sentryIssueLinks } from "./links/issues.js";
 import { sentryReleaseLinks } from "./links/releases.js";
@@ -87,6 +91,8 @@ export function sentryPlugin(): PluginRegistration {
       sentryTraceLinks,
       sentryEventLinks,
       sentryReleaseLinks,
+      sentryDashboardLinks,
+      sentryDashboardWidgetLinks,
     ],
     manifest: {
       commandEnv: {

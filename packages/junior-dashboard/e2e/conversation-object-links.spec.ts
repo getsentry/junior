@@ -517,6 +517,67 @@ test("a Sentry release link resolves to a titled link, a release card, and a hov
   });
 });
 
+test("a Sentry dashboard link resolves to a titled link, a dashboard card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url = "https://acme.sentry.io/dashboard/42/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Checkout health (Sentry dashboard)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry dashboard: Checkout health",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "Widgets",
+    "9",
+    "Projects",
+    "junior, junior-dashboard",
+    "Environments",
+    "production",
+    "Time range",
+    "Last 24 hours",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  // Small charts of the first widgets that a card can draw, then the
+  // first widgets by title.
+  for (const title of [
+    "Checkout p95",
+    "Log volume by severity",
+    "Token usage",
+  ]) {
+    await expect(
+      card.locator("figcaption").filter({ hasText: title }),
+    ).toHaveCount(1);
+  }
+  const widgets = card.getByRole("list", { name: "Widgets" });
+  await expect(widgets.getByRole("listitem")).toHaveCount(8);
+  await expect(widgets).toContainText("Slowest endpointsTable");
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-dashboard-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(card.nth(1)).toContainText("Checkout p95");
+  await screenshot(page, "conversation-sentry-dashboard-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,
