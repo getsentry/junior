@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
@@ -70,6 +69,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -100,7 +100,7 @@ function almostSpentStartedAtMs(remainingMs: number): number {
  * They may fake only model generation at the agent stream boundary and Slack
  * I/O at the adapter boundary.
  */
-async function slack(options: { modelStream?: StreamFn } = {}) {
+async function slack(options: { modelStream?: AgentRequestStreamFn } = {}) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();

@@ -280,15 +280,21 @@ describe("provider retry helpers", () => {
       role: "user",
       content: [{ type: "text", text: "help" }],
     } as PiMessage;
-    const failure = assistantError("ResourceExhausted");
+    for (const message of [
+      "ResourceExhausted",
+      "520 Origin error",
+      "We are currently experiencing high demand",
+    ]) {
+      const failure = assistantError(message);
 
-    expect(
-      nextProviderRetry({
-        attempt: 0,
-        failure,
-        messages: [user, failure],
-      }),
-    ).toMatchObject({ delayMs: 2_000, messages: [user] });
+      expect(
+        nextProviderRetry({
+          attempt: 0,
+          failure,
+          messages: [user, failure],
+        }),
+      ).toMatchObject({ delayMs: 2_000, messages: [user] });
+    }
   });
 
   it("keeps explicit permanent request failures terminal", () => {

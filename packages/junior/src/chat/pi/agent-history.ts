@@ -10,11 +10,28 @@
  * - Read with `readAgentHistory`. It drops every system message.
  * - Write with `writeAgentHistory`. It keeps the leading system message of
  *   the current list, so Pi still sends the prompt and tools.
- *
- * Pi 0.85.1 adds no system messages, so both return a plain copy there.
  */
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
+import type {
+  Api,
+  AssistantMessageEventStream,
+  Context,
+  Model,
+  SimpleStreamOptions,
+} from "@earendil-works/pi-ai/compat";
 import type { PiMessage } from "@/chat/pi/messages";
+
+/**
+ * A stream function that takes Junior's request: its system prompt, tools,
+ * and history as a pi-ai `Context`. Pi's `StreamFn` takes Pi's transcript
+ * instead. Everything below `withAgentRequest` uses this type, and pi-ai's
+ * `streamSimple` turns the Context into the provider request.
+ */
+export type AgentRequestStreamFn = (
+  model: Model<Api>,
+  context: Context,
+  options?: SimpleStreamOptions,
+) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 function isSystemMessage(message: PiMessage): boolean {
   return (message as { role?: unknown }).role === "system";
@@ -49,7 +66,7 @@ export function writeAgentHistory(
  * same request on every Pi version, without Pi's system messages.
  */
 export function withAgentRequest(
-  base: StreamFn,
+  base: AgentRequestStreamFn,
   request: { systemPrompt: string; tools: AgentTool[] },
 ): StreamFn {
   return (model, context, options) =>

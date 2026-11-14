@@ -38,6 +38,7 @@ import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import { parseContent } from "@/chat/slack/message/content";
@@ -220,6 +221,8 @@ function assistantPiMessage(
     stopReason: content.some((part) => part.type === "toolCall")
       ? "toolUse"
       : "stop",
+    // Pi stamps the requested level on every agent-loop response.
+    thinkingLevel: toPiReasoningLevel(botConfig.reasoningLevel),
     timestamp,
     usage: {
       input: 0,
