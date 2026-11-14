@@ -1,0 +1,18 @@
+id: log-event-name-shape
+valid:
+  - 'logInfo("slack.thread.post.completed", { "app.slack.ts": ts });'
+  - "logWarn('agent.turn.provider.retrying');"
+  - 'logError("sandbox.egress.policy.denied", {});'
+  - 'logException(error, "slack.thread.post.failed", {});'
+  - 'logger.logInfo("plugin.manifest.loaded");'
+  - "logInfo(eventName, {});"
+  - "logInfo(`conversation.turn.${code}`);"
+  - "logException(error, `${kind}.title.generation.failed`);"
+  - 'track("plugin.loaded");'
+invalid:
+  - 'logInfo("plugin.loaded", {});'
+  - 'logException(error, "heartbeat.failed");'
+  - 'logger.logWarn("encryption.secret_unreadable");'
+  - 'logWarn("Agent.Turn.Failed");'
+  - 'logError("agent.turn-limit.failed");'
+  - 'logInfo("agent..failed");'

@@ -22,7 +22,7 @@ async function releaseFailedNoticeClaim(args: {
   try {
     await clearAutomatedTurnLimitNoticeClaim(args);
   } catch (error) {
-    logException(error, "automated_turn_limit.notice_claim_clear_failed");
+    logException(error, "automated_turn_limit.notice.claim_clear_failed");
   }
 }
 
@@ -44,7 +44,7 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
       ? undefined
       : conversation?.location;
     if (!location || location.provider !== "slack") {
-      logWarn("automated_turn_limit.notice_skipped", {
+      logWarn("automated_turn_limit.notice.skipped", {
         conversationId: args.conversationId,
         "app.automated_turn_limit.reason": location
           ? "unsupported_location"
@@ -70,7 +70,7 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     });
     return true;
   } catch (error) {
-    logException(error, "automated_turn_limit.notice_failed", {
+    logException(error, "automated_turn_limit.notice.failed", {
       conversationId: args.conversationId,
     });
     await releaseFailedNoticeClaim({
