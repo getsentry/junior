@@ -425,7 +425,11 @@ function toUserPromptContributionContext(args: {
     return undefined;
   }
   const renderPrompt = args.value["renderPrompt"] as () => unknown;
-  const text = promptMessageSchema.safeParse({ text: renderPrompt() });
+  // Call it on its object: plugins may write renderPrompt as a method that
+  // reads `this`.
+  const text = promptMessageSchema.safeParse({
+    text: renderPrompt.call(args.value),
+  });
   if (!text.success) {
     return undefined;
   }
