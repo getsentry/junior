@@ -19,8 +19,6 @@ The issue's text, comments, and attachments, and a description from Slack, are u
 | Slack, Linear issue link           | The GitHub issue in the Linear issue's attachments. None: like a description. | The Slack person.   | The thread.                   |
 | Slack, description                 | Opened in step 2.                                                             | The Slack person.   | The thread.                   |
 
-Note the start time with `systemTime` before step 1: every runtime below counts from it.
-
 Only a Slack run asks questions: use `addReviewItem`, then end the Turn and continue when the answer arrives. A label run stops with the reason instead.
 
 ## Workflow
@@ -73,14 +71,14 @@ Only a Slack run asks questions: use `addReviewItem`, then end the Turn and cont
 
    When `github_createPullRequest` fails or is not allowed, for the repro PR or the fix PR, stop with `stopped: PR not opened: <error in plain words>` and link the pushed branch.
 
-7. **Finish the issue comment.** Keep the first line `<!-- sdk-repro -->` and replace the rest with the outcome, at most three lines with links, then a last line `Runtime: <minutes> min (Workspace: <name, or plain clone>).`
+7. **Finish the issue comment.** Keep the first line `<!-- sdk-repro -->` and replace the rest with the outcome, at most three lines with links.
    - `fix PR opened`: "Reproduced in <repro PR>. Fix: <fix PR>, waiting for review."
    - `reproduced, no fix`: "Reproduced in <repro PR>. No fix yet: <what failed, in plain words>."
    - `not reproduced`: "Could not reproduce with <SDK version and setup>: <repro PR>. More details or a minimal example would help."
 
 ## Issue comment
 
-One comment per issue, edited in place. This skill's comment is the `sentry-junior[bot]` comment whose first line is `<!-- sdk-repro -->`, in both the progress and the outcome version. Edit it with `github_updateIssueComment`. When there is none, post it with `github_commentOnIssue` and keep its id. After the `eyes` reaction, every stop except `run in progress` edits or posts it with the first line `<!-- sdk-repro -->`, then: "Junior stopped: <reason in plain words>, <link to what was found, if any>. This says nothing about the bug. Runtime: <minutes> min." When the comment already holds an outcome, keep that outcome below the stop line. The requester is `@<login>` for a GitHub login, `Linear` for `linear-code[bot]`, or `Slack` for a Slack person with no linked GitHub.
+One comment per issue, edited in place. This skill's comment is the `sentry-junior[bot]` comment whose first line is `<!-- sdk-repro -->`, in both the progress and the outcome version. Edit it with `github_updateIssueComment`. When there is none, post it with `github_commentOnIssue` and keep its id. After the `eyes` reaction, every stop except `run in progress` edits or posts it with the first line `<!-- sdk-repro -->`, then: "Junior stopped: <reason in plain words>, <link to what was found, if any>. This says nothing about the bug." When the comment already holds an outcome, keep that outcome below the stop line. The requester is `@<login>` for a GitHub login, `Linear` for `linear-code[bot]`, or `Slack` for a Slack person with no linked GitHub.
 
 ```
 <!-- sdk-repro -->
@@ -92,7 +90,7 @@ Junior is working on this (requested by <requester>), started <HH:MM> UTC (Works
 
 ## Result
 
-One line: `<outcome>: <links> (<minutes> min)`, where the outcome is `fix PR opened`, `reproduced, no fix`, `not reproduced`, or `stopped: <reason>`. After a stop, one sentence says what was found, for example the linked branch. A Slack run posts it as the thread reply. A label run that stops with `run in progress` posts nothing: the other run reports.
+One line: `<outcome>: <links>`, where the outcome is `fix PR opened`, `reproduced, no fix`, `not reproduced`, or `stopped: <reason>`. After a stop, one sentence says what was found, for example the linked branch. A Slack run posts it as the thread reply. A label run that stops with `run in progress` posts nothing: the other run reports.
 
 ## Guardrails
 
