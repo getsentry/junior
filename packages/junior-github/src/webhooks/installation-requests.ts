@@ -14,6 +14,7 @@ import {
 import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
+  PULL_REQUEST_CONFLICT_HISTORY,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
@@ -173,6 +174,30 @@ export async function searchOpenPullRequestMergeability(
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/** Read the merge conflict history of one pull request, with a read-only token. */
+export async function loadPullRequestConflictHistory(
+  env: GitHubInstallationEnv,
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request conflict history",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...PULL_REQUEST_CONFLICT_HISTORY,
+      variables: { name, number: pullRequest.number, owner },
     },
     method: "POST",
     token: token.token,

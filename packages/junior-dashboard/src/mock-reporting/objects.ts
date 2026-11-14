@@ -143,6 +143,12 @@ const SENTRY_CHART: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_CHART_PATH = "/explore/traces/";
 
+/** The mock photo path for the one mock person who has a photo. */
+const MOCK_AVATAR_PATH = "/api/people/avatars/mock-morgan";
+
+/** A round initials photo, so person links show a photo in mock mode. */
+export const MOCK_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#7c3aed"/><text x="32" y="41" fill="#fff" font-family="sans-serif" font-size="26" font-weight="600" text-anchor="middle">ML</text></svg>`;
+
 // The mock release thread links to one Slack message.
 const SLACK_MESSAGE_PATH = "/archives/CQA456/p1770021700000100";
 
@@ -223,12 +229,13 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     (candidate) => candidate.actor.email === email.toLowerCase(),
   );
   if (!person) return [];
+  const morgan = person.actor.email === "dev@example.com";
   const object = personObjectCard({
-    // One mock person has a linked GitHub account, to show the handle.
-    ...(person.actor.email === "dev@example.com"
-      ? { githubHandle: "dev-example" }
-      : undefined),
-    person: person.actor,
+    // One mock person has a linked GitHub account and a photo.
+    ...(morgan ? { githubHandle: "dev-example" } : undefined),
+    person: morgan
+      ? { ...person.actor, avatarUrl: MOCK_AVATAR_PATH }
+      : person.actor,
     url: href,
   });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
