@@ -1,6 +1,5 @@
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubObjectKey } from "../annotations.js";
 import { readDraftReadiness } from "../draft-readiness.js";
-import { githubObjectFacts } from "../object-facts.js";
 import {
   type PluginConversationToolContext,
   type PluginEgress,
@@ -98,7 +97,7 @@ const pullRequestSchema = z.object({
     .array(relatedConversationSchema)
     .optional()
     .describe(
-      "Other conversations that touched this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
+      "Other conversations that created or changed this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
     ),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
@@ -270,7 +269,7 @@ export const gitHubGetPullRequestTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+    "Get a GitHub pull request with its required checks, merge state, and other conversations that created or changed it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
   inputSchema,
   outputSchema,
   async execute(
@@ -307,22 +306,12 @@ export const gitHubGetPullRequestTool = definePluginTool({
         title: z.string(),
       })
       .parse(response.body);
-    const annotation = githubObjectAnnotation({
-      repo: repo.ref,
-      number: providerResult.number,
-      title: providerResult.title,
-      url: providerResult.html_url,
-      objectType: "code_change",
-      status: providerResult.merged
-        ? "merged"
-        : providerResult.state === "open" && providerResult.draft
-          ? "draft"
-          : providerResult.state,
-      ...githubObjectFacts("code_change", response.body),
-    });
     const [checks, relatedConversations] = await Promise.all([
       readPullRequestChecks(ctx.egress, repo, providerResult.number),
-      readRelatedConversations(ctx.conversations, annotation.key),
+      readRelatedConversations(
+        ctx.conversations,
+        githubObjectKey(repo.ref, providerResult.number),
+      ),
     ]);
     // Only a draft can still ask its code owners by being marked ready.
     const readiness =
@@ -356,7 +345,6 @@ export const gitHubGetPullRequestTool = definePluginTool({
       url: providerResult.html_url,
     };
     return {
-      objectAnnotations: [annotation],
       target: "getPullRequest",
       ...data,
     };
