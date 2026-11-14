@@ -15,7 +15,8 @@ const noReplySchema = z.object({
 
 /**
  * A Turn that ended with no reply. `note` is the outcome that the agent kept
- * in its history. It is not a Message: nothing is delivered or shown.
+ * in its history. It is not a Message and starts nothing: the transcript
+ * shows it only as the input of the `noReply` tool call.
  */
 export type NoReply = z.output<typeof noReplySchema>;
 

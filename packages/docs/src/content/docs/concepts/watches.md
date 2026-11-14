@@ -39,7 +39,7 @@ Each event also carries the values of its scope, and each value is a match key. 
 
 ## Events With No Reply
 
-Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior ends the turn with no reply. It posts nothing in Slack or in the web view. The web view puts the event and its tool calls in one row that you can open.
+Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior ends the turn with no reply and an optional note. It posts nothing in Slack, and nothing new appears in the web view. The web view puts the event and its tool calls in one row that you can open, and the note is the input of the `noReply` call.
 
 ## Limits
 
