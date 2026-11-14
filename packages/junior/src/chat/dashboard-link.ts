@@ -179,6 +179,11 @@ export function getDashboardReviewItemLink(itemId: string): string | undefined {
   return resolveDashboardPath(`/review?item=${encodeURIComponent(itemId)}`);
 }
 
+/** Build the dashboard URL where a person connects their plugin accounts. */
+export function getDashboardConnectionsLink(): string | undefined {
+  return resolveDashboardPath("/settings/connections");
+}
+
 /** Public icon asset URL. Headless and local installs keep text-only identity. */
 export function getDashboardObjectIconLink(
   icon: ObjectIconName,

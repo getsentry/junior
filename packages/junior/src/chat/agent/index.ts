@@ -721,6 +721,7 @@ async function executeAgentRunInPrivacyContext(
       activeSkills,
       behavior,
       currentActor: actor,
+      currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,

@@ -433,6 +433,39 @@ export async function closeReviewItem(
 }
 
 /**
+ * Close the open Review items with one dedupe key in every tenant, and
+ * return their ids. Use it when the cause of the items is gone everywhere,
+ * such as a person who linked an account.
+ */
+export async function closeOpenReviewItemsByDedupeKey(
+  db: JuniorDatabase,
+  input: {
+    dedupeKey: string;
+    nowMs: number;
+    reason: string;
+    status: "done" | "dismissed";
+  },
+): Promise<string[]> {
+  const now = new Date(input.nowMs);
+  const closed = await db
+    .update(juniorReviewItems)
+    .set({
+      closeReason: input.reason,
+      closedAt: now,
+      status: input.status,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(juniorReviewItems.dedupeKey, input.dedupeKey),
+        eq(juniorReviewItems.status, "open"),
+      ),
+    )
+    .returning({ id: juniorReviewItems.id });
+  return closed.map((row) => row.id);
+}
+
+/**
  * Dismiss the open Review items that an Automation or a set of
  * Conversations added, when no agent can act on them any more. No person
  * closes them. It sends no message and does not change the Slack cards. A

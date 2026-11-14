@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -116,4 +116,46 @@ export async function listGitHubPullRequestOpeners(
     }
   }
   return openers;
+}
+
+/** One pull request that a person asked Junior to open or update. */
+export interface GitHubRequestedPullRequest {
+  number: number;
+  /** True when the person asked Junior to open it. */
+  opened: boolean;
+  repositoryFullName: string;
+}
+
+/**
+ * Load the newest pull requests that any of the Identities asked Junior to
+ * open or update after `since`.
+ */
+export async function listGitHubPullRequestsRequestedBy(
+  db: GitHubDb,
+  input: { identityIds: string[]; limit: number; since: Date },
+): Promise<GitHubRequestedPullRequest[]> {
+  if (input.identityIds.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(table)
+    .where(
+      and(
+        inArray(table.identityId, [...new Set(input.identityIds)]),
+        gt(table.updatedAt, input.since),
+      ),
+    )
+    .orderBy(desc(table.updatedAt))
+    .limit(input.limit);
+  const pullRequests = new Map<string, GitHubRequestedPullRequest>();
+  for (const row of rows) {
+    const key = `${row.repositoryFullName}#${row.number}`;
+    const opened = Boolean(row.conversationId);
+    const existing = pullRequests.get(key);
+    pullRequests.set(key, {
+      number: row.number,
+      opened: opened || Boolean(existing?.opened),
+      repositoryFullName: row.repositoryFullName,
+    });
+  }
+  return [...pullRequests.values()];
 }

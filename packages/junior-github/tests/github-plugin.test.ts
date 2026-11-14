@@ -401,6 +401,7 @@ function githubToolsContext(input?: {
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
   const state = new Map<string, unknown>();
+  const identityLinkRequests: Array<{ reason: string }> = [];
   const requests: Array<{
     operation: string;
     provider: string;
@@ -453,6 +454,10 @@ function githubToolsContext(input?: {
     },
     users: {
       replaceSlackMentions: async (value) => value,
+      async requestIdentityLink(request: { reason: string }) {
+        identityLinkRequests.push(request);
+        return { status: "requested" as const };
+      },
       resolveActor: input?.resolveActor ?? (async () => undefined),
     },
     state: {
@@ -483,6 +488,9 @@ function githubToolsContext(input?: {
     },
     egressRequests() {
       return requests;
+    },
+    identityLinkRequests() {
+      return identityLinkRequests;
     },
     setState(key: string, value: unknown) {
       state.set(key, cloneStateValue(value));
@@ -1910,6 +1918,57 @@ Conversation: \`local:test:old-conversation\`
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
+  });
+
+  it("asks the people of the Run to link GitHub without waiting for it", async () => {
+    const ctx = githubToolsContext({
+      actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
+      resolveActor: async () => ({
+        identity: {
+          id: "identity-1",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+          providerTenantId: "T1",
+        },
+        user: {
+          displayName: "David Cramer",
+          email: "david@example.com",
+          id: "user-1",
+          identities: [],
+        },
+      }),
+      egressFetch: async () =>
+        Response.json(
+          {
+            number: 693,
+            html_url: "https://github.com/getsentry/junior/pull/693",
+          },
+          { status: 201 },
+        ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Unlinked PR",
+        head: "feat/unlinked",
+        base: "main",
+      },
+      { toolCallId: "call-create-unlinked-pull-request" },
+    );
+
+    // The create does not wait for the link: it makes no assignment.
+    expect(ctx.egressRequests().map((request) => request.operation)).toEqual([
+      "github.pull.create",
+    ]);
+    expect(ctx.identityLinkRequests()).toEqual([
+      {
+        reason: expect.stringContaining(
+          "[getsentry/junior#693](https://github.com/getsentry/junior/pull/693)",
+        ),
+      },
+    ]);
   });
 
   it("asks the named reviewers and keeps the requester as the assignee", async () => {

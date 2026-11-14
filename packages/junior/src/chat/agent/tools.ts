@@ -181,6 +181,8 @@ interface ToolWiringArgs {
   activeSkills: Skill[];
   behavior: TurnBehavior;
   currentActor?: Actor;
+  /** Live projection of the run's committed instruction-authority actors so far. */
+  currentActors?: () => Actor[];
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
@@ -469,6 +471,7 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(args.currentActors ? { actors: args.currentActors } : undefined),
     ...(args.currentActor
       ? {
           resolveActorIdentity: async () =>

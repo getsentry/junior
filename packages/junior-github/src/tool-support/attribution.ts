@@ -191,6 +191,37 @@ function applyAttribution(
 }
 
 /**
+ * Replace a person's name labels in the attribution block with their GitHub
+ * mention, so GitHub subscribes them. Use it after they link their GitHub
+ * account. Return undefined when the body has no label of that person.
+ */
+export function mentionLinkedRequester(
+  body: string,
+  user: User,
+): string | undefined {
+  const login = linkedGitHubLogin(user);
+  if (!login) return undefined;
+  const names = new Set(
+    [
+      user.displayName,
+      ...user.identities.flatMap((identity) => [
+        identity.displayName,
+        identity.handle,
+      ]),
+    ]
+      .map((name) => cleanDisplayValue(name))
+      .filter((name): name is string => Boolean(name))
+      .map((name) => `**${name.replaceAll("*", "\\*")}**`),
+  );
+  const labels = blockLabels(body);
+  if (!labels.some((label) => names.has(label))) return undefined;
+  const mentioned = [
+    ...new Set(labels.map((label) => (names.has(label) ? `@${login}` : label))),
+  ];
+  return body.replace(ATTRIBUTION_BLOCK, formatAttributionBlock(mentioned));
+}
+
+/**
  * Read the body that is on GitHub now, so an update keeps its requesters.
  * The model sees descriptions with the attribution block removed.
  */

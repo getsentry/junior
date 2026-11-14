@@ -55,6 +55,8 @@ import {
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { readIdentityById } from "@/chat/plugins/viewer";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
+import { completeIdentityLink } from "@/chat/identities/link-completion";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
 import type { SlackActor, WebActor } from "@/chat/actor";
 import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
@@ -65,6 +67,8 @@ import { botConfig } from "@/chat/config";
 interface OAuthCallbackOptions {
   /** Queue used to wake parked turns after authorization completes. */
   conversationWorkQueue?: ConversationWorkQueue;
+  /** Shows Identity link requests that the link closes. */
+  showReviewItem?: ShowReviewItem;
 }
 
 function htmlErrorResponse(
@@ -144,7 +148,7 @@ async function linkOAuthAccountIdentity(args: {
   actor: SlackActor | WebActor;
   provider: string;
   verifiedEmails: string[];
-}): Promise<void> {
+}): Promise<string> {
   const executor = getSqlExecutor();
   const actorUserId = await resolveOAuthActorUserId(args.actor);
   const emailMatch = await findUserByVerifiedEmails(
@@ -156,7 +160,7 @@ async function linkOAuthAccountIdentity(args: {
     throw new Error("OAuth account has no Junior user to link");
   }
   const email = emailMatch?.userId === userId ? emailMatch.email : undefined;
-  await upsertLinkedIdentity(executor, userId, {
+  const identity = await upsertLinkedIdentity(executor, userId, {
     kind: "user",
     provider: args.provider,
     providerSubjectId: args.account.id,
@@ -164,6 +168,7 @@ async function linkOAuthAccountIdentity(args: {
     handle: args.account.handle ?? args.account.label,
     ...(email ? { email, emailVerified: true } : undefined),
   });
+  return identity.id;
 }
 
 /** Queue the pending Turn, including a newer Turn that reused this auth link. */
@@ -414,12 +419,24 @@ export async function GET(
   ) {
     await runBestEffort(
       async () => {
-        await linkOAuthAccountIdentity({
+        const identityId = await linkOAuthAccountIdentity({
           account,
           actor: linkActor,
           provider,
           verifiedEmails,
         });
+        // Awaited so the update finishes inside this request.
+        await runBestEffort(
+          async () => {
+            await completeIdentityLink({
+              identityId,
+              provider,
+              show: options.showReviewItem ?? (async () => {}),
+            });
+          },
+          "oauth.callback.identity_link_completion.failed",
+          { "app.credential.provider": provider },
+        );
       },
       "oauth.callback.identity_link.failed",
       { "app.credential.provider": provider },
