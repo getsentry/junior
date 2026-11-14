@@ -502,13 +502,14 @@ jobs:
     name: build / packages
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.release == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm build
+      # The same pack procedure as the release artifacts, with its type check.
+      - run: node scripts/release-artifacts.mjs pack artifacts
       - run: pnpm package-types:check
 
   build-example:
@@ -566,33 +567,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Pack release artifacts
-        run: |
-          mkdir -p artifacts
-          pnpm --filter @sentry/junior pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-plugin-api pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-amplitude pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-figma pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-tts pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-github pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-google pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-octolens pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-pagerduty pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-restream pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
-          pnpm --filter @sentry/junior-xdotcom pack --pack-destination artifacts
-          node scripts/release-artifacts.mjs create artifacts
-          ls -la artifacts
+      - run: node scripts/release-artifacts.mjs pack artifacts
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

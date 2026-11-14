@@ -26,6 +26,9 @@ const UNCHECKED = [
   // Project files that coding evals copy into a sandbox. They are eval
   // inputs, not repository code.
   "packages/junior-evals/fixtures/",
+  // Compiled against the packed release tarballs, not the workspace, by
+  // scripts/release-artifacts.mjs.
+  "scripts/release-consumer/",
 ];
 
 // Tracked and new files that still exist in the working tree.
