@@ -869,13 +869,23 @@ describe("github plugin", () => {
         "GitHub repository creation must use the github_createRepository tool",
       );
     }
-    await expect(
-      grantForEgress({
+    for (const request of [
+      {
         method: "POST",
         operation: "github.repository.create:octocat/new-service",
         url: "https://api.github.com/user/repos",
-      }),
-    ).rejects.toThrow("This GitHub write request is not supported.");
+      },
+      // The create token can set property values; no other request may.
+      {
+        method: "PATCH",
+        operation: "github.repository.create:getsentry/new-service",
+        url: "https://api.github.com/orgs/getsentry/properties/values",
+      },
+    ]) {
+      await expect(grantForEgress(request)).rejects.toThrow(
+        "This GitHub write request is not supported.",
+      );
+    }
   });
 
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
@@ -1021,6 +1031,7 @@ describe("github plugin", () => {
 
     function repositoryContext(options?: {
       createStatus?: number;
+      lookupStatus?: number;
       membershipStatus?: number;
       unlinked?: boolean;
     }) {
@@ -1036,6 +1047,22 @@ describe("github plugin", () => {
             return options?.membershipStatus === 404
               ? Response.json({ message: "Not Found" }, { status: 404 })
               : Response.json({ state: "active", role: "member" });
+          }
+          if (operation === "github.repository.get") {
+            const status = options?.lookupStatus ?? 404;
+            return status === 301
+              ? new Response(null, {
+                  status,
+                  headers: {
+                    location: "https://api.github.com/repositories/42",
+                  },
+                })
+              : Response.json(
+                  status === 404
+                    ? { message: "Not Found" }
+                    : { full_name: "getsentry/new-service" },
+                  { status },
+                );
           }
           return (options?.createStatus ?? 201) === 201
             ? Response.json(
@@ -1072,19 +1099,22 @@ describe("github plugin", () => {
     });
 
     it("rejects invalid profile config when the plugin is configured", () => {
-      expect(() =>
-        githubPlugin({
-          repositoryProfiles: {
-            service: {
-              org: "getsentry",
-              settings: {
-                visibility: "private",
-                delete_branch_on_merge: true,
-              } as any,
+      // Junior always sets custom_properties, so a profile cannot drop it.
+      for (const [field, value] of [
+        ["delete_branch_on_merge", true],
+        ["custom_properties", { "provisioned-by": "someone-else" }],
+      ] as const) {
+        expect(() =>
+          githubPlugin({
+            repositoryProfiles: {
+              service: {
+                org: "getsentry",
+                settings: { visibility: "private", [field]: value } as any,
+              },
             },
-          },
-        }),
-      ).toThrow("delete_branch_on_merge");
+          }),
+        ).toThrow(field);
+      }
     });
 
     it("creates the repository with the profile settings and the owning team", async () => {
@@ -1115,16 +1145,18 @@ describe("github plugin", () => {
       expect(requests.map((request) => request.request.url)).toEqual([
         "https://api.github.com/orgs/getsentry/teams/engineering",
         "https://api.github.com/orgs/getsentry/teams/engineering/memberships/dcramer",
+        "https://api.github.com/repos/getsentry/new-service",
         "https://api.github.com/orgs/getsentry/repos",
       ]);
-      expect(requests[2]?.operation).toBe(
+      expect(requests[3]?.operation).toBe(
         "github.repository.create:getsentry/new-service",
       );
-      await expect(requests[2]?.request.json()).resolves.toEqual({
+      await expect(requests[3]?.request.json()).resolves.toEqual({
         ...profiles.service.settings,
         name: "new-service",
         description: "A new service.",
         team_id: 137438,
+        custom_properties: { "provisioned-by": "jr" },
       });
     });
 
@@ -1139,6 +1171,54 @@ describe("github plugin", () => {
       await expect(
         ctx.state.get("createRepository:local:test:github-tool:call-422"),
       ).resolves.toBeUndefined();
+    });
+
+    it("rejects a reserved name", async () => {
+      const ctx = repositoryContext();
+      for (const name of [
+        ".github",
+        ".GitHub-private",
+        "getsentry.github.io",
+        "service.git",
+        "service.wiki",
+      ]) {
+        await expect(
+          repositoryTool(ctx)?.execute?.(
+            { ...input, name },
+            { toolCallId: `call-reserved-${name}` },
+          ),
+        ).rejects.toThrow(`"${name}" is reserved.`);
+      }
+      expect(ctx.egressRequests()).toHaveLength(0);
+    });
+
+    it("rejects a name that a repository uses or used", async () => {
+      for (const [lookupStatus, message] of [
+        [200, "GitHub repository getsentry/new-service already exists."],
+        [
+          301,
+          "getsentry/new-service is the old name of a renamed or transferred repository",
+        ],
+      ] as const) {
+        const ctx = repositoryContext({ lookupStatus });
+        const toolCallId = `call-taken-${lookupStatus}`;
+        await expect(
+          repositoryTool(ctx)?.execute?.(input, { toolCallId }),
+        ).rejects.toThrow(message);
+        // The lookup does not follow the redirect, and nothing is created.
+        expect(
+          ctx.egressRequests().map((request) => request.request.url),
+        ).toEqual([
+          "https://api.github.com/orgs/getsentry/teams/engineering",
+          "https://api.github.com/orgs/getsentry/teams/engineering/memberships/dcramer",
+          "https://api.github.com/repos/getsentry/new-service",
+        ]);
+        await expect(
+          ctx.state.get(
+            `createRepository:local:test:github-tool:${toolCallId}`,
+          ),
+        ).resolves.toBeUndefined();
+      }
     });
 
     it("rejects an unknown profile", async () => {
@@ -3236,7 +3316,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("issues repository-create credentials with only repository creation", async () => {
+  it("issues repository-create credentials with only repository creation and custom property values", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -3264,7 +3344,12 @@ Conversation: \`local:test:old-conversation\`
       {
         url: "https://api.github.com/app/installations/456/access_tokens",
         method: "POST",
-        body: { permissions: { repository_creation: "write" } },
+        body: {
+          permissions: {
+            organization_custom_properties: "write",
+            repository_creation: "write",
+          },
+        },
         headers: expect.any(Object),
       },
     ]);
