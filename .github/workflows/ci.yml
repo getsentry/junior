@@ -32,7 +32,6 @@ jobs:
       evals: ${{ steps.filter.outputs.evals }}
       example: ${{ steps.filter.outputs.example }}
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
-      lint_config: ${{ steps.filter.outputs.lint_config }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
     steps:
@@ -66,6 +65,8 @@ jobs:
               - apps/example/**
               - packages/junior/**
               - packages/junior-plugin-api/**
+            # Only lint reads these. Listing them keeps a change to them from
+            # counting as unknown, which runs every job.
             lint_config:
               - ast-grep/**
               - sgconfig.yml
@@ -140,8 +141,7 @@ jobs:
   lint:
     name: lint / workspace
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.lint_config == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    # Lint covers every file in the repo, so no path filter can skip it.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
