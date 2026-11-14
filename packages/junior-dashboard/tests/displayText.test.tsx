@@ -312,7 +312,7 @@ describe("display text object links", () => {
         }),
       ]);
       expect(html).not.toContain("· Open");
-      expect(html).not.toContain("Latest saved state");
+      expect(html).not.toContain("Last fetched");
     }
   });
 
@@ -414,7 +414,7 @@ describe("display text object links", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
       expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
-      expect(html).toContain("Latest saved state");
+      expect(html).toContain("Last fetched");
     }
   });
 
@@ -494,7 +494,7 @@ describe("display text object links", () => {
       /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
     );
     expect(html).not.toContain("acme/app#7");
-    expect(html).not.toContain("Latest saved state");
+    expect(html).not.toContain("Last fetched");
   });
 
   it("leaves links to unknown objects and other pages plain", () => {
