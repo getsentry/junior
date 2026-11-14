@@ -443,7 +443,8 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, and `ctx.codeChanges` as from a plugin route.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.reviewItems` as
+from a plugin route.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";

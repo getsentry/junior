@@ -757,6 +757,13 @@
       "when": 1794557567747,
       "tag": "0107_attachment_deferred_download",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
+      "breakpoints": true
     }
   ]
 }

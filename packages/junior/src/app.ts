@@ -878,6 +878,7 @@ export async function createApp(
     return heartbeatGET(c.req.raw, waitUntil, {
       conversationWorkQueue,
       events,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
     });
   });
 

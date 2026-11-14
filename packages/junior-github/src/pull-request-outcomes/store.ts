@@ -352,7 +352,8 @@ export async function recordGitHubPullRequestLinkedIssues(
   return inserted.some((rows) => rows.length > 0);
 }
 
-function pullRequestRow(target: {
+/** Match one pull request row by repository name, in any case, and number. */
+export function pullRequestRow(target: {
   number: number;
   repositoryFullName: string;
 }) {

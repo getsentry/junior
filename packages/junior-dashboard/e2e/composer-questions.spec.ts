@@ -88,13 +88,24 @@ for (const view of [desktop, mobile]) {
     });
     await expect(record).toContainText("Waiting on you");
     // An earlier answer shows on its record.
-    await expect(
-      page.getByRole("region", { name: "Asked Pick the canary region" }),
-    ).toContainText("us-east-1, it has the least traffic right now.");
+    const answered = page.getByRole("region", {
+      name: "Asked Pick the canary region",
+    });
+    await expect(answered).toContainText(
+      "us-east-1, it has the least traffic right now.",
+    );
     await screenshot(page, "conversation-question", {
       lightTheme: true,
       view: view.name,
     });
+    // The record shows only the title, so its hover card shows the question.
+    const askedQuestion = page.getByText("Which region should run the canary?");
+    await answered
+      .getByRole("link", { name: "Pick the canary region" })
+      .hover();
+    await expect(askedQuestion).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(askedQuestion).toBeHidden();
 
     await question.getByRole("button", { name: /Roll out/ }).click();
     await expect(question).toHaveCount(0);
