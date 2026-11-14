@@ -81,6 +81,14 @@ describe("dashboard live preview", () => {
     expect(liveRequests).toEqual([]);
     expect(html).toContain("Demo data.");
     expect(html).not.toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
+    // Every bottom offset of the banner clears a home indicator.
+    const offsets = [...html.matchAll(/bottom:([^;}]+)/g)].map(
+      (match) => match[1],
+    );
+    expect(offsets.length).toBeGreaterThan(1);
+    for (const offset of offsets) {
+      expect(offset).toContain("env(safe-area-inset-bottom)");
+    }
   });
 
   it("asks for a personal token until the live deployment accepts one", async () => {
