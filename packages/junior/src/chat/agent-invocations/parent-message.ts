@@ -283,29 +283,6 @@ export async function readLastParentMessageAtMs(
 }
 
 /**
- * Return whether a child got a parent message sent after `afterMs`: one that
- * waits in its mailbox, or one that its Turn saved.
- */
-export async function hasParentMessageAfter(
-  conversationId: string,
-  afterMs: number,
-  state?: StateAdapter,
-): Promise<boolean> {
-  const pending =
-    (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
-  if (
-    pending.some(
-      (message) =>
-        readParentMessage(message) !== undefined &&
-        message.createdAtMs > afterMs,
-    )
-  ) {
-    return true;
-  }
-  return ((await readLastParentMessageAtMs(conversationId)) ?? 0) > afterMs;
-}
-
-/**
  * Apply the agent config of a child agent to one of its Turns on the root
  * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
  * starts with its parent's history. A parent message is the child's

@@ -89,6 +89,10 @@ export const juniorConversations = pgTable(
     // without rows read only these. Agent invocation rows also hold the
     // settings until #3060 step 7 drops the rows; readers read the row first.
     agentConfig: jsonb("agent_config_json").$type<AgentConfig>(),
+    // A SHA-256 hex digest of the spawn input that created this child
+    // without an Agent invocation row. Set once at create. A replay of the
+    // spawn's idempotency key with other input is refused.
+    spawnInputDigest: text("spawn_input_digest"),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),

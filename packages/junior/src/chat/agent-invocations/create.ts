@@ -1,17 +1,25 @@
+import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
+import { eq } from "drizzle-orm";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { ensureConversationWake } from "@/chat/task-execution/store";
-import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import {
+  juniorAgentBindings,
+  juniorAgentInvocations,
+  juniorConversations,
+} from "@/db/schema";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
+import { recordSubagentStartedMarker, type SubagentStart } from "./markers";
 import {
+  agentConfigSchema,
   readAgentConfig,
-  writeAgentConfig,
 } from "@/chat/conversations/agent-config";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
   AgentInvocationLimitError,
   AgentMessageQueueFullError,
@@ -104,17 +112,62 @@ function sameCreateInput(
   input: ReturnType<typeof createAgentInvocationSchema.parse>,
 ): boolean {
   return (
-    invocation.parentConversationId === input.parentConversationId &&
-    invocation.agentName === input.agentName &&
-    invocation.input === input.input &&
-    invocation.agentType === input.agentType &&
-    invocation.fork === input.fork &&
-    invocation.reasoningLevel === input.reasoningLevel &&
-    JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
-    JSON.stringify(invocation.credentialContext) ===
-      JSON.stringify(input.credentialContext) &&
-    JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
+    JSON.stringify(createInputFields(invocation)) ===
+    JSON.stringify(createInputFields(input))
   );
+}
+
+// The durable creation input that a replay of one idempotency key must
+// match, for an Agent invocation and for a child with no Agent invocation.
+function createInputFields(
+  input: Pick<
+    AgentInvocation,
+    | "actor"
+    | "agentName"
+    | "agentType"
+    | "credentialContext"
+    | "destination"
+    | "fork"
+    | "input"
+    | "parentConversationId"
+    | "reasoningLevel"
+  >,
+) {
+  return [
+    input.parentConversationId,
+    input.agentName ?? null,
+    input.input,
+    input.agentType ?? null,
+    input.fork ?? null,
+    input.reasoningLevel ?? null,
+    input.actor,
+    input.credentialContext ?? null,
+    input.destination,
+  ];
+}
+
+/**
+ * Digest the creation input and the kind of a spawn that writes no Agent
+ * invocation. The child stores it, so a replay with other input fails as it
+ * does on an Agent invocation.
+ */
+function spawnInputDigest(
+  input: ReturnType<typeof createAgentInvocationSchema.parse>,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify([...createInputFields(input), input.kind]))
+    .digest("hex");
+}
+
+async function readSpawnInputDigest(
+  conversationId: string,
+): Promise<string | null | undefined> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ digest: juniorConversations.spawnInputDigest })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
+  return row?.digest;
 }
 
 /**
@@ -178,6 +231,51 @@ async function assertChildAgentCapacity(
 }
 
 /**
+ * Create the Conversation of one new child agent and bind its name, after
+ * the checks that every new child passes: its parent can give work, the name
+ * is free, and the parent has room. Call it under the parent lock, in the
+ * same transaction, so no other create can take this name or room first.
+ * `open` is the parent's open work from `listOpenAgentInvocations`.
+ */
+async function createChildAgentConversation(
+  input: ReturnType<typeof createAgentInvocationSchema.parse>,
+  childConversationId: string,
+  open: readonly AgentInvocation[],
+  nowMs: number,
+): Promise<void> {
+  await assertCanGiveChildWork(input.parentConversationId, open);
+  if (
+    input.agentName &&
+    (await getAgentBinding({
+      name: input.agentName,
+      parentConversationId: input.parentConversationId,
+    }))
+  ) {
+    throw new AgentNameInUseError(input.agentName);
+  }
+  await assertChildAgentCapacity(open, {
+    childConversationId,
+    parentConversationId: input.parentConversationId,
+  });
+  await getConversationStore().createChild({
+    childConversationId,
+    kind: input.kind,
+    parentConversationId: input.parentConversationId,
+    nowMs,
+    source: "internal",
+    // The spawn title names the child, so title generation skips it.
+    ...(input.title ? { title: input.title } : undefined),
+  });
+  if (input.agentName) {
+    await getSqlExecutor().db().insert(juniorAgentBindings).values({
+      childConversationId,
+      name: input.agentName,
+      parentConversationId: input.parentConversationId,
+    });
+  }
+}
+
+/**
  * Create or replay the first invocation of one new child agent. A name gives
  * the child a stable Conversation id that later messages can address. A name
  * that is already used throws: later work for that child goes through
@@ -211,42 +309,12 @@ export async function createAgentInvocation(
       }
       return existing;
     }
-    const open = await listOpenAgentInvocations(input.parentConversationId);
-    await assertCanGiveChildWork(input.parentConversationId, open);
-    if (
-      input.agentName &&
-      (await getAgentBinding({
-        name: input.agentName,
-        parentConversationId: input.parentConversationId,
-      }))
-    ) {
-      throw new AgentNameInUseError(input.agentName);
-    }
-    await assertChildAgentCapacity(open, {
+    await createChildAgentConversation(
+      input,
       childConversationId,
-      parentConversationId: input.parentConversationId,
-    });
-
-    await getConversationStore().createChild({
-      childConversationId,
-      kind: input.kind,
-      parentConversationId: input.parentConversationId,
+      await listOpenAgentInvocations(input.parentConversationId),
       nowMs,
-      source: "internal",
-      // The spawn title names the child, so title generation skips it.
-      ...(input.title ? { title: input.title } : undefined),
-    });
-
-    // The name check above runs under the parent lock, in the same
-    // transaction, so no other create can take this name first.
-    if (input.agentName) {
-      await getSqlExecutor().db().insert(juniorAgentBindings).values({
-        childConversationId,
-        name: input.agentName,
-        parentConversationId: input.parentConversationId,
-      });
-    }
-
+    );
     const invocation = await insertAgentInvocation(
       {
         actor: input.actor,
@@ -441,33 +509,61 @@ type ChildAgentWorkOptions = {
 };
 
 /**
- * Wake a child agent after the parent lock commits, so its worker reads the
- * new Conversation and binding. The parent message is already in its
- * mailbox; a lost wake is recovered like any other stranded mailbox input.
+ * Give one task or message to a child agent with no Agent invocation. Under
+ * the parent lock, `prepare` runs the checks of its caller, then the
+ * parent's `subagent_started` marker and the parent message are written.
+ * The message reaches the mailbox under the lock, so the next spawn counts
+ * the child as active. The wake runs after the lock commits, so the child's
+ * worker reads the new Conversation; a lost wake is recovered like any other
+ * stranded mailbox input.
  */
-async function wakeChildAgent(
-  childConversationId: string,
-  inboundMessageId: string,
+async function giveChildAgentWork<T>(
+  work: Parameters<typeof buildParentMessage>[0] &
+    Pick<SubagentStart, "agentName" | "reasoningLevel" | "title">,
   options: ChildAgentWorkOptions,
-): Promise<void> {
+  prepare: (open: AgentInvocation[]) => Promise<T>,
+): Promise<T> {
+  const message = buildParentMessage(work);
+  const prepared = await getSqlExecutor().withLock(
+    getChildAgentLockName(work.parentConversationId),
+    async () => {
+      const prepared = await prepare(
+        await listOpenAgentInvocations(work.parentConversationId),
+      );
+      await recordSubagentStartedMarker({
+        agentName: work.agentName,
+        childConversationId: work.childConversationId,
+        createdAtMs: work.nowMs,
+        input: work.text,
+        invocationId: getAgentInvocationId(
+          work.parentConversationId,
+          work.idempotencyKey,
+        ),
+        parentConversationId: work.parentConversationId,
+        parentToolCallId: work.parentToolCallId,
+        reasoningLevel: work.reasoningLevel,
+        title: work.title,
+      });
+      await appendParentMessage(message, options);
+      return prepared;
+    },
+  );
   await ensureConversationWake({
-    conversationId: childConversationId,
-    ...(options.conversationStore
-      ? { conversationStore: options.conversationStore }
-      : undefined),
-    idempotencyKey: inboundMessageId,
+    conversationId: work.childConversationId,
+    conversationStore: options.conversationStore,
+    idempotencyKey: message.inboundMessageId,
     queue: options.queue,
-    ...(options.state ? { state: options.state } : undefined),
+    state: options.state,
   });
+  return prepared;
 }
 
 /**
  * Create or replay one child agent without an Agent invocation row: its
- * Conversation, its binding, its agent config, and its task as a parent
- * message. The spawn's idempotency key names the child Conversation, so a
- * replay finds it in SQL and sends the same task, which the mailbox drops
- * as a duplicate. The task reaches the mailbox under the parent lock, so the
- * next spawn counts this child as active.
+ * Conversation, its binding, its agent config and input digest, and its
+ * task as a parent message. The spawn's idempotency key names the child
+ * Conversation, so a replay finds it in SQL. A replay with the same input
+ * sends the same task, which the mailbox drops as a duplicate.
  *
  * TODO(dcramer): Make this the only spawn when #3060 step 7 drops the agent
  * invocation table.
@@ -482,94 +578,60 @@ export async function spawnChildAgent(
     input.parentConversationId,
     input.idempotencyKey,
   );
-  const message = buildParentMessage({
-    actor: input.actor,
-    childConversationId,
-    credentialContext: input.credentialContext,
-    fork: input.fork,
-    idempotencyKey: input.idempotencyKey,
-    nowMs,
-    parentConversationId: input.parentConversationId,
-    parentToolCallId: rawInput.parentToolCallId,
-    text: input.input,
-    trustedSummary: "Your parent agent sent a task.",
-  });
-  await getSqlExecutor().withLock(
-    getChildAgentLockName(input.parentConversationId),
-    async () => {
-      const existing = await getConversationStore().get({
-        conversationId: childConversationId,
-      });
-      if (existing) {
-        const binding = input.agentName
-          ? await getAgentBinding({
-              name: input.agentName,
-              parentConversationId: input.parentConversationId,
-            })
-          : undefined;
-        // The child Conversation id names the parent, so only the kind and
-        // the name can differ.
-        if (
-          existing.kind !== input.kind ||
-          binding?.childConversationId !==
-            (input.agentName ? childConversationId : undefined)
-        ) {
+  const digest = spawnInputDigest(input);
+  await giveChildAgentWork(
+    {
+      ...input,
+      childConversationId,
+      nowMs,
+      parentToolCallId: rawInput.parentToolCallId,
+      text: input.input,
+      trustedSummary: "Your parent agent sent a task.",
+    },
+    options,
+    async (open) => {
+      if (
+        await getConversationStore().get({
+          conversationId: childConversationId,
+        })
+      ) {
+        if ((await readSpawnInputDigest(childConversationId)) !== digest) {
           throw new Error(
             `Spawn idempotency key was reused with different input for ${childConversationId}`,
           );
         }
-      } else {
-        const open = await listOpenAgentInvocations(input.parentConversationId);
-        await assertCanGiveChildWork(input.parentConversationId, open);
-        if (
-          input.agentName &&
-          (await getAgentBinding({
-            name: input.agentName,
-            parentConversationId: input.parentConversationId,
-          }))
-        ) {
-          throw new AgentNameInUseError(input.agentName);
-        }
-        await assertChildAgentCapacity(open, {
-          childConversationId,
-          parentConversationId: input.parentConversationId,
-        });
-        await getConversationStore().createChild({
-          childConversationId,
-          kind: input.kind,
-          parentConversationId: input.parentConversationId,
-          nowMs,
-          source: "internal",
-          // The spawn title names the child, so title generation skips it.
-          ...(input.title ? { title: input.title } : undefined),
-        });
-        if (input.agentName) {
-          await getSqlExecutor().db().insert(juniorAgentBindings).values({
-            childConversationId,
-            name: input.agentName,
-            parentConversationId: input.parentConversationId,
-          });
-        }
-        await writeAgentConfig(childConversationId, {
-          ...(input.agentType ? { agentType: input.agentType } : undefined),
-          ...(input.fork ? { fork: true } : undefined),
-          ...(input.reasoningLevel
-            ? { reasoningLevel: input.reasoningLevel }
-            : undefined),
-        });
+        return;
       }
-      await appendParentMessage(message, options);
+      await createChildAgentConversation(
+        input,
+        childConversationId,
+        open,
+        nowMs,
+      );
+      await getSqlExecutor()
+        .db()
+        .update(juniorConversations)
+        .set({
+          agentConfig: agentConfigSchema.parse({
+            ...(input.agentType ? { agentType: input.agentType } : undefined),
+            ...(input.fork ? { fork: true } : undefined),
+            ...(input.reasoningLevel
+              ? { reasoningLevel: input.reasoningLevel }
+              : undefined),
+          }),
+          detailVersion: nextDetailVersion,
+          spawnInputDigest: digest,
+        })
+        .where(eq(juniorConversations.conversationId, childConversationId));
     },
   );
-  await wakeChildAgent(childConversationId, message.inboundMessageId, options);
   return { childConversationId };
 }
 
 /**
  * Give one `messageAgent` message to a child agent that no Agent invocation
  * names, as a parent message. `findChildAgentConversationId` must have found
- * the child under this parent. As with a spawn, the message reaches the
- * mailbox under the parent lock. `queued` is true when the child already has
+ * the child under this parent. `queued` is true when the child already has
  * open work, so it reads the message after that work.
  */
 export async function messageChildAgent(
@@ -585,39 +647,29 @@ export async function messageChildAgent(
   options: ChildAgentWorkOptions,
   nowMs = Date.now(),
 ): Promise<{ queued: boolean }> {
-  const message = buildParentMessage({
-    actor: input.actor,
-    childConversationId: input.childConversationId,
-    credentialContext: input.credentialContext,
-    idempotencyKey: input.idempotencyKey,
-    nowMs,
-    parentConversationId: input.parentConversationId,
-    parentToolCallId: input.parentToolCallId,
-    text: input.input,
-    trustedSummary: "Your parent agent sent a message.",
-  });
-  const queued = await getSqlExecutor().withLock(
-    getChildAgentLockName(input.parentConversationId),
-    async () => {
-      const open = await listOpenAgentInvocations(input.parentConversationId);
+  const sender = await readChildConversationSender(input.childConversationId);
+  const queued = await giveChildAgentWork(
+    {
+      ...input,
+      agentName: sender?.agentName,
+      nowMs,
+      text: input.input,
+      title: sender?.title,
+      trustedSummary: "Your parent agent sent a message.",
+    },
+    options,
+    async (open) => {
       await assertCanGiveChildWork(input.parentConversationId, open);
       await assertChildAgentCapacity(open, {
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
-      const busy = (
+      return (
         await listOpenChildAgentsWithoutAgentInvocations(
           input.parentConversationId,
         )
       ).includes(input.childConversationId);
-      await appendParentMessage(message, options);
-      return busy;
     },
-  );
-  await wakeChildAgent(
-    input.childConversationId,
-    message.inboundMessageId,
-    options,
   );
   return { queued };
 }

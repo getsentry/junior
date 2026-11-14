@@ -7,10 +7,7 @@ import {
   AgentInvocationLimitError,
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
-import {
-  getAgentInvocationId,
-  getSpawnedChildConversationId,
-} from "@/chat/agent-invocations/ids";
+import { getAgentInvocationId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -20,15 +17,13 @@ import {
 } from "@/chat/agent-invocations/store";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import type { AgentRun, SpawnAgentInput } from "@/chat/agent/types";
-import {
-  readAgentConfig,
-  writeAgentConfig,
-} from "@/chat/conversations/agent-config";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -36,8 +31,8 @@ import {
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import { juniorAgentBindings } from "@/db/schema";
 import {
+  loadSubagentEvents,
   slackDestination,
   slackInvocationInput,
   slackParentConversationId,
@@ -48,7 +43,11 @@ import {
 } from "../fixtures/conversation-work";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
-import { createHarness, type Harness } from "../fixtures/thread-input";
+import {
+  createHarness,
+  finishRun,
+  type Harness,
+} from "../fixtures/thread-input";
 
 /** The parent's Turn, as the root Turn code binds it to agent tools. */
 function parentRun(turnId = "parent-turn"): AgentRun {
@@ -122,6 +121,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
         reasoningLevel: "high",
         title: "Deploy check",
       });
+      harness.onPersonRun(finishRun);
       await harness.processUntilRun(childId);
 
       await expect(
@@ -148,6 +148,81 @@ describe("spawn and messageAgent without Agent invocations", () => {
       });
       expect(run.agentInvocationId).toBeUndefined();
       expect(run.instruction.text).toContain("Check the deploy.");
+      // A retry of the spawn writes no second marker.
+      await spawn(harness, "call-1", {
+        kind: "thread",
+        name: harness.agentName,
+        reasoningLevel: "high",
+        title: "Deploy check",
+      });
+      const markerId = getAgentInvocationId(
+        slackParentConversationId,
+        "parent-turn:call-1",
+      );
+      await expect(
+        loadSubagentEvents(slackParentConversationId),
+      ).resolves.toEqual([
+        {
+          type: "subagent_started",
+          subagentInvocationId: markerId,
+          subagentKind: "agent",
+          childConversationId: childId,
+          agentName: harness.agentName,
+          parentToolCallId: "call-1",
+          task: "Check the deploy.",
+          title: "Deploy check",
+          reasoningLevel: "high",
+        },
+        {
+          type: "subagent_ended",
+          subagentInvocationId: markerId,
+          outcome: "success",
+        },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it.each([
+    { change: "no name", input: { name: undefined } },
+    { change: "another task", input: { task: "Check the rollback." } },
+    { change: "another agent type", input: { agentType: "explore" as const } },
+    { change: "a fork", input: { fork: true as const } },
+    {
+      change: "another reasoning level",
+      input: { reasoningLevel: "low" as const },
+    },
+  ])("refuses a spawn replay with $change", async ({ input }) => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      await spawn(harness, "call-1", { name: harness.agentName });
+
+      await expect(
+        spawn(harness, "call-1", { name: harness.agentName, ...input }),
+      ).rejects.toThrow("Spawn idempotency key was reused");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("refuses a spawn replay from a Turn with other grants", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      await spawn(harness, "call-1");
+
+      await expect(
+        bindSpawnAgent(
+          { ...parentRun(), credentialContext: { actor: EVENT_SYSTEM_ACTOR } },
+          {
+            conversationStore: harness.conversationStore,
+            queue: harness.queue,
+            state: harness.state,
+          },
+        )!({ task: "Check the deploy." }, { toolCallId: "call-1" }),
+      ).rejects.toThrow("Spawn idempotency key was reused");
     } finally {
       await harness.close();
     }
@@ -170,35 +245,30 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("sends the task when a spawn stopped before it reached the mailbox", async () => {
+  it("drops a spawn's task when the spawn's SQL rolled back", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      // The spawn's transaction committed. Its worker died before the task
-      // reached the child's mailbox.
-      const childId = getSpawnedChildConversationId(
-        slackParentConversationId,
-        "parent-turn:call-1",
-      );
-      await harness.conversationStore.createChild({
-        childConversationId: childId,
-        kind: "task",
-        parentConversationId: slackParentConversationId,
-        source: "internal",
-      });
-      await getSqlExecutor().db().insert(juniorAgentBindings).values({
-        childConversationId: childId,
-        name: harness.agentName,
-        parentConversationId: slackParentConversationId,
-      });
-      await writeAgentConfig(childId, {});
-
+      // The task reached the child's mailbox. Then the spawn's transaction
+      // rolled back, so no child Conversation names this parent.
+      let childId: string | undefined;
       await expect(
-        spawn(harness, "call-1", { name: harness.agentName }),
-      ).resolves.toBe(childId);
-      await expect(mailboxTexts(harness, childId)).resolves.toEqual([
+        getSqlExecutor().withLock("spawn-rolls-back", async () => {
+          childId = await spawn(harness, "call-1");
+          throw new Error("The spawn's transaction failed.");
+        }),
+      ).rejects.toThrow("The spawn's transaction failed.");
+      await expect(mailboxTexts(harness, childId!)).resolves.toEqual([
         "Check the deploy.",
       ]);
+      await expect(
+        harness.conversationStore.get({ conversationId: childId! }),
+      ).resolves.toBeUndefined();
+
+      await harness.drain(childId!);
+
+      expect(harness.runs).toEqual([]);
+      await expect(mailboxTexts(harness, childId!)).resolves.toEqual([]);
     } finally {
       await harness.close();
     }

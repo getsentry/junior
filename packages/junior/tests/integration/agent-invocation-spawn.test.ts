@@ -267,6 +267,7 @@ describe("agent invocation spawn and result delivery", () => {
       const childConversationId = await spawnChildWithoutAgentInvocation({
         actor: { platform: "local", userId: "local-user" },
         conversationStore,
+        destination,
         idempotencyKey: "parent-turn:call-1",
         parentConversationId,
         queue,

@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
@@ -12,11 +12,14 @@ import {
   stopConversationWork,
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
-import { recordSubagentEnded } from "./markers";
+import {
+  listChildAgentsStartedAfter,
+  recordChildAgentEnded,
+  recordSubagentEnded,
+} from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
-import { hasParentMessageAfter } from "./parent-message";
 import {
   getLatestAgentInvocationForConversation,
   invocationFromRow,
@@ -96,7 +99,6 @@ export async function stopChildAgentsOf(
   // are, so `listChildAgents` still shows them.
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
     includeRoot: false,
-    state,
     taskedAfterMs: stoppedAtMs,
   });
   await skipUnreadResults(conversationId, nowMs, state);
@@ -262,6 +264,14 @@ async function finishStoppedTree(
   for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
   }
+  // The stop skips the parent messages that still wait, so their work ends.
+  for (const conversationId of conversationIdsToStop) {
+    await recordChildAgentEnded(conversationId, "aborted", {
+      includeWaiting: true,
+      nowMs: options.nowMs,
+      state: options.state,
+    });
+  }
   await markConversationsStopped(conversationIdsToStop, options);
   for (const conversationId of conversationIdsToStop) {
     await cancelSignInWait(conversationId);
@@ -324,7 +334,6 @@ async function withChildAgentsTaskedAfter(
   conversationId: string,
   conversationIds: readonly string[],
   taskedAfterMs: number,
-  state: StateAdapter | undefined,
 ): Promise<string[]> {
   const links = await getSqlExecutor()
     .db()
@@ -345,26 +354,11 @@ async function withChildAgentsTaskedAfter(
       ),
     );
   // A child agent that no agent invocation names was tasked when it was
-  // created, and with each parent message.
-  const messagedAfter: string[] = [];
-  const olderChildren = await getSqlExecutor()
-    .db()
-    .select({ conversationId: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.parentConversationId, conversationId),
-        isNotNull(juniorConversations.agentConfig),
-        lte(juniorConversations.createdAt, new Date(taskedAfterMs)),
-      ),
-    );
-  for (const child of olderChildren) {
-    if (
-      await hasParentMessageAfter(child.conversationId, taskedAfterMs, state)
-    ) {
-      messagedAfter.push(child.conversationId);
-    }
-  }
+  // created, and with each parent message, which its marker records.
+  const messagedAfter = await listChildAgentsStartedAfter(
+    conversationId,
+    taskedAfterMs,
+  );
   const withoutInvocations = await getSqlExecutor()
     .db()
     .select({
@@ -379,7 +373,9 @@ async function withChildAgentsTaskedAfter(
         or(
           ne(juniorConversations.parentConversationId, conversationId),
           gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
-          inArray(juniorConversations.conversationId, messagedAfter),
+          messagedAfter.length > 0
+            ? inArray(juniorConversations.conversationId, messagedAfter)
+            : undefined,
         ),
       ),
     );
@@ -459,17 +455,12 @@ export type StoppedAgentTree = {
  * `includeRoot: false`, the agent invocations of the Conversation itself stay
  * as they are, and only `pending` results sent to it become `skipped`. With
  * `taskedAfterMs`, only the direct child agents that got an agent invocation
- * or a parent message after that time, and the Conversations below them,
- * stop. `state` holds the mailboxes that the parent messages wait in.
+ * after that time, and the Conversations below them, stop.
  */
 export async function stopAgentInvocationTree(
   conversationId: string,
   nowMs = Date.now(),
-  options: {
-    includeRoot: boolean;
-    state?: StateAdapter | undefined;
-    taskedAfterMs?: number;
-  } = {
+  options: { includeRoot: boolean; taskedAfterMs?: number } = {
     includeRoot: true,
   },
 ): Promise<StoppedAgentTree> {
@@ -484,11 +475,7 @@ export async function stopAgentInvocationTree(
 async function stopLockedAgentInvocationTree(
   conversationId: string,
   nowMs: number,
-  options: {
-    includeRoot: boolean;
-    state?: StateAdapter | undefined;
-    taskedAfterMs?: number;
-  },
+  options: { includeRoot: boolean; taskedAfterMs?: number },
 ): Promise<StoppedAgentTree> {
   const db = getSqlExecutor().db();
   const now = new Date(nowMs);
@@ -500,7 +487,6 @@ async function stopLockedAgentInvocationTree(
           conversationId,
           lockedIds,
           options.taskedAfterMs,
-          options.state,
         );
   const stoppedChildIds = options.includeRoot
     ? conversationIds

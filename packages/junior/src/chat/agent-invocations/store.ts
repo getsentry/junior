@@ -253,13 +253,17 @@ export function sendsResultToParent(
  * agent that no Agent invocation names is open as `listAgents` shows it,
  * and its unread result or reply also waits.
  */
-async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
+async function hasOpenChildWork(
+  invocation: AgentInvocation,
+  endingChildConversationId?: string,
+): Promise<boolean> {
   const conversationId = invocation.childConversationId;
   const open = await listOpenAgentInvocations(conversationId);
   if (
     open.some((row) => row.invocationId !== invocation.invocationId) ||
-    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
-      0
+    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).some(
+      (childId) => childId !== endingChildConversationId,
+    )
   ) {
     return true;
   }
@@ -372,18 +376,22 @@ export async function reportReplacedAgentInvocation(
  * ended and sent it nothing, such as a helper that ended with `noReply`. No
  * later agent invocation of the child would send the report. Input from its
  * own child agents that still waits in its mailbox starts one, so that one
- * reports instead.
+ * reports instead. `endingChildConversationId` names a child agent whose
+ * work stops now, so its open work does not count.
  */
 export async function reportReplacedWithoutOpenWork(
   conversationId: string,
-  nowMs = Date.now(),
+  options: {
+    endingChildConversationId?: string | undefined;
+    nowMs?: number;
+  } = {},
 ): Promise<AgentInvocation | undefined> {
   const latest = await getLatestAgentInvocationForConversation(conversationId);
   if (
     !latest ||
     !isTerminalAgentInvocation(latest) ||
     latest.parentMailboxStatus !== "replaced" ||
-    (await hasOpenChildWork(latest))
+    (await hasOpenChildWork(latest, options.endingChildConversationId))
   ) {
     return undefined;
   }
@@ -393,7 +401,10 @@ export async function reportReplacedWithoutOpenWork(
   if (waiting?.messages.some(isChildAgentInputMessage)) {
     return undefined;
   }
-  return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
+  return await reportReplacedAgentInvocation(
+    latest.invocationId,
+    options.nowMs ?? Date.now(),
+  );
 }
 
 // Results, replies, and messages from a child's own child agents. A message
