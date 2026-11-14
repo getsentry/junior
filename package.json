@@ -1,7 +1,7 @@
 {
   "name": "junior-monorepo",
   "private": true,
-  "packageManager": "pnpm@11.8.0+sha512.c1f5e7c4cb241c8f174b743851d82f42b802324afc8b0f116b96adb15aa06664948dde36960a3ba1079ba5b4b29dd0140135b94b5b5f5263592249d68e555f26",
+  "packageManager": "pnpm@12.18.0+sha512.9d7882d5dc82147ecfc4e062aa34834e0ad0296710a1837a1115ae012127d36b7109e321ac1598a1dd0a65597681b1e99917e12ed0d749eae91187943363beb3",
   "scripts": {
     "acp:local": "node scripts/acp-local.mjs",
     "dev": "node scripts/dev-server.mjs",
@@ -23,7 +23,7 @@
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
     "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan",
     "lint-staged": "lint-staged",
-    "build": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build",
+    "build": "pnpm -r --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" run build",
     "build:example": "pnpm --filter @sentry/junior-example build",
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
     "docs:build": "pnpm --filter @sentry/junior-docs build",
@@ -32,8 +32,8 @@
     "package-types:check": "sh scripts/check-package-types.sh",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
-    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-tts test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-google test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
-    "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
+    "test": "pnpm build && pnpm -r --workspace-concurrency=1 --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" --filter \"!@sentry/junior-evals\" run test",
+    "test:e2e:dashboard": "pnpm --filter \"@sentry/junior-dashboard...\" run build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:behavioral": "pnpm --filter @sentry/junior-evals evals:behavioral",
@@ -41,8 +41,7 @@
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm -r run typecheck",
-    "skills:check": "pnpm --filter @sentry/junior skills:check",
-    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-tts test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-google test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
+    "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",
@@ -75,5 +74,8 @@
     "simple-git-hooks": "^2.13.1",
     "squawk-cli": "2.72.0",
     "tsx": "^4.22.3"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

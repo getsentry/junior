@@ -22,12 +22,11 @@
     "src"
   ],
   "scripts": {
-    "build": "pnpm --filter @sentry/junior-plugin-api build && pnpm --filter @sentry/junior build && pnpm run build:css && pnpm run build:client && pnpm run build:server",
+    "build": "pnpm run build:css && pnpm run build:client && pnpm run build:server",
     "build:client": "tsup --config tsup.styles.config.ts && tsdown --config tsdown.client.config.ts --config-loader unrun",
     "build:css": "tailwindcss -i src/tailwind.css -o dist/tailwind.css --minify",
     "build:server": "tsup --config tsup.config.ts && tsdown --config tsdown.dts.config.ts",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src",
-    "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "test": "vitest run -c vitest.config.ts",
     "typecheck": "tsc --noEmit",

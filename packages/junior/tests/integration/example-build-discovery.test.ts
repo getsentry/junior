@@ -191,11 +191,9 @@ describe.sequential("example build discovery integration", () => {
       scripts?: Record<string, string>;
     };
 
-    expect(packageJson.scripts?.prebuild).toContain(
-      "pnpm --filter @sentry/junior build",
-    );
-    expect(packageJson.scripts?.prebuild).toContain(
-      "pnpm --filter @sentry/junior-dashboard build",
+    // Builds every workspace package that the app depends on.
+    expect(packageJson.scripts?.prebuild).toBe(
+      'pnpm --filter "@sentry/junior-example^..." run build',
     );
     expect(packageJson.scripts?.postbuild).toBe(
       "node scripts/check-vercel-output.mjs",

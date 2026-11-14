@@ -528,6 +528,13 @@ function installDependencies(targetRoot, options = {}) {
     cwd: targetRoot,
     exitOnFailure: options.exitOnFailure,
   });
+  // Install does not build workspace packages. Build them so checks and
+  // the example app can load their `dist` output.
+  console.log("Building workspace packages with pnpm build...");
+  runRequired("pnpm", ["build"], {
+    cwd: targetRoot,
+    exitOnFailure: options.exitOnFailure,
+  });
 }
 
 function runShellCommand(command, cwd) {

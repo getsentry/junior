@@ -3,4 +3,5 @@
 .PHONY: install
 install:
 	pnpm install
+	pnpm build
 	dotagents install

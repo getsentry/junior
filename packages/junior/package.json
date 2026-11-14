@@ -52,7 +52,6 @@
     "skills"
   ],
   "scripts": {
-    "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "build": "tsdown",
     "acp:smoke": "pnpm exec tsx scripts/acp-smoke.ts",

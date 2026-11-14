@@ -22,6 +22,7 @@ related:
 
 ```bash
 pnpm install
+pnpm build
 ```
 
 ```bash
