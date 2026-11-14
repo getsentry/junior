@@ -100,10 +100,12 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  */
 export function ObjectCard({
   card,
+  className,
   fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  className?: string;
   fill?: boolean;
   live?: boolean;
 }) {
@@ -114,6 +116,7 @@ export function ObjectCard({
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
+        className={className}
         card={{
           id: card.key,
           title: card.title,
@@ -137,7 +140,7 @@ export function ObjectCard({
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
-      className={cn("my-1", fill && "my-0 flex h-full flex-col")}
+      className={cn("my-1", fill && "my-0 flex h-full flex-col", className)}
     >
       <MessageCardHeader
         icon={

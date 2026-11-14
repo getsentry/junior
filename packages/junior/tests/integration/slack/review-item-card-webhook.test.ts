@@ -478,6 +478,53 @@ describe("Slack webhook: Review item cards", () => {
     );
   });
 
+  it("posts one card in a thread that a linked child agent shares", async () => {
+    const { click, state } = harness();
+    await slackThread(THREAD, "public");
+    // A child agent shares the thread of its parent.
+    const child = "agent:card-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    // The child adds the item first, and the parent links it later. The
+    // thread keeps one card.
+    await addItem(ana, input, child);
+    const { item } = await addItem(ana, input);
+    expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
+    const cards = slackApiOutbox.messages();
+    expect(cards).toHaveLength(1);
+
+    await click({
+      actionId: "junior_review_item:choice:0",
+      actionTs: "1712345.0003",
+      itemId: item.id,
+      userId: "U123",
+      value: buttonValue(cards[0], "junior_review_item:choice:0"),
+    });
+
+    // A click acts for the parent, which owns the thread, so the parent gets
+    // the answer once.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
+  });
+
   it("names the recommended option of a form in the card text", async () => {
     harness();
     await slackThread(THREAD, "public");

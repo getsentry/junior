@@ -175,9 +175,11 @@ export function ObjectLinkPreview(props: {
       className={
         props.reserveHeight ? RESERVED_PREVIEW_HEIGHT_CLASS : undefined
       }
+      // The hover card is the frame, so it stays whole while the card scrolls.
       content={
         <ObjectCard
           card={props.card}
+          className="my-0 rounded-none border-0"
           fill={props.reserveHeight}
           live={props.live}
         />

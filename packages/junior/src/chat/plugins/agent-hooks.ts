@@ -41,6 +41,7 @@ import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
@@ -871,6 +872,7 @@ export function getPluginTools(
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
+      conversations: createPluginConversations(context.conversationId),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
