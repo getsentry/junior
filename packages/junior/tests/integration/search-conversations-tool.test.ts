@@ -188,7 +188,9 @@ describe("searchConversations", () => {
     const db = getDb();
     const nowMs = Date.now();
     const hourAgoMs = nowMs - 60 * 60 * 1000;
+    const minuteAgoMs = nowMs - 60 * 1000;
     const monthAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+    const twoMonthsAgoMs = nowMs - 60 * 24 * 60 * 60 * 1000;
     const annotate = async (conversationId: string) =>
       await createPluginAnnotations({
         conversationId,
@@ -202,9 +204,10 @@ describe("searchConversations", () => {
       });
     const record = async (args: {
       activityAtMs: number;
+      annotated?: boolean;
       archived?: boolean;
       channelId: string;
-      status?: "failed" | "running";
+      status?: "failed" | "paused" | "running";
       summary?: string;
       visibility: "private" | "public";
     }) => {
@@ -221,7 +224,7 @@ describe("searchConversations", () => {
         title: `Work in ${args.channelId}`,
         visibility: args.visibility,
       });
-      await annotate(conversationId);
+      if (args.annotated !== false) await annotate(conversationId);
       await db
         .update(juniorConversations)
         .set({
@@ -256,13 +259,39 @@ describe("searchConversations", () => {
       source: "slack",
     });
     await annotate(ownChild);
+    // Its last activity is older than every idle match, and it still ranks
+    // first.
     const working = await record({
-      activityAtMs: hourAgoMs,
+      activityAtMs: twoMonthsAgoMs,
       channelId: "CWORKING",
-      status: "running",
+      status: "paused",
       summary: "Fixing the flaky test on the pull request.",
       visibility: "public",
     });
+    const newer = await record({
+      activityAtMs: minuteAgoMs,
+      channelId: "CNEWER",
+      visibility: "public",
+    });
+    // A parent that works on other things is not listed for its child's
+    // Annotation. The child is.
+    const parent = await record({
+      activityAtMs: nowMs,
+      annotated: false,
+      channelId: "CPARENT",
+      status: "running",
+      visibility: "public",
+    });
+    const otherChild = "agent:other-child";
+    await getConversationStore().createChild({
+      childConversationId: otherChild,
+      kind: "task",
+      parentConversationId: parent,
+      nowMs: hourAgoMs,
+      source: "slack",
+      title: "Review the pull request",
+    });
+    await annotate(otherChild);
     // Older than a week and not archived: still a match.
     const old = await record({
       activityAtMs: monthAgoMs,
@@ -284,12 +313,26 @@ describe("searchConversations", () => {
 
     const conversations = createPluginConversations(ownChild);
 
+    const workingMatch = {
+      conversationId: working,
+      status: "paused",
+      summary: "Fixing the flaky test on the pull request.",
+      title: "Work in CWORKING",
+      updatedAt: new Date(twoMonthsAgoMs).toISOString(),
+    };
     await expect(conversations.search({ annotation: key })).resolves.toEqual([
+      workingMatch,
       {
-        conversationId: working,
-        status: "running",
-        summary: "Fixing the flaky test on the pull request.",
-        title: "Work in CWORKING",
+        conversationId: newer,
+        status: "idle",
+        title: "Work in CNEWER",
+        updatedAt: new Date(minuteAgoMs).toISOString(),
+      },
+      {
+        conversationId: otherChild,
+        rootConversationId: parent,
+        status: "idle",
+        title: "Review the pull request",
         updatedAt: new Date(hourAgoMs).toISOString(),
       },
       // A failed Turn waits for new input.
@@ -300,5 +343,9 @@ describe("searchConversations", () => {
         updatedAt: new Date(monthAgoMs).toISOString(),
       },
     ]);
+    // Newer idle matches do not push a working one past the limit.
+    await expect(
+      conversations.search({ annotation: key, limit: 1 }),
+    ).resolves.toEqual([workingMatch]);
   });
 });

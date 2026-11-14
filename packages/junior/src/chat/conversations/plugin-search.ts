@@ -1,9 +1,13 @@
 import type { PluginConversationToolContext } from "@sentry/junior-plugin-api";
-import { searchConversations } from "@/chat/conversations/search";
+import {
+  searchConversations,
+  type ConversationSearch,
+} from "@/chat/conversations/search";
 import { getDb } from "@/chat/db";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
+const WORKING_STATUSES = ["pending", "running", "paused"] as const;
 
 /**
  * Let a plugin tool find other Conversations by Annotation key. The current
@@ -15,15 +19,32 @@ export function createPluginConversations(
 ): PluginConversationToolContext {
   return {
     async search(input) {
-      const matches = await searchConversations(getDb(), {
-        requesterConversationId: conversationId,
-        search: {
-          annotation: input.annotation,
-          includeArchived: false,
-          limit: Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT),
-          rootsOnly: false,
-        },
-      });
+      const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+      // A root is not listed for the Annotation of its child agent, so its
+      // status does not stand for the child's work.
+      const search: ConversationSearch = {
+        annotation: input.annotation,
+        annotationOnSelf: true,
+        includeArchived: false,
+        limit,
+        rootsOnly: false,
+      };
+      const find = async (filters: Partial<ConversationSearch>) =>
+        await searchConversations(getDb(), {
+          requesterConversationId: conversationId,
+          search: { ...search, ...filters },
+        });
+      // Working Conversations first, so newer idle ones cannot push them
+      // past the limit.
+      const [working, newest] = await Promise.all([
+        find({ statuses: WORKING_STATUSES }),
+        find({}),
+      ]);
+      const seen = new Set(working.map((match) => match.conversationId));
+      const matches = [
+        ...working,
+        ...newest.filter((match) => !seen.has(match.conversationId)),
+      ].slice(0, limit);
       return matches.map((match) => ({
         conversationId: match.conversationId,
         // Only a child agent has a different root.

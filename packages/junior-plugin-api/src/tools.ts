@@ -692,9 +692,11 @@ export interface PluginConversationMatch {
 export interface PluginConversationToolContext {
   /**
    * Find other Conversations that have an Annotation with `annotation`, or a
-   * nested key that continues with `#`. Core applies the Conversation access
+   * nested key that continues with `#`. A root does not match for the
+   * Annotation of its child agent. Core applies the Conversation access
    * rules, and leaves out archived Conversations and the current tree.
-   * Newest activity first.
+   * Working Conversations (pending, running, paused) first, then newest
+   * activity.
    */
   search(input: {
     annotation: string;

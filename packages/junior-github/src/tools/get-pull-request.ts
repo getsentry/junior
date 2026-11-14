@@ -2,7 +2,6 @@ import { githubObjectAnnotation } from "../annotations.js";
 import { readDraftReadiness } from "../draft-readiness.js";
 import { githubObjectFacts } from "../object-facts.js";
 import {
-  type PluginConversationMatch,
   type PluginConversationToolContext,
   type PluginEgress,
   definePluginTool,
@@ -19,10 +18,7 @@ import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const RELATED_CONVERSATIONS_MAX = 10;
-// Fetch more than the result shows, so working Conversations can rank first.
-const RELATED_CONVERSATIONS_FETCH = 25;
 const SUMMARY_MAX_LENGTH = 300;
-const WORKING_STATUSES = new Set(["pending", "running", "paused"]);
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
@@ -249,26 +245,20 @@ async function readRelatedConversations(
   if (!conversations) return [];
   const matches = await conversations.search({
     annotation,
-    limit: RELATED_CONVERSATIONS_FETCH,
+    limit: RELATED_CONVERSATIONS_MAX,
   });
-  const working = (match: PluginConversationMatch) =>
-    WORKING_STATUSES.has(match.status) ? 0 : 1;
-  // Array sort is stable, so each group keeps the newest-first order.
-  return matches
-    .sort((left, right) => working(left) - working(right))
-    .slice(0, RELATED_CONVERSATIONS_MAX)
-    .map((match) => ({
-      conversation_id: match.conversationId,
-      ...(match.rootConversationId
-        ? { root_conversation_id: match.rootConversationId }
-        : undefined),
-      status: match.status,
-      ...(match.title ? { title: match.title } : undefined),
-      ...(match.summary
-        ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
-        : undefined),
-      updated_at: match.updatedAt,
-    }));
+  return matches.map((match) => ({
+    conversation_id: match.conversationId,
+    ...(match.rootConversationId
+      ? { root_conversation_id: match.rootConversationId }
+      : undefined),
+    status: match.status,
+    ...(match.title ? { title: match.title } : undefined),
+    ...(match.summary
+      ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
+      : undefined),
+    updated_at: match.updatedAt,
+  }));
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
