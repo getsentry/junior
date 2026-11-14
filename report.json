@@ -1,0 +1,3329 @@
+{
+  "files": [
+    {
+      "file": "admin-cache-warming__desktop.png",
+      "height": 900,
+      "image": "images/diff/admin-cache-warming__desktop.png",
+      "images": {
+        "baseline": "images/baseline/admin-cache-warming__desktop.png",
+        "candidate": "images/candidate/admin-cache-warming__desktop.png",
+        "diff": "images/diff/admin-cache-warming__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "admin-cache-warming__mobile.png",
+      "image": "images/candidate/admin-cache-warming__mobile.png",
+      "images": {
+        "candidate": "images/candidate/admin-cache-warming__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "admin-cache-warming-on__desktop.png",
+      "height": 900,
+      "image": "images/diff/admin-cache-warming-on__desktop.png",
+      "images": {
+        "baseline": "images/baseline/admin-cache-warming-on__desktop.png",
+        "candidate": "images/candidate/admin-cache-warming-on__desktop.png",
+        "diff": "images/diff/admin-cache-warming-on__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-attention__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-attention__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-attention__desktop.png",
+        "candidate": "images/candidate/automation-attention__desktop.png",
+        "diff": "images/diff/automation-attention__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-attention__mobile.png",
+      "height": 844,
+      "image": "images/diff/automation-attention__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-attention__mobile.png",
+        "candidate": "images/candidate/automation-attention__mobile.png",
+        "diff": "images/diff/automation-attention__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-details-failing__desktop.png",
+      "height": 936,
+      "image": "images/diff/automation-details-failing__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-failing__desktop.png",
+        "candidate": "images/candidate/automation-details-failing__desktop.png",
+        "diff": "images/diff/automation-details-failing__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-details-failing__mobile.png",
+      "height": 1680,
+      "image": "images/diff/automation-details-failing__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-failing__mobile.png",
+        "candidate": "images/candidate/automation-details-failing__mobile.png",
+        "diff": "images/diff/automation-details-failing__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-details-failing-light__desktop.png",
+      "height": 936,
+      "image": "images/diff/automation-details-failing-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-failing-light__desktop.png",
+        "candidate": "images/candidate/automation-details-failing-light__desktop.png",
+        "diff": "images/diff/automation-details-failing-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-details-failing-light__mobile.png",
+      "height": 1680,
+      "image": "images/diff/automation-details-failing-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-failing-light__mobile.png",
+        "candidate": "images/candidate/automation-details-failing-light__mobile.png",
+        "diff": "images/diff/automation-details-failing-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-details-healthy__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-details-healthy__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-healthy__desktop.png",
+        "candidate": "images/candidate/automation-details-healthy__desktop.png",
+        "diff": "images/diff/automation-details-healthy__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-details-healthy__mobile.png",
+      "height": 1554,
+      "image": "images/diff/automation-details-healthy__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-healthy__mobile.png",
+        "candidate": "images/candidate/automation-details-healthy__mobile.png",
+        "diff": "images/diff/automation-details-healthy__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-details-long-instruction__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-details-long-instruction__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-details-long-instruction__desktop.png",
+        "candidate": "images/candidate/automation-details-long-instruction__desktop.png",
+        "diff": "images/diff/automation-details-long-instruction__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-editor__desktop.png",
+      "height": 1851,
+      "image": "images/diff/automation-editor__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-editor__desktop.png",
+        "candidate": "images/candidate/automation-editor__desktop.png",
+        "diff": "images/diff/automation-editor__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-editor__mobile.png",
+      "image": "images/candidate/automation-editor__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor-conflict__desktop.png",
+      "height": 2746,
+      "image": "images/diff/automation-editor-conflict__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-editor-conflict__desktop.png",
+        "candidate": "images/candidate/automation-editor-conflict__desktop.png",
+        "diff": "images/diff/automation-editor-conflict__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-editor-conflict__mobile.png",
+      "image": "images/candidate/automation-editor-conflict__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor-conflict__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor-public__desktop.png",
+      "height": 2304,
+      "image": "images/diff/automation-editor-public__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-editor-public__desktop.png",
+        "candidate": "images/candidate/automation-editor-public__desktop.png",
+        "diff": "images/diff/automation-editor-public__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-editor-public__mobile.png",
+      "image": "images/candidate/automation-editor-public__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor-public__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-event-editor__desktop.png",
+      "height": 2051,
+      "image": "images/diff/automation-event-editor__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-event-editor__desktop.png",
+        "candidate": "images/candidate/automation-event-editor__desktop.png",
+        "diff": "images/diff/automation-event-editor__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-event-editor__mobile.png",
+      "image": "images/candidate/automation-event-editor__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-event-editor__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-event-editor-any-resource__desktop.png",
+      "height": 2055,
+      "image": "images/diff/automation-event-editor-any-resource__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-event-editor-any-resource__desktop.png",
+        "candidate": "images/candidate/automation-event-editor-any-resource__desktop.png",
+        "diff": "images/diff/automation-event-editor-any-resource__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-event-editor-any-resource__mobile.png",
+      "image": "images/candidate/automation-event-editor-any-resource__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-event-editor-any-resource__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-overview-run-details__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-overview-run-details__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-overview-run-details__desktop.png",
+        "candidate": "images/candidate/automation-overview-run-details__desktop.png",
+        "diff": "images/diff/automation-overview-run-details__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-page__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-page__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-page__desktop.png",
+        "candidate": "images/candidate/automation-page__desktop.png",
+        "diff": "images/diff/automation-page__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-page-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-page-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-page-light__desktop.png",
+        "candidate": "images/candidate/automation-page-light__desktop.png",
+        "diff": "images/diff/automation-page-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-page-mobile__mobile.png",
+      "height": 1314,
+      "image": "images/diff/automation-page-mobile__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-page-mobile__mobile.png",
+        "candidate": "images/candidate/automation-page-mobile__mobile.png",
+        "diff": "images/diff/automation-page-mobile__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-page-mobile-light__mobile.png",
+      "height": 1314,
+      "image": "images/diff/automation-page-mobile-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-page-mobile-light__mobile.png",
+        "candidate": "images/candidate/automation-page-mobile-light__mobile.png",
+        "diff": "images/diff/automation-page-mobile-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-paused__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-paused__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-paused__desktop.png",
+        "candidate": "images/candidate/automation-paused__desktop.png",
+        "diff": "images/diff/automation-paused__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-paused__mobile.png",
+      "height": 1458,
+      "image": "images/diff/automation-paused__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-paused__mobile.png",
+        "candidate": "images/candidate/automation-paused__mobile.png",
+        "diff": "images/diff/automation-paused__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-run-details__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-run-details__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-run-details__desktop.png",
+        "candidate": "images/candidate/automation-run-details__desktop.png",
+        "diff": "images/diff/automation-run-details__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-run-details__mobile.png",
+      "height": 844,
+      "image": "images/diff/automation-run-details__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-run-details__mobile.png",
+        "candidate": "images/candidate/automation-run-details__mobile.png",
+        "diff": "images/diff/automation-run-details__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-run-details-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-run-details-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-run-details-light__desktop.png",
+        "candidate": "images/candidate/automation-run-details-light__desktop.png",
+        "diff": "images/diff/automation-run-details-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-run-details-light__mobile.png",
+      "height": 844,
+      "image": "images/diff/automation-run-details-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-run-details-light__mobile.png",
+        "candidate": "images/candidate/automation-run-details-light__mobile.png",
+        "diff": "images/diff/automation-run-details-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-runs__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-runs__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-runs__desktop.png",
+        "candidate": "images/candidate/automation-runs__desktop.png",
+        "diff": "images/diff/automation-runs__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-runs__mobile.png",
+      "height": 844,
+      "image": "images/diff/automation-runs__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-runs__mobile.png",
+        "candidate": "images/candidate/automation-runs__mobile.png",
+        "diff": "images/diff/automation-runs__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-skill-drawer__desktop.png",
+      "height": 1771,
+      "image": "images/diff/automation-skill-drawer__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-drawer__desktop.png",
+        "candidate": "images/candidate/automation-skill-drawer__desktop.png",
+        "diff": "images/diff/automation-skill-drawer__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-skill-drawer__mobile.png",
+      "height": 2604,
+      "image": "images/diff/automation-skill-drawer__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-drawer__mobile.png",
+        "candidate": "images/candidate/automation-skill-drawer__mobile.png",
+        "diff": "images/diff/automation-skill-drawer__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-skill-editor__desktop.png",
+      "height": 1950,
+      "image": "images/diff/automation-skill-editor__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-editor__desktop.png",
+        "candidate": "images/candidate/automation-skill-editor__desktop.png",
+        "diff": "images/diff/automation-skill-editor__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-skill-editor__mobile.png",
+      "height": 2781,
+      "image": "images/diff/automation-skill-editor__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-editor__mobile.png",
+        "candidate": "images/candidate/automation-skill-editor__mobile.png",
+        "diff": "images/diff/automation-skill-editor__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-skill-missing__desktop.png",
+      "height": 1822,
+      "image": "images/diff/automation-skill-missing__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-missing__desktop.png",
+        "candidate": "images/candidate/automation-skill-missing__desktop.png",
+        "diff": "images/diff/automation-skill-missing__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-skill-missing__mobile.png",
+      "image": "images/candidate/automation-skill-missing__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-skill-missing__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-skill-picker__desktop.png",
+      "height": 1771,
+      "image": "images/diff/automation-skill-picker__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-picker__desktop.png",
+        "candidate": "images/candidate/automation-skill-picker__desktop.png",
+        "diff": "images/diff/automation-skill-picker__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-skill-search__desktop.png",
+      "height": 1771,
+      "image": "images/diff/automation-skill-search__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-skill-search__desktop.png",
+        "candidate": "images/candidate/automation-skill-search__desktop.png",
+        "diff": "images/diff/automation-skill-search__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-versions__desktop.png",
+      "height": 900,
+      "image": "images/diff/automation-versions__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-versions__desktop.png",
+        "candidate": "images/candidate/automation-versions__desktop.png",
+        "diff": "images/diff/automation-versions__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-versions__mobile.png",
+      "height": 1314,
+      "image": "images/diff/automation-versions__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-versions__mobile.png",
+        "candidate": "images/candidate/automation-versions__mobile.png",
+        "diff": "images/diff/automation-versions__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations__desktop.png",
+      "height": 900,
+      "image": "images/diff/automations__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations__desktop.png",
+        "candidate": "images/candidate/automations__desktop.png",
+        "diff": "images/diff/automations__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automations__mobile.png",
+      "height": 844,
+      "image": "images/diff/automations__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automations__mobile.png",
+        "candidate": "images/candidate/automations__mobile.png",
+        "diff": "images/diff/automations__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations-filters__desktop.png",
+      "height": 1164,
+      "image": "images/diff/automations-filters__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations-filters__desktop.png",
+        "candidate": "images/candidate/automations-filters__desktop.png",
+        "diff": "images/diff/automations-filters__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automations-filters__mobile.png",
+      "height": 844,
+      "image": "images/diff/automations-filters__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automations-filters__mobile.png",
+        "candidate": "images/candidate/automations-filters__mobile.png",
+        "diff": "images/diff/automations-filters__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations-landing__desktop.png",
+      "height": 924,
+      "image": "images/diff/automations-landing__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations-landing__desktop.png",
+        "candidate": "images/candidate/automations-landing__desktop.png",
+        "diff": "images/diff/automations-landing__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automations-landing__mobile.png",
+      "height": 1006,
+      "image": "images/diff/automations-landing__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automations-landing__mobile.png",
+        "candidate": "images/candidate/automations-landing__mobile.png",
+        "diff": "images/diff/automations-landing__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations-landing-light__desktop.png",
+      "height": 924,
+      "image": "images/diff/automations-landing-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations-landing-light__desktop.png",
+        "candidate": "images/candidate/automations-landing-light__desktop.png",
+        "diff": "images/diff/automations-landing-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automations-landing-light__mobile.png",
+      "height": 1006,
+      "image": "images/diff/automations-landing-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automations-landing-light__mobile.png",
+        "candidate": "images/candidate/automations-landing-light__mobile.png",
+        "diff": "images/diff/automations-landing-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations-runs__desktop.png",
+      "height": 900,
+      "image": "images/diff/automations-runs__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations-runs__desktop.png",
+        "candidate": "images/candidate/automations-runs__desktop.png",
+        "diff": "images/diff/automations-runs__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automations-runs__mobile.png",
+      "height": 844,
+      "image": "images/diff/automations-runs__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automations-runs__mobile.png",
+        "candidate": "images/candidate/automations-runs__mobile.png",
+        "diff": "images/diff/automations-runs__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automations-runs-filters__desktop.png",
+      "height": 900,
+      "image": "images/diff/automations-runs-filters__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automations-runs-filters__desktop.png",
+        "candidate": "images/candidate/automations-runs-filters__desktop.png",
+        "diff": "images/diff/automations-runs-filters__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "code__desktop.png",
+      "height": 1197,
+      "image": "images/diff/code__desktop.png",
+      "images": {
+        "baseline": "images/baseline/code__desktop.png",
+        "candidate": "images/candidate/code__desktop.png",
+        "diff": "images/diff/code__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "code__mobile.png",
+      "height": 1396,
+      "image": "images/diff/code__mobile.png",
+      "images": {
+        "baseline": "images/baseline/code__mobile.png",
+        "candidate": "images/candidate/code__mobile.png",
+        "diff": "images/diff/code__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "code-repository__desktop.png",
+      "height": 950,
+      "image": "images/diff/code-repository__desktop.png",
+      "images": {
+        "baseline": "images/baseline/code-repository__desktop.png",
+        "candidate": "images/candidate/code-repository__desktop.png",
+        "diff": "images/diff/code-repository__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "code-repository__mobile.png",
+      "height": 1434,
+      "image": "images/diff/code-repository__mobile.png",
+      "images": {
+        "baseline": "images/baseline/code-repository__mobile.png",
+        "candidate": "images/candidate/code-repository__mobile.png",
+        "diff": "images/diff/code-repository__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-attached-linked-work__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attached-linked-work__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attached-linked-work__desktop.png",
+        "candidate": "images/candidate/conversation-attached-linked-work__desktop.png",
+        "diff": "images/diff/conversation-attached-linked-work__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attached-linked-work-denied__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attached-linked-work-denied__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attached-linked-work-denied__desktop.png",
+        "candidate": "images/candidate/conversation-attached-linked-work-denied__desktop.png",
+        "diff": "images/diff/conversation-attached-linked-work-denied__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attached-linked-work-denied-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attached-linked-work-denied-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attached-linked-work-denied-light__desktop.png",
+        "candidate": "images/candidate/conversation-attached-linked-work-denied-light__desktop.png",
+        "diff": "images/diff/conversation-attached-linked-work-denied-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attached-linked-work-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attached-linked-work-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attached-linked-work-light__desktop.png",
+        "candidate": "images/candidate/conversation-attached-linked-work-light__desktop.png",
+        "diff": "images/diff/conversation-attached-linked-work-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attachment__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attachment__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment__desktop.png",
+        "candidate": "images/candidate/conversation-attachment__desktop.png",
+        "diff": "images/diff/conversation-attachment__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attachment__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-attachment__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment__mobile.png",
+        "candidate": "images/candidate/conversation-attachment__mobile.png",
+        "diff": "images/diff/conversation-attachment__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-attachment-modal__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attachment-modal__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment-modal__desktop.png",
+        "candidate": "images/candidate/conversation-attachment-modal__desktop.png",
+        "diff": "images/diff/conversation-attachment-modal__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attachment-modal__mobile.png",
+      "image": "images/candidate/conversation-attachment-modal__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-zoom__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attachment-zoom__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment-zoom__desktop.png",
+        "candidate": "images/candidate/conversation-attachment-zoom__desktop.png",
+        "diff": "images/diff/conversation-attachment-zoom__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attachment-zoom__mobile.png",
+      "image": "images/candidate/conversation-attachment-zoom__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-zoom__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-captured-memories-popover__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-captured-memories-popover__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-captured-memories-popover__desktop.png",
+        "candidate": "images/candidate/conversation-captured-memories-popover__desktop.png",
+        "diff": "images/diff/conversation-captured-memories-popover__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-captured-memories-popover__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-captured-memories-popover__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-captured-memories-popover__mobile.png",
+        "candidate": "images/candidate/conversation-captured-memories-popover__mobile.png",
+        "diff": "images/diff/conversation-captured-memories-popover__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-catch-up__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-catch-up__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-catch-up__mobile.png",
+        "candidate": "images/candidate/conversation-catch-up__mobile.png",
+        "diff": "images/diff/conversation-catch-up__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-child-agent-drawer__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-child-agent-drawer__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agent-drawer__desktop.png",
+        "candidate": "images/candidate/conversation-child-agent-drawer__desktop.png",
+        "diff": "images/diff/conversation-child-agent-drawer__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-child-agent-drawer__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-child-agent-drawer__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agent-drawer__mobile.png",
+        "candidate": "images/candidate/conversation-child-agent-drawer__mobile.png",
+        "diff": "images/diff/conversation-child-agent-drawer__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-child-agent-page__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-child-agent-page__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agent-page__desktop.png",
+        "candidate": "images/candidate/conversation-child-agent-page__desktop.png",
+        "diff": "images/diff/conversation-child-agent-page__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-child-agent-page__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-child-agent-page__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agent-page__mobile.png",
+        "candidate": "images/candidate/conversation-child-agent-page__mobile.png",
+        "diff": "images/diff/conversation-child-agent-page__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-child-agents__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-child-agents__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agents__desktop.png",
+        "candidate": "images/candidate/conversation-child-agents__desktop.png",
+        "diff": "images/diff/conversation-child-agents__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-child-agents__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-child-agents__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-child-agents__mobile.png",
+        "candidate": "images/candidate/conversation-child-agents__mobile.png",
+        "diff": "images/diff/conversation-child-agents__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-create-focused__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-create-focused__desktop.png",
+        "candidate": "images/candidate/conversation-create-focused__desktop.png",
+        "diff": "images/diff/conversation-create-focused__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-create-focused__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-create-focused__mobile.png",
+        "candidate": "images/candidate/conversation-create-focused__mobile.png",
+        "diff": "images/diff/conversation-create-focused__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-detail__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail__desktop.png",
+        "candidate": "images/candidate/conversation-detail__desktop.png",
+        "diff": "images/diff/conversation-detail__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-detail__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail__mobile.png",
+        "candidate": "images/candidate/conversation-detail__mobile.png",
+        "diff": "images/diff/conversation-detail__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "height": 520,
+      "image": "images/diff/conversation-detail-focused__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail-focused__mobile.png",
+        "candidate": "images/candidate/conversation-detail-focused__mobile.png",
+        "diff": "images/diff/conversation-detail-focused__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-details-sheet__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-details-sheet__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-details-sheet__mobile.png",
+        "candidate": "images/candidate/conversation-details-sheet__mobile.png",
+        "diff": "images/diff/conversation-details-sheet__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-details-sheet-light__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-details-sheet-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-details-sheet-light__mobile.png",
+        "candidate": "images/candidate/conversation-details-sheet-light__mobile.png",
+        "diff": "images/diff/conversation-details-sheet-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-details-watched-linked-work__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-details-watched-linked-work__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-details-watched-linked-work__desktop.png",
+        "candidate": "images/candidate/conversation-details-watched-linked-work__desktop.png",
+        "diff": "images/diff/conversation-details-watched-linked-work__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-details-watched-linked-work__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-details-watched-linked-work__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-details-watched-linked-work__mobile.png",
+        "candidate": "images/candidate/conversation-details-watched-linked-work__mobile.png",
+        "diff": "images/diff/conversation-details-watched-linked-work__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-event-details__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-event-details__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-details__desktop.png",
+        "candidate": "images/candidate/conversation-event-details__desktop.png",
+        "diff": "images/diff/conversation-event-details__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-event-details__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-event-details__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-details__mobile.png",
+        "candidate": "images/candidate/conversation-event-details__mobile.png",
+        "diff": "images/diff/conversation-event-details__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-event-details-mobile__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-event-details-mobile__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-details-mobile__desktop.png",
+        "candidate": "images/candidate/conversation-event-details-mobile__desktop.png",
+        "diff": "images/diff/conversation-event-details-mobile__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-event-details-mobile__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-event-details-mobile__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-details-mobile__mobile.png",
+        "candidate": "images/candidate/conversation-event-details-mobile__mobile.png",
+        "diff": "images/diff/conversation-event-details-mobile__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-event-log__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-event-log__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-log__desktop.png",
+        "candidate": "images/candidate/conversation-event-log__desktop.png",
+        "diff": "images/diff/conversation-event-log__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-event-log__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-event-log__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-log__mobile.png",
+        "candidate": "images/candidate/conversation-event-log__mobile.png",
+        "diff": "images/diff/conversation-event-log__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-event-log-virtual__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-event-log-virtual__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-log-virtual__desktop.png",
+        "candidate": "images/candidate/conversation-event-log-virtual__desktop.png",
+        "diff": "images/diff/conversation-event-log-virtual__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-event-log-virtual__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-event-log-virtual__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-event-log-virtual__mobile.png",
+        "candidate": "images/candidate/conversation-event-log-virtual__mobile.png",
+        "diff": "images/diff/conversation-event-log-virtual__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-failed-link-opens-at-latest__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-failed-link-opens-at-latest__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-failed-link-opens-at-latest__desktop.png",
+        "candidate": "images/candidate/conversation-failed-link-opens-at-latest__desktop.png",
+        "diff": "images/diff/conversation-failed-link-opens-at-latest__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-failed-link-opens-at-latest__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-failed-link-opens-at-latest__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-failed-link-opens-at-latest__mobile.png",
+        "candidate": "images/candidate/conversation-failed-link-opens-at-latest__mobile.png",
+        "diff": "images/diff/conversation-failed-link-opens-at-latest__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-file-draft__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-file-draft__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-file-draft__desktop.png",
+        "candidate": "images/candidate/conversation-file-draft__desktop.png",
+        "diff": "images/diff/conversation-file-draft__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-file-draft__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-file-draft__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-file-draft__mobile.png",
+        "candidate": "images/candidate/conversation-file-draft__mobile.png",
+        "diff": "images/diff/conversation-file-draft__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-file-reply__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-file-reply__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-file-reply__desktop.png",
+        "candidate": "images/candidate/conversation-file-reply__desktop.png",
+        "diff": "images/diff/conversation-file-reply__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-file-reply__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-file-reply__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-file-reply__mobile.png",
+        "candidate": "images/candidate/conversation-file-reply__mobile.png",
+        "diff": "images/diff/conversation-file-reply__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-fork-dialog__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-fork-dialog__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-fork-dialog__desktop.png",
+        "candidate": "images/candidate/conversation-fork-dialog__desktop.png",
+        "diff": "images/diff/conversation-fork-dialog__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-fork-dialog__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-fork-dialog__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-fork-dialog__mobile.png",
+        "candidate": "images/candidate/conversation-fork-dialog__mobile.png",
+        "diff": "images/diff/conversation-fork-dialog__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-fork-links__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-fork-links__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-fork-links__desktop.png",
+        "candidate": "images/candidate/conversation-fork-links__desktop.png",
+        "diff": "images/diff/conversation-fork-links__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-fork-links__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-fork-links__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-fork-links__mobile.png",
+        "candidate": "images/candidate/conversation-fork-links__mobile.png",
+        "diff": "images/diff/conversation-fork-links__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-google-calendar-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-calendar-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-calendar-link__desktop.png",
+        "candidate": "images/candidate/conversation-google-calendar-link__desktop.png",
+        "diff": "images/diff/conversation-google-calendar-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-calendar-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-calendar-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-calendar-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-google-calendar-link-light__desktop.png",
+        "diff": "images/diff/conversation-google-calendar-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-document-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-document-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-document-link__desktop.png",
+        "candidate": "images/candidate/conversation-google-document-link__desktop.png",
+        "diff": "images/diff/conversation-google-document-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-document-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-document-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-document-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-google-document-link-light__desktop.png",
+        "diff": "images/diff/conversation-google-document-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-drive-file-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-drive-file-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-drive-file-link__desktop.png",
+        "candidate": "images/candidate/conversation-google-drive-file-link__desktop.png",
+        "diff": "images/diff/conversation-google-drive-file-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-drive-file-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-drive-file-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-drive-file-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-google-drive-file-link-light__desktop.png",
+        "diff": "images/diff/conversation-google-drive-file-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-drive-folder-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-drive-folder-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-drive-folder-link__desktop.png",
+        "candidate": "images/candidate/conversation-google-drive-folder-link__desktop.png",
+        "diff": "images/diff/conversation-google-drive-folder-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-google-drive-folder-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-google-drive-folder-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-google-drive-folder-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-google-drive-folder-link-light__desktop.png",
+        "diff": "images/diff/conversation-google-drive-folder-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-link-opens-around-event__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-link-opens-around-event__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-link-opens-around-event__desktop.png",
+        "candidate": "images/candidate/conversation-link-opens-around-event__desktop.png",
+        "diff": "images/diff/conversation-link-opens-around-event__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-link-opens-around-event__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-link-opens-around-event__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-link-opens-around-event__mobile.png",
+        "candidate": "images/candidate/conversation-link-opens-around-event__mobile.png",
+        "diff": "images/diff/conversation-link-opens-around-event__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-long-transcript-memory__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-long-transcript-memory__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-long-transcript-memory__desktop.png",
+        "candidate": "images/candidate/conversation-long-transcript-memory__desktop.png",
+        "diff": "images/diff/conversation-long-transcript-memory__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-long-transcript-touch__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-long-transcript-touch__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-long-transcript-touch__mobile.png",
+        "candidate": "images/candidate/conversation-long-transcript-touch__mobile.png",
+        "diff": "images/diff/conversation-long-transcript-touch__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-memory-list-jump__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-memory-list-jump__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-memory-list-jump__desktop.png",
+        "candidate": "images/candidate/conversation-memory-list-jump__desktop.png",
+        "diff": "images/diff/conversation-memory-list-jump__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-memory-list-jump__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-memory-list-jump__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-memory-list-jump__mobile.png",
+        "candidate": "images/candidate/conversation-memory-list-jump__mobile.png",
+        "diff": "images/diff/conversation-memory-list-jump__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-memory-opens-around-event__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-memory-opens-around-event__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-memory-opens-around-event__desktop.png",
+        "candidate": "images/candidate/conversation-memory-opens-around-event__desktop.png",
+        "diff": "images/diff/conversation-memory-opens-around-event__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-memory-opens-around-event__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-memory-opens-around-event__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-memory-opens-around-event__mobile.png",
+        "candidate": "images/candidate/conversation-memory-opens-around-event__mobile.png",
+        "diff": "images/diff/conversation-memory-opens-around-event__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-object-attach__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-attach__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-attach__desktop.png",
+        "candidate": "images/candidate/conversation-object-attach__desktop.png",
+        "diff": "images/diff/conversation-object-attach__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-object-attach-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-attach-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-attach-light__desktop.png",
+        "candidate": "images/candidate/conversation-object-attach-light__desktop.png",
+        "diff": "images/diff/conversation-object-attach-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-object-attached__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-attached__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-attached__desktop.png",
+        "candidate": "images/candidate/conversation-object-attached__desktop.png",
+        "diff": "images/diff/conversation-object-attached__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-object-attached-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-attached-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-attached-light__desktop.png",
+        "candidate": "images/candidate/conversation-object-attached-light__desktop.png",
+        "diff": "images/diff/conversation-object-attached-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-object-links__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-links__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-links__desktop.png",
+        "candidate": "images/candidate/conversation-object-links__desktop.png",
+        "diff": "images/diff/conversation-object-links__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-object-links-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-object-links-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-object-links-light__desktop.png",
+        "candidate": "images/candidate/conversation-object-links-light__desktop.png",
+        "diff": "images/diff/conversation-object-links-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-outbox-author__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-outbox-author__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-outbox-author__desktop.png",
+        "candidate": "images/candidate/conversation-outbox-author__desktop.png",
+        "diff": "images/diff/conversation-outbox-author__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-outbox-author__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-outbox-author__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-outbox-author__mobile.png",
+        "candidate": "images/candidate/conversation-outbox-author__mobile.png",
+        "diff": "images/diff/conversation-outbox-author__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-pending-attachment__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-pending-attachment__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-pending-attachment__desktop.png",
+        "candidate": "images/candidate/conversation-pending-attachment__desktop.png",
+        "diff": "images/diff/conversation-pending-attachment__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-pending-attachment__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-pending-attachment__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-pending-attachment__mobile.png",
+        "candidate": "images/candidate/conversation-pending-attachment__mobile.png",
+        "diff": "images/diff/conversation-pending-attachment__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question__desktop.png",
+        "candidate": "images/candidate/conversation-question__desktop.png",
+        "diff": "images/diff/conversation-question__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question__mobile.png",
+        "candidate": "images/candidate/conversation-question__mobile.png",
+        "diff": "images/diff/conversation-question__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-answered__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-answered__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-answered__desktop.png",
+        "candidate": "images/candidate/conversation-question-answered__desktop.png",
+        "diff": "images/diff/conversation-question-answered__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-answered__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question-answered__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-answered__mobile.png",
+        "candidate": "images/candidate/conversation-question-answered__mobile.png",
+        "diff": "images/diff/conversation-question-answered__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-context__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-context__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-context__desktop.png",
+        "candidate": "images/candidate/conversation-question-context__desktop.png",
+        "diff": "images/diff/conversation-question-context__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-context__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question-context__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-context__mobile.png",
+        "candidate": "images/candidate/conversation-question-context__mobile.png",
+        "diff": "images/diff/conversation-question-context__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-dismissed__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-dismissed__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-dismissed__desktop.png",
+        "candidate": "images/candidate/conversation-question-dismissed__desktop.png",
+        "diff": "images/diff/conversation-question-dismissed__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-dismissed__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question-dismissed__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-dismissed__mobile.png",
+        "candidate": "images/candidate/conversation-question-dismissed__mobile.png",
+        "diff": "images/diff/conversation-question-dismissed__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-form__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-form__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-form__desktop.png",
+        "candidate": "images/candidate/conversation-question-form__desktop.png",
+        "diff": "images/diff/conversation-question-form__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-form__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question-form__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-form__mobile.png",
+        "candidate": "images/candidate/conversation-question-form__mobile.png",
+        "diff": "images/diff/conversation-question-form__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-light__desktop.png",
+        "candidate": "images/candidate/conversation-question-light__desktop.png",
+        "diff": "images/diff/conversation-question-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-light__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-question-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-light__mobile.png",
+        "candidate": "images/candidate/conversation-question-light__mobile.png",
+        "diff": "images/diff/conversation-question-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-question-picks-and-text__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-picks-and-text__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-picks-and-text__desktop.png",
+        "candidate": "images/candidate/conversation-question-picks-and-text__desktop.png",
+        "diff": "images/diff/conversation-question-picks-and-text__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-stepper__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-stepper__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-stepper__desktop.png",
+        "candidate": "images/candidate/conversation-question-stepper__desktop.png",
+        "diff": "images/diff/conversation-question-stepper__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-stepper-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-stepper-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-stepper-light__desktop.png",
+        "candidate": "images/candidate/conversation-question-stepper-light__desktop.png",
+        "diff": "images/diff/conversation-question-stepper-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-question-typed__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-question-typed__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-question-typed__desktop.png",
+        "candidate": "images/candidate/conversation-question-typed__desktop.png",
+        "diff": "images/diff/conversation-question-typed__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-queue-compact__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-queue-compact__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-queue-compact__desktop.png",
+        "candidate": "images/candidate/conversation-queue-compact__desktop.png",
+        "diff": "images/diff/conversation-queue-compact__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-queue-compact__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-queue-compact__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-queue-compact__mobile.png",
+        "candidate": "images/candidate/conversation-queue-compact__mobile.png",
+        "diff": "images/diff/conversation-queue-compact__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-quick-question__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-quick-question__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-quick-question__desktop.png",
+        "candidate": "images/candidate/conversation-quick-question__desktop.png",
+        "diff": "images/diff/conversation-quick-question__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-quick-question__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-quick-question__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-quick-question__mobile.png",
+        "candidate": "images/candidate/conversation-quick-question__mobile.png",
+        "diff": "images/diff/conversation-quick-question__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-quick-question-answered__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-quick-question-answered__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-quick-question-answered__desktop.png",
+        "candidate": "images/candidate/conversation-quick-question-answered__desktop.png",
+        "diff": "images/diff/conversation-quick-question-answered__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-quick-question-answered__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-quick-question-answered__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-quick-question-answered__mobile.png",
+        "candidate": "images/candidate/conversation-quick-question-answered__mobile.png",
+        "diff": "images/diff/conversation-quick-question-answered__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-recalled-memories-popover__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-recalled-memories-popover__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-recalled-memories-popover__desktop.png",
+        "candidate": "images/candidate/conversation-recalled-memories-popover__desktop.png",
+        "diff": "images/diff/conversation-recalled-memories-popover__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-recalled-memories-popover__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-recalled-memories-popover__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-recalled-memories-popover__mobile.png",
+        "candidate": "images/candidate/conversation-recalled-memories-popover__mobile.png",
+        "diff": "images/diff/conversation-recalled-memories-popover__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-resolved-object-links__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-resolved-object-links__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-resolved-object-links__desktop.png",
+        "candidate": "images/candidate/conversation-resolved-object-links__desktop.png",
+        "diff": "images/diff/conversation-resolved-object-links__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-resolved-object-links-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-resolved-object-links-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-resolved-object-links-light__desktop.png",
+        "candidate": "images/candidate/conversation-resolved-object-links-light__desktop.png",
+        "diff": "images/diff/conversation-resolved-object-links-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-row-context-menu__desktop.png",
+      "image": "images/candidate/conversation-row-context-menu__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-row-context-menu__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "conversation-row-context-menu-light__desktop.png",
+      "image": "images/candidate/conversation-row-context-menu-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-row-context-menu-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "conversation-selection-respond__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-selection-respond__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-selection-respond__desktop.png",
+        "candidate": "images/candidate/conversation-selection-respond__desktop.png",
+        "diff": "images/diff/conversation-selection-respond__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-selection-respond-quoted__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-selection-respond-quoted__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-selection-respond-quoted__desktop.png",
+        "candidate": "images/candidate/conversation-selection-respond-quoted__desktop.png",
+        "diff": "images/diff/conversation-selection-respond-quoted__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-selection-touch__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-selection-touch__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-selection-touch__mobile.png",
+        "candidate": "images/candidate/conversation-selection-touch__mobile.png",
+        "diff": "images/diff/conversation-selection-touch__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-sentry-issue-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-sentry-issue-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sentry-issue-link__desktop.png",
+        "candidate": "images/candidate/conversation-sentry-issue-link__desktop.png",
+        "diff": "images/diff/conversation-sentry-issue-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-sentry-issue-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-sentry-issue-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sentry-issue-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-sentry-issue-link-light__desktop.png",
+        "diff": "images/diff/conversation-sentry-issue-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-share-details__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-share-details__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-share-details__desktop.png",
+        "candidate": "images/candidate/conversation-share-details__desktop.png",
+        "diff": "images/diff/conversation-share-details__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-share-details__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-share-details__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-share-details__mobile.png",
+        "candidate": "images/candidate/conversation-share-details__mobile.png",
+        "diff": "images/diff/conversation-share-details__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-share-menu__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-share-menu__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-share-menu__mobile.png",
+        "candidate": "images/candidate/conversation-share-menu__mobile.png",
+        "diff": "images/diff/conversation-share-menu__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-sidebar-context-menu__desktop.png",
+      "image": "images/baseline/conversation-sidebar-context-menu__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sidebar-context-menu__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversation-sidebar-context-menu-light__desktop.png",
+      "image": "images/baseline/conversation-sidebar-context-menu-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sidebar-context-menu-light__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversation-sidebar-review-chip__desktop.png",
+      "image": "images/baseline/conversation-sidebar-review-chip__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sidebar-review-chip__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversation-sidebar-review-chip-light__desktop.png",
+      "image": "images/baseline/conversation-sidebar-review-chip-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sidebar-review-chip-light__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversation-sidebar-review-chip-tooltip__desktop.png",
+      "image": "images/baseline/conversation-sidebar-review-chip-tooltip__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-sidebar-review-chip-tooltip__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversation-slack-message-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-slack-message-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-slack-message-link__desktop.png",
+        "candidate": "images/candidate/conversation-slack-message-link__desktop.png",
+        "diff": "images/diff/conversation-slack-message-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-slack-message-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-slack-message-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-slack-message-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-slack-message-link-light__desktop.png",
+        "diff": "images/diff/conversation-slack-message-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-stop-active__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-stop-active__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-stop-active__desktop.png",
+        "candidate": "images/candidate/conversation-stop-active__desktop.png",
+        "diff": "images/diff/conversation-stop-active__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-stop-active__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-stop-active__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-stop-active__mobile.png",
+        "candidate": "images/candidate/conversation-stop-active__mobile.png",
+        "diff": "images/diff/conversation-stop-active__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-subagents__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-subagents__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-subagents__desktop.png",
+        "candidate": "images/candidate/conversation-subagents__desktop.png",
+        "diff": "images/diff/conversation-subagents__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-subagents__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-subagents__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-subagents__mobile.png",
+        "candidate": "images/candidate/conversation-subagents__mobile.png",
+        "diff": "images/diff/conversation-subagents__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-task-line__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-task-line__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-task-line__desktop.png",
+        "candidate": "images/candidate/conversation-task-line__desktop.png",
+        "diff": "images/diff/conversation-task-line__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-task-line__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-task-line__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-task-line__mobile.png",
+        "candidate": "images/candidate/conversation-task-line__mobile.png",
+        "diff": "images/diff/conversation-task-line__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-task-page__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-task-page__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-task-page__desktop.png",
+        "candidate": "images/candidate/conversation-task-page__desktop.png",
+        "diff": "images/diff/conversation-task-page__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-task-page__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-task-page__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-task-page__mobile.png",
+        "candidate": "images/candidate/conversation-task-page__mobile.png",
+        "diff": "images/diff/conversation-task-page__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-text-attachment__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-text-attachment__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-text-attachment__desktop.png",
+        "candidate": "images/candidate/conversation-text-attachment__desktop.png",
+        "diff": "images/diff/conversation-text-attachment__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-text-attachment__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-text-attachment__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-text-attachment__mobile.png",
+        "candidate": "images/candidate/conversation-text-attachment__mobile.png",
+        "diff": "images/diff/conversation-text-attachment__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-text-attachment-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-text-attachment-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-text-attachment-light__desktop.png",
+        "candidate": "images/candidate/conversation-text-attachment-light__desktop.png",
+        "diff": "images/diff/conversation-text-attachment-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-text-attachment-light__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-text-attachment-light__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-text-attachment-light__mobile.png",
+        "candidate": "images/candidate/conversation-text-attachment-light__mobile.png",
+        "diff": "images/diff/conversation-text-attachment-light__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-text-attachment-raw__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-text-attachment-raw__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-text-attachment-raw__desktop.png",
+        "candidate": "images/candidate/conversation-text-attachment-raw__desktop.png",
+        "diff": "images/diff/conversation-text-attachment-raw__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-thread-cards__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-thread-cards__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-thread-cards__desktop.png",
+        "candidate": "images/candidate/conversation-thread-cards__desktop.png",
+        "diff": "images/diff/conversation-thread-cards__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-thread-cards__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-thread-cards__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-thread-cards__mobile.png",
+        "candidate": "images/candidate/conversation-thread-cards__mobile.png",
+        "diff": "images/diff/conversation-thread-cards__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-thread-page__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-thread-page__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-thread-page__desktop.png",
+        "candidate": "images/candidate/conversation-thread-page__desktop.png",
+        "diff": "images/diff/conversation-thread-page__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-thread-page__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-thread-page__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-thread-page__mobile.png",
+        "candidate": "images/candidate/conversation-thread-page__mobile.png",
+        "diff": "images/diff/conversation-thread-page__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-unread-marker__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-unread-marker__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-unread-marker__mobile.png",
+        "candidate": "images/candidate/conversation-unread-marker__mobile.png",
+        "diff": "images/diff/conversation-unread-marker__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-unsent-answers__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-unsent-answers__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-unsent-answers__desktop.png",
+        "candidate": "images/candidate/conversation-unsent-answers__desktop.png",
+        "diff": "images/diff/conversation-unsent-answers__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-web-page-card__desktop.png",
+      "height": 349,
+      "image": "images/diff/conversation-web-page-card__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-web-page-card__desktop.png",
+        "candidate": "images/candidate/conversation-web-page-card__desktop.png",
+        "diff": "images/diff/conversation-web-page-card__desktop.png"
+      },
+      "status": "changed",
+      "width": 619
+    },
+    {
+      "file": "conversation-web-page-card-light__desktop.png",
+      "height": 349,
+      "image": "images/diff/conversation-web-page-card-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-web-page-card-light__desktop.png",
+        "candidate": "images/candidate/conversation-web-page-card-light__desktop.png",
+        "diff": "images/diff/conversation-web-page-card-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 619
+    },
+    {
+      "file": "conversation-web-page-link__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-web-page-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-web-page-link__desktop.png",
+        "candidate": "images/candidate/conversation-web-page-link__desktop.png",
+        "diff": "images/diff/conversation-web-page-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-web-page-link-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-web-page-link-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-web-page-link-light__desktop.png",
+        "candidate": "images/candidate/conversation-web-page-link-light__desktop.png",
+        "diff": "images/diff/conversation-web-page-link-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversations__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversations__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations__desktop.png",
+        "candidate": "images/candidate/conversations__desktop.png",
+        "diff": "images/diff/conversations__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversations__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversations__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversations__mobile.png",
+        "candidate": "images/candidate/conversations__mobile.png",
+        "diff": "images/diff/conversations__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversations-list-held__desktop.png",
+      "image": "images/baseline/conversations-list-held__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-list-held__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversations-list-held-light__desktop.png",
+      "image": "images/baseline/conversations-list-held-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-list-held-light__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversations-needs-you__desktop.png",
+      "image": "images/baseline/conversations-needs-you__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-needs-you__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversations-needs-you__mobile.png",
+      "image": "images/baseline/conversations-needs-you__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversations-needs-you__mobile.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversations-pinned__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversations-pinned__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-pinned__desktop.png",
+        "candidate": "images/candidate/conversations-pinned__desktop.png",
+        "diff": "images/diff/conversations-pinned__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversations-pinned-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversations-pinned-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-pinned-light__desktop.png",
+        "candidate": "images/candidate/conversations-pinned-light__desktop.png",
+        "diff": "images/diff/conversations-pinned-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversations-sections-collapsed__desktop.png",
+      "image": "images/baseline/conversations-sections-collapsed__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversations-sections-collapsed__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "conversations-sections-collapsed__mobile.png",
+      "image": "images/baseline/conversations-sections-collapsed__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversations-sections-collapsed__mobile.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "inbox__desktop.png",
+      "image": "images/candidate/inbox__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox__mobile.png",
+      "image": "images/candidate/inbox__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-automations__desktop.png",
+      "image": "images/candidate/inbox-automations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-automations__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-automations__mobile.png",
+      "image": "images/candidate/inbox-automations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-automations__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-automations-light__desktop.png",
+      "image": "images/candidate/inbox-automations-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-automations-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-automations-light__mobile.png",
+      "image": "images/candidate/inbox-automations-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-automations-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversation-open__desktop.png",
+      "image": "images/candidate/inbox-conversation-open__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversation-open__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversation-open-light__desktop.png",
+      "image": "images/candidate/inbox-conversation-open-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversation-open-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversations__desktop.png",
+      "image": "images/candidate/inbox-conversations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversations__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversations__mobile.png",
+      "image": "images/candidate/inbox-conversations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversations__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversations-light__desktop.png",
+      "image": "images/candidate/inbox-conversations-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversations-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-conversations-light__mobile.png",
+      "image": "images/candidate/inbox-conversations-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-conversations-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-decisions__desktop.png",
+      "image": "images/candidate/inbox-decisions__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-decisions__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-decisions__mobile.png",
+      "image": "images/candidate/inbox-decisions__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-decisions__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-decisions-light__desktop.png",
+      "image": "images/candidate/inbox-decisions-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-decisions-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-decisions-light__mobile.png",
+      "image": "images/candidate/inbox-decisions-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-decisions-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-done__desktop.png",
+      "image": "images/candidate/inbox-done__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-done__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-done__mobile.png",
+      "image": "images/candidate/inbox-done__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-done__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-done-light__desktop.png",
+      "image": "images/candidate/inbox-done-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-done-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-done-light__mobile.png",
+      "image": "images/candidate/inbox-done-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-done-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-in-flight__desktop.png",
+      "image": "images/candidate/inbox-in-flight__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-in-flight__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-light__desktop.png",
+      "image": "images/candidate/inbox-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-light__mobile.png",
+      "image": "images/candidate/inbox-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-new-conversation__desktop.png",
+      "image": "images/candidate/inbox-new-conversation__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-new-conversation__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-new-conversation__mobile.png",
+      "image": "images/candidate/inbox-new-conversation__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-new-conversation__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-new-conversation-light__desktop.png",
+      "image": "images/candidate/inbox-new-conversation-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-new-conversation-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-new-conversation-light__mobile.png",
+      "image": "images/candidate/inbox-new-conversation-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-new-conversation-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-entries__desktop.png",
+      "image": "images/candidate/inbox-phone-entries__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-entries__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-entries__mobile.png",
+      "image": "images/candidate/inbox-phone-entries__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-entries__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-entries-light__desktop.png",
+      "image": "images/candidate/inbox-phone-entries-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-entries-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-entries-light__mobile.png",
+      "image": "images/candidate/inbox-phone-entries-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-entries-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-list__desktop.png",
+      "image": "images/candidate/inbox-phone-list__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-list__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-list__mobile.png",
+      "image": "images/candidate/inbox-phone-list__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-list__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-list-light__desktop.png",
+      "image": "images/candidate/inbox-phone-list-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-list-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-phone-list-light__mobile.png",
+      "image": "images/candidate/inbox-phone-list-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-phone-list-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-pull-requests__desktop.png",
+      "image": "images/candidate/inbox-pull-requests__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-pull-requests__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-pull-requests__mobile.png",
+      "image": "images/candidate/inbox-pull-requests__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-pull-requests__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-pull-requests-light__desktop.png",
+      "image": "images/candidate/inbox-pull-requests-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-pull-requests-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-pull-requests-light__mobile.png",
+      "image": "images/candidate/inbox-pull-requests-light__mobile.png",
+      "images": {
+        "candidate": "images/candidate/inbox-pull-requests-light__mobile.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-row-answer__desktop.png",
+      "image": "images/candidate/inbox-row-answer__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-row-answer__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-row-answer-light__desktop.png",
+      "image": "images/candidate/inbox-row-answer-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-row-answer-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-snooze__desktop.png",
+      "image": "images/candidate/inbox-snooze__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-snooze__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-sweep__desktop.png",
+      "image": "images/candidate/inbox-sweep__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-sweep__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-sweep-light__desktop.png",
+      "image": "images/candidate/inbox-sweep-light__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-sweep-light__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "inbox-todo-collapsed__desktop.png",
+      "image": "images/candidate/inbox-todo-collapsed__desktop.png",
+      "images": {
+        "candidate": "images/candidate/inbox-todo-collapsed__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "location-detail__desktop.png",
+      "height": 900,
+      "image": "images/diff/location-detail__desktop.png",
+      "images": {
+        "baseline": "images/baseline/location-detail__desktop.png",
+        "candidate": "images/candidate/location-detail__desktop.png",
+        "diff": "images/diff/location-detail__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "location-detail__mobile.png",
+      "height": 1094,
+      "image": "images/diff/location-detail__mobile.png",
+      "images": {
+        "baseline": "images/baseline/location-detail__mobile.png",
+        "candidate": "images/candidate/location-detail__mobile.png",
+        "diff": "images/diff/location-detail__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "locations__desktop.png",
+      "height": 1398,
+      "image": "images/diff/locations__desktop.png",
+      "images": {
+        "baseline": "images/baseline/locations__desktop.png",
+        "candidate": "images/candidate/locations__desktop.png",
+        "diff": "images/diff/locations__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "locations__mobile.png",
+      "height": 1921,
+      "image": "images/diff/locations__mobile.png",
+      "images": {
+        "baseline": "images/baseline/locations__mobile.png",
+        "candidate": "images/candidate/locations__mobile.png",
+        "diff": "images/diff/locations__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "memories__desktop.png",
+      "height": 1088,
+      "image": "images/diff/memories__desktop.png",
+      "images": {
+        "baseline": "images/baseline/memories__desktop.png",
+        "candidate": "images/candidate/memories__desktop.png",
+        "diff": "images/diff/memories__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "memories__mobile.png",
+      "height": 1794,
+      "image": "images/diff/memories__mobile.png",
+      "images": {
+        "baseline": "images/baseline/memories__mobile.png",
+        "candidate": "images/candidate/memories__mobile.png",
+        "diff": "images/diff/memories__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "memories-library__desktop.png",
+      "height": 900,
+      "image": "images/diff/memories-library__desktop.png",
+      "images": {
+        "baseline": "images/baseline/memories-library__desktop.png",
+        "candidate": "images/candidate/memories-library__desktop.png",
+        "diff": "images/diff/memories-library__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "memories-library__mobile.png",
+      "height": 844,
+      "image": "images/diff/memories-library__mobile.png",
+      "images": {
+        "baseline": "images/baseline/memories-library__mobile.png",
+        "candidate": "images/candidate/memories-library__mobile.png",
+        "diff": "images/diff/memories-library__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "memories-search__desktop.png",
+      "image": "images/baseline/memories-search__desktop.png",
+      "images": {
+        "baseline": "images/baseline/memories-search__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "memories-search__mobile.png",
+      "image": "images/baseline/memories-search__mobile.png",
+      "images": {
+        "baseline": "images/baseline/memories-search__mobile.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "navigation-pane-automations__desktop.png",
+      "image": "images/candidate/navigation-pane-automations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/navigation-pane-automations__desktop.png"
+      },
+      "status": "added"
+    },
+    {
+      "file": "people__desktop.png",
+      "height": 1019,
+      "image": "images/diff/people__desktop.png",
+      "images": {
+        "baseline": "images/baseline/people__desktop.png",
+        "candidate": "images/candidate/people__desktop.png",
+        "diff": "images/diff/people__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "people__mobile.png",
+      "height": 1372,
+      "image": "images/diff/people__mobile.png",
+      "images": {
+        "baseline": "images/baseline/people__mobile.png",
+        "candidate": "images/candidate/people__mobile.png",
+        "diff": "images/diff/people__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "height": 2477,
+      "image": "images/diff/person-profile__desktop.png",
+      "images": {
+        "baseline": "images/baseline/person-profile__desktop.png",
+        "candidate": "images/candidate/person-profile__desktop.png",
+        "diff": "images/diff/person-profile__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "image": "images/candidate/person-profile__mobile.png",
+      "images": {
+        "candidate": "images/candidate/person-profile__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "push-notifications-tip__desktop.png",
+      "height": 900,
+      "image": "images/diff/push-notifications-tip__desktop.png",
+      "images": {
+        "baseline": "images/baseline/push-notifications-tip__desktop.png",
+        "candidate": "images/candidate/push-notifications-tip__desktop.png",
+        "diff": "images/diff/push-notifications-tip__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "push-notifications-tip-on__desktop.png",
+      "height": 900,
+      "image": "images/diff/push-notifications-tip-on__desktop.png",
+      "images": {
+        "baseline": "images/baseline/push-notifications-tip-on__desktop.png",
+        "candidate": "images/candidate/push-notifications-tip-on__desktop.png",
+        "diff": "images/diff/push-notifications-tip-on__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "review-desk__desktop.png",
+      "image": "images/baseline/review-desk__desktop.png",
+      "images": {
+        "baseline": "images/baseline/review-desk__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-empty__desktop.png",
+      "image": "images/baseline/review-desk-empty__desktop.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-empty__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-item__mobile.png",
+      "image": "images/baseline/review-desk-item__mobile.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-item__mobile.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-light__desktop.png",
+      "image": "images/baseline/review-desk-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-light__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-list__mobile.png",
+      "image": "images/baseline/review-desk-list__mobile.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-list__mobile.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-other__desktop.png",
+      "image": "images/baseline/review-desk-other__desktop.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-other__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "review-desk-search__desktop.png",
+      "image": "images/baseline/review-desk-search__desktop.png",
+      "images": {
+        "baseline": "images/baseline/review-desk-search__desktop.png"
+      },
+      "status": "removed"
+    },
+    {
+      "file": "settings__desktop.png",
+      "height": 3270,
+      "image": "images/diff/settings__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings__desktop.png",
+        "candidate": "images/candidate/settings__desktop.png",
+        "diff": "images/diff/settings__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-api-tokens__desktop.png",
+      "height": 3270,
+      "image": "images/diff/settings-api-tokens__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-api-tokens__desktop.png",
+        "candidate": "images/candidate/settings-api-tokens__desktop.png",
+        "diff": "images/diff/settings-api-tokens__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-api-tokens-created__desktop.png",
+      "height": 3437,
+      "image": "images/diff/settings-api-tokens-created__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-api-tokens-created__desktop.png",
+        "candidate": "images/candidate/settings-api-tokens-created__desktop.png",
+        "diff": "images/diff/settings-api-tokens-created__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-api-tokens-preview-handoff__desktop.png",
+      "height": 3357,
+      "image": "images/diff/settings-api-tokens-preview-handoff__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-api-tokens-preview-handoff__desktop.png",
+        "candidate": "images/candidate/settings-api-tokens-preview-handoff__desktop.png",
+        "diff": "images/diff/settings-api-tokens-preview-handoff__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-auto-archive__desktop.png",
+      "height": 376,
+      "image": "images/diff/settings-auto-archive__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-auto-archive__desktop.png",
+        "candidate": "images/candidate/settings-auto-archive__desktop.png",
+        "diff": "images/diff/settings-auto-archive__desktop.png"
+      },
+      "status": "changed",
+      "width": 768
+    },
+    {
+      "file": "settings-connections__desktop.png",
+      "height": 3281,
+      "image": "images/diff/settings-connections__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-connections__desktop.png",
+        "candidate": "images/candidate/settings-connections__desktop.png",
+        "diff": "images/diff/settings-connections__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-connections__mobile.png",
+      "height": 3697,
+      "image": "images/diff/settings-connections__mobile.png",
+      "images": {
+        "baseline": "images/baseline/settings-connections__mobile.png",
+        "candidate": "images/candidate/settings-connections__mobile.png",
+        "diff": "images/diff/settings-connections__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "settings-mcp__desktop.png",
+      "height": 3270,
+      "image": "images/diff/settings-mcp__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-mcp__desktop.png",
+        "candidate": "images/candidate/settings-mcp__desktop.png",
+        "diff": "images/diff/settings-mcp__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-notifications__desktop.png",
+      "height": 3270,
+      "image": "images/diff/settings-notifications__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-notifications__desktop.png",
+        "candidate": "images/candidate/settings-notifications__desktop.png",
+        "diff": "images/diff/settings-notifications__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "settings-notifications__mobile.png",
+      "height": 3705,
+      "image": "images/diff/settings-notifications__mobile.png",
+      "images": {
+        "baseline": "images/baseline/settings-notifications__mobile.png",
+        "candidate": "images/candidate/settings-notifications__mobile.png",
+        "diff": "images/diff/settings-notifications__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "settings-notifications-slack__desktop.png",
+      "height": 712,
+      "image": "images/diff/settings-notifications-slack__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-notifications-slack__desktop.png",
+        "candidate": "images/candidate/settings-notifications-slack__desktop.png",
+        "diff": "images/diff/settings-notifications-slack__desktop.png"
+      },
+      "status": "changed",
+      "width": 768
+    },
+    {
+      "file": "settings-notifications-slack__mobile.png",
+      "height": 859,
+      "image": "images/diff/settings-notifications-slack__mobile.png",
+      "images": {
+        "baseline": "images/baseline/settings-notifications-slack__mobile.png",
+        "candidate": "images/candidate/settings-notifications-slack__mobile.png",
+        "diff": "images/diff/settings-notifications-slack__mobile.png"
+      },
+      "status": "changed",
+      "width": 358
+    },
+    {
+      "file": "settings-section-link__desktop.png",
+      "height": 144,
+      "image": "images/diff/settings-section-link__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-section-link__desktop.png",
+        "candidate": "images/candidate/settings-section-link__desktop.png",
+        "diff": "images/diff/settings-section-link__desktop.png"
+      },
+      "status": "changed",
+      "width": 768
+    },
+    {
+      "file": "settings-theme-light__desktop.png",
+      "height": 900,
+      "image": "images/diff/settings-theme-light__desktop.png",
+      "images": {
+        "baseline": "images/baseline/settings-theme-light__desktop.png",
+        "candidate": "images/candidate/settings-theme-light__desktop.png",
+        "diff": "images/diff/settings-theme-light__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-cache-missing__desktop.png",
+      "height": 2727,
+      "image": "images/diff/system-cache-missing__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-missing__desktop.png",
+        "candidate": "images/candidate/system-cache-missing__desktop.png",
+        "diff": "images/diff/system-cache-missing__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-cache-share__desktop.png",
+      "height": 2445,
+      "image": "images/diff/system-cache-share__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-share__desktop.png",
+        "candidate": "images/candidate/system-cache-share__desktop.png",
+        "diff": "images/diff/system-cache-share__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-cache-share__mobile.png",
+      "height": 3583,
+      "image": "images/diff/system-cache-share__mobile.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-share__mobile.png",
+        "candidate": "images/candidate/system-cache-share__mobile.png",
+        "diff": "images/diff/system-cache-share__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "system-cache-tokens__desktop.png",
+      "height": 2445,
+      "image": "images/diff/system-cache-tokens__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-tokens__desktop.png",
+        "candidate": "images/candidate/system-cache-tokens__desktop.png",
+        "diff": "images/diff/system-cache-tokens__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-plugin-github__desktop.png",
+      "height": 900,
+      "image": "images/diff/system-plugin-github__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-plugin-github__desktop.png",
+        "candidate": "images/candidate/system-plugin-github__desktop.png",
+        "diff": "images/diff/system-plugin-github__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-plugins__desktop.png",
+      "height": 900,
+      "image": "images/diff/system-plugins__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-plugins__desktop.png",
+        "candidate": "images/candidate/system-plugins__desktop.png",
+        "diff": "images/diff/system-plugins__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspace-create__desktop.png",
+      "height": 1007,
+      "image": "images/diff/workspace-create__desktop.png",
+      "images": {
+        "baseline": "images/baseline/workspace-create__desktop.png",
+        "candidate": "images/candidate/workspace-create__desktop.png",
+        "diff": "images/diff/workspace-create__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspace-create__mobile.png",
+      "height": 1435,
+      "image": "images/diff/workspace-create__mobile.png",
+      "images": {
+        "baseline": "images/baseline/workspace-create__mobile.png",
+        "candidate": "images/candidate/workspace-create__mobile.png",
+        "diff": "images/diff/workspace-create__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "height": 900,
+      "image": "images/diff/workspace-detail__desktop.png",
+      "images": {
+        "baseline": "images/baseline/workspace-detail__desktop.png",
+        "candidate": "images/candidate/workspace-detail__desktop.png",
+        "diff": "images/diff/workspace-detail__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspaces__desktop.png",
+      "height": 900,
+      "image": "images/diff/workspaces__desktop.png",
+      "images": {
+        "baseline": "images/baseline/workspaces__desktop.png",
+        "candidate": "images/candidate/workspaces__desktop.png",
+        "diff": "images/diff/workspaces__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "height": 844,
+      "image": "images/diff/workspaces__mobile.png",
+      "images": {
+        "baseline": "images/baseline/workspaces__mobile.png",
+        "candidate": "images/candidate/workspaces__mobile.png",
+        "diff": "images/diff/workspaces__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    }
+  ],
+  "metadata": {
+    "pullRequest": {
+      "number": 3035,
+      "title": "feat(dashboard): Put primary navigation in the list pane"
+    }
+  },
+  "summary": {
+    "added": 48,
+    "changed": 224,
+    "removed": 20,
+    "unchanged": 10
+  },
+  "version": 2
+}
