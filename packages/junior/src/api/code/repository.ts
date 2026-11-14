@@ -16,8 +16,11 @@ import {
 /** Most recent code changes listed on one repository page. */
 const REPOSITORY_CHANGE_LIMIT = 100;
 
+// A repository without changes joins one row with a null state, which
+// counts in no state. Counting rows, not ids, lets Postgres read the counts
+// from the repository and state index alone.
 function countState(state: CodeChangeState) {
-  return sql<number>`count(${juniorCodeChanges.id}) filter (where ${juniorCodeChanges.state} = ${state})`.mapWith(
+  return sql<number>`count(*) filter (where ${juniorCodeChanges.state} = ${state})`.mapWith(
     Number,
   );
 }
