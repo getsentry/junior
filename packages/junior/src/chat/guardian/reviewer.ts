@@ -61,6 +61,9 @@ const SCRIPT_RULES = [
   "Use the script to find where data in the input came from. When the script reads data with an earlier call and sends, posts, or writes it with this action, judge the data that reaches the destination, as if the agent sent it directly.",
 ].join("\n");
 
+const TRUNCATED_INPUT_RULE =
+  "The `input` in the planned action is shortened: long values are cut at a `[truncated]` marker. The tool gets the full input. Do not assume that the part you cannot see is safe.";
+
 const TRUNCATED_ROOT_NOTICE =
   "Host notice: some root messages are not shown. Do not treat the shown root messages as complete authorization for an action.";
 
@@ -113,6 +116,7 @@ export function guardianPrompt(proposal: ToolActionProposal): string {
         ]
       : []),
     ...(action.script ? [SCRIPT_RULES] : []),
+    ...(action.inputTruncated ? [TRUNCATED_INPUT_RULE] : []),
     ">>> APPROVAL REQUEST START",
     "Assess the exact planned action below.",
     "Planned action JSON:",
@@ -130,11 +134,16 @@ function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
 const NO_CONFIRMATION_REASON =
   "No person can confirm this action in this run, so do not ask for confirmation.";
 
+const TRUNCATED_INPUT_REASON =
+  "The input is too large to review in full. Make the input smaller or split the action into smaller calls.";
+
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
  * authorization, and turns an ask into deny when no person can answer. That
- * deny gets a reason that says so, so the agent does not try to ask.
+ * deny gets a reason that says so, so the agent does not try to ask. A
+ * shortened input is denied, because the tool gets input that Guardian did
+ * not see.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
@@ -151,6 +160,15 @@ export function guardianDecision(
       assessment.userAuthorization === "unknown")
   ) {
     decision = "ask";
+  }
+  // Deny, not ask: an ask only rejects the call, and a retry with the same
+  // input is shortened again, so a person's yes cannot let it through. This
+  // becomes `ask` once the code-enforced ask from #3320 lands.
+  if (decision !== "deny" && proposal.inputTruncated) {
+    return {
+      decision: "deny",
+      reason: `${assessment.reason} ${TRUNCATED_INPUT_REASON}`,
+    };
   }
   if (decision === "ask" && noPersonCanConfirm(proposal)) {
     return {
