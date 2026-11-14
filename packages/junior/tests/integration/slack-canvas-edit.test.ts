@@ -75,7 +75,7 @@ describe("Slack canvas file-like tools", () => {
         },
       ],
     });
-    const change = editCalls[0]?.params.changes as
+    const change = editCalls[0]?.params["changes"] as
       | Array<Record<string, unknown>>
       | undefined;
     expect(change?.[0]).not.toHaveProperty("section_id");

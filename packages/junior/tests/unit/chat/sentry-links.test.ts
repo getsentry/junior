@@ -21,14 +21,14 @@ async function loadSentryLinks() {
 }
 
 afterEach(() => {
-  delete process.env.SENTRY_ORG_SLUG;
+  delete process.env["SENTRY_ORG_SLUG"];
   vi.doUnmock("@/chat/sentry");
   vi.resetModules();
 });
 
 describe("sentry links", () => {
   it("builds SaaS event urls with org subdomain and project", async () => {
-    process.env.SENTRY_ORG_SLUG = "my-org";
+    process.env["SENTRY_ORG_SLUG"] = "my-org";
     mockSentryClient({
       protocol: "https",
       host: "o123.ingest.us.sentry.io",
@@ -43,7 +43,7 @@ describe("sentry links", () => {
   });
 
   it("builds self-hosted event urls under /organizations/{slug}", async () => {
-    process.env.SENTRY_ORG_SLUG = "my-org";
+    process.env["SENTRY_ORG_SLUG"] = "my-org";
     mockSentryClient({
       protocol: "https",
       host: "sentry.example.com",

@@ -109,12 +109,12 @@ describe("init cli", () => {
     const vercelConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "vercel.json"),
     );
-    expect(vercelConfig.framework).toBe("nitro");
-    expect(vercelConfig.buildCommand).toBe(
+    expect(vercelConfig["framework"]).toBe("nitro");
+    expect(vercelConfig["buildCommand"]).toBe(
       "pnpm exec junior upgrade && pnpm build",
     );
-    expect(vercelConfig.crons).toBeUndefined();
-    expect(vercelConfig.functions).toBeUndefined();
+    expect(vercelConfig["crons"]).toBeUndefined();
+    expect(vercelConfig["functions"]).toBeUndefined();
 
     const serverEntry = fs.readFileSync(path.join(target, "server.ts"), "utf8");
     expect(serverEntry).toContain(
@@ -141,7 +141,7 @@ describe("init cli", () => {
     const tsConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "tsconfig.json"),
     );
-    expect(tsConfig.extends).toBe("nitro/tsconfig");
+    expect(tsConfig["extends"]).toBe("nitro/tsconfig");
 
     const pluginsFile = fs.readFileSync(
       path.join(target, "plugins.ts"),
@@ -166,14 +166,14 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
     expect(pkg.dependencies["@sentry/nitro"]).toBeUndefined();
-    expect(pkg.devDependencies.nitro).toBeDefined();
-    expect(pkg.devDependencies.vite).toBeUndefined();
-    expect(pkg.devDependencies.vercel).toBeUndefined();
-    expect(pkg.scripts.dev).toBe("nitro dev");
-    expect(pkg.scripts.check).toBe("junior check");
-    expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
-    expect(pkg.scripts.preview).toBe("nitro preview");
-    expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+    expect(pkg.devDependencies["nitro"]).toBeDefined();
+    expect(pkg.devDependencies["vite"]).toBeUndefined();
+    expect(pkg.devDependencies["vercel"]).toBeUndefined();
+    expect(pkg.scripts["dev"]).toBe("nitro dev");
+    expect(pkg.scripts["check"]).toBe("junior check");
+    expect(pkg.scripts["build"]).toBe("junior snapshot create && nitro build");
+    expect(pkg.scripts["preview"]).toBe("nitro preview");
+    expect(pkg.scripts["typecheck"]).toBe("tsc --noEmit");
 
     const pnpmWorkspace = fs.readFileSync(
       path.join(target, "pnpm-workspace.yaml"),

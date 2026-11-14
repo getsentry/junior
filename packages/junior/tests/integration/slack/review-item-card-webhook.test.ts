@@ -106,7 +106,7 @@ async function addItem(
 }
 
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
-  const blocks = call?.params.blocks;
+  const blocks = call?.params["blocks"];
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
     elements?: Array<{
       action_id?: string;
@@ -272,7 +272,7 @@ describe("Slack webhook: Review item cards", () => {
     // Each linked thread gets a card with one button per choice. The
     // recommended choice is the primary button.
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel).sort()).toEqual([
+    expect(posts.map((post) => post.params["channel"]).sort()).toEqual([
       "C123",
       "C456",
     ]);
@@ -389,9 +389,9 @@ describe("Slack webhook: Review item cards", () => {
     const updates = slackApiOutbox
       .calls("chat.update")
       .slice(updatesBeforeClose);
-    expect(updates.slice(0, 2).map((update) => update.params.channel)).toEqual(
-      expect.arrayContaining(["C123", "C456"]),
-    );
+    expect(
+      updates.slice(0, 2).map((update) => update.params["channel"]),
+    ).toEqual(expect.arrayContaining(["C123", "C456"]));
     for (const update of updates) {
       const blocks = blocksOf(update);
       expect(blocks.some((block) => block.type === "actions")).toBe(false);
@@ -623,7 +623,7 @@ describe("Slack webhook: Review item cards", () => {
     });
 
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    expect(posts.map((post) => post.params["channel"])).toEqual(["C123"]);
     // The title links to the subject.
     expect(blocksOf(posts[0])[0]?.text).toContain(
       "**[Rotate the deploy key](https://github.com/acme/infra/pull/12)**",

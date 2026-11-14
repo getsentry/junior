@@ -348,7 +348,7 @@ describe("web page cards", () => {
   test("follows at most 2 redirects", async () => {
     mswServer.use(
       http.get("https://hops.example.com/:hops", ({ params }) => {
-        const hops = Number(params.hops);
+        const hops = Number(params["hops"]);
         return hops === 0
           ? HttpResponse.html(
               page('<meta property="og:title" content="Arrived">'),

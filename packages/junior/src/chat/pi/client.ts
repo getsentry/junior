@@ -431,17 +431,21 @@ function logContextFromMetadata(
   metadata: Record<string, unknown> | undefined,
 ): LogContext {
   const conversationId =
-    typeof metadata?.conversationId === "string"
-      ? metadata.conversationId
-      : typeof metadata?.threadId === "string"
-        ? metadata.threadId
+    typeof metadata?.["conversationId"] === "string"
+      ? metadata["conversationId"]
+      : typeof metadata?.["threadId"] === "string"
+        ? metadata["threadId"]
         : undefined;
   const messageConversationId =
-    typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+    typeof metadata?.["threadId"] === "string"
+      ? metadata["threadId"]
+      : undefined;
   const destinationName =
-    typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
+    typeof metadata?.["channelId"] === "string"
+      ? metadata["channelId"]
+      : undefined;
   const runId =
-    typeof metadata?.runId === "string" ? metadata.runId : undefined;
+    typeof metadata?.["runId"] === "string" ? metadata["runId"] : undefined;
 
   return {
     modelId,

@@ -7,20 +7,20 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
 
 describe("thread sandbox state", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 

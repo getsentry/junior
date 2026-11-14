@@ -89,7 +89,7 @@ function readSelection(
   const message = element?.closest<HTMLElement>(
     "[data-quick-question-message-id]",
   );
-  const messageId = message?.dataset.quickQuestionMessageId;
+  const messageId = message?.dataset["quickQuestionMessageId"];
   if (!message || !messageId || !root.contains(message)) return undefined;
   return { messageId, quote, range: range.cloneRange() };
 }

@@ -133,15 +133,15 @@ function summarizeContent(content: unknown): {
     }
     const record = part as Record<string, unknown>;
     const type = canonicalContentPartType(
-      typeof record.type === "string" ? record.type : "unknown",
+      typeof record["type"] === "string" ? record["type"] : "unknown",
     );
     partTypes.add(type);
-    if (typeof record.text === "string") {
-      chars += record.text.length;
-    } else if (typeof record.thinking === "string") {
-      chars += record.thinking.length;
-    } else if (typeof record.data === "string") {
-      chars += record.data.length;
+    if (typeof record["text"] === "string") {
+      chars += record["text"].length;
+    } else if (typeof record["thinking"] === "string") {
+      chars += record["thinking"].length;
+    } else if (typeof record["data"] === "string") {
+      chars += record["data"].length;
     } else {
       chars += serializedLength(part);
     }
@@ -252,10 +252,10 @@ export function toGenAiMessagesTraceAttributes(
       continue;
     }
     const record = message as Record<string, unknown>;
-    if (typeof record.role === "string") {
-      roles.add(record.role);
+    if (typeof record["role"] === "string") {
+      roles.add(record["role"]);
     }
-    const summary = summarizeContent(record.content);
+    const summary = summarizeContent(record["content"]);
     contentChars += summary.chars;
     for (const partType of summary.partTypes) {
       partTypes.add(partType);

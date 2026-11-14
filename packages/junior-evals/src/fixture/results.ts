@@ -437,19 +437,21 @@ export function slackThreadEffects(
     ...new Set(
       slackCalls.flatMap((captured) =>
         captured.method === "reactions.add" &&
-        captured.params.channel === thread?.channelId &&
-        typeof captured.params.name === "string"
-          ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+        captured.params["channel"] === thread?.channelId &&
+        typeof captured.params["name"] === "string"
+          ? [
+              `${String(captured.params["timestamp"])}:${captured.params["name"]}`,
+            ]
           : [],
       ),
     ),
   ].map((key) => key.slice(key.indexOf(":") + 1));
   const files = slackCalls.flatMap((captured) =>
     captured.method === "files.completeUploadExternal" &&
-    captured.params.channel_id === thread?.channelId &&
-    captured.params.thread_ts === thread?.threadTs &&
-    Array.isArray(captured.params.files)
-      ? captured.params.files.map((file: { title?: unknown }) =>
+    captured.params["channel_id"] === thread?.channelId &&
+    captured.params["thread_ts"] === thread?.threadTs &&
+    Array.isArray(captured.params["files"])
+      ? captured.params["files"].map((file: { title?: unknown }) =>
           String(file.title),
         )
       : [],
@@ -458,14 +460,14 @@ export function slackThreadEffects(
     slackCalls.filter(
       (captured) =>
         captured.method === method &&
-        captured.params.channel_id === thread?.channelId &&
-        captured.params.thread_ts === thread?.threadTs,
+        captured.params["channel_id"] === thread?.channelId &&
+        captured.params["thread_ts"] === thread?.threadTs,
     );
   const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
-    String(captured.params.status),
+    String(captured.params["status"]),
   );
   const threadTitles = threadCalls("assistant.threads.setTitle").map(
-    (captured) => String(captured.params.title),
+    (captured) => String(captured.params["title"]),
   );
   return { files, reactions, statuses, threadTitles };
 }

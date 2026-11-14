@@ -18,7 +18,7 @@ import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
 
 const originalCwd = process.cwd();
-const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
+const originalPluginPackages = process.env["JUNIOR_PLUGIN_PACKAGES"];
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
@@ -66,9 +66,9 @@ afterEach(async () => {
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
   if (originalPluginPackages === undefined) {
-    delete process.env.JUNIOR_PLUGIN_PACKAGES;
+    delete process.env["JUNIOR_PLUGIN_PACKAGES"];
   } else {
-    process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = originalPluginPackages;
   }
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -125,7 +125,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is malformed", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await expect(createApp()).rejects.toThrow(
       "JUNIOR_PLUGIN_PACKAGES must be valid JSON",
@@ -133,7 +133,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is not a package list", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify({
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify({
       packages: ["@acme/junior-plugin"],
     });
 
@@ -143,7 +143,7 @@ describe("createApp plugin config", () => {
   });
 
   it("does not read env plugin packages when plugins are explicit", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await createApp({
       plugins: defineJuniorPlugins([]),

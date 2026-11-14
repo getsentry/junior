@@ -173,11 +173,11 @@ function createBetterAuth(config: SignInAuthConfig) {
     socialProviders: {
       google: {
         clientId: required(
-          config.googleClientId ?? process.env.GOOGLE_CLIENT_ID,
+          config.googleClientId ?? process.env["GOOGLE_CLIENT_ID"],
           "GOOGLE_CLIENT_ID",
         ),
         clientSecret: required(
-          config.googleClientSecret ?? process.env.GOOGLE_CLIENT_SECRET,
+          config.googleClientSecret ?? process.env["GOOGLE_CLIENT_SECRET"],
           "GOOGLE_CLIENT_SECRET",
         ),
         hd: hostedDomain,

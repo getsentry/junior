@@ -78,8 +78,8 @@ function authenticatedAcpUser(connection: AcpConnection): User | undefined {
 function supportsUrlElicitation(params: unknown): boolean {
   const parsed = initializeParamsSchema.safeParse(params);
   if (!parsed.success) return false;
-  const elicitation = parsed.data.clientCapabilities?.elicitation;
-  return isRecord(elicitation) && isRecord(elicitation.url);
+  const elicitation = parsed.data.clientCapabilities?.["elicitation"];
+  return isRecord(elicitation) && isRecord(elicitation["url"]);
 }
 
 function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {

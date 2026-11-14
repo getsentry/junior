@@ -102,7 +102,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params.conversationId;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();

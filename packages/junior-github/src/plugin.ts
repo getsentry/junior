@@ -467,7 +467,7 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const command = ctx.tool.input.command;
+        const command = ctx.tool.input["command"];
         const commandRedirect =
           typeof command === "string"
             ? githubCloneCommandRedirect(command) ||

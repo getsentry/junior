@@ -74,7 +74,7 @@ interface LookupContext {
 function pullRequestNumbers(events: EventInput[]): Map<string, number> {
   const numbers = new Map<string, number>();
   for (const event of events) {
-    const number = event.data?.pullRequest;
+    const number = event.data?.["pullRequest"];
     if (typeof number === "number") numbers.set(event.eventKey, number);
   }
   return numbers;
@@ -109,7 +109,7 @@ async function withJuniorOpeners(
   const botNumber = (event: EventInput) => {
     const number = context.numbers.get(event.eventKey);
     return number !== undefined &&
-      isBotLogin(event.data?.openerUsername as string, context.botEmail)
+      isBotLogin(event.data?.["openerUsername"] as string, context.botEmail)
       ? number
       : undefined;
   };
@@ -166,7 +166,7 @@ async function withRolesAndAuthors(
     events.map(async (event) => {
       const number = context.numbers.get(event.eventKey);
       if (number === undefined) return event;
-      const login = event.data?.openerUsername;
+      const login = event.data?.["openerUsername"];
       if (loadRole && typeof login === "string" && !roles.has(login)) {
         roles.set(
           login,

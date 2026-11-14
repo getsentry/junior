@@ -83,7 +83,7 @@ describe("searchConversations", () => {
       channels,
       conversationId: "slack:CREQUEST:1700000000.900000",
     });
-    expect(tool.inputSchema.properties).toHaveProperty("channel_id");
+    expect(tool.inputSchema["properties"]).toHaveProperty("channel_id");
     const result = await executeTool(tool, {
       after: null,
       annotation: null,
@@ -167,7 +167,9 @@ describe("searchConversations", () => {
     const publicTool = createSearchConversationsTool({
       conversationId: "local:test:current",
     });
-    expect(publicTool.inputSchema.properties).not.toHaveProperty("channel_id");
+    expect(publicTool.inputSchema["properties"]).not.toHaveProperty(
+      "channel_id",
+    );
     expect(() =>
       publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
     ).toThrow("Invalid tool arguments");

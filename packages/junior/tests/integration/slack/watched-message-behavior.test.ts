@@ -887,7 +887,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     const state = (await thread.state) ?? {};
-    const conversation = state.conversation as {
+    const conversation = state["conversation"] as {
       processing?: { activeTurnId?: string };
     };
     expect(ack).toHaveBeenCalledTimes(1);

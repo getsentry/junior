@@ -8,8 +8,8 @@ import {
 
 describe("Slack contract: outbound installation token", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     resetSlackApiMockState();
   });
 
@@ -25,7 +25,7 @@ describe("Slack contract: outbound installation token", () => {
 
     const calls = getCapturedSlackApiCalls("chat.postMessage");
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.headers.authorization).toBe(
+    expect(calls[0]?.headers["authorization"]).toBe(
       "Bearer xoxb-destination-workspace-token",
     );
   });
@@ -38,6 +38,6 @@ describe("Slack contract: outbound installation token", () => {
 
     const calls = getCapturedSlackApiCalls("chat.postMessage");
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.headers.authorization).toBe("Bearer xoxb-test-token");
+    expect(calls[0]?.headers["authorization"]).toBe("Bearer xoxb-test-token");
   });
 });

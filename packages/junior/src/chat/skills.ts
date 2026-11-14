@@ -257,7 +257,7 @@ export function resetSkillDiscoveryCache(): void {
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots =
-    process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
+    process.env["SKILL_DIRS"]?.split(path.delimiter).filter(Boolean) ?? [];
   const defaults = skillRoots();
   const pluginRoots = pluginCatalogRuntime.getSkillRoots();
 

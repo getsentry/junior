@@ -36,7 +36,7 @@ const WORKSPACES_TOOL_SOURCE = {
 
 /** Record optional reporting without changing the switchWorkspace outcome. */
 async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: "junior",

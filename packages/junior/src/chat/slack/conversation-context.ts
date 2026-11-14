@@ -123,7 +123,7 @@ export function resolveSlackChannelTypeFromMessage(
     return undefined;
   }
 
-  const channelType = (raw as Record<string, unknown>).channel_type;
+  const channelType = (raw as Record<string, unknown>)["channel_type"];
   return typeof channelType === "string"
     ? toSlackEventChannelType(channelType.trim())
     : undefined;

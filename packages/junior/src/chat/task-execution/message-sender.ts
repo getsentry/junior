@@ -24,7 +24,7 @@ export function readInboundMessageSender(message: {
   input: { metadata?: Record<string, unknown> };
 }): InboundMessageSender | undefined {
   const parsed = inboundMessageSenderSchema.safeParse(
-    message.input.metadata?.sender,
+    message.input.metadata?.["sender"],
   );
   return parsed.success ? parsed.data : undefined;
 }

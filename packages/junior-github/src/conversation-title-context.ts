@@ -171,11 +171,12 @@ function objectTitle(
   if (!isRecord(object)) return undefined;
   const raw =
     kind === "commit"
-      ? isRecord(object.commit) && typeof object.commit.message === "string"
-        ? object.commit.message.split("\n")[0]
+      ? isRecord(object["commit"]) &&
+        typeof object["commit"]["message"] === "string"
+        ? object["commit"]["message"].split("\n")[0]
         : undefined
-      : typeof object.title === "string"
-        ? object.title
+      : typeof object["title"] === "string"
+        ? object["title"]
         : undefined;
   return raw?.replace(/\s+/g, " ").trim() || undefined;
 }

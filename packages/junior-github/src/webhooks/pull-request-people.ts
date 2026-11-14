@@ -102,7 +102,7 @@ async function forEachCommit(
 
 /** The GitHub login in a noreply email such as `1+octocat@users.noreply.github.com`. */
 function noreplyLogin(email: string): string | undefined {
-  return GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.login;
+  return GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.["login"];
 }
 
 /**

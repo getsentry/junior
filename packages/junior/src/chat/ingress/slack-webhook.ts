@@ -610,7 +610,7 @@ async function handleSlackEvent(args: {
           event.type === "assistant_thread_context_changed"
         ) {
           const parsed = slackAssistantThreadSchema.safeParse(
-            event.assistant_thread,
+            event["assistant_thread"],
           );
           if (!parsed.success) return;
 
@@ -634,7 +634,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "entity_details_requested") {
-          const ref = event.external_ref;
+          const ref = event["external_ref"];
           if (
             ref &&
             typeof ref === "object" &&

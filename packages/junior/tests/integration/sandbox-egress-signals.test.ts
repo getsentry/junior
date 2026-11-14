@@ -119,7 +119,7 @@ describe("sandbox egress signal route", () => {
         )
         .then((result) => result.status),
     ).resolves.toBe(404);
-    process.env.NODE_ENV = "production";
+    process.env["NODE_ENV"] = "production";
     await expect(
       handler
         .GET(

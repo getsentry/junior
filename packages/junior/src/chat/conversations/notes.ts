@@ -107,7 +107,7 @@ export async function loadTurnConversationNotes(input: {
       ) {
         // The schema makes `text` a string.
         newestFirst.push(
-          conversationNoteEvent.parse(data.content).text as string,
+          conversationNoteEvent.parse(data.content)["text"] as string,
         );
         if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       }

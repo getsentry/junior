@@ -294,8 +294,8 @@ export async function githubRequest(
 
   if (!response.ok) {
     const message =
-      isRecord(parsed) && typeof parsed.message === "string"
-        ? parsed.message
+      isRecord(parsed) && typeof parsed["message"] === "string"
+        ? parsed["message"]
         : `GitHub API error ${response.status}`;
     throw new GitHubRequestError(message, response.status);
   }
@@ -332,8 +332,8 @@ function parseOAuthResponseJson(responseText: string): unknown {
 }
 
 function oauthErrorCode(data: unknown): string | undefined {
-  return isRecord(data) && typeof data.error === "string"
-    ? data.error
+  return isRecord(data) && typeof data["error"] === "string"
+    ? data["error"]
     : undefined;
 }
 
@@ -348,46 +348,52 @@ function parseOAuthTokenResponse(
   if (!isRecord(data)) {
     throw new Error("OAuth token response is invalid");
   }
-  if (typeof data.access_token !== "string" || !data.access_token.trim()) {
+  if (
+    typeof data["access_token"] !== "string" ||
+    !data["access_token"].trim()
+  ) {
     throw new Error("OAuth token response missing access_token");
   }
-  if (typeof data.refresh_token !== "string" || !data.refresh_token.trim()) {
+  if (
+    typeof data["refresh_token"] !== "string" ||
+    !data["refresh_token"].trim()
+  ) {
     throw new Error("OAuth token response missing refresh_token");
   }
   let scope = normalizeOAuthScope(requestedScope);
-  if (data.scope !== undefined) {
-    if (typeof data.scope !== "string") {
+  if (data["scope"] !== undefined) {
+    if (typeof data["scope"] !== "string") {
       throw new Error("OAuth token response returned invalid scope");
     }
-    scope = normalizeOAuthScope(data.scope) ?? scope;
+    scope = normalizeOAuthScope(data["scope"]) ?? scope;
   }
   const result: PluginStoredTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    accessToken: data["access_token"],
+    refreshToken: data["refresh_token"],
     ...(scope ? { scope } : undefined),
   };
-  if (data.expires_in !== undefined) {
+  if (data["expires_in"] !== undefined) {
     if (
-      typeof data.expires_in !== "number" ||
-      !Number.isFinite(data.expires_in) ||
-      data.expires_in <= 0
+      typeof data["expires_in"] !== "number" ||
+      !Number.isFinite(data["expires_in"]) ||
+      data["expires_in"] <= 0
     ) {
       throw new Error("OAuth token response returned invalid expires_in");
     }
-    result.expiresAt = Date.now() + data.expires_in * 1000;
+    result.expiresAt = Date.now() + data["expires_in"] * 1000;
   }
-  if (data.refresh_token_expires_in !== undefined) {
+  if (data["refresh_token_expires_in"] !== undefined) {
     if (
-      typeof data.refresh_token_expires_in !== "number" ||
-      !Number.isFinite(data.refresh_token_expires_in) ||
-      data.refresh_token_expires_in <= 0
+      typeof data["refresh_token_expires_in"] !== "number" ||
+      !Number.isFinite(data["refresh_token_expires_in"]) ||
+      data["refresh_token_expires_in"] <= 0
     ) {
       throw new Error(
         "OAuth token response returned invalid refresh_token_expires_in",
       );
     }
     result.refreshTokenExpiresAt =
-      Date.now() + data.refresh_token_expires_in * 1000;
+      Date.now() + data["refresh_token_expires_in"] * 1000;
   }
   return result;
 }
@@ -519,11 +525,11 @@ function parseInstallationTokenResponse(data: unknown): {
   if (!isRecord(data)) {
     throw new Error("GitHub installation token response is invalid");
   }
-  const token = data.token;
+  const token = data["token"];
   if (typeof token !== "string" || !token.trim()) {
     throw new Error("GitHub installation token response missing token");
   }
-  const expiresAt = data.expires_at;
+  const expiresAt = data["expires_at"];
   const expiresAtMs =
     typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
@@ -537,10 +543,10 @@ function parseInstallationTokenResponse(data: unknown): {
 function readInstallationPermissions(
   installation: unknown,
 ): Record<string, "read"> {
-  if (!isRecord(installation) || !isRecord(installation.permissions)) {
+  if (!isRecord(installation) || !isRecord(installation["permissions"])) {
     throw new Error("GitHub installation response missing permissions");
   }
-  return readGrantPermissions(installation.permissions);
+  return readGrantPermissions(installation["permissions"]);
 }
 
 function decodeGitHubPathSegment(value: string): string | undefined {
@@ -583,8 +589,8 @@ export async function resolveUserAccount(
   if (!isRecord(account)) {
     throw new Error("GitHub user response is invalid");
   }
-  const id = account.id;
-  const login = account.login;
+  const id = account["id"];
+  const login = account["login"];
   if (
     (typeof id !== "number" && typeof id !== "string") ||
     typeof login !== "string" ||
@@ -593,7 +599,7 @@ export async function resolveUserAccount(
     throw new Error("GitHub user response missing id or login");
   }
   const url =
-    typeof account.html_url === "string" ? account.html_url : undefined;
+    typeof account["html_url"] === "string" ? account["html_url"] : undefined;
   return {
     handle: login.trim(),
     id: String(id),
@@ -630,10 +636,10 @@ export async function listVerifiedUserEmails(
   }
   return emails.flatMap((entry) =>
     isRecord(entry) &&
-    entry.verified === true &&
-    typeof entry.email === "string" &&
-    entry.email.trim()
-      ? [entry.email.trim()]
+    entry["verified"] === true &&
+    typeof entry["email"] === "string" &&
+    entry["email"].trim()
+      ? [entry["email"].trim()]
       : [],
   );
 }

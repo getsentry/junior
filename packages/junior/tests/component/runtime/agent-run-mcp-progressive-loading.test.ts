@@ -797,8 +797,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     resumeTurnContextCounts.length = 0;
     turnContextInputs.length = 0;
 
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
 
     deliverPrivateMessageMock.mockResolvedValue({
       channel: "D123",
@@ -839,8 +839,8 @@ describe("executeAgentRun progressive MCP loading", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    delete process.env.JUNIOR_BASE_URL;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    delete process.env["JUNIOR_BASE_URL"];
     vi.restoreAllMocks();
   });
 

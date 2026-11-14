@@ -148,7 +148,7 @@ export function pluginCatalogConfigFromPluginSet(
 function readEnvPluginPackages(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | undefined {
-  const value = env.JUNIOR_PLUGIN_PACKAGES;
+  const value = env["JUNIOR_PLUGIN_PACKAGES"];
   if (!value) {
     return undefined;
   }

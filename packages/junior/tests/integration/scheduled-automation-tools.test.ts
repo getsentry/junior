@@ -56,7 +56,7 @@ const rootTurnTools = turnBehavior({
   personInput: true,
 }).tools;
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
@@ -285,7 +285,7 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env.JUNIOR_TIMEZONE;
+    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -1694,7 +1694,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env.JUNIOR_TIMEZONE = "America/New_York";
+    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1720,7 +1720,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env.JUNIOR_TIMEZONE = "not/a-zone";
+    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
@@ -2316,7 +2316,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
         automation: { id: string };
-      }>(tools.createAutomation!, {
+      }>(tools["createAutomation"]!, {
         instruction: "Wiring test: post a weekly digest.",
         trigger: {
           type: "schedule",
@@ -2407,10 +2407,10 @@ describe("Scheduled automation tool wiring via createTools", () => {
           },
         },
       );
-      expect(located.createAutomation?.disabledReason).toBeUndefined();
+      expect(located["createAutomation"]?.disabledReason).toBeUndefined();
       const created = await executeRegisteredTool<{
         automation: { id: string; is_creator: boolean };
-      }>(located.createAutomation!, {
+      }>(located["createAutomation"]!, {
         instruction: "Post the weekly digest.",
         trigger: {
           type: "schedule",
@@ -2445,14 +2445,14 @@ describe("Scheduled automation tool wiring via createTools", () => {
         },
       );
       await expect(
-        executeRegisteredTool(unlocated.searchAutomations!, {
+        executeRegisteredTool(unlocated["searchAutomations"]!, {
           scope: "mine",
         }),
       ).resolves.toMatchObject({
         automations: [{ id: created.automation.id, is_creator: true }],
       });
       await expect(
-        executeRegisteredTool(unlocated.updateAutomation!, {
+        executeRegisteredTool(unlocated["updateAutomation"]!, {
           automation_id: created.automation.id,
           title: "Weekly digest",
         }),
@@ -2460,7 +2460,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         automation: { title: "Weekly digest", credential_mode: "system" },
       });
       await expect(
-        executeRegisteredTool(unlocated.createAutomation!, {
+        executeRegisteredTool(unlocated["createAutomation"]!, {
           instruction: "Post another digest.",
           trigger: {
             type: "schedule",
@@ -2524,7 +2524,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       );
 
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Post a weekly digest.",
           trigger: {
             type: "schedule",
@@ -2539,12 +2539,12 @@ describe("Scheduled automation tool wiring via createTools", () => {
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.deleteAutomation!, {
+        executeRegisteredTool(tools["deleteAutomation"]!, {
           automation_id: "sched_missing",
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Summarize new channel messages.",
           trigger: {
             type: "event",

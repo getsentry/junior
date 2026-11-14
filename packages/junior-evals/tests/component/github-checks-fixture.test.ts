@@ -58,9 +58,9 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
     { url: run.html_url },
     { experimental_context: undefined },
   );
-  expect(page.content).toContain("State: open, not merged");
-  expect(page.content).toContain(pr.head.sha);
-  expect(page.content).toContain(checks.check_runs[0].output.summary);
+  expect(page["content"]).toContain("State: open, not merged");
+  expect(page["content"]).toContain(pr.head.sha);
+  expect(page["content"]).toContain(checks.check_runs[0].output.summary);
   const logs = await fetch(`${api}/actions/jobs/1/logs`).then((response) =>
     response.text(),
   );

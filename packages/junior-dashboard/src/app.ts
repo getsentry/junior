@@ -128,7 +128,7 @@ type Variables = JuniorApiVariables & { authSession: DashboardSession };
 
 function hasSentryConversationLinks(): boolean {
   return Boolean(
-    process.env.SENTRY_DSN?.trim() && process.env.SENTRY_ORG_SLUG?.trim(),
+    process.env["SENTRY_DSN"]?.trim() && process.env["SENTRY_ORG_SLUG"]?.trim(),
   );
 }
 
@@ -387,7 +387,7 @@ export function createDashboardApp(
 ): Hono<{ Variables: Variables }> {
   const options = resolveDashboardOptions(rawOptions);
 
-  if (process.env.SENTRY_DSN?.trim()) {
+  if (process.env["SENTRY_DSN"]?.trim()) {
     initSentry();
   }
 
@@ -403,7 +403,7 @@ export function createDashboardApp(
   const agentName = options.agentName?.trim() || "Junior";
 
   const authRequired = options.authRequired !== false;
-  const configuredBaseURL = options.baseURL ?? process.env.JUNIOR_BASE_URL;
+  const configuredBaseURL = options.baseURL ?? process.env["JUNIOR_BASE_URL"];
   let canonicalBaseURL: string | undefined;
   if (authRequired && (configuredBaseURL || !options.auth)) {
     canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });

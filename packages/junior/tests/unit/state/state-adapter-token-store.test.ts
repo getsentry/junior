@@ -122,7 +122,7 @@ describe("StateAdapterTokenStore", () => {
     await state.connect();
     const tokens = { accessToken: "access-token", refreshToken: "refresh" };
     const oldKeyOnly = readEncryptionKeyring({
-      JUNIOR_ENCRYPTION_KEYS: process.env.JUNIOR_ENCRYPTION_KEYS,
+      JUNIOR_ENCRYPTION_KEYS: process.env["JUNIOR_ENCRYPTION_KEYS"],
       JUNIOR_ENCRYPTION_KEY_ID: "test-old",
     });
     await state.set(

@@ -10,8 +10,8 @@ import {
 
 const { Pool } = pg;
 const harnessConfig = inject("juniorPostgresHarness");
-const originalDatabaseUrl = process.env.DATABASE_URL;
-const originalJuniorDatabaseDriver = process.env.JUNIOR_DATABASE_DRIVER;
+const originalDatabaseUrl = process.env["DATABASE_URL"];
+const originalJuniorDatabaseDriver = process.env["JUNIOR_DATABASE_DRIVER"];
 let resetPool: pg.Pool | undefined;
 
 if (harnessConfig) {
@@ -19,10 +19,10 @@ if (harnessConfig) {
     parsePostgresHarnessConfig(harnessConfig),
   );
   assertLocalPostgresUrl(databaseUrl);
-  process.env.DATABASE_URL = databaseUrl;
-  process.env.JUNIOR_DATABASE_DRIVER = "postgres";
+  process.env["DATABASE_URL"] = databaseUrl;
+  process.env["JUNIOR_DATABASE_DRIVER"] = "postgres";
   resetPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env["DATABASE_URL"],
     max: 1,
   });
   resetPool.on("error", (error) => {
@@ -55,14 +55,14 @@ VALUES (
 afterAll(async () => {
   await resetPool?.end();
   if (originalDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete process.env["DATABASE_URL"];
   } else {
-    process.env.DATABASE_URL = originalDatabaseUrl;
+    process.env["DATABASE_URL"] = originalDatabaseUrl;
   }
   if (originalJuniorDatabaseDriver === undefined) {
-    delete process.env.JUNIOR_DATABASE_DRIVER;
+    delete process.env["JUNIOR_DATABASE_DRIVER"];
   } else {
-    process.env.JUNIOR_DATABASE_DRIVER = originalJuniorDatabaseDriver;
+    process.env["JUNIOR_DATABASE_DRIVER"] = originalJuniorDatabaseDriver;
   }
   await cleanupPostgresWorkerDatabases();
 });

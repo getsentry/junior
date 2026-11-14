@@ -29,7 +29,7 @@ import {
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 describe("agent dispatch recovery", () => {

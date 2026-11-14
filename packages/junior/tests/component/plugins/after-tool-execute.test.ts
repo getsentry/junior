@@ -159,7 +159,7 @@ describe("afterToolExecute plugin hooks", () => {
           hooks: {
             afterToolExecute(ctx) {
               expect(ctx.workspace).toBeUndefined();
-              if (ctx.tool.input.path === "evals/a.eval.ts") {
+              if (ctx.tool.input["path"] === "evals/a.eval.ts") {
                 ctx.decision.deny("Eval edits need a person.");
               }
             },

@@ -41,8 +41,8 @@ import {
 } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;
@@ -124,13 +124,13 @@ describe("event automation blocking", () => {
     // Nothing posts to the Destination. The creator gets one private notice.
     expect(
       getCapturedSlackApiCalls("conversations.open").map(
-        ({ params }) => params.users,
+        ({ params }) => params["users"],
       ),
     ).toEqual(["U123"]);
     expect(
       slackApiOutbox.messages().map(({ params }) => ({
-        channel: params.channel,
-        text: params.text,
+        channel: params["channel"],
+        text: params["text"],
       })),
     ).toEqual([
       {

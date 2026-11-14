@@ -17,8 +17,8 @@ import {
 
 describe("uploadFilesToThread", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
   });
 
   it("rejects empty file batches before calling Slack", async () => {
@@ -83,7 +83,7 @@ describe("uploadFilesToThread", () => {
       channel_id: "C0TEST",
       thread_ts: "1700000000.000",
     });
-    expect(completeCalls[0]?.params.files).toEqual([
+    expect(completeCalls[0]?.params["files"]).toEqual([
       {
         id: "F_TEST_1",
         title: "image.png",
@@ -145,7 +145,7 @@ describe("uploadFilesToThread", () => {
       channel_id: "C0MULTI",
       thread_ts: "1700000001.000",
     });
-    expect(completeCalls[0]?.params.files).toEqual([
+    expect(completeCalls[0]?.params["files"]).toEqual([
       { id: "F_TEST_1", title: "a.png" },
       { id: "F_TEST_2", title: "b.jpg" },
     ]);

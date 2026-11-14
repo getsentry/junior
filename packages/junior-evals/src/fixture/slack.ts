@@ -144,8 +144,8 @@ async function readSlackParams(
  * is a notification fallback that can repeat the footer.
  */
 function readPostBody(params: Record<string, string>): string {
-  const blocks = params.blocks
-    ? (JSON.parse(params.blocks) as Array<{
+  const blocks = params["blocks"]
+    ? (JSON.parse(params["blocks"]) as Array<{
         text?: string | { text?: string };
         type?: string;
       }>)
@@ -160,15 +160,15 @@ function readPostBody(params: Record<string, string>): string {
     )
     .filter(Boolean)
     .join("\n\n");
-  return body || (params.text ?? "");
+  return body || (params["text"] ?? "");
 }
 
 /** The URL of the Connect button in an authorization message. */
 function readAuthorizationUrl(
   params: Record<string, string>,
 ): string | undefined {
-  const blocks = params.blocks
-    ? (JSON.parse(params.blocks) as Array<{
+  const blocks = params["blocks"]
+    ? (JSON.parse(params["blocks"]) as Array<{
         accessory?: { action_id?: string; url?: string };
       }>)
     : [];
@@ -273,8 +273,8 @@ export function installSlackMock(testName: string): SlackMock {
     ),
     http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
       const params = await readSlackParams(request);
-      const channel = params.channel ?? "";
-      if (params.thread_ts && rejectedReplies > 0) {
+      const channel = params["channel"] ?? "";
+      if (params["thread_ts"] && rejectedReplies > 0) {
         rejectedReplies -= 1;
         return HttpResponse.json(slackError({ error: "channel_not_found" }));
       }
@@ -282,7 +282,9 @@ export function installSlackMock(testName: string): SlackMock {
         channel,
         text: readPostBody(params),
         ts: nextTs(),
-        ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
+        ...(params["thread_ts"]
+          ? { threadTs: params["thread_ts"] }
+          : undefined),
       };
       posts.push(post);
       const authorizationUrl = readAuthorizationUrl(params);
@@ -307,9 +309,9 @@ export function installSlackMock(testName: string): SlackMock {
         const url = readAuthorizationUrl(params);
         if (url) {
           authorizationLinks.push({
-            channel: params.channel ?? "",
+            channel: params["channel"] ?? "",
             url,
-            userId: params.user ?? "",
+            userId: params["user"] ?? "",
           });
         }
         return HttpResponse.json(chatPostEphemeralOk());
@@ -319,10 +321,10 @@ export function installSlackMock(testName: string): SlackMock {
       "https://slack.com/api/conversations.replies",
       async ({ request }) => {
         const params = await readSlackParams(request);
-        const threadTs = params.ts ?? "";
+        const threadTs = params["ts"] ?? "";
         return HttpResponse.json(
           conversationsRepliesPage({
-            messages: threads.get(threadKey(params.channel ?? "", threadTs)),
+            messages: threads.get(threadKey(params["channel"] ?? "", threadTs)),
             threadTs,
           }),
         );
@@ -331,7 +333,7 @@ export function installSlackMock(testName: string): SlackMock {
     http.get(
       "https://files.slack.com/files-pri/:fileKey/:name",
       ({ params }) => {
-        const file = files.get(String(params.fileKey));
+        const file = files.get(String(params["fileKey"]));
         if (!file?.content) {
           return HttpResponse.json(
             { error: "file_not_found" },
@@ -349,7 +351,7 @@ export function installSlackMock(testName: string): SlackMock {
     // Read a copy, so the shared handler can answer for an unknown person.
     http.post("https://slack.com/api/users.info", async ({ request }) => {
       const params = await readSlackParams(request.clone());
-      return usersInfo(params.user ?? null);
+      return usersInfo(params["user"] ?? null);
     }),
   );
 

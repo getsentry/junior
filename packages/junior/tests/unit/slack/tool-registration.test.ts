@@ -122,7 +122,7 @@ describe("Slack tool registration", () => {
     ]);
 
     const tools = createTools([], {}, ctx("D12345"));
-    expect(tools.userLookup?.inputSchema).toMatchObject({
+    expect(tools["userLookup"]?.inputSchema).toMatchObject({
       properties: {
         provider: { enum: ["slack", "identity-test"] },
       },
@@ -133,7 +133,7 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
     expect(tools).toHaveProperty("sendFiles");
-    const sendFilesTool = tools.sendFiles;
+    const sendFilesTool = tools["sendFiles"];
     if (!sendFilesTool) {
       throw new Error("sendFiles tool missing");
     }
@@ -147,8 +147,8 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationEvents");
-    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
-    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
+    expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -164,17 +164,19 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listWatches");
-    expect(tools.searchConversationMessages?.exposure).toBe("deferred");
-    expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
-    expect(tools.searchConversations?.exposure).toBe("deferred");
-    expect(tools.searchConversations?.source?.id).toBe("conversations");
-    expect(tools.searchConversations?.inputSchema.properties).toHaveProperty(
-      "channel_id",
+    expect(tools["searchConversationMessages"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationMessages"]?.source?.id).toBe(
+      "conversations",
     );
-    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
-    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
-    expect(tools.stopWatchingResources?.exposure).toBe("deferred");
-    expect(tools.listWatches?.exposure).toBe("deferred");
+    expect(tools["searchConversations"]?.exposure).toBe("deferred");
+    expect(tools["searchConversations"]?.source?.id).toBe("conversations");
+    expect(
+      tools["searchConversations"]?.inputSchema["properties"],
+    ).toHaveProperty("channel_id");
+    expect(tools["searchConversationEvents"]?.exposure).toBe("deferred");
+    expect(tools["searchConversationEvents"]?.source?.id).toBe("conversations");
+    expect(tools["stopWatchingResources"]?.exposure).toBe("deferred");
+    expect(tools["listWatches"]?.exposure).toBe("deferred");
   });
 
   it("still registers public search without an action token", () => {
@@ -202,7 +204,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).toHaveProperty("searchConversations");
     expect(
-      tools.searchConversations?.inputSchema.properties,
+      tools["searchConversations"]?.inputSchema["properties"],
     ).not.toHaveProperty("channel_id");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
@@ -287,11 +289,11 @@ describe("Slack tool registration", () => {
         },
       );
       expect(modelView(tools)).toBe(modelView(messageTurn));
-      expect(tools.createAutomation?.disabledReason).toBeDefined();
-      expect(tools.addReaction?.disabledReason).toBeDefined();
-      expect(tools.addReviewItem?.disabledReason).toBeUndefined();
+      expect(tools["createAutomation"]?.disabledReason).toBeDefined();
+      expect(tools["addReaction"]?.disabledReason).toBeDefined();
+      expect(tools["addReviewItem"]?.disabledReason).toBeUndefined();
     }
-    expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
+    expect(messageTurn["createAutomation"]?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
@@ -338,8 +340,8 @@ describe("Slack tool registration", () => {
 
   it("loads the tool that asks a person in every root Turn", () => {
     const tools = createTools([], {}, ctx());
-    expect(tools.addReviewItem?.exposure).not.toBe("deferred");
-    expect(tools.addReviewItem?.disabledReason).toBeUndefined();
+    expect(tools["addReviewItem"]?.exposure).not.toBe("deferred");
+    expect(tools["addReviewItem"]?.disabledReason).toBeUndefined();
 
     // An Agent invocation reports the need to its parent.
     const childTools = createTools(
@@ -354,7 +356,9 @@ describe("Slack tool registration", () => {
         }).tools,
       },
     );
-    expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
+    expect(childTools["addReviewItem"]?.disabledReason).toContain(
+      "reportBlocked",
+    );
   });
 
   it("does not register Slack tools for local destinations", () => {
@@ -379,8 +383,8 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     // Automation tools are not Slack tools. This Turn has no person, so they
     // are disabled.
-    expect(tools.createAutomation?.disabledReason).toBeDefined();
-    expect(tools.runAutomationNow?.disabledReason).toBeDefined();
+    expect(tools["createAutomation"]?.disabledReason).toBeDefined();
+    expect(tools["runAutomationNow"]?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

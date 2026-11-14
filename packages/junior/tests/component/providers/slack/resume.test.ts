@@ -9,7 +9,7 @@ import {
 } from "../../../fixtures/agent-runner";
 import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 const TEST_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -54,7 +54,7 @@ function successfulAgentRun(text: string) {
 
 describe("Slack resume result handling", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     vi.resetModules();
     await disconnectStateAdapter();
   });
@@ -62,9 +62,9 @@ describe("Slack resume result handling", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     if (ORIGINAL_STATE_ADAPTER === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+      process.env["JUNIOR_STATE_ADAPTER"] = ORIGINAL_STATE_ADAPTER;
     }
   });
 
@@ -156,7 +156,7 @@ describe("Slack resume result handling", () => {
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([
       expect.stringContaining(
@@ -195,8 +195,10 @@ describe("Slack resume result handling", () => {
     });
 
     const posts = getCapturedSlackApiCalls("chat.postMessage");
-    expect(posts.map((call) => call.params.text)).toEqual(["Done."]);
-    expect(JSON.stringify(posts[0]?.params.blocks)).toContain(conversationId);
+    expect(posts.map((call) => call.params["text"])).toEqual(["Done."]);
+    expect(JSON.stringify(posts[0]?.params["blocks"])).toContain(
+      conversationId,
+    );
     // A later message in the thread reaches the Conversation of the dispatch.
     await expect(
       getConversationStore().getConversationIdByProviderConversation({
@@ -247,7 +249,7 @@ describe("Slack resume result handling", () => {
     ]);
     expect(
       JSON.stringify(
-        getCapturedSlackApiCalls("chat.postMessage")[0]?.params.blocks,
+        getCapturedSlackApiCalls("chat.postMessage")[0]?.params["blocks"],
       ),
     ).toContain("conversation-auth-pause");
   });
@@ -324,7 +326,7 @@ describe("Slack resume result handling", () => {
     expect(onFailure).not.toHaveBeenCalled();
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([expect.stringContaining("Final resumed answer")]);
   });
@@ -363,7 +365,7 @@ describe("Slack resume result handling", () => {
     expect(onFailure).toHaveBeenCalledOnce();
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([
       expect.stringContaining(

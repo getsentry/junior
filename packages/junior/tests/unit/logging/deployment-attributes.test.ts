@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { JUNIOR_VERSION } from "@/version";
 import type { EmittedLogRecord } from "@/chat/logging";
 
-const ORIGINAL_SENTRY_RELEASE = process.env.SENTRY_RELEASE;
-const ORIGINAL_VERCEL_DEPLOYMENT_ID = process.env.VERCEL_DEPLOYMENT_ID;
-const ORIGINAL_VERCEL_GIT_COMMIT_SHA = process.env.VERCEL_GIT_COMMIT_SHA;
+const ORIGINAL_SENTRY_RELEASE = process.env["SENTRY_RELEASE"];
+const ORIGINAL_VERCEL_DEPLOYMENT_ID = process.env["VERCEL_DEPLOYMENT_ID"];
+const ORIGINAL_VERCEL_GIT_COMMIT_SHA = process.env["VERCEL_GIT_COMMIT_SHA"];
 
 async function loadLoggingModule() {
   vi.resetModules();
@@ -24,19 +24,19 @@ async function loadLoggingModule() {
 
 function resetEnv(): void {
   if (ORIGINAL_SENTRY_RELEASE === undefined) {
-    delete process.env.SENTRY_RELEASE;
+    delete process.env["SENTRY_RELEASE"];
   } else {
-    process.env.SENTRY_RELEASE = ORIGINAL_SENTRY_RELEASE;
+    process.env["SENTRY_RELEASE"] = ORIGINAL_SENTRY_RELEASE;
   }
   if (ORIGINAL_VERCEL_DEPLOYMENT_ID === undefined) {
-    delete process.env.VERCEL_DEPLOYMENT_ID;
+    delete process.env["VERCEL_DEPLOYMENT_ID"];
   } else {
-    process.env.VERCEL_DEPLOYMENT_ID = ORIGINAL_VERCEL_DEPLOYMENT_ID;
+    process.env["VERCEL_DEPLOYMENT_ID"] = ORIGINAL_VERCEL_DEPLOYMENT_ID;
   }
   if (ORIGINAL_VERCEL_GIT_COMMIT_SHA === undefined) {
-    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env["VERCEL_GIT_COMMIT_SHA"];
   } else {
-    process.env.VERCEL_GIT_COMMIT_SHA = ORIGINAL_VERCEL_GIT_COMMIT_SHA;
+    process.env["VERCEL_GIT_COMMIT_SHA"] = ORIGINAL_VERCEL_GIT_COMMIT_SHA;
   }
 }
 
@@ -49,9 +49,9 @@ afterEach(() => {
 
 describe("deployment log attributes", () => {
   it("adds deployment metadata to emitted log records", async () => {
-    process.env.SENTRY_RELEASE = " ";
-    process.env.VERCEL_DEPLOYMENT_ID = "dpl_123";
-    process.env.VERCEL_GIT_COMMIT_SHA = "git-sha";
+    process.env["SENTRY_RELEASE"] = " ";
+    process.env["VERCEL_DEPLOYMENT_ID"] = "dpl_123";
+    process.env["VERCEL_GIT_COMMIT_SHA"] = "git-sha";
 
     const { log, registerLogRecordSink } = await loadLoggingModule();
     const records: EmittedLogRecord[] = [];

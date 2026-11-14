@@ -43,7 +43,9 @@ function runtimeLabel(durationMs: number, conversations: number): string {
 /** Render one actor's profile and activity summary. */
 export function PersonProfilePage() {
   const params = useParams();
-  const email = params.email ? decodeURIComponent(params.email) : undefined;
+  const email = params["email"]
+    ? decodeURIComponent(params["email"])
+    : undefined;
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
   const codeQuery = useActorCodeData(email);

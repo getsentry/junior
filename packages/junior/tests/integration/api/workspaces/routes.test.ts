@@ -59,12 +59,12 @@ function authenticatedApi(email = "person@example.com") {
 
 describe("workspace admin API", () => {
   afterEach(async () => {
-    delete process.env.SANDBOX_VCPUS;
+    delete process.env["SANDBOX_VCPUS"];
     await closeDb();
   });
 
   it("creates, lists, updates, and deletes Workspace recipes", async () => {
-    process.env.SANDBOX_VCPUS = "4";
+    process.env["SANDBOX_VCPUS"] = "4";
     const app = authenticatedApi();
 
     const createResponse = await app.request(

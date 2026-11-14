@@ -174,7 +174,7 @@ function useActiveOutlineSeq(
       const rect = row.getBoundingClientRect();
       if (rect.bottom <= top || rect.top >= topRowStart) continue;
       topRowStart = rect.top;
-      topRowSeq = Number(row.dataset.transcriptSeq);
+      topRowSeq = Number(row.dataset["transcriptSeq"]);
     }
     setActiveSeq(
       topRowSeq === undefined

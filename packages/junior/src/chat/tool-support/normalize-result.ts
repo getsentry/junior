@@ -11,12 +11,13 @@ function isToolContent(
         return false;
       }
       const record = part as Record<string, unknown>;
-      if (record.type === "text") {
-        return typeof record.text === "string";
+      if (record["type"] === "text") {
+        return typeof record["text"] === "string";
       }
-      if (record.type === "image") {
+      if (record["type"] === "image") {
         return (
-          typeof record.data === "string" && typeof record.mimeType === "string"
+          typeof record["data"] === "string" &&
+          typeof record["mimeType"] === "string"
         );
       }
       return false;
@@ -86,7 +87,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasContinuation(value: unknown): boolean {
-  return isRecord(value) && isRecord(value.continuation);
+  return isRecord(value) && isRecord(value["continuation"]);
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
@@ -147,14 +148,14 @@ function policyDeniedText(
 }
 
 function permissionDeniedText(value: unknown): string | undefined {
-  if (!isRecord(value) || !isRecord(value.permission_denied)) {
+  if (!isRecord(value) || !isRecord(value["permission_denied"])) {
     return undefined;
   }
-  const signal = value.permission_denied;
-  if (signal.source === "policy") {
+  const signal = value["permission_denied"];
+  if (signal["source"] === "policy") {
     return policyDeniedText(value, signal);
   }
-  if (signal.source !== "upstream") {
+  if (signal["source"] !== "upstream") {
     return undefined;
   }
   const provider = stringField(signal, "provider");
@@ -165,12 +166,12 @@ function permissionDeniedText(value: unknown): string | undefined {
   if (!provider || !message || !upstreamHost || !upstreamPath || !status) {
     return undefined;
   }
-  const grant = isRecord(signal.grant) ? signal.grant : {};
+  const grant = isRecord(signal["grant"]) ? signal["grant"] : {};
   const grantName = stringField(grant, "name");
   const grantAccess = stringField(grant, "access");
   const grantReason = stringField(grant, "reason");
   const grantRequirements = stringListField(grant, "requirements");
-  const account = accountText(signal.account);
+  const account = accountText(signal["account"]);
   const command = stringField(value, "command");
   const stderr = stringField(value, "stderr").trim();
   const stdout = stringField(value, "stdout").trim();

@@ -143,7 +143,7 @@ describe("child agents that no Agent invocation names", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(reply?.input.metadata?.sender).toEqual({
+      expect(reply?.input.metadata?.["sender"]).toEqual({
         conversationId: childId,
         turnId: "turn_child",
       });

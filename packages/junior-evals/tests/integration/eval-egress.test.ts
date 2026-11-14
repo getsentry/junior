@@ -6,29 +6,29 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
 
-const originalPath = process.env.PATH;
-const originalAttemptMarker = process.env.EVAL_EGRESS_ATTEMPT_MARKER;
-const originalCloseMarker = process.env.EVAL_EGRESS_CLOSE_MARKER;
-const originalDatabaseUrl = process.env.DATABASE_URL;
-const originalJuniorSecret = process.env.JUNIOR_SECRET;
+const originalPath = process.env["PATH"];
+const originalAttemptMarker = process.env["EVAL_EGRESS_ATTEMPT_MARKER"];
+const originalCloseMarker = process.env["EVAL_EGRESS_CLOSE_MARKER"];
+const originalDatabaseUrl = process.env["DATABASE_URL"];
+const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 
 afterEach(() => {
-  if (originalPath === undefined) delete process.env.PATH;
-  else process.env.PATH = originalPath;
+  if (originalPath === undefined) delete process.env["PATH"];
+  else process.env["PATH"] = originalPath;
   if (originalAttemptMarker === undefined) {
-    delete process.env.EVAL_EGRESS_ATTEMPT_MARKER;
+    delete process.env["EVAL_EGRESS_ATTEMPT_MARKER"];
   } else {
-    process.env.EVAL_EGRESS_ATTEMPT_MARKER = originalAttemptMarker;
+    process.env["EVAL_EGRESS_ATTEMPT_MARKER"] = originalAttemptMarker;
   }
   if (originalCloseMarker === undefined) {
-    delete process.env.EVAL_EGRESS_CLOSE_MARKER;
+    delete process.env["EVAL_EGRESS_CLOSE_MARKER"];
   } else {
-    process.env.EVAL_EGRESS_CLOSE_MARKER = originalCloseMarker;
+    process.env["EVAL_EGRESS_CLOSE_MARKER"] = originalCloseMarker;
   }
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
-  if (originalJuniorSecret === undefined) delete process.env.JUNIOR_SECRET;
-  else process.env.JUNIOR_SECRET = originalJuniorSecret;
+  if (originalDatabaseUrl === undefined) delete process.env["DATABASE_URL"];
+  else process.env["DATABASE_URL"] = originalDatabaseUrl;
+  if (originalJuniorSecret === undefined) delete process.env["JUNIOR_SECRET"];
+  else process.env["JUNIOR_SECRET"] = originalJuniorSecret;
 });
 
 describe("eval egress", () => {
@@ -73,12 +73,12 @@ setInterval(() => undefined, 1000);
       "utf8",
     );
     await chmod(cloudflaredPath, 0o755);
-    process.env.PATH = `${fixtureDir}${path.delimiter}${originalPath ?? ""}`;
-    process.env.EVAL_EGRESS_ATTEMPT_MARKER = attemptMarker;
-    process.env.EVAL_EGRESS_CLOSE_MARKER = closeMarker;
-    process.env.DATABASE_URL =
+    process.env["PATH"] = `${fixtureDir}${path.delimiter}${originalPath ?? ""}`;
+    process.env["EVAL_EGRESS_ATTEMPT_MARKER"] = attemptMarker;
+    process.env["EVAL_EGRESS_CLOSE_MARKER"] = closeMarker;
+    process.env["DATABASE_URL"] =
       "postgres://junior:junior@127.0.0.1:54322/junior";
-    process.env.JUNIOR_SECRET = "junior-test-secret";
+    process.env["JUNIOR_SECRET"] = "junior-test-secret";
 
     try {
       const egress = await startEvalEgress({

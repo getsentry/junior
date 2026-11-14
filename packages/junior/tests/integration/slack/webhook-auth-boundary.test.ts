@@ -477,7 +477,7 @@ describe("Slack webhook auth boundary", () => {
       conversationId: "slack:D123:1712345.0001",
       state,
     });
-    expect(work?.messages[0]?.input.metadata?.message).toMatchObject({
+    expect(work?.messages[0]?.input.metadata?.["message"]).toMatchObject({
       raw: event,
       attachments: [{ type: "file", name: "note.txt", mimeType: "text/plain" }],
       links: [

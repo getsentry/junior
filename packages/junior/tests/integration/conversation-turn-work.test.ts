@@ -619,10 +619,10 @@ describe("Conversation mailbox Turn work", () => {
         ? [
             {
               role: event.data.role,
-              source: event.data.meta?.source,
-              eventType: event.data.meta?.eventType,
-              trustedSummary: event.data.meta?.trustedSummary,
-              quiet: event.data.meta?.quiet,
+              source: event.data.meta?.["source"],
+              eventType: event.data.meta?.["eventType"],
+              trustedSummary: event.data.meta?.["trustedSummary"],
+              quiet: event.data.meta?.["quiet"],
               text: event.data.text,
             },
           ]

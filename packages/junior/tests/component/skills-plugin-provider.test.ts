@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const originalSkillDirs = process.env.SKILL_DIRS;
+const originalSkillDirs = process.env["SKILL_DIRS"];
 
 async function writeSkill(
   rootDir: string,
@@ -28,9 +28,9 @@ async function writeSkill(
 
 afterEach(() => {
   if (originalSkillDirs === undefined) {
-    delete process.env.SKILL_DIRS;
+    delete process.env["SKILL_DIRS"];
   } else {
-    process.env.SKILL_DIRS = originalSkillDirs;
+    process.env["SKILL_DIRS"] = originalSkillDirs;
   }
   vi.resetModules();
   vi.doUnmock("@/chat/discovery");
@@ -57,7 +57,7 @@ describe("discoverSkills plugin ownership", () => {
     await writeSkill(path.join(pluginRoot, "skills"), "triage", "triage");
     await writeSkill(localSkillsRoot, "notes", "notes");
 
-    process.env.SKILL_DIRS = localSkillsRoot;
+    process.env["SKILL_DIRS"] = localSkillsRoot;
 
     vi.doMock("@/chat/discovery", () => ({
       pluginRoots: () => [pluginsRoot],

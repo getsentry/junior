@@ -9,7 +9,7 @@ function normalizeWorkspaceRoot(input: string | undefined): string {
 }
 
 export const SANDBOX_WORKSPACE_ROOT = normalizeWorkspaceRoot(
-  process.env.VERCEL_SANDBOX_WORKSPACE_DIR,
+  process.env["VERCEL_SANDBOX_WORKSPACE_DIR"],
 );
 export const SANDBOX_REPOS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/repos`;
 export const SANDBOX_SKILLS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/skills`;

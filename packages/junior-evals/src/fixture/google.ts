@@ -155,7 +155,7 @@ export function mockGoogleCalendars(calendars: MockCalendar[]): void {
     http.get(
       `${GOOGLE_API}/calendars/:calendarId/events`,
       ({ params, request }) => {
-        const calendar = find(decodeURIComponent(String(params.calendarId)));
+        const calendar = find(decodeURIComponent(String(params["calendarId"])));
         if (!calendar) {
           return HttpResponse.json({}, { status: 404 });
         }

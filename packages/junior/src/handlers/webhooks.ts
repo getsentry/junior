@@ -18,7 +18,7 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
     return undefined;
   }
 
-  const teamId = (body as Record<string, unknown>).team_id;
+  const teamId = (body as Record<string, unknown>)["team_id"];
   return typeof teamId === "string" && teamId.length > 0 ? teamId : undefined;
 }
 

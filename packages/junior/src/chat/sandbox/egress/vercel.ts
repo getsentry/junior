@@ -155,8 +155,8 @@ function normalizePort(value: string | null): string | undefined {
 }
 
 function sandboxIdFromPayload(payload: JWTPayload): string | undefined {
-  return typeof payload.sandbox_id === "string"
-    ? payload.sandbox_id
+  return typeof payload["sandbox_id"] === "string"
+    ? payload["sandbox_id"]
     : undefined;
 }
 

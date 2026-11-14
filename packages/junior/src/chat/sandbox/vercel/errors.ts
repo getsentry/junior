@@ -18,16 +18,16 @@ function isInvalidSandboxSessionError(error: unknown): boolean {
     return false;
   }
 
-  if (isRecord(error.json) && error.json.invalidToken === true) {
+  if (isRecord(error["json"]) && error["json"]["invalidToken"] === true) {
     return true;
   }
 
-  const response = error.response;
+  const response = error["response"];
   return (
     isRecord(response) &&
-    response.status === 403 &&
-    typeof response.url === "string" &&
-    response.url.includes("/sandboxes/sessions")
+    response["status"] === 403 &&
+    typeof response["url"] === "string" &&
+    response["url"].includes("/sandboxes/sessions")
   );
 }
 
@@ -101,12 +101,12 @@ function isTransient(error: unknown): boolean {
     }
 
     if (!isRecord(candidate)) return false;
-    const response = candidate.response;
+    const response = candidate["response"];
     return (
       isRecord(response) &&
-      typeof response.status === "number" &&
-      response.status >= 500 &&
-      response.status < 600
+      typeof response["status"] === "number" &&
+      response["status"] >= 500 &&
+      response["status"] < 600
     );
   });
 }
@@ -121,8 +121,8 @@ function isFetchSocketFailure(error: Error): boolean {
     error.name === "TypeError" &&
     (error.message === "terminated" || error.message === "fetch failed") &&
     isRecord(error.cause) &&
-    typeof error.cause.code === "string" &&
-    SOCKET_FAILURE_CODES.has(error.cause.code)
+    typeof error.cause["code"] === "string" &&
+    SOCKET_FAILURE_CODES.has(error.cause["code"])
   );
 }
 

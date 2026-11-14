@@ -414,14 +414,17 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
-  if (!isRecord(args.value) || typeof args.value.renderPrompt !== "function") {
+  if (
+    !isRecord(args.value) ||
+    typeof args.value["renderPrompt"] !== "function"
+  ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value.context);
+  const context = promptContextSchema.safeParse(args.value["context"]);
   if (!context.success) {
     return undefined;
   }
-  const renderPrompt = args.value.renderPrompt as () => unknown;
+  const renderPrompt = args.value["renderPrompt"] as () => unknown;
   const text = promptMessageSchema.safeParse({ text: renderPrompt() });
   if (!text.success) {
     return undefined;
@@ -1884,7 +1887,7 @@ export function createPluginHookRunner(
               juniorRoot: SANDBOX_JUNIOR_ROOT,
               env: {
                 get(key) {
-                  return env[key] ?? normalizeEnv(nextInput.env)[key];
+                  return env[key] ?? normalizeEnv(nextInput["env"])[key];
                 },
                 set(key, value) {
                   env[key] = value;

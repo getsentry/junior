@@ -289,7 +289,7 @@ export function useTranscriptReadReporter(input: {
       }
       // Read the seq now: an activity group row moves its seq as it grows.
       for (const row of visibleRows) {
-        const seq = Number(row.dataset.transcriptSeq);
+        const seq = Number(row.dataset["transcriptSeq"]);
         if (Number.isSafeInteger(seq)) seenSeq = Math.max(seenSeq ?? -1, seq);
       }
       if (seenSeq === null) return;

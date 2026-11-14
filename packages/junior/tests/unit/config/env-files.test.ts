@@ -41,7 +41,7 @@ describe("createEnvFileLoader", () => {
     applyEnvFile(baseEnv);
     applyEnvFile(localEnv);
 
-    expect(process.env.ENV_FILE_PRECEDENCE).toBe("local");
+    expect(process.env["ENV_FILE_PRECEDENCE"]).toBe("local");
   });
 
   it("preserves an existing shell value", () => {
@@ -49,12 +49,12 @@ describe("createEnvFileLoader", () => {
     const envFile = path.join(tempRoot, ".env.local");
 
     writeFile(envFile, ["ENV_FILE_EXISTING=file", ""].join("\n"));
-    process.env.ENV_FILE_EXISTING = "shell";
+    process.env["ENV_FILE_EXISTING"] = "shell";
     const applyEnvFile = createEnvFileLoader();
 
     applyEnvFile(envFile);
 
-    expect(process.env.ENV_FILE_EXISTING).toBe("shell");
+    expect(process.env["ENV_FILE_EXISTING"]).toBe("shell");
   });
 });
 
@@ -81,7 +81,7 @@ describe("loadJuniorTestEnvFiles", () => {
 
     loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [] });
 
-    expect(process.env.ENV_FILE_DEFAULT).toBe("local");
+    expect(process.env["ENV_FILE_DEFAULT"]).toBe("local");
   });
 
   it("does not let later example files override existing defaults", () => {
@@ -102,6 +102,6 @@ describe("loadJuniorTestEnvFiles", () => {
 
     loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
-    expect(process.env.ENV_FILE_DEFAULT).toBe("example");
+    expect(process.env["ENV_FILE_DEFAULT"]).toBe("example");
   });
 });

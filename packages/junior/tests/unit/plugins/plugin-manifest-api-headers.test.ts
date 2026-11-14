@@ -83,7 +83,7 @@ describe("plugin manifest API headers", () => {
       "/tmp/example",
     );
 
-    expect(manifest.envVars?.EXAMPLE_BOT_EMAIL).toEqual({
+    expect(manifest.envVars?.["EXAMPLE_BOT_EMAIL"]).toEqual({
       exposeToCommandEnv: true,
     });
     expect(manifest.commandEnv).toEqual({
@@ -273,7 +273,7 @@ describe("plugin manifest API headers", () => {
   });
 
   it("resolves standalone command env from explicitly exposed host env references", () => {
-    process.env.EXAMPLE_SAFE_TOKEN = "safe-token";
+    process.env["EXAMPLE_SAFE_TOKEN"] = "safe-token";
     const manifest = parsePluginManifest(
       [
         "name: example",

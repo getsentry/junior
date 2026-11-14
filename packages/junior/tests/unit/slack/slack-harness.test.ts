@@ -17,8 +17,8 @@ describe("slack harness fixture", () => {
   });
 
   it("ignores the environment bot token when no bot user is requested", () => {
-    const previousToken = process.env.SLACK_BOT_TOKEN;
-    process.env.SLACK_BOT_TOKEN = "xoxb-environment-token";
+    const previousToken = process.env["SLACK_BOT_TOKEN"];
+    process.env["SLACK_BOT_TOKEN"] = "xoxb-environment-token";
 
     try {
       const adapter = new FakeSlackAdapter();
@@ -26,9 +26,9 @@ describe("slack harness fixture", () => {
       expect(() => adapter.webClient).toThrow("No bot token available");
     } finally {
       if (previousToken === undefined) {
-        delete process.env.SLACK_BOT_TOKEN;
+        delete process.env["SLACK_BOT_TOKEN"];
       } else {
-        process.env.SLACK_BOT_TOKEN = previousToken;
+        process.env["SLACK_BOT_TOKEN"] = previousToken;
       }
     }
   });

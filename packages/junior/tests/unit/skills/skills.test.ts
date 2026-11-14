@@ -43,7 +43,7 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skills-default-"),
     );
-    const originalSkillDirs = process.env.SKILL_DIRS;
+    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     await writeSkillFile(tempRoot, "brief", [
       "---",
@@ -65,7 +65,7 @@ describe("skills", () => {
     ]);
 
     resetSkillDiscoveryCache();
-    process.env.SKILL_DIRS = tempRoot;
+    process.env["SKILL_DIRS"] = tempRoot;
 
     try {
       const skills = await discoverSkills();
@@ -76,9 +76,9 @@ describe("skills", () => {
     } finally {
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
+        delete process.env["SKILL_DIRS"];
       } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
+        process.env["SKILL_DIRS"] = originalSkillDirs;
       }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -223,7 +223,7 @@ describe("skills", () => {
 
   it("skips skills with unsupported capability metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
-    const originalSkillDirs = process.env.SKILL_DIRS;
+    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     try {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
@@ -245,7 +245,7 @@ describe("skills", () => {
         "",
         "# Body",
       ]);
-      process.env.SKILL_DIRS = tempRoot;
+      process.env["SKILL_DIRS"] = tempRoot;
       resetSkillDiscoveryCache();
 
       const skills = await discoverSkills();
@@ -256,9 +256,9 @@ describe("skills", () => {
     } finally {
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
+        delete process.env["SKILL_DIRS"];
       } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
+        process.env["SKILL_DIRS"] = originalSkillDirs;
       }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

@@ -94,13 +94,13 @@ function namedRepositories(text: string, spans: Span[]): Repository[] {
   for (const span of spans) {
     if (span.url) {
       for (const { groups } of span.url.matchAll(GITHUB_LINKED_URL_PATTERN)) {
-        add(groups?.owner, groups?.repo);
+        add(groups?.["owner"], groups?.["repo"]);
       }
     } else {
       const source = text.slice(span.start, span.end);
       for (const { groups } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
-        add(groups?.issueOwner, groups?.issueRepo);
-        add(groups?.commitOwner, groups?.commitRepo);
+        add(groups?.["issueOwner"], groups?.["issueRepo"]);
+        add(groups?.["commitOwner"], groups?.["commitRepo"]);
       }
     }
   }
@@ -114,12 +114,12 @@ const commitUrl = (owner: string, name: string, sha: string) =>
 
 function linkifyUrl(url: string): string {
   const groups = GITHUB_URL_PATTERN.exec(url)?.groups;
-  if (!groups?.owner || !groups.repo) {
+  if (!groups?.["owner"] || !groups["repo"]) {
     return url;
   }
-  const label = groups.issue
-    ? `${groups.owner}/${groups.repo}#${groups.issue}`
-    : `${groups.owner}/${groups.repo}@${groups.commit!.slice(0, 7)}`;
+  const label = groups["issue"]
+    ? `${groups["owner"]}/${groups["repo"]}#${groups["issue"]}`
+    : `${groups["owner"]}/${groups["repo"]}@${groups["commit"]!.slice(0, 7)}`;
   return `[${label}](${url})`;
 }
 
@@ -134,15 +134,15 @@ function linkifyTextReferences(
   const { repository } = context;
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
     const groups = args.at(-1) as Record<string, string | undefined>;
-    if (groups.issue) {
-      return `[${reference}](${issueUrl(groups.issueOwner!, groups.issueRepo!, groups.issue)})`;
+    if (groups["issue"]) {
+      return `[${reference}](${issueUrl(groups["issueOwner"]!, groups["issueRepo"]!, groups["issue"])})`;
     }
-    if (groups.commit) {
-      const label = `${groups.commitOwner}/${groups.commitRepo}@${groups.commit.slice(0, 7)}`;
-      return `[${label}](${commitUrl(groups.commitOwner!, groups.commitRepo!, groups.commit)})`;
+    if (groups["commit"]) {
+      const label = `${groups["commitOwner"]}/${groups["commitRepo"]}@${groups["commit"].slice(0, 7)}`;
+      return `[${label}](${commitUrl(groups["commitOwner"]!, groups["commitRepo"]!, groups["commit"])})`;
     }
-    if (groups.mention) {
-      const login = groups.mention;
+    if (groups["mention"]) {
+      const login = groups["mention"];
       if (NON_ACCOUNT_MENTIONS.has(login.toLowerCase())) return reference;
       const known = context.mention(login);
       if (known) return known;
@@ -153,15 +153,15 @@ function linkifyTextReferences(
     if (!repository) {
       return reference;
     }
-    if (groups.bareIssue) {
-      return `[${reference}](${issueUrl(repository.owner, repository.name, groups.bareIssue)})`;
+    if (groups["bareIssue"]) {
+      return `[${reference}](${issueUrl(repository.owner, repository.name, groups["bareIssue"])})`;
     }
-    if (groups.userCommit) {
+    if (groups["userCommit"]) {
       // `user@sha` names a commit in the user's fork of the repository.
-      const label = `${groups.user}@${groups.userCommit.slice(0, 7)}`;
-      return `[${label}](${commitUrl(groups.user!, repository.name, groups.userCommit)})`;
+      const label = `${groups["user"]}@${groups["userCommit"].slice(0, 7)}`;
+      return `[${label}](${commitUrl(groups["user"]!, repository.name, groups["userCommit"])})`;
     }
-    const sha = groups.bareCommit!;
+    const sha = groups["bareCommit"]!;
     return `[${sha.slice(0, 7)}](${commitUrl(repository.owner, repository.name, sha)})`;
   });
 }

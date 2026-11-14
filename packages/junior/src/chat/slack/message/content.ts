@@ -36,12 +36,12 @@ export function replaceTopLevelText(
 
 function readRawBlocks(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return undefined;
-  return (raw as Record<string, unknown>).blocks;
+  return (raw as Record<string, unknown>)["blocks"];
 }
 
 function readRawText(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "";
-  const text = (raw as Record<string, unknown>).text;
+  const text = (raw as Record<string, unknown>)["text"];
   return typeof text === "string" ? text : "";
 }
 
@@ -101,7 +101,7 @@ function renderTopLevelText(
   if (
     Array.isArray(blocks) &&
     blocks.some(
-      (block: unknown) => isRecord(block) && block.type === "section",
+      (block: unknown) => isRecord(block) && block["type"] === "section",
     ) &&
     blockText
   ) {

@@ -7,18 +7,18 @@ import { enforceUnhandledExternalRequestFailure, mswServer } from "./server";
 
 // Force test-safe Slack credentials at module evaluation time so any test module
 // importing bot/chat runtime at top-level sees deterministic values.
-process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
-process.env.SLACK_BOT_USER_TOKEN = "xoxp-test-token";
-process.env.SLACK_SIGNING_SECRET = "test-signing-secret";
-process.env.SLACK_CLIENT_ID = "test-client-id";
-process.env.SLACK_CLIENT_SECRET = "test-client-secret";
-process.env.SLACK_APP_TOKEN = "xapp-test-token";
-process.env.JUNIOR_SECRET = "junior-test-secret";
-process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
-process.env.EVAL_OAUTH_CLIENT_SECRET = "eval-oauth-client-secret";
+process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
+process.env["SLACK_BOT_USER_TOKEN"] = "xoxp-test-token";
+process.env["SLACK_SIGNING_SECRET"] = "test-signing-secret";
+process.env["SLACK_CLIENT_ID"] = "test-client-id";
+process.env["SLACK_CLIENT_SECRET"] = "test-client-secret";
+process.env["SLACK_APP_TOKEN"] = "xapp-test-token";
+process.env["JUNIOR_SECRET"] = "junior-test-secret";
+process.env["EVAL_OAUTH_CLIENT_ID"] = "eval-oauth-client-id";
+process.env["EVAL_OAUTH_CLIENT_SECRET"] = "eval-oauth-client-secret";
 
 beforeEach(() => {
-  process.env.JUNIOR_SECRET = "junior-test-secret";
+  process.env["JUNIOR_SECRET"] = "junior-test-secret";
 });
 
 // MSW is enabled globally for both tests and evals. Keep Slack HTTP contract

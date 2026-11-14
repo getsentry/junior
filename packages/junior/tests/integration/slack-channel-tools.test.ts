@@ -218,7 +218,7 @@ describe("slack channel tools", () => {
       oldest: "1690000000.000",
       latest: "1710000000",
     });
-    expect(String(historyCalls[0]?.params.limit)).toBe("150");
+    expect(String(historyCalls[0]?.params["limit"])).toBe("150");
   });
 
   it("normalizes Slack thread references before listing channel messages", async () => {
@@ -345,12 +345,12 @@ describe("slack channel tools", () => {
 
     const historyCalls = getCapturedSlackApiCalls("conversations.history");
     expect(historyCalls).toHaveLength(2);
-    expect(String(historyCalls[0]?.params.limit)).toBe("2");
+    expect(String(historyCalls[0]?.params["limit"])).toBe("2");
     expect(historyCalls[1]?.params).toMatchObject({
       channel: "C123",
       cursor: "cursor-next",
     });
-    expect(String(historyCalls[1]?.params.limit)).toBe("1");
+    expect(String(historyCalls[1]?.params["limit"])).toBe("1");
   });
 
   it("returns a recoverable tool error when Slack rejects a stale history cursor", async () => {

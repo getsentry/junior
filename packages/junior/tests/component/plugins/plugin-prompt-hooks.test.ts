@@ -9,8 +9,8 @@ import {
 } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -176,9 +176,9 @@ describe("plugin prompt hook composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 

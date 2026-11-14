@@ -369,7 +369,7 @@ describe("juniorNitro plugin modules", () => {
     const vercel = getVercelOptions(nitro);
     const template = virtual["#junior/config"];
 
-    expect(vercel.functions?.maxDuration).toBe(800);
+    expect(vercel.functions?.["maxDuration"]).toBe(800);
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
         ?.maxDuration,

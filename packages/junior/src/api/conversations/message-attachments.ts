@@ -28,7 +28,7 @@ export async function hydrateMessageAttachments(
     ]),
   );
   for (const message of messages) {
-    const stored = readMessageAttachments(message.meta?.attachments);
+    const stored = readMessageAttachments(message.meta?.["attachments"]);
     const matched = slackFileIds(message.meta).flatMap((id) => {
       const attachment = byFileId.get(id);
       return attachment ? [attachment] : [];
@@ -39,7 +39,7 @@ export async function hydrateMessageAttachments(
 }
 
 function slackFileIds(meta: Record<string, unknown> | undefined): string[] {
-  const ids = meta?.slackFileIds ?? meta?.imageFileIds;
+  const ids = meta?.["slackFileIds"] ?? meta?.["imageFileIds"];
   return Array.isArray(ids)
     ? ids.filter((id): id is string => typeof id === "string")
     : [];

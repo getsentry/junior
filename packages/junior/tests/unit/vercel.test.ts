@@ -13,10 +13,12 @@ describe("juniorVercelConfig", () => {
   it("returns config with default buildCommand", () => {
     const config = juniorVercelConfig();
 
-    expect(config.framework).toBe("nitro");
-    expect(config.buildCommand).toBe("pnpm exec junior upgrade && pnpm build");
-    expect(config.crons).toBeUndefined();
-    expect(config.functions).toBeUndefined();
+    expect(config["framework"]).toBe("nitro");
+    expect(config["buildCommand"]).toBe(
+      "pnpm exec junior upgrade && pnpm build",
+    );
+    expect(config["crons"]).toBeUndefined();
+    expect(config["functions"]).toBeUndefined();
   });
 
   it("allows apps to override the build command", () => {
@@ -24,14 +26,14 @@ describe("juniorVercelConfig", () => {
       buildCommand: "pnpm build",
     });
 
-    expect(config.framework).toBe("nitro");
-    expect(config.buildCommand).toBe("pnpm build");
+    expect(config["framework"]).toBe("nitro");
+    expect(config["buildCommand"]).toBe("pnpm build");
   });
 
   it("omits buildCommand when set to null", () => {
     const config = juniorVercelConfig({ buildCommand: null });
 
-    expect(config.buildCommand).toBeUndefined();
+    expect(config["buildCommand"]).toBeUndefined();
   });
 
   it("keeps the example app Vercel config aligned with the root project config", () => {
@@ -48,7 +50,7 @@ describe("juniorVercelConfig", () => {
   it("keeps queue triggers out of the root Vercel source-function config", () => {
     const config = juniorVercelConfig();
 
-    expect(config.functions).toBeUndefined();
+    expect(config["functions"]).toBeUndefined();
   });
 });
 

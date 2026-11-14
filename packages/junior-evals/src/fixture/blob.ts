@@ -133,8 +133,8 @@ export async function installBlobMock(): Promise<BlobMock> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const localOrigin = `http://127.0.0.1:${port}`;
-  const previousApiUrl = process.env.VERCEL_BLOB_API_URL;
-  process.env.VERCEL_BLOB_API_URL = localOrigin;
+  const previousApiUrl = process.env["VERCEL_BLOB_API_URL"];
+  process.env["VERCEL_BLOB_API_URL"] = localOrigin;
   const previousDispatcher = getGlobalDispatcher();
   setGlobalDispatcher(
     previousDispatcher.compose(
@@ -152,9 +152,9 @@ export async function installBlobMock(): Promise<BlobMock> {
     async close() {
       setGlobalDispatcher(previousDispatcher);
       if (previousApiUrl === undefined) {
-        delete process.env.VERCEL_BLOB_API_URL;
+        delete process.env["VERCEL_BLOB_API_URL"];
       } else {
-        process.env.VERCEL_BLOB_API_URL = previousApiUrl;
+        process.env["VERCEL_BLOB_API_URL"] = previousApiUrl;
       }
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },

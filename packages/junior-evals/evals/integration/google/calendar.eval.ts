@@ -58,7 +58,10 @@ function pacific(time: string) {
       .formatToParts(Date.parse(time))
       .map((part) => [part.type, part.value]),
   );
-  return { clock: `${parts.hour}:${parts.minute}`, weekday: parts.weekday };
+  return {
+    clock: `${parts["hour"]}:${parts["minute"]}`,
+    weekday: parts["weekday"],
+  };
 }
 
 describe("Google Calendar", () => {

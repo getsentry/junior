@@ -19,7 +19,7 @@ loadJuniorTestEnvFiles({
 });
 
 // Harness tests use local state; only live evals need shared Redis state.
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 export default defineConfig({
   resolve: {

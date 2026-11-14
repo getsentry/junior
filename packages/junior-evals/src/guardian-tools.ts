@@ -104,9 +104,9 @@ let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;
 
 async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
   // The Google plugin registers its tools only when it is configured.
-  process.env.GOOGLE_CLIENT_ID ??= "guardian-eval";
-  process.env.GOOGLE_CLIENT_SECRET ??= "guardian-eval";
-  process.env.GOOGLE_WORKSPACE_ACCOUNT_EMAIL ??= "junior@example.com";
+  process.env["GOOGLE_CLIENT_ID"] ??= "guardian-eval";
+  process.env["GOOGLE_CLIENT_SECRET"] ??= "guardian-eval";
+  process.env["GOOGLE_WORKSPACE_ACCOUNT_EMAIL"] ??= "junior@example.com";
   // createApp registers the plugins as a host does. It only reads the env
   // that the Guardian eval config already set, so the reviewer model stays
   // the same, and the database client it makes does not connect.

@@ -4,20 +4,20 @@ const { dependenciesMock, globalPostinstall, postinstallMock } = vi.hoisted(
   () => ({
     dependenciesMock: vi.fn(),
     globalPostinstall: [] as Array<{ cmd: string; args?: string[] }>,
-    postinstallMock: vi.fn()
+    postinstallMock: vi.fn(),
   }),
 );
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getRuntimeDependencies: dependenciesMock,
-    getRuntimePostinstall: postinstallMock
-  }
+    getRuntimePostinstall: postinstallMock,
+  },
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
-  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall
+  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall,
 }));
 
 import { create, isStale } from "@/chat/sandbox/snapshot/profile";
@@ -29,8 +29,8 @@ describe("snapshot dependency profile", () => {
     dependenciesMock.mockReturnValue([]);
     postinstallMock.mockReturnValue([]);
     globalPostinstall.length = 0;
-    delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
-    delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
+    delete process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"];
+    delete process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
   });
@@ -87,9 +87,9 @@ describe("snapshot dependency profile", () => {
       repos: [
         {
           provider: "github",
-          repo: "getsentry/sentry"
+          repo: "getsentry/sentry",
         },
-      ]
+      ],
     };
 
     const first = create("node22", workspace);
@@ -100,7 +100,7 @@ describe("snapshot dependency profile", () => {
     });
     const changedRepo = create("node22", {
       ...workspace,
-      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }]
+      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }],
     });
 
     expect(first?.hash).not.toBe(changedSetup?.hash);
@@ -144,11 +144,11 @@ describe("snapshot dependency profile", () => {
     const reposA = [
       {
         provider: "github",
-        repo: "getsentry/Zulu"
+        repo: "getsentry/Zulu",
       },
       {
         provider: "github",
-        repo: "getsentry/alpha"
+        repo: "getsentry/alpha",
       },
     ];
     const reposB = [...reposA].reverse();
@@ -158,7 +158,7 @@ describe("snapshot dependency profile", () => {
       setupScript: "pnpm install",
       vcpus: null,
       snapshot: null,
-      repos: reposA
+      repos: reposA,
     });
     const second = create("node22", {
       id: "workspace-1",
@@ -166,7 +166,7 @@ describe("snapshot dependency profile", () => {
       setupScript: "pnpm install",
       vcpus: null,
       snapshot: null,
-      repos: reposB
+      repos: reposB,
     });
     expect(first?.hash).toBe(second?.hash);
   });
@@ -181,7 +181,7 @@ describe("snapshot dependency profile", () => {
       setupScript: "",
       vcpus: null,
       snapshot: null,
-      repos: []
+      repos: [],
     };
     const first = create("node22", workspace);
 
@@ -200,9 +200,9 @@ describe("snapshot dependency profile", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },
     ]);
-    process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH = "epoch-a";
+    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"] = "epoch-a";
     const first = create("node22");
-    process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH = "epoch-b";
+    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"] = "epoch-b";
     const second = create("node22");
 
     expect(first?.hash).not.toBe(second?.hash);
@@ -222,7 +222,7 @@ describe("snapshot dependency profile", () => {
           runtime: "node22",
           rebuildEpoch: "",
           dependencies: [{ type: "npm", package: "example", version: "1.2.3" }],
-          postinstall: []
+          postinstall: [],
         }),
       )
       .digest("hex");
@@ -239,7 +239,7 @@ describe("snapshot dependency profile", () => {
               { type: "npm", package: "example", version: "1.2.3" },
             ],
             postinstall: [],
-            workspace: null
+            workspace: null,
           }),
         )
         .digest("hex"),

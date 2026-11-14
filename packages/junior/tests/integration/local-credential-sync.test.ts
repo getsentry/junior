@@ -82,7 +82,7 @@ describe("local OAuth credential sync integration", () => {
         "https://junior.example/api/internal/local-oauth-credentials",
       ),
     );
-    process.env.NODE_ENV = "production";
+    process.env["NODE_ENV"] = "production";
     const productionResponse = await receiveLocalOAuthCredential(
       new Request("http://127.0.0.1:3000/api/internal/local-oauth-credentials"),
     );

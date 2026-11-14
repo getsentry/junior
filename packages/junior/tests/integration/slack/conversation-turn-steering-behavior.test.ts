@@ -182,16 +182,16 @@ function statusClears() {
     .calls("assistant.threads.setStatus")
     .filter(
       (call) =>
-        call.params.channel_id === CHANNEL_ID &&
-        call.params.thread_ts === THREAD_TS &&
-        call.params.status === "",
+        call.params["channel_id"] === CHANNEL_ID &&
+        call.params["thread_ts"] === THREAD_TS &&
+        call.params["status"] === "",
     );
 }
 
 function stopAcks() {
   return slackApiOutbox
     .messages()
-    .filter((call) => call.params.text === SLACK_STOP_ACK);
+    .filter((call) => call.params["text"] === SLACK_STOP_ACK);
 }
 
 /** Start a queued mention Turn with a running child agent in the thread. */

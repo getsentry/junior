@@ -736,7 +736,7 @@ describe("cache warming gap segments", () => {
       // The warmup sends the cached prefix of the Turn's request unchanged.
       expect(requests).toHaveLength(2);
       const [turnRequest, warmupRequest] = requests;
-      expect(JSON.stringify(warmupRequest!.messages)).toContain(data);
+      expect(JSON.stringify(warmupRequest!["messages"])).toContain(data);
       for (const field of ["system", "messages", "tools"]) {
         expect(JSON.stringify(warmupRequest![field])).toBe(
           JSON.stringify(turnRequest![field]),

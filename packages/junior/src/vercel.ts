@@ -19,7 +19,7 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
   };
 
   if (buildCommand !== null) {
-    config.buildCommand = buildCommand;
+    config["buildCommand"] = buildCommand;
   }
 
   return config;

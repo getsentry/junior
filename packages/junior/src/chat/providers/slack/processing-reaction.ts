@@ -62,7 +62,7 @@ export function shouldKeepProcessingReactionForToolInvocation(
 ): boolean {
   return (
     input.toolName === "addReaction" &&
-    isProcessingReactionEmoji(input.params.emoji)
+    isProcessingReactionEmoji(input.params["emoji"])
   );
 }
 

@@ -337,7 +337,7 @@ export function withLivePreview<Rest extends unknown[]>(
 export function withExampleLivePreview<Rest extends unknown[]>(
   app: FetchApp<Rest>,
 ): FetchApp<Rest> {
-  const liveOrigin = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
+  const liveOrigin = process.env["JUNIOR_DASHBOARD_LIVE_ORIGIN"]?.trim();
   if (!liveOrigin) return app;
   if (exampleDashboardAuthRequired()) {
     throw new Error(

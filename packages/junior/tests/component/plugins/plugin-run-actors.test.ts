@@ -9,8 +9,8 @@ import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
  * unattributable steering message.
  */
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -161,9 +161,9 @@ describe("run actor composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 

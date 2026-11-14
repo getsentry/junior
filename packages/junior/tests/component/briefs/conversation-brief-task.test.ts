@@ -33,11 +33,11 @@ const TEST = vi.hoisted(() => ({
   embedCalls: [] as Array<{ inputType?: string; texts: string[] }>,
   failNextEmbed: false,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
-  originalDatabaseUrl: process.env.DATABASE_URL,
+  originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
 
 vi.hoisted(() => {
-  process.env.DATABASE_URL = "postgres://configured.example.test/briefs";
+  process.env["DATABASE_URL"] = "postgres://configured.example.test/briefs";
 });
 
 vi.mock("@/db/executor", () => ({
@@ -212,7 +212,7 @@ describe("Conversation Brief task", () => {
 
   beforeEach(async () => {
     setBriefsConfig({ enabled: true });
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
     TEST.calls.length = 0;
@@ -233,9 +233,9 @@ describe("Conversation Brief task", () => {
 
   afterAll(() => {
     if (TEST.originalDatabaseUrl === undefined) {
-      delete process.env.DATABASE_URL;
+      delete process.env["DATABASE_URL"];
     } else {
-      process.env.DATABASE_URL = TEST.originalDatabaseUrl;
+      process.env["DATABASE_URL"] = TEST.originalDatabaseUrl;
     }
   });
 

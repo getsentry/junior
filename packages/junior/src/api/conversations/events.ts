@@ -143,7 +143,7 @@ function reportMessageActorIdentity(
   data: Extract<ConversationEvent["data"], { type: "message" }>,
 ): Extract<ConversationReportEventData, { type: "message" }>["actorIdentity"] {
   if (data.role !== "user") return undefined;
-  const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
+  const author = reportingMessageAuthorSchema.safeParse(data.meta?.["author"]);
   if (!author.success) return undefined;
   const actorIdentity = {
     ...(author.data.fullName ? { fullName: author.data.fullName } : undefined),
@@ -310,7 +310,7 @@ const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
 function reportMessageEvents(
   meta: Record<string, unknown> | undefined,
 ): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
-  const parsed = storedMessageEventsSchema.safeParse(meta?.events);
+  const parsed = storedMessageEventsSchema.safeParse(meta?.["events"]);
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
@@ -325,7 +325,7 @@ function reportReviewItemChanges(
   | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
   | undefined {
   const parsed = storedReviewItemChangesSchema.safeParse(
-    meta?.reviewItemChanges,
+    meta?.["reviewItemChanges"],
   );
   return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
 }
@@ -371,8 +371,8 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
-        ...(data.meta?.source === "web" || data.meta?.source === "slack"
-          ? { source: data.meta.source }
+        ...(data.meta?.["source"] === "web" || data.meta?.["source"] === "slack"
+          ? { source: data.meta["source"] }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
         ...(args.canExposePayload &&
@@ -381,38 +381,45 @@ function reportEventData(args: {
         data.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...(typeof data.meta?.agentInvocationId === "string"
-          ? { agentInvocationId: data.meta.agentInvocationId }
+        ...(typeof data.meta?.["agentInvocationId"] === "string"
+          ? { agentInvocationId: data.meta["agentInvocationId"] }
           : undefined),
         ...(args.canExposePayload
           ? reportReviewItemChanges(data.meta)
           : undefined),
-        eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
-          .data,
-        ...(typeof data.meta?.eventType === "string"
-          ? { eventType: data.meta.eventType }
+        eventObjectType: objectTypeSchema.safeParse(
+          data.meta?.["eventObjectType"],
+        ).data,
+        ...(typeof data.meta?.["eventType"] === "string"
+          ? { eventType: data.meta["eventType"] }
           : undefined),
-        ...(typeof data.meta?.eventNamespace === "string"
-          ? { eventNamespace: data.meta.eventNamespace }
+        ...(typeof data.meta?.["eventNamespace"] === "string"
+          ? { eventNamespace: data.meta["eventNamespace"] }
           : undefined),
-        ...(typeof data.meta?.explicitMention === "boolean"
-          ? { explicitMention: data.meta.explicitMention }
+        ...(typeof data.meta?.["explicitMention"] === "boolean"
+          ? { explicitMention: data.meta["explicitMention"] }
           : undefined),
-        ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
+        ...(data.meta?.["quiet"] === true
+          ? { quiet: true as const }
+          : undefined),
         ...(args.canExposePayload &&
-        typeof data.meta?.trustedSummary === "string"
-          ? { trustedSummary: data.meta.trustedSummary }
+        typeof data.meta?.["trustedSummary"] === "string"
+          ? { trustedSummary: data.meta["trustedSummary"] }
           : undefined),
         ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
-        (data.meta?.cards || data.meta?.objectCards)
+        (data.meta?.["cards"] || data.meta?.["objectCards"])
           ? { cards: readMessageCardRefs(data.meta) }
           : undefined),
         ...(args.canExposePayload
           ? {
               text: data.text,
-              ...(data.meta?.attachments
-                ? { attachments: readMessageAttachments(data.meta.attachments) }
+              ...(data.meta?.["attachments"]
+                ? {
+                    attachments: readMessageAttachments(
+                      data.meta["attachments"],
+                    ),
+                  }
                 : undefined),
             }
           : { redacted: true as const }),

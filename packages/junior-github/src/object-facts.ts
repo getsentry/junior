@@ -93,7 +93,7 @@ export function githubImageKind(
   ) {
     return "attachment";
   }
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim().replace(/\/+$/, "");
+  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim().replace(/\/+$/, "");
   if (!baseUrl || !URL.canParse(`${baseUrl}/public/artifacts/`)) {
     return undefined;
   }

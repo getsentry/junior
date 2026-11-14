@@ -77,26 +77,26 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   }
 
   const raw = { ...(input as Record<string, unknown>) };
-  if (typeof raw.edits === "string") {
+  if (typeof raw["edits"] === "string") {
     try {
-      raw.edits = JSON.parse(raw.edits);
+      raw["edits"] = JSON.parse(raw["edits"]);
     } catch {
       // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
       return raw as T;
     }
   }
 
-  const edits: unknown[] = Array.isArray(raw.edits)
-    ? Array.from<unknown>(raw.edits)
+  const edits: unknown[] = Array.isArray(raw["edits"])
+    ? Array.from<unknown>(raw["edits"])
     : [];
-  const oldText = raw.old_text ?? raw.oldText;
-  const newText = raw.new_text ?? raw.newText;
+  const oldText = raw["old_text"] ?? raw["oldText"];
+  const newText = raw["new_text"] ?? raw["newText"];
   if (typeof oldText === "string" && typeof newText === "string") {
     edits.push({ old_text: oldText, new_text: newText });
   }
 
   if (edits.length > 0) {
-    raw.edits = edits.map((edit) => {
+    raw["edits"] = edits.map((edit) => {
       if (!edit || typeof edit !== "object") {
         return edit;
       }
@@ -104,16 +104,16 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
       const { oldText, newText, ...rest } = record;
       return {
         ...rest,
-        old_text: record.old_text ?? oldText,
-        new_text: record.new_text ?? newText,
+        old_text: record["old_text"] ?? oldText,
+        new_text: record["new_text"] ?? newText,
       };
     });
   }
 
-  delete raw.oldText;
-  delete raw.old_text;
-  delete raw.newText;
-  delete raw.new_text;
+  delete raw["oldText"];
+  delete raw["old_text"];
+  delete raw["newText"];
+  delete raw["new_text"];
   // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
   return raw as T;
 }

@@ -170,7 +170,7 @@ function visibleMessages(session: NormalizedSession): VisibleMessage[] {
     ) {
       return [];
     }
-    const author = event.metadata?.author_name;
+    const author = event.metadata?.["author_name"];
     return [
       {
         content: event.content,

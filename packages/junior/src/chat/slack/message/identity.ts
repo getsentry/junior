@@ -17,7 +17,7 @@ export function getMessageTimestamp(
   }
 
   if (message.raw && typeof message.raw === "object") {
-    return parseSlackMessageTs((message.raw as Record<string, unknown>).ts);
+    return parseSlackMessageTs((message.raw as Record<string, unknown>)["ts"]);
   }
 
   return undefined;

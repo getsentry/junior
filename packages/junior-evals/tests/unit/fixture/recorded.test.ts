@@ -47,7 +47,7 @@ describe("sanitizeRecordedEvents", () => {
       },
       text: "Ping person1@example.com in TEVAL about the TRACKING launch on THURSDAY, status UNKNOWN.",
     });
-    expect(JSON.parse(String(toolCall?.payload.message))).toEqual({
+    expect(JSON.parse(String(toolCall?.payload["message"]))).toEqual({
       content: [{ type: "toolCall", name: "updatePlan" }],
       meta: { author: { isBot: true, userName: "junior" } },
       text: "- user_name: Person 2\n",

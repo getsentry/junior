@@ -440,10 +440,10 @@ function normalizeLease(value: unknown): Lease | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const token = toOptionalString(value.token);
-  const acquiredAtMs = toOptionalNumber(value.acquiredAtMs);
-  const lastCheckInAtMs = toOptionalNumber(value.lastCheckInAtMs);
-  const expiresAtMs = toOptionalNumber(value.expiresAtMs);
+  const token = toOptionalString(value["token"]);
+  const acquiredAtMs = toOptionalNumber(value["acquiredAtMs"]);
+  const lastCheckInAtMs = toOptionalNumber(value["lastCheckInAtMs"]);
+  const expiresAtMs = toOptionalNumber(value["expiresAtMs"]);
   if (
     !token ||
     typeof acquiredAtMs !== "number" ||
@@ -464,14 +464,14 @@ function normalizeStop(value: unknown): ConversationStop | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
+  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
     ? uniqueStrings(
-        value.inboundMessageIds.filter(
+        value["inboundMessageIds"].filter(
           (id): id is string => typeof id === "string",
         ),
       )
     : [];
-  const runId = toOptionalString(value.runId);
+  const runId = toOptionalString(value["runId"]);
   return runId ? { inboundMessageIds, runId } : undefined;
 }
 
@@ -483,13 +483,13 @@ function normalizeExecution(
   if (!isRecord(value)) {
     return undefined;
   }
-  const status = normalizeExecutionStatus(value.status);
+  const status = normalizeExecutionStatus(value["status"]);
   if (!status) {
     return undefined;
   }
   const pendingMessages: InboundMessage[] = [];
-  if (Array.isArray(value.pendingMessages)) {
-    for (const rawMessage of value.pendingMessages) {
+  if (Array.isArray(value["pendingMessages"])) {
+    for (const rawMessage of value["pendingMessages"]) {
       const message = normalizeMessage(rawMessage);
       if (!message || message.conversationId !== conversationId) {
         return undefined;
@@ -498,15 +498,15 @@ function normalizeExecution(
     }
     pendingMessages.sort(compareMessages);
   }
-  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
+  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
     ? uniqueStrings(
-        value.inboundMessageIds
+        value["inboundMessageIds"]
           .map((id) => (typeof id === "string" ? id : undefined))
           .filter((id): id is string => Boolean(id)),
       )
     : [];
   const messageSenders = withMessageSenders(
-    normalizeMessageSenders(value.messageSenders),
+    normalizeMessageSenders(value["messageSenders"]),
     pendingMessages,
   );
 
@@ -519,13 +519,13 @@ function normalizeExecution(
     ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    lease: normalizeLease(value.lease),
-    lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
-    lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
-    lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
-    retryCount: toOptionalNumber(value.retryCount),
-    runId: toOptionalString(value.runId),
-    updatedAtMs: toOptionalNumber(value.updatedAtMs),
+    lease: normalizeLease(value["lease"]),
+    lastCheckpointAtMs: toOptionalNumber(value["lastCheckpointAtMs"]),
+    lastEnqueuedAtMs: toOptionalNumber(value["lastEnqueuedAtMs"]),
+    lastProgressAtMs: toOptionalNumber(value["lastProgressAtMs"]),
+    retryCount: toOptionalNumber(value["retryCount"]),
+    runId: toOptionalString(value["runId"]),
+    updatedAtMs: toOptionalNumber(value["updatedAtMs"]),
   };
 }
 
@@ -534,25 +534,28 @@ function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): ConversationExecutionState | undefined {
-  if (!isRecord(value) || value.schemaVersion !== CONVERSATION_SCHEMA_VERSION) {
+  if (
+    !isRecord(value) ||
+    value["schemaVersion"] !== CONVERSATION_SCHEMA_VERSION
+  ) {
     return undefined;
   }
-  const storedConversationId = toOptionalString(value.conversationId);
-  const createdAtMs = toOptionalNumber(value.createdAtMs);
-  const lastActivityAtMs = toOptionalNumber(value.lastActivityAtMs);
-  const updatedAtMs = toOptionalNumber(value.updatedAtMs);
-  const execution = normalizeExecution(conversationId, value.execution);
+  const storedConversationId = toOptionalString(value["conversationId"]);
+  const createdAtMs = toOptionalNumber(value["createdAtMs"]);
+  const lastActivityAtMs = toOptionalNumber(value["lastActivityAtMs"]);
+  const updatedAtMs = toOptionalNumber(value["updatedAtMs"]);
+  const execution = normalizeExecution(conversationId, value["execution"]);
   const destination =
-    value.destination === undefined
+    value["destination"] === undefined
       ? undefined
-      : parseDestination(value.destination);
+      : parseDestination(value["destination"]);
   if (
     storedConversationId !== conversationId ||
     typeof createdAtMs !== "number" ||
     typeof lastActivityAtMs !== "number" ||
     typeof updatedAtMs !== "number" ||
     !execution ||
-    (value.destination !== undefined && !destination)
+    (value["destination"] !== undefined && !destination)
   ) {
     return undefined;
   }
@@ -577,17 +580,17 @@ function normalizeConversation(
     updatedAtMs,
     execution,
     ...(destination ? { destination } : undefined),
-    ...(toOptionalString(value.title)
-      ? { title: toOptionalString(value.title) }
+    ...(toOptionalString(value["title"])
+      ? { title: toOptionalString(value["title"]) }
       : undefined),
-    ...(toOptionalString(value.channelName)
-      ? { channelName: toOptionalString(value.channelName) }
+    ...(toOptionalString(value["channelName"])
+      ? { channelName: toOptionalString(value["channelName"]) }
       : undefined),
-    ...(normalizeActor(value.actor)
-      ? { actor: normalizeActor(value.actor) }
+    ...(normalizeActor(value["actor"])
+      ? { actor: normalizeActor(value["actor"]) }
       : undefined),
-    ...(normalizeSource(value.source)
-      ? { source: normalizeSource(value.source) }
+    ...(normalizeSource(value["source"])
+      ? { source: normalizeSource(value["source"]) }
       : undefined),
   };
 }
@@ -745,8 +748,8 @@ function normalizeIndexEntry(
   if (!isRecord(value)) {
     return undefined;
   }
-  const conversationId = toOptionalString(value.conversationId);
-  const score = toOptionalNumber(value.score);
+  const conversationId = toOptionalString(value["conversationId"]);
+  const score = toOptionalNumber(value["score"]);
   if (!conversationId || typeof score !== "number") {
     return undefined;
   }

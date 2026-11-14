@@ -50,8 +50,8 @@ import {
 } from "../fixtures/sql";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;
@@ -189,11 +189,11 @@ describe("event automations", () => {
       });
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-      expect(posted?.text).toContain(
+      expect(posted?.["text"]).toContain(
         "Review feedback · pull request review commented",
       );
-      expect(posted?.attachments).toBeUndefined();
-      expect(posted?.metadata).toMatchObject({
+      expect(posted?.["attachments"]).toBeUndefined();
+      expect(posted?.["metadata"]).toMatchObject({
         entities: [
           {
             entity_type: "slack#/entities/item",
@@ -218,7 +218,7 @@ describe("event automations", () => {
           },
         ],
       });
-      expect(JSON.stringify(posted?.blocks)).not.toContain(cards[0]!.url);
+      expect(JSON.stringify(posted?.["blocks"])).not.toContain(cards[0]!.url);
       await commitAssistantMessage({
         cards,
         conversation: coerceThreadConversationState({}),
@@ -576,7 +576,9 @@ describe("event automations", () => {
     const createProperties = (
       createTool.inputSchema as { properties?: Record<string, unknown> }
     ).properties;
-    expect(jsonSchemaAllowsNull(createProperties?.credential_mode)).toBe(true);
+    expect(jsonSchemaAllowsNull(createProperties?.["credential_mode"])).toBe(
+      true,
+    );
 
     const createInput = {
       instruction: "Address the requested changes.",
@@ -618,9 +620,11 @@ describe("event automations", () => {
     const updateProperties = (
       updateTool.inputSchema as { properties?: Record<string, unknown> }
     ).properties;
-    expect(jsonSchemaAllowsNull(updateProperties?.instruction)).toBe(true);
-    expect(jsonSchemaAllowsNull(updateProperties?.trigger)).toBe(true);
-    expect(jsonSchemaAllowsNull(updateProperties?.credential_mode)).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.["instruction"])).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.["trigger"])).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.["credential_mode"])).toBe(
+      true,
+    );
     expect(
       updateTool.prepareArguments?.({
         automation_id: "evt_test",

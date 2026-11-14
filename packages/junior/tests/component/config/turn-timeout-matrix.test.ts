@@ -3,8 +3,8 @@ import { readChatConfig } from "@/chat/config";
 
 const BASE_ENV = {
   DATABASE_URL: "postgres://localhost/junior",
-  JUNIOR_ENCRYPTION_KEYS: process.env.JUNIOR_ENCRYPTION_KEYS,
-  JUNIOR_ENCRYPTION_KEY_ID: process.env.JUNIOR_ENCRYPTION_KEY_ID,
+  JUNIOR_ENCRYPTION_KEYS: process.env["JUNIOR_ENCRYPTION_KEYS"],
+  JUNIOR_ENCRYPTION_KEY_ID: process.env["JUNIOR_ENCRYPTION_KEY_ID"],
   JUNIOR_STATE_ADAPTER: "memory",
 };
 

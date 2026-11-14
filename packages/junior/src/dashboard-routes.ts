@@ -73,7 +73,7 @@ export function dashboardRequiresSignIn(
 ): boolean {
   if (!dashboard || dashboard.disabled) return false;
   if (dashboard.authRequired !== undefined) return dashboard.authRequired;
-  return process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED?.trim() !== "false";
+  return process.env["JUNIOR_DASHBOARD_AUTH_REQUIRED"]?.trim() !== "false";
 }
 
 /** Mount the dashboard app on the dashboard-owned host paths. */

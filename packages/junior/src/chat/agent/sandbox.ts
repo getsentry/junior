@@ -77,8 +77,8 @@ function textContent(value: unknown): string {
     ? value
         .flatMap((part) => {
           const item = record(part);
-          return item.type === "text" && typeof item.text === "string"
-            ? [item.text]
+          return item["type"] === "text" && typeof item["text"] === "string"
+            ? [item["text"]]
             : [];
         })
         .join("\n")
@@ -113,10 +113,10 @@ export function createPluginToolSandbox(
       await options.handleAuthSignal(normalized.details);
       input.signal?.throwIfAborted();
       const details = record(normalized.details);
-      if (details.status === "building") {
+      if (details["status"] === "building") {
         const message =
-          typeof details.message === "string" && details.message.trim()
-            ? details.message.trim()
+          typeof details["message"] === "string" && details["message"].trim()
+            ? details["message"].trim()
             : textContent(normalized.content).trim();
         return {
           exitCode: 1,
@@ -127,13 +127,14 @@ export function createPluginToolSandbox(
         };
       }
       return {
-        exitCode: typeof details.exit_code === "number" ? details.exit_code : 1,
-        stdout: typeof details.stdout === "string" ? details.stdout : "",
+        exitCode:
+          typeof details["exit_code"] === "number" ? details["exit_code"] : 1,
+        stdout: typeof details["stdout"] === "string" ? details["stdout"] : "",
         stderr:
-          details.permission_denied !== undefined
+          details["permission_denied"] !== undefined
             ? textContent(normalized.content)
-            : typeof details.stderr === "string"
-              ? details.stderr
+            : typeof details["stderr"] === "string"
+              ? details["stderr"]
               : "",
       };
     },

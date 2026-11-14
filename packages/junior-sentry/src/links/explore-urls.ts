@@ -166,14 +166,14 @@ interface Visualization {
 function aggregateFields(entries: Array<Record<string, unknown>>) {
   const visualization: Visualization = { yAxes: [], groupBy: [], sort: [] };
   for (const entry of entries) {
-    if (typeof entry.groupBy === "string" && entry.groupBy) {
-      visualization.groupBy.push(entry.groupBy);
+    if (typeof entry["groupBy"] === "string" && entry["groupBy"]) {
+      visualization.groupBy.push(entry["groupBy"]);
     }
-    const yAxes = strings(entry.yAxes);
+    const yAxes = strings(entry["yAxes"]);
     if (visualization.yAxes.length === 0 && yAxes.length > 0) {
       visualization.yAxes = yAxes;
-      if (Number.isInteger(entry.chartType)) {
-        visualization.chartType = entry.chartType as number;
+      if (Number.isInteger(entry["chartType"])) {
+        visualization.chartType = entry["chartType"] as number;
       }
     }
   }
@@ -192,46 +192,48 @@ function metricVisualization(
     .find((parsed) => parsed && metricIsVisible(parsed));
   if (!metric) return undefined;
   const visualization: Visualization = { yAxes: [], groupBy: [], sort: [] };
-  const fields = Array.isArray(metric.aggregateFields)
-    ? metric.aggregateFields
+  const fields = Array.isArray(metric["aggregateFields"])
+    ? metric["aggregateFields"]
     : [];
   for (const field of fields.map(record)) {
     if (!field) continue;
-    if (typeof field.groupBy === "string" && field.groupBy) {
-      visualization.groupBy.push(field.groupBy);
+    if (typeof field["groupBy"] === "string" && field["groupBy"]) {
+      visualization.groupBy.push(field["groupBy"]);
     }
-    const yAxes = strings(field.yAxes);
+    const yAxes = strings(field["yAxes"]);
     visualization.yAxes.push(...yAxes);
     if (
       yAxes.length > 0 &&
       visualization.chartType === undefined &&
-      Number.isInteger(field.chartType)
+      Number.isInteger(field["chartType"])
     ) {
-      visualization.chartType = field.chartType as number;
+      visualization.chartType = field["chartType"] as number;
     }
   }
-  const sorts = Array.isArray(metric.aggregateSortBys)
-    ? metric.aggregateSortBys
+  const sorts = Array.isArray(metric["aggregateSortBys"])
+    ? metric["aggregateSortBys"]
     : [];
   for (const sort of sorts.map(record)) {
-    if (typeof sort?.field === "string" && sort.field) {
+    if (typeof sort?.["field"] === "string" && sort["field"]) {
       visualization.sort.push(
-        sort.kind === "asc" ? sort.field : `-${sort.field}`,
+        sort["kind"] === "asc" ? sort["field"] : `-${sort["field"]}`,
       );
     }
   }
-  if (typeof metric.query === "string" && metric.query) {
-    visualization.query = metric.query;
+  if (typeof metric["query"] === "string" && metric["query"]) {
+    visualization.query = metric["query"];
   }
   return visualization;
 }
 
 function metricIsVisible(metric: Record<string, unknown>): boolean {
-  const fields = Array.isArray(metric.aggregateFields)
-    ? metric.aggregateFields
+  const fields = Array.isArray(metric["aggregateFields"])
+    ? metric["aggregateFields"]
     : [];
-  const chart = fields.map(record).find((field) => Array.isArray(field?.yAxes));
-  return chart?.visible !== false;
+  const chart = fields
+    .map(record)
+    .find((field) => Array.isArray(field?.["yAxes"]));
+  return chart?.["visible"] !== false;
 }
 
 function visualization(

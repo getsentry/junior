@@ -172,9 +172,9 @@ function localParts(ms: number, format: Intl.DateTimeFormat): LocalParts {
     format.formatToParts(ms).map((part) => [part.type, part.value]),
   );
   return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minutes: Number(parts.hour) * 60 + Number(parts.minute),
-    weekday: parts.weekday ?? "",
+    date: `${parts["year"]}-${parts["month"]}-${parts["day"]}`,
+    minutes: Number(parts["hour"]) * 60 + Number(parts["minute"]),
+    weekday: parts["weekday"] ?? "",
   };
 }
 

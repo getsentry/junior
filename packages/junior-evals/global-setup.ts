@@ -93,8 +93,8 @@ export default async function setup(
   };
 
   try {
-    const redisUrl = process.env.REDIS_URL?.trim();
-    const stateKeyPrefix = process.env.JUNIOR_STATE_KEY_PREFIX?.trim();
+    const redisUrl = process.env["REDIS_URL"]?.trim();
+    const stateKeyPrefix = process.env["JUNIOR_STATE_KEY_PREFIX"]?.trim();
     if (!redisUrl || !stateKeyPrefix) {
       throw new Error(
         "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
@@ -145,7 +145,7 @@ export default async function setup(
       },
     });
     process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
-    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    process.env["JUNIOR_BASE_URL"] = egress.baseUrl;
     for (const packages of [
       [],
       ["@sentry/junior-github"],

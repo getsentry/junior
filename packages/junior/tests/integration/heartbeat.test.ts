@@ -23,7 +23,7 @@ import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -105,9 +105,9 @@ describe("plugin heartbeat", () => {
   beforeEach(async () => {
     conversationWorkQueue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ now: TEST_NOW_MS });
-    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "dispatch-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "dispatch-secret";
     setPlugins([]);
     await disconnectStateAdapter();
   });
@@ -116,10 +116,10 @@ describe("plugin heartbeat", () => {
     global.fetch = originalFetch;
     setPlugins([]);
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
-    delete process.env.CRON_SECRET;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    delete process.env["CRON_SECRET"];
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
     vi.restoreAllMocks();
     vi.useRealTimers();
   });

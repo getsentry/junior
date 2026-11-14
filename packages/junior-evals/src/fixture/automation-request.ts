@@ -41,8 +41,8 @@ function requiredEnv(name: string): string {
 /** The secret of the heartbeat route, read as the route reads it. */
 function heartbeatSecret(): string {
   const secret =
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim();
+    process.env["JUNIOR_SCHEDULER_SECRET"]?.trim() ||
+    process.env["CRON_SECRET"]?.trim();
   if (!secret) {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }

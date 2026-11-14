@@ -129,7 +129,7 @@ describe("Pi tool adapter", () => {
       supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
         ok: true,
-        command: (input as Record<string, unknown>).command,
+        command: (input as Record<string, unknown>)["command"],
         cwd: "/vercel/sandbox",
         exit_code: 0,
         signal: null,

@@ -30,7 +30,7 @@ function createPluginCredentialSubject(
     userId?: string;
   } = {},
 ) {
-  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  process.env["JUNIOR_SECRET"] = "dispatch-validation-secret";
   const subject = createSlackDirectCredentialSubject({
     channelId: input.channelId ?? "D123",
     teamId: input.teamId ?? "T123",
@@ -62,7 +62,7 @@ function createBoundCredentialSubject(
 }
 
 function createBoundScheduledAutomationCredentialSubject(taskId = "sched_1") {
-  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  process.env["JUNIOR_SECRET"] = "dispatch-validation-secret";
   const subject = bindScheduledAutomationCredentialSubject({
     plugin: "scheduler",
     subject: {
@@ -81,7 +81,7 @@ function createBoundScheduledAutomationCredentialSubject(taskId = "sched_1") {
 }
 
 function createBoundEventAutomationCredentialSubject(taskId = "evt_1") {
-  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  process.env["JUNIOR_SECRET"] = "dispatch-validation-secret";
   const subject = bindEventAutomationCredentialSubject({
     plugin: "junior",
     subject: {
@@ -99,7 +99,7 @@ function createBoundEventAutomationCredentialSubject(taskId = "evt_1") {
 
 describe("agent dispatch validation", () => {
   afterEach(() => {
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SECRET"];
   });
 
   it("accepts a valid Slack channel dispatch", () => {
@@ -341,7 +341,7 @@ describe("agent dispatch validation", () => {
         userId: "unknown",
       }),
     ).toBeUndefined();
-    process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+    process.env["JUNIOR_SECRET"] = "dispatch-validation-secret";
 
     const unboundSubject = {
       type: "user" as const,

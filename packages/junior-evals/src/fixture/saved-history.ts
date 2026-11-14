@@ -39,15 +39,15 @@ export async function savedAgentHistory(
           type: data.type,
           seq,
           provenance: data.provenance,
-          text: textOf(data.content),
+          text: textOf(data["content"]),
         },
       ];
     }
     if (data.type === "assistant_message") {
-      return [{ type: data.type, seq, text: textOf(data.content) }];
+      return [{ type: data.type, seq, text: textOf(data["content"]) }];
     }
     if (data.type === "tool_result") {
-      return [{ type: data.type, seq, toolName: String(data.toolName) }];
+      return [{ type: data.type, seq, toolName: String(data["toolName"]) }];
     }
     return [];
   });

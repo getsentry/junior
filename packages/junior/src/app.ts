@@ -277,12 +277,12 @@ function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
-    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
   if (configured) return configured;
 
   const vercelURL =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-    process.env.VERCEL_URL?.trim();
+    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
+    process.env["VERCEL_URL"]?.trim();
   if (!vercelURL) return undefined;
   return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
     ? vercelURL
@@ -835,7 +835,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env.NODE_ENV === "development") {
+  if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();

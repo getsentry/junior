@@ -57,7 +57,7 @@ async function createPreviewAs(
       },
     },
   );
-  const tool = tools.createPreview;
+  const tool = tools["createPreview"];
   if (!tool?.execute || !tool.prepareArguments) {
     throw new Error("createPreview is missing");
   }

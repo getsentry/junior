@@ -132,25 +132,25 @@ export function isEventMailboxMetadata(
     return false;
   }
   const record = value as Record<string, unknown>;
-  if (record.kind !== "event") {
+  if (record["kind"] !== "event") {
     return false;
   }
-  const event = record.event;
+  const event = record["event"];
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     return false;
   }
   const fields = event as Record<string, unknown>;
   return (
-    typeof fields.eventKey === "string" &&
-    typeof fields.eventType === "string" &&
-    typeof fields.namespace === "string" &&
-    typeof fields.identifier === "string" &&
-    (fields.subscriptionId === undefined ||
-      typeof fields.subscriptionId === "string") &&
-    (fields.objectType === undefined ||
-      objectTypeSchema.safeParse(fields.objectType).success) &&
-    (fields.trustedSummary === undefined ||
-      typeof fields.trustedSummary === "string")
+    typeof fields["eventKey"] === "string" &&
+    typeof fields["eventType"] === "string" &&
+    typeof fields["namespace"] === "string" &&
+    typeof fields["identifier"] === "string" &&
+    (fields["subscriptionId"] === undefined ||
+      typeof fields["subscriptionId"] === "string") &&
+    (fields["objectType"] === undefined ||
+      objectTypeSchema.safeParse(fields["objectType"]).success) &&
+    (fields["trustedSummary"] === undefined ||
+      typeof fields["trustedSummary"] === "string")
   );
 }
 

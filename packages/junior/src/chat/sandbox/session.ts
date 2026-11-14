@@ -142,7 +142,7 @@ function captureOutput(output: string): { value: string; truncated: boolean } {
 
 function parseKeepAliveMs(): number {
   const parsed = Number.parseInt(
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] ?? "0",
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;

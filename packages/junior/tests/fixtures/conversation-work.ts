@@ -616,7 +616,7 @@ export async function createConversationWorkSlackHarness(
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       const process = async () => await work.process(wakes.takeMessage());

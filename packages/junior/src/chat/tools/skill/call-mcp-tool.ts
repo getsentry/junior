@@ -24,7 +24,7 @@ function resolveMcpArguments(
   }
 
   if ("arguments" in input) {
-    const args = input.arguments;
+    const args = input["arguments"];
     if (args === undefined) {
       return {};
     }

@@ -57,7 +57,7 @@ function deferred<T = void>() {
  */
 function fakeGuardian() {
   return vi.fn<ToolActionReviewer["review"]>(async (proposal) =>
-    proposal.input.channel === "#public"
+    proposal.input["channel"] === "#public"
       ? {
           decision: "deny",
           reason: "Private data would go to a public channel.",

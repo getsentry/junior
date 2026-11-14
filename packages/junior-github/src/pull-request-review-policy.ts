@@ -51,12 +51,15 @@ export function assertGitHubPullRequestApprovalDenied(input: {
 
   let event: string | undefined;
   if ("event" in body) {
-    if (typeof body.event !== "string" || body.event.trim().length === 0) {
+    if (
+      typeof body["event"] !== "string" ||
+      body["event"].trim().length === 0
+    ) {
       throw new EgressPolicyDenied(
         "GitHub pull request review submissions must include a parseable non-APPROVE event so the no-approve policy can be enforced.",
       );
     }
-    event = body.event.trim().toUpperCase();
+    event = body["event"].trim().toUpperCase();
   }
   if (event === "APPROVE") {
     throw new EgressPolicyDenied(

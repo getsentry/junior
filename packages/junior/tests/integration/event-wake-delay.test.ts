@@ -258,7 +258,7 @@ describe("event wake delay", () => {
       userMessages.map((message) => message.authorIdentityId),
     );
     // The one message lists every Event, not only the first.
-    expect(userMessages[1]!.meta?.events).toEqual([
+    expect(userMessages[1]!.meta?.["events"]).toEqual([
       expect.objectContaining({
         eventType: "pull_request.review.approved",
         label: prWatch.label,

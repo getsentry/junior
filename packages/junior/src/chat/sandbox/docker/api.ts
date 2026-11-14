@@ -30,7 +30,7 @@ export interface DockerRequest {
 
 /** Return the unix socket path of the Docker daemon from `DOCKER_HOST`. */
 function dockerSocketPath(): string {
-  const host = process.env.DOCKER_HOST?.trim();
+  const host = process.env["DOCKER_HOST"]?.trim();
   if (!host) return DEFAULT_SOCKET_PATH;
   if (!host.startsWith("unix://")) {
     throw new Error(

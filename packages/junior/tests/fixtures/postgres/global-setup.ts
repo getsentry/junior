@@ -15,7 +15,7 @@ declare module "vitest" {
   }
 }
 
-const TEST_DATABASE_URL = process.env.DATABASE_URL;
+const TEST_DATABASE_URL = process.env["DATABASE_URL"];
 
 export interface JuniorPostgresHarnessOptions {
   migrateTemplate?(executor: JuniorSqlMigrationExecutor): Promise<void>;

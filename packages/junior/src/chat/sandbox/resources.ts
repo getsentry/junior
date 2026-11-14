@@ -5,7 +5,7 @@ export interface SandboxResourceConfig {
 let configuredResources: { vcpus: number } | undefined;
 
 function resourcesFromEnv(): { vcpus: number } | undefined {
-  const value = process.env.SANDBOX_VCPUS?.trim();
+  const value = process.env["SANDBOX_VCPUS"]?.trim();
   if (!value || !/^\d+$/.test(value)) {
     return undefined;
   }

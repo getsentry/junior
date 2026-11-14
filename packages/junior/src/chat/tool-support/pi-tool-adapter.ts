@@ -297,10 +297,10 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       ...(Object.keys(beforeTool.env).length > 0
         ? {
             env: {
-              ...(toolInput.env &&
-              typeof toolInput.env === "object" &&
-              !Array.isArray(toolInput.env)
-                ? toolInput.env
+              ...(toolInput["env"] &&
+              typeof toolInput["env"] === "object" &&
+              !Array.isArray(toolInput["env"])
+                ? toolInput["env"]
                 : undefined),
               ...beforeTool.env,
             },

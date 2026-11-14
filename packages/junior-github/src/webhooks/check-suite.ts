@@ -441,7 +441,7 @@ export function selectFailingChecks(
     // Drop runs that name a different suite. Keep runs with no suite id when
     // the caller already loaded by suite endpoint.
     if (options?.checkSuiteId !== undefined) {
-      const suite = record.check_suite;
+      const suite = record["check_suite"];
       const suiteId =
         suite &&
         typeof suite === "object" &&
@@ -452,17 +452,20 @@ export function selectFailingChecks(
       if (suiteId !== undefined && suiteId !== options.checkSuiteId) continue;
     }
     const conclusion =
-      typeof record.conclusion === "string" ? record.conclusion : undefined;
-    const name = typeof record.name === "string" ? record.name.trim() : "";
+      typeof record["conclusion"] === "string"
+        ? record["conclusion"]
+        : undefined;
+    const name =
+      typeof record["name"] === "string" ? record["name"].trim() : "";
     const checkRunId =
-      typeof record.id === "number" && Number.isSafeInteger(record.id)
-        ? record.id
+      typeof record["id"] === "number" && Number.isSafeInteger(record["id"])
+        ? record["id"]
         : undefined;
     if (!conclusion || !FAILING_CHECK_CONCLUSIONS.has(conclusion)) continue;
     if (!name || checkRunId === undefined) continue;
     const htmlUrl =
-      typeof record.html_url === "string" && record.html_url.length > 0
-        ? record.html_url
+      typeof record["html_url"] === "string" && record["html_url"].length > 0
+        ? record["html_url"]
         : undefined;
     failing.push({
       checkRunId,
@@ -714,14 +717,14 @@ function pullRequestFactsFromResponse(
 ): GitHubCheckSuitePullRequestFacts | undefined {
   if (!isRecord(value)) return undefined;
   const facts: GitHubCheckSuitePullRequestFacts = {};
-  if (typeof value.draft === "boolean") facts.isDraft = value.draft;
-  const user = value.user;
+  if (typeof value["draft"] === "boolean") facts.isDraft = value["draft"];
+  const user = value["user"];
   if (isRecord(user)) {
     const username =
-      typeof user.login === "string" ? user.login.trim() : undefined;
+      typeof user["login"] === "string" ? user["login"].trim() : undefined;
     if (username) facts.openerUsername = username;
     const email =
-      typeof user.email === "string" ? user.email.trim() : undefined;
+      typeof user["email"] === "string" ? user["email"].trim() : undefined;
     if (email) facts.openerEmail = email;
   }
   return Object.keys(facts).length > 0 ? facts : undefined;

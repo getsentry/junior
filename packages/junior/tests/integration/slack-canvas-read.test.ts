@@ -10,8 +10,8 @@ import {
 
 describe("createSlackCanvasReadTool", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
   });
 
   it("reads canvas content from a Slack canvas URL", async () => {

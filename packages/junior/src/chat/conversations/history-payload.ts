@@ -43,10 +43,10 @@ export function encodeHistoryPayload(data: ConversationEventData): {
       message: JSON.stringify(message),
       provenance,
       // SQL reports read these fields. Replay reads only the message string.
-      model: message.model,
-      provider: message.provider,
-      usage: message.usage,
-      toolCallId: message.toolCallId,
+      model: message["model"],
+      provider: message["provider"],
+      usage: message["usage"],
+      toolCallId: message["toolCallId"],
     },
   };
 }
@@ -62,7 +62,7 @@ export function decodeHistoryPayload(
       ...fields,
       replacementHistory: z
         .array(replacementEntrySchema)
-        .parse(fields.replacementHistory)
+        .parse(fields["replacementHistory"])
         .map(({ item, ...entry }) => {
           const parsedItem: unknown = JSON.parse(item);
           return { ...entry, item: parsedItem };
@@ -70,8 +70,9 @@ export function decodeHistoryPayload(
     };
   }
   const message = messageFieldsSchema.parse(
-    JSON.parse(z.string().parse(fields.message)),
+    JSON.parse(z.string().parse(fields["message"])),
   );
-  if (fields.provenance !== undefined) message.provenance = fields.provenance;
+  if (fields["provenance"] !== undefined)
+    message["provenance"] = fields["provenance"];
   return message;
 }

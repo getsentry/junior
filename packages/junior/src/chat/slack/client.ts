@@ -291,7 +291,7 @@ function mapSlackError(error: unknown): SlackActionError {
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
     errorData: serializeSlackErrorData(candidate.data),
-    ...parseSlackCanvasDetail(candidate.data?.detail),
+    ...parseSlackCanvasDetail(candidate.data?.["detail"]),
   };
 
   if (apiError === "missing_scope") {

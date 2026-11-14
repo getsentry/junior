@@ -44,11 +44,11 @@ const NEON = vi.hoisted(() => ({
   sql: undefined as
     | Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>["sql"]
     | undefined,
-  originalDatabaseUrl: process.env.DATABASE_URL,
+  originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
 
 vi.hoisted(() => {
-  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
+  process.env["DATABASE_URL"] = "postgres://configured.example.test/neon";
 });
 
 vi.mock("@/db/executor", () => ({
@@ -98,9 +98,9 @@ afterEach(async () => {
 
 afterAll(() => {
   if (NEON.originalDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete process.env["DATABASE_URL"];
   } else {
-    process.env.DATABASE_URL = NEON.originalDatabaseUrl;
+    process.env["DATABASE_URL"] = NEON.originalDatabaseUrl;
   }
 });
 
@@ -461,7 +461,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories!.execute!({}, {}),
+        })["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toEqual({
         memories: [expect.objectContaining({ id: publicMemory.memory.id })],
         target: "listMemories",
@@ -506,7 +506,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
       await expect(
-        webTools.memory_listMemories!.execute!({}, {}),
+        webTools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [expect.objectContaining({ id: publicMemory.memory.id })],
       });
@@ -589,7 +589,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories!.execute!({}, {}),
+        tools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -601,7 +601,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
+        tools["memory_searchMemories"]!.execute!(
+          { query: "personal recall" },
+          {},
+        ),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -633,7 +636,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ]),
       );
       await expect(
-        tools.memory_createMemory!.execute!(
+        tools["memory_createMemory"]!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",
@@ -682,7 +685,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         "memory_createMemory is disabled in this Turn. Only a person's message in a public Conversation can write memory.",
       );
       await expect(
-        eventTools.memory_listMemories!.execute!({}, {}),
+        eventTools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({ memories: { length: 2 } });
     } finally {
       await fixture.close();

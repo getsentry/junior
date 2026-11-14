@@ -52,7 +52,7 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   const { conversationId, tools, queue, drain, historyTexts, agentRuns } =
     await timerConversation();
   const input = { after_ms: 60_000, intent: "Check the deployment." };
-  const timer = (await execute(tools.watchTimer!, input, "timer-1")) as {
+  const timer = (await execute(tools["watchTimer"]!, input, "timer-1")) as {
     id: string;
     fires_at: string;
   };
@@ -62,14 +62,14 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
     fires_at: new Date(firesAtMs).toISOString(),
   });
   clock.mockReturnValue(clock() + 10_000);
-  expect(await execute(tools.watchTimer!, input, "timer-1")).toEqual(timer);
+  expect(await execute(tools["watchTimer"]!, input, "timer-1")).toEqual(timer);
   const cancelled = (await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     input,
     "timer-cancel",
   )) as { id: string };
-  await execute(tools.stopWatchingResources!, { id: cancelled.id });
-  expect(await execute(tools.listWatches!, {})).toMatchObject({
+  await execute(tools["stopWatchingResources"]!, { id: cancelled.id });
+  expect(await execute(tools["listWatches"]!, {})).toMatchObject({
     subscriptions: [{ id: timer.id, fires_at: timer.fires_at }],
   });
   await runHeartbeat({
@@ -93,14 +93,16 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
       metadata: { event: { namespace: "junior", eventType: "timer.fired" } },
     },
   });
-  expect(await execute(tools.listWatches!, {})).toEqual({ subscriptions: [] });
+  expect(await execute(tools["listWatches"]!, {})).toEqual({
+    subscriptions: [],
+  });
   await expect(
-    execute(tools.stopWatchingResources!, { id: timer.id }),
+    execute(tools["stopWatchingResources"]!, { id: timer.id }),
   ).rejects.toThrow("already completed");
 
   // A tool replay does not rearm a completed timer; the cancelled one stays quiet.
   clock.mockReturnValue(clock() + 120_000);
-  expect(await execute(tools.watchTimer!, input, "timer-1")).toEqual(timer);
+  expect(await execute(tools["watchTimer"]!, input, "timer-1")).toEqual(timer);
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   expect(
     (await getConversationWorkState({ conversationId }))?.execution
@@ -131,7 +133,7 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
   const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
   const { conversationId, tools, queue } = await timerConversation();
   const timer = (await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 1, intent: "Check once." },
     "timer-retry",
   )) as { id: string };
@@ -156,10 +158,12 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
       .pendingMessages,
   ).toHaveLength(1);
   expect(queue.sentRecords()).toHaveLength(1);
-  expect(await execute(tools.listWatches!, {})).toEqual({ subscriptions: [] });
+  expect(await execute(tools["listWatches"]!, {})).toEqual({
+    subscriptions: [],
+  });
 
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 1, intent: "Do not deliver stale work." },
     "timer-expired",
   );
@@ -177,14 +181,14 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   const fixture = await timerConversation();
   const { conversationId, tools, queue, drain, agentRuns } = fixture;
   const input = { after_ms: 60_000, intent: "Check the deployment." };
-  await execute(tools.watchTimer!, input, "timer-1");
+  await execute(tools["watchTimer"]!, input, "timer-1");
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 600_000, intent: "Check much later." },
     "timer-2",
   );
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 3_600_000, intent: "Check after the reply." },
     "timer-3",
   );
@@ -205,7 +209,7 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   clock.mockReturnValue(clock() + 600_000);
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 60_000, intent: "Check after the stop." },
     "timer-4",
   );
@@ -248,12 +252,12 @@ it("keeps a root stopped when the stop drops queued input", async () => {
   const fixture = await timerConversation();
   const { conversationId, tools, queue, drain, agentRuns } = fixture;
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 600_000, intent: "Check the deployment." },
     "timer-1",
   );
   await execute(
-    tools.watchTimer!,
+    tools["watchTimer"]!,
     { after_ms: 1_200_000, intent: "Check again later." },
     "timer-2",
   );
@@ -342,17 +346,17 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     getEventCatalog(),
   );
   await execute(
-    childTools.watchTimer!,
+    childTools["watchTimer"]!,
     { after_ms: 60_000, intent: "Check soon." },
     "child-timer-1",
   );
   await execute(
-    childTools.watchTimer!,
+    childTools["watchTimer"]!,
     { after_ms: 600_000, intent: "Check later." },
     "child-timer-2",
   );
   await execute(
-    childTools.watchTimer!,
+    childTools["watchTimer"]!,
     { after_ms: 3_600_000, intent: "Check much later." },
     "child-timer-3",
   );
@@ -427,7 +431,7 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   // New work from its parent ends the stop of the child, so its next timer
   // starts it.
   await execute(
-    childTools.watchTimer!,
+    childTools["watchTimer"]!,
     { after_ms: 600_000, intent: "Check after the parent's message." },
     "child-timer-4",
   );

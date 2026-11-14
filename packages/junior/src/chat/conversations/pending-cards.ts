@@ -44,20 +44,20 @@ async function selectTurnCards(
       if (data.type === "message" && data.role === "assistant") return [];
       if (
         data.type !== "tool_result" ||
-        data.isError ||
-        typeof data.toolName !== "string" ||
-        !isRecord(data.details)
+        data["isError"] ||
+        typeof data["toolName"] !== "string" ||
+        !isRecord(data["details"])
       )
         continue;
-      if (data.details.timed_out === true) continue;
-      if (Array.isArray(data.details.removedCards)) {
+      if (data["details"]["timed_out"] === true) continue;
+      if (Array.isArray(data["details"]["removedCards"])) {
         for (const ref of removedCardSchema
           .array()
-          .parse(data.details.removedCards)) {
+          .parse(data["details"]["removedCards"])) {
           selection.deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      for (const card of readMessageCardRefs(data.details)) {
+      for (const card of readMessageCardRefs(data["details"])) {
         const key = JSON.stringify([card.plugin, card.key]);
         if (!selection.deleted.has(key) && !selection.cards.has(key)) {
           selection.cards.set(key, card);

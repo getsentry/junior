@@ -14,10 +14,10 @@ if (!context) {
   throw new Error("Eval global setup did not provide invocation context");
 }
 const evalContext = context;
-process.env.JUNIOR_BASE_URL = evalContext.baseUrl;
-process.env.JUNIOR_STATE_ADAPTER = "redis";
-process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
-process.env.REDIS_URL = evalContext.redisUrl;
+process.env["JUNIOR_BASE_URL"] = evalContext.baseUrl;
+process.env["JUNIOR_STATE_ADAPTER"] = "redis";
+process.env["JUNIOR_STATE_KEY_PREFIX"] = evalContext.stateKeyPrefix;
+process.env["REDIS_URL"] = evalContext.redisUrl;
 
 beforeEach(async () => {
   // `stable-setup.ts` set the eval clock of this test. The main process uses

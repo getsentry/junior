@@ -1207,8 +1207,8 @@ describe("plugin registry package discovery", () => {
   });
 
   it("resolves ${VAR} to env-vars default when process.env is unset", async () => {
-    const previous = process.env.JUNIOR_TEST_MCP_HOST;
-    delete process.env.JUNIOR_TEST_MCP_HOST;
+    const previous = process.env["JUNIOR_TEST_MCP_HOST"];
+    delete process.env["JUNIOR_TEST_MCP_HOST"];
     try {
       const tempRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), "junior-plugin-package-"),
@@ -1249,16 +1249,16 @@ describe("plugin registry package discovery", () => {
       });
     } finally {
       if (previous === undefined) {
-        delete process.env.JUNIOR_TEST_MCP_HOST;
+        delete process.env["JUNIOR_TEST_MCP_HOST"];
       } else {
-        process.env.JUNIOR_TEST_MCP_HOST = previous;
+        process.env["JUNIOR_TEST_MCP_HOST"] = previous;
       }
     }
   });
 
   it("prefers process.env over the env-vars default when both are present", async () => {
-    const previous = process.env.JUNIOR_TEST_MCP_HOST;
-    process.env.JUNIOR_TEST_MCP_HOST = "us5.example.com";
+    const previous = process.env["JUNIOR_TEST_MCP_HOST"];
+    process.env["JUNIOR_TEST_MCP_HOST"] = "us5.example.com";
     try {
       const tempRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), "junior-plugin-package-"),
@@ -1296,16 +1296,16 @@ describe("plugin registry package discovery", () => {
       );
     } finally {
       if (previous === undefined) {
-        delete process.env.JUNIOR_TEST_MCP_HOST;
+        delete process.env["JUNIOR_TEST_MCP_HOST"];
       } else {
-        process.env.JUNIOR_TEST_MCP_HOST = previous;
+        process.env["JUNIOR_TEST_MCP_HOST"] = previous;
       }
     }
   });
 
   it("fails to load when ${VAR} is declared without a default and process.env is unset", async () => {
-    const previous = process.env.JUNIOR_TEST_MCP_HOST;
-    delete process.env.JUNIOR_TEST_MCP_HOST;
+    const previous = process.env["JUNIOR_TEST_MCP_HOST"];
+    delete process.env["JUNIOR_TEST_MCP_HOST"];
     try {
       const tempRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), "junior-plugin-package-"),
@@ -1340,9 +1340,9 @@ describe("plugin registry package discovery", () => {
       );
     } finally {
       if (previous === undefined) {
-        delete process.env.JUNIOR_TEST_MCP_HOST;
+        delete process.env["JUNIOR_TEST_MCP_HOST"];
       } else {
-        process.env.JUNIOR_TEST_MCP_HOST = previous;
+        process.env["JUNIOR_TEST_MCP_HOST"] = previous;
       }
     }
   });

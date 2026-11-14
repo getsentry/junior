@@ -130,13 +130,13 @@ function coercePendingAuthState(
     return undefined;
   }
 
-  const kind = value.kind;
-  const provider = toOptionalString(value.provider);
-  const actorId = toOptionalString(value.actorId);
-  const authSessionId = toOptionalString(value.authSessionId);
-  const scope = toOptionalString(value.scope);
-  const sessionId = toOptionalString(value.sessionId);
-  const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
+  const kind = value["kind"];
+  const provider = toOptionalString(value["provider"]);
+  const actorId = toOptionalString(value["actorId"]);
+  const authSessionId = toOptionalString(value["authSessionId"]);
+  const scope = toOptionalString(value["scope"]);
+  const sessionId = toOptionalString(value["sessionId"]);
+  const linkSentAtMs = toOptionalNumber(value["linkSentAtMs"]);
   if (
     (kind !== "mcp" && kind !== "plugin") ||
     !provider ||
@@ -176,27 +176,27 @@ export function coerceThreadConversationState(
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
 
-  const rawProcessing = isRecord(rawConversation.processing)
-    ? rawConversation.processing
+  const rawProcessing = isRecord(rawConversation["processing"])
+    ? rawConversation["processing"]
     : {};
   const processing: ConversationProcessingState = {
-    activeTurnId: toOptionalString(rawProcessing.activeTurnId),
-    lastCompletedAtMs: toOptionalNumber(rawProcessing.lastCompletedAtMs),
-    pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
+    activeTurnId: toOptionalString(rawProcessing["activeTurnId"]),
+    lastCompletedAtMs: toOptionalNumber(rawProcessing["lastCompletedAtMs"]),
+    pendingAuth: coercePendingAuthState(rawProcessing["pendingAuth"]),
   };
 
-  const rawVision = isRecord(rawConversation.vision)
-    ? rawConversation.vision
+  const rawVision = isRecord(rawConversation["vision"])
+    ? rawConversation["vision"]
     : {};
-  const rawVisionByFileId = isRecord(rawVision.byFileId)
-    ? rawVision.byFileId
+  const rawVisionByFileId = isRecord(rawVision["byFileId"])
+    ? rawVision["byFileId"]
     : {};
   const byFileId: Record<string, ConversationVisionSummary> = {};
   for (const [fileId, value] of Object.entries(rawVisionByFileId)) {
     if (typeof fileId !== "string" || fileId.trim().length === 0) continue;
     if (!isRecord(value)) continue;
-    const summary = toOptionalString(value.summary);
-    const analyzedAtMs = toOptionalNumber(value.analyzedAtMs);
+    const summary = toOptionalString(value["summary"]);
+    const analyzedAtMs = toOptionalNumber(value["analyzedAtMs"]);
     if (!summary || !analyzedAtMs) continue;
     byFileId[fileId] = {
       summary,
@@ -209,7 +209,9 @@ export function coerceThreadConversationState(
     messages,
     processing,
     vision: {
-      backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),
+      backfillCompletedAtMs: toOptionalNumber(
+        rawVision["backfillCompletedAtMs"],
+      ),
       byFileId,
     },
   };

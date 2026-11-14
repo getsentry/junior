@@ -300,7 +300,9 @@ const COMPONENTS: Components = {
     </ol>
   ),
   p: ({ children, node }) => (
-    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
+    <Paragraph objectUrl={node?.properties["dataObjectUrl"]}>
+      {children}
+    </Paragraph>
   ),
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">

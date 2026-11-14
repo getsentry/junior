@@ -67,11 +67,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function getToolActionRejectionMarker(
   message: unknown,
 ): ToolActionRejectionMarker | undefined {
-  if (!isRecord(message) || !isRecord(message.details)) {
+  if (!isRecord(message) || !isRecord(message["details"])) {
     return undefined;
   }
   const parsed = rejectionMarkerSchema.safeParse(
-    message.details.guardianActionRejection,
+    message["details"]["guardianActionRejection"],
   );
   return parsed.success ? parsed.data : undefined;
 }
@@ -84,13 +84,13 @@ function getCodeModeRejectionMarkers(
   message: Record<string, unknown>,
 ): ToolActionRejectionMarker[] {
   if (
-    message.toolName !== CODEMODE_TOOL_NAME ||
-    !isRecord(message.details) ||
-    !Array.isArray(message.details.calls)
+    message["toolName"] !== CODEMODE_TOOL_NAME ||
+    !isRecord(message["details"]) ||
+    !Array.isArray(message["details"]["calls"])
   ) {
     return [];
   }
-  return message.details.calls.flatMap((call: unknown) => {
+  return message["details"]["calls"].flatMap((call: unknown) => {
     const marker = getToolActionRejectionMarker({ details: call });
     return marker ? [marker] : [];
   });

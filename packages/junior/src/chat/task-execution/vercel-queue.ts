@@ -29,7 +29,7 @@ export function resolveConversationWorkQueueTopic(
   const topic = options.topic?.trim();
   return (
     topic ||
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC?.trim() ||
+    process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"]?.trim() ||
     DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
   );
 }
