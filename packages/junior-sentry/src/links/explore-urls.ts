@@ -100,22 +100,28 @@ export type TimeRange =
   | { start: string; end: string };
 
 /**
- * Read the time range of a Sentry page's URL. Sentry's page filters treat a
- * valid `statsPeriod` as a live window, even when the URL keeps stale
- * `start` and `end` beside it. The bounds count only as a pair.
+ * Read the time range that a Sentry page's URL sets, or nothing when it sets
+ * no valid one. Sentry's page filters treat a valid `statsPeriod` as a live
+ * window, even when the URL keeps stale `start` and `end` beside it. The
+ * bounds count only as a pair.
  */
-export function timeRange(params: URLSearchParams): TimeRange {
+export function urlTimeRange(params: URLSearchParams): TimeRange | undefined {
   const period = params.get("statsPeriod") ?? "";
   if (periodMs(period) !== undefined) return { statsPeriod: period };
   const start = utcMs(params.get("start"));
   const end = utcMs(params.get("end"));
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
-    return { statsPeriod: DEFAULT_PERIOD };
+    return undefined;
   }
   return {
     start: new Date(start).toISOString(),
     end: new Date(end).toISOString(),
   };
+}
+
+/** Read the time range of a Sentry page's URL, with Sentry's default window. */
+export function timeRange(params: URLSearchParams): TimeRange {
+  return urlTimeRange(params) ?? { statsPeriod: DEFAULT_PERIOD };
 }
 
 function rangeMs(range: TimeRange): number {

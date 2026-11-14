@@ -42,6 +42,18 @@ describe("Sentry dashboard URLs", () => {
     });
   });
 
+  it("keeps the saved period when the URL range is not valid", () => {
+    for (const query of [
+      "statsPeriod=",
+      "statsPeriod=soon",
+      "start=2026-11-14T12:00:00&end=2026-11-14T10:00:00",
+    ]) {
+      expect(
+        parse(`https://acme.sentry.io/dashboard/42/?${query}`)?.filters,
+      ).toEqual(NO_FILTERS);
+    }
+  });
+
   it("ignores other pages", () => {
     for (const url of [
       "https://acme.sentry.io/dashboards/",

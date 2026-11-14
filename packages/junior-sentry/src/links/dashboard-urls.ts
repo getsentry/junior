@@ -8,7 +8,7 @@
  * The page filters in the URL replace the dashboard's saved ones.
  */
 import type { ObjectLinkFilter } from "@sentry/junior-plugin-api";
-import { timeRange, type TimeRange } from "./explore-urls.js";
+import { urlTimeRange, type TimeRange } from "./explore-urls.js";
 import { sentryOrgPath } from "./urls.js";
 
 // Short enough to stay exact as a number.
@@ -48,14 +48,14 @@ export interface SentryDashboardLink {
 }
 
 function pageFilters(params: URLSearchParams): DashboardPageFilters {
-  const hasRange =
-    params.has("statsPeriod") || (params.has("start") && params.has("end"));
   const filters: DashboardPageFilters = {
     project: params.getAll("project").filter((id) => PROJECT_PATTERN.test(id)),
     environment: params.getAll("environment").filter(Boolean),
     release: params.getAll("release").filter(Boolean),
   };
-  if (hasRange) filters.range = timeRange(params);
+  // A blank or invalid range in the URL keeps the dashboard's saved period.
+  const range = urlTimeRange(params);
+  if (range) filters.range = range;
   return filters;
 }
 
