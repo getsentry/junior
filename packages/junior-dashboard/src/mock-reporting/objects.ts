@@ -143,6 +143,28 @@ const SENTRY_CHART: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_CHART_PATH = "/explore/traces/";
 
+// The mock release thread links to one Sentry event of the checkout issue.
+const SENTRY_EVENT_ID = "7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b";
+const SENTRY_EVENT: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "event",
+  key: `event:acme/junior:${SENTRY_EVENT_ID}`,
+  label: SENTRY_EVENT_ID.slice(0, 8),
+  title: "TypeError: cart.total is undefined",
+  displayType: "Sentry event",
+  facts: {
+    type: "event",
+    summary: "app/checkout.ts in submitOrder",
+    level: "error",
+    project: "junior",
+    release: "junior@4.2.0",
+    environment: "production",
+    occurredAt: new Date(1770021650_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_EVENT_PATH = `/projects/junior/events/${SENTRY_EVENT_ID}/`;
+
 // The mock release thread links to one Notion page, inline and alone on
 // its line.
 const NOTION_PAGE_ID = "4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3";
@@ -216,6 +238,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
+    return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_CHART_PATH) {
     return [{ object: { ...SENTRY_CHART, url: href }, url: href }];

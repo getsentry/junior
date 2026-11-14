@@ -138,6 +138,17 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
       .min(1)
       .max(5),
   }),
+  // Events: one occurrence, such as an error. Never copy its data, tags,
+  // or user. Each surface formats `occurredAt` for its reader.
+  z.strictObject({
+    type: z.literal("event"),
+    summary: summary.optional(),
+    level: text.optional(),
+    project: text.optional(),
+    release: text.optional(),
+    environment: text.optional(),
+    occurredAt: z.iso.datetime({ offset: true }).optional(),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -273,6 +284,12 @@ export function objectFactFields(
       break;
     case "chart":
       add("range", "Range", facts.range);
+      break;
+    case "event":
+      add("level", "Level", facts.level);
+      add("project", "Project", facts.project);
+      add("release", "Release", facts.release);
+      add("environment", "Environment", facts.environment);
       break;
     case "person":
       add("email", "Email", facts.email);
