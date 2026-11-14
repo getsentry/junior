@@ -1,5 +1,5 @@
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAgentInvocation,
@@ -39,7 +39,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { loadMessageEvents } from "../fixtures/agent-invocations";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
@@ -48,6 +48,7 @@ import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -61,15 +62,15 @@ const baseInput = {
   parentConversationId,
 };
 
-async function searchAgents() {
-  return await createSearchAgentsTool({ conversationId: parentConversationId })
+async function listAgents() {
+  return await createListAgentsTool({ conversationId: parentConversationId })
     .execute!({}, {});
 }
 
 const NO_ANSWER = "Do not answer.";
 
 /** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
-function taskModel(request: AgentRun): StreamFn {
+function taskModel(request: AgentRun): AgentRequestStreamFn {
   return createModelStream(
     request.instruction.text.includes(NO_ANSWER)
       ? [
@@ -86,7 +87,9 @@ function taskModel(request: AgentRun): StreamFn {
   );
 }
 
-async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
+async function createHarness(
+  streamForRun: (request: AgentRun) => AgentRequestStreamFn,
+) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
@@ -221,7 +224,7 @@ describe("agent invocation identity and concurrency", () => {
         idempotencyKey: "named-2",
         input: "second named task",
       });
-      await expect(searchAgents()).resolves.toEqual({
+      await expect(listAgents()).resolves.toEqual({
         agents: [
           {
             conversation_id: first.childConversationId,
@@ -404,7 +407,7 @@ describe("agent invocation identity and concurrency", () => {
         task: "failing sibling",
         updated_at: expect.any(String),
       };
-      const listed = await searchAgents();
+      const listed = await listAgents();
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
@@ -414,7 +417,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       // A child agent sees itself, its parent, and its sibling.
       await expect(
-        createSearchAgentsTool({
+        createListAgentsTool({
           conversationId: successful.childConversationId,
           parentConversationId,
         }).execute!({}, {}),
@@ -522,8 +525,8 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
-      // searchAgents still shows the task from the parent.
-      await expect(searchAgents()).resolves.toMatchObject({
+      // listAgents still shows the task from the parent.
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
@@ -556,7 +559,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stoppedConversationMessageTexts(child.childConversationId),
       ).resolves.toEqual([expect.stringContaining("Check once more.")]);
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });
 
@@ -573,7 +576,7 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle" }],
       });
       await execute(
@@ -660,6 +663,7 @@ describe("agent invocation identity and concurrency", () => {
             reply: { text: finding, toolCallId: "helper-reply" },
           },
           sender: helper,
+          turnId: getAgentInvocationTurnId(helper.invocationId),
           state: harness.state,
         });
         // The child Turn runs after the Event burst window, as on a root.

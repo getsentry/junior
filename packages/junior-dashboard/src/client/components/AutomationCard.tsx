@@ -5,30 +5,32 @@ import { ArrowUpRight, CircleAlert, Clock3 } from "lucide-react";
 import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
 import { DisplayText } from "../display-text/DisplayText";
+import { Item, ItemContent, ItemMedia } from "./ui/item";
+import { cn } from "@dashboard/lib/utils";
+import { MessageCard } from "./MessageCard";
 import { automationPath } from "../format";
 
 /** Show a saved automation inside a reply, with a preview and a detail link. */
 export function AutomationCard({
   card,
+  className,
 }: {
   card: Pick<
     AutomationCardValue,
     "id" | "title" | "instruction" | "trigger" | "warning"
   > & { status?: string };
+  className?: string;
 }) {
   return (
-    <section
-      aria-label={card.title}
-      className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel text-sm"
-    >
-      <div className="flex items-center gap-3 px-4 pb-3 pt-4 md:px-5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-accent-text">
+    <MessageCard aria-label={card.title} className={cn("my-1", className)}>
+      <Item className="items-center" size="card">
+        <ItemMedia className="text-dashboard-accent-text" variant="icon">
           <ObjectIcon objectType="automation" status={card.status} size={18} />
-        </span>
-        <span className="min-w-0 flex-1 break-words text-base font-semibold text-dashboard-text">
+        </ItemMedia>
+        <ItemContent className="block break-words text-base font-semibold text-dashboard-text">
           {card.title}
-        </span>
-      </div>
+        </ItemContent>
+      </Item>
       <div className="grid min-w-0 gap-3 px-4 pb-4 md:px-5">
         {card.status && (
           <StatusChip
@@ -72,6 +74,6 @@ export function AutomationCard({
           <ArrowUpRight aria-hidden="true" size={14} />
         </Link>
       </div>
-    </section>
+    </MessageCard>
   );
 }

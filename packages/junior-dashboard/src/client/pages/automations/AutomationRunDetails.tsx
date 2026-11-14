@@ -107,7 +107,10 @@ export function RunConversationLink(props: { conversationId?: string }) {
         render={
           <Link
             aria-label="Open conversation"
-            className={cn(buttonVariants({ size: "icon" }), "size-8")}
+            className={cn(
+              buttonVariants({ size: "icon", variant: "ghost" }),
+              "size-8",
+            )}
             to={conversationPath(props.conversationId)}
           >
             <MessageSquareText aria-hidden="true" size={15} />

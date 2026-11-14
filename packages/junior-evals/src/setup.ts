@@ -37,6 +37,28 @@ beforeEach(async () => {
   }
 });
 
+beforeEach(async () => {
+  // Redis outlives the Postgres reset of each test. A cached email would
+  // point the viewer at a User of an earlier test, which no longer exists,
+  // so delete every key of the user cache. Do not flush Redis: tests share
+  // the cached Sandbox snapshots in it.
+  const [{ getConnectedStateContext, redisStateKey }, cache, users] =
+    await Promise.all([
+      import("@/chat/state/adapter"),
+      import("@/chat/state/cache"),
+      import("@/chat/identities/user-cache"),
+    ]);
+  const { redisStateAdapter } = await getConnectedStateContext();
+  if (!redisStateAdapter) throw new Error("Evals need the Redis state adapter");
+  const redis = redisStateAdapter.getClient();
+  const prefix = redisStateKey(
+    cache.cacheKeyPrefix(users.USER_CACHE_NAMESPACE),
+  );
+  for await (const keys of redis.scanIterator({ MATCH: `${prefix}*` })) {
+    if (keys.length > 0) await redis.del(keys);
+  }
+});
+
 afterEach(async () => {
   // Keep stateful runtime modules behind the invocation-provided Redis env.
   const { closeDb } = await import("@/chat/db");

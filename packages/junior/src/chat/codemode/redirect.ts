@@ -1,16 +1,17 @@
 /**
- * Models call the tool catalog dispatchers from scripts, but they run only
- * as direct calls. The VM declares them anyway, so such a call reaches the
+ * Models call `modelOnly` tools from scripts, but those tools run only as
+ * direct calls. The VM declares them anyway, so such a call reaches the
  * bridge with its arguments, and the bridge fails it with the call to make
  * instead. Without a declaration, pi fails the property read with a hint
  * that does not apply to Junior, and a script that catches it hides the
  * mistake from the model.
+ *
+ * Tool exposure decides which names these are. This module owns only the
+ * text that each one gets.
  */
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
 import { SEARCH_TOOLS_NAME } from "@/chat/tools/search-tools";
-
-const REDIRECTED_TOOLS = [EXECUTE_TOOL_NAME, SEARCH_TOOLS_NAME];
 
 function executeToolRedirect(
   input: unknown,
@@ -30,32 +31,31 @@ function executeToolRedirect(
 }
 
 /**
- * The error for a script call to a tool catalog dispatcher, or undefined
- * when the name is not one. Without `input`, the text describes the tool.
+ * The error for a script call to a `modelOnly` tool. Without `input`, the
+ * text describes the tool.
  */
 export function scriptRedirect(
   toolName: string,
   input: unknown,
   scriptTools: Record<string, AnyToolDefinition>,
-): string | undefined {
+): string {
   switch (toolName) {
     case EXECUTE_TOOL_NAME:
       return executeToolRedirect(input, scriptTools);
     case SEARCH_TOOLS_NAME:
       return `${SEARCH_TOOLS_NAME} does not run in a script. Call it directly before the script, then call each result as tools.<tool_name>(args).`;
     default:
-      return undefined;
+      return `${toolName} does not run in a script. Call it directly, outside the script.`;
   }
 }
 
-/** VM declarations for the dispatchers that are not script tools. */
+/** VM declarations for the `modelOnly` tools. */
 export function redirectDeclarations(
+  modelOnlyTools: readonly string[],
   scriptTools: Record<string, AnyToolDefinition>,
 ): Array<{ name: string; description: string }> {
-  return REDIRECTED_TOOLS.filter(
-    (name) => !Object.hasOwn(scriptTools, name),
-  ).map((name) => ({
+  return modelOnlyTools.map((name) => ({
     name,
-    description: scriptRedirect(name, undefined, scriptTools)!,
+    description: scriptRedirect(name, undefined, scriptTools),
   }));
 }

@@ -55,7 +55,10 @@ export function WorkspaceDetails(props: {
                 render={
                   <Link
                     aria-label={`Edit ${workspace.name}`}
-                    className={buttonVariants({ size: "icon" })}
+                    className={buttonVariants({
+                      size: "icon",
+                      variant: "ghost",
+                    })}
                     to={`${workspacePath(workspace.id)}/edit`}
                   >
                     <Pencil aria-hidden="true" size={15} />
@@ -68,6 +71,7 @@ export function WorkspaceDetails(props: {
               <TooltipTrigger
                 render={
                   <Button
+                    variant="ghost"
                     aria-label={`Delete ${workspace.name}`}
                     onClick={(event) =>
                       props.onDelete(workspace, event.currentTarget)

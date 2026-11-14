@@ -108,7 +108,9 @@ export function AutomationRunsTab(props: {
       ) : query.error ? (
         <InlineError>
           Runs could not be loaded.{" "}
-          <Button onClick={() => void query.refetch()}>Try again</Button>
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
         </InlineError>
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />

@@ -9,8 +9,7 @@
  * Why a Code Mode script did not return a result. `script`, `timeout`,
  * `aborted`, and `sandbox` are the pi-codemode error kinds. `memory` is a
  * `script` failure caused by the VM heap limit. `missing_tool` is a `script`
- * failure from reading a name that the VM does not declare, such as a
- * `modelOnly` tool.
+ * failure from reading a name that the VM does not declare.
  */
 export type CodeModeErrorKind =
   | "script"
@@ -33,8 +32,8 @@ export interface CodeModeTelemetry {
   /** Nested calls refused because one drain had more calls than the batch limit. */
   batchLimitRejectedCallCount: number;
   /**
-   * Calls to a tool catalog dispatcher, which the bridge fails with the call
-   * to make instead (`codemode/redirect.ts`).
+   * Calls to a `modelOnly` tool, which the bridge fails with the call to
+   * make instead (`codemode/redirect.ts`).
    */
   redirectedCallCount: number;
   /** Time until the VM was ready to run the script. Absent when it did not start. */
@@ -45,6 +44,8 @@ export interface CodeModeTelemetry {
   outputBytes: number;
   /** Absent when the script returned a result. */
   errorKind?: CodeModeErrorKind;
+  /** Close script tool names for a `missing_tool` error. Absent for other results. */
+  missingToolSuggestionCount?: number;
 }
 
 /** Project Code Mode measurements to `app.codemode.*` attributes for the `codemode` tool span. */
@@ -68,6 +69,13 @@ export function codeModeSpanAttributes(
     "app.codemode.output.bytes": telemetry.outputBytes,
     ...(telemetry.errorKind
       ? { "app.codemode.error.kind": telemetry.errorKind }
+      : undefined),
+    // Same key as an `executeTool` miss, so one query finds both.
+    ...(telemetry.missingToolSuggestionCount !== undefined
+      ? {
+          "app.tool_name_miss.suggestion_count":
+            telemetry.missingToolSuggestionCount,
+        }
       : undefined),
   };
 }

@@ -4,15 +4,15 @@ import { cn } from "@dashboard/lib/utils";
 
 /** Pressed-state looks shared by `Toggle` and `ToggleGroupItem`. */
 const toggleVariants = cva(
-  "inline-flex cursor-pointer items-center justify-center font-sans text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+  "inline-flex cursor-pointer items-center justify-center font-sans text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
   {
     variants: {
       variant: {
         /** Quiet when off. The pressed state uses the active surface. */
         default:
-          "h-7 min-w-10 rounded-md border border-transparent bg-transparent px-2 text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text data-pressed:border-dashboard-border-interactive data-pressed:bg-dashboard-surface-active data-pressed:text-dashboard-text",
+          "h-7 min-w-10 rounded-md border border-transparent bg-transparent px-2 text-muted-foreground hover:bg-dashboard-fill-hover hover:text-foreground data-pressed:border-dashboard-border-interactive data-pressed:bg-dashboard-surface-active data-pressed:text-foreground",
         /** A bordered filter chip. The pressed state fills solid. */
-        pill: "rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 leading-tight text-dashboard-text-muted hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover hover:text-dashboard-text data-pressed:border-dashboard-border-heavy data-pressed:bg-dashboard-text-solid data-pressed:text-dashboard-text-inverse",
+        pill: "rounded-md border border-dashboard-border-strong bg-secondary px-2 py-1 leading-tight text-muted-foreground hover:border-dashboard-border-interactive hover:bg-accent hover:text-foreground data-pressed:border-dashboard-border-heavy data-pressed:bg-primary data-pressed:text-primary-foreground",
       },
     },
     defaultVariants: { variant: "default" },

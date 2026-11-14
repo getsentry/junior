@@ -1,7 +1,6 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
-  InputImage,
   MessageAttachment,
   MessageCard,
   PluginOperationalReportFeed,
@@ -13,7 +12,6 @@ import type {
   ConversationReportMessageEvent,
   ConversationFeedItem,
   ConversationStatsReport,
-  ReplyTimeSegmentsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -153,8 +151,8 @@ export type TranscriptViewMessage = {
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
-  /** Local images of a pending send that the server has not stored yet. */
-  images?: InputImage[];
+  /** Local files of a pending send that the server has not stored yet. */
+  files?: File[];
   parts: TranscriptViewPart[];
   /** Plugin whose tool posted this Junior reply, such as `github`. */
   postedTo?: string;
@@ -225,8 +223,6 @@ export type SystemData = DashboardCoreData & {
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
   plugins: Plugin[];
-  replyTimes?: ReplyTimeSegmentsReport;
-  replyTimesError: boolean;
   skills: SkillReport[];
 };
 

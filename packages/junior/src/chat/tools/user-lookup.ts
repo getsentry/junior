@@ -1,3 +1,4 @@
+import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
@@ -14,7 +15,7 @@ import {
 } from "@/chat/slack/users";
 import { juniorIdentities } from "@/db/schema";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const linkedSlackIdentity = alias(
@@ -285,14 +286,19 @@ async function resolveStoredProvider(
   return lookupResult({ provider, query, users });
 }
 
-/** Create the tool that resolves people by identity provider and query. */
-export function createUserLookupTool(
-  teamId: SlackTeamId,
-  providers: [string, ...string[]],
-) {
-  return zodTool({
+/** Identity providers that `userLookup` can search: Slack, then OAuth account providers. */
+export function userLookupIdentityProviders(): [string, ...string[]] {
+  return [
+    "slack",
+    ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
+  ];
+}
+
+/** Static definition of `userLookup` for these identity providers. */
+export function userLookupToolDefinition(providers: [string, ...string[]]) {
+  return zodToolDefinition({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Slack results also list `linked_identities`: verified handles of other accounts the person linked to you, such as `github`. Use a mention or handle only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Name search can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Slack results also list `linked_identities`: verified handles of other accounts the person linked to you, such as `github`. Use a mention or handle only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -309,11 +315,21 @@ export function createUserLookupTool(
           .trim()
           .min(1)
           .describe(
-            "Provider subject ID, handle, Slack email, or Slack name. Prefer a Slack user ID (U…) when one is known.",
+            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. Search by name only with no known ID.",
           ),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,
+  });
+}
+
+/** Create the tool that resolves people by identity provider and query. */
+export function createUserLookupTool(
+  teamId: SlackTeamId,
+  providers: [string, ...string[]],
+) {
+  return zodTool({
+    ...userLookupToolDefinition(providers),
     execute: async ({ provider, query }) => {
       try {
         return provider === "slack"

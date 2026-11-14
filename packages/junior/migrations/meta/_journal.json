@@ -729,6 +729,41 @@
       "when": 1794424481991,
       "tag": "0103_agent_invocation_fork",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794493721940,
+      "tag": "0104_code_change_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794515341853,
+      "tag": "0105_attachment_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794521047106,
+      "tag": "0106_conversation_agent_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794557567747,
+      "tag": "0107_attachment_deferred_download",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
+      "breakpoints": true
     }
   ]
 }

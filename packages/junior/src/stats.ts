@@ -1,5 +1,5 @@
-import { and, asc, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { and, asc, eq, gte, lt, lte, min, notInArray, sql } from "drizzle-orm";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { juniorStats } from "@/db/schema";
 
 export interface Stat {
@@ -26,10 +26,25 @@ export async function incrementStat(
   key: StatKey,
   options: { nowMs?: number } = {},
 ): Promise<void> {
+  await addStats([{ ...key, count: 1 }], options);
+}
+
+/**
+ * Add amounts to daily named counters in one statement. An amount without a
+ * `date` adds to the day of `nowMs`. Zero amounts add no row.
+ */
+export async function addStats(
+  amounts: Array<StatKey & { count: number; date?: string }>,
+  options: { nowMs?: number } = {},
+): Promise<void> {
   const date = utcDate(options.nowMs ?? Date.now());
+  const values = amounts
+    .filter((amount) => amount.count !== 0)
+    .map((amount) => ({ ...amount, date: amount.date ?? date }));
+  if (!values.length) return;
   await getDb()
     .insert(juniorStats)
-    .values({ ...key, date, count: 1 })
+    .values(values)
     .onConflictDoUpdate({
       target: [
         juniorStats.date,
@@ -37,7 +52,7 @@ export async function incrementStat(
         juniorStats.metric,
         juniorStats.name,
       ],
-      set: { count: sql`${juniorStats.count} + 1` },
+      set: { count: sql`${juniorStats.count} + excluded.count` },
     });
 }
 
@@ -53,4 +68,58 @@ export async function readStats(start: string, end: string): Promise<Stat[]> {
       asc(juniorStats.metric),
       asc(juniorStats.name),
     );
+}
+
+/**
+ * Return the first day with a counter in the namespace, if any. Days that
+ * have a `skipDatesWith` counter in the namespace do not count.
+ */
+export async function firstStatDate(
+  namespace: string,
+  skipDatesWith: string,
+): Promise<string | undefined> {
+  const skipped = getDb()
+    .select({ date: juniorStats.date })
+    .from(juniorStats)
+    .where(
+      and(
+        eq(juniorStats.namespace, namespace),
+        eq(juniorStats.metric, skipDatesWith),
+      ),
+    );
+  const [row] = await getDb()
+    .select({ date: min(juniorStats.date) })
+    .from(juniorStats)
+    .where(
+      and(
+        eq(juniorStats.namespace, namespace),
+        notInArray(juniorStats.date, skipped),
+      ),
+    );
+  return row?.date ?? undefined;
+}
+
+/**
+ * Replace every counter of the namespace on the UTC days from `start` up to
+ * `end`, not included, with these amounts, in one transaction.
+ */
+export async function replaceStats(
+  namespace: string,
+  range: { start: string; end: string },
+  amounts: Array<StatKey & { count: number; date: string }>,
+): Promise<void> {
+  const executor = getSqlExecutor();
+  await executor.transaction(async () => {
+    await executor
+      .db()
+      .delete(juniorStats)
+      .where(
+        and(
+          eq(juniorStats.namespace, namespace),
+          gte(juniorStats.date, range.start),
+          lt(juniorStats.date, range.end),
+        ),
+      );
+    await addStats(amounts);
+  });
 }

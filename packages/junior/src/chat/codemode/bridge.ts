@@ -37,6 +37,11 @@ import {
 } from "@/chat/codemode/telemetry";
 import type { CodeModeCall, CodeModeResult } from "@/chat/codemode/result";
 import { redirectDeclarations, scriptRedirect } from "@/chat/codemode/redirect";
+import {
+  renderToolNameHint,
+  suggestionCount,
+  findToolNameHint,
+} from "@/chat/tool-support/tool-name-suggestions";
 
 /** Deadline of one script, including the time its nested calls take. */
 export const CODE_MODE_SCRIPT_TIMEOUT_MS = 120_000;
@@ -68,6 +73,11 @@ export interface CodeModeScriptRun {
   source: string;
   /** Tools the script may call: `scriptTools` from `planToolExposure`. */
   tools: Record<string, AnyToolDefinition>;
+  /**
+   * Model tools that are not script tools. The VM declares them, and a call
+   * gets the call to make instead (`codemode/redirect.ts`).
+   */
+  modelOnlyTools: readonly string[];
   pipeline: Pick<ToolPipeline, "callFromScript" | "reviewScriptCalls">;
   /** Charge one call to the Turn's durable tool-call total; return the total. */
   countToolCall(): number;
@@ -150,7 +160,7 @@ function provenanceStatus(call: ScriptCall): ScriptCallStatus | undefined {
 }
 
 /** pi's `tools` proxy throws this when a script reads an undeclared name. */
-const MISSING_TOOL_MESSAGE = /^tools\.\S+ does not exist\./;
+const MISSING_TOOL_MESSAGE = /^tools\.(\S+) does not exist\./;
 
 function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
   if (result.ok) {
@@ -170,6 +180,24 @@ function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
     return "missing_tool";
   }
   return "script";
+}
+
+/**
+ * Close script tool names for a `missing_tool` error, and the hint to add
+ * to it. pi names close tools by substring only, so it misses typos. The
+ * hint is empty when pi named some or Junior has none.
+ */
+function missingToolHint(
+  message: string,
+  tools: Record<string, AnyToolDefinition>,
+): { hint: string; suggestionCount: number } {
+  const missing = MISSING_TOOL_MESSAGE.exec(message)![1]!;
+  const hint = findToolNameHint(missing, tools);
+  const text = renderToolNameHint(hint, "tools.");
+  return {
+    hint: text && !message.includes("Did you mean") ? `\n${text}` : "",
+    suggestionCount: suggestionCount(hint),
+  };
 }
 
 /** The script output as text. The tool pipeline cuts long text for the model. */
@@ -229,9 +257,12 @@ export async function runCodeModeScript(
   let runningCalls = 0;
   let pauseError: unknown;
 
+  const modelOnly = new Set(run.modelOnlyTools);
   const redirectOf = (host: CodemodeHostCall) => {
     const redirect =
-      host.target === "tool" && !Object.hasOwn(run.tools, host.name)
+      host.target === "tool" &&
+      modelOnly.has(host.name) &&
+      !Object.hasOwn(run.tools, host.name)
         ? scriptRedirect(host.name, host.args, run.tools)
         : undefined;
     // Each call reaches this once: when its drain starts, or at the end.
@@ -372,9 +403,9 @@ export async function runCodeModeScript(
         toolName: host.name,
       };
       calls.push(call);
-      // The VM declares script tools and the redirected dispatchers. Check
-      // again, so no other tool runs from a script. A redirected
-      // dispatcher only gets its error.
+      // The VM declares script tools and the `modelOnly` tools. Check again,
+      // so no other tool runs from a script. A `modelOnly` tool only gets
+      // its redirect error.
       const tool =
         host.target === "tool" && Object.hasOwn(run.tools, host.name)
           ? run.tools[host.name]
@@ -482,7 +513,7 @@ export async function runCodeModeScript(
           name,
           description: tool.description,
         })),
-        ...redirectDeclarations(run.tools),
+        ...redirectDeclarations(run.modelOnlyTools, run.tools),
       ],
       signal: controller.signal,
       timeoutMs: CODE_MODE_SCRIPT_TIMEOUT_MS,
@@ -514,7 +545,7 @@ export async function runCodeModeScript(
       }
     }
     // Calls of the last drain never reached an idle, so they did not start.
-    // A redirected dispatcher keeps its error, so the model still sees it.
+    // A `modelOnly` tool keeps its redirect error, so the model still sees it.
     for (const host of drain) {
       const error = redirectOf(host);
       calls.push({
@@ -536,6 +567,10 @@ export async function runCodeModeScript(
         ? (JSON.stringify(vmResult.value) ?? "")
         : "";
     const errorKind = vmErrorKind(vmResult);
+    const missingTool =
+      !vmResult.ok && errorKind === "missing_tool"
+        ? missingToolHint(vmResult.error.message, run.tools)
+        : undefined;
     Object.assign(telemetry, {
       outputBytes: Buffer.byteLength(output) + Buffer.byteLength(valueJson),
       ...(readyAt !== undefined
@@ -545,6 +580,9 @@ export async function runCodeModeScript(
           }
         : undefined),
       ...(errorKind ? { errorKind } : undefined),
+      ...(missingTool
+        ? { missingToolSuggestionCount: missingTool.suggestionCount }
+        : undefined),
     });
     return {
       ok: vmResult.ok,
@@ -553,7 +591,7 @@ export async function runCodeModeScript(
         : {
             error: {
               kind: errorKind!,
-              message: vmResult.error.stack ?? vmResult.error.message,
+              message: `${vmResult.error.stack ?? vmResult.error.message}${missingTool?.hint ?? ""}`,
             },
           }),
       output,

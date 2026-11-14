@@ -52,6 +52,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
+import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb } from "@/chat/db";
@@ -325,6 +326,8 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, for `<script-tools>`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -657,23 +660,25 @@ export async function wireAgentTools(
         await emitEvent({ type: "tool_finished", report });
       }
     : undefined;
-  const agentTools = createPiAgentTools(
-    tools,
-    args.skillSandbox,
-    args.spanContext,
+  const agentTools = createPiAgentTools(tools, args.skillSandbox, {
+    spanContext: args.spanContext,
+    searchToolsCost: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+    },
     onStatus,
-    agentSandbox.tools,
-    pluginAuth,
+    sandboxTools: agentSandbox.tools,
+    pluginAuthOrchestration: pluginAuth,
     onToolCall,
-    pluginHooks,
-    args.conversationPrivacy,
+    agentHooks: pluginHooks,
+    conversationPrivacy: args.conversationPrivacy,
     onToolResult,
     actionReview,
-    {
+    codeMode: {
       countToolCall: args.resume.countToolCall,
       workspace: agentSandbox.workspace,
     },
-  );
+  });
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
@@ -707,6 +712,7 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
   };

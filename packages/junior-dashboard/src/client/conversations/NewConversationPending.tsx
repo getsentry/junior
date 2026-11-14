@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -17,7 +16,7 @@ import { ConversationHeader } from "./ConversationHeader";
 import { useTranscriptSearchMatch } from "./transcriptSearch";
 import { ConversationPrivacyChip } from "./ConversationMeta";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
-import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
+import { useDetailsStartOpen } from "./conversationSidebarLayout";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
@@ -31,7 +30,7 @@ import { Transcript } from "./TranscriptView";
 export type PendingNewConversation = {
   createdAt: string;
   idempotencyKey: string;
-  images?: InputImage[];
+  files?: File[];
   message: string;
   visibility: "private" | "public";
 };
@@ -123,12 +122,12 @@ export function NewConversationPending(props: {
   // The reader keeps typing in the reply box, as on the page.
   const composerRef = useRef<ConversationComposerHandle>(null);
   useEffect(() => composerRef.current?.focus(), []);
-  // The page opens its details panel at this width. Open it here too, so
-  // the transcript does not move when the page replaces this view. Its
-  // content fills in on the page. The header actions and panel are inert
-  // until then: they need a Conversation, and a details choice made here
-  // would not carry over to the page.
-  const showDetails = useDetailsDefaultOpen();
+  // Open details when the page will, so the transcript does not move when
+  // the page replaces this view. Its content fills in on the page. The
+  // header actions and panel are inert until then: they need a
+  // Conversation, and a details choice made here would not carry over to
+  // the page.
+  const showDetails = useDetailsStartOpen();
   const searchMatch = useTranscriptSearchMatch("");
   // Home has no Conversation chrome. Show the page's, so mobile does not
   // flash the home header before the route changes. Back waits, like the

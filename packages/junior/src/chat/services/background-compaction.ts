@@ -15,7 +15,6 @@ import {
   Agent,
   type AgentMessage,
   type AgentTool,
-  type StreamFn,
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import type { Tool } from "@earendil-works/pi-ai";
@@ -33,6 +32,11 @@ import {
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
+import {
+  readAgentHistory,
+  type AgentRequestStreamFn,
+  withAgentRequest,
+} from "@/chat/pi/agent-history";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -185,7 +189,9 @@ export async function requestBackgroundCompaction(args: {
   if (!args.queue) {
     return;
   }
-  const inputSize = lastRequestInputSize(args.agent.state.messages);
+  const inputSize = lastRequestInputSize(
+    readAgentHistory(args.agent.state.messages),
+  );
   if (
     inputSize === undefined ||
     inputSize < getAgentBackgroundCompactionMarkTokens(args.modelId)
@@ -336,7 +342,7 @@ type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
  */
 export async function processBackgroundCompaction(
   message: BackgroundCompactionMessage,
-  options: { enqueuedAtMs?: number; streamFn?: StreamFn } = {},
+  options: { enqueuedAtMs?: number; streamFn?: AgentRequestStreamFn } = {},
 ): Promise<void> {
   const startedAtMs = Date.now();
   await withLogContext({ conversationId: message.conversationId }, () =>
@@ -361,7 +367,7 @@ export async function processBackgroundCompaction(
 
 async function prepareSummary(
   message: BackgroundCompactionMessage,
-  streamFn: StreamFn | undefined,
+  streamFn: AgentRequestStreamFn | undefined,
 ): Promise<JobOutcome> {
   const eventStore = getConversationEventStore();
   const state = getStateAdapter();
@@ -457,22 +463,26 @@ async function prepareSummary(
           promptName: CONTEXT_COMPACTION_PROMPT_NAME,
           ...(streamFn ? { base: streamFn } : undefined),
         });
+        const tools = snapshot.tools.map((tool) => ({
+          ...tool,
+          execute: async () => {
+            throw new Error("Background compaction does not run tools");
+          },
+        }));
         // The live agent sets only these request options. Keep them equal,
         // or the request prefix differs and the provider cache misses.
         const agent = new Agent({
           getApiKey: getGatewayApiKey,
           sessionId: message.conversationId,
-          streamFn: summaryStreamFn,
+          streamFn: withAgentRequest(summaryStreamFn, {
+            systemPrompt: snapshot.systemPrompt,
+            tools,
+          }),
           initialState: {
             systemPrompt: snapshot.systemPrompt,
             model: resolveGatewayModel(snapshot.modelId),
             thinkingLevel: snapshot.thinkingLevel,
-            tools: snapshot.tools.map((tool) => ({
-              ...tool,
-              execute: async () => {
-                throw new Error("Background compaction does not run tools");
-              },
-            })),
+            tools,
           },
         });
         return await requestContextSummary(

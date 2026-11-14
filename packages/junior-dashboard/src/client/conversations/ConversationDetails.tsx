@@ -102,6 +102,7 @@ export function ConversationDetails(props: {
         title={
           <div className="-ml-2 flex min-w-0 items-center gap-1">
             <Button
+              variant="ghost"
               aria-label="Back to details"
               onClick={() => setMemoriesOpen(false)}
               size="icon"

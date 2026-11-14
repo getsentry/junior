@@ -1,6 +1,7 @@
 import {
   keepPreviousData,
   queryOptions,
+  useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
@@ -11,6 +12,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -19,13 +21,13 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
+import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -113,17 +115,25 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
-  return useQuery({
+  return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      if (pageParam) params.set("cursor", pageParam);
+      const query = params.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
         signal,
-      ),
+      );
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
     // The versions poll refreshes the feed when it changes.
     retry: false,
@@ -417,6 +427,21 @@ export function useStatsData() {
   });
 }
 
+/** Fetch what cache warming saved over the trailing UTC days of a range. */
+export function useCacheWarmingSavings(days: number) {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "savings", days],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheWarmingSavingsReportSchema,
+        `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -426,16 +451,6 @@ export function useSystemData(coreData: DashboardCoreData) {
       fetchDashboardJson(
         conversationStatsReportSchema,
         "/api/conversations/stats",
-        signal,
-      ),
-    retry: false,
-  });
-  const replyTimesQuery = useQuery({
-    queryKey: ["dashboard", "reply-times"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        replyTimeSegmentsReportSchema,
-        "/api/reply-times",
         signal,
       ),
     retry: false,
@@ -458,10 +473,6 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
-          ...(replyTimesQuery.data
-            ? { replyTimes: replyTimesQuery.data }
-            : undefined),
-          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

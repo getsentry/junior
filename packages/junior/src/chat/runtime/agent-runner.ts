@@ -1,4 +1,4 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
   AgentAttachment,
@@ -18,14 +18,17 @@ export interface AgentRunner {
 
 /** Compose the agent executor with stable host dependencies. */
 export function createAgentRunner(
-  execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
+  execute: (
+    run: AgentRun,
+    streamFn?: AgentRequestStreamFn,
+  ) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
     backgroundCompactionQueue?: BackgroundCompactionQueue;
     bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
     bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
-    streamFn?: StreamFn;
+    streamFn?: AgentRequestStreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
@@ -58,15 +61,16 @@ export function createAgentRunner(
             : undefined),
         },
       };
-      // Image storage loads runtime config. Keep it behind execution so the
-      // local CLI can set its defaults before config is first read.
-      const loadStoredImages = async (
+      // Attachment storage loads runtime config. Keep it behind execution so
+      // the local CLI can set its defaults before config is first read.
+      const loadStoredAttachments = async (
         attachments: readonly MessageAttachment[],
       ): Promise<AgentAttachment[]> => {
-        const { loadInputImages } = await import("@/chat/attachments/images");
+        const { loadInputAttachments } =
+          await import("@/chat/attachments/model-input");
         const storage = nextRun.environment?.attachmentStorage;
         if (!storage) throw new Error("Attachment storage is unavailable.");
-        return await loadInputImages({
+        return await loadInputAttachments({
           attachments,
           conversationId: run.conversationId,
           storage,
@@ -75,14 +79,14 @@ export function createAgentRunner(
       if (run.instruction.storedAttachments?.length) {
         nextRun.instruction = {
           ...run.instruction,
-          attachments: await loadStoredImages(
+          attachments: await loadStoredAttachments(
             run.instruction.storedAttachments,
           ),
         };
       }
       const drainSteeringMessages = nextRun.durability?.drainSteeringMessages;
       if (drainSteeringMessages) {
-        // Steered web messages carry stored images like the instruction does.
+        // Steered web messages carry stored files like the instruction does.
         nextRun.durability = {
           ...nextRun.durability,
           drainSteeringMessages: (accept) =>
@@ -94,7 +98,7 @@ export function createAgentRunner(
                       ? {
                           ...message,
                           attachments:
-                            await loadStoredImages(storedAttachments),
+                            await loadStoredAttachments(storedAttachments),
                         }
                       : message,
                   ),

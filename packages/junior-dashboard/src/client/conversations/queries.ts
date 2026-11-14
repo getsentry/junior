@@ -11,9 +11,7 @@ import {
 import type {
   ConversationDetailReport,
   ConversationEventPage,
-  ConversationFeed,
   ConversationPendingMessagesReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
@@ -30,6 +28,12 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
+import { postWebMessage } from "./attachmentUploads";
+import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
@@ -223,9 +227,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[];
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -313,12 +317,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[];
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -644,22 +648,24 @@ export function useConversationData(
       .getQueryCache()
       .findAll({ queryKey: ["dashboard", "conversations"] });
     for (const query of feeds) {
-      const feed = query.state.data as ConversationFeed | undefined;
+      const feed = query.state.data as ConversationFeedCache | undefined;
       if (!feed || query.state.dataUpdatedAt > detailUpdatedAt) continue;
-      const stale = feed.conversations.some(
+      const stale = conversationFeedCacheRows(feed).some(
         (conversation) =>
           conversation.conversationId === conversationId &&
           conversation.displayTitle !== displayTitle,
       );
       if (!stale) continue;
-      queryClient.setQueryData<ConversationFeed>(query.queryKey, {
-        ...feed,
-        conversations: feed.conversations.map((conversation) =>
-          conversation.conversationId === conversationId
-            ? { ...conversation, displayTitle }
-            : conversation,
+      queryClient.setQueryData<ConversationFeedCache>(
+        query.queryKey,
+        mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) =>
+            conversation.conversationId === conversationId
+              ? { ...conversation, displayTitle }
+              : conversation,
+          ),
         ),
-      });
+      );
     }
   }, [conversationId, detailUpdatedAt, displayTitle, queryClient]);
   const historyStatus = detailData?.eventHistory.status;

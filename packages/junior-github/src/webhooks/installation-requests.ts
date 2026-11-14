@@ -7,12 +7,18 @@
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import {
+  ADD_REVIEW_REACTION,
+  OPEN_PULL_REQUEST_MERGEABILITY,
+  PULL_REQUEST_CONFLICT_HISTORY,
+  pullRequestLifecycles,
+} from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 import {
-  ADD_REVIEW_REACTION_MUTATION,
   graphqlReactionContent,
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
@@ -77,31 +83,60 @@ export async function loadPullRequest(
   );
 }
 
+/** GitHub cannot reach a repository: it is gone, or the installation lost it. */
+export class GitHubRepositoryUnreachableError extends Error {
+  constructor(repositoryId: number) {
+    super(`GitHub repository ${repositoryId} is not reachable`);
+    this.name = "GitHubRepositoryUnreachableError";
+  }
+}
+
+// GitHub answers a token request for a repository that the installation
+// cannot reach with 422 and this message.
+const UNREACHABLE_REPOSITORY_MESSAGE = /does not exist or is not accessible/i;
+
 /**
  * Read the lifecycle of some pull requests of one repository in one GraphQL
  * query, with a read-only token. Each pull request has the alias `pr<index>`.
+ * The repository is found by its id, because a rename changes its name.
  */
 export async function loadPullRequestLifecycles(
   env: GitHubInstallationEnv,
-  input: { numbers: number[]; repositoryFullName: string },
+  input: { numbers: number[]; repositoryId: number },
 ): Promise<unknown> {
+  let token: { token: string };
+  try {
+    token = await issueInstallationToken({
+      ...env,
+      permissions: { pull_requests: "read" },
+      repositoryIds: [input.repositoryId],
+    });
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      error.status === 422 &&
+      UNREACHABLE_REPOSITORY_MESSAGE.test(error.message)
+    ) {
+      throw new GitHubRepositoryUnreachableError(input.repositoryId);
+    }
+    throw error;
+  }
+  const repository = z
+    .object({ full_name: z.string().min(1) })
+    .parse(
+      await githubRequest(
+        "https://api.github.com",
+        `/repositories/${input.repositoryId}`,
+        { token: token.token },
+      ),
+    );
   const { owner, name } = splitRepository(
-    input.repositoryFullName,
+    repository.full_name,
     "pull request lifecycle",
-  );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { pull_requests: "read" },
-    repositories: [name],
-  });
-  const variables = input.numbers.map((_, index) => `$n${index}: Int!`);
-  const pullRequests = input.numbers.map(
-    (_, index) =>
-      `pr${index}: pullRequest(number: $n${index}) { ...lifecycle }`,
   );
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query: `query($owner: String!, $name: String!, ${variables.join(", ")}) { repository(owner: $owner, name: $name) { databaseId nameWithOwner ${pullRequests.join(" ")} } } fragment lifecycle on PullRequest { assignees(first: 20) { nodes { login } } author { __typename login } closedAt createdAt databaseId headRefName isDraft merged mergedAt number state title updatedAt }`,
+      ...pullRequestLifecycles(input.numbers.length),
       variables: {
         name,
         owner,
@@ -134,8 +169,7 @@ export async function searchOpenPullRequestMergeability(
   });
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query:
-        "query($query: String!, $after: String) { search(query: $query, type: ISSUE, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { number state mergeable headRefOid baseRefName url } } } }",
+      ...OPEN_PULL_REQUEST_MERGEABILITY,
       variables: {
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
@@ -144,6 +178,55 @@ export async function searchOpenPullRequestMergeability(
     method: "POST",
     token: token.token,
   });
+}
+
+/** Read the merge conflict history of one pull request, with a read-only token. */
+export async function loadPullRequestConflictHistory(
+  env: GitHubInstallationEnv,
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request conflict history",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...PULL_REQUEST_CONFLICT_HISTORY,
+      variables: { name, number: pullRequest.number, owner },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/** Ask people to review one pull request, with a pull request write token. */
+export async function requestPullRequestReviewers(
+  env: GitHubInstallationEnv,
+  input: { number: number; repositoryFullName: string; reviewers: string[] },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "pull request review request",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "write" },
+    repositories: [name],
+  });
+  await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}/requested_reviewers`,
+    {
+      body: { reviewers: input.reviewers },
+      method: "POST",
+      token: token.token,
+    },
+  );
 }
 
 /** Add the "reviewing" reaction to one pull request comment or review body. */
@@ -180,8 +263,7 @@ export async function markPullRequestFeedbackReviewing(
     const result = z.object({ errors: z.array(z.unknown()).optional() }).parse(
       await githubRequest("https://api.github.com", "/graphql", {
         body: {
-          operationName: "AddReviewReaction",
-          query: ADD_REVIEW_REACTION_MUTATION,
+          ...ADD_REVIEW_REACTION,
           variables: {
             content: graphqlReactionContent(content),
             subjectId: review.node_id,
@@ -266,6 +348,10 @@ const pullRequestSchema = z.object({
   html_url: z.string().url(),
   mergeable_state: z.string().nullable().optional(),
   merged: z.boolean(),
+  // The people whose review is still requested. Teams are listed apart.
+  requested_reviewers: z
+    .array(z.object({ login: z.string().min(1) }))
+    .optional(),
   state: z.enum(["open", "closed"]),
   title: z.string(),
 });
@@ -277,7 +363,7 @@ const reviewsSchema = z.array(
   }),
 );
 
-/** The pull request facts that decide whether it is ready to merge. */
+/** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
    * At least one approval, and no reviewer still requests changes. Read
@@ -293,6 +379,8 @@ export interface GitHubPullRequestMergeState {
    * are no conflicts. Undefined when GitHub has not computed it yet.
    */
   mergeableState?: string;
+  /** Logins of the people whose review GitHub still requests. */
+  requestedReviewers: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -335,6 +423,9 @@ export async function loadPullRequestMergeState(
       autoMerge: Boolean(pull.auto_merge),
       draft: pull.draft === true,
       ...(mergeableState ? { mergeableState } : undefined),
+      requestedReviewers: (pull.requested_reviewers ?? []).map(
+        (reviewer) => reviewer.login,
+      ),
       state: pull.merged ? ("merged" as const) : pull.state,
       title: pull.title,
       url: pull.html_url,

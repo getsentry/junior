@@ -161,7 +161,9 @@ function AutomationActivity(props: {
           <div className="px-4 pb-4">
             <InlineError>
               Recent runs could not be loaded.{" "}
-              <Button onClick={() => void query.refetch()}>Try again</Button>
+              <Button variant="outline" onClick={() => void query.refetch()}>
+                Try again
+              </Button>
             </InlineError>
           </div>
         ) : null}

@@ -411,8 +411,8 @@ export function ProfileMenu({
         {identityBlock}
         <DropdownMenuSeparator />
         <div className="grid gap-1 px-2 py-1.5">
-          <ThemeSwitcher />
-          <NavLayoutSwitcher />
+          <ThemeSwitcher menu />
+          <NavLayoutSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}

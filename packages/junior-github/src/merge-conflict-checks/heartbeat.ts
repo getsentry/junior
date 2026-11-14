@@ -1,18 +1,29 @@
 /**
  * The heartbeat part of merge conflict checks. For each due repository, a
  * GraphQL search reads the open Junior pull requests with their
- * mergeability.
- * Only a conflict that a Watch or event automation wants publishes
- * `pull_request.merge_conflict`. No agent runs for the check.
+ * mergeability. Only a conflicted Junior pull request also reads its
+ * history. Only a conflict that a Watch or event automation wants, and that
+ * `policy.ts` allows, publishes `pull_request.merge_conflict`. No agent runs
+ * for the check.
  */
 import type {
   EventPublisher,
+  PluginConversationReviewItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { gitHubMergeConflictEvents } from "../webhooks/merge-conflict.js";
+import {
+  gitHubMergeConflictEvents,
+  type GitHubMergeConflict,
+  type GitHubPullRequestRef,
+} from "../webhooks/merge-conflict.js";
+import {
+  applyGitHubConflictPolicy,
+  closeGitHubConflictNotices,
+  GITHUB_CONFLICT_GONE_REASON,
+} from "./policy.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -43,9 +54,11 @@ const searchNodeSchema = z.union([
   z.object({
     baseRefName: z.string().min(1),
     headRefOid: z.string().min(1),
+    isDraft: z.boolean(),
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
     state: z.string(),
+    title: z.string(),
     url: z.string().min(1),
   }),
   z.object({}).strict(),
@@ -70,7 +83,7 @@ type SearchOpenPullRequests = (input: {
 
 /** Return whether any open pull request still has an unknown answer. */
 async function checkRepository(
-  args: { events: EventPublisher; search: SearchOpenPullRequests },
+  args: CheckArgs,
   repositoryFullName: string,
 ): Promise<boolean> {
   let unknown = false;
@@ -79,23 +92,45 @@ async function checkRepository(
     const { search } = searchResponseSchema.parse(
       await args.search({ after, repositoryFullName }),
     ).data;
+    const mergeable: number[] = [];
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
       if (node.mergeable === "UNKNOWN") unknown = true;
+      if (node.mergeable === "MERGEABLE") mergeable.push(node.number);
       if (node.mergeable !== "CONFLICTING") continue;
-      const events = gitHubMergeConflictEvents({
-        conflict: {
-          baseBranch: node.baseRefName,
-          headSha: node.headRefOid,
-          url: node.url,
-        },
-        number: node.number,
-        repositoryFullName,
-      });
+      const ref = { number: node.number, repositoryFullName };
+      const conflict: GitHubMergeConflict = {
+        baseBranch: node.baseRefName,
+        headSha: node.headRefOid,
+        url: node.url,
+      };
+      const events = gitHubMergeConflictEvents({ ...ref, conflict });
       // Conflict events match only `repo` and `pullRequest`.
       if (!(await args.events.hasMatch?.(events))) continue;
-      for (const event of events) await args.events.publish(event);
+      for (const event of await applyGitHubConflictPolicy({
+        conflict,
+        db: args.db,
+        draft: node.isDraft,
+        events,
+        loadHistory: args.loadHistory,
+        log: args.log,
+        now: args.now,
+        ref,
+        reviewItems: args.reviewItems,
+        title: node.title,
+      })) {
+        await args.events.publish(event);
+      }
     }
+    await closeGitHubConflictNotices({
+      db: args.db,
+      log: args.log,
+      numbers: mergeable,
+      reason: GITHUB_CONFLICT_GONE_REASON,
+      repositoryFullName,
+      reviewItems: args.reviewItems,
+      status: "done",
+    });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
     after = search.pageInfo.endCursor;
   }
@@ -105,8 +140,10 @@ async function checkRepository(
 interface CheckArgs {
   db: GitHubDb;
   events: EventPublisher;
-  log: Pick<PluginLogger, "error">;
+  loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
+  reviewItems: PluginConversationReviewItems;
   search: SearchOpenPullRequests;
   state: PluginState;
 }

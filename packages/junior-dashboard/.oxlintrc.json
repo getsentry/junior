@@ -18,6 +18,14 @@
     {
       "name": "text-control",
       "specifier": "./oxlint/text-control.ts"
+    },
+    {
+      "name": "px-geometry",
+      "specifier": "./oxlint/px-geometry.ts"
+    },
+    {
+      "name": "image-src",
+      "specifier": "./oxlint/image-src.ts"
     }
   ],
   "ignorePatterns": [
@@ -66,6 +74,8 @@
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "display-text/no-raw-display-text": "error",
     "text-control/no-raw-text-control": "error",
+    "px-geometry/px-constant-sizes-element": "error",
+    "image-src/no-raw-external-image-src": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -109,6 +119,12 @@
     ]
   },
   "overrides": [
+    {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "junior/no-regex-url-parsing": "error"
+      }
+    },
     {
       "files": ["src/client/components/ui/**"],
       "rules": {

@@ -66,7 +66,7 @@ export function TextAttachmentPreview(props: {
           ) : null}
           <a
             aria-label={`Download ${filename}`}
-            className={buttonVariants({ size: "icon" })}
+            className={buttonVariants({ size: "icon", variant: "ghost" })}
             download={filename}
             href={props.href}
             rel="noreferrer"

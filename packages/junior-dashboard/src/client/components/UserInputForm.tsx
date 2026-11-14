@@ -31,6 +31,7 @@ import {
   FieldSet,
   FieldTitle,
 } from "./ui/field";
+import { Kbd } from "./ui/kbd";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 
@@ -68,12 +69,9 @@ function SuggestedLabel(props: { className?: string }) {
 function ShortcutHint(props: { value?: string }) {
   if (!props.value) return null;
   return (
-    <kbd
-      aria-hidden="true"
-      className="grid size-5 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft font-sans text-2xs text-dashboard-text-muted max-md:hidden"
-    >
+    <Kbd aria-hidden="true" className="max-md:hidden">
       {props.value}
-    </kbd>
+    </Kbd>
   );
 }
 
@@ -310,7 +308,11 @@ export function UserInputForm(props: {
   // Slack cards show the same button, so both surfaces take a free-text
   // answer when no choice fits.
   const otherButton = props.docked ? null : (
-    <Button disabled={sending} onClick={() => setWriteOther(true)}>
+    <Button
+      variant="outline"
+      disabled={sending}
+      onClick={() => setWriteOther(true)}
+    >
       Other…
     </Button>
   );
@@ -376,6 +378,7 @@ export function UserInputForm(props: {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {buttonField.options.map((option, index) => (
             <Button
+              variant="outline"
               aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
@@ -432,7 +435,7 @@ export function UserInputForm(props: {
           {props.docked && fieldCount < 2 && !secondary ? null : (
             <div className="flex flex-wrap items-center gap-2">
               {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="primary">
+                <Button disabled={sending} type="submit" variant="default">
                   Send
                 </Button>
               )}

@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
 
@@ -12,6 +13,7 @@ function toolContext(
   options: {
     actor?: unknown;
     currentBody?: string;
+    decider?: unknown;
     requester?: unknown;
     source?: unknown;
   } = {},
@@ -58,7 +60,13 @@ function toolContext(
       resolveActor: async () => options.requester,
     },
   };
-  return { fetch, tool: createGitHubUpdatePullRequestTool(ctx as any) };
+  return {
+    fetch,
+    tool: bindPluginTool(
+      createGitHubUpdatePullRequestTool(options.decider !== undefined),
+      { ...ctx, decider: options.decider } as any,
+    ),
+  };
 }
 
 async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
@@ -210,6 +218,50 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       /^Updated body\n\n<!-- junior-request-attribution:start -->/,
     );
     expect(body).toContain(`\n${expected}\n`);
+  });
+
+  it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
+    // The decision model finds a test plan and nothing else.
+    const decider = {
+      decide: vi.fn(async ({ instructions }: { instructions: string }) => ({
+        choice: instructions.includes("test plan") ? "yes" : "no",
+      })),
+    };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          number: 691,
+          body: "Retry timed-out webhooks.\n\n## Test plan\n- [x] pnpm test",
+        },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining(
+        "- Remove check results, test plans, test coverage notes, and commands.",
+      ),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("with the description check experiment on, rejects a blank body without asking the decision model", async () => {
+    const decider = { decide: vi.fn() };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, body: "  " },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining("- Say why the change is needed."),
+    });
+    expect(decider.decide).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("preserves merged status when updating a merged pull request", async () => {
@@ -387,7 +439,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("includes GitHub's error message when the update fails", async () => {
+  it("returns a rejected update to the model with GitHub's error message", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,
@@ -399,8 +451,28 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
         { repo: "getsentry/junior", number: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request update failed with HTTP 422: Validation Failed",
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request update failed with HTTP 422: Validation Failed",
+    });
+  });
+
+  it("keeps GitHub server failures as system errors", async () => {
+    const { tool } = toolContext(
+      new Response(JSON.stringify({ message: "Server Error" }), {
+        status: 500,
+      }),
     );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, base: "main" },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "Error",
+      message: "GitHub pull request update failed with HTTP 500: Server Error",
+    });
   });
 });

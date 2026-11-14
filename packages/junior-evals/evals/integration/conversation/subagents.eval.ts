@@ -1,5 +1,6 @@
 import { describe, expect } from "vitest";
 import { reply, slackMention } from "@junior-evals/fixture/inputs";
+import { requestsTool } from "@junior-evals/fixture/gateway";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test, type CallOptions } from "@junior-evals/fixture/test";
 
@@ -15,14 +16,14 @@ function recordToolRequests(names: string[]): CallOptions["onProgress"] {
 // A child agent result starts a later Turn in the parent thread. These tests
 // check that the thread gets exactly one such Turn for each child agent.
 describe("Child Agents", () => {
-  test("when a child agent finishes, report its result in a later turn", async ({
+  test("when work goes to a child agent, post its result in a later turn", async ({
     agent,
   }) => {
     const { run } = await agent();
     const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Reply with only the code word MAPLE-7." When its result arrives, post the code word here.',
+        'Use spawnAgent to start one child agent named "scout" with the task "Reply with only the code word MAPLE-7." When its result arrives, post the code word here.',
       ),
       { onProgress: recordToolRequests(requestedTools) },
     );
@@ -31,12 +32,29 @@ describe("Child Agents", () => {
     // Only the child's `reply` reaches the parent.
     expect(requestedTools).toContain("reply");
     expect(conversation.turns).toHaveLength(2);
-    // A status that only says the child started would notify people twice.
-    expect(conversation.turns[0]?.replies).toEqual([]);
+    // The parent decides whether a status is worth posting; the result
+    // itself arrives only in the later Turn.
+    expect(conversation.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(conversation.turns[0]?.replies[0]?.text ?? "").not.toContain(
+      "MAPLE-7",
+    );
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("MAPLE-7"),
+    ]);
+
+    const handoff = await conversation.continue(
+      slackMention(
+        'Use messageAgent to send scout the task "Reply with only the code word OAK-3." When its reply arrives, post the code word here.',
+      ),
+    );
+    expect(completedToolCalls("messageAgent", handoff)).toHaveLength(1);
+    expect(handoff.turns).toHaveLength(2);
+    expect(handoff.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(handoff.turns[0]?.replies[0]?.text ?? "").not.toContain("OAK-3");
+    expect(handoff.turns[1]?.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("OAK-3"),
     ]);
   });
 
@@ -120,10 +138,12 @@ describe("Child Agents", () => {
           ) {
             stopRan();
           } else if (progress.type === "tool_request") {
-            if (progress.name === "stopAgent") {
-              await childAskedOnce;
+            if (requestsTool(progress, "stopAgent")) {
+              // A script that also spawns the child must run before the
+              // child can ask.
+              if (!requestsTool(progress, "spawnAgent")) await childAskedOnce;
               stopRequested = true;
-            } else if (progress.name === "webSearch") {
+            } else if (requestsTool(progress, "webSearch")) {
               childAsked();
               await stopRanOnce;
               await new Promise((resolve) => setTimeout(resolve, 1_500));

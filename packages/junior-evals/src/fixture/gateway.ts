@@ -15,6 +15,7 @@
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { mswServer } from "@junior-tests/msw/server";
 import type { AgentGatewayRequest } from "./cache-prefix";
 import { answerGuardianReview, resetGuardianReviews } from "./guardian";
@@ -75,6 +76,24 @@ export function rejectNextModelRequestAsTooLong(): void {
 export type GatewayProgress =
   | { type: "model_request" }
   | { type: "tool_request"; name: string; args: unknown };
+
+/**
+ * Whether a tool request calls the tool `name`, directly or in a `codemode`
+ * script. The script has not run yet, so its source is the only record of
+ * the calls it will make.
+ */
+export function requestsTool(
+  request: Extract<GatewayProgress, { type: "tool_request" }>,
+  name: string,
+): boolean {
+  if (request.name === name) return true;
+  const code = (request.args as { code?: unknown } | undefined)?.code;
+  return (
+    request.name === CODEMODE_TOOL_NAME &&
+    typeof code === "string" &&
+    code.includes(`tools.${name}(`)
+  );
+}
 
 export interface GatewayObserver {
   /** AI Gateway requests seen since the observer started, by endpoint. */

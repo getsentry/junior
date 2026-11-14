@@ -2,12 +2,35 @@ import * as z from "zod";
 
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
+const duration = z.number().finite().nonnegative();
+
+// A Junior image path. Browsers never load a third-party image URL.
+const imagePath = z
+  .string()
+  .max(4000)
+  .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/);
+
+/** The longest object summary, in UTF-16 code units. */
+export const OBJECT_SUMMARY_MAX_LENGTH = 280;
+
+// A short plain-text excerpt that any object type can carry. Only the full
+// card shows it. Return it only to a viewer who may read the object.
+const summary = z.string().trim().min(1).max(OBJECT_SUMMARY_MAX_LENGTH);
+
+// A short series, oldest first, that the full card draws as a sparkline,
+// such as events per hour. The label says what the points count and over
+// which time. The card shows the shape, not exact values.
+const trend = z.strictObject({
+  label: text,
+  points: z.array(z.number().finite().nonnegative()).min(2).max(60),
+});
 
 /** Small, provider-neutral facts. Missing values mean unknown, not success. */
 export const objectFactsSchema = z.discriminatedUnion("type", [
   // Code changes: keep lifecycle, review, and checks separate.
   z.strictObject({
     type: z.literal("code_change"),
+    summary: summary.optional(),
     author: text.optional(),
     sourceBranch: text.optional(),
     targetBranch: text.optional(),
@@ -20,20 +43,32 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     changedFiles: count.optional(),
     additions: count.optional(),
     deletions: count.optional(),
+    /**
+     * Images from the description. The dashboard loads them through the
+     * Junior image route, and the plugin's `images` source checks each
+     * viewer. The 4 KiB facts limit sets how many fit.
+     */
+    previewImageUrls: z
+      .array(z.url({ protocol: /^https?$/ }).max(512))
+      .min(1)
+      .optional(),
   }),
   // Tasks: ownership and priority first; planning context comes next.
   z.strictObject({
     type: z.literal("task"),
+    summary: summary.optional(),
     assignees: z.array(text).max(5).optional(),
     priority: text.optional(),
     project: text.optional(),
     cycle: text.optional(),
     dueDate: z.iso.date().optional(),
     labels: z.array(text).max(5).optional(),
+    trend: trend.optional(),
   }),
   // Deployments: never copy environment values or logs.
   z.strictObject({
     type: z.literal("deployment"),
+    summary: summary.optional(),
     project: text.optional(),
     environment: text.optional(),
     revision: text.optional(),
@@ -42,13 +77,161 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
   // Calendar events: the owner formats the time for the requester's time zone.
   z.strictObject({
     type: z.literal("calendar_event"),
+    summary: summary.optional(),
     when: text.optional(),
     attendees: z.array(text).max(5).optional(),
+  }),
+  // Conversations: only what the viewer may read. Never copy Messages.
+  z.strictObject({
+    type: z.literal("conversation"),
+    summary: summary.optional(),
+    participants: z.array(text).max(5).optional(),
+    lastActivityAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Documents: who owns the file and when it changed. Only `summary` copies
+  // text.
+  z.strictObject({
+    type: z.literal("document"),
+    summary: summary.optional(),
+    owner: text.optional(),
+    modifiedAt: z.iso.datetime({ offset: true }).optional(),
+    // A file thumbnail from `ObjectLinkContext.imagePath`.
+    thumbnailUrl: imagePath.optional(),
+  }),
+  // Messages: where and when, never the text. The card description holds a
+  // short snippet only for a viewer who may read the message.
+  z.strictObject({
+    type: z.literal("message"),
+    summary: summary.optional(),
+    channel: text.optional(),
+    author: text.optional(),
+    sentAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Public web pages: what the page or its oEmbed provider says about it.
+  z.strictObject({
+    type: z.literal("web_page"),
+    summary: summary.optional(),
+    siteName: text.optional(),
+    author: text.optional(),
+    // A video or image page. A link alone on its line shows only the
+    // thumbnail of such a page.
+    media: z.enum(["video", "image"]).optional(),
+    thumbnailUrl: imagePath.optional(),
+  }),
+  // Charts: up to five series over one time range, drawn the way the
+  // source page draws them. Points are oldest first and evenly spaced. A
+  // card shows the shape and the series names, not exact values.
+  z.strictObject({
+    type: z.literal("chart"),
+    summary: summary.optional(),
+    display: z.enum(["line", "bar", "area"]),
+    // What the points measure, such as `p95(span.duration)`.
+    yAxis: text,
+    // The time range, such as "Last 24 hours".
+    range: text,
+    series: z
+      .array(
+        z.strictObject({
+          label: text,
+          points: z.array(z.number().finite()).min(2).max(120),
+        }),
+      )
+      .min(1)
+      .max(5),
+  }),
+  // Events: one occurrence, such as an error. Never copy its data, tags,
+  // or user. Each surface formats `occurredAt` for its reader.
+  z.strictObject({
+    type: z.literal("event"),
+    summary: summary.optional(),
+    level: text.optional(),
+    project: text.optional(),
+    release: text.optional(),
+    environment: text.optional(),
+    occurredAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Traces: the root span, totals, and the first top-level spans, which
+  // the card draws as a small waterfall. Times are milliseconds from the
+  // trace start.
+  z.strictObject({
+    type: z.literal("trace"),
+    summary: summary.optional(),
+    rootOp: text.optional(),
+    rootName: text.optional(),
+    durationMs: duration,
+    spanCount: count,
+    errorCount: count,
+    performanceIssueCount: count,
+    projects: z.array(text).max(5),
+    spans: z
+      .array(
+        z.strictObject({
+          op: text.optional(),
+          name: text,
+          startMs: duration,
+          durationMs: duration,
+          // The span has an error or a performance issue.
+          issue: z.boolean().optional(),
+        }),
+      )
+      .max(12),
+  }),
+  // People: only what the dashboard People pages already show.
+  z.strictObject({
+    type: z.literal("person"),
+    summary: summary.optional(),
+    email: text.optional(),
+    slackHandle: text.optional(),
+    // A verified linked GitHub login. The card links it to its profile.
+    // Enterprise Managed User logins have an underscore, such as `ada_acme`.
+    githubHandle: z
+      .string()
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
+      .optional(),
+    // A Junior photo path. Browsers never load a provider photo URL.
+    avatarUrl: z
+      .string()
+      .max(500)
+      .regex(/^\/api\/people\/avatars\/[^/?#]+(\?v=[\w-]+)?$/)
+      .optional(),
   }),
 ]);
 export type ObjectFacts = z.output<typeof objectFactsSchema>;
 
-type ObjectField = { key: string; label: string; value: string };
+/**
+ * Make an object summary from plain text. Join whitespace and cut overlong
+ * text at a word, with an ellipsis. Empty text gives no summary.
+ */
+export function objectSummary(text: string): string | undefined {
+  const words = text.split(/\s+/).filter(Boolean);
+  const joined = words.join(" ");
+  if (joined.length <= OBJECT_SUMMARY_MAX_LENGTH) return joined || undefined;
+  let cut = "";
+  for (const word of words) {
+    const next = cut ? `${cut} ${word}` : word;
+    if (next.length >= OBJECT_SUMMARY_MAX_LENGTH) break;
+    cut = next;
+  }
+  // One word longer than the limit: cut inside it, not inside a surrogate pair.
+  if (!cut) {
+    cut = joined.slice(0, OBJECT_SUMMARY_MAX_LENGTH - 1);
+    if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1);
+  }
+  return `${cut}…`;
+}
+
+function plural(value: number, noun: string): string {
+  return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`;
+}
+
+/** Format a span or trace duration, such as "850 ms" or "2.4 s". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${Number((ms / 1000).toPrecision(3))} s`;
+  return `${Number((ms / 60_000).toPrecision(3))} min`;
+}
+
+type ObjectField = { href?: string; key: string; label: string; value: string };
 
 /** Show at most four card attributes, in priority order, on every surface. */
 export function objectFactFields(
@@ -60,9 +243,14 @@ export function objectFactFields(
     values?.length
       ? `${values.join(", ")}${values.length === 5 ? " (up to 5 shown)" : ""}`
       : undefined;
-  function add(key: string, label: string, value: string | number | undefined) {
+  function add(
+    key: string,
+    label: string,
+    value: string | number | undefined,
+    href?: string,
+  ) {
     if (value !== undefined && value !== "")
-      fields.push({ key, label, value: String(value) });
+      fields.push({ key, label, value: String(value), ...(href && { href }) });
   }
   switch (facts.type) {
     case "code_change":
@@ -90,6 +278,76 @@ export function objectFactFields(
     case "calendar_event":
       add("when", "When", facts.when);
       add("attendees", "Attendees", list(facts.attendees));
+      break;
+    case "conversation":
+      add("participants", "Participants", list(facts.participants));
+      add(
+        "lastActivityAt",
+        "Last activity",
+        facts.lastActivityAt &&
+          new Date(facts.lastActivityAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "document":
+      add("owner", "Owner", facts.owner);
+      add(
+        "modifiedAt",
+        "Modified",
+        facts.modifiedAt &&
+          new Date(facts.modifiedAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "message":
+      add("channel", "Channel", facts.channel);
+      add("author", "Author", facts.author);
+      add(
+        "sentAt",
+        "Sent",
+        facts.sentAt &&
+          new Date(facts.sentAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "web_page":
+      add("siteName", "Site", facts.siteName);
+      add("author", "Author", facts.author);
+      break;
+    case "chart":
+      add("range", "Range", facts.range);
+      break;
+    case "event":
+      add("level", "Level", facts.level);
+      add("project", "Project", facts.project);
+      add("release", "Release", facts.release);
+      add("environment", "Environment", facts.environment);
+      break;
+    case "trace":
+      add("duration", "Duration", formatDuration(facts.durationMs));
+      add("spans", "Spans", facts.spanCount.toLocaleString("en-US"));
+      add(
+        "issues",
+        "Issues",
+        `${plural(facts.errorCount, "error")}, ${plural(facts.performanceIssueCount, "performance issue")}`,
+      );
+      add("projects", "Projects", list(facts.projects));
+      break;
+    case "person":
+      add("email", "Email", facts.email);
+      add("slackHandle", "Slack", facts.slackHandle && `@${facts.slackHandle}`);
+      add(
+        "githubHandle",
+        "GitHub",
+        facts.githubHandle && `@${facts.githubHandle}`,
+        facts.githubHandle && `https://github.com/${facts.githubHandle}`,
+      );
       break;
   }
   return fields.slice(0, 4);

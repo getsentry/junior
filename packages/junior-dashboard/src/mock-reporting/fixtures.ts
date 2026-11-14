@@ -58,6 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: true,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -68,6 +69,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -122,6 +124,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -150,6 +154,12 @@ const mockPinPositions = new Map<string, number>();
 
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
+
+/** Process-local attached links, newest first, like the attach API. */
+const mockAttachedAnnotations = new Map<
+  string,
+  NonNullable<ConversationDetailReport["annotations"]>
+>();
 
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
@@ -182,6 +192,7 @@ export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
   mockTitles.clear();
+  mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
@@ -680,6 +691,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+        // The running step shows its reasoning while the activity is closed.
+        assistant: {
+          parts: [
+            {
+              type: "reasoning",
+              text: "Read the payments-v42 pull request first, so the span comparison focuses on the serializer path it changed.",
+            },
+            { type: "tool_call", toolCallId: "active-span-compare" },
+          ],
+        },
       }),
       reportEvent(10, iso(Date.parse(startedAt), 46_000), {
         type: "turn_context",
@@ -807,6 +828,21 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             filename: "input-chart.png",
             contentType: "image/png",
             bytes: 6400,
+          },
+          // Large Slack files that Junior never stores.
+          {
+            id: "qa-recording-pending",
+            filename: "standup-recording.mp4",
+            contentType: "video/mp4",
+            bytes: 214_000_000,
+            pending: true,
+          },
+          {
+            id: "qa-deleted-pending",
+            filename: "deleted-recording.mov",
+            contentType: "video/quicktime",
+            bytes: 98_000_000,
+            pending: true,
           },
         ],
         role: "user",
@@ -1368,7 +1404,46 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
+      // Links to the Annotations below show as a link, a hover card, and a
+      // full card.
+      text: [
+        "Released the package.",
+        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+        "",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+        "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+        "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+        "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+        "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://blog.example.com/posts/release-4-2",
+        "",
+        // Alone on their lines: the video shows only its thumbnail, the
+        // Slack message, the chart, the trace, and the event show a card, and the repeated pull
+        // request shows no second card.
+        "https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+        "",
+        "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+        "",
+        "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+      ].join("\n"),
     }),
   );
   return detail(nowMs, {
@@ -1386,7 +1461,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
     isPriority: true,
     sidebarAnnotations: [
       {
-        icon: "circle-dashed",
+        objectType: "code_change",
+        status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
       },
@@ -1423,6 +1499,35 @@ function longConversation(nowMs: number): ConversationDetailReport {
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
+        // A long body, so its hover card at the bottom of the reply must
+        // scroll when "More details" opens.
+        description: [
+          "The release train read the latest payments build on each run, so a late merge could ship without review.",
+          "",
+          "## Changes",
+          "",
+          "- Pin the release train to payments 4.2.",
+          "- Read the pin from the release manifest, not from the branch head.",
+          "- Fail the train when the manifest and the lockfile disagree.",
+          "- Log the pinned version on each run.",
+          "",
+          "## Testing",
+          "",
+          "- Ran the train against a fork with a newer payments build. It kept 4.2.",
+          "- Changed the lockfile by hand. The train stopped with a clear error.",
+          "- Checked the run log for the pinned version.",
+          "",
+          "## Rollout",
+          "",
+          "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
+        ].join("\n"),
+        // The API names description images by Junior image paths.
+        previewImages: ["payments-91-before", "payments-91-after"].map(
+          (id) => ({
+            src: `/api/images/${id}?w=320`,
+            srcSet: `/api/images/${id}?w=320 1x, /api/images/${id}?w=640 2x`,
+          }),
+        ),
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 75_000),
       },
@@ -1720,6 +1825,43 @@ function simpleConversation(
   });
 }
 
+const HISTORY_TOPICS = [
+  "Release notes draft",
+  "Flaky test triage",
+  "Quota alert follow-up",
+  "Onboarding doc review",
+  "Dependency bump",
+  "Billing export check",
+  "Incident timeline",
+  "SDK changelog summary",
+];
+
+/**
+ * Older finished conversations from the last 80 days. They fill more than one
+ * feed page, so the conversation list loads pages as the reader scrolls.
+ */
+function historyConversations(nowMs: number): ConversationDetailReport[] {
+  return Array.from({ length: 64 }, (_, index) => {
+    const conversationId = `internal:history-${index + 1}`;
+    const startedAt = iso(nowMs, -(2 + index * 1.2) * 24 * 60 * 60_000);
+    return detail(nowMs, {
+      conversationId,
+      displayTitle: `${HISTORY_TOPICS[index % HISTORY_TOPICS.length]} ${index + 1}`,
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      cumulativeDurationMs: 8_000,
+      startedAt,
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId: `${conversationId}:message`,
+          role: "assistant",
+          text: "Done.",
+        }),
+      ],
+    });
+  });
+}
+
 const MOCK_MENTION_MORGAN: ActorIdentity = {
   email: "dev@example.com",
   fullName: "Morgan Lee",
@@ -1943,6 +2085,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Archived restore target",
       surface: "internal",
     }),
+    ...historyConversations(nowMs),
   ];
 }
 
@@ -2464,6 +2607,17 @@ export function setMockConversationTitle(
   return { title };
 }
 
+/** Save one attached link on a mock Conversation, like the attach API. */
+export function addMockAnnotation(
+  conversationId: string,
+  annotation: NonNullable<ConversationDetailReport["annotations"]>[number],
+): void {
+  mockAttachedAnnotations.set(conversationId, [
+    annotation,
+    ...(mockAttachedAnnotations.get(conversationId) ?? []),
+  ]);
+}
+
 /** Save the mock Pinned order, like the pin-order API. */
 export function setMockPinOrder(conversationIds: string[]): {
   conversationIds: string[];
@@ -2827,8 +2981,10 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
+  const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
     ...conversation,
+    annotations: [...attached, ...(conversation.annotations ?? [])],
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !conversation.parentConversationId &&
@@ -3581,6 +3737,7 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
+    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),
@@ -3605,29 +3762,33 @@ export function readMockPeopleCode(
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
   const openChanges = [
-    openChange(
-      2440,
-      "getsentry/junior",
-      "Show your week on the home page",
-      0,
-      1,
-    ),
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
     openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
     openChange(
       2391,
       "getsentry/junior",
       "Retry Slack uploads after a rate limit",
       6,
-      144,
+      120,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 288),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
     openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
-    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 48),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
-    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 120),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
     openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
-    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10, 216),
+    // Recorded before code changes stored titles.
+    {
+      ...openChange(
+        523,
+        "getsentry/sentry-docs",
+        "Fix broken SDK links",
+        10,
+        216,
+      ),
+      title: undefined,
+    },
     openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
   ];
   // Merges land on the days that `merges` counts in the last 7 days.
