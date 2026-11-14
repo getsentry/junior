@@ -37,6 +37,8 @@ function span(
     description: name,
     start_timestamp: START + from,
     end_timestamp: START + to,
+    // Every span of a transaction carries the transaction's name.
+    transaction: "GET /api/checkout",
     errors: [],
     occurrences: [],
     children: [],
@@ -46,7 +48,6 @@ function span(
 
 const CHECKOUT_TRACE = [
   span("frontend", "http.server", "GET /api/checkout", 0, 2.4, {
-    transaction: "GET /api/checkout",
     children: [
       span("frontend", "db", "SELECT * FROM carts", 0.1, 0.4),
       span("payments", "http.client", "POST /charge", 0.5, 2, {
@@ -60,7 +61,8 @@ const CHECKOUT_TRACE = [
 /**
  * Fake Sentry's org, trace-meta, and trace APIs. Like Sentry, a token sees
  * only the trace items of projects that `projects` lists for its viewer,
- * and Junior's org read token sees no trace data.
+ * and Junior's org read token sees no trace data. The trace is older than
+ * the default 14 days, so Sentry finds it only near its timestamp.
  */
 function fakeSentry(
   projects: Record<string, string[]>,
@@ -72,6 +74,7 @@ function fakeSentry(
     queries.push(
       `${request.headers.get("authorization")} ${url.host}${url.pathname}?${url.searchParams}`,
     );
+    if (!url.searchParams.has("timestamp")) return [];
     const token = request.headers.get("authorization") ?? "none";
     const viewer = token.replace(/^Bearer (.+)-token$/, "$1");
     return trace.filter((node) =>
@@ -253,6 +256,23 @@ describe("Sentry trace link cards", () => {
 
     expect(objects).toHaveLength(1);
     expect(queries).toHaveLength(2);
+  });
+
+  it("reads a trace again for a link with another time window", async () => {
+    fakeSentry({ alice: ["frontend"] });
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const untimed = new URL(TRACE_URL);
+    untimed.search = "";
+
+    // Without its timestamp, Sentry does not find this old trace. That
+    // miss must not hide the trace from a link that has the timestamp.
+    expect((await readCards(alice, [untimed.href])).objects).toEqual([]);
+    const { objects } = await readCards(alice, [TRACE_URL]);
+
+    expect(objects.map(({ object }) => object.title)).toEqual([
+      "GET /api/checkout",
+    ]);
   });
 
   it("fits many long spans in the card facts limit", async () => {

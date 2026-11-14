@@ -87,8 +87,10 @@ function text(value: string | null | undefined): string | undefined {
   return trimmed ? trimmed.slice(0, 160) : undefined;
 }
 
+// Every span of a transaction carries its transaction name, so a span's
+// own description comes first. The root's transaction is the trace's name.
 function nodeName(node: TraceNode): string | undefined {
-  return text(node.transaction) ?? text(node.description) ?? text(node.name);
+  return text(node.description) ?? text(node.name) ?? text(node.transaction);
 }
 
 // Seconds to milliseconds, to a tenth of a millisecond.
@@ -140,7 +142,7 @@ function traceCard(
   ]
     .sort(byStart)
     .slice(0, MAX_SPANS);
-  const rootName = nodeName(root);
+  const rootName = text(root.transaction) ?? nodeName(root);
   const facts: TraceFacts = {
     type: "trace",
     rootOp: text(root.op),
@@ -205,7 +207,8 @@ async function viewerTrace(
   const link = parseSentryTraceLink(url);
   if (!link) return null;
   const trace = await ctx.cache.getOrLoad(
-    `trace:${ctx.viewer.id}:${link.org}/${link.traceId}`,
+    // The time window decides what Sentry finds, so it is part of the key.
+    `trace:${ctx.viewer.id}:${link.org}/${link.traceId}:${link.timestamp ?? DEFAULT_PERIOD}`,
     async () => {
       const origin = await sentryRegionOrigin(ctx, link.org);
       const value = origin ? await readTrace(ctx, origin, link) : null;
