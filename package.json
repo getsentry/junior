@@ -15,6 +15,8 @@
     "prepare": "simple-git-hooks",
     "lint": "pnpm file-length:check && pnpm typecheck-coverage:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
     "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
@@ -54,7 +56,7 @@
       "pnpm file-length:check",
       "pnpm test-architecture:check",
       "pnpm dashboard-style:check",
-      "pnpm exec prettier --write --ignore-unknown"
+      "oxfmt --no-error-on-unmatched-pattern"
     ]
   },
   "devDependencies": {
@@ -68,9 +70,9 @@
     "agent-browser": "^0.27.0",
     "libpg-query": "18.2.2",
     "lint-staged": "^17.0.5",
+    "oxfmt": "0.78.0",
     "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2007",
-    "prettier": "^3.8.3",
     "publint": "^0.3.21",
     "sentry": "0.47.0",
     "simple-git-hooks": "^2.13.1",

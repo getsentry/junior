@@ -96,6 +96,10 @@ jobs:
               - tsconfig*.json
               - packages/*/package.json
               - apps/*/package.json
+              - .oxlintrc.json
+              - .oxfmtrc.json
+              - scripts/**
+              - tools/**
             release:
               - .craft.yml
               - .github/workflows/ci.yml
@@ -146,6 +150,16 @@ jobs:
       # Type-aware lint reads the declarations that workspace packages build.
       - run: pnpm build
       - run: pnpm lint
+
+  format:
+    name: check / format
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm format:check
 
   typecheck:
     name: check / types
@@ -534,6 +548,7 @@ jobs:
       - release-check
       - skills-check
       - lint
+      - format
       - typecheck
       - junior-tests
       - eval-harness-tests
@@ -613,6 +628,7 @@ jobs:
       - release-check
       - skills-check
       - lint
+      - format
       - typecheck
       - junior-tests
       - eval-harness-tests
