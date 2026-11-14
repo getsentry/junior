@@ -19,8 +19,9 @@ describe("Watches", () => {
     run,
   }) => {
     const pullRequest = `getsentry/junior#${draft.number}`;
+    // A setup message that needs no lookups, so the first Turn stays short.
     const conversation = await run(
-      slackMention(`What does ${pullRequest} change?`),
+      slackMention(`Thanks for opening ${pullRequest}. I'll review it later.`),
     );
     await insertGitHubDraftWatch({ conversation, pullRequest });
 

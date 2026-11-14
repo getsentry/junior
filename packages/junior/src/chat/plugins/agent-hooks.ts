@@ -1019,7 +1019,6 @@ export function getPluginTools(
                     result: await execute(input, options, pluginContext),
                     toolCallId: options.toolCallId,
                   }),
-                  { readOnly: definition.annotations?.readOnlyHint === true },
                 ),
             }
           : undefined),

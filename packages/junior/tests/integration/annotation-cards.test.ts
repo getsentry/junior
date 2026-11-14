@@ -51,7 +51,7 @@ const annotation: ObjectAnnotation = {
 
 afterEach(closeConversationFixture);
 
-it("saves plugin object results once per reply, leaves reads and background updates silent, and stores only Message card references", async () => {
+it("saves plugin object results once per reply, leaves background updates silent, and stores only Message card references", async () => {
   const previous = setPlugins([
     defineJuniorPlugin({
       manifest: {
@@ -68,7 +68,7 @@ it("saves plugin object results once per reply, leaves reads and background upda
               destructiveHint: false,
               idempotentHint: true,
               openWorldHint: false,
-              readOnlyHint: false,
+              readOnlyHint: true,
             },
             description: "Return a verified object for this test.",
             inputSchema: z.object({
@@ -87,22 +87,6 @@ it("saves plugin object results once per reply, leaves reads and background upda
               };
             },
           }),
-          get: definePluginTool({
-            approvalMode: "approve",
-            exposure: "direct",
-            annotations: {
-              destructiveHint: false,
-              idempotentHint: true,
-              openWorldHint: false,
-              readOnlyHint: true,
-            },
-            description: "Read a verified object for this test.",
-            inputSchema: z.object({}),
-            outputSchema: pluginToolOutputSchema,
-            execute: () => ({
-              objectAnnotations: [annotation],
-            }),
-          }),
         }),
       },
     }),
@@ -114,12 +98,6 @@ it("saves plugin object results once per reply, leaves reads and background upda
   try {
     const harness = await createConversationWebHarness(
       createModelStream([
-        {
-          type: "toolCall",
-          // A read saves the object but selects no card.
-          name: "objects_get",
-          arguments: {},
-        },
         {
           type: "toolCall",
           name: "executeTool",

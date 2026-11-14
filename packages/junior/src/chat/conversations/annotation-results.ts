@@ -24,16 +24,11 @@ export async function saveObjectAnnotations(
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }
 
-/**
- * Save annotations from a successful plugin tool result. Attach their cards
- * only when the tool can change the object: a card marks an artifact that the
- * Turn made or changed, not every object that the Turn read.
- */
+/** Save annotations from a successful plugin tool result and attach their cards. */
 export async function annotateToolResult(
   conversationId: string,
   plugin: string,
   result: unknown,
-  options: { readOnly: boolean },
 ): Promise<unknown> {
   if (!isRecord(result) || result["isError"] === true) return result;
   const details = isRecord(result["details"]) ? result["details"] : result;
@@ -49,7 +44,7 @@ export async function annotateToolResult(
     details["objectAnnotations"],
   );
   const { objectAnnotations: _annotations, ...rest } = details;
-  const annotated = options.readOnly ? rest : { ...rest, objectCards: cards };
+  const annotated = { ...rest, objectCards: cards };
   if (isRecord(result["details"])) return { ...result, details: annotated };
   return annotated;
 }
