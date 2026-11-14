@@ -4,7 +4,10 @@ import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
-import { isTerminalDispatchStatus } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  isTerminalDispatchStatus,
+} from "@/chat/agent-dispatch/store";
 import { AGENT_DISPATCH_MAX_AGE_MS } from "@/chat/agent-dispatch/work";
 import { renderTaskInput } from "@/chat/task-input";
 import { automationTaskText } from "@/chat/automations/task";
@@ -178,7 +181,9 @@ async function applyDispatchResult(args: {
     });
     // Notify only when the block is stored, so the dashboard matches.
     if (storedBlock) {
+      const record = await getDispatchRecord(args.dispatch.id);
       await notifyAutomationBlocked({
+        authorizationProvider: record?.authorizationProvider,
         automationId: args.run.taskId,
         dispatchId: args.dispatch.id,
         kind: "scheduled",

@@ -1,9 +1,12 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message, StateAdapter } from "chat";
-import { parseActorUserId } from "@/chat/actor";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
+import { AUTOMATION_CONNECT_ACTION_ID } from "@/chat/automations/blocked-notice";
+import { isConnectableProvider } from "@/chat/credentials/connections";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { logException, withSpan } from "@/chat/logging";
+import { logException, logWarn, withSpan } from "@/chat/logging";
+import { startOAuthFlow } from "@/chat/oauth-flow";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
@@ -72,9 +75,41 @@ async function handleAppHomeDisconnect(args: {
   );
 }
 
+// Start a new OAuth flow for the person who clicked, so the link they get
+// has not expired. The flow connects only the clicker's own account. The
+// Slack actor lets the callback link the provider account to that person,
+// and the notice ts gets the connected confirmation as a reply to it.
+async function handleAutomationConnectClick(args: {
+  payload: SlackInteractivePayload;
+  provider: string;
+}): Promise<void> {
+  if (!isConnectableProvider(args.provider)) return;
+  const userId = requireSlackPayloadUserId(
+    args.payload.user?.id,
+    "Slack automation connect payload",
+  );
+  const result = await startOAuthFlow(args.provider, {
+    actorId: userId,
+    actor: createSlackActor(
+      args.payload.team?.id ?? args.payload.user?.team_id ?? "",
+      userId,
+      undefined,
+    ),
+    channelId: args.payload.channel?.id,
+    threadTs: args.payload.message?.ts,
+  });
+  if (!result.ok) {
+    logWarn("automation.connect.failed", {
+      "app.credential.provider": args.provider,
+      "app.reason": result.error,
+    });
+  }
+}
+
 /**
- * Handle Slack interactions from App Home, Review item cards, and dashboard
- * link previews: block actions and submitted forms.
+ * Handle Slack interactions from App Home, Review item cards, blocked
+ * Automation notices, and dashboard link previews: block actions and
+ * submitted forms.
  */
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
@@ -142,6 +177,23 @@ export async function handleSlackInteractivePayload(args: {
           payload: args.payload,
           state: args.state,
           value: continueHere.value,
+        }),
+    );
+    return;
+  }
+
+  const connect = args.payload.actions?.find(
+    (candidate) => candidate.action_id === AUTOMATION_CONNECT_ACTION_ID,
+  );
+  if (connect?.value) {
+    await withSpan(
+      "chat.automation_connect_click",
+      "chat.automation_connect_click",
+      spanAttributes,
+      () =>
+        handleAutomationConnectClick({
+          payload: args.payload,
+          provider: connect.value!,
         }),
     );
     return;

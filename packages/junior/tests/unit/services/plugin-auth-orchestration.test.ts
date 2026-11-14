@@ -157,19 +157,23 @@ describe("createPluginAuthOrchestration", () => {
     expect(startOAuthFlow).toHaveBeenCalledWith("sentry", expect.anything());
   });
 
-  it("returns AuthorizationFlowDisabledError when flow is disabled", async () => {
+  it("ends the run with AuthorizationFlowDisabledError when flow is disabled", async () => {
     const abortAgent = vi.fn();
+    const onAuthorizationFlowDisabled = vi.fn();
     const orchestration = createPluginAuthOrchestration({
       abortAgent,
       actorId: "U123",
       userTokenStore: tokenStore(),
       interactiveAuthEnabled: false,
+      onAuthorizationFlowDisabled,
     });
 
-    await expect(
-      orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
-    ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
+    const error = await orchestration
+      .maybeHandleAuthSignal({ auth_required: sentryAuthSignal })
+      .catch((caught: unknown) => caught);
 
+    expect(error).toBeInstanceOf(AuthorizationFlowDisabledError);
+    expect(onAuthorizationFlowDisabled).toHaveBeenCalledWith(error);
     expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(abortAgent).not.toHaveBeenCalled();
   });
