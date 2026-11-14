@@ -117,6 +117,26 @@ test("Automations is a row that counts your Automations to do", async ({
   await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
 });
 
+test("an old Automations link does not become the Inbox's place", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${dashboard.baseURL}/?view=automations`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+  const inbox = page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Inbox/ });
+  await expect(inbox).toHaveAttribute("href", "/");
+  // The old link would bounce the reader back to Automations.
+  await inbox.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(inbox).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Automations" }),
+  ).toHaveCount(0);
+});
+
 test("the phone menu lists the same destinations, without tabs", async ({
   page,
   dashboard,

@@ -19,6 +19,21 @@ const under = (pathname: string, root: string) =>
 export const isInboxView = (row: PaneRow | undefined): row is InboxView =>
   row !== undefined && Object.hasOwn(INBOX_VIEW_LABELS, row);
 
+/**
+ * True for the old Automations bundle links, `/?view=automations` and
+ * `/review?bundle=automations`, which redirect to /automations.
+ */
+export function isOldAutomationsPath(location: {
+  pathname: string;
+  search: string;
+}): boolean {
+  const params = new URLSearchParams(location.search);
+  return (
+    (location.pathname === "/" && params.get("view") === "automations") ||
+    (location.pathname === "/review" && params.get("bundle") === "automations")
+  );
+}
+
 /** Name the part of the destinations that a path is in, if any. */
 export function paneDestinationForPath(
   pathname: string,
@@ -39,6 +54,7 @@ export function paneRowForPath(
   previous: PaneRow | undefined,
 ): PaneRow | undefined {
   const { pathname } = location;
+  if (isOldAutomationsPath(location)) return "automations";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
   if (under(pathname, "/conversations"))

@@ -39,6 +39,7 @@ import { toolbarControlBoxClass } from "../ui/button";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import {
   isInboxView,
+  isOldAutomationsPath,
   paneRowForPath,
   paneRowLabel,
   paneRowRoot,
@@ -152,7 +153,9 @@ export function PaneNavProvider(props: {
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},
   );
-  if (row && rowPaths[row] !== here) setRowPaths({ ...rowPaths, [row]: here });
+  // An old link redirects, so it is not a place to reopen.
+  if (row && rowPaths[row] !== here && !isOldAutomationsPath(location))
+    setRowPaths({ ...rowPaths, [row]: here });
   if (row && row !== lastRow) setLastRow(row);
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);

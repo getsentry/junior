@@ -53,6 +53,7 @@ import { FeedThreads, feedThreadsById } from "./feedThreads";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useSidebarFits } from "./conversationSidebarLayout";
 import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
+import { isOldAutomationsPath } from "../components/layout/paneRows";
 import { HomeSummary } from "./HomeSummary";
 
 /**
@@ -274,7 +275,7 @@ export function ConversationWorkspace(props: {
   }, [navigate, returnPath, selectedId]);
 
   // The Automations bundle became its own page.
-  if (home && searchParams.get("view") === "automations")
+  if (isOldAutomationsPath(location))
     return <Navigate replace to="/automations" />;
 
   return (
