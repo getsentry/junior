@@ -1,5 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -19,14 +19,21 @@ import {
   buildSlackReviewItemCard,
 } from "@/chat/slack/review-item-card";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { juniorReviewItemSlackCards } from "@/db/schema";
 
 type CardRow = typeof juniorReviewItemSlackCards.$inferSelect;
 
-function renderCard(item: ReviewItem, conversationId: string) {
-  return item.conversationIds.includes(conversationId)
-    ? buildSlackReviewItemCard(item)
-    : buildHiddenSlackReviewItemCard(item);
+/** The Slack thread where one Conversation shows its cards. */
+interface CardThread {
+  channelId: string;
+  conversationId: string;
+  teamId: string;
+  threadTs: string;
+}
+
+function threadKey(thread: CardThread): string {
+  return `${thread.teamId}:${thread.channelId}:${thread.threadTs}`;
 }
 
 async function inWorkspace(
@@ -45,46 +52,60 @@ async function inWorkspace(
 async function updateCard(
   item: ReviewItem,
   row: CardRow,
+  shown: boolean,
   getSlackAdapter: (() => SlackAdapter) | undefined,
 ): Promise<void> {
   const timestamp = parseSlackMessageTs(row.messageTs);
   if (!timestamp) return;
-  const card = renderCard(item, row.conversationId);
+  const card = shown
+    ? buildSlackReviewItemCard(item)
+    : buildHiddenSlackReviewItemCard(item);
   await inWorkspace(row.teamId, getSlackAdapter, () =>
     updateSlackMessage({ ...card, channelId: row.channelId, timestamp }),
   );
 }
 
-async function postCard(
-  item: ReviewItem,
+async function resolveCardThread(
   conversationId: string,
-  getSlackAdapter: (() => SlackAdapter) | undefined,
-): Promise<void> {
+): Promise<CardThread | undefined> {
   // An Automation run can own a Slack thread with an id that is not a Slack
-  // thread id, so the thread comes from the Conversation routing.
+  // thread id, and a child agent shares the thread of its parent. So the
+  // thread comes from the Conversation routing.
   const routing = await resolveConversationRouting({ conversationId });
   const destination = routing?.destination;
-  if (destination?.platform !== "slack") return;
+  if (destination?.platform !== "slack") return undefined;
   const thread = resolveSlackReplyTarget({
     destination,
     ...(routing?.location ? { location: routing.location } : undefined),
   });
   // A card belongs in the thread of its Conversation, never at channel top.
-  if (!thread.threadTs) return;
-  const threadTs = thread.threadTs;
-  await inWorkspace(destination.teamId, getSlackAdapter, async () => {
+  if (!thread.threadTs) return undefined;
+  return {
+    channelId: thread.channelId,
+    conversationId,
+    teamId: destination.teamId,
+    threadTs: thread.threadTs,
+  };
+}
+
+async function postCard(
+  item: ReviewItem,
+  thread: CardThread,
+  getSlackAdapter: (() => SlackAdapter) | undefined,
+): Promise<void> {
+  await inWorkspace(thread.teamId, getSlackAdapter, async () => {
     const posted = await postSlackMessage({
       ...buildSlackReviewItemCard(item),
       channelId: thread.channelId,
-      threadTs,
+      threadTs: thread.threadTs,
     });
     try {
       await getDb().insert(juniorReviewItemSlackCards).values({
         channelId: thread.channelId,
-        conversationId,
+        conversationId: thread.conversationId,
         itemId: item.id,
         messageTs: posted.ts,
-        teamId: destination.teamId,
+        teamId: thread.teamId,
       });
     } catch (error) {
       // A card without a row never changes, so remove it.
@@ -98,28 +119,18 @@ async function postCard(
 }
 
 /**
- * Return the Conversation that a card belongs to. A card posts into the
- * thread of its Conversation routing, and an Automation run can own a
- * thread with an id that is not a Slack thread id. So the card row, not the
- * thread, names the Conversation.
+ * Return the Conversation that a card click acts for: the Conversation that
+ * gets Slack input in the card thread, the same as for a typed reply.
  */
-export async function readSlackReviewItemCardConversationId(card: {
+export async function resolveSlackReviewItemCardConversationId(card: {
   channelId: string;
-  itemId: string;
-  messageTs: string;
-}): Promise<string | undefined> {
-  const [row] = await getDb()
-    .select({ conversationId: juniorReviewItemSlackCards.conversationId })
-    .from(juniorReviewItemSlackCards)
-    .where(
-      and(
-        eq(juniorReviewItemSlackCards.itemId, card.itemId),
-        eq(juniorReviewItemSlackCards.channelId, card.channelId),
-        eq(juniorReviewItemSlackCards.messageTs, card.messageTs),
-      ),
-    )
-    .limit(1);
-  return row?.conversationId;
+  teamId: string;
+  threadTs: string;
+}): Promise<string> {
+  return (
+    (await findSlackThreadOwnerId(card)) ??
+    `slack:${card.channelId}:${card.threadTs}`
+  );
 }
 
 // Long enough for the sync that holds the lock to post or change a few cards.
@@ -137,7 +148,7 @@ export function createSlackReviewItemShow(
 
 /**
  * Show the current state of a Review item in its linked Slack threads. An
- * open item gets a card in each linked thread that has none. Each existing
+ * open item gets one card in each linked thread that has none. Each existing
  * card changes in place. A card in a thread that can no longer show the item
  * loses its content. A closed item posts no new cards. Syncs of one item run
  * one at a time under a state lock, so two syncs cannot post two cards in
@@ -164,14 +175,38 @@ export async function syncReviewItemSlackCards(args: {
             .select()
             .from(juniorReviewItemSlackCards)
             .where(eq(juniorReviewItemSlackCards.itemId, item.id));
-          const carded = new Set(rows.map((row) => row.conversationId));
+          // A card is per Slack thread, not per Conversation: a child agent
+          // shares the thread of its parent, so an item linked to both shows
+          // one card. The row names the Conversation whose routing found the
+          // thread.
+          const [linked, carded] = await Promise.all([
+            Promise.all(item.conversationIds.map(resolveCardThread)),
+            Promise.all(
+              rows.map((row) => resolveCardThread(row.conversationId)),
+            ),
+          ]);
+          const linkedThreads = new Map<string, CardThread>();
+          for (const thread of linked) {
+            if (thread && !linkedThreads.has(threadKey(thread))) {
+              linkedThreads.set(threadKey(thread), thread);
+            }
+          }
+          const cardedKeys = new Set(
+            carded.flatMap((thread) => (thread ? [threadKey(thread)] : [])),
+          );
           const missing =
             item.status === "open"
-              ? item.conversationIds.filter((id) => !carded.has(id))
+              ? [...linkedThreads.values()].filter(
+                  (thread) => !cardedKeys.has(threadKey(thread)),
+                )
               : [];
           const results = await Promise.allSettled([
-            ...rows.map((row) => updateCard(item, row, getSlackAdapter)),
-            ...missing.map((id) => postCard(item, id, getSlackAdapter)),
+            ...rows.map((row, index) => {
+              const thread = carded[index];
+              const shown = !!thread && linkedThreads.has(threadKey(thread));
+              return updateCard(item, row, shown, getSlackAdapter);
+            }),
+            ...missing.map((thread) => postCard(item, thread, getSlackAdapter)),
           ]);
           const failed = results.find((result) => result.status === "rejected");
           if (failed) throw failed.reason;
