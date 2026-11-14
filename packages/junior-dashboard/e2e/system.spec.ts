@@ -340,7 +340,12 @@ test("shows what cache warming saved in the range", async ({
   await expect(
     panel.getByRole("button", { name: "Re-fill history" }),
   ).toHaveCount(0);
-  await screenshot(page, "system-cache-warming", { target: panel });
+  // A phone shows the System entries at /system, so shoot the panel on
+  // desktop.
+  await screenshot(page, "system-cache-warming", {
+    target: panel,
+    view: "desktop",
+  });
 
   const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
   await page.getByRole("button", { name: "7d", exact: true }).click();
@@ -392,13 +397,17 @@ test("lets an admin re-fill cache warming savings from history", async ({
   const button = panel.getByRole("button", { name: "Re-fill history" });
   await expect(button).toBeEnabled();
   await expect(panel.getByText(/Last re-fill finished/)).toBeVisible();
-  await screenshot(page, "system-cache-warming-refill", { target: panel });
+  await screenshot(page, "system-cache-warming-refill", {
+    target: panel,
+    view: "desktop",
+  });
 
   await button.click();
   await expect(panel.getByText(/Re-filling history: 420 of/)).toBeVisible();
   await expect(button).toBeDisabled();
   await screenshot(page, "system-cache-warming-refill-running", {
     target: panel,
+    view: "desktop",
   });
   expect(starts).toEqual(["POST"]);
 });
