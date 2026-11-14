@@ -13,27 +13,22 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { useTranscriptRowOpen } from "./TranscriptRows";
-import { useTranscriptSearch } from "./transcriptSearch";
 
-/** Render reasoning collapsed with a short preview until expanded or searched. */
+/** Render reasoning collapsed with a short preview until expanded. */
 export function TranscriptReasoningView(props: {
   /** Keeps the entry open while it unmounts outside the viewport. */
   openKey?: string;
   part: TranscriptViewReasoningPart;
   timestamp?: number;
 }) {
-  const { active: searchActive } = useTranscriptSearch();
   const [open, setOpen] = useTranscriptRowOpen(props.openKey);
-  const expanded = searchActive || open;
   const rendered = props.part.redacted ? "Reasoning redacted" : props.part.text;
   const timestamp = formatMessageTimestamp(props.timestamp);
 
   return (
     <TraceCollapsible
       className="text-xs leading-tight"
-      // Search holds rows open, so the row button is off until search ends.
-      disabled={searchActive}
-      open={expanded}
+      open={open}
       onOpenChange={setOpen}
     >
       <TraceCollapsibleTrigger className="-mx-2 w-auto">
@@ -47,7 +42,7 @@ export function TranscriptReasoningView(props: {
           </span>
           <TranscriptHeadingRow
             left={
-              expanded ? (
+              open ? (
                 <span className="block min-w-0 text-dashboard-text-muted">
                   Reasoning
                 </span>

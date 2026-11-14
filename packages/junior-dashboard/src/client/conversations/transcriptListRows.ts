@@ -55,11 +55,12 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, a Thread keeps its own row, search drops rows that
- * do not match, and the "New" marker becomes its own row before the first
- * unread row. The Tasks of a Turn move to its end, so they do not split its
- * activity: under its reply, or in a Tasks row when it has no reply yet. A
- * question that Junior asked moves after them.
+ * become one group row, a Thread keeps its own row, and the "New" marker
+ * becomes its own row before the first unread row. The Tasks of a Turn move
+ * to its end, so they do not split its activity: under its reply, or in a
+ * Tasks row when it has no reply yet. A question that Junior asked moves
+ * after them. Search shows only the matching messages, one row each, so
+ * every row is a match.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -73,16 +74,22 @@ export function transcriptListRows(input: {
   unread?: TranscriptUnreadRange;
 }): TranscriptListRow[] {
   const { entries, search } = input;
+  if (search !== undefined) {
+    return entries
+      .filter((entry) => entryMatchesSearch(entry, search))
+      .map((entry) => ({
+        kind: "entry",
+        entry,
+        key: `${input.keyPrefix}:${entry.key}`,
+        seq: entry.seq,
+      }));
+  }
   const quietKeys = quietTurnEntryKeys(entries);
   const collapsible = (entry: RenderedTranscriptEntry) =>
     isCollapsibleActivityEntry(entry) || quietKeys.has(entry.key);
-  const matches = (entry: RenderedTranscriptEntry) =>
-    search === undefined || entryMatchesSearch(entry, search);
   const claimedActivityKeys = new Set<string>();
   const rows: TranscriptListRow[] = [];
-  // Search results are not a reading order, so they get no marker.
-  const markerSeq =
-    search === undefined ? unreadMarkerSeq(entries, input.unread) : undefined;
+  const markerSeq = unreadMarkerSeq(entries, input.unread);
   let markerPending = markerSeq !== undefined;
   // Entries are in seq order, so the first row that reaches the marker seq
   // gets the marker.
@@ -101,7 +108,6 @@ export function transcriptListRows(input: {
   let asks: RenderedTranscriptEntry[] = [];
   const pushAsks = () => {
     for (const ask of asks) {
-      if (!matches(ask)) continue;
       if (markerPending && ask.seq !== undefined && ask.seq >= markerSeq!) {
         markerPending = false;
         rows.push({ kind: "unread_marker", key: UNREAD_MARKER_KEY });
@@ -119,8 +125,6 @@ export function transcriptListRows(input: {
   let captures: CaptureEntry[] = [];
   let prompt: MessageEntry | undefined;
   const pushTurnEnd = () => {
-    const visibleTasks = tasks.filter(matches);
-    const visibleCaptures = captures.filter(matches);
     const rowSeq = lastRowSeq(rows);
     const movedSeq = lastEntrySeq([...tasks, ...captures]);
     // The moved entries go after later rows, so they take the larger seq.
@@ -136,12 +140,12 @@ export function transcriptListRows(input: {
       rows.pop();
       pushRow({
         ...last,
-        seq: visibleTasks.length + visibleCaptures.length > 0 ? seq : last.seq,
-        footer: { captures: visibleCaptures, prompt, tasks: visibleTasks },
+        seq: tasks.length + captures.length > 0 ? seq : last.seq,
+        footer: { captures, prompt, tasks },
       });
     } else {
       // Without a reply, captured memories keep their own rows.
-      for (const capture of visibleCaptures) {
+      for (const capture of captures) {
         pushRow({
           kind: "entry",
           entry: capture,
@@ -149,10 +153,10 @@ export function transcriptListRows(input: {
           seq: Math.max(lastRowSeq(rows) ?? 0, capture.seq ?? 0),
         });
       }
-      if (visibleTasks.length > 0) {
+      if (tasks.length > 0) {
         pushRow({
           kind: "tasks",
-          entries: visibleTasks,
+          entries: tasks,
           // New Tasks join at the end, so the first one keeps the key.
           key: `${input.keyPrefix}:tasks:${tasks[0]!.key}`,
           seq,
@@ -200,31 +204,26 @@ export function transcriptListRows(input: {
         }
         index += 1;
       }
-      const visible = group.filter(matches);
-      if (visible.length > 0) {
-        // The marker goes before the group when any of it is unread.
-        pushRow({
-          kind: "activity",
-          entries: visible,
-          key: stableActivityGroupKey({
-            claimedKeys: claimedActivityKeys,
-            entries: group,
-            keyPrefix: input.keyPrefix,
-            knownKeys: input.knownActivityKeys,
-          }),
-          seq: lastEntrySeq(group),
-        });
-      }
+      // The marker goes before the group when any of it is unread.
+      pushRow({
+        kind: "activity",
+        entries: group,
+        key: stableActivityGroupKey({
+          claimedKeys: claimedActivityKeys,
+          entries: group,
+          keyPrefix: input.keyPrefix,
+          knownKeys: input.knownActivityKeys,
+        }),
+        seq: lastEntrySeq(group),
+      });
       continue;
     }
-    if (matches(entry)) {
-      pushRow({
-        kind: "entry",
-        entry,
-        key: `${input.keyPrefix}:${entry.key}`,
-        seq: entry.seq,
-      });
-    }
+    pushRow({
+      kind: "entry",
+      entry,
+      key: `${input.keyPrefix}:${entry.key}`,
+      seq: entry.seq,
+    });
     index += 1;
   }
   pushTurnEnd();

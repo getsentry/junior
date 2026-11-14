@@ -206,6 +206,7 @@ export function Transcript(props: {
             key={props.transcript.conversationId}
             conversation={props.transcript}
             onSearchChange={props.onSearchChange ?? setLocalSearch}
+            searchValue={search}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             scrollAnchorKey={bottomPinning.scrollAnchorKey}
             selectedSeq={props.selectedEventSeq}

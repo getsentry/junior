@@ -68,10 +68,7 @@ import {
   eventLogRows,
   filterEventLogRows,
 } from "./eventLog";
-import {
-  TranscriptSearchProvider,
-  useTranscriptSearchMatch,
-} from "./transcriptSearch";
+import { useTranscriptSearchMatch } from "./transcriptSearch";
 import {
   TurnContextDetails,
   type TurnContextPanel,
@@ -654,15 +651,13 @@ export function ConversationPage(props: {
         />
       ) : null}
       {turnContext ? (
-        <TranscriptSearchProvider query={search}>
-          <TurnContextDetails
-            actor={turnContext.actor}
-            contexts={turnContext.contexts}
-            key={turnContext.id}
-            onClose={closeTurnContext}
-            timestamp={turnContext.timestamp}
-          />
-        </TranscriptSearchProvider>
+        <TurnContextDetails
+          actor={turnContext.actor}
+          contexts={turnContext.contexts}
+          key={turnContext.id}
+          onClose={closeTurnContext}
+          timestamp={turnContext.timestamp}
+        />
       ) : null}
       {showQuickQuestion && quickQuestion.thread ? (
         <QuickQuestionPanel
