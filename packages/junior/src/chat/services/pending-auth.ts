@@ -75,20 +75,57 @@ export function getConversationPendingAuth(args: {
   return pendingAuth;
 }
 
+/**
+ * Save the Conversation's sign-in wait. A Turn records the wait when it sends
+ * or reuses a sign-in link, and restores the previous wait when delivery
+ * fails. Only this module writes `processing.pendingAuth`.
+ */
+export function setPendingAuth(
+  conversation: ThreadConversationState,
+  pendingAuth: ConversationPendingAuthState | undefined,
+): void {
+  conversation.processing.pendingAuth = pendingAuth;
+}
+
+/**
+ * End the sign-in wait. With `sessionId`, end it only while it belongs to
+ * that Turn, so a late writer cannot end a newer wait.
+ */
 export function clearPendingAuth(
   conversation: ThreadConversationState,
   sessionId?: string,
 ): void {
-  if (!conversation.processing.pendingAuth) {
+  const pendingAuth = conversation.processing.pendingAuth;
+  if (!pendingAuth || (sessionId && pendingAuth.sessionId !== sessionId)) {
     return;
   }
-  if (
-    sessionId &&
-    conversation.processing.pendingAuth.sessionId !== sessionId
-  ) {
-    return;
-  }
-  conversation.processing.pendingAuth = undefined;
+  setPendingAuth(conversation, undefined);
+}
+
+/**
+ * Whether the sign-in wait is the one that a completed authorization answers:
+ * the same Turn, actor, provider, kind, scope, and MCP authorization attempt.
+ */
+export function isPendingAuthFor(
+  pendingAuth: ConversationPendingAuthState,
+  authorization: {
+    actorId: string;
+    authSessionId?: string;
+    kind: AuthorizationPauseKind;
+    provider: string;
+    scope?: string;
+    turnId: string;
+  },
+): boolean {
+  return (
+    pendingAuth.sessionId === authorization.turnId &&
+    pendingAuth.actorId === authorization.actorId &&
+    pendingAuth.provider === authorization.provider &&
+    pendingAuth.kind === authorization.kind &&
+    pendingAuth.scope === authorization.scope &&
+    (pendingAuth.kind !== "mcp" ||
+      pendingAuth.authSessionId === authorization.authSessionId)
+  );
 }
 
 /** Mark the prior blocked turn abandoned after a new auth attempt replaces it. */

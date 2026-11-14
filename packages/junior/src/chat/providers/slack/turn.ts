@@ -112,6 +112,7 @@ import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
+import { setPendingAuth } from "@/chat/services/pending-auth";
 import {
   finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
@@ -604,7 +605,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               // the two Turns do not run at the same time.
               markTurnClosed({
                 conversation: preparedState.conversation,
-                nowMs: Date.now(),
                 sessionId: activeTurnId,
               });
               activeTurnId = undefined;
@@ -618,7 +618,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               });
               markTurnFailed({
                 conversation: preparedState.conversation,
-                nowMs: Date.now(),
                 sessionId: activeTurnId,
                 markConversationMessage,
               });
@@ -1166,7 +1165,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               },
               recordPendingAuth: async (pendingAuth) => {
-                preparedState.conversation.processing.pendingAuth = pendingAuth;
+                setPendingAuth(preparedState.conversation, pendingAuth);
                 await persistThreadStateById(conversationId, {
                   conversation: preparedState.conversation,
                 });
@@ -1337,7 +1336,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               await deliverAssistantMessage(text);
               markTurnClosed({
                 conversation: preparedState.conversation,
-                nowMs: Date.now(),
                 sessionId: turnId,
               });
               await persistThreadStateById(conversationId, {
@@ -1498,7 +1496,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             );
             markTurnClosed({
               conversation: preparedState.conversation,
-              nowMs: Date.now(),
               sessionId: turnId,
             });
             await persistThreadStateById(conversationId, {
@@ -1537,7 +1534,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (runState === "running") {
             markTurnFailed({
               conversation: preparedState.conversation,
-              nowMs: Date.now(),
               sessionId: turnId,
               userMessageId: preparedState.userMessageId,
               markConversationMessage: (conversation, messageId, patch) => {

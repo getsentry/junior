@@ -163,14 +163,12 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     text: TurnMessageText;
   }) => Promise<void>;
   recordSkippedSubscribedTurn: (args: {
-    completedAtMs: number;
     conversationId: string;
     decision: SubscribedReplyDecision;
     message: Message;
     text: TurnMessageText;
   }) => Promise<void>;
   onSubscribedMessageSkipped: (args: {
-    completedAtMs: number;
     conversationId: string;
     decision: SubscribedReplyDecision;
     message: Message;
@@ -575,7 +573,6 @@ export function createSlackTurnRuntime<
     preparedState?: TPreparedState;
     text: TurnMessageText;
   }): Promise<void> => {
-    const completedAtMs = deps.now();
     logSkippedSubscribedDecision(args);
     if (args.preparedState) {
       await deps.onSubscribedMessageSkipped({
@@ -583,7 +580,6 @@ export function createSlackTurnRuntime<
         message: args.message,
         decision: args.decision,
         preparedState: args.preparedState,
-        completedAtMs,
       });
     } else {
       await deps.recordSkippedSubscribedTurn({
@@ -591,7 +587,6 @@ export function createSlackTurnRuntime<
         message: args.message,
         decision: args.decision,
         text: args.text,
-        completedAtMs,
       });
     }
     // Mark the inbound mailbox messages as consumed even though we are not

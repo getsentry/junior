@@ -20,7 +20,7 @@ import {
   createPrepareTurnState,
   type PreparedTurnState,
 } from "@/chat/runtime/turn-preparation";
-import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { buildDeterministicTurnId, markTurnClosed } from "@/chat/runtime/turn";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
@@ -46,17 +46,6 @@ export interface CreateSlackRuntimeOptions {
   services?: JuniorRuntimeServiceOverrides;
   /** Keeps background work started by a turn alive. */
   waitUntil?: (task: Promise<unknown>) => void;
-}
-
-function clearSkippedTurnIfActive(
-  conversation: PreparedTurnState["conversation"],
-  messageId: string,
-): void {
-  if (
-    conversation.processing.activeTurnId === buildDeterministicTurnId(messageId)
-  ) {
-    conversation.processing.activeTurnId = undefined;
-  }
 }
 
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
@@ -159,7 +148,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       conversationId,
       message,
       decision,
-      completedAtMs,
       text,
     }) => {
       const conversation = coerceThreadConversationState(
@@ -171,8 +159,10 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
         skippedReason: decision.reason,
         text: text.userText,
       });
-      clearSkippedTurnIfActive(conversation, message.id);
-      conversation.processing.lastCompletedAtMs = completedAtMs;
+      markTurnClosed({
+        conversation,
+        sessionId: buildDeterministicTurnId(message.id),
+      });
       await persistThreadStateById(conversationId, {
         conversation,
       });
@@ -182,7 +172,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       message,
       preparedState,
       decision,
-      completedAtMs,
     }) => {
       markConversationMessage(
         preparedState.conversation,
@@ -192,8 +181,10 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
           skippedReason: decision.reason,
         },
       );
-      clearSkippedTurnIfActive(preparedState.conversation, message.id);
-      preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
+      markTurnClosed({
+        conversation: preparedState.conversation,
+        sessionId: buildDeterministicTurnId(message.id),
+      });
       await persistThreadStateById(conversationId, {
         conversation: preparedState.conversation,
       });

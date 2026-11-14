@@ -10,8 +10,13 @@ vi.mock("@/chat/task-execution/turn-cursor", () => ({
 import {
   abandonReplacedPendingAuth,
   canReusePendingAuthLink,
+  clearPendingAuth,
+  isPendingAuthFor,
 } from "@/chat/services/pending-auth";
-import type { ConversationPendingAuthState } from "@/chat/state/conversation";
+import type {
+  ConversationPendingAuthState,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
 
 const NOW = 1_700_000_000_000;
 const REUSE_WINDOW_MS = 10 * 60 * 1000;
@@ -174,5 +179,51 @@ describe("abandonReplacedPendingAuth", () => {
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });
+  });
+});
+
+describe("clearPendingAuth", () => {
+  it("keeps a newer wait when an older Turn ends", () => {
+    const conversation: ThreadConversationState = {
+      schemaVersion: 1,
+      messages: [],
+      processing: { pendingAuth: pendingAuth({ sessionId: "run_2" }) },
+      vision: { byFileId: {} },
+    };
+
+    clearPendingAuth(conversation, "run_1");
+    expect(conversation.processing.pendingAuth?.sessionId).toBe("run_2");
+
+    clearPendingAuth(conversation, "run_2");
+    expect(conversation.processing.pendingAuth).toBeUndefined();
+  });
+});
+
+describe("isPendingAuthFor", () => {
+  const authorization = {
+    actorId: "U123",
+    authSessionId: "auth-session-1",
+    kind: "mcp" as const,
+    provider: "eval-auth",
+    turnId: "run_1",
+  };
+
+  it("matches the authorization for the same wait", () => {
+    expect(isPendingAuthFor(pendingAuth(), authorization)).toBe(true);
+  });
+
+  it("rejects an authorization for another attempt, Turn, or scope", () => {
+    expect(
+      isPendingAuthFor(pendingAuth(), {
+        ...authorization,
+        authSessionId: "auth-session-2",
+      }),
+    ).toBe(false);
+    expect(
+      isPendingAuthFor(pendingAuth(), { ...authorization, turnId: "run_2" }),
+    ).toBe(false);
+    expect(
+      isPendingAuthFor(pendingAuth(), { ...authorization, scope: "repo" }),
+    ).toBe(false);
   });
 });

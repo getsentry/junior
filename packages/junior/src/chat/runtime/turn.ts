@@ -94,6 +94,9 @@ export function isTurnInputDeferredError(
 // Turn lifecycle mutations
 // ---------------------------------------------------------------------------
 
+// `processing.activeTurnId` names the Turn that runs in this Conversation.
+// Only `startActiveTurn`, `markTurnClosed`, and `markTurnFailed` write it.
+
 /** Mark a turn as the active turn in conversation state. */
 export function startActiveTurn(args: {
   conversation: ThreadConversationState;
@@ -102,39 +105,20 @@ export function startActiveTurn(args: {
   args.conversation.processing.activeTurnId = args.nextTurnId;
 }
 
-function clearActiveTurn(
-  conversation: ThreadConversationState,
-  sessionId?: string,
-): void {
-  if (!sessionId || conversation.processing.activeTurnId === sessionId) {
-    conversation.processing.activeTurnId = undefined;
-  }
-}
-
 /**
- * Close the active turn without marking a Pi session reusable for future
- * history. Use this for auth handoffs and recovery replies that end the live
- * turn but do not produce a completed Pi session.
+ * End the active Turn. With `sessionId`, end it only while that Turn is still
+ * the active one, so a late writer cannot end a newer Turn.
  */
 export function markTurnClosed(args: {
   conversation: ThreadConversationState;
-  nowMs: number;
   sessionId?: string;
 }): void {
-  clearActiveTurn(args.conversation, args.sessionId);
-  args.conversation.processing.lastCompletedAtMs = args.nowMs;
-}
-
-/**
- * Mark a turn as completed after its assistant output has been handled.
- */
-export function markTurnCompleted(args: {
-  conversation: ThreadConversationState;
-  nowMs: number;
-  sessionId: string;
-}): void {
-  clearActiveTurn(args.conversation, args.sessionId);
-  args.conversation.processing.lastCompletedAtMs = args.nowMs;
+  if (
+    !args.sessionId ||
+    args.conversation.processing.activeTurnId === args.sessionId
+  ) {
+    args.conversation.processing.activeTurnId = undefined;
+  }
 }
 
 /**
@@ -144,7 +128,6 @@ export function markTurnCompleted(args: {
  */
 export function markTurnFailed(args: {
   conversation: ThreadConversationState;
-  nowMs: number;
   sessionId?: string;
   userMessageId?: string;
   markConversationMessage: (
@@ -153,8 +136,7 @@ export function markTurnFailed(args: {
     patch: { replied?: boolean; skippedReason?: string },
   ) => void;
 }): void {
-  clearActiveTurn(args.conversation, args.sessionId);
-  args.conversation.processing.lastCompletedAtMs = args.nowMs;
+  markTurnClosed(args);
   args.markConversationMessage(args.conversation, args.userMessageId, {
     replied: false,
     skippedReason: "reply failed",

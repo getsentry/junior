@@ -1,7 +1,7 @@
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { ThreadStatePatch } from "@/chat/runtime/thread-state";
-import { markTurnCompleted } from "@/chat/runtime/turn";
+import { markTurnClosed } from "@/chat/runtime/turn";
 import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 
@@ -18,9 +18,8 @@ export function buildDeliveredTurnStatePatch(args: {
     replied: true,
     skippedReason: undefined,
   });
-  markTurnCompleted({
+  markTurnClosed({
     conversation,
-    nowMs: Date.now(),
     sessionId: args.sessionId,
   });
 
