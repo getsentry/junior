@@ -113,6 +113,123 @@ const SENTRY_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_ISSUE_PATH = "/issues/JUNIOR-3ZK/";
 
+// The mock release thread links to one Sentry Explore chart: p95 span
+// duration of the top span operations, in five-minute buckets.
+function wave(base: number, spike: number): number[] {
+  return Array.from({ length: 48 }, (_, index) => {
+    const ramp = index > 30 ? spike * Math.min(1, (index - 30) / 4) : 0;
+    return Math.round(base + 6 * Math.sin(index / 3) + ramp);
+  });
+}
+const SENTRY_CHART: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "chart",
+  key: "chart:5f0c2a9e41d7b3c8a6e2f1d09b7c4a35",
+  label: "Explore traces",
+  title: "p95(span.duration) by span.op",
+  displayType: "Explore traces",
+  facts: {
+    type: "chart",
+    display: "line",
+    yAxis: "p95(span.duration)",
+    range: "Last 24 hours",
+    series: [
+      { label: "http.client", points: wave(180, 240) },
+      { label: "db", points: wave(90, 40) },
+      { label: "cache.get", points: wave(30, 5) },
+    ],
+  },
+  plugin: "sentry",
+};
+const SENTRY_CHART_PATH = "/explore/traces/";
+
+// The mock release thread links to one Sentry event of the checkout issue.
+const SENTRY_EVENT_ID = "7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b";
+const SENTRY_EVENT: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "event",
+  key: `event:acme/junior:${SENTRY_EVENT_ID}`,
+  label: SENTRY_EVENT_ID.slice(0, 8),
+  title: "TypeError: cart.total is undefined",
+  displayType: "Sentry event",
+  facts: {
+    type: "event",
+    summary: "app/checkout.ts in submitOrder",
+    level: "error",
+    project: "junior",
+    release: "junior@4.2.0",
+    environment: "production",
+    occurredAt: new Date(1770021650_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_EVENT_PATH = `/projects/junior/events/${SENTRY_EVENT_ID}/`;
+// The mock release thread links to one Sentry trace: a checkout request
+// whose payment call failed.
+const SENTRY_TRACE_ID = "a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4";
+const SENTRY_TRACE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "trace",
+  key: `trace:acme/${SENTRY_TRACE_ID}`,
+  label: SENTRY_TRACE_ID.slice(0, 8),
+  title: "POST /api/checkout",
+  displayType: "Sentry trace",
+  facts: {
+    type: "trace",
+    rootOp: "http.server",
+    rootName: "POST /api/checkout",
+    durationMs: 2430,
+    spanCount: 186,
+    errorCount: 2,
+    performanceIssueCount: 1,
+    projects: ["storefront", "checkout-api", "payments"],
+    spans: [
+      {
+        op: "http.server",
+        name: "POST /api/checkout",
+        startMs: 0,
+        durationMs: 2430,
+      },
+      { op: "middleware", name: "authenticate", startMs: 4, durationMs: 38 },
+      {
+        op: "db",
+        name: "SELECT * FROM carts WHERE id = %s",
+        startMs: 45,
+        durationMs: 120,
+      },
+      { op: "cache.get", name: "cart:totals", startMs: 170, durationMs: 6 },
+      {
+        op: "db",
+        name: "SELECT * FROM cart_items WHERE cart_id = %s",
+        startMs: 180,
+        durationMs: 410,
+        issue: true,
+      },
+      {
+        op: "http.client",
+        name: "POST https://payments.internal/charge",
+        startMs: 600,
+        durationMs: 1480,
+        issue: true,
+      },
+      {
+        op: "queue.publish",
+        name: "orders.created",
+        startMs: 2090,
+        durationMs: 55,
+      },
+      {
+        op: "serialize",
+        name: "CheckoutResponse",
+        startMs: 2150,
+        durationMs: 260,
+      },
+    ],
+  },
+  plugin: "sentry",
+};
+const SENTRY_TRACE_PATH = `/explore/traces/trace/${SENTRY_TRACE_ID}/`;
+
 // The mock release thread links to one Notion page, inline and alone on
 // its line.
 const NOTION_PAGE_ID = "4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3";
@@ -186,6 +303,15 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
+    return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_CHART_PATH) {
+    return [{ object: { ...SENTRY_CHART, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_TRACE_PATH) {
+    return [{ object: { ...SENTRY_TRACE, url: href }, url: href }];
   }
   if (url.hostname.endsWith(".slack.com")) {
     if (url.pathname !== SLACK_MESSAGE_PATH) return [];

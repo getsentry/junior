@@ -59,6 +59,7 @@ import {
   cachedPrefixTokens,
   connectedState,
   KEY_PREFIX,
+  providerCacheTtlMs,
   sendWarmup,
   cacheTtlMs,
   warmupTiming,
@@ -66,6 +67,11 @@ import {
   type ConnectedState,
   type ModelRequest,
 } from "./request";
+import {
+  idlePeriodSavings,
+  recordIdlePeriodSavings,
+  recordWarmupCost,
+} from "./savings";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
 import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
@@ -127,6 +133,11 @@ interface IdlePeriod {
   sinceMs: number;
   /** Only periods that could be warmed record gaps. */
   warm?: WarmState;
+  /**
+   * Cached prefix of a period with no warm state, for its savings. Unset in
+   * idle periods from before it was stored.
+   */
+  prefixTokens?: number;
 }
 
 interface ConversationCacheState {
@@ -270,7 +281,7 @@ async function startIdlePeriod(
   const prefixTokens = cachedPrefixTokens(message);
   const ttlMs = cacheTtlMs(request);
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
-    return idle;
+    return { ...idle, prefixTokens };
   }
   const timerDueIdleMs = earliestTimerDueIdleMs(
     watches,
@@ -315,7 +326,7 @@ async function startIdlePeriod(
       "app.cache_warming.prefix_tokens": prefixTokens,
       ...snapshotAttributes(snapshot),
     });
-    return idle;
+    return { ...idle, prefixTokens };
   }
   // Read here, not on each model call: only a period that Junior can warm
   // records a gap.
@@ -339,6 +350,33 @@ async function startIdlePeriod(
       snapshot,
     },
   };
+}
+
+// Count the savings of the idle period that this call ends. A period with no
+// warm state counts too, so the oracle shows the gaps that were never warmed.
+async function recordSavings(
+  idle: IdlePeriod,
+  request: ModelRequest,
+  message: AssistantMessage,
+): Promise<void> {
+  const prefixTokens = idle.warm?.prefixTokens ?? idle.prefixTokens;
+  const ttlMs = idle.warm?.cacheTtlMs ?? providerCacheTtlMs(request.model.id);
+  if (prefixTokens === undefined || ttlMs === undefined) return;
+  const savings = idlePeriodSavings({
+    cacheTtlMs: ttlMs,
+    gapMs: request.startedAtMs - idle.sinceMs,
+    prefixTokens,
+    cacheRead: message.usage.cacheRead,
+    cacheWrite: message.usage.cacheWrite,
+    cacheReadPrice: request.model.cost.cacheRead,
+    cacheWritePrice: request.model.cost.cacheWrite,
+  });
+  if (!savings) return;
+  await recordIdlePeriodSavings(
+    idle.warm?.modelId ?? request.model.id,
+    savings,
+    idle.warm !== undefined,
+  );
 }
 
 async function recordModelCall(
@@ -374,6 +412,7 @@ async function recordModelCall(
       });
     }
   }
+  if (idle) await recordSavings(idle, request, message);
 
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
@@ -785,6 +824,7 @@ export async function runCacheWarmup(
         throw error;
       });
       Object.assign(attributes, warmup.attributes);
+      await recordWarmupCost(warm.modelId, warmup.costUsd);
       if (!warmup.refreshed) {
         // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);

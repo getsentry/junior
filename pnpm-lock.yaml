@@ -886,6 +886,9 @@ importers:
 
   packages/junior-sentry:
     dependencies:
+      '@sentry/api':
+        specifier: 2.3.0
+        version: 2.3.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -4457,6 +4460,21 @@ packages:
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
+
+  '@sentry/api@2.3.0':
+    resolution: {integrity: sha512-DaFq7/eAVyo11cT7fzDc0NVhAsUjhP9S8hRJIi4K1UKLe7rrViyvXCmtonnoBJKTY9I1r8G5LgeGUsB7CawDsw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      typescript: '*'
+      valibot: '*'
+      zod: ^4.6.6
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+      valibot:
+        optional: true
+      zod:
+        optional: true
 
   '@sentry/browser-utils@11.10.0':
     resolution: {integrity: sha512-P/bYHTgj76sYBYCZa524YoZ/hZac2XCW3i3qShrMXnh7s63x1cweUjD7BDVDb0L/lGMwtuObuZeRnCif4hWLNg==}
@@ -8467,6 +8485,10 @@ packages:
 
   p-limit@7.3.1:
     resolution: {integrity: sha512-0trZaiG7Y7kN/Egy9a8j47t9osC0Tch4PaIWd9yGF6bvmlk7muExRvGNYb8sXBwEKMoNKsbNN9P8EefuQekE4Q==}
+    engines: {node: '>=20'}
+
+  p-limit@7.3.3:
+    resolution: {integrity: sha512-SKgVvDU5TNIxQ4r30U75BNLC6a+6GOEjngrk/ysM5+Zu3oJuk1SC5ApzIzY/7PjCEjoVPMWJ0zho/4QUiEB7TQ==}
     engines: {node: '>=20'}
 
   p-locate@3.0.0:
@@ -13561,6 +13583,14 @@ snapshots:
     optional: true
 
   '@sec-ant/readable-stream@0.4.1': {}
+
+  '@sentry/api@2.3.0(typescript@7.0.2)(zod@4.6.7)':
+    dependencies:
+      http-cache-semantics: 4.2.0
+      p-limit: 7.3.3
+    optionalDependencies:
+      typescript: 7.0.2
+      zod: 4.6.7
 
   '@sentry/browser-utils@11.10.0':
     dependencies:
@@ -19188,6 +19218,10 @@ snapshots:
       yocto-queue: 0.1.0
 
   p-limit@7.3.1:
+    dependencies:
+      yocto-queue: 1.2.2
+
+  p-limit@7.3.3:
     dependencies:
       yocto-queue: 1.2.2
 
