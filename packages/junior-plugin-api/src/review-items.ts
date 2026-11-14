@@ -45,6 +45,18 @@ export interface PluginReviewItems {
     reason: string;
     status: "done" | "dismissed";
   }): Promise<void>;
+  /**
+   * Close the open items with the keys, with one read for all of them. Do
+   * nothing for a key with no open item.
+   */
+  closeMany(inputs: readonly PluginReviewItemClose[]): Promise<void>;
+}
+
+/** One item to close. */
+export interface PluginReviewItemClose {
+  dedupeKey: string;
+  reason: string;
+  status: "done" | "dismissed";
 }
 
 /** Review items of a plugin, for the Conversation that each item belongs to. */

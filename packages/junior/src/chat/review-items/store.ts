@@ -315,6 +315,31 @@ export async function getOpenReviewItemByDedupeKey(
   return (await hydrate(db, rows))[0];
 }
 
+/** Read the open Review items with any of the dedupe keys, in one query. */
+export async function getOpenReviewItemsByDedupeKeys(
+  db: JuniorDatabase,
+  dedupeKeys: readonly string[],
+  tenant: ProviderTenant | undefined,
+): Promise<ReviewItem[]> {
+  if (dedupeKeys.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(juniorReviewItems)
+    .where(
+      and(
+        inArray(juniorReviewItems.dedupeKey, [...dedupeKeys]),
+        eq(juniorReviewItems.status, "open"),
+        tenant
+          ? and(
+              eq(juniorReviewItems.provider, tenant.provider),
+              eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+            )
+          : isNull(juniorReviewItems.provider),
+      ),
+    );
+  return hydrate(db, rows);
+}
+
 /**
  * Add one open Review item. Return undefined when another open item in the
  * same tenant already uses its dedupe key.

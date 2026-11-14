@@ -18,6 +18,7 @@
 import type {
   PluginConversationReviewItems,
   PluginLogger,
+  PluginReviewItemClose,
   PluginReviewItems,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -74,17 +75,12 @@ const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-review-requested:",
 ];
 
-async function closeLegacyItems(
-  items: PluginReviewItems,
-  name: string,
-): Promise<void> {
-  for (const prefix of LEGACY_DEDUPE_PREFIXES) {
-    await items.close({
-      dedupeKey: `${prefix}${name}`,
-      reason: "One item now shows the next action.",
-      status: "dismissed",
-    });
-  }
+function legacyItemCloses(name: string): PluginReviewItemClose[] {
+  return LEGACY_DEDUPE_PREFIXES.map((prefix) => ({
+    dedupeKey: `${prefix}${name}`,
+    reason: "One item now shows the next action.",
+    status: "dismissed",
+  }));
 }
 
 const pullRequestWebhookSchema = z.object({
@@ -275,14 +271,14 @@ async function syncOne(
           state,
         });
       }
-      await closeLegacyItems(items, name);
+      const closes = legacyItemCloses(name);
       // The same read closes the merge conflict notice from
       // `merge-conflict-checks/policy.ts` when the conflict is gone.
       if (
         state.state !== "open" ||
         (state.mergeableState && state.mergeableState !== "dirty")
       ) {
-        await items.close({
+        closes.push({
           dedupeKey: gitHubConflictNoticeKey(target),
           ...(endedReason(state) ?? {
             reason: GITHUB_CONFLICT_GONE_REASON,
@@ -290,6 +286,8 @@ async function syncOne(
           }),
         });
       }
+      // One read for all the keys, so the check adds no query per item.
+      await items.closeMany(closes);
       if (changed) {
         // Save after the items change, so a failure leaves the old action
         // and the next event tries again.
