@@ -96,6 +96,18 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
     },
     {
       ...nonOwner(
+        `import { completeText } from "@/chat/pi/client"; const run = completeText<Schema>; run({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import { completeText } from "@/chat/pi/client"; (completeText<Schema>)({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
         `import * as gateway from "@/chat/pi/client"; gateway.completeText({});`,
       ),
       errors: restricted(),

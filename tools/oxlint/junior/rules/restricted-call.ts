@@ -23,6 +23,7 @@ const VALUE_WRAPPERS = new Set([
   "AwaitExpression",
   "ChainExpression",
   "TSAsExpression",
+  "TSInstantiationExpression",
   "TSNonNullExpression",
   "TSSatisfiesExpression",
   "TSTypeAssertion",
