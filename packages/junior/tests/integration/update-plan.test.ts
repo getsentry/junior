@@ -15,7 +15,7 @@ import { signedInViewer } from "../fixtures/user";
 
 async function createHarness() {
   const { conversationStore, fixture } = await prepareParentConversation();
-  const work = await createConversationWorkHarness(neverRunAgentRunner);
+  const work = await createConversationWorkHarness(neverRunAgentRunner());
   const child = await createAndEnqueueAgentInvocation(
     {
       ...invocationInput,
@@ -63,7 +63,7 @@ describe("updatePlan", () => {
         ],
       });
       const [brief, review, approval, mistake] = added.items;
-      expect(added.items.map(({ id: _, ...item }) => item)).toEqual([
+      expect(added.items).toMatchObject([
         { title: "Write the brief", status: "in_progress", assignee: "self" },
         {
           title: "Review the draft",

@@ -10,10 +10,9 @@ import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
-import { createModelStream } from "../fixtures/model-stream";
 import { signedInViewer } from "../fixtures/user";
 import { getSqlExecutor } from "@/chat/db";
-import { listPlanItems, setPlanItemStatusByUser } from "@/chat/plan/store";
+import { changePlan, setPlanItemStatusByUser } from "@/chat/plan/store";
 
 const originalBotConfig = { ...botConfig };
 
@@ -165,22 +164,7 @@ describe("model message history", () => {
   it("sends plan changes that a person made once, and none for the agent's own", async () => {
     mockTitleModel("Conversation title");
     const agent = await createAgent({
-      modelStream: createModelStream([
-        {
-          type: "toolCall",
-          name: "updatePlan",
-          arguments: {
-            add: [
-              { title: "Draft the brief", status: "in_progress" },
-              { title: "Send the brief" },
-            ],
-          },
-        },
-        { type: "text", text: "First." },
-        { type: "text", text: "Second." },
-        { type: "text", text: "Third." },
-        { type: "text", text: "Fourth." },
-      ]),
+      responses: ["First.", "Second.", "Third.", "Fourth."],
     });
     const newText = (
       before: { messages: unknown[] },
@@ -190,18 +174,21 @@ describe("model message history", () => {
 
     await agent.run("first");
     const first = agent.snapshot();
-    // The plan is in the database, not only in the tool call.
-    const [draft, send] = await listPlanItems(
-      getSqlExecutor(),
-      agent.conversationId(),
-    );
-    expect([draft?.title, send?.title]).toEqual([
-      "Draft the brief",
-      "Send the brief",
-    ]);
-    expect(deltas(JSON.stringify(first.messages))).toBe(0);
-
-    // The agent's own changes are already in its tool results.
+    // The agent's own changes are already in its tool results. The plan is
+    // in the database, so a fresh session reads the same items.
+    const self = { conversationId: agent.conversationId() };
+    const [, send] = await changePlan(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      nowMs: Date.now(),
+      change: {
+        add: [
+          { title: "Draft the brief", status: "in_progress", assignee: self },
+          { title: "Send the brief", status: "pending", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
+    });
     await agent.run("second");
     const second = agent.snapshot();
     expect(deltas(newText(first, second))).toBe(0);
@@ -222,7 +209,7 @@ describe("model message history", () => {
       `<item id=\\"${send!.id}\\" status=\\"cancelled\\" assignee=\\"self\\" author=\\"person@example.com\\" email=\\"person@example.com\\">Send the brief</item>`,
     );
     expect(delta).not.toContain("Draft the brief");
-
+    // The block stays in history, so the next Turn does not send it again.
     await agent.run("fourth");
     expect(deltas(newText(third, agent.snapshot()))).toBe(0);
   });

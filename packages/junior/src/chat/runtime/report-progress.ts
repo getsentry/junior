@@ -1,25 +1,19 @@
+import * as z from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
 
-interface PlanOutputItem {
-  assignee?: unknown;
-  status?: unknown;
-  title?: unknown;
-}
+// Reads only what the status needs, so other result fields can change.
+const planOutputSchema = z.object({
+  items: z.array(
+    z.object({ assignee: z.string(), status: z.string(), title: z.string() }),
+  ),
+});
 
 /** Items of the plan's own agent in an `updatePlan` result. */
-function ownPlanItems(output: unknown): PlanOutputItem[] {
-  const items =
-    output && typeof output === "object"
-      ? (output as { items?: unknown }).items
-      : undefined;
-  return Array.isArray(items)
-    ? items.filter(
-        (item): item is PlanOutputItem =>
-          Boolean(item) &&
-          typeof item === "object" &&
-          (item as PlanOutputItem).assignee === "self",
-      )
+function ownPlanItems(output: unknown) {
+  const parsed = planOutputSchema.safeParse(output);
+  return parsed.success
+    ? parsed.data.items.filter((item) => item.assignee === "self")
     : [];
 }
 
@@ -54,9 +48,11 @@ export function buildPlanStatus(
   const active = ownPlanItems(output).find(
     (item) => item.status === "in_progress",
   );
-  const text = typeof active?.title === "string" ? active.title.trim() : "";
+  const text = active?.title.trim();
   return text ? { text } : undefined;
 }
+
+const textPartSchema = z.object({ text: z.string() });
 
 function toolResultOutput(message: {
   content?: unknown;
@@ -65,10 +61,11 @@ function toolResultOutput(message: {
   if (message.isError === true || !Array.isArray(message.content)) {
     return undefined;
   }
-  const text = (message.content[0] as { text?: unknown } | undefined)?.text;
-  if (typeof text !== "string") return undefined;
+  const part = textPartSchema.safeParse(message.content[0]);
+  if (!part.success) return undefined;
   try {
-    return JSON.parse(text) as unknown;
+    const output: unknown = JSON.parse(part.data.text);
+    return output;
   } catch {
     return undefined;
   }

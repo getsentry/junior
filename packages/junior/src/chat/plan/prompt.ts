@@ -62,12 +62,10 @@ function planVersion(items: readonly PlanItem[]): number {
 }
 
 function textParts(message: PiMessage): string[] {
-  const { role, content } = message as { role?: unknown; content?: unknown };
-  if (role !== "user" || !Array.isArray(content)) return [];
-  return content.flatMap((part) => {
-    const text = (part as { type?: unknown; text?: unknown } | undefined)?.text;
-    return typeof text === "string" ? [text] : [];
-  });
+  if (!("role" in message) || message.role !== "user") return [];
+  const { content } = message;
+  if (typeof content === "string") return [content];
+  return content.flatMap((part) => (part.type === "text" ? [part.text] : []));
 }
 
 /**
