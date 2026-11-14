@@ -809,6 +809,7 @@ describe("child agents that no Agent invocation names", () => {
         }),
       ).resolves.toMatchObject({
         invocation: expect.objectContaining({ childConversationId: childId }),
+        queued: true,
       });
     } finally {
       await harness.close();

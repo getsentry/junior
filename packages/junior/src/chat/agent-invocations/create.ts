@@ -391,6 +391,16 @@ export async function createAgentInvocationForMessage(
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
+      // A busy child reads the message after its current work. A child with
+      // no row is busy while the status reader shows it `running`.
+      const queued =
+        openCount > 0 ||
+        (!latest &&
+          (
+            await listOpenChildAgentsWithoutAgentInvocations(
+              input.parentConversationId,
+            )
+          ).includes(input.childConversationId));
       const invocation = await insertAgentInvocation(
         {
           actor: input.actor,
@@ -410,7 +420,7 @@ export async function createAgentInvocationForMessage(
       if (!invocation) {
         throw new Error(`Agent invocation creation raced for ${invocationId}`);
       }
-      return { invocation, queued: openCount > 0 };
+      return { invocation, queued };
     },
   );
 }
