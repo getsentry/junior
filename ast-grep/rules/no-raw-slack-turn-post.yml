@@ -1,31 +1,21 @@
 id: no-raw-slack-turn-post
 language: TypeScript
 severity: error
-message: "Do not post to Slack with postSlackMessage, chat.postMessage, or thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it. Do not add the file to this rule's ignores; they are only for the Slack outbound boundary."
+message: "Do not post to Slack with thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it."
+# `thread` is a Chat SDK Thread parameter, not an import, so junior/restricted-call
+# cannot resolve it. That oxlint rule owns postSlackMessage and chat.postMessage.
 files:
   - packages/junior/src/**/*.ts
-ignores:
-  # Slack outbound boundary and its one reply wrapper.
-  - packages/junior/src/chat/slack/outbound.ts
-  - packages/junior/src/chat/slack/reply.ts
 rule:
-  any:
-    - pattern: postSlackMessage($$$)
-    - pattern: $CLIENT.chat.postMessage($$$)
-    - all:
-        - kind: import_specifier
-        - has:
+  all:
+    - pattern: $THREAD.post($MESSAGE)
+    # Thread control acks are not Turn output.
+    - not:
+        has:
+          field: arguments
+          has:
             kind: identifier
-            regex: ^postSlackMessage$
-    - all:
-        - pattern: $THREAD.post($MESSAGE)
-        # Thread control acks are not Turn output.
-        - not:
-            has:
-              field: arguments
-              has:
-                kind: identifier
-                regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
+            regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
 constraints:
   THREAD:
     regex: (^|\.)thread$

@@ -19,7 +19,6 @@ import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   deleteSlackMessage,
   getSlackMessagePermalink,
-  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import {
@@ -139,7 +138,7 @@ async function postMovedMessage(
     });
     if (!joined.ok) return { refused: joined.error };
   }
-  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
+  // oxlint-disable-next-line junior/restricted-call -- first message of a dashboard Conversation that moves to Slack
   const posted = await postSlackMessage({
     channelId: channel.channelId,
     includePermalink: true,

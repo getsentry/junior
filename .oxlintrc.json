@@ -115,6 +115,42 @@
       }
     },
     {
+      "files": ["packages/junior/src/**/*.ts", "packages/junior/src/**/*.tsx"],
+      "rules": {
+        "junior/restricted-call": [
+          "error",
+          {
+            "entries": [
+              {
+                "module": "packages/junior/src/chat/pi/client",
+                "names": [
+                  "completeDecision",
+                  "completeObject",
+                  "completeText",
+                  "embedTexts"
+                ],
+                "allow": [
+                  "packages/junior/src/chat/core-model.ts",
+                  "packages/junior/src/chat/plugins/model.ts"
+                ],
+                "message": "Call it from `@/chat/core-model` (packages/junior/src/chat/core-model.ts). That wrapper makes each call name its operation and where its cost goes, so no core model call drops its cost. Plugins get the same rule through `chat/plugins/model.ts`."
+              },
+              {
+                "module": "packages/junior/src/chat/slack/outbound",
+                "names": ["postSlackMessage"],
+                "slackMethods": ["chat.postMessage"],
+                "allow": [
+                  "packages/junior/src/chat/slack/outbound.ts",
+                  "packages/junior/src/chat/slack/reply.ts"
+                ],
+                "message": "Post visible Turn output with `sendSlackReply` from `@/chat/slack/reply` (packages/junior/src/chat/slack/reply.ts), and get its channel and thread from `resolveSlackReplyTarget`. A raw post skips the Conversation footer and chooses its own thread. Only a post that is not Turn output, such as a private notice or DM, is a valid one-off."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
         "junior/no-raw-sql-queries": "error",
