@@ -110,8 +110,7 @@ export async function postSlackMessage(input: {
   channelId: string;
   text: string;
   threadTs?: string | undefined;
-  includePermalink?: boolean;
-}): Promise<{ ts: SlackMessageTs; permalink?: string | undefined }> {
+}): Promise<{ ts: SlackMessageTs }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack message posting",
@@ -167,17 +166,7 @@ export async function postSlackMessage(input: {
     throw new Error("Slack message posted without ts");
   }
 
-  return {
-    ts: messageTs,
-    ...(input.includePermalink
-      ? {
-          permalink: await getSlackMessagePermalink({
-            channelId,
-            messageTs,
-          }),
-        }
-      : undefined),
-  };
+  return { ts: messageTs };
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
 const emptyThreadReplies = async () => [];
 
@@ -374,9 +375,15 @@ describe("Slack behavior: subscribed messages", () => {
     await expect(listWatches({ conversationId: thread.id })).resolves.toEqual(
       [],
     );
-    expect(toPostedText(thread.posts[1])).toContain(
-      "I'll stay out of this thread unless someone @mentions me again.",
-    );
+    expect(slackApiOutbox.messages().at(-1)?.params).toMatchObject({
+      text: expect.stringContaining(
+        "I'll stay out of this thread unless someone @mentions me again.",
+      ),
+      // The ack is Conversation output, so it carries the footer.
+      blocks: expect.arrayContaining([
+        expect.objectContaining({ type: "context" }),
+      ]),
+    });
 
     await slackRuntime.handleNewMention(
       thread,

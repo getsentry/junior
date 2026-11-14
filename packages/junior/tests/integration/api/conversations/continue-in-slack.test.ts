@@ -161,6 +161,21 @@ describe("continue a dashboard conversation in Slack", () => {
       ),
     });
     expect(slackApiOutbox.messages()[0]?.params["thread_ts"]).toBeUndefined();
+    // Standard Markdown in a markdown block, then the Conversation footer.
+    expect(slackApiOutbox.messages()[0]?.params["blocks"]).toEqual([
+      {
+        type: "markdown",
+        text: "**Junior conversation**\n\nAlice Example moved this conversation here from the dashboard. Mention me in this thread to continue.",
+      },
+      expect.objectContaining({
+        type: "context",
+        elements: [
+          expect.objectContaining({
+            text: expect.stringContaining(conversationId),
+          }),
+        ],
+      }),
+    ]);
 
     const detail = await readDetail(app, conversationId);
     expect(detail.canContinueInSlack).toBeUndefined();

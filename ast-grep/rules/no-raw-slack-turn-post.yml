@@ -7,7 +7,8 @@ message: "Do not post to Slack with thread.post. Post visible Turn output with s
 files:
   - packages/junior/src/**/*.ts
 rule:
-  pattern: $THREAD.post($MESSAGE)
+  pattern: $THREAD.post($$$)
 constraints:
   THREAD:
-    regex: (^|\.)thread$
+    # Any Chat SDK Thread variable, such as `thread` or `args.slackThread`.
+    regex: (?i)thread$

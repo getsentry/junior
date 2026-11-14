@@ -15,12 +15,11 @@ import {
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
-import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   deleteSlackMessage,
   getSlackMessagePermalink,
-  postSlackMessage,
 } from "@/chat/slack/outbound";
+import { sendSlackReply } from "@/chat/slack/reply";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -90,7 +89,7 @@ export function canContinueInSlack(
   );
 }
 
-/** Text for the first message of the Conversation in Slack. */
+/** Markdown for the first message of the Conversation in Slack. */
 async function movedMessageText(
   conversation: Conversation,
   actorName: string,
@@ -101,20 +100,31 @@ async function movedMessageText(
     getDb(),
     conversation.conversationId,
   );
+  const label = title.replace(/[[\]\\]/g, "\\$&");
   return [
-    `*${url ? formatSlackLink(url, title) : escapeSlackMrkdwnText(title)}*`,
-    ...(brief ? [`> ${escapeSlackMrkdwnText(brief.content.summary)}`] : []),
-    `${escapeSlackMrkdwnText(actorName)} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
-  ].join("\n");
+    url
+      ? `**[${label}](${url.replaceAll("(", "%28").replaceAll(")", "%29")})**`
+      : `**${title}**`,
+    ...(brief ? [`> ${brief.content.summary}`] : []),
+    `${actorName} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
+  ].join("\n\n");
 }
 
 /** Make sure Junior can post in a public channel, then post there. */
 async function postMovedMessage(
   channel: ContinueInSlackChannel,
+  conversationId: string,
   text: string,
   threadTs: SlackMessageTs | undefined,
 ): Promise<
-  | { channelName?: string; permalink?: string; ts: SlackMessageTs }
+  | {
+      channelName?: string;
+      /** Every post; a long brief can split into more than one. */
+      messageTs: SlackMessageTs[];
+      permalink?: string;
+      /** The first post, which starts the thread when none was chosen. */
+      ts: SlackMessageTs;
+    }
   | { refused: string }
 > {
   const access = await checkSlackChannelReadAccess({
@@ -138,17 +148,29 @@ async function postMovedMessage(
     });
     if (!joined.ok) return { refused: joined.error };
   }
-  // oxlint-disable-next-line junior/restricted-call -- not Turn output: the first post of a moved Conversation starts the thread the user chose, and its title already links the Conversation
-  const posted = await postSlackMessage({
+  const messageTs = (
+    await sendSlackReply({
+      channelId: channel.channelId,
+      conversationId,
+      text,
+      threadTs,
+    })
+  ).map((ts) => {
+    const parsed = parseSlackMessageTs(ts);
+    if (!parsed) throw new Error("Slack message posted without ts");
+    return parsed;
+  });
+  const first = messageTs[0];
+  if (!first) throw new Error("Slack message posted without ts");
+  const permalink = await getSlackMessagePermalink({
     channelId: channel.channelId,
-    includePermalink: true,
-    text,
-    ...(threadTs ? { threadTs } : undefined),
+    messageTs: first,
   });
   return {
     ...(channelName ? { channelName } : undefined),
-    ...(posted.permalink ? { permalink: posted.permalink } : undefined),
-    ts: posted.ts,
+    messageTs,
+    ...(permalink ? { permalink } : undefined),
+    ts: first,
   };
 }
 
@@ -237,6 +259,7 @@ export async function continueConversationInSlack(args: {
 
   const posted = await postMovedMessage(
     channel,
+    conversationId,
     await movedMessageText(conversation, args.actorName),
     args.threadTs,
   );
@@ -304,11 +327,10 @@ export async function continueConversationInSlack(args: {
     },
   });
   if (moved !== "moved") {
-    // A Run started, or another move won the race. Remove the extra post.
-    await deleteSlackMessage({
-      channelId: channel.channelId,
-      timestamp: posted.ts,
-    });
+    // A Run started, or another move won the race. Remove the extra posts.
+    for (const timestamp of posted.messageTs) {
+      await deleteSlackMessage({ channelId: channel.channelId, timestamp });
+    }
     if (moved === "busy") return { status: "busy" };
     const current = await getConversationStore().get({ conversationId });
     return {

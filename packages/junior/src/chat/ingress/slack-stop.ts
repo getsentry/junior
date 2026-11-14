@@ -1,5 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { ThreadImpl, type Message, type StateAdapter } from "chat";
+import type { Message, StateAdapter } from "chat";
 import {
   stopConversation,
   type StopConversationResult,
@@ -10,6 +10,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { SubscribedReplyReason } from "@/chat/services/subscribed-decision";
 import type { SlackInstallationContext } from "@/chat/slack/adapter-context";
 import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
+import { sendSlackReply } from "@/chat/slack/reply";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   clearSlackPendingReactions,
@@ -118,13 +119,13 @@ export async function handleSlackStop(args: {
     return;
   }
 
-  const thread = new ThreadImpl({
-    adapter: args.adapter,
-    stateAdapter: args.state,
-    id: args.canonicalThreadId,
-    channelId: args.adapter.channelIdFromThreadId(args.canonicalThreadId),
-    isDM: args.adapter.isDM(args.canonicalThreadId),
+  const { channel, threadTs } = args.adapter.decodeThreadId(
+    args.canonicalThreadId,
+  );
+  await sendSlackReply({
+    channelId: channel,
+    conversationId: args.conversationId,
+    text: SLACK_STOP_ACK,
+    ...(threadTs ? { threadTs } : undefined),
   });
-  // ast-grep-ignore: no-raw-slack-turn-post -- a stop control ack, not Turn output; sendSlackReply would add the Conversation footer to it
-  await thread.post(SLACK_STOP_ACK);
 }

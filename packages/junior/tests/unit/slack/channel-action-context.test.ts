@@ -163,17 +163,9 @@ describe("slack outbound boundary", () => {
     ).resolves.toEqual({ ok: true });
   });
 
-  it("posts messages with mrkdwn and best-effort permalink lookup", async () => {
+  it("posts messages with mrkdwn", async () => {
     const postMessage = vi.fn(async () => ({ ts: "1700000000.200" }));
-    const getPermalink = vi.fn(async () => ({
-      permalink: "https://example.invalid/message",
-    }));
-    getSlackClient.mockReturnValue({
-      chat: {
-        postMessage,
-        getPermalink,
-      },
-    });
+    getSlackClient.mockReturnValue({ chat: { postMessage } });
 
     withSlackRetries.mockImplementation(
       async (task: () => Promise<unknown>) => await task(),
@@ -184,12 +176,8 @@ describe("slack outbound boundary", () => {
         channelId: "C123",
         threadTs: "1700000000.100",
         text: "Hello from Slack",
-        includePermalink: true,
       }),
-    ).resolves.toEqual({
-      ts: "1700000000.200",
-      permalink: "https://example.invalid/message",
-    });
+    ).resolves.toEqual({ ts: "1700000000.200" });
 
     expect(postMessage).toHaveBeenCalledWith({
       channel: "C123",
@@ -197,10 +185,6 @@ describe("slack outbound boundary", () => {
       text: "Hello from Slack",
       unfurl_links: false,
       unfurl_media: false,
-    });
-    expect(getPermalink).toHaveBeenCalledWith({
-      channel: "C123",
-      message_ts: "1700000000.200",
     });
   });
 

@@ -238,6 +238,17 @@ async function expectThreadWorkStopped(
       params: expect.objectContaining({
         channel: CHANNEL_ID,
         thread_ts: THREAD_TS,
+        // The ack is Conversation output, so it carries the footer.
+        blocks: expect.arrayContaining([
+          expect.objectContaining({
+            type: "context",
+            elements: [
+              expect.objectContaining({
+                text: expect.stringContaining(CONVERSATION_ID),
+              }),
+            ],
+          }),
+        ]),
       }),
     }),
   ]);

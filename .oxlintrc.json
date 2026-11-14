@@ -141,7 +141,7 @@
                   },
                   {
                     "file": "packages/junior/src/chat/plugins/model.ts",
-                    "reason": "It owns the plugin model boundary: cost goes to the host recorder for each plugin, and prompts are named for the plugin. The operation and Conversation attribution in core-model cannot express either."
+                    "reason": "It owns the plugin model boundary. Plugin calls name prompts `<plugin>.<role>`, record cost as events in the plugin's namespace through the host recorder (plugins/model-cost.ts), and include reranking. core-model names prompts `junior.<operation>`, records only `junior` operations, and has no rerank wrapper, so folding this in would move plugin attribution into core."
                   }
                 ],
                 "message": "Call it from `@/chat/core-model` (packages/junior/src/chat/core-model.ts). That wrapper makes each call name its operation and where its cost goes, so no core model call drops its cost. If it has no wrapper for this call yet, add one there. Plugins get the same rule through `chat/plugins/model.ts`."

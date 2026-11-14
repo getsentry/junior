@@ -29,10 +29,8 @@ export type OAuthStatePayload = {
   userId: string;
   provider: string;
   actor?: Actor;
-  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string | undefined;
   resumeConversationId?: string | undefined;
   resumeSessionId?: string | undefined;
   scope?: string | undefined;
@@ -93,14 +91,8 @@ export function parseOAuthStatePayload(
     userId: value["userId"],
     provider: value["provider"],
     ...(actor?.success ? { actor: actor.data } : undefined),
-    ...(optionalString(value["channelId"])
-      ? { channelId: optionalString(value["channelId"]) }
-      : undefined),
     ...(destination ? { destination } : undefined),
     ...(source?.success ? { source: source.data } : undefined),
-    ...(optionalString(value["threadTs"])
-      ? { threadTs: optionalString(value["threadTs"]) }
-      : undefined),
     ...(optionalString(value["resumeConversationId"])
       ? { resumeConversationId: optionalString(value["resumeConversationId"]) }
       : undefined),
@@ -261,10 +253,8 @@ export async function startOAuthFlow(
       userId: input.actorId,
       provider,
       ...(input.actor ? { actor: input.actor } : undefined),
-      ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.destination ? { destination: input.destination } : undefined),
       ...(input.source ? { source: input.source } : undefined),
-      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
       ...(input.resumeConversationId
         ? { resumeConversationId: input.resumeConversationId }
         : undefined),
@@ -302,9 +292,8 @@ export async function startOAuthFlow(
   const authorizationRequest = {
     authorizationUrl,
     label: `Connect your ${formatProviderLabel(provider)} account`,
-    completionText: input.resumeSessionId
-      ? "Once you've authorized, I'll continue automatically."
-      : "Once you've authorized, you'll see a confirmation in Slack.",
+    // Only Turns deliver this text. Dashboard connections read only the URL.
+    completionText: "Once you've authorized, I'll continue automatically.",
   };
   return {
     ok: true,

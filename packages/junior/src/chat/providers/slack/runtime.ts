@@ -381,7 +381,9 @@ export function createSlackTurnRuntime<
   /** Unsubscribe the thread and cancel resource watches for a stop decision. */
   const maybeHandleThreadOptOutDecision = async (args: {
     beforeFirstResponsePost?: (() => Promise<void>) | undefined;
+    conversationId: string;
     decision?: { shouldUnsubscribe?: boolean };
+    message: Message;
     thread: Thread;
   }): Promise<boolean> => {
     if (!args.decision?.shouldUnsubscribe) {
@@ -391,8 +393,17 @@ export function createSlackTurnRuntime<
     await deps.cancelWatches({ conversationId: args.thread.id });
     await args.thread.unsubscribe();
     await args.beforeFirstResponsePost?.();
-    // ast-grep-ignore: no-raw-slack-turn-post -- an opt-out control ack after unsubscribe, not Turn output; sendSlackReply would add the Conversation footer to it
-    await args.thread.post(THREAD_OPTOUT_ACK);
+    const channelId = getChannelId(args.thread, args.message);
+    if (!channelId) {
+      throw new Error("Slack opt-out acknowledgement requires a channel id");
+    }
+    const threadTs = getThreadTs(getThreadId(args.thread, args.message));
+    await sendSlackReply({
+      channelId,
+      conversationId: args.conversationId,
+      text: THREAD_OPTOUT_ACK,
+      ...(threadTs ? { threadTs } : undefined),
+    });
     return true;
   };
 
@@ -660,8 +671,10 @@ export function createSlackTurnRuntime<
   }): Promise<void> => {
     for (const skipped of args.skipped) {
       await maybeHandleThreadOptOutDecision({
+        conversationId: args.conversationId,
         thread: args.thread,
         decision: skipped.decision,
+        message: skipped.message,
         beforeFirstResponsePost: args.beforeFirstResponsePost,
       });
       logSkippedSubscribedDecision(skipped);
@@ -989,8 +1002,10 @@ export function createSlackTurnRuntime<
                 : stopDecision.reason,
             };
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
+              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             });
             await skipSubscribedMessage({
@@ -1043,8 +1058,10 @@ export function createSlackTurnRuntime<
               context: threadContext,
             });
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
+              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             });
             await skipSubscribedMessage({
@@ -1090,8 +1107,10 @@ export function createSlackTurnRuntime<
 
           if (
             await maybeHandleThreadOptOutDecision({
+              conversationId,
               thread,
               decision,
+              message,
               beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             })
           ) {

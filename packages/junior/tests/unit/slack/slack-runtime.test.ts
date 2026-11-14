@@ -9,6 +9,7 @@ import {
   createTestMessage,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
 const failTurn = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -236,9 +237,9 @@ describe("createSlackTurnRuntime", () => {
         conversationId: thread.id,
       });
       expect(thread.subscribed).toBe(true);
-      expect(thread.posts).toHaveLength(1);
-      expect(thread.posts).not.toContain(
-        "Understood. I'll stay out of this thread unless someone @mentions me again.",
+      expect(slackApiOutbox.messages()).toHaveLength(1);
+      expect(slackApiOutbox.messages()[0]?.params["text"]).not.toContain(
+        "I'll stay out of this thread",
       );
     });
 

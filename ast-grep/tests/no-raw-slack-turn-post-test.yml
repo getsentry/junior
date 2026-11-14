@@ -2,7 +2,9 @@ id: no-raw-slack-turn-post
 valid:
   - "await sendSlackReply({ channelId, conversationId, text });"
   - 'await http.post("/api", body);'
+  - 'app.post("/api/threads", handler);'
 invalid:
   - "await thread.post(buildTurnErrorResponse(error, eventId));"
   - 'await args.thread.post("Done.");'
   - "await thread.post(THREAD_OPTOUT_ACK);"
+  - 'await args.slackThread.post("Done.");'

@@ -15,7 +15,6 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 
-import { postSlackMessage } from "@/chat/slack/outbound";
 
 import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -522,16 +521,6 @@ export async function GET(
     });
   } else if (resumesAgentTurn) {
     await wakeAuthorizedPluginTurn(stored, options);
-  } else if (stored.channelId && stored.threadTs) {
-    const { channelId, threadTs } = stored;
-    waitUntil(() =>
-      // oxlint-disable-next-line junior/restricted-call -- "Account connected" notice when no Turn resumes; there is no Conversation for a sendSlackReply footer
-      postSlackMessage({
-        channelId,
-        threadTs,
-        text: `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
-      }),
-    );
   }
 
   const botName = botConfig.userName;
