@@ -15,6 +15,7 @@ export const objectTypeSchema = z.enum([
   "chart",
   "event",
   "trace",
+  "monitor",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -33,6 +34,7 @@ const objectTypeLabels = {
   chart: "Chart",
   event: "Event",
   trace: "Trace",
+  monitor: "Monitor",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -53,6 +55,7 @@ const objectIconNames = [
   "globe",
   "graph",
   "pulse",
+  "bell",
   "rows",
   "package",
 ] as const;
@@ -69,7 +72,7 @@ export type ObjectTone =
 export function objectPresentation(object: {
   objectType: ObjectType;
   status?: string | undefined;
-  facts?: { type: string } | undefined;
+  facts?: { type: string; state?: string } | undefined;
 }): { icon: ObjectIconName; tone: ObjectTone; label: string } {
   // Saved deployment cards used Item before Deployment became a native type.
   const type =
@@ -92,6 +95,7 @@ export function objectPresentation(object: {
       chart: "graph",
       event: "pulse",
       trace: "rows",
+      monitor: "bell",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];
@@ -117,6 +121,13 @@ export function objectPresentation(object: {
     if (status === "ready" || status === "succeeded") tone = "success";
     if (status === "error" || status === "failed") tone = "danger";
     if (status === "building" || status === "in_progress") tone = "info";
+  } else if (type === "monitor") {
+    // The provider's status names the state, such as "Down" or "Missed".
+    // The tone follows the shared state, not that word.
+    const state = object.facts?.state;
+    if (state === "ok") tone = "success";
+    if (state === "failing") tone = "danger";
+    if (state === "pending") tone = "info";
   } else if (type === "conversation") {
     if (status === "running") tone = "info";
     if (status === "failed") tone = "danger";

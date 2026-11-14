@@ -463,6 +463,58 @@ test("a Sentry event link resolves to a titled link, an event card, and a hover 
   });
 });
 
+test("a Sentry monitor link resolves to a titled link, a monitor card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Checkout p95 latency",
+  });
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://acme.sentry.io/monitors/4021/",
+  );
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry monitor: Checkout p95 latency",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "Alerting",
+    "Kind",
+    "Metric alert",
+    "Project",
+    "junior",
+    "Environment",
+    "production",
+    "Alerts on",
+    "p95(span.duration) per 5 min",
+    // The trend's label sits over its sparkline.
+    "p95(span.duration), last 4 h",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-monitor-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(card.nth(1)).toContainText("Alerting");
+  await screenshot(page, "conversation-sentry-monitor-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,

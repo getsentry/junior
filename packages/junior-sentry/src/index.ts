@@ -23,6 +23,7 @@ import {
 import { sentryChartLinks } from "./links/charts.js";
 import { sentryEventLinks } from "./links/events.js";
 import { sentryIssueLinks } from "./links/issues.js";
+import { sentryMonitorLinks } from "./links/monitors.js";
 import { sentryTraceLinks } from "./links/traces.js";
 import { linkifySentryShortIds } from "./links/short-ids.js";
 import {
@@ -85,6 +86,7 @@ export function sentryPlugin(): PluginRegistration {
       sentryChartLinks,
       sentryTraceLinks,
       sentryEventLinks,
+      sentryMonitorLinks,
     ],
     manifest: {
       commandEnv: {

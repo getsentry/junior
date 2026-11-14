@@ -21,6 +21,7 @@ const names = [
   "globe",
   "graph",
   "pulse",
+  "bell",
   "rows",
   "package",
 ];

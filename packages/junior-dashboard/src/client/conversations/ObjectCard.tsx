@@ -65,9 +65,19 @@ function PreviewImage({
   );
 }
 
+function localTime(iso: string | undefined): string | undefined {
+  return iso
+    ? new Date(iso).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : undefined;
+}
+
 // A web page names its site, then its author, such as "YouTube · Sentry".
 // Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event ends with when it happened, in the viewer's time.
+// its title. An event ends with when it happened, and a monitor with when
+// it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
   const parts =
     card.objectType === "web_page"
@@ -80,12 +90,13 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
           objectSource(card.plugin),
           // A label that repeats the title or the type says nothing new.
           [card.title, type].includes(card.label) ? "" : card.label,
-          card.facts?.type === "event" && card.facts.occurredAt
-            ? new Date(card.facts.occurredAt).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : undefined,
+          localTime(
+            card.facts?.type === "event"
+              ? card.facts.occurredAt
+              : card.facts?.type === "monitor"
+                ? card.facts.lastCheckedAt
+                : undefined,
+          ),
         ];
   return parts.filter(Boolean).join(" · ") || type;
 }
@@ -204,12 +215,13 @@ export function ObjectCard({
             {displayPlainText(card.facts.summary)}
           </p>
         )}
-        {card.facts?.type === "task" && card.facts.trend && (
-          <Sparkline
-            label={card.facts.trend.label}
-            series={[card.facts.trend]}
-          />
-        )}
+        {(card.facts?.type === "task" || card.facts?.type === "monitor") &&
+          card.facts.trend && (
+            <Sparkline
+              label={card.facts.trend.label}
+              series={[card.facts.trend]}
+            />
+          )}
         {card.facts?.type === "chart" && (
           <Sparkline
             display={card.facts.display}
