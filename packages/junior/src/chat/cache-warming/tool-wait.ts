@@ -234,7 +234,8 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           // Schedule first, so the write does not delay the next warmup.
           await recordWarmupCost(request.model.id, warmup.costUsd);
         } catch (error) {
-          // Nothing awaits this timer, so the failure ends here.
+          // best-effort: owning boundary. This runs from a timer that nothing
+          // awaits; the span and outcome record the failure.
           logWarn("cache_warming.warmup.failed", {
             ...attributes,
             "exception.message":

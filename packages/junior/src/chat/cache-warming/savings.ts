@@ -131,6 +131,9 @@ async function addSavingsStats(
   try {
     await addStats(savingsStats(modelId, counts));
   } catch (error) {
+    // best-effort: decision (secondary write). Savings are a dashboard
+    // estimate; a throw would fail the model call that already ran. See the PR
+    // decisions.
     logWarn("cache_warming.savings.record_failed", {
       "gen_ai.request.model": modelId,
       "exception.message":

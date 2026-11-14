@@ -470,6 +470,8 @@ async function stopIdleWarmups(conversationId: string): Promise<void> {
       await state.delete(snapshotKey(conversationId, idle.generation));
     }
   } catch (error) {
+    // best-effort: decision (secondary write). Cache warming records are
+    // dashboard estimates; a throw would fail the turn. See the PR decisions.
     logWarn("cache_warming.idle_period.stop_failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
@@ -559,6 +561,9 @@ export function createCacheWarmingRecorder(
       try {
         await toolWait.record(request, message);
       } catch (error) {
+        // best-effort: decision (secondary write). Cache warming records are
+        // dashboard estimates; a throw would fail the turn. See the PR
+        // decisions.
         logWarn("cache_warming.tool_wait.record_failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
@@ -582,6 +587,9 @@ export function createCacheWarmingRecorder(
           message.stopReason === "stop" ? "reply" : undefined,
         );
       } catch (error) {
+        // best-effort: decision (secondary write). Cache warming records are
+        // dashboard estimates; a throw would fail the model call that already
+        // ran. See the PR decisions.
         logWarn("cache_warming.model_call.record_failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
@@ -596,6 +604,9 @@ export function createCacheWarmingRecorder(
       try {
         await toolWait.end(answerToolEnding !== undefined);
       } catch (error) {
+        // best-effort: decision (secondary write). Cache warming records are
+        // dashboard estimates; a throw would fail the turn. See the PR
+        // decisions.
         logWarn("cache_warming.tool_wait.record_failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
@@ -614,6 +625,9 @@ export function createCacheWarmingRecorder(
           answerToolEnding,
         );
       } catch (error) {
+        // best-effort: decision (secondary write). Cache warming records are
+        // dashboard estimates; a throw would fail the model call that already
+        // ran. See the PR decisions.
         logWarn("cache_warming.model_call.record_failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
