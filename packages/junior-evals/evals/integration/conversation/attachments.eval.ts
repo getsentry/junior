@@ -176,4 +176,53 @@ describe("Conversation Attachments", () => {
       "succeeded",
     ]);
   });
+
+  test("when a person forwards a message with a file earlier in the thread, the reply uses the file", async ({
+    run,
+  }) => {
+    // Junior does not answer the thread message, so no turn stores its file.
+    const skipped = await run(
+      slackThreadMessage("Here are the churn numbers from the sales channel.", {
+        forwarded: "Cancellation reasons for Q3",
+        forwardedFiles: [
+          file(
+            "cancellations.csv",
+            "text/csv",
+            "reason,accounts\nPricing,12\nData residency,31\nMissing SSO,9\n",
+          ),
+        ],
+      }),
+      {
+        history: [
+          slackMention("I will share the churn data in this thread."),
+          reply("Okay, share it here."),
+        ],
+      },
+    );
+    expect(skipped.turns).toEqual([]);
+
+    const conversation = await skipped.continue(
+      slackMention(
+        "Which cancellation reason has the most accounts in that CSV?",
+      ),
+    );
+
+    const readIds = completedToolCalls("slackThreadRead", conversation).flatMap(
+      (call) =>
+        (
+          toolOutput(call) as {
+            messages: Array<{ files?: Array<{ attachment_id?: string }> }>;
+          }
+        ).messages.flatMap((message) =>
+          (message.files ?? []).flatMap((f) =>
+            f.attachment_id ? [f.attachment_id] : [],
+          ),
+        ),
+    );
+    const loads = completedToolCalls("loadAttachment", conversation);
+    expect(loads.map((call) => call.input)).toContainEqual({
+      attachment_id: expect.toBeOneOf(readIds),
+    });
+    expect(conversation.replies.at(-1)?.text).toMatch(/data residency/i);
+  });
 });
