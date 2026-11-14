@@ -403,8 +403,12 @@ export async function wireAgentTools(
       auditAttributes: credentialAuditAttributes(auditSource),
       authProviderFactory: mcpAuth.authProviderFactory,
       serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
-      onAuthorizationRequired: (provider, _error, context) =>
-        mcpAuth.onAuthorizationRequired(provider, context),
+      onAuthorizationRequired: (provider, error, context) =>
+        mcpAuth.onAuthorizationRequired(
+          provider,
+          context,
+          error.insufficientScope,
+        ),
       onToolSuccess: async (input) => {
         return await pluginHooks.afterMcpTool({
           ...input,

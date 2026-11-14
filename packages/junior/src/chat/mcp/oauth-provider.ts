@@ -99,6 +99,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     | (<T>(mutation: () => Promise<T>) => Promise<T>)
     | undefined;
   private readonly oauthClient: PluginMcpOAuthClientConfig | undefined;
+  private ignoresStoredTokens = false;
 
   constructor(
     authSessionId: string,
@@ -158,7 +159,27 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     });
   }
 
+  /**
+   * A provider for this authorization attempt that starts a new sign-in
+   * instead of a refresh. The stored tokens stay until the new sign-in
+   * replaces them, so a person who never finishes it keeps their access.
+   */
+  forNewSignIn(): StateBackedMcpOAuthClientProvider {
+    const provider = new StateBackedMcpOAuthClientProvider(
+      this.authSessionId,
+      this.callbackUrl,
+      this.sessionContext,
+      this.runCredentialMutation,
+      this.oauthClient,
+    );
+    provider.ignoresStoredTokens = true;
+    return provider;
+  }
+
   async tokens(): Promise<OAuthTokens | undefined> {
+    if (this.ignoresStoredTokens) {
+      return undefined;
+    }
     const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,

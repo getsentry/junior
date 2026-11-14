@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import {
+  auth,
+  extractWWWAuthenticateParams,
   UnauthorizedError,
   type OAuthClientProvider,
 } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -54,11 +56,16 @@ function getMcpNetworkAttributes(url: URL): Record<string, string | number> {
 
 export class McpAuthorizationRequiredError extends Error {
   readonly provider: string;
+  /** The scope that a `403 insufficient_scope` challenge asked for. */
+  readonly insufficientScope?: string;
 
-  constructor(provider: string, message: string) {
+  constructor(provider: string, message: string, insufficientScope?: string) {
     super(message);
     this.name = "McpAuthorizationRequiredError";
     this.provider = provider;
+    if (insufficientScope !== undefined) {
+      this.insufficientScope = insufficientScope;
+    }
   }
 }
 
@@ -72,7 +79,23 @@ type HostManagedSessionProvider = OAuthClientProvider & {
   /** The stored person login, so its refreshes share one lock. */
   mcpLoginOwner?: () => Promise<McpLoginOwner>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
+  /** Only a provider that can send the person a link implements this. */
+  forNewSignIn?: () => OAuthClientProvider;
 };
+
+/** The last error status, and the last response with `WWW-Authenticate`. */
+type ProviderStatus = { status?: number; challenge?: Response };
+
+/** The scope that a `403 insufficient_scope` challenge asks for. */
+function insufficientScope(
+  challenge: Response | undefined,
+): string | undefined {
+  if (challenge?.status !== 403) {
+    return undefined;
+  }
+  const { error, scope } = extractWWWAuthenticateParams(challenge);
+  return error === "insufficient_scope" ? (scope ?? "") : undefined;
+}
 
 function isMissingSessionError(error: unknown): boolean {
   return (
@@ -85,9 +108,9 @@ export class PluginMcpClient {
   private client?: Client;
   private clientPromise?: Promise<Client>;
   private lastAttemptedTransportSessionId?: string;
-  private readonly providerStatusStore = new AsyncLocalStorage<{
-    status?: number;
-  }>();
+  private readonly providerStatusStore =
+    new AsyncLocalStorage<ProviderStatus>();
+  private readonly fetch: typeof fetch;
   private transport?: StreamableHTTPClientTransport;
   private listedTools?: ListedTool[];
   private readonly resourceHost?: string;
@@ -100,6 +123,24 @@ export class PluginMcpClient {
     this.options = options;
     const url = plugin.manifest.mcp?.url;
     this.resourceHost = url ? new URL(url).hostname : undefined;
+    const loginProvider = options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
+    const mcpLoginOwner = loginProvider?.mcpLoginOwner?.bind(loginProvider);
+    const providerFetch = mcpLoginOwner
+      ? serializeMcpTokenRefresh(mcpLoginOwner, options.fetch)
+      : options.fetch;
+    this.fetch = fetchWithBoundedOAuthErrorBodies(providerFetch, (response) => {
+      const store = this.providerStatusStore.getStore();
+      if (store) {
+        store.status = response.status;
+        // OAuth discovery during a sign-in can 404 after the challenge.
+        // Keep the last response that actually challenged the client.
+        if (response.headers.has("WWW-Authenticate")) {
+          store.challenge = response;
+        }
+      }
+    });
   }
 
   async listTools(): Promise<ListedTool[]> {
@@ -233,21 +274,9 @@ export class PluginMcpClient {
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
-    const loginProvider = this.options.authProvider as
-      | HostManagedSessionProvider
-      | undefined;
-    const mcpLoginOwner = loginProvider?.mcpLoginOwner?.bind(loginProvider);
-    const providerFetch = mcpLoginOwner
-      ? serializeMcpTokenRefresh(mcpLoginOwner, this.options.fetch)
-      : this.options.fetch;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
       ...(headers ? { requestInit: { headers } } : undefined),
-      fetch: fetchWithBoundedOAuthErrorBodies(providerFetch, (status) => {
-        const store = this.providerStatusStore.getStore();
-        if (store) {
-          store.status = status;
-        }
-      }),
+      fetch: this.fetch,
       ...(this.options.authProvider
         ? { authProvider: this.options.authProvider }
         : undefined),
@@ -275,7 +304,7 @@ export class PluginMcpClient {
     operation: () => Promise<T>,
     phase: McpProviderErrorPhase,
   ): Promise<T> {
-    const store: { status?: number } = {};
+    const store: ProviderStatus = {};
     return await this.providerStatusStore.run(store, async () => {
       try {
         return await operation();
@@ -283,10 +312,17 @@ export class PluginMcpClient {
         if (error instanceof McpAuthorizationRequiredError) {
           throw error;
         }
-        if (error instanceof UnauthorizedError) {
+        if (
+          error instanceof UnauthorizedError ||
+          (await this.startSignInAfterRejectedRefresh(error, store.challenge))
+        ) {
+          const scope = insufficientScope(store.challenge);
           throw new McpAuthorizationRequiredError(
             this.plugin.manifest.name,
-            `MCP authorization required for plugin "${this.plugin.manifest.name}"`,
+            scope === undefined
+              ? `MCP authorization required for plugin "${this.plugin.manifest.name}"`
+              : `MCP plugin "${this.plugin.manifest.name}" requires scope "${scope}"`,
+            scope,
           );
         }
         throw toMcpProviderError(error, {
@@ -298,6 +334,43 @@ export class PluginMcpClient {
         });
       }
     });
+  }
+
+  /**
+   * The SDK refreshed the token, and the provider still rejects it with 401,
+   * or with 403 `insufficient_scope`. A refreshed token keeps its scope, so
+   * only a new sign-in can help. Start one for the challenged scope.
+   */
+  private async startSignInAfterRejectedRefresh(
+    error: unknown,
+    challenge: Response | undefined,
+  ): Promise<boolean> {
+    const authProvider = this.options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
+    const url = this.plugin.manifest.mcp?.url;
+    if (
+      !authProvider?.forNewSignIn ||
+      !url ||
+      !challenge ||
+      !(error instanceof StreamableHTTPError)
+    ) {
+      return false;
+    }
+    const { error: challengeError, ...params } =
+      extractWWWAuthenticateParams(challenge);
+    if (
+      error.code !== 401 &&
+      !(error.code === 403 && challengeError === "insufficient_scope")
+    ) {
+      return false;
+    }
+    const result = await auth(authProvider.forNewSignIn(), {
+      serverUrl: url,
+      ...params,
+      fetchFn: this.fetch,
+    });
+    return result === "REDIRECT";
   }
 
   private async shouldResetMissingSession(error: unknown): Promise<boolean> {

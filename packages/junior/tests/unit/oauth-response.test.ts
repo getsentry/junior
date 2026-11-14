@@ -104,8 +104,8 @@ describe("OAuth error responses", () => {
     let observedStatus: number | undefined;
     const wrappedFetch = fetchWithBoundedOAuthErrorBodies(
       vi.fn(async () => new Response("provider detail", { status: 503 })),
-      (status) => {
-        observedStatus = status;
+      (response) => {
+        observedStatus = response.status;
       },
     );
 
