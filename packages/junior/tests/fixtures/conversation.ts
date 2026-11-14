@@ -30,7 +30,14 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import {
+  resolveMailboxTurnWork,
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
   createSlackAdapterFixture,
@@ -272,4 +279,22 @@ export async function stoppedConversationMessageTexts(
   return projectConversationMessages(history)
     .filter((message) => message.meta?.skippedReason === "stopped conversation")
     .map((message) => message.text);
+}
+
+/** Run a mailbox Turn worker on the mailbox work of one queue message. */
+export function requireConversationTurn(
+  worker: (
+    context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
+  ) => Promise<ConversationWorkerResult>,
+) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const resolved = await resolveMailboxTurnWork(context);
+    if (!resolved) {
+      throw new Error("Expected Conversation mailbox work");
+    }
+    return await worker(context, resolved);
+  };
 }

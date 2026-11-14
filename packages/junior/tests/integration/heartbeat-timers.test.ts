@@ -1,5 +1,4 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
@@ -19,6 +18,7 @@ import {
   createConversationWebHarness,
   stoppedConversationMessageTexts,
 } from "../fixtures/conversation";
+import { runTestHeartbeat } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
 import { spawnChildAgent } from "../fixtures/agent-invocations";
 
@@ -72,14 +72,11 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   expect(await execute(tools.listWatches!, {})).toMatchObject({
     subscriptions: [{ id: timer.id, fires_at: timer.fires_at }],
   });
-  await runHeartbeat({
-    nowMs: firesAtMs - 1,
-    conversationWorkQueue: queue,
-  });
+  await runTestHeartbeat(queue, firesAtMs - 1);
   expect(queue.sentRecords()).toHaveLength(0);
 
   clock.mockReturnValue(firesAtMs);
-  await runHeartbeat({ nowMs: clock(), conversationWorkQueue: queue });
+  await runTestHeartbeat(queue, clock());
   expect(queue.sentRecords()).toEqual([
     expect.objectContaining({ conversationId, delayMs: 30_000 }),
   ]);
@@ -150,7 +147,7 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
   ).toHaveLength(1);
   queue.allowSends();
   clock.mockReturnValue(clock() + 120_000);
-  await runHeartbeat({ nowMs: clock(), conversationWorkQueue: queue });
+  await runTestHeartbeat(queue, clock());
   expect(
     (await getConversationWorkState({ conversationId }))?.execution
       .pendingMessages,

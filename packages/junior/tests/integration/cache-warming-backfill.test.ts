@@ -10,7 +10,6 @@ import {
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import { recordWarmupCost } from "@/chat/cache-warming/savings";
@@ -32,7 +31,10 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  runTestHeartbeat,
+} from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const MINUTE = 60_000;
@@ -106,10 +108,7 @@ const gaps = (segment: string) =>
 
 async function heartbeat(nowMs: number) {
   vi.setSystemTime(nowMs);
-  await runHeartbeat({
-    conversationWorkQueue: createConversationWorkQueueTestAdapter(),
-    nowMs,
-  });
+  await runTestHeartbeat(createConversationWorkQueueTestAdapter(), nowMs);
 }
 
 describe("cache warming gap backfill", () => {

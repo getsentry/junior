@@ -5,11 +5,13 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
   eventBatchMessageMeta,
+  eventBatchAuthor,
   renderEventBatchInputs,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { buildUserTurnText } from "@/chat/agent/prompt";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
@@ -671,7 +673,15 @@ async function startAgentInvocationsForChildInput(
       input: renderEventBatchInputs(
         messages,
         await eventReviewItemInputs(messages),
-      ).join("\n\n"),
+      )
+        // The invocation input is one text, so a trusted author's message
+        // keeps the tag that a Turn prompt gives it.
+        .map((input) =>
+          input.kind === "person"
+            ? buildUserTurnText(input.text, eventBatchAuthor(messages))
+            : input.text,
+        )
+        .join("\n\n"),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),

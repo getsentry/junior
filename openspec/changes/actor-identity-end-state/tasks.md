@@ -154,15 +154,17 @@ Finish #2482.
     only `user` Identities with a User.
   - the trust rule is live (`design.md`, Trust). Trusted text counts like a
     chat message from that author. An event from an untrusted or unknown
-    author does not start a run. Junior drops it before it joins a batch or
-    a Turn, so the agent never sees it. A system event runs as today.
+    author still runs, as context only: the task input and Guardian mark the
+    author as untrusted. A system event runs as today. (David changed this
+    from "does not start a run".)
   - event Turns still run as the system Actor. The event author labels the
     Message and feeds the trust check, and gives no credentials
     (`design.md`, Why The Event Author Is Not The Turn Actor).
   - `trustedAuthors` is documented for the GitHub plugin, with the warning
     about reused logins.
   - Cursor Bugbot and Sentry's GitHub bot are on `trustedAuthors` in the
-    deployed app config, in the same release as the trust rule.
+    deployed app config. Nothing is dropped, so this need not ship in the
+    same release as the trust rule.
 - **Constraints:**
   - needs #2260.
   - core gets only a provider-neutral trusted result. Core reads no GitHub
@@ -182,9 +184,43 @@ Finish #2482.
     for a bot author.
   - the batch Message author. Current proposal: the shared author when every
     entry has the same one, else the system Identity.
-  - where Junior drops untrusted authored events, so that none joins a batch
-    or a Turn.
+  - how the task input and Guardian mark an untrusted author.
   - the exact Bugbot and Sentry logins, from real event senders.
+- **Trust part, built with #2217 and #2260:**
+  - one owner, `chat/identities/trust.ts`, for every trust decision: Slack
+    ingress (`isTrustedSlackAuthor`), Identity dispatch (`findTrustedUser`),
+    allowed emails (`isAllowedEmail`, with `ifNoDomains` for what an empty
+    list means), and Event authors (`resolveEventAuthor`). It reads its own
+    config, keeps the Slack member cache, and owns the author label.
+  - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
+    `trusted`, and `text`. Its provider is always the Event namespace. The
+    GitHub plugin derives it in `gitHubEventAuthor` and splits own text from
+    the rest with one parser, `splitCommentText`. Own text goes only to
+    `author.text`; `untrustedText` keeps the rest, so core shows it once.
+  - Watch ingest and Event automation ingest each resolve the author once,
+    after they find a match, the same way Slack ingress resolves a Slack
+    author. Nothing downstream decides again, and no trust value rides on
+    the Turn, Guardian, or tools.
+  - a linked trusted author writes the Event's Message: its author Identity
+    is theirs, so batching keeps Messages with different authors apart. A
+    listed bot has no Identity, so it gets its own author id. Their own text
+    is a person input after the Event task, with their Slack id or bot label
+    on `<current-instruction>`, like a Slack message. The Turn Actor and
+    credentials stay the system Actor, and the author does not join the
+    Conversation.
+  - an untrusted author's Event runs as system context. Their text is
+    external text whose lead and `author_trust="untrusted"` name them. A
+    trusted author with no text still writes the Message, so it is not a
+    system Event. Guardian's user intent for an Event Turn keeps a trusted
+    author's text in its escaped `<current-instruction>` tag, and one
+    reviewer rule says that block is that author's request. Guardian has no
+    author sections.
+  - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and
+    `sentry[bot]` (id 39604003).
+  - still open: real Message author Identities for web, mock, and bot
+    Messages, and author text as an instruction in Event automation runs.
+    Those runs keep an author's text as external text, and name an
+    untrusted author.
 
 ## 5. Dry Run
 

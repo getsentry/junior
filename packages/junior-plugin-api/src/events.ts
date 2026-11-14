@@ -612,6 +612,44 @@ export const eventPersonSchema = z.union([
 
 export type EventPerson = z.output<typeof eventPersonSchema>;
 
+/**
+ * The account that wrote the content of an Event, such as a commenter or a
+ * reviewer. It is always an account of the publishing plugin's provider.
+ * Core decides from it whether the author is a Trusted author. An Event with
+ * no author is a system Event.
+ */
+export const eventAuthorSchema = z
+  .object({
+    /** Display handle, such as a login. It never proves who the author is. */
+    handle: z.string().min(1),
+    /**
+     * The account id that the provider never changes or gives to another
+     * account, such as the numeric GitHub user id. Set it only when the
+     * provider authenticated that this account wrote the content. Core
+     * matches it to an account that the OAuth account-linking flow linked.
+     */
+    subjectId: z.string().min(1).optional(),
+    /** The account is a bot, not a person. */
+    bot: z.boolean().optional(),
+    /**
+     * The plugin's trusted authors list names this account. Core trusts the
+     * author without a linked account. Core never reads the list itself.
+     */
+    trusted: z.boolean().optional(),
+    /**
+     * The author's own text, without what they quote. Leave it out of
+     * `untrustedText`: core shows it once, as a message from the author when
+     * it trusts them, else as text from an Untrusted author.
+     */
+    text: z
+      .string()
+      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
+      .optional(),
+  })
+  .strict();
+
+export type EventAuthor = z.output<typeof eventAuthorSchema>;
+
 export const eventInputSchema = z
   .object({
     objectType: objectTypeSchema.optional(),
@@ -631,6 +669,10 @@ export const eventInputSchema = z
       .transform((value) => value.slice(0, EVENT_SUMMARY_MAX_LENGTH)),
     /** Trusted structured facts. Prefer ids and urls over long prose. */
     data: eventDataSchema.optional(),
+    /**
+     * Provider text that is context, never instruction. When `author.text`
+     * is set, this is only the rest, such as what the author quotes.
+     */
     untrustedText: z
       .string()
       .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
@@ -638,11 +680,10 @@ export const eventInputSchema = z
     /** People involved in the change. Watch Events list them as mentions. */
     people: z.array(eventPersonSchema).max(20).optional(),
     /**
-     * The person who did what the Event describes, such as a reviewer or a
-     * commenter. Core resolves them like `people`, so the agent knows when a
-     * mention and a provider name are the same person.
+     * The account that wrote the content. Core decides whether to trust it.
+     * Only a trusted author's `text` counts as their message.
      */
-    doneBy: eventPersonSchema.optional(),
+    author: eventAuthorSchema.optional(),
   })
   .strict();
 

@@ -102,6 +102,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
@@ -1144,6 +1145,7 @@ export function createPluginEventPublisher(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  dispatchForIdentity: IdentityDispatcher;
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
   events: AppEventPublisher;
@@ -1160,6 +1162,10 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      agent: {
+        dispatchForIdentity: (dispatchOptions) =>
+          options.dispatchForIdentity(pluginName, dispatchOptions),
+      },
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({

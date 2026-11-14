@@ -219,9 +219,7 @@ async function saveStoppedConversationEvents(
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)).map(
-      (input) => ({ kind: "runtime" as const, text: input }),
-    ),
+    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

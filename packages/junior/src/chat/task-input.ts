@@ -167,20 +167,31 @@ function verifiedDetailsTag(
     : [];
 }
 
+// An untrusted Event author is named in the lead and in `author_trust`, not
+// only in the generic external-text lead. Core makes the label one line of
+// ID characters.
 function externalTextTag(
   text: string | undefined,
   source: string | undefined,
+  untrustedAuthor: string | undefined,
 ): string[] {
-  return text
-    ? [
-        renderUntrustedTag(
-          "external-text",
-          { source: source ?? "external" },
-          source ? `The ${source} provider` : "An external source",
-          text,
-        ),
-      ]
-    : [];
+  if (!text) return [];
+  const writer = untrustedAuthor
+    ? `${untrustedAuthor}, an untrusted author,`
+    : source
+      ? `The ${source} provider`
+      : "An external source";
+  return [
+    renderUntrustedTag(
+      "external-text",
+      {
+        source: source ?? "external",
+        ...(untrustedAuthor ? { author_trust: "untrusted" } : undefined),
+      },
+      writer,
+      text,
+    ),
+  ];
 }
 
 /**
@@ -216,6 +227,8 @@ export function renderTaskInput(args: {
   /** Untrusted provider text. */
   externalText?: string;
   externalTextMaxLength?: number;
+  /** Label of the Event author when core does not trust them. */
+  untrustedAuthor?: string;
   trustedSummaryMaxLength?: number;
 }): string {
   const instructions = args.instructions?.trim() ?? "";
@@ -297,6 +310,7 @@ export function renderTaskInput(args: {
       ...externalTextTag(
         externalText && clip(externalText, args.externalTextMaxLength),
         args.source,
+        args.untrustedAuthor,
       ),
       ...replyContractLines(args.outcomes),
     ],
@@ -314,6 +328,8 @@ export interface TaskBatchEvent {
   verifiedDetails?: Record<string, unknown>;
   /** Untrusted provider text. */
   externalText?: string;
+  /** Label of the Event author when core does not trust them. */
+  untrustedAuthor?: string;
   /** Linked person who did what the Event describes. */
   doneBy?: EventDoneBy;
 }
@@ -333,7 +349,11 @@ function eventTag(event: TaskBatchEvent, index: number): string {
       ? [renderChildTag("summary", escapeClosingTags(trustedSummary))]
       : []),
     ...verifiedDetailsTag(event.verifiedDetails),
-    ...externalTextTag(event.externalText?.trim(), event.source),
+    ...externalTextTag(
+      event.externalText?.trim(),
+      event.source,
+      event.untrustedAuthor,
+    ),
   ]);
 }
 

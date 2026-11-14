@@ -1,3 +1,4 @@
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -8,7 +9,8 @@ import type { WaitUntilFn } from "@/handlers/types";
 
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
-  events?: AppEventPublisher;
+  dispatchForIdentity: IdentityDispatcher;
+  events: AppEventPublisher;
   showReviewItem?: ShowReviewItem;
 }
 
@@ -16,7 +18,7 @@ export interface HeartbeatHandlerOptions {
 export async function GET(
   request: Request,
   waitUntil: WaitUntilFn,
-  options: HeartbeatHandlerOptions = {},
+  options: HeartbeatHandlerOptions,
 ): Promise<Response> {
   if (!verifySchedulerRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
@@ -26,6 +28,7 @@ export async function GET(
   waitUntil(() =>
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,
+      dispatchForIdentity: options.dispatchForIdentity,
       events: options.events,
       nowMs,
       showReviewItem: options.showReviewItem,
