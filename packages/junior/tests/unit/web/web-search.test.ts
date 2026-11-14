@@ -49,7 +49,8 @@ describe("createWebSearchTool", () => {
               {
                 title: "Vercel AI Gateway",
                 url: "https://vercel.com/docs/ai-gateway",
-                excerpt: "Gateway docs",
+                // The AI Gateway returns a list of excerpts.
+                excerpts: ["Gateway docs", "Routing and fallbacks"],
               },
             ],
           },
@@ -90,7 +91,7 @@ describe("createWebSearchTool", () => {
         {
           title: "Vercel AI Gateway",
           url: "https://vercel.com/docs/ai-gateway",
-          snippet: "Gateway docs",
+          snippet: "Gateway docs\n\nRouting and fallbacks",
         },
       ],
     });
