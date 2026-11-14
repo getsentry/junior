@@ -103,7 +103,8 @@ function CommandPaletteBody(props: {
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim());
   // The shell already holds the feed, so rows filter on each keystroke with
-  // no request. The server search only reaches conversations outside it.
+  // no request. The server search adds matches that the title filter
+  // misses, such as a Brief or an Annotation match.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
   const navigate = useNavigate();
@@ -194,8 +195,8 @@ function CommandPaletteBody(props: {
 /**
  * Build palette rows. With no typed text: the most recently active
  * conversations, then pages. With typed text: feed conversations and pages
- * ranked by match, the group with the best match first, then server matches
- * outside the feed. The open conversation is never a row.
+ * ranked by title match, the group with the best match first, then the
+ * other server matches. The open conversation is never a row.
  */
 function paletteItems(input: {
   currentConversationId?: string | undefined;
@@ -259,13 +260,13 @@ function paletteItems(input: {
       };
     }),
   );
-  const shown = new Set(input.feed.map((conversation) => conversation.id));
+  const shown = new Set(conversations.map((row) => row.id));
   const more = others(input.searched)
-    .filter((conversation) => !shown.has(conversation.id))
-    .slice(0, MORE_LIMIT)
     .map((conversation) =>
       conversationItem(conversation, "More conversations", input.query),
-    );
+    )
+    .filter((row) => !shown.has(row.id))
+    .slice(0, MORE_LIMIT);
   const pagesFirst =
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
   return pagesFirst
