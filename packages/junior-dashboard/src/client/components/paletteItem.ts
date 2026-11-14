@@ -20,22 +20,24 @@ export type PaletteItem = {
 // Below any label match, so rows that match only other text rank last.
 const TEXT_MATCH_SCORE = 1;
 
+// Omit each variant on its own, so the `run` or `to` pair survives.
+type UnscoredItem<T> = T extends unknown ? Omit<T, "matches" | "score"> : never;
+
 /**
  * Score a row against the typed text: a label match first, then a plain
  * match in `text`, such as an email. Returns undefined when nothing
  * matches. With no typed text, every row stays.
  */
 export function matchedItem(
-  item: Omit<PaletteItem, "matches" | "score">,
+  item: UnscoredItem<PaletteItem>,
   query: string | undefined,
   text: readonly (string | null | undefined)[] = [],
 ): PaletteItem | undefined {
-  const row = item as PaletteItem;
-  if (!query) return { ...row, score: 0 };
+  if (!query) return { ...item, score: 0 };
   const match = quickOpenMatch(item.label, query);
-  if (match) return { ...row, matches: match.indices, score: match.score };
+  if (match) return { ...item, matches: match.indices, score: match.score };
   const needle = query.toLowerCase();
   return text.some((value) => value?.toLowerCase().includes(needle))
-    ? { ...row, score: TEXT_MATCH_SCORE }
+    ? { ...item, score: TEXT_MATCH_SCORE }
     : undefined;
 }

@@ -260,7 +260,7 @@ export function ConversationWorkspace(props: {
     if (!selectedId) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (
         target?.closest(
           "input, textarea, select, [contenteditable='true'], [data-escape-scope]",

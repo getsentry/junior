@@ -231,13 +231,13 @@ export function PaneNavProvider(props: {
       zen,
     ],
   );
+  const paneStyle: CSSProperties & Record<"--pane-width", string> = {
+    "--pane-width": `${width}rem`,
+  };
   return (
     <PaneNavContext.Provider value={value}>
       <PaneWidthContext.Provider value={widthValue}>
-        <div
-          className="flex min-h-svh w-full"
-          style={{ "--pane-width": `${width}rem` } as CSSProperties}
-        >
+        <div className="flex min-h-svh w-full" style={paneStyle}>
           {props.children}
         </div>
       </PaneWidthContext.Provider>
