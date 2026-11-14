@@ -89,6 +89,41 @@ describe("retention purge job", () => {
     await fixture.close();
   });
 
+  it("purges the other trees when one fails, then throws the failure", async () => {
+    const privateDest = await seedDestination(fixture.sql, "private");
+    for (const conversationId of ["blocked", "expired"]) {
+      await seedConversation(fixture.sql, {
+        conversationId,
+        destinationId: privateDest,
+        lastActivityAtMs: BASE_MS,
+      });
+    }
+    await fixture.sql.execute(`
+CREATE OR REPLACE FUNCTION junior_test_block_purge()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'purge blocked for test';
+END;
+$$ LANGUAGE plpgsql
+`);
+    await fixture.sql.execute(`
+CREATE TRIGGER junior_test_block_purge
+BEFORE DELETE ON junior_conversation_events
+FOR EACH ROW WHEN (OLD.conversation_id = 'blocked')
+EXECUTE FUNCTION junior_test_block_purge()
+`);
+
+    const run = runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 15 * DAY_MS,
+    });
+
+    await expect(run).rejects.toThrow(
+      "Retention purge failed for 1 conversation trees",
+    );
+    expect(await eventCount(fixture.sql, "expired")).toBe(0);
+    expect(await eventCount(fixture.sql, "blocked")).toBe(1);
+  });
+
   it("keeps public at 15 days, purges public at 91 days, and private at 15 days", async () => {
     const publicDest = await seedDestination(fixture.sql, "public");
     const privateDest = await seedDestination(fixture.sql, "private");

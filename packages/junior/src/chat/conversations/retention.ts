@@ -10,7 +10,7 @@
 import { collectAttachmentGarbage } from "@/chat/attachments/store";
 import { collectAttachmentUploadGarbage } from "@/chat/attachments/uploads";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { logException, logInfo, withLogContext } from "@/chat/logging";
+import { logInfo, withLogContext } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { purgeConversationTree, selectExpiredRoots } from "./sql/purge";
 
@@ -33,8 +33,6 @@ export interface RetentionPurgeResult {
   scanned: number;
   /** Root trees successfully purged. */
   purged: number;
-  /** Root trees whose purge failed and were skipped. */
-  failed: number;
   /** Total conversation rows (roots plus descendants) stamped by the purge. */
   conversations: number;
 }
@@ -42,8 +40,9 @@ export interface RetentionPurgeResult {
 /**
  * Run one bounded retention purge batch: delete expired root conversation trees
  * oldest-activity-first. Each tree is purged transactionally in isolation, so a
- * single failing tree is logged and skipped without aborting the batch, and the
- * remainder of an over-limit backlog is left for the next run.
+ * failing tree does not stop the batch. After the batch, the run throws the
+ * tree failures so the cron reports them; the next run retries those trees.
+ * The remainder of an over-limit backlog is left for the next run.
  */
 export async function runRetentionPurge(
   executor: JuniorSqlDatabase,
@@ -62,8 +61,8 @@ export async function runRetentionPurge(
     limit,
   });
   let purged = 0;
-  let failed = 0;
   let conversations = 0;
+  const errors: unknown[] = [];
   for (const root of roots) {
     await withLogContext({ conversationId: root.conversationId }, async () => {
       try {
@@ -80,8 +79,11 @@ export async function runRetentionPurge(
           conversations += result.conversations;
         }
       } catch (error) {
-        failed += 1;
-        logException(error, "retention.purge.tree.failed");
+        errors.push(
+          new Error(`Retention purge failed for ${root.conversationId}`, {
+            cause: error,
+          }),
+        );
       }
     });
   }
@@ -104,14 +106,19 @@ export async function runRetentionPurge(
     "app.retention.attachment_uploads": uploadResult.deleted,
     "app.retention.scanned": roots.length,
     "app.retention.purged": purged,
-    "app.retention.failed": failed,
+    "app.retention.failed": errors.length,
     "app.retention.conversations": conversations,
     "app.retention.duration_ms": Date.now() - startedAtMs,
   });
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      `Retention purge failed for ${errors.length} conversation trees`,
+    );
+  }
   return {
     scanned: roots.length,
     purged,
-    failed,
     conversations,
     attachments: attachmentResult.deleted,
   };
