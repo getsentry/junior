@@ -11,7 +11,8 @@ import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /**
- * Create the tool that reacts to the current inbound Slack message.
+ * Create the tool that reacts to the current inbound Slack message or to the
+ * root message of the Conversation's thread.
  *
  * @runBuilt addReaction
  */
@@ -31,7 +32,7 @@ export function createSlackMessageAddReactionTool(
     },
     // The system prompt owns the no-reply protocol. This names when a
     // reaction is the whole reply, as `addReviewItem` does for its card.
-    description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
+    description: `Add an emoji reaction to the current inbound Slack message or to the root message of the Conversation's thread. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
     inputSchema: z.object({
       emoji: z
         .string()
@@ -40,14 +41,29 @@ export function createSlackMessageAddReactionTool(
         .describe(
           "Slack emoji alias name to react with (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`). Optional surrounding colons are allowed.",
         ),
+      message: z
+        .enum(["inbound", "thread_root"])
+        .nullable()
+        .optional()
+        .describe(
+          "Message to react to: `inbound` (default; null means omitted) is the message that started this Turn. `thread_root` is the root message of this Conversation's thread, for example to mark the thread in an Event Turn.",
+        ),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ emoji }) => {
-      const targetChannelId = context.messageChannelId;
-      const targetMessageTs = context.messageTs;
+    execute: async ({ emoji, message }) => {
+      // Both targets stay inside the current Conversation.
+      const targetsThreadRoot = message === "thread_root";
+      const targetChannelId = targetsThreadRoot
+        ? context.locationChannelId
+        : context.messageChannelId;
+      const targetMessageTs = targetsThreadRoot
+        ? context.threadTs
+        : context.messageTs;
       if (!targetChannelId || !targetMessageTs) {
         throw new ToolInputError(
-          "No active Slack message is available for reactions.",
+          targetsThreadRoot
+            ? "This Conversation has no Slack thread to react to."
+            : "This Turn has no inbound Slack message. Use `message: thread_root` to react to the thread root.",
         );
       }
       const normalizedEmoji = normalizeSlackEmojiName(emoji);
