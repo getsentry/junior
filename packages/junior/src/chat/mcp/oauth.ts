@@ -119,8 +119,8 @@ export async function finalizeMcpAuthorization(
   const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
     ...(headers ? { requestInit: { headers } } : undefined),
     authProvider,
-    fetch: fetchWithBoundedOAuthErrorBodies(undefined, (status) => {
-      providerStatus = status;
+    fetch: fetchWithBoundedOAuthErrorBodies(undefined, (response) => {
+      providerStatus = response.status;
     }),
   });
 

@@ -1,0 +1,16 @@
+name: eval-auth
+display-name: Eval Auth
+description: Eval Auth with a pre-registered OAuth client that asks only for read access
+
+env-vars:
+  EVAL_AUTH_CLIENT_ID:
+  EVAL_AUTH_CLIENT_SECRET:
+
+mcp:
+  url: https://eval-auth.example.test/mcp
+  allowed-tools:
+    - budget-echo
+  oauth-client:
+    client-id-env: EVAL_AUTH_CLIENT_ID
+    client-secret-env: EVAL_AUTH_CLIENT_SECRET
+    scope: mcp:read
