@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
+import { listChannelThreadIds } from "@/chat/conversations/channel-thread";
 import pLimit from "p-limit";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
@@ -490,7 +491,8 @@ async function listAnsweredLoopChildren(
  * the parent yet. A child counts while it runs and after it finishes until its
  * result is appended to the parent mailbox. A running child whose `reply` is
  * already among `parentMessages`, the child replies and results that reached
- * the parent's mailbox, has answered, so it does not count.
+ * the parent's mailbox, has answered, so it does not count. A channel
+ * Thread never counts.
  */
 export async function listUnreportedSiblingAgents(
   parentConversationId: string,
@@ -561,9 +563,13 @@ export async function listUnreportedSiblingAgents(
   )) {
     answered.add(child);
   }
+  // A channel Thread reports only with `messageAgent` and its wrap-up, so
+  // nothing waits for it.
+  const channelThreads = await listChannelThreadIds(parentConversationId);
   return children.filter(
     (child) =>
       child.childConversationId !== childConversationId &&
+      !channelThreads.has(child.childConversationId) &&
       (((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
         child.status,
       ) &&

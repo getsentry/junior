@@ -90,3 +90,49 @@ export async function bindProviderConversation(
     );
   }
 }
+
+/**
+ * The `providerConversationId` of a binding that gives a whole provider
+ * place, such as a Slack code channel, to one Conversation. Every message
+ * in that place goes to it, top-level or in a provider thread.
+ */
+export const WHOLE_DESTINATION_BINDING_ID = "*";
+
+/** Resolve the Conversation that owns a whole provider place, if one does. */
+export async function getConversationIdByWholeDestination(
+  executor: JuniorSqlDatabase,
+  args: Omit<ProviderConversationReference, "providerConversationId">,
+): Promise<string | undefined> {
+  return await getConversationIdByProviderConversation(executor, {
+    ...args,
+    providerConversationId: WHOLE_DESTINATION_BINDING_ID,
+  });
+}
+
+/** Read the whole provider place that one Conversation owns, if it owns one. */
+export async function getWholeDestinationBinding(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<ProviderConversationBinding | undefined> {
+  const [row] = await executor
+    .db()
+    .select({
+      conversationId: juniorConversationBindings.conversationId,
+      provider: juniorConversationBindings.provider,
+      providerConversationId: juniorConversationBindings.providerConversationId,
+      providerDestinationId: juniorConversationBindings.providerDestinationId,
+      providerTenantId: juniorConversationBindings.providerTenantId,
+    })
+    .from(juniorConversationBindings)
+    .where(
+      and(
+        eq(juniorConversationBindings.conversationId, conversationId),
+        eq(
+          juniorConversationBindings.providerConversationId,
+          WHOLE_DESTINATION_BINDING_ID,
+        ),
+      ),
+    )
+    .limit(1);
+  return row;
+}

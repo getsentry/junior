@@ -1,4 +1,5 @@
 import type { StateAdapter } from "chat";
+import { isChannelThread } from "@/chat/conversations/channel-thread";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -375,6 +376,17 @@ function renderMessageInput(sender: ChildAgentSender, text: string): string {
 }
 
 /**
+ * Return the parent mailbox id of one Agent message. `messageKey` is empty
+ * for the prefix that every Agent message of `senderId` shares.
+ */
+export function agentMessageInboundId(
+  senderId: string,
+  messageKey: string,
+): string {
+  return `agent-invocation:${senderId}:message:${messageKey}`;
+}
+
+/**
  * Append one message from a child agent to its parent mailbox and wake the
  * parent. `sender` names the child, and `actor` is the Actor of the child's
  * Turn. The parent handles the message like a result. Repeat calls with the
@@ -391,7 +403,7 @@ export async function enqueueAgentMessageToParent(args: {
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.invocationId ?? args.sender.childConversationId;
-  const inboundMessageId = `agent-invocation:${senderId}:message:${args.messageKey}`;
+  const inboundMessageId = agentMessageInboundId(senderId, args.messageKey);
   const summary = `${childAgentLabel(args.sender)} sent a message.`;
   const metadata = senderEventMetadata(args.sender, args.actor, {
     eventKey: inboundMessageId,
@@ -844,6 +856,12 @@ async function reportParentWithoutOpenWork(
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<void> {
   if (await getLatestAgentInvocationForConversation(conversationId)) {
+    return;
+  }
+  // A channel Thread never reports to its parent, not even this way.
+  if (
+    await isChannelThread(await getConversationStore().get({ conversationId }))
+  ) {
     return;
   }
   const sender = await readChildConversationSender(conversationId);

@@ -1,4 +1,13 @@
-import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  ne,
+  notExists,
+  or,
+} from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
@@ -11,7 +20,12 @@ import {
   getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
+import { WHOLE_DESTINATION_BINDING_ID } from "@/chat/conversations/sql/bindings";
+import {
+  juniorAgentInvocations,
+  juniorConversationBindings,
+  juniorConversations,
+} from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
@@ -290,6 +304,8 @@ async function lockAgentConversationTree(
       .from(juniorAgentInvocations)
       .where(inArray(juniorAgentInvocations.parentConversationId, parents));
     // A child agent that no agent invocation names stores its agent config.
+    // A channel Thread is one too, but people steer it in its own channel:
+    // a stop above it does not reach it.
     const withoutInvocations = await executor
       .db()
       .select({ childConversationId: juniorConversations.conversationId })
@@ -298,6 +314,24 @@ async function lockAgentConversationTree(
         and(
           inArray(juniorConversations.parentConversationId, parents),
           isNotNull(juniorConversations.agentConfig),
+          notExists(
+            executor
+              .db()
+              .select({ id: juniorConversationBindings.conversationId })
+              .from(juniorConversationBindings)
+              .where(
+                and(
+                  eq(
+                    juniorConversationBindings.conversationId,
+                    juniorConversations.conversationId,
+                  ),
+                  eq(
+                    juniorConversationBindings.providerConversationId,
+                    WHOLE_DESTINATION_BINDING_ID,
+                  ),
+                ),
+              ),
+          ),
         ),
       );
     parents = [

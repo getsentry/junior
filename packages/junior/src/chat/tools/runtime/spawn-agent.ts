@@ -14,6 +14,7 @@ import {
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -41,87 +42,116 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Dashboard link of the child. People can message a Thread there.",
     ),
+  code_channel: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Slack code channel of a channel Thread, as a mention to share. People work with the Thread there.",
+    ),
+  reports: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("How this child reaches you, when it differs from a result."),
 });
 
-export const spawnAgentToolDefinition = zodToolDefinition({
-  description: [
-    "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and replies when it has something to report. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
-    "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
-    "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
-    `Child agent types:\n${formatAgentTypes()}`,
-    "After you delegate, do not do the same work yourself. Make sure people know what is going on, but post only updates that matter to them. Share a Thread's dashboard_url so people can find it.",
-    "You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
-    "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
-    "A child keeps its type and kind when it receives more work through messageAgent.",
-    "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
-  ].join(" "),
-  exposure: "modelOnly",
-  // Action review judges the actions that the task names.
-  approvalMode: "auto",
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  inputSchema: z
-    .object({
-      task: z
-        .string()
-        .trim()
-        .min(1)
-        .describe(
-          "Self-contained brief. Unless fork is true, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread. When fork is true, the task is a directive: say what to do and what is in or out of scope; do not re-explain the background.",
-        ),
-      title: z
-        .string()
-        .trim()
-        .min(1)
-        .max(SHORT_TITLE_MAX_LENGTH)
-        .nullable()
-        .optional()
-        .describe(
-          "Optional short display title of the child and its Conversation. Pass one to skip title generation; omit it to generate one from the task.",
-        ),
-      name: agentNameSchema
-        .refine((name) => name !== PARENT_AGENT_TARGET, {
-          message: `"${PARENT_AGENT_TARGET}" is reserved`,
-        })
-        .nullable()
-        .optional()
-        .describe(
-          "New child-agent name that messageAgent can address, or omit for a one-off agent",
-        ),
-      kind: z
-        .enum(CHILD_AGENT_KINDS)
-        .nullable()
-        .optional()
-        .describe(
-          "thread: one work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread. task (default): background work only you message.",
-        ),
-      agent_type: z
-        .enum(AGENT_TYPES)
-        .nullable()
-        .optional()
-        .describe(
-          "Child agent type from the list in this tool's description. Pick one when it fits. Omit or pass null for a general-purpose child with your tools.",
-        ),
-      fork: z
-        .boolean()
-        .nullable()
-        .optional()
-        .describe(
-          "true: the child gets a copy of this conversation's history, which adds cost and noise. Pass true only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would repeat most of it. Works with any agent_type.",
-        ),
-      reasoning_level: z
-        .enum(TURN_REASONING_LEVELS)
-        .nullable()
-        .optional()
-        .describe("Optional reasoning level for this delegated task only"),
-    })
-    .strict(),
-  outputSchema: spawnAgentOutputSchema,
-});
+const THREAD_KIND_DESCRIPTION =
+  "thread: one work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread.";
+// Shown only while the `code-channels` flag can create code channels.
+const CODE_CHANNEL_KIND_DESCRIPTION =
+  "From a public Slack channel, a thread gets its own Slack code channel where people work with it. Such a channel Thread sends no result: it reaches you only with messageAgent, plus one wrap-up when its channel is archived. A Slack thread has at most one open channel Thread, so a second thread spawn gives the task to that one.";
+
+function kindDescription(codeChannels: boolean): string {
+  return [
+    THREAD_KIND_DESCRIPTION,
+    ...(codeChannels ? [CODE_CHANNEL_KIND_DESCRIPTION] : []),
+    "task (default): background work only you message.",
+  ].join(" ");
+}
+
+/**
+ * Return the spawnAgent definition. `codeChannels` is whether the
+ * `code-channels` flag can create code channels.
+ */
+export const spawnAgentToolDefinition = (codeChannels: boolean) =>
+  zodToolDefinition({
+    description: [
+      "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and replies when it has something to report. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
+      "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
+      "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
+      `Child agent types:\n${formatAgentTypes()}`,
+      "After you delegate, do not do the same work yourself. Make sure people know what is going on, but post only updates that matter to them. Share a Thread's dashboard_url so people can find it.",
+      "You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
+      "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
+      "A child keeps its type and kind when it receives more work through messageAgent.",
+      "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
+    ].join(" "),
+    exposure: "modelOnly",
+    // Action review judges the actions that the task names.
+    approvalMode: "auto",
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
+    inputSchema: z
+      .object({
+        task: z
+          .string()
+          .trim()
+          .min(1)
+          .describe(
+            "Self-contained brief. Unless fork is true, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread. When fork is true, the task is a directive: say what to do and what is in or out of scope; do not re-explain the background.",
+          ),
+        title: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SHORT_TITLE_MAX_LENGTH)
+          .nullable()
+          .optional()
+          .describe(
+            "Optional short display title of the child and its Conversation. Pass one to skip title generation; omit it to generate one from the task.",
+          ),
+        name: agentNameSchema
+          .refine((name) => name !== PARENT_AGENT_TARGET, {
+            message: `"${PARENT_AGENT_TARGET}" is reserved`,
+          })
+          .nullable()
+          .optional()
+          .describe(
+            "New child-agent name that messageAgent can address, or omit for a one-off agent",
+          ),
+        kind: z
+          .enum(CHILD_AGENT_KINDS)
+          .nullable()
+          .optional()
+          .describe(kindDescription(codeChannels)),
+        agent_type: z
+          .enum(AGENT_TYPES)
+          .nullable()
+          .optional()
+          .describe(
+            "Child agent type from the list in this tool's description. Pick one when it fits. Omit or pass null for a general-purpose child with your tools.",
+          ),
+        fork: z
+          .boolean()
+          .nullable()
+          .optional()
+          .describe(
+            "true: the child gets a copy of this conversation's history, which adds cost and noise. Pass true only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would repeat most of it. Works with any agent_type.",
+          ),
+        reasoning_level: z
+          .enum(TURN_REASONING_LEVELS)
+          .nullable()
+          .optional()
+          .describe("Optional reasoning level for this delegated task only"),
+      })
+      .strict(),
+    outputSchema: spawnAgentOutputSchema,
+  });
 
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
@@ -129,7 +159,7 @@ export function createSpawnAgentTool(
   titleCost: ConversationModelCost,
 ) {
   return zodTool({
-    ...spawnAgentToolDefinition,
+    ...spawnAgentToolDefinition(isExperimentalFeatureEnabled("code-channels")),
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");
@@ -180,6 +210,16 @@ export function createSpawnAgentTool(
           );
         }
         throw error;
+      }
+      if (result.channel) {
+        // People find a channel Thread in its channel, not on the dashboard.
+        return {
+          conversation_id: result.childConversationId,
+          code_channel: `<#${result.channel.id}>`,
+          reports: result.channel.reused
+            ? "This Slack thread already had this open channel Thread, so it got your task as a message. It reaches you only with messageAgent and one wrap-up when its channel is archived."
+            : "It sends no result. It reaches you only with messageAgent and one wrap-up when its channel is archived.",
+        };
       }
       const dashboardUrl = getDashboardConversationLink(
         result.childConversationId,

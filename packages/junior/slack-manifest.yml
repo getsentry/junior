@@ -1,6 +1,8 @@
 display_information:
   name: junior
 features:
+  code_channels:
+    enabled: true
   app_home:
     home_tab_enabled: true
     messages_tab_enabled: true
@@ -21,6 +23,7 @@ oauth_config:
       - channels:history
       - channels:join
       - channels:read
+      - code_channels:manage
       - chat:write
       - dnd:read
       - files:read

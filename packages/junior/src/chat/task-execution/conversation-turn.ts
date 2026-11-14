@@ -5,6 +5,7 @@ import {
   isTopLevelKind,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
+import { isChannelThread } from "@/chat/conversations/channel-thread";
 import {
   readMessageAttachments,
   type MessageAttachment,
@@ -258,7 +259,11 @@ export function createConversationTurnWorker(
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
         webInputMessages = resolved.batch.map((entry) =>
-          webConversationMessage(entry.message, entry.author),
+          webConversationMessage(
+            entry.message,
+            entry.author,
+            entry.source.kind === "slack" ? entry.source.kind : "web",
+          ),
         );
       }
       attachments = resolved.batch.flatMap((entry) =>
@@ -372,9 +377,13 @@ export function createConversationTurnWorker(
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
-    // Only an Event Turn delivers here, and an Event has no person.
-    const postsToProvider = Boolean(conversationLocation) && isEventTurn;
+    const channelThread = await isChannelThread(storedConversation);
+    // An Event Turn delivers here, and an Event has no person. A channel
+    // Thread delivers every Turn to its channel.
+    const postsToProvider =
+      Boolean(conversationLocation) && (isEventTurn || channelThread);
     const behavior = turnBehavior({
+      channelThread,
       kind,
       personInput: isPersonInput(source.kind),
     });

@@ -35,13 +35,15 @@ export async function webTurnInputs(
 }
 
 /**
- * Build the transcript Message for one web mailbox Message. Each web Message
+ * Build the transcript Message for one web or code channel mailbox Message.
+ * Each such Message
  * keeps its own transcript Message and Review item change record, so the
  * dashboard shows what each Message did even when several share a Turn.
  */
 export function webConversationMessage(
   message: InboundMessage,
   author: ConversationAuthor,
+  source: "slack" | "web" = "web",
 ): ConversationMessage {
   const attachments = readMessageAttachments(message.input.attachments);
   const { reviewItemChange } = message.input;
@@ -60,7 +62,7 @@ export function webConversationMessage(
       ...(reviewItemChange
         ? { reviewItemChanges: [reviewItemChange] }
         : undefined),
-      source: "web",
+      source,
     },
   };
 }

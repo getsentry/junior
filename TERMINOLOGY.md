@@ -18,6 +18,11 @@ Canonical words for Junior code and docs. One concept, one word.
   never changes. `automation` is a top-level Conversation for an Automation run.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
+- **Code channel**: a Slack channel that Slack makes for one agent session
+  (`agents.conversations.create`). Say "code channel", not "agent channel".
+- **Channel Thread**: a Thread whose Location is a whole code channel. A
+  provider Conversation binding for the whole channel marks it. It acts like
+  a root there and reaches its parent only with `messageAgent`.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `spawnAgent` `task` field) keep their meaning.
@@ -36,8 +41,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation is delivered to. The Run carries it. It grants no delivery or
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent.
+  assistant Messages are stored. Only a root Conversation or a channel
+  Thread delivers to its Location. Another child stores its output and
+  returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn

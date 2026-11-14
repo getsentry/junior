@@ -50,6 +50,7 @@ Grant the smallest scopes that cover the Slack features you enable. A typical Ju
 | Dashboard link previews and "Continue here"         | `links:read`, `links:write`                                                                                  |
 | Push notifications on a Slack notification schedule | `dnd:read`                                                                                                   |
 | Slack assistant status/title surfaces               | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
+| Code channels for Threads (`code-channels`)         | `code_channels:manage` and the `code_channels` app feature                                                   |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 

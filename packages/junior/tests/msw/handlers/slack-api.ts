@@ -38,6 +38,8 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 const PRIVATE_FILE_DOWNLOAD_KEY = "__files.download.private__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
+  "agents.conversations.create",
+  "agents.sessions.setStatus",
   "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
@@ -223,6 +225,16 @@ function defaultSlackApiResponse(
   params: Record<string, unknown>,
 ): SlackMockHttpResponse {
   switch (method) {
+    case "agents.conversations.create":
+      return { body: { ok: true, channel_id: "C0CODE001" } };
+    case "agents.sessions.setStatus":
+      return {
+        body: {
+          ok: true,
+          status: params.status,
+          agent_status: params.status,
+        },
+      };
     case "assistant.search.context":
       return { body: { ok: true, results: { messages: [], next_cursor: "" } } };
     case "assistant.threads.setStatus":
