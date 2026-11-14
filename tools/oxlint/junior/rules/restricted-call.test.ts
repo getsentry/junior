@@ -86,7 +86,7 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
       `const { completeText } = await import("@/chat/pi/client.other");`,
     ),
     coreModel(
-      `import * as gateway from "@/chat/pi/client"; export const run = (p) => gateway.completeText<T>(p);`,
+      `import * as gateway from "@/chat/pi/client"; export const run = (p) => gateway.completeText<T>({ ...p, promptName: "x" });`,
     ),
     inFile("chat/slack/reply.ts")(
       `import { postSlackMessage } from "./outbound"; await postSlackMessage({});`,
@@ -97,6 +97,7 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
     nonOwner(`getSlackClient().chat.update({ channel, ts, text });`),
     nonOwner(`getSlackClient().apiCall("assistant.search.context", {});`),
     nonOwner(`client.chat.getPermalink({ channel, message_ts });`),
+    nonOwner(`captureMessage("Slack chat.postMessage returned warnings");`),
   ],
   invalid: [
     {
@@ -240,6 +241,42 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
     {
       ...nonOwner(`await client.chat[method]({ channel, text });`),
       errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `await fetch("https://slack.com/api/chat.postMessage", { method: "POST" });`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `await fetch(\`https://slack.com/api/chat.postMessage?channel=\${id}\`);`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import client from "@/chat/pi/client"; client.completeText({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import { completeText } from "@/chat/Pi/Client"; completeText({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...coreModel(
+        `import * as gateway from "@/chat/pi/client"; export const raw = (params) => gateway.completeText(params);`,
+      ),
+      errors: ownerLeak,
+    },
+    {
+      ...coreModel(
+        `import { completeText } from "@/chat/pi/client"; export async function raw(...args) { return await completeText(...args); }`,
+      ),
+      errors: ownerLeak,
     },
     {
       ...nonOwner(`const chat = client.chat; await chat.postMessage({});`),

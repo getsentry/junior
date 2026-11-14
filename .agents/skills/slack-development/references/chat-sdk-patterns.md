@@ -62,7 +62,7 @@ Use ephemeral messages for:
 - Confirmation/error messages that are only relevant to one user.
 - Sensitive information that shouldn't persist in thread history.
 
-Note: Ephemeral messages are only available when you have a thread handle (e.g. in `onNewMention`/`onSubscribedMessage` handlers). Host-side code without a thread handle (like jr-rpc command handlers or OAuth callback routes) must use `SLACK_BOT_TOKEN` with direct `chat.postEphemeral`/`chat.postMessage` API calls instead.
+Note: Ephemeral messages are only available when you have a thread handle (e.g. in `onNewMention`/`onSubscribedMessage` handlers). Host-side code without a thread handle (like jr-rpc command handlers or OAuth callback routes) posts through `packages/junior/src/chat/slack/outbound.ts`.
 
 ## Integration notes for this repository
 

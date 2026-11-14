@@ -65,8 +65,8 @@ function isTypePosition(node: ESTree.Node): boolean {
   return false;
 }
 
-/** `node` is the callee of a call, such as `f()`, `f<T>()`, or `a.f?.()`. */
-function isCalled(node: ESTree.Node): boolean {
+/** The call that `node` is the callee of, as in `f()`, `f<T>()`, or `a.f?.()`. */
+function callOf(node: ESTree.Node): ESTree.CallExpression | undefined {
   let current = node;
   while (
     current.parent &&
@@ -75,9 +75,47 @@ function isCalled(node: ESTree.Node): boolean {
   ) {
     current = current.parent;
   }
+  const parent = current.parent;
+  return parent?.type === "CallExpression" && parent.callee === current
+    ? parent
+    : undefined;
+}
+
+const FUNCTIONS = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * A call that only forwards the enclosing function's parameters, such as
+ * `(params) => completeText(params)`. It exports the restricted function
+ * under a new name.
+ */
+function isPassThrough(call: ESTree.CallExpression): boolean {
+  let fn: ESTree.Node | null = call.parent;
+  while (fn && !FUNCTIONS.has(fn.type)) fn = fn.parent;
+  if (
+    fn?.type !== "ArrowFunctionExpression" &&
+    fn?.type !== "FunctionDeclaration" &&
+    fn?.type !== "FunctionExpression"
+  ) {
+    return false;
+  }
+  const params = fn.params.map((param) =>
+    param.type === "RestElement" ? param.argument : param,
+  );
+  const names = params.map((param) =>
+    param.type === "Identifier" ? param.name : null,
+  );
   return (
-    current.parent?.type === "CallExpression" &&
-    current.parent.callee === current
+    names.every((name) => name !== null) &&
+    call.arguments.length === names.length &&
+    call.arguments.every((argument, index) => {
+      const value =
+        argument.type === "SpreadElement" ? argument.argument : argument;
+      return value.type === "Identifier" && value.name === names[index];
+    })
   );
 }
 
@@ -174,7 +212,8 @@ export const restrictedCallRule = defineRule({
     // A use that is allowed: any use outside a type in a non-owner, or a
     // direct call in an owner.
     function reportUse(node: ESTree.Node, subject: string, entry: Entry) {
-      if (isOwner(entry) && isCalled(node)) return;
+      const call = callOf(node);
+      if (isOwner(entry) && call && !isPassThrough(call)) return;
       report(node, subject, entry);
     }
 
@@ -194,7 +233,10 @@ export const restrictedCallRule = defineRule({
         resolved = toPosix(path.relative(context.cwd, resolved));
       }
       const id = resolved.replace(/\/$/, "").replace(SOURCE_EXTENSION, "");
-      return moduleEntries.find((entry) => entry.module === id);
+      // Case-insensitive file systems resolve `Pi/Client` to `pi/client`.
+      return moduleEntries.find(
+        (entry) => entry.module?.toLowerCase() === id.toLowerCase(),
+      );
     }
 
     const subjectOf = (entry: Entry, name: string) =>
@@ -274,24 +316,28 @@ export const restrictedCallRule = defineRule({
       }
     }
 
+    function checkSlackUrl(node: ESTree.Node, text: string) {
+      for (const { entry, method } of slackEntries) {
+        if (!isOwner(entry) && text.includes(`api/${method}`)) {
+          report(node, `Slack \`${method}\``, entry);
+        }
+      }
+    }
+
     return {
       ImportDeclaration(node) {
         if (node.importKind === "type") return;
         const entry = entryFor(node.source.value);
         if (!entry) return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === "ImportNamespaceSpecifier") {
+          if (specifier.type !== "ImportSpecifier") {
+            // A namespace, or a default import that interop makes one.
             checkReferences(specifier, (identifier) =>
               checkModuleValue(identifier, entry),
             );
             continue;
           }
-          if (
-            specifier.type !== "ImportSpecifier" ||
-            specifier.importKind === "type"
-          ) {
-            continue;
-          }
+          if (specifier.importKind === "type") continue;
           const name = staticName(specifier.imported, false);
           if (name === null || !entry.names?.includes(name)) continue;
           checkReferences(specifier, (identifier) =>
@@ -347,7 +393,7 @@ export const restrictedCallRule = defineRule({
           }
           return;
         }
-        if (name === "apiCall" && guardedSlackEntry && !isCalled(node)) {
+        if (name === "apiCall" && guardedSlackEntry && !callOf(node)) {
           report(node, "Slack `apiCall`", guardedSlackEntry);
           return;
         }
@@ -356,6 +402,13 @@ export const restrictedCallRule = defineRule({
             reportUse(node, `Slack \`${method}\``, entry);
           }
         }
+      },
+      // A raw `fetch` to `https://slack.com/api/chat.postMessage`.
+      Literal(node) {
+        if (typeof node.value === "string") checkSlackUrl(node, node.value);
+      },
+      TemplateElement(node) {
+        checkSlackUrl(node, node.value.raw);
       },
       Property(node) {
         if (node.parent.type !== "ObjectPattern") return;
