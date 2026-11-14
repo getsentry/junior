@@ -10,6 +10,7 @@ import {
 import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
@@ -237,14 +238,12 @@ async function resolveSlackConversationId(args: {
   if (!providerThread) {
     return args.canonicalThreadId;
   }
-  const thread = {
-    provider: "slack",
-    providerDestinationId: providerThread.channelId,
-    providerTenantId: args.installation.teamId ?? "",
-    providerConversationId: providerThread.threadTs,
-  };
-  const ownerId =
-    await conversationStore.getConversationIdByProviderConversation(thread);
+  const ownerId = await findSlackThreadOwnerId({
+    channelId: providerThread.channelId,
+    conversationStore,
+    teamId: args.installation.teamId ?? "",
+    threadTs: providerThread.threadTs,
+  });
   if (ownerId) {
     return ownerId;
   }
@@ -255,9 +254,12 @@ async function resolveSlackConversationId(args: {
   // Conversation that posts here first takes the thread, and later replies
   // split between the two.
   return await conversationStore.claimProviderConversation({
-    ...thread,
     atMs: args.claimAtMs,
     conversationId: args.canonicalThreadId,
+    provider: "slack",
+    providerConversationId: providerThread.threadTs,
+    providerDestinationId: providerThread.channelId,
+    providerTenantId: args.installation.teamId,
   });
 }
 

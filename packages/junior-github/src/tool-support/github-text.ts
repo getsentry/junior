@@ -1,7 +1,4 @@
-import type {
-  PluginToolDefinition,
-  ToolRegistrationHookContext,
-} from "@sentry/junior-plugin-api";
+import type { PluginToolDefinition } from "@sentry/junior-plugin-api";
 
 /**
  * Make every GitHub tool send GitHub text. The model reads Slack threads, so
@@ -11,20 +8,21 @@ import type {
  */
 export function withGitHubText(
   tools: Record<string, PluginToolDefinition>,
-  users: ToolRegistrationHookContext["users"],
 ): Record<string, PluginToolDefinition> {
   return Object.fromEntries(
     Object.entries(tools).map(([name, tool]) => {
       const execute = tool.execute;
       if (!execute) return [name, tool];
-      // Keep prototype methods and their receiver on the tool instance.
-      const wrapped: PluginToolDefinition = Object.create(tool);
-      wrapped.execute = async (input, options) =>
-        await execute.call(
-          tool,
-          await users.replaceSlackMentions(input, "github"),
-          options,
-        );
+      const wrapped: PluginToolDefinition = {
+        ...tool,
+        execute: async (input, options, ctx) =>
+          await execute.call(
+            tool,
+            await ctx.users.replaceSlackMentions(input, "github"),
+            options,
+            ctx,
+          ),
+      };
       return [name, wrapped];
     }),
   );

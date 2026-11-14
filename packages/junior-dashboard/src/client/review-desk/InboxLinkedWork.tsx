@@ -2,10 +2,7 @@ import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import { objectPresentation } from "@sentry/junior-plugin-api";
 import { useEffect, useState } from "react";
 import { objectToneClass } from "../components/ObjectIcon";
-import {
-  ConversationSidebarAnnotations,
-  FittingIcons,
-} from "../conversations/ConversationMeta";
+import { FittingIcons } from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import {
   MessageObjectsProvider,
@@ -114,7 +111,7 @@ function WorkCard(props: {
 /**
  * Linked work on a comfortable Inbox row: up to three small cards, newest
  * first, each with its status color, title and preview image. Work that the
- * plugin saved no title or URL for keeps its chip.
+ * plugin saved no title or URL for follows in one quiet line.
  */
 export function InboxLinkedWork(props: {
   /** Show every card, with no "+N more". */
@@ -148,7 +145,9 @@ export function InboxLinkedWork(props: {
         </span>
       ) : null}
       {chips.length > 0 ? (
-        <ConversationSidebarAnnotations annotations={chips} />
+        <span className="flex min-w-32 flex-1 basis-0 items-center">
+          <WorkChipLine annotations={chips} />
+        </span>
       ) : null}
     </div>
   );
@@ -160,67 +159,95 @@ function shortRef(object: { key: string; label: string }): string {
   return hash >= 0 ? object.key.slice(hash) : object.label;
 }
 
-// A compact row's version of a quiet card: the title, then the short name
-// in the status color.
-function WorkChip(props: { card: CardAnnotation }) {
-  const { tone } = objectPresentation(props.card);
-  return (
+// A quiet card in one line: the title, or the label of work saved with no
+// title, then the short name in the status color.
+function WorkChip(props: { work: Annotation }) {
+  const { work } = props;
+  const tone = work.objectType
+    ? objectPresentation({ objectType: work.objectType, status: work.status })
+        .tone
+    : undefined;
+  const name = work.title ?? work.label;
+  const ref = shortRef(work);
+  const toneClass = tone ? objectToneClass[tone] : "text-dashboard-text-muted";
+  const content =
+    ref === name ? (
+      <span
+        className={cn("truncate tabular-nums", toneClass)}
+        data-status-tone={tone}
+      >
+        {name}
+      </span>
+    ) : (
+      <>
+        <span className="truncate text-dashboard-text-muted">{name}</span>
+        <span
+          className={cn("shrink-0 tabular-nums", toneClass)}
+          data-status-tone={tone}
+        >
+          {ref}
+        </span>
+      </>
+    );
+  const className =
+    "inline-flex min-w-0 max-w-48 shrink-0 items-baseline gap-1 rounded-sm font-sans text-xs no-underline";
+  return work.url ? (
     <a
-      className="inline-flex min-w-0 max-w-48 shrink-0 items-baseline gap-1 rounded-sm font-sans text-xs no-underline hover:underline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      className={cn(
+        className,
+        "hover:underline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+      )}
       data-linked-work-chip=""
-      href={props.card.url}
+      href={work.url}
       rel="noreferrer"
       target="_blank"
     >
-      <span className="truncate text-dashboard-text-muted">
-        {props.card.title}
-      </span>
-      <span
-        className={cn("shrink-0 tabular-nums", objectToneClass[tone])}
-        data-status-tone={tone}
-      >
-        {shortRef(props.card)}
-      </span>
+      {content}
     </a>
+  ) : (
+    <span className={className} data-linked-work-chip="">
+      {content}
+    </span>
+  );
+}
+
+// One line of quiet links; those that do not fit become +N.
+function WorkChipLine(props: { annotations: Annotation[] }) {
+  return (
+    <FittingIcons
+      // The padding keeps focus rings inside the clipped line.
+      className="-m-0.5 h-6 min-w-0 gap-x-2.5 p-0.5"
+      icons={props.annotations.map((work) => (
+        <WorkChip key={work.key} work={work} />
+      ))}
+      overflow={(count) => (
+        <span
+          className="shrink-0 text-2xs text-dashboard-text-faint"
+          data-linked-work-overflow=""
+        >
+          +{count}
+        </span>
+      )}
+    />
   );
 }
 
 /**
- * Linked work on a compact Inbox row: one line of small links, newest first,
- * each with its title and its short name in its status color. Links that do
- * not fit become +N. Work that the plugin saved no title or URL for keeps
- * its chip.
+ * Linked work as one line of quiet links, newest first, each with its
+ * title and its short name in its status color. Those that do not fit
+ * become +N, so a Conversation with many pull requests keeps one line.
  */
 export function InboxLinkedWorkChips(props: { annotations: Annotation[] }) {
-  const cards = props.annotations.filter(isCard);
-  const chips = props.annotations.filter((annotation) => !isCard(annotation));
+  if (props.annotations.length === 0) return null;
   return (
-    <>
-      {cards.length > 0 ? (
-        <span
-          aria-label="Linked work"
-          // It takes what the pills leave of their line.
-          className="flex min-w-32 flex-1 basis-0 items-center gap-1"
-          role="group"
-        >
-          <FittingIcons
-            // The padding keeps focus rings inside the clipped line.
-            className="-m-0.5 h-6 min-w-0 gap-x-2.5 p-0.5"
-            icons={cards.map((card) => (
-              <WorkChip card={card} key={card.key} />
-            ))}
-            overflow={(count) => (
-              <span className="shrink-0 text-2xs text-dashboard-text-faint">
-                +{count}
-              </span>
-            )}
-          />
-        </span>
-      ) : null}
-      {chips.length > 0 ? (
-        <ConversationSidebarAnnotations annotations={chips} />
-      ) : null}
-    </>
+    <span
+      aria-label="Linked work"
+      // It takes what the pills leave of their line.
+      className="flex min-w-32 flex-1 basis-0 items-center gap-1"
+      role="group"
+    >
+      <WorkChipLine annotations={props.annotations} />
+    </span>
   );
 }
 

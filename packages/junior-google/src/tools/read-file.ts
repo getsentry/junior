@@ -58,47 +58,45 @@ const outputSchema = pluginToolOutputSchema.extend({
  * must have that type. A bare file id, or a Drive link, takes the type from
  * the file's Drive MIME type.
  */
-export function createReadGoogleFileTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works for files shared with that account or with anyone who has the link. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
-    inputSchema,
-    outputSchema,
-    async execute(input) {
-      const ref = parseFileReference(input.file);
-      const linkType = URL.canParse(input.file)
-        ? googleLinkFileType(new URL(input.file))
-        : undefined;
-      const file = await readGoogleFileMetadata(
-        ctx,
-        ref,
-        linkType ? [linkType] : GOOGLE_FILE_TYPES,
+export const readGoogleFileTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works for files shared with that account or with anyone who has the link. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+  inputSchema,
+  outputSchema,
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const ref = parseFileReference(input.file);
+    const linkType = URL.canParse(input.file)
+      ? googleLinkFileType(new URL(input.file))
+      : undefined;
+    const file = await readGoogleFileMetadata(
+      ctx,
+      ref,
+      linkType ? [linkType] : GOOGLE_FILE_TYPES,
+    );
+    if (input.range && file.type !== "spreadsheet") {
+      throw new PluginToolInputError(
+        `"${file.name}" is not a Google Sheet, so it has no range. Read it without one.`,
       );
-      if (input.range && file.type !== "spreadsheet") {
-        throw new PluginToolInputError(
-          `"${file.name}" is not a Google Sheet, so it has no range. Read it without one.`,
-        );
-      }
-      const content =
-        file.type === "document"
-          ? await readDocContent(ctx, ref)
-          : file.type === "spreadsheet"
-            ? await readSheetContent(ctx, ref, input.range)
-            : await readSlidesContent(ctx, ref);
-      return {
-        target: "readGoogleFile" as const,
-        ...fileOutputFields(file),
-        ...content,
-        file_id: file.id,
-        title: file.name,
-        type: file.type,
-      };
-    },
-  });
-}
+    }
+    const content =
+      file.type === "document"
+        ? await readDocContent(ctx, ref)
+        : file.type === "spreadsheet"
+          ? await readSheetContent(ctx, ref, input.range)
+          : await readSlidesContent(ctx, ref);
+    return {
+      target: "readGoogleFile" as const,
+      ...fileOutputFields(file),
+      ...content,
+      file_id: file.id,
+      title: file.name,
+      type: file.type,
+    };
+  },
+});

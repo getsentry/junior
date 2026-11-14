@@ -7,6 +7,7 @@
     "./event-filters": "./src/event-filters.ts",
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
+    "./plugin-tool": "./src/plugin-tool.ts",
     "./postgres": "./src/postgres/index.ts",
     "./postgres/fixture": "./src/postgres/fixture.ts",
     "./postgres/global-setup": "./src/postgres/global-setup.ts",

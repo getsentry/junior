@@ -3,12 +3,10 @@ import {
   Archive,
   ArchiveRestore,
   ArrowUpRight,
-  Check,
-  Clock3,
   Pin,
   PinOff,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
@@ -17,11 +15,6 @@ import type {
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../components/ui/popover";
 import { Spinner } from "../components/ui/spinner";
 import {
   Tooltip,
@@ -36,11 +29,7 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
-import {
-  ATTENTION_TONE_CLASS,
-  FittingIcons,
-  OPEN_TONE_CLASS,
-} from "../conversations/ConversationMeta";
+import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
@@ -57,13 +46,14 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { inboxItemKind } from "./inboxModel";
 import {
-  INBOX_HOVER_CARD_CLASS,
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { useHoverExpand } from "./hoverExpand";
-import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
+import { useHoverExpandAllowed } from "./hoverExpand";
+import { useInboxRowFocused } from "./inboxFocus";
+import { useAnimatedHeight } from "./rowMotion";
+import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -77,6 +67,7 @@ import {
 } from "./InboxLinkedWork";
 import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
@@ -161,6 +152,7 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  take?: string;
 }) {
   const { item } = props;
   const showBody = item.kind === "notice" || !item.request;
@@ -183,6 +175,8 @@ function RowItem(props: {
           </h4>
         )}
       </div>
+      {/* What Junior said comes first, then its question and the form. */}
+      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
       <ReviewItemObjects conversationId={item.addedByConversationId}>
         {showBody ? (
           <ClampedDisplayText
@@ -200,10 +194,13 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
-      {/* A notice's only action is Dismiss, the row's Done. A question keeps
-          its own beside its answer. */}
-      <ReviewItemActions dismiss={!(props.done && showBody)} item={item} />
-      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
+      {/* The row's bar holds Dismiss. A card on its own, as in a
+          Conversation, keeps its own. */}
+      <ReviewItemActions
+        dismiss={!props.done}
+        item={item}
+        take={props.take ?? false}
+      />
     </section>
   );
 }
@@ -296,6 +293,8 @@ type InboxRowProps = {
   /** The row's Threads show the action bar on their last line instead. */
   actionsBelow?: boolean;
   snoozeMenuOpen: boolean;
+  /** Label of each ask's take button. Only Up for grabs offers one. */
+  take?: string;
   time: string;
   title: string;
 };
@@ -309,42 +308,37 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
-  const hover = useHoverExpand(props.expanded);
+  const motion = useRowMotion(props);
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
       conversation={props.conversation}
-      hover={hover}
+      motion={motion}
     />
   ) : (
     <li
-      {...hover.handlers}
-      className={cn(inboxCardClass(props.expanded), hover.shown && "z-20")}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
+      data-grown={motion.grown || undefined}
       data-inbox-row={props.rowKey}
+      ref={motion.ref}
     >
-      <InboxRowBody {...props} />
-      {hover.shown ? <HoverCard {...props} /> : null}
+      <InboxRowBody {...props} preview={motion.grown} />
     </li>
   );
 }
 
 /**
- * More of a row while the pointer rests on it: the comfortable layout, the
- * whole summary and every preview. It floats over the rows below, so none
- * of them moves, and the pointer and keyboard pass through it to the row.
+ * How a row moves with the pointer. In focus, a row that may expand on
+ * hover shows its comfortable layout, whole summary and every preview in
+ * place, and the rows below move down with it.
  */
-function HoverCard(props: InboxRowProps) {
-  return (
-    <div
-      aria-hidden="true"
-      className={INBOX_HOVER_CARD_CLASS}
-      data-hover-card=""
-      inert
-    >
-      <InboxRowBody {...props} preview />
-    </div>
-  );
+function useRowMotion(props: InboxRowProps) {
+  const focused = useInboxRowFocused(props.rowKey);
+  const grown = useHoverExpandAllowed() && focused && !props.expanded;
+  const ref = useRef<HTMLLIElement>(null);
+  useAnimatedHeight(ref, `${props.expanded}:${grown}`);
+  return { grown, ref };
 }
 
 /** The id of what a row's head opens. */
@@ -355,7 +349,7 @@ function rowRegionId(rowKey: string): string {
 function ConversationInboxRow(
   props: InboxRowProps & {
     conversation: Conversation;
-    hover: ReturnType<typeof useHoverExpand>;
+    motion: ReturnType<typeof useRowMotion>;
   },
 ) {
   const { conversation, drag } = props;
@@ -378,14 +372,14 @@ function ConversationInboxRow(
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   return (
     <li
-      {...props.hover.handlers}
       className={cn(
         inboxCardClass(props.expanded),
         drag?.dragging && "opacity-40",
-        props.hover.shown && "z-20",
       )}
       data-expanded={props.expanded || undefined}
+      data-grown={props.motion.grown || undefined}
       data-inbox-row={props.rowKey}
+      ref={props.motion.ref}
     >
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
@@ -398,6 +392,7 @@ function ConversationInboxRow(
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
+            preview={props.motion.grown}
             linkProps={{
               "aria-keyshortcuts": drag
                 ? "Alt+ArrowUp Alt+ArrowDown"
@@ -444,7 +439,6 @@ function ConversationInboxRow(
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
-      {props.hover.shown ? <HoverCard {...props} /> : null}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-1.5">
           {threads.threads.map((thread) => (
@@ -527,7 +521,7 @@ function RowSummary(props: {
 function InboxRowBody(
   props: InboxRowProps & {
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
-    /** Draw the hover card: comfortable, unclamped, every preview. */
+    /** In focus on hover: comfortable, unclamped, every preview. */
     preview?: boolean;
   },
 ) {
@@ -662,7 +656,14 @@ function InboxRowBody(
                 </span>
               ) : null}
               {comfortable && conversation ? (
-                <ConversationCast conversation={conversation} />
+                // A compact row that grows under the pointer keeps the name
+                // it reads under.
+                <span
+                  aria-hidden={density === "compact" || undefined}
+                  className="contents"
+                >
+                  <ConversationCast conversation={conversation} />
+                </span>
               ) : null}
             </Link>
             {summary && !columns ? (
@@ -792,6 +793,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              take={props.take}
             />
           ))}
           {props.actionsBelow ? null : rowActions(props)}
@@ -854,47 +856,15 @@ function ExpandedActions(props: {
         </Button>
       ) : null}
       {props.onSnooze ? (
-        <Popover onOpenChange={props.onSnoozeMenu} open={props.snoozeMenuOpen}>
-          <PopoverTrigger
-            render={
-              <Button variant="ghost">
-                <Clock3
-                  aria-hidden="true"
-                  className={ATTENTION_TONE_CLASS}
-                  size={15}
-                />
-                Snooze
-              </Button>
-            }
-          />
-          <PopoverContent
-            align="start"
-            aria-label="Snooze until"
-            className="grid w-48 gap-0.5 p-1"
-          >
-            {snoozeChoices.map((choice) => (
-              <button
-                className="cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover"
-                key={choice.label}
-                onClick={() => props.onSnooze?.(choice)}
-                type="button"
-              >
-                {choice.label}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+        <RowSnoozeButton
+          onOpenChange={props.onSnoozeMenu}
+          onSnooze={props.onSnooze}
+          open={props.snoozeMenuOpen}
+        />
       ) : null}
       {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
-        <Button
-          disabled={props.donePending}
-          onClick={props.onDone}
-          variant="outline"
-        >
-          <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-          Done
-        </Button>
+        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
       ) : null}
     </div>
   );

@@ -73,49 +73,51 @@ async function threadRootId(
  * thread. GitHub keeps conversation comments under the issues endpoint and
  * thread replies under the pulls endpoint.
  */
-export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const prefix = repoPath(repo);
-      const path =
-        input.in_reply_to === undefined
-          ? `${prefix}/issues/${input.number}/comments`
-          : `${prefix}/pulls/${input.number}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
-      const response = await githubApi(egress, {
-        operation: "github.pull.comment.create",
-        method: "POST",
-        path,
-        body: { body: input.body },
-      });
-      if (!response.ok) {
-        const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
-        if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+export const gitHubCommentOnPullRequestTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    { egress }: { egress: PluginEgress },
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const prefix = repoPath(repo);
+    const path =
+      input.in_reply_to === undefined
+        ? `${prefix}/issues/${input.number}/comments`
+        : `${prefix}/pulls/${input.number}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
+    const response = await githubApi(egress, {
+      operation: "github.pull.comment.create",
+      method: "POST",
+      path,
+      body: { body: input.body },
+    });
+    if (!response.ok) {
+      const message = `GitHub pull request comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+      if (response.status === 404 || response.status === 422) {
+        throw new PluginToolInputError(message);
       }
-      const comment = z
-        .object({ id: z.number(), html_url: z.string() })
-        .parse(response.body);
-      return {
-        target: "commentOnPullRequest",
-        repo: repo.ref,
-        number: input.number,
-        comment_id: comment.id,
-        reply: { text: input.body, url: comment.html_url },
-        url: comment.html_url,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const comment = z
+      .object({ id: z.number(), html_url: z.string() })
+      .parse(response.body);
+    return {
+      target: "commentOnPullRequest",
+      repo: repo.ref,
+      number: input.number,
+      comment_id: comment.id,
+      reply: { text: input.body, url: comment.html_url },
+      url: comment.html_url,
+    };
+  },
+});

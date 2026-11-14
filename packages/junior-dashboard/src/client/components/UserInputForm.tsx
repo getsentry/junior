@@ -433,12 +433,8 @@ export function UserInputForm(props: {
           {/* A docked form sends from the message box, so this row can be
               empty there. */}
           {props.docked && fieldCount < 2 && !secondary ? null : (
-            <div className="flex flex-wrap items-center gap-2">
-              {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="default">
-                  Send
-                </Button>
-              )}
+            // Send, the main action, ends the row on the right.
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {fieldCount > 1 ? (
                 <span
                   aria-live="polite"
@@ -448,6 +444,11 @@ export function UserInputForm(props: {
                 </span>
               ) : null}
               {secondary}
+              {props.docked ? null : (
+                <Button disabled={sending} type="submit" variant="default">
+                  Send
+                </Button>
+              )}
             </div>
           )}
         </form>

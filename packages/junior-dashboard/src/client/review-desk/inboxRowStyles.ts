@@ -12,7 +12,8 @@ const LIFTED_CARD_CLASS =
  */
 export function inboxCardClass(expanded: boolean): string {
   return cn(
-    "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color,transform] duration-200 [--inbox-lead:16rem]",
+    // The scale settles with a slight overshoot; height runs in `rowMotion`.
+    "min-w-0 list-none rounded-xl border [transition:margin_200ms,box-shadow_200ms,background-color_200ms,transform_240ms_cubic-bezier(0.34,1.3,0.64,1)] motion-reduce:transition-none [--inbox-lead:16rem]",
     expanded
       ? cn("my-4 md:-mx-2", LIFTED_CARD_CLASS)
       : "border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]",
@@ -35,15 +36,6 @@ export function inboxHeadGridClass(columns: boolean): string {
       "gap-y-1 sm:grid-cols-[0.5rem_var(--inbox-lead)_minmax(0,1fr)_auto]",
   );
 }
-
-/**
- * The card that shows more of a row on hover. It floats over the rows below
- * with an open card's lift, so no row moves.
- */
-export const INBOX_HOVER_CARD_CLASS = cn(
-  "pointer-events-none absolute -top-px -right-px -left-px z-5 rounded-xl border",
-  LIFTED_CARD_CLASS,
-);
 
 /** The meta at the end of an Inbox row head, such as its age. */
 export const INBOX_ROW_META_CLASS =

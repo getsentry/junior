@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
+import { gitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 const linkedUser = {
   displayName: "David Cramer",
@@ -73,7 +74,7 @@ function toolContext(
       resolveActor: async () => (user ? { user } : undefined),
     },
   };
-  return { fetch, tool: createGitHubUpdateIssueTool(ctx) };
+  return { fetch, tool: bindPluginTool(gitHubUpdateIssueTool, ctx) };
 }
 
 describe("updateIssue", () => {

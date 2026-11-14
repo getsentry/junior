@@ -159,7 +159,10 @@ export function ActivityChartXAxis(props: {
   );
 }
 
-/** Render minimum, middle, and maximum guide values on a Recharts chart. */
+/**
+ * Render minimum, middle, and maximum guide values on a Recharts chart. When
+ * the range crosses zero, the middle value is zero.
+ */
 export function ActivityChartYAxis(props: {
   format?(value: number): string;
   maximum: number;
@@ -175,7 +178,11 @@ export function ActivityChartYAxis(props: {
       tickFormatter={format}
       tickLine={false}
       tickMargin={8}
-      ticks={[minimum, (minimum + props.maximum) / 2, props.maximum]}
+      ticks={[
+        minimum,
+        minimum < 0 && props.maximum > 0 ? 0 : (minimum + props.maximum) / 2,
+        props.maximum,
+      ]}
       width="auto"
     />
   );

@@ -8,6 +8,7 @@
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { SENTRY_API_DOMAINS } from "../org-read.js";
+import { sentryApi, sentryData } from "./api.js";
 
 const SENTRY_ORIGIN = "https://sentry.io";
 // An org stays in its region, so one lookup a day is enough.
@@ -39,19 +40,15 @@ async function readRegionOrigin(
   ctx: ObjectLinkContext,
   org: string,
 ): Promise<string | null> {
-  const response = await ctx.egress.fetch({
-    operation: "sentry.organization.get",
-    provider: "sentry",
-    request: new Request(
-      `${SENTRY_ORIGIN}/api/0/organizations/${encodeURIComponent(org)}/`,
-    ),
-  });
+  const result = await sentryApi(
+    ctx.egress,
+    SENTRY_ORIGIN,
+    "sentry.organization.get",
+  ).getOrganization({ path: { organization_id_or_slug: org } });
   // A token for another org gets 403. An unknown org is 404.
-  if ([401, 403, 404].includes(response.status)) return null;
-  if (!response.ok) {
-    throw new Error(`Sentry org read failed with HTTP ${response.status}`);
-  }
-  const regionUrl = orgSchema.parse(await response.json()).links?.regionUrl;
+  const data = sentryData(result, [401, 403, 404], "org read");
+  if (data === null) return null;
+  const regionUrl = orgSchema.parse(data).links?.regionUrl;
   return regionUrl ? regionOrigin(org, regionUrl) : SENTRY_ORIGIN;
 }
 

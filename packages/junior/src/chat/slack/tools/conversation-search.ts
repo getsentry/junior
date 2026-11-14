@@ -7,12 +7,17 @@ import {
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 
+/** Slack channel filter of Conversation search. Its schema is part of the tool definition. */
+export const slackConversationSearchChannelFilter = {
+  channelFilterSchema: slackChannelRefParam,
+};
+
 /** Create Slack-owned channel filtering and match details for Conversation search. */
 export function createSlackConversationSearchChannelPort(
   teamId: SlackTeamId,
 ): ConversationSearchChannelPort {
   return {
-    channelFilterSchema: slackChannelRefParam,
+    ...slackConversationSearchChannelFilter,
     async resolveChannel(input) {
       const target = await resolveSlackChannelRef({
         field: "channel_id",

@@ -1,27 +1,17 @@
 import { CircleOff, Expand, Rows3 } from "lucide-react";
-import {
-  type PointerEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useSyncExternalStore } from "react";
 
 import {
   PreferenceToggle,
   type PreferenceChoice,
 } from "../components/PreferenceToggle";
 import { useConversationDensity } from "../conversations/conversationDensity";
-import { DOCK_MEDIA } from "./useDockHover";
 
-/** Which Inbox rows show more of themselves while the pointer rests on them. */
+/** Which Inbox rows expand in place while the pointer rests on them. */
 type HoverExpand = "compact" | "everywhere" | "off";
 
 const STORAGE_KEY = "junior:hover-expand";
 const CHANGE_EVENT = "junior:hover-expand-change";
-/** How long the pointer rests on a row before it shows more. */
-const HOVER_INTENT_MS = 275;
 
 function readHoverExpand(): HoverExpand {
   try {
@@ -86,44 +76,14 @@ export function HoverExpandSwitcher(props: {
 }
 
 /**
- * Show more of an Inbox row after the pointer rests on it, as the viewer's
- * "Expand on hover" setting allows for the current density. A mouse only:
- * touch, pen and reduced motion never expand. Spread the handlers on the
- * row; `shown` stays false while the row is open.
+ * Whether an Inbox row in focus expands in place, as the viewer's "Expand
+ * on hover" setting allows for the current density. Focus comes from the
+ * pointer (`useInboxRowFocused`), so touch and reduced motion never expand.
  */
-export function useHoverExpand(open: boolean) {
+export function useHoverExpandAllowed(): boolean {
   const [setting] = useHoverExpandSetting();
   const [density] = useConversationDensity();
-  const allowed =
-    !open &&
-    (setting === "everywhere" ||
-      (setting === "compact" && density === "compact"));
-  const [shown, setShown] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const close = useCallback(() => {
-    clearTimeout(timer.current);
-    setShown(false);
-  }, []);
-  useEffect(() => {
-    if (!allowed) close();
-    return () => clearTimeout(timer.current);
-  }, [allowed, close]);
-
-  const onPointerEnter = useCallback(
-    (event: PointerEvent) => {
-      if (!allowed || event.pointerType !== "mouse") return;
-      if (!window.matchMedia(DOCK_MEDIA).matches) return;
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setShown(true), HOVER_INTENT_MS);
-    },
-    [allowed],
+  return (
+    setting === "everywhere" || (setting === "compact" && density === "compact")
   );
-  return {
-    handlers: {
-      onPointerDown: close,
-      onPointerEnter,
-      onPointerLeave: close,
-    },
-    shown: allowed && shown,
-  };
 }

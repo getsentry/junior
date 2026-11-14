@@ -33,7 +33,13 @@ import {
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
 import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
-import { DOCK_GUTTER, useDockHover } from "./useDockHover";
+import {
+  DOCK_GUTTER,
+  InboxFocusProvider,
+  InboxPreviewGate,
+  useCollapseOutside,
+  useInboxFocus,
+} from "./inboxFocus";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
@@ -46,6 +52,7 @@ import {
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
+import { useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
 import {
   useReviewItemAction,
@@ -53,7 +60,7 @@ import {
   useReviewItemsData,
   scrollPages,
 } from "./queries";
-import type { InboxBundle } from "./reviewItemFormat";
+import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -197,7 +204,6 @@ export function InboxList(props: {
   const ready = data.itemsLoaded && !props.loading;
   const state = useInboxListState(ready);
   const { view } = state;
-  const dock = useDockHover();
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
   const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
@@ -229,8 +235,16 @@ export function InboxList(props: {
     setSnoozeKey(undefined);
     state.toggle(key);
   };
+  const focus = useInboxFocus(state.scroller, state.expandedKey);
+  useCollapseOutside(state.expandedKey, () => toggle(state.expandedKey));
+  const leave = useLeaveRow(
+    state.scroller,
+    state.expandedKey,
+    state.setExpandedKey,
+  );
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
+  const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
   const pullRequests = usePullRequestSections(
     viewRows(data.awake, "prs"),
     data.itemPages,
@@ -238,7 +252,11 @@ export function InboxList(props: {
   );
   const streamRows =
     view === "inbox"
-      ? data.conversationRows.filter((row) => !todoIds.has(row.conversationId))
+      ? data.conversationRows.filter(
+          (row) =>
+            !todoIds.has(row.conversationId) &&
+            !grabIds.has(row.conversationId),
+        )
       : view === "conversations"
         ? data.conversationRows
         : [];
@@ -274,9 +292,14 @@ export function InboxList(props: {
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
     const conversationId = item.addedByConversationId;
-    return view === "inbox" && todoIds.has(conversationId)
+    if (view !== "inbox") return `conversation:${conversationId}`;
+    if (itemUpForGrabs(item) && grabIds.has(conversationId))
+      return `grabs:${conversationId}`;
+    return todoIds.has(conversationId)
       ? `todo:${conversationId}`
-      : `conversation:${conversationId}`;
+      : grabIds.has(conversationId)
+        ? `grabs:${conversationId}`
+        : `conversation:${conversationId}`;
   })();
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
@@ -401,6 +424,7 @@ export function InboxList(props: {
       subjectShown?: boolean;
       /** A snoozed row wakes instead of snoozing. */
       snoozed?: boolean;
+      take?: string;
       time?: string;
     } = {},
   ) => {
@@ -427,13 +451,13 @@ export function InboxList(props: {
             : undefined
         }
         key={key}
-        onDone={() => void markDone(row)}
+        onDone={() => leave(key, () => markDone(row))}
         onSnooze={
           options.snoozed
             ? undefined
             : (choice) => {
-                snoozes.snooze(row, choice);
                 setSnoozeKey(undefined);
+                leave(key, () => snoozes.snooze(row, choice));
               }
         }
         onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
@@ -443,6 +467,7 @@ export function InboxList(props: {
         selected={false}
         showThreads={!options.itemRow}
         snoozeMenuOpen={snoozeKey === key}
+        take={options.take}
         time={options.time ?? row.waitingSince}
         title={titleOf(row.conversationId) ?? row.newest.title}
       />
@@ -475,7 +500,11 @@ export function InboxList(props: {
       />
     );
   };
-  const automationRow = (automation: AutomationSummary) => {
+  // In To do, an alert can be dismissed or snoozed in this browser.
+  const automationRow = (
+    automation: AutomationSummary,
+    options: { todo?: boolean } = {},
+  ) => {
     const key = `automation:${automation.id}`;
     return (
       <InboxAutomationRow
@@ -483,6 +512,20 @@ export function InboxList(props: {
         expanded={state.expandedKey === key}
         key={key}
         onToggle={() => toggle(key)}
+        putAway={
+          options.todo
+            ? {
+                menuOpen: snoozeKey === key,
+                onDismiss: () =>
+                  leave(key, () => data.alerts.dismiss(automation)),
+                onMenu: (open) => setSnoozeKey(open ? key : undefined),
+                onSnooze: (choice) => {
+                  setSnoozeKey(undefined);
+                  leave(key, () => data.alerts.snooze(automation, choice));
+                },
+              }
+            : undefined
+        }
         rowKey={key}
       />
     );
@@ -641,7 +684,8 @@ export function InboxList(props: {
             // The rows show without the server count, which may still load
             // or have failed.
             count={
-              data.todoCount || data.todoRows.length + data.automations.length
+              data.todoCount ||
+              data.todoRows.length + data.todoAutomations.length
             }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
@@ -650,9 +694,21 @@ export function InboxList(props: {
               ...pinnedTodo,
               ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
             ].map((row) => bundleRow(row, { key: `todo:${row.key}` }))}
-            {data.automations.map(automationRow)}
+            {data.todoAutomations.map((automation) =>
+              automationRow(automation, { todo: true }),
+            )}
           </InboxSection>
         ) : null}
+        <InboxSection
+          collapsed={collapsed.has("grabs")}
+          count={data.grabRows.length}
+          label="Up for grabs"
+          onToggle={() => toggleSection("grabs")}
+        >
+          {data.grabRows.map((row) =>
+            bundleRow(row, { key: `grabs:${row.key}`, take: "I'll take it" }),
+          )}
+        </InboxSection>
         {automationsError}
         {stream()}
       </>
@@ -695,7 +751,7 @@ export function InboxList(props: {
         <InboxEmptyState label="Nothing snoozed" />
       ) : (
         // Snoozed rows expand in place like the others, and wake there.
-        <ul className="m-0 grid gap-2 p-0 pt-1" {...dock}>
+        <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
           {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
         </ul>
       );
@@ -776,8 +832,10 @@ export function InboxList(props: {
       )}
       <div
         className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
+        data-inbox-scroll=""
         onScroll={state.onScroll}
         ref={state.scroller}
+        {...focus.handlers}
       >
         <div
           className={cn(
@@ -793,7 +851,9 @@ export function InboxList(props: {
               Could not close every item. Try again.
             </InlineError>
           ) : null}
-          {body}
+          <InboxFocusProvider focus={focus.focus}>
+            <InboxPreviewGate>{body}</InboxPreviewGate>
+          </InboxFocusProvider>
           {data.itemsError ? null : listEnd}
           {props.error ? (
             <InlineError className="py-2">{props.error}</InlineError>

@@ -168,6 +168,19 @@ export function itemNeedsViewer(item: ReviewItemPayload): boolean {
 }
 
 /**
+ * True when an open ask is for Everyone, so anyone can answer or take it.
+ * It waits on no one, so it is up for grabs instead of in To do.
+ */
+export function itemUpForGrabs(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    item.assignedToEveryone
+  );
+}
+
+/**
  * Group items into one bundle per Conversation. Bundles that need the viewer
  * come first, the one that waited longest at the top, so the order does not
  * change while the reader works. FYI bundles follow, oldest first.

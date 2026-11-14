@@ -3,7 +3,9 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
+import { createJuniorApi } from "@/api";
 import { setConversationArchive } from "@/api/conversations/archive";
+import { cacheWarmingSavingsReportSchema } from "@/api/schema";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
   IDLE_HORIZON_MS,
@@ -19,7 +21,6 @@ import {
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
@@ -48,13 +49,8 @@ const parentConversationId = "local:test:cache-warming-segments-parent";
 // Only this Conversation has an Automation run's Watch.
 const automationConversationId = "local:test:cache-warming-segments-automation";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
-const runPrompt = { platform: "local", mode: "conversation" } as const;
-// Warmups compare the stored prompt with the prompt of this deployment.
 const context: Context = {
-  systemPrompt: await buildDeploymentSystemPrompt(
-    runPrompt.platform,
-    runPrompt.mode,
-  ),
+  systemPrompt: "Answer the person.",
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
 };
 const finalReply: AssistantMessage = {
@@ -75,15 +71,17 @@ const finalReply: AssistantMessage = {
   timestamp: 1,
 };
 
+const definitionsKey = { platform: "local", mode: "conversation" } as const;
+
 // Run one Turn that ends with a final response, like one agent run does.
 async function endTurn(
   userActor: boolean,
   id = conversationId,
   turnContext = context,
-  mode: PromptMode = runPrompt.mode,
+  mode: PromptMode = definitionsKey.mode,
 ) {
   const recorder = createCacheWarmingRecorder(id, userActor, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   recorder.wrap((() => undefined) as never)(model, turnContext, {});
@@ -100,7 +98,7 @@ const toolCall = (name: string): AssistantMessage => ({
 // like one agent run does.
 async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
   const recorder = createCacheWarmingRecorder(conversationId, false, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   const stream = recorder.wrap((() => undefined) as never);
@@ -574,40 +572,6 @@ describe("cache warming gap segments", () => {
     }
   });
 
-  it("stops warming an idle period whose system prompt changed", async () => {
-    const state = getStateAdapter();
-    for (let i = 0; i < 20; i++) {
-      await state.appendToList(
-        "junior:cache_warming:gaps:user:1:none",
-        8 * MINUTE,
-      );
-    }
-    mocks.sendCacheWarmup.mockClear();
-    try {
-      const warmupRequests: unknown[] = [];
-      mockTitleModel("", {
-        onRequest: (request) => warmupRequests.push(request),
-      });
-      // A deploy since the Turn changed the system prompt.
-      await endTurn(true, conversationId, {
-        ...context,
-        systemPrompt: "The system prompt of an older deployment.",
-      });
-      const warmup = scheduledWarmup();
-      await runCacheWarmup(warmup);
-
-      expect(warmupRequests).toEqual([]);
-      expect(
-        await state.get(
-          `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
-        ),
-      ).toBeNull();
-      expect(scheduledWarmup()).toBe(warmup);
-    } finally {
-      await state.delete("junior:cache_warming:gaps:user:1:none");
-    }
-  });
-
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {
     vi.useFakeTimers();
     await endTurn(true);
@@ -670,7 +634,11 @@ describe("cache warming gap segments", () => {
       await endTurn(true);
       const warmup = scheduledWarmup();
       // The person replies. The warmup comes due before the model call ends.
-      const reply = createCacheWarmingRecorder(conversationId, true, runPrompt);
+      const reply = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        definitionsKey,
+      );
       reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
@@ -760,7 +728,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       await (await recorder.wrap()(model, imageContext, {})).result();
       await recorder.record(finalReply);
@@ -820,6 +788,89 @@ describe("cache warming gap segments", () => {
     }
   });
 
+  it("counts the savings of each idle period that a call ends", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // A day of its own, so the idle periods of the other cases do not count.
+    vi.setSystemTime(new Date("2031-03-01T12:00:00.000Z"));
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mockTitleModel("", { cacheReadTokens: 60_000 });
+    const minutesLater = (minutes: number) =>
+      vi.setSystemTime(Date.now() + minutes * MINUTE);
+    const endTurnWith = async (cacheRead: number, turnContext = context) => {
+      const recorder = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        definitionsKey,
+      );
+      recorder.wrap((() => undefined) as never)(model, turnContext, {});
+      await recorder.record({
+        ...finalReply,
+        usage: {
+          ...finalReply.usage,
+          cacheRead,
+          cacheWrite: 60_000 - cacheRead,
+        },
+      });
+    };
+    try {
+      const startedAtMs = Date.now();
+      await endTurnWith(60_000);
+      const warmup = scheduledWarmup();
+      vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
+      await runCacheWarmup(warmup);
+      // The warmed cache still holds the prefix when the person returns.
+      vi.setSystemTime(startedAtMs + 7 * MINUTE);
+      await endTurnWith(60_000);
+      // No warmup ran, so the cache expired before the next return.
+      minutesLater(7);
+      await endTurnWith(0);
+      // The cache lives through a return within its TTL without warmups.
+      minutesLater(4);
+      // Random text does not compress, so its snapshot is too large to store.
+      await endTurnWith(60_000, {
+        ...context,
+        messages: [
+          {
+            role: "user",
+            content: randomBytes(2 * 1024 * 1024).toString("base64"),
+            timestamp: 1,
+          },
+        ],
+      });
+      minutesLater(7);
+      await endTurnWith(0);
+
+      const response = await createJuniorApi().request(
+        "http://localhost/api/cache-warming/savings?days=1",
+      );
+      const { totals } = cacheWarmingSavingsReportSchema.parse(
+        await response.json(),
+      );
+      // Prices are per million tokens. Each counted gap needs one warmup.
+      const read = (60_000 * model.cost.cacheRead) / 1_000_000;
+      const write = (60_000 * model.cost.cacheWrite) / 1_000_000;
+      const close = (usd: number) => expect.closeTo(usd, 3);
+      expect(totals).toMatchObject({
+        idlePeriods: 3,
+        hits: 1,
+        savedUsd: close(write - read),
+        warmupCostUsd: close(read),
+        oracleSavingsUsd: close(3 * (write - 2 * read)),
+        unwarmedIdlePeriods: 1,
+        unwarmedOracleSavingsUsd: close(write - 2 * read),
+      });
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
   it("warms only short-retention requests of fixed-TTL caches whose write costs more than a read", async () => {
     const warmupsAfterTurn = async (
       modelId: string,
@@ -833,7 +884,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       recorder.wrap(base as never)(
         resolveGatewayModel(modelId),

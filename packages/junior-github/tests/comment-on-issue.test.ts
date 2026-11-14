@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubCommentOnIssueTool } from "../src/tools/comment-on-issue";
+import { gitHubCommentOnIssueTool } from "../src/tools/comment-on-issue";
 import { createGitHubUpdateIssueCommentTool } from "../src/tools/update-issue-comment";
 
 function toolContext(response?: Response) {
@@ -15,7 +16,10 @@ function toolContext(response?: Response) {
         { status: 201 },
       ),
   );
-  return { fetch, tool: createGitHubCommentOnIssueTool({ fetch }) };
+  return {
+    fetch,
+    tool: bindPluginTool(gitHubCommentOnIssueTool, { egress: { fetch } }),
+  };
 }
 
 describe("commentOnIssue", () => {
@@ -78,7 +82,9 @@ function updateContext(responses: Response[]) {
   });
   return {
     fetch,
-    tool: createGitHubUpdateIssueCommentTool({ fetch }, BOT_EMAIL),
+    tool: bindPluginTool(createGitHubUpdateIssueCommentTool(BOT_EMAIL), {
+      egress: { fetch },
+    }),
   };
 }
 

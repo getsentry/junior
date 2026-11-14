@@ -574,147 +574,142 @@ async function calendarTimeZone(
  *
  * Uses free/busy data and each calendar's time zone only.
  */
-export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Find meeting times when every required attendee is free and in working hours, using free/busy data from your own Google account. Returns open slots best first, never event details. Offer a short list in that order; if the requester lets you choose, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so, and never treat them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
-    inputSchema,
-    outputSchema,
-    async execute(input) {
-      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
-      const timeMinMs = Math.max(
-        input.time_min ? Date.parse(input.time_min) : 0,
-        Date.now(),
+export const findMeetingTimesTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Find meeting times when every required attendee is free and in working hours, using free/busy data from your own Google account. Returns open slots best first, never event details. Offer a short list in that order; if the requester lets you choose, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so, and never treat them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+  inputSchema,
+  outputSchema,
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+    const timeMinMs = Math.max(
+      input.time_min ? Date.parse(input.time_min) : 0,
+      Date.now(),
+    );
+    const timeMaxMs = input.time_max
+      ? Date.parse(input.time_max)
+      : timeMinMs + DEFAULT_WINDOW_MS;
+    if (timeMaxMs <= timeMinMs) {
+      throw new PluginToolInputError(
+        "time_max must be after time_min and now.",
       );
-      const timeMaxMs = input.time_max
-        ? Date.parse(input.time_max)
-        : timeMinMs + DEFAULT_WINDOW_MS;
-      if (timeMaxMs <= timeMinMs) {
-        throw new PluginToolInputError(
-          "time_max must be after time_min and now.",
-        );
-      }
-      if (wallClockMs(timeMinMs, timeMaxMs, timeZone) > MAX_WINDOW_MS) {
-        throw new PluginToolInputError("Search at most 14 days at a time.");
-      }
-      if (
-        clockMinutes(input.workday_end) <= clockMinutes(input.workday_start)
-      ) {
-        throw new PluginToolInputError(
-          "workday_end must be after workday_start.",
-        );
-      }
-      if (
-        input.lunch_minutes >
-        clockMinutes(input.lunch_end) - clockMinutes(input.lunch_start)
-      ) {
-        throw new PluginToolInputError(
-          "lunch_minutes must fit between lunch_start and lunch_end.",
-        );
-      }
-      // An explicit optional entry for the requester wins over the automatic add.
-      const optionalEmails = new Set(input.optional_attendees);
-      const attendees = (await withRequester(ctx, input.attendees)).filter(
-        (email) =>
-          input.attendees.includes(email) || !optionalEmails.has(email),
+    }
+    if (wallClockMs(timeMinMs, timeMaxMs, timeZone) > MAX_WINDOW_MS) {
+      throw new PluginToolInputError("Search at most 14 days at a time.");
+    }
+    if (clockMinutes(input.workday_end) <= clockMinutes(input.workday_start)) {
+      throw new PluginToolInputError(
+        "workday_end must be after workday_start.",
       );
-      const required = new Set(attendees);
-      const optionalAttendees = [...optionalEmails].filter(
-        (email) => !required.has(email),
+    }
+    if (
+      input.lunch_minutes >
+      clockMinutes(input.lunch_end) - clockMinutes(input.lunch_start)
+    ) {
+      throw new PluginToolInputError(
+        "lunch_minutes must fit between lunch_start and lunch_end.",
       );
-      const everyone = [...attendees, ...optionalAttendees];
-      requireAllowedEmails(everyone, ctx.allowedDomains);
+    }
+    // An explicit optional entry for the requester wins over the automatic add.
+    const optionalEmails = new Set(input.optional_attendees);
+    const attendees = (await withRequester(ctx, input.attendees)).filter(
+      (email) => input.attendees.includes(email) || !optionalEmails.has(email),
+    );
+    const required = new Set(attendees);
+    const optionalAttendees = [...optionalEmails].filter(
+      (email) => !required.has(email),
+    );
+    const everyone = [...attendees, ...optionalAttendees];
+    requireAllowedEmails(everyone, ctx.allowedDomains);
 
-      const [response, ...timeZones] = await Promise.all([
-        googleApiRequest(ctx, {
-          body: {
-            items: everyone.map((id) => ({ id })),
-            timeMax: new Date(timeMaxMs).toISOString(),
-            timeMin: new Date(timeMinMs).toISOString(),
-          },
-          operation: "google.calendar.freebusy.query",
-          path: "/calendar/v3/freeBusy",
-        }),
-        ...everyone.map((email) => calendarTimeZone(ctx, email)),
-      ]);
-      if (response.status !== 200) {
-        throw googleApiError("google.calendar.freebusy.query", response);
-      }
-      const { calendars } = freeBusyResponseSchema.parse(response.body);
+    const [response, ...timeZones] = await Promise.all([
+      googleApiRequest(ctx, {
+        body: {
+          items: everyone.map((id) => ({ id })),
+          timeMax: new Date(timeMaxMs).toISOString(),
+          timeMin: new Date(timeMinMs).toISOString(),
+        },
+        operation: "google.calendar.freebusy.query",
+        path: "/calendar/v3/freeBusy",
+      }),
+      ...everyone.map((email) => calendarTimeZone(ctx, email)),
+    ]);
+    if (response.status !== 200) {
+      throw googleApiError("google.calendar.freebusy.query", response);
+    }
+    const { calendars } = freeBusyResponseSchema.parse(response.body);
 
-      const checked: Array<{ email: string; time_zone?: string }> = [];
-      const unavailable: Array<{ email: string; reason: string }> = [];
-      const slotAttendees: SlotAttendee[] = [];
-      everyone.forEach((email, index) => {
-        const calendar = calendars[email];
-        const error = calendar?.errors?.[0]?.reason;
-        if (!calendar || error) {
-          unavailable.push({ email, reason: error ?? "notFound" });
-          return;
-        }
-        const calendarZone = timeZones[index];
-        checked.push({
-          email,
-          ...(calendarZone ? { time_zone: calendarZone } : undefined),
-        });
-        slotAttendees.push({
-          busy: calendar.busy.map((interval) => ({
-            endMs: Date.parse(interval.end),
-            startMs: Date.parse(interval.start),
-          })),
-          email,
-          required: required.has(email),
-          timeZone: calendarZone ?? timeZone,
-        });
+    const checked: Array<{ email: string; time_zone?: string }> = [];
+    const unavailable: Array<{ email: string; reason: string }> = [];
+    const slotAttendees: SlotAttendee[] = [];
+    everyone.forEach((email, index) => {
+      const calendar = calendars[email];
+      const error = calendar?.errors?.[0]?.reason;
+      if (!calendar || error) {
+        unavailable.push({ email, reason: error ?? "notFound" });
+        return;
+      }
+      const calendarZone = timeZones[index];
+      checked.push({
+        email,
+        ...(calendarZone ? { time_zone: calendarZone } : undefined),
       });
-
-      const slots = !slotAttendees.some((attendee) => attendee.required)
-        ? []
-        : findFreeSlots({
-            attendees: slotAttendees,
-            durationMinutes: input.duration_minutes,
-            lunchEnd: input.lunch_end,
-            lunchMinutes: input.lunch_minutes,
-            lunchStart: input.lunch_start,
-            maxBackToBackMinutes: input.max_back_to_back_minutes,
-            maxResults: input.max_results,
-            timeMaxMs,
-            timeMinMs,
-            timeZone,
-            weekdays: input.weekdays,
-            workdayEnd: input.workday_end,
-            workdayStart: input.workday_start,
-          });
-      const otherTimeZones = [
-        ...new Set(slotAttendees.map((attendee) => attendee.timeZone)),
-      ].filter((zone) => zone !== timeZone);
-      return {
-        target: "findMeetingTimes" as const,
-        checked,
-        slots: slots.map((slot) => ({
-          end: new Date(slot.endMs).toISOString(),
-          label: formatInterval(slot.startMs, slot.endMs, timeZone),
-          ...(otherTimeZones.length
-            ? {
-                other_time_zone_labels: otherTimeZones.map((zone) =>
-                  formatInterval(slot.startMs, slot.endMs, zone),
-                ),
-              }
-            : undefined),
-          ...(slot.optionalConflicts.length
-            ? { optional_conflicts: slot.optionalConflicts }
-            : undefined),
-          start: new Date(slot.startMs).toISOString(),
+      slotAttendees.push({
+        busy: calendar.busy.map((interval) => ({
+          endMs: Date.parse(interval.end),
+          startMs: Date.parse(interval.start),
         })),
-        time_zone: timeZone,
-        unavailable,
-      };
-    },
-  });
-}
+        email,
+        required: required.has(email),
+        timeZone: calendarZone ?? timeZone,
+      });
+    });
+
+    const slots = !slotAttendees.some((attendee) => attendee.required)
+      ? []
+      : findFreeSlots({
+          attendees: slotAttendees,
+          durationMinutes: input.duration_minutes,
+          lunchEnd: input.lunch_end,
+          lunchMinutes: input.lunch_minutes,
+          lunchStart: input.lunch_start,
+          maxBackToBackMinutes: input.max_back_to_back_minutes,
+          maxResults: input.max_results,
+          timeMaxMs,
+          timeMinMs,
+          timeZone,
+          weekdays: input.weekdays,
+          workdayEnd: input.workday_end,
+          workdayStart: input.workday_start,
+        });
+    const otherTimeZones = [
+      ...new Set(slotAttendees.map((attendee) => attendee.timeZone)),
+    ].filter((zone) => zone !== timeZone);
+    return {
+      target: "findMeetingTimes" as const,
+      checked,
+      slots: slots.map((slot) => ({
+        end: new Date(slot.endMs).toISOString(),
+        label: formatInterval(slot.startMs, slot.endMs, timeZone),
+        ...(otherTimeZones.length
+          ? {
+              other_time_zone_labels: otherTimeZones.map((zone) =>
+                formatInterval(slot.startMs, slot.endMs, zone),
+              ),
+            }
+          : undefined),
+        ...(slot.optionalConflicts.length
+          ? { optional_conflicts: slot.optionalConflicts }
+          : undefined),
+        start: new Date(slot.startMs).toISOString(),
+      })),
+      time_zone: timeZone,
+      unavailable,
+    };
+  },
+});

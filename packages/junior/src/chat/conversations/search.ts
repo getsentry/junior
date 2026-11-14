@@ -87,6 +87,11 @@ export interface ConversationSearch {
   afterMs?: number;
   /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
   annotation?: string;
+  /**
+   * Match `annotation` only on the Conversation itself. Without it, a root
+   * also matches when one of its child agents has the key.
+   */
+  annotationOnSelf?: boolean;
   /** Only Conversations with activity before this time. */
   beforeMs?: number;
   /** Provider Destination id of the root, such as a Slack channel id. */
@@ -101,6 +106,8 @@ export interface ConversationSearch {
   query?: string;
   /** Return only root Conversations, not their child agents. */
   rootsOnly: boolean;
+  /** Only Conversations whose agent has one of these statuses. */
+  statuses?: readonly ConversationStatus[];
 }
 
 /**
@@ -167,9 +174,17 @@ export async function searchConversations(
     search.annotation
       ? or(
           // A root matches when any Conversation in its tree has the key.
-          treeHasAnnotationKey(conversations.conversationId, search.annotation),
+          search.annotationOnSelf
+            ? undefined
+            : treeHasAnnotationKey(
+                conversations.conversationId,
+                search.annotation,
+              ),
           hasAnnotationKey(conversations.conversationId, search.annotation),
         )
+      : undefined,
+    search.statuses
+      ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])

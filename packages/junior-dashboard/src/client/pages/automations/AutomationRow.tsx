@@ -47,6 +47,7 @@ export function AutomationRow(props: {
     <li
       className={cn(inboxCardClass(false), "cursor-pointer")}
       data-automation-id={automation.id}
+      data-dock-key={`automation:${automation.id}`}
       onClick={(event) => {
         if (
           event.target instanceof Element &&

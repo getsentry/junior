@@ -10,6 +10,7 @@ import { getDb } from "@/chat/db";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { readAvatarFetch } from "@/chat/identities/avatar";
 import { logWarn } from "@/chat/logging";
+import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -61,6 +62,7 @@ function pluginSource(plugin: PluginRegistration): ImageSource | undefined {
         log: createPluginLogger(name),
         plugin: { name },
         viewer,
+        viewerMcp: createViewerMcp(name, viewer.id),
       },
       ref,
     );

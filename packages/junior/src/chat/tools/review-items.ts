@@ -38,7 +38,7 @@ import {
   type ReviewItemVisibility,
 } from "@/chat/review-items/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -193,60 +193,64 @@ function subjectInput(
   };
 }
 
+export const addReviewItemToolDefinition = zodToolDefinition({
+  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  inputSchema: z
+    .object({
+      kind: z
+        .enum(["notice", "action"])
+        .describe(
+          "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
+        ),
+      title: titleSchema,
+      body: bodySchema,
+      assignees: assigneesSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
+        ),
+      dedupe_key: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .nullable()
+        .optional()
+        .describe(
+          "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
+        ),
+      request: userInputRequestSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
+        ),
+      subject: subjectSchema.nullable().optional(),
+      conversation_ids: conversationIdsSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Other Conversations to link. The current Conversation is always linked.",
+        ),
+    })
+    .strict(),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create the tool that adds a Review item or updates the open one. */
 export function createAddReviewItemTool(
   context: ReviewItemToolContext,
   services: ReviewItemToolServices,
 ) {
   return zodTool({
-    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    inputSchema: z
-      .object({
-        kind: z
-          .enum(["notice", "action"])
-          .describe(
-            "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
-          ),
-        title: titleSchema,
-        body: bodySchema,
-        assignees: assigneesSchema
-          .nullable()
-          .optional()
-          .describe(
-            "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
-          ),
-        dedupe_key: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .nullable()
-          .optional()
-          .describe(
-            "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
-          ),
-        request: userInputRequestSchema
-          .nullable()
-          .optional()
-          .describe(
-            "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
-          ),
-        subject: subjectSchema.nullable().optional(),
-        conversation_ids: conversationIdsSchema
-          .nullable()
-          .optional()
-          .describe(
-            "Other Conversations to link. The current Conversation is always linked.",
-          ),
-      })
-      .strict(),
-    outputSchema: juniorToolOutputSchema,
+    ...addReviewItemToolDefinition,
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
       if (input.dedupe_key?.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
@@ -398,6 +402,50 @@ export function createAddReviewItemTool(
   });
 }
 
+export const updateReviewItemToolDefinition = zodToolDefinition({
+  description:
+    "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
+  exposure: "deferred",
+  source: REVIEW_DESK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  inputSchema: z
+    .object({
+      id: z.string().trim().min(1),
+      title: titleSchema.nullable().optional(),
+      body: bodySchema.nullable().optional(),
+      assignees: assigneesSchema
+        .nullable()
+        .optional()
+        .describe("Replaces every assignee."),
+      conversation_ids: conversationIdsSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
+        ),
+      status: z
+        .enum(["done", "dismissed"])
+        .nullable()
+        .optional()
+        .describe("Close the item, for example when its pull request merged."),
+      reason: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .nullable()
+        .optional()
+        .describe("Why the item closed. Required with `status`."),
+    })
+    .strict(),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /**
  * Create the tool that changes or closes a Review item. A close tells the
  * other linked Conversations.
@@ -407,49 +455,7 @@ export function createUpdateReviewItemTool(
   services: ReviewItemToolServices,
 ) {
   return zodTool({
-    description:
-      "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
-    exposure: "deferred",
-    source: REVIEW_DESK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    inputSchema: z
-      .object({
-        id: z.string().trim().min(1),
-        title: titleSchema.nullable().optional(),
-        body: bodySchema.nullable().optional(),
-        assignees: assigneesSchema
-          .nullable()
-          .optional()
-          .describe("Replaces every assignee."),
-        conversation_ids: conversationIdsSchema
-          .nullable()
-          .optional()
-          .describe(
-            "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
-          ),
-        status: z
-          .enum(["done", "dismissed"])
-          .nullable()
-          .optional()
-          .describe(
-            "Close the item, for example when its pull request merged.",
-          ),
-        reason: z
-          .string()
-          .trim()
-          .min(1)
-          .max(500)
-          .nullable()
-          .optional()
-          .describe("Why the item closed. Required with `status`."),
-      })
-      .strict(),
-    outputSchema: juniorToolOutputSchema,
+    ...updateReviewItemToolDefinition,
     execute: async (input) => {
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
@@ -575,51 +581,55 @@ export function createUpdateReviewItemTool(
   });
 }
 
+export const searchReviewItemsToolDefinition = zodToolDefinition({
+  description:
+    "Search review desk items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
+  exposure: "deferred",
+  source: REVIEW_DESK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z
+    .object({
+      subject_id: z.string().trim().min(1).max(500).nullable().optional(),
+      status: z
+        .enum(["open", "done", "dismissed", "any"])
+        .nullable()
+        .optional()
+        .describe("Default `open`."),
+      assignee: z
+        .string()
+        .trim()
+        .min(1)
+        .max(320)
+        .nullable()
+        .optional()
+        .describe("`everyone`, an email, or a mention such as `<@U123>`."),
+      automation_id: z.string().trim().min(1).nullable().optional(),
+      conversation_id: z.string().trim().min(1).nullable().optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_LIMIT)
+        .nullable()
+        .optional()
+        .describe(`Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`),
+    })
+    .strict(),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create the tool that searches Review items. */
 export function createSearchReviewItemsTool(
   context: ReviewItemToolContext,
   services: Pick<ReviewItemToolServices, "findMentionedUserId">,
 ) {
   return zodTool({
-    description:
-      "Search review desk items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
-    exposure: "deferred",
-    source: REVIEW_DESK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z
-      .object({
-        subject_id: z.string().trim().min(1).max(500).nullable().optional(),
-        status: z
-          .enum(["open", "done", "dismissed", "any"])
-          .nullable()
-          .optional()
-          .describe("Default `open`."),
-        assignee: z
-          .string()
-          .trim()
-          .min(1)
-          .max(320)
-          .nullable()
-          .optional()
-          .describe("`everyone`, an email, or a mention such as `<@U123>`."),
-        automation_id: z.string().trim().min(1).nullable().optional(),
-        conversation_id: z.string().trim().min(1).nullable().optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_LIMIT)
-          .nullable()
-          .optional()
-          .describe(`Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`),
-      })
-      .strict(),
-    outputSchema: juniorToolOutputSchema,
+    ...searchReviewItemsToolDefinition,
     execute: async (input) => {
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);

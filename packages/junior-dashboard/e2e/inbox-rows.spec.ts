@@ -105,115 +105,6 @@ test("Automation rows use the Conversation rows' columns", async ({
   );
 });
 
-// The first To do row, and its hover card once the pointer rests on it.
-async function restOnFirstRow(page: Page) {
-  const row = page
-    .getByRole("region", { name: "To do" })
-    .locator("li[data-inbox-row]")
-    .first();
-  await row.hover();
-  return { card: row.locator(":scope > [data-hover-card]"), row };
-}
-
-// Longer than the hover delay, so a card that would show has shown. The
-// tests drive the page clock, so the delay passes at once.
-const PAST_HOVER_DELAY_MS = 600;
-
-test("Expand on hover is off when the viewer turns it off", async ({
-  dashboard,
-  page,
-}) => {
-  await page.clock.install();
-  await page.goto(`${dashboard.baseURL}/`);
-  await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page
-    .getByRole("menuitemradio", { name: "Expand on hover: Off" })
-    .click();
-  await page.keyboard.press("Escape");
-  await page.reload();
-  const { card } = await restOnFirstRow(page);
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  await expect(card).toHaveCount(0);
-});
-
-test("a compact row floats a comfortable card after the hover delay", async ({
-  dashboard,
-  page,
-}) => {
-  await page.clock.install();
-  await page.goto(`${dashboard.baseURL}/`);
-  const { card, row } = await restOnFirstRow(page);
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  await expect(card).toHaveCount(1);
-  // The card shows the comfortable layout, and the row under it keeps its
-  // compact one, so no row below it moves. The pointer and keyboard pass
-  // through the card to the row.
-  await expect(card.locator('[data-inbox-slot="summary"]')).toHaveCount(1);
-  await expect(
-    row.locator(':scope > :not([data-hover-card]) [data-inbox-slot="summary"]'),
-  ).toHaveCount(0);
-  await expect(card).toHaveAttribute("aria-hidden", "true");
-  await expect(card).toHaveAttribute("inert", "");
-  await page.mouse.move(0, 0);
-  await expect(card).toHaveCount(0);
-});
-
-test("Compact only leaves comfortable rows alone, and Everywhere expands them", async ({
-  dashboard,
-  page,
-}) => {
-  await comfortable(page);
-  await page.clock.install();
-  await page.goto(`${dashboard.baseURL}/`);
-  let { card } = await restOnFirstRow(page);
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  await expect(card).toHaveCount(0);
-
-  await page.evaluate(() =>
-    localStorage.setItem("junior:hover-expand", "everywhere"),
-  );
-  await page.reload();
-  ({ card } = await restOnFirstRow(page));
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  await expect(card).toHaveCount(1);
-});
-
-test("rows never expand on hover under reduced motion", async ({
-  dashboard,
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.clock.install();
-  await page.goto(`${dashboard.baseURL}/`);
-  const { card } = await restOnFirstRow(page);
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  await expect(card).toHaveCount(0);
-});
-
-test("the hover card shows linked work as quiet cards", async ({
-  dashboard,
-  page,
-}) => {
-  await page.clock.install();
-  await page.goto(`${dashboard.baseURL}/`);
-  const row = page
-    .getByRole("region", { name: "To do" })
-    .locator("li[data-inbox-row]")
-    .filter({ hasText: "Package release and self-update" })
-    .first();
-  await row.hover();
-  await page.clock.runFor(PAST_HOVER_DELAY_MS);
-  // The same cards as comfortable rows: no icon, and a line in each one's
-  // status color.
-  const cards = row
-    // The card is aria-hidden, so find its parts by attribute.
-    .locator(':scope > [data-hover-card] [aria-label="Linked work"]')
-    .locator("[data-linked-work-card]");
-  await expect(cards).toHaveCount(3);
-  await expect(cards.locator("svg")).toHaveCount(0);
-  await expect(cards.locator("[data-status-tone]")).toHaveCount(3);
-});
-
 test("an expanded review row shows its pull request's title once", async ({
   dashboard,
   page,
@@ -240,4 +131,110 @@ test("an expanded review row shows its pull request's title once", async ({
   await expect(
     panel.getByText(/^Pin the release train to payments 4\.2( \(#91\))?$/),
   ).toHaveCount(1);
+});
+
+test("rows show many linked work items as one quiet line, not an icon strip", async ({
+  dashboard,
+  page,
+}) => {
+  // 35 pull requests and an issue, saved with no title or URL, as older
+  // plugins wrote them.
+  const work = [
+    { key: "SEC-2172", label: "SEC-2172", objectType: "task", status: "open" },
+    ...Array.from({ length: 35 }, (_, index) => ({
+      key: `getsentry/sentry#${1000 + index}`,
+      label: "sentry",
+      objectType: "code_change",
+      status: "open",
+    })),
+  ];
+  await page.route(
+    (url) => url.pathname === "/api/conversations",
+    async (route) => {
+      const response = await route.fetch();
+      const feed = (await response.json()) as {
+        conversations: Array<{
+          displayTitle: string;
+          sidebarAnnotations?: unknown[];
+        }>;
+      };
+      for (const row of feed.conversations) {
+        if (row.displayTitle === "Package release and self-update")
+          row.sidebarAnnotations = work;
+      }
+      await route.fulfill({ json: feed, response });
+    },
+  );
+  for (const density of ["comfortable", "compact"] as const) {
+    await page.addInitScript(
+      (value) => localStorage.setItem("junior:density", value),
+      density,
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = page
+      .locator("[data-inbox-row]")
+      .filter({ hasText: "Package release and self-update" })
+      .first();
+    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
+    const linked = row.getByRole("group", { name: "Linked work" }).last();
+    // Each item names itself, its number in its status color, and the rest
+    // become +N on the same line.
+    await expect(linked.locator("[data-linked-work-chip]").first()).toHaveText(
+      "SEC-2172",
+    );
+    await expect(linked.locator("[data-linked-work-overflow]")).toBeVisible();
+    await expect(row.getByLabel(/^Linked work, newest first/)).toHaveCount(0);
+  }
+});
+
+test("Dismiss and Snooze put an Automation alert away until it changes or wakes", async ({
+  dashboard,
+  page,
+}) => {
+  const report = structuredClone(automationReport);
+  const blocked = report.automations[1]!;
+  Object.assign(blocked, {
+    lastRunAt: "2026-01-01T10:00:00.000Z",
+    lastRunStatus: "blocked",
+    status: "blocked",
+    statusReason: "GitHub access expired.",
+  });
+  await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    }),
+  );
+  await page.clock.install();
+  await page.goto(`${dashboard.baseURL}/`);
+  const todo = page.getByRole("region", { name: "To do" });
+  const head = todo.getByRole("button", { name: /Closed issue summary/ });
+  const attention = page.getByRole("region", {
+    name: `${blocked.title}: attention`,
+  });
+
+  await head.click();
+  await attention.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await expect(head).toHaveCount(0);
+  await page.reload();
+  await expect(todo).toBeVisible();
+  await expect(head).toHaveCount(0);
+
+  // A newer failure on the same Automation is a new alert, so it shows.
+  Object.assign(blocked, {
+    lastRunAt: "2026-01-01T11:00:00.000Z",
+    statusReason: "GitHub access expired again.",
+  });
+  await page.reload();
+  await expect(head).toBeVisible();
+
+  // Snooze hides it until its time.
+  await head.click();
+  await attention.getByRole("button", { name: "Snooze" }).click();
+  await page.getByRole("button", { name: "3 hours" }).click();
+  await expect(head).toHaveCount(0);
+  await page.clock.runFor(3 * 60 * 60 * 1000 + 1000);
+  await expect(head).toBeVisible();
 });

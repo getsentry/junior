@@ -10,7 +10,7 @@ import {
 } from "@/chat/slack/tool-support/channel-target";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 20;
@@ -95,6 +95,65 @@ async function resolveSearchFilters(input: {
   };
 }
 
+export const searchConversationMessagesToolDefinition = zodToolDefinition({
+  description:
+    "Search retained user and assistant messages from public Slack conversations. Filter by message text, channel, time range, or linked annotation such as a resource key. Excludes the current conversation. Not live Slack workspace search.",
+  exposure: "deferred",
+  source: CONVERSATIONS_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z
+    .object({
+      after: z
+        .string()
+        .datetime()
+        .nullable()
+        .describe("Include conversations active at or after this timestamp.")
+        .optional(),
+      annotation: z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .nullable()
+        .describe(
+          "Linked resource key. Matches that key, or nested children that continue with #.",
+        )
+        .optional(),
+      before: z
+        .string()
+        .datetime()
+        .nullable()
+        .describe("Include conversations active before this timestamp.")
+        .optional(),
+      channel_id: slackChannelRefParam.nullable().optional(),
+      query: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .nullable()
+        .describe("Words or phrase to match in message text.")
+        .optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_LIMIT)
+        .describe(
+          `Maximum conversations. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
+        )
+        .nullable()
+        .optional(),
+    })
+    .strict(),
+  outputSchema: conversationMessageSearchOutputSchema,
+});
+
 /**
  * Create a tool that searches retained messages of public Slack
  * Conversations. `teamId` resolves the `channel_id` filter.
@@ -104,62 +163,7 @@ export function createSlackConversationMessageSearchTool(
   currentConversationId: string,
 ) {
   return zodTool({
-    description:
-      "Search retained user and assistant messages from public Slack conversations. Filter by message text, channel, time range, or linked annotation such as a resource key. Excludes the current conversation. Not live Slack workspace search.",
-    exposure: "deferred",
-    source: CONVERSATIONS_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z
-      .object({
-        after: z
-          .string()
-          .datetime()
-          .nullable()
-          .describe("Include conversations active at or after this timestamp.")
-          .optional(),
-        annotation: z
-          .string()
-          .trim()
-          .min(1)
-          .max(256)
-          .nullable()
-          .describe(
-            "Linked resource key. Matches that key, or nested children that continue with #.",
-          )
-          .optional(),
-        before: z
-          .string()
-          .datetime()
-          .nullable()
-          .describe("Include conversations active before this timestamp.")
-          .optional(),
-        channel_id: slackChannelRefParam.nullable().optional(),
-        query: z
-          .string()
-          .trim()
-          .min(1)
-          .max(200)
-          .nullable()
-          .describe("Words or phrase to match in message text.")
-          .optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_LIMIT)
-          .describe(
-            `Maximum conversations. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
-          )
-          .nullable()
-          .optional(),
-      })
-      .strict(),
-    outputSchema: conversationMessageSearchOutputSchema,
+    ...searchConversationMessagesToolDefinition,
     execute: async (input) => {
       const filters = await resolveSearchFilters({ ...input, teamId });
       const store = getConversationMessageSearchStore();

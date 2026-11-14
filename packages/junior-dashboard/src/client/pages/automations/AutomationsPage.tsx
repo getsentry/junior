@@ -23,9 +23,16 @@ import { useDocumentTitle } from "../../documentTitle";
 import { automationPath } from "../../format";
 import { COMMAND_PALETTE_SHORTCUT } from "../../components/CommandPalette";
 import { InboxAutomationRow } from "../../review-desk/InboxAutomationRow";
+import type { useAutomationAlerts } from "../../review-desk/automationAlerts";
 import { useInboxData } from "../../review-desk/inboxData";
 import { InboxEmptyState, InboxSection } from "../../review-desk/InboxSection";
-import { DOCK_GUTTER } from "../../review-desk/useDockHover";
+import {
+  DOCK_GUTTER,
+  InboxFocusProvider,
+  InboxPreviewGate,
+  useCollapseOutside,
+  useInboxFocus,
+} from "../../review-desk/inboxFocus";
 import { pathWithSearch } from "../../searchParams";
 import { AutomationRow } from "./AutomationRow";
 
@@ -88,10 +95,14 @@ export function AutomationsPage(props: { enabled: boolean }) {
   // To do is the Inbox's own list, so its count matches the Automations
   // row. Filters narrow the whole list instead.
   const inbox = useInboxData();
-  const todo = filtered ? EMPTY : inbox.automations;
+  const todo = filtered ? EMPTY : inbox.todoAutomations;
   const automations = query.data?.automations ?? EMPTY;
   const loading = !query.data && !query.error;
   const scroll = usePaneRowScroll("automations", Boolean(query.data));
+  // The Inbox's one pointer driver moves these cards too.
+  const [expanded, setExpanded] = useState<string>();
+  const focus = useInboxFocus(scroll.ref, expanded ?? "");
+  useCollapseOutside(expanded ?? "", () => setExpanded(undefined));
   const toolbar = {
     active: activeAutomationFilters({ data: query.data, filters }),
     onRemove: (key: string) => setFilter(key, ""),
@@ -122,6 +133,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
         className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
         onScroll={scroll.onScroll}
         ref={scroll.ref}
+        {...focus.handlers}
       >
         <div
           className="mx-auto w-full max-w-6xl pt-3 pb-16"
@@ -167,11 +179,18 @@ export function AutomationsPage(props: { enabled: boolean }) {
               </span>
             ) : null}
             {query.data ? (
-              <AutomationGroups
-                automations={automations}
-                search={location.search}
-                todo={todo}
-              />
+              <InboxFocusProvider focus={focus.focus}>
+                <InboxPreviewGate>
+                  <AutomationGroups
+                    alerts={inbox.alerts}
+                    automations={automations}
+                    expanded={expanded}
+                    onExpand={setExpanded}
+                    search={location.search}
+                    todo={todo}
+                  />
+                </InboxPreviewGate>
+              </InboxFocusProvider>
             ) : null}
             {query.data && query.data.total > automations.length ? (
               <p className="m-0 text-xs text-dashboard-text-muted">
@@ -192,7 +211,12 @@ export function AutomationsPage(props: { enabled: boolean }) {
  * results or the URL change.
  */
 const AutomationGroups = memo(function AutomationGroups(props: {
+  /** Puts To do alerts away, as the Inbox does. */
+  alerts: ReturnType<typeof useAutomationAlerts>;
   automations: AutomationSummary[];
+  /** The To do card open in place, if any. */
+  expanded?: string;
+  onExpand(id: string | undefined): void;
   search: string;
   todo: AutomationSummary[];
 }) {
@@ -201,7 +225,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
     completed: true,
     paused: true,
   });
-  const [expanded, setExpanded] = useState<string>();
+  const [snoozeId, setSnoozeId] = useState<string>();
   // The Automation page keeps the list query, so its back link restores it.
   const pagePath = (id: string) =>
     pathWithSearch(automationPath(id), props.search);
@@ -223,13 +247,22 @@ const AutomationGroups = memo(function AutomationGroups(props: {
         {props.todo.map((automation) => (
           <InboxAutomationRow
             automation={automation}
-            expanded={expanded === automation.id}
+            expanded={props.expanded === automation.id}
             key={automation.id}
             onToggle={() =>
-              setExpanded((current) =>
-                current === automation.id ? undefined : automation.id,
+              props.onExpand(
+                props.expanded === automation.id ? undefined : automation.id,
               )
             }
+            putAway={{
+              menuOpen: snoozeId === automation.id,
+              onDismiss: () => props.alerts.dismiss(automation),
+              onMenu: (open) => setSnoozeId(open ? automation.id : undefined),
+              onSnooze: (choice) => {
+                props.alerts.snooze(automation, choice);
+                setSnoozeId(undefined);
+              },
+            }}
             rowKey={automation.id}
           />
         ))}

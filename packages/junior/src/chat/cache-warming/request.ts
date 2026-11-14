@@ -118,8 +118,13 @@ export function supportsWarming(request: ModelRequest): boolean {
 /** Return the cache TTL of a request that Junior can warm. */
 export function cacheTtlMs(request: ModelRequest): number | undefined {
   return supportsWarming(request)
-    ? CACHE_TTL_MS[providerOf(request.model.id)]
+    ? providerCacheTtlMs(request.model.id)
     : undefined;
+}
+
+/** Return the cache TTL of the model's provider, when it has a fixed one. */
+export function providerCacheTtlMs(modelId: string): number | undefined {
+  return CACHE_TTL_MS[providerOf(modelId)];
 }
 
 /** Return the cached prefix tokens of a finished model request. */
@@ -256,7 +261,11 @@ export async function sendWarmup(
     reasoning?: ThinkingLevel;
     prefixTokens: number;
   },
-): Promise<{ refreshed: boolean; attributes: Record<string, unknown> }> {
+): Promise<{
+  refreshed: boolean;
+  costUsd: number;
+  attributes: Record<string, unknown>;
+}> {
   const { conversationId, modelId, context, prefixTokens } = params;
   const { message: result } = await completeText({
     modelId,
@@ -300,5 +309,5 @@ export async function sendWarmup(
     });
   }
   await countOutcome(state, modelId, !refreshed);
-  return { refreshed, attributes };
+  return { refreshed, costUsd: result.usage.cost.total, attributes };
 }

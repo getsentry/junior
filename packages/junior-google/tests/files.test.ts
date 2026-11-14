@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -23,7 +24,7 @@ const SEARCH_DOC = {
 function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),

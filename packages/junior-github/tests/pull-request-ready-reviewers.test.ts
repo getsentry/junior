@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationReviewItems,
@@ -181,34 +182,37 @@ describe("review request when a draft is ready", () => {
     reviewers?: string[],
   ): Promise<string[]> {
     const operations: string[] = [];
-    const tool = githubPlugin().hooks!.tools!({
-      actor: { platform: "slack", teamId: "T1", userId: "U1" },
-      conversationId: CONVERSATION_ID,
-      db: fixture.db(),
-      destination: { platform: "local", conversationId: CONVERSATION_ID },
-      egress: {
-        async fetch({ operation }: { operation: string }) {
-          operations.push(operation);
-          return operation === "github.pull.create"
-            ? Response.json(
-                { draft: true, html_url: PULL_URL, number: 946 },
-                { status: 201 },
-              )
-            : Response.json({});
+    const tool = bindPluginTool(
+      githubPlugin().hooks!.tools!().createPullRequest,
+      {
+        actor: { platform: "slack", teamId: "T1", userId: "U1" },
+        conversationId: CONVERSATION_ID,
+        db: fixture.db(),
+        destination: { platform: "local", conversationId: CONVERSATION_ID },
+        egress: {
+          async fetch({ operation }: { operation: string }) {
+            operations.push(operation);
+            return operation === "github.pull.create"
+              ? Response.json(
+                  { draft: true, html_url: PULL_URL, number: 946 },
+                  { status: 201 },
+                )
+              : Response.json({});
+          },
         },
-      },
-      events: { canSubscribe: false, async subscribe() {} },
-      log: { error() {}, info() {}, warn() {} },
-      plugin: { name: "github" },
-      state,
-      users: {
-        replaceSlackMentions: async (value: unknown) => value,
-        resolveActor: async () => ({
-          identity: { id: "identity-requester", provider: "slack" },
-          user: { identities: [{ handle: "Requester", provider: "github" }] },
-        }),
-      },
-    } as never).createPullRequest!;
+        events: { canSubscribe: false, async subscribe() {} },
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        state,
+        users: {
+          replaceSlackMentions: async (value: unknown) => value,
+          resolveActor: async () => ({
+            identity: { id: "identity-requester", provider: "slack" },
+            user: { identities: [{ handle: "Requester", provider: "github" }] },
+          }),
+        },
+      } as never,
+    );
     await tool.execute!(
       {
         base: "main",

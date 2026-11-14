@@ -151,6 +151,7 @@ export function PullRequestChange(props: {
     <li
       aria-label={title}
       className="grid list-none gap-1.5"
+      data-dock-key={`change:${change.repository}#${change.number}`}
       data-expanded={props.expanded || undefined}
     >
       <div
@@ -186,7 +187,9 @@ export function PullRequestChange(props: {
         </div>
       </div>
       {props.children ? (
-        <ul className="m-0 grid gap-2 p-0 pl-6">{props.children}</ul>
+        <ul className="m-0 grid gap-2 p-0 pl-6" data-dock-list="">
+          {props.children}
+        </ul>
       ) : null}
     </li>
   );

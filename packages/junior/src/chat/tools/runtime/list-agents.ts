@@ -5,7 +5,7 @@ import {
 } from "@/chat/agent-invocations/list";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   agentNameSchema,
   CHILD_AGENT_KINDS,
@@ -153,6 +153,22 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
+/** Static definition of `listAgents`. */
+export const listAgentsToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: AGENTS_TOOL_SOURCE,
+  description:
+    "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent, and its siblings. Results of child agents arrive as new tasks, not through this tool.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({}).strict(),
+  outputSchema: listAgentsOutputSchema,
+});
+
 /**
  * Create the read-only tool that lists the agents one conversation can see:
  * its child agents and, for a child agent, itself, its parent, and its
@@ -163,18 +179,7 @@ export function createListAgentsTool(context: {
   parentConversationId?: string;
 }) {
   return zodTool({
-    exposure: "deferred",
-    source: AGENTS_TOOL_SOURCE,
-    description:
-      "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent, and its siblings. Results of child agents arrive as new tasks, not through this tool.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({}).strict(),
-    outputSchema: listAgentsOutputSchema,
+    ...listAgentsToolDefinition,
     execute: async () => {
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);

@@ -51,6 +51,8 @@ minimumReleaseAgeExclude:
   - "@sentry/opentelemetry@11.10.0"
   - "@sentry/server-runtime-injection@11.10.0"
   - "@sentry/server-utils@11.10.0"
+  # Sentry publishes @sentry/api, so a new release is trusted.
+  - "@sentry/api@2.3.0"
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry

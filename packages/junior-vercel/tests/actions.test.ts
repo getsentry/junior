@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 
@@ -17,7 +18,9 @@ function fixture(...responses: Response[]) {
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   return {
     fetch,
-    tools: vercelPlugin().hooks!.tools!({ egress: { fetch } } as never),
+    tools: bindPluginTools(vercelPlugin().hooks!.tools!(), {
+      egress: { fetch },
+    } as never),
   };
 }
 

@@ -6,41 +6,45 @@ import {
 } from "@/chat/slack/id-param";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
+export const slackListAddItemsToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description: "Add tasks to a Slack list.",
+  inputSchema: z.object({
+    list_id: slackListIdParam,
+    items: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(25)
+      .describe("List item titles to create."),
+    assignee_user_id: slackUserIdParam(
+      "Optional Slack user ID assigned to all created items.",
+    ).optional(),
+    due_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .describe("Optional due date in YYYY-MM-DD format.")
+      .optional(),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that appends items to an explicit Slack list. */
 export function createSlackListAddItemsTool(state: ToolState) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description: "Add tasks to a Slack list.",
-    inputSchema: z.object({
-      list_id: slackListIdParam,
-      items: z
-        .array(z.string().min(1))
-        .min(1)
-        .max(25)
-        .describe("List item titles to create."),
-      assignee_user_id: slackUserIdParam(
-        "Optional Slack user ID assigned to all created items.",
-      ).optional(),
-      due_date: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .describe("Optional due date in YYYY-MM-DD format.")
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackListAddItemsToolDefinition,
     execute: async ({ list_id, items, assignee_user_id, due_date }) => {
       const parsedAssigneeUserId =
         assignee_user_id === undefined

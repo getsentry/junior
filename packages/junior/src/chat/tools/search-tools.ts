@@ -659,6 +659,8 @@ function toolMetadata(
 /**
  * Create the model-visible search tool for the executable tool catalog.
  * Direct tools stay out of results: the model already has their schemas.
+ *
+ * @runBuilt searchTools
  */
 export function createSearchToolsTool(
   allCatalogTools: Record<string, AnyToolDefinition>,

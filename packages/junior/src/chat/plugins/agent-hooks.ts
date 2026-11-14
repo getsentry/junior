@@ -26,6 +26,7 @@ import type {
   EventPublisher,
   SlackConversationLink,
   PluginRegistration,
+  PluginToolDefinition,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
@@ -40,6 +41,7 @@ import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
@@ -69,7 +71,10 @@ import {
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type {
+  AnyToolDefinition,
+  ToolExecuteOptions,
+} from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
@@ -716,6 +721,51 @@ export async function getPluginUserPromptContributions(args: {
   return contributions;
 }
 
+/**
+ * Model-facing definitions of one plugin's tools, by host tool name. They
+ * come from the plugin's `tools()` with no Turn.
+ */
+function pluginToolDefinitions(
+  plugin: PluginRegistration,
+): Record<string, AnyToolDefinition> {
+  const hook = plugin.hooks?.tools;
+  if (!hook) return {};
+  const pluginName = plugin.manifest.name;
+  const namespace = pluginToolNamespace(pluginName);
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const [localName, definition] of Object.entries(hook())) {
+    const execute = definition.execute;
+    // Naming conventions belong in lint, not on the turn's critical path.
+    definitions[`${namespace}_${localName}`] = {
+      ...(definition as AnyToolDefinition),
+      // Keep prototype methods and their receiver on class-instance tools.
+      // `getPluginTools` passes the Turn context as the third argument.
+      ...(execute
+        ? {
+            execute: execute.bind(definition) as AnyToolDefinition["execute"],
+          }
+        : undefined),
+      approvalMode: definition.approvalMode ?? "auto",
+      identity: {
+        id: `${pluginName}.${localName}`,
+        name: localName,
+        plugin: pluginName,
+      },
+      source: { id: pluginName, description: plugin.manifest.description },
+      exposure: definition.exposure ?? "deferred",
+    };
+  }
+  return definitions;
+}
+
+/** Model-facing definitions of every plugin tool, with no Turn. */
+export function getStaticPluginToolDefinitions(): Record<
+  string,
+  AnyToolDefinition
+> {
+  return Object.assign({}, ...getPlugins().map(pluginToolDefinitions));
+}
+
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
@@ -822,6 +872,7 @@ export function getPluginTools(
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
+      conversations: createPluginConversations(context.conversationId),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
@@ -912,17 +963,23 @@ export function getPluginTools(
         };
         break;
     }
-    const pluginTools = hook(pluginContext);
+    const definitions = pluginToolDefinitions(plugin);
     const namespace = pluginToolNamespace(pluginName);
-    for (const [localName, tool] of Object.entries(pluginTools)) {
-      // Naming conventions belong in lint, not on the turn's critical path.
-      const name = `${namespace}_${localName}`;
+    const disabled = plugin.hooks?.disabledTools?.(pluginContext) ?? {};
+    for (const localName of Object.keys(disabled)) {
+      if (!definitions[`${namespace}_${localName}`]) {
+        throw new Error(
+          `Plugin "${pluginName}" disabled unknown tool "${localName}"`,
+        );
+      }
+    }
+    for (const [name, definition] of Object.entries(definitions)) {
+      const localName = definition.identity!.name;
       if (tools[name]) {
         throw new Error(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as AnyToolDefinition;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );
@@ -933,34 +990,29 @@ export function getPluginTools(
           "app.tool.missing_annotations": missingAnnotationKeys.join(","),
         });
       }
-      definition.approvalMode ??= "auto";
-      definition.identity = {
-        id: `${pluginName}.${localName}`,
-        name: localName,
-        plugin: pluginName,
+      const execute = definition.execute as
+        | PluginToolDefinition["execute"]
+        | undefined;
+      const disabledReason = disabled[localName];
+      tools[name] = {
+        ...definition,
+        ...(disabledReason ? { disabledReason } : undefined),
+        ...(execute
+          ? {
+              execute: async (input: unknown, options: ToolExecuteOptions) =>
+                annotateToolResult(
+                  context.conversationId,
+                  pluginName,
+                  await recordToolReply({
+                    conversationId: context.conversationId,
+                    plugin: pluginName,
+                    result: await execute(input, options, pluginContext),
+                    toolCallId: options.toolCallId,
+                  }),
+                ),
+            }
+          : undefined),
       };
-      definition.source = {
-        id: pluginName,
-        description: plugin.manifest.description,
-      };
-      definition.exposure ??= "deferred";
-      const execute = definition.execute;
-      if (execute) {
-        // Keep prototype methods and their receiver on plugin tool instances.
-        const wrapped: AnyToolDefinition = Object.create(definition);
-        wrapped.execute = async (input, options) =>
-          annotateToolResult(
-            context.conversationId,
-            pluginName,
-            await recordToolReply({
-              conversationId: context.conversationId,
-              plugin: pluginName,
-              result: await execute.call(definition, input, options),
-              toolCallId: options.toolCallId,
-            }),
-          );
-        tools[name] = wrapped;
-      } else tools[name] = definition;
     }
   }
   return tools;

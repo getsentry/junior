@@ -311,7 +311,13 @@ export type {
 } from "./schema/notification";
 export {
   cacheWarmingBreakerListSchema,
+  cacheWarmingSavingsRefillResponseSchema,
+  cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
+export type {
+  CacheWarmingSavingsRefill,
+  CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
@@ -388,11 +394,6 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
-export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
-export type {
-  ReplyTimeHistogram,
-  ReplyTimeSegmentsReport,
-} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

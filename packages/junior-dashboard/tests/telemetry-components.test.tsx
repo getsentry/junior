@@ -172,7 +172,6 @@ function systemData(): SystemData {
     },
     conversationStatsError: false,
     conversationStatsLoading: false,
-    replyTimesError: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -1718,9 +1717,11 @@ describe("dashboard canonical-event components", () => {
     );
 
     const overviewHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={stale} />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/system"]}>
+          <SystemPage data={stale} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(overviewHtml).not.toContain("Plugin stats failed to load.");
 
@@ -1747,9 +1748,11 @@ describe("dashboard canonical-event components", () => {
     ];
 
     const systemHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/system"]}>
+          <SystemPage data={data} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");

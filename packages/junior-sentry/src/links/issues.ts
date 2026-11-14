@@ -14,6 +14,7 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { sentryApi, sentryData } from "./api.js";
 import { sentryRegionOrigin } from "./region.js";
 import {
   parseSentryIssueLink,
@@ -62,8 +63,8 @@ const SUBSTATUS_LABELS: Record<string, string> = {
   regressed: "regressed",
 };
 
-function issueApiUrl(origin: string, link: SentryIssueLink): string {
-  return `${origin}/api/0/organizations/${encodeURIComponent(link.org)}/issues/${encodeURIComponent(link.issueId)}/`;
+function issuePath(link: SentryIssueLink) {
+  return { organization_id_or_slug: link.org, issue_id: link.issueId };
 }
 
 function text(value: string | null | undefined): string | undefined {
@@ -157,18 +158,12 @@ async function viewerCanSeeIssue(
   origin: string,
   link: SentryIssueLink,
 ): Promise<boolean> {
-  const response = await ctx.viewerEgress.fetch({
-    operation: "sentry.issue.access",
-    provider: "sentry",
-    request: new Request(issueApiUrl(origin, link)),
-  });
-  // Drain the body so the connection is free. Only the status counts.
-  await response.arrayBuffer();
-  if (response.ok) return true;
-  if ([401, 403, 404].includes(response.status)) return false;
-  throw new Error(
-    `Sentry issue access check failed with HTTP ${response.status}`,
-  );
+  const result = await sentryApi(
+    ctx.viewerEgress,
+    origin,
+    "sentry.issue.access",
+  ).getOrganizationIssue({ path: issuePath(link) });
+  return sentryData(result, [401, 403, 404], "issue access check") !== null;
 }
 
 /** Read an issue with Junior's own token. Nothing for a missing issue. */
@@ -177,18 +172,15 @@ async function readIssue(
   origin: string,
   link: SentryIssueLink,
 ): Promise<SentryIssue | null> {
-  const response = await ctx.egress.fetch({
-    operation: "sentry.issue.get",
-    provider: "sentry",
-    request: new Request(issueApiUrl(origin, link)),
-  });
+  const result = await sentryApi(
+    ctx.egress,
+    origin,
+    "sentry.issue.get",
+  ).getOrganizationIssue({ path: issuePath(link) });
   // A token for another org gets 403. A merged-away or deleted issue is 404.
-  if ([401, 403, 404].includes(response.status)) return null;
-  if (!response.ok) {
-    throw new Error(`Sentry issue read failed with HTTP ${response.status}`);
-  }
-  const parsed = issueSchema.safeParse(await response.json());
-  return parsed.success ? parsed.data : null;
+  const data = sentryData(result, [401, 403, 404], "issue read");
+  const parsed = data === null ? undefined : issueSchema.safeParse(data);
+  return parsed?.success ? parsed.data : null;
 }
 
 async function canViewSentryIssueLink(

@@ -46,7 +46,9 @@ function toLoadedSkill(
     ...(metadata?.pluginProvider
       ? { pluginProvider: metadata.pluginProvider }
       : undefined),
-    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : undefined),
+    ...(metadata?.allowedTools
+      ? { allowedTools: metadata.allowedTools }
+      : undefined),
     body: result.instructions,
   };
 }
@@ -85,7 +87,11 @@ async function loadSkillFromHost(
   };
 }
 
-/** Create the tool that loads skill instructions for the current turn. */
+/**
+ * Create the tool that loads skill instructions for the current turn.
+ *
+ * @runBuilt loadSkill
+ */
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
