@@ -1,4 +1,7 @@
+import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
+import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "./harness";
+import { mockReviewItems } from "./inbox-fixture";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -12,23 +15,33 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await page.goto(dashboard.baseURL);
 
   const primary = page.getByRole("navigation", { name: "Primary" });
-  const destinations = primary.getByRole("link");
-  // Inbox comes first and carries the To do count.
-  await expect(destinations).toHaveCount(2);
-  await expect(destinations.nth(0)).toHaveAccessibleName(
+  // One list of labelled rows: the Inbox views, Conversations and
+  // Automations, then the asks by type. No tab bar sits above them.
+  await expect(page.getByRole("tablist")).toHaveCount(0);
+  const rows = primary.getByRole("link");
+  const names = [
     /^Inbox, \d+ waiting$/,
-  );
-  await expect(destinations.nth(1)).toHaveAccessibleName("Automations");
-  await expect(destinations.nth(0)).toHaveAttribute("aria-current", "page");
-  // The pane is one column: destinations above the Inbox entries.
-  await expect(page.getByRole("navigation", { name: "Inbox" })).toBeVisible();
+    "Snoozed",
+    "Done",
+    "Conversations",
+    /^Automations/,
+    /^Pull requests/,
+    /^Decisions/,
+  ];
+  for (const [index, name] of names.entries())
+    await expect(rows.nth(index)).toHaveAccessibleName(name);
+  await expect(rows.nth(0)).toHaveAttribute("aria-current", "page");
+  await expect(
+    primary.getByRole("heading", { name: "Asks by type" }),
+  ).toBeVisible();
 
-  // Automations puts its own list under the same destinations.
-  await primary.getByRole("link", { name: "Automations" }).click();
+  // Automations keeps the same pane, with its row marked.
+  await primary.getByRole("link", { name: /^Automations/ }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
   await expect(
-    primary.getByRole("link", { name: "Automations" }),
+    primary.getByRole("link", { name: /^Automations/ }),
   ).toHaveAttribute("aria-current", "page");
+  await expect(rows.nth(0)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
   // The profile row keeps the running spend totals in view.
   const profile = page.getByRole("button", {
     name: /^Open profile menu for Dashboard User\./,
@@ -56,39 +69,74 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await expect.poll(paneWidth).toBe(startWidth + 32);
 });
 
-test("collapses the other tabs to icons in a narrow pane", async ({
+test("Automations is a row that counts your Automations to do", async ({
   page,
   dashboard,
 }) => {
+  // One of the viewer's Automations is blocked, so it waits on them.
+  const report = structuredClone(automationReport);
+  Object.assign(
+    report.automations.find((automation) => automation.id === "scheduled-1")!,
+    { status: "blocked", statusReason: "GitHub access expired." },
+  );
+  await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    }),
+  );
+  await mockReviewItems(page, {
+    automations: () =>
+      mockAutomationCollection(
+        report,
+        new URLSearchParams({ owner: "me", scope: "attention" }),
+      ).total,
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(dashboard.baseURL);
   const primary = page.getByRole("navigation", { name: "Primary" });
-  const inbox = primary.getByRole("link", { name: /^Inbox, \d+ waiting$/ });
-  const automations = primary.getByRole("link", { name: "Automations" });
-
-  await page.getByRole("separator", { name: "Resize sidebar" }).focus();
-  // Each arrow press moves the pane edge 16px.
-  for (let step = 0; step < 5; step += 1)
-    await page.keyboard.press("ArrowRight");
-  await expect(automations.getByText("Automations")).toBeVisible();
-
-  for (let step = 0; step < 15; step += 1)
-    await page.keyboard.press("ArrowLeft");
-  // The tab in view keeps its label; the others keep their name as tooltip.
-  await expect(inbox.getByText("Inbox")).toBeVisible();
-  await expect(automations.getByText("Automations")).toBeHidden();
-  await automations.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Automations");
-
-  // An icon-only Inbox keeps its count.
+  const automations = primary.getByRole("link", { name: /^Automations/ });
+  // The row sits with Conversations, and its count is the Inbox's To do
+  // Automations, which its page lists first.
+  await expect(automations).toHaveAccessibleName("Automations, 1 waiting");
   await automations.click();
+  const todo = page.getByRole("region", { exact: true, name: "To do" });
+  await expect(todo.getByRole("listitem")).toHaveText([
+    /Weekly project summary/,
+  ]);
+  // The old Automations bundle opens the page instead.
+  await page.goto(`${dashboard.baseURL}/?view=automations`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+  await page.goto(`${dashboard.baseURL}/review?bundle=automations`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+  // The pane stays on the Automation pages too.
+  await page.goto(`${dashboard.baseURL}/automations/runs`);
   await expect(automations).toHaveAttribute("aria-current", "page");
-  await expect(automations.getByText("Automations")).toBeVisible();
-  await expect(inbox.getByText("Inbox")).toBeHidden();
-  await expect(inbox.getByText(/^\d+$/)).toBeVisible();
+  await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
 });
 
-test("names New after the tab that shows", async ({ page, dashboard }) => {
+test("the phone menu lists the same destinations, without tabs", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${dashboard.baseURL}/automations`);
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const sheet = page.getByRole("dialog", { name: "Navigation" });
+  const primary = sheet.getByRole("navigation", { name: "Primary" });
+  await expect(sheet.getByRole("tablist")).toHaveCount(0);
+  await expect(
+    primary.getByRole("link", { name: /^Automations/ }),
+  ).toHaveAttribute("aria-current", "page");
+  await primary
+    .getByRole("link", { name: "Conversations", exact: true })
+    .click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+});
+
+test("names New after the page that shows", async ({ page, dashboard }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const [path, name] of [
     ["/", "New conversation"],
@@ -134,7 +182,7 @@ test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await expect(primary).toBeHidden();
   await page.goto(dashboard.baseURL);
   await expect(primary).toBeHidden();
-  const entries = page.getByRole("navigation", { name: "Inbox" });
+  const entries = page.getByRole("navigation", { name: "Primary" });
   await expect(entries).toBeHidden();
 
   // Cmd/Ctrl+B shows it again.
@@ -143,22 +191,22 @@ test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await expect(entries).toBeVisible();
 });
 
-test("reopens each tab where the reader left it", async ({
+test("reopens each row where the reader left it", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${dashboard.baseURL}/automations/runs`);
   const primary = page.getByRole("navigation", { name: "Primary" });
-  const tab = (name: string) =>
-    primary.getByRole("link", { exact: true, name });
+  const automations = primary.getByRole("link", { name: /^Automations/ });
 
-  await primary.getByRole("link", { name: /^Inbox/ }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await tab("Automations").click();
+  const inbox = primary.getByRole("link", { name: /^Inbox/ });
+  await inbox.click();
+  await expect(inbox).toHaveAttribute("aria-current", "page");
+  await automations.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
-  // A press on the tab that shows goes back to its top level.
-  await tab("Automations").click();
+  // A press on the row that shows goes back to its top level.
+  await automations.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
 
   // The pane's search bar opens the command palette.

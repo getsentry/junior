@@ -1,11 +1,4 @@
-import {
-  Inbox,
-  PanelLeft,
-  Plus,
-  Search,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { PanelLeft, Plus, Search } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -44,8 +37,13 @@ import {
 import { JuniorLogo } from "../JuniorLogo";
 import { toolbarControlBoxClass } from "../ui/button";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
-import { navItemIcon } from "./navIcons";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import {
+  isInboxView,
+  paneRowForPath,
+  paneRowLabel,
+  paneRowRoot,
+  type PaneRow,
+} from "./paneRows";
 
 const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 
@@ -73,14 +71,14 @@ type PaneNavValue = {
   /** A toggle mounted by `setOpen` with `focus` takes focus once. */
   takeToggleFocus(): boolean;
   workspaceActive: boolean;
-  /** The tab the reader was on last, for the way back from other pages. */
-  lastTab: PaneTab;
-  /** The last path and search that each tab showed, so a tab reopens there. */
-  tabPaths: Record<PaneTab, string>;
-  /** Scroll offsets of each tab's list, kept while the tab is away. */
-  tabScroll: Map<PaneTab, number>;
-  /** The tab the highlight sat on last, so a remounted pane slides from it. */
-  shownTab: { get(): string | undefined; set(key: string | undefined): void };
+  /** The row that owns the page now, if any. */
+  currentRow?: PaneRow;
+  /** The row the reader was on last, for the way back from other pages. */
+  lastRow: PaneRow;
+  /** The last path and search that each row showed, so a row reopens there. */
+  rowPaths: Partial<Record<PaneRow, string>>;
+  /** Scroll offsets by list, such as the pane's and each row's page. */
+  scroll: Map<string, number>;
   zen: ZenMode;
 };
 
@@ -95,29 +93,6 @@ type ZenMode = {
   available: boolean;
   toggle(): void;
 };
-
-/** The tabs at the top of the pane. Each tab's list fills the pane. */
-type PaneTab = "automations" | "inbox";
-
-const TAB_ROOTS: Record<PaneTab, string> = {
-  automations: "/automations",
-  inbox: "/",
-};
-
-/** Name the tab that owns a path, if any. */
-export function paneTabForPath(pathname: string): PaneTab | undefined {
-  if (
-    pathname === "/" ||
-    pathname === "/conversations" ||
-    pathname.startsWith("/conversations/")
-  ) {
-    return "inbox";
-  }
-  if (pathname === "/automations" || pathname.startsWith("/automations/")) {
-    return "automations";
-  }
-  return undefined;
-}
 
 const PaneNavContext = createContext<PaneNavValue | null>(null);
 
@@ -168,27 +143,17 @@ export function PaneNavProvider(props: {
   const zenAvailable = desktop;
   const zenActive = zenOn && zenAvailable;
   const location = useLocation();
-  const [tabPaths, setTabPaths] = useState<Record<PaneTab, string>>(TAB_ROOTS);
-  const tabScroll = useRef(new Map<PaneTab, number>()).current;
-  const shownTabKey = useRef<string | undefined>(undefined);
-  const shownTab = useMemo(
-    () => ({
-      get: () => shownTabKey.current,
-      set: (key: string | undefined) => {
-        shownTabKey.current = key;
-      },
-    }),
-    [],
-  );
-  // Remember where each tab was, so switching back reopens its selection,
-  // its search, and (through `tabScroll`) its list position.
-  const tab = paneTabForPath(location.pathname);
+  const scroll = useRef(new Map<string, number>()).current;
+  // Remember where each row was, so going back reopens its selection, its
+  // search, and (through `scroll`) its list position.
+  const [lastRow, setLastRow] = useState<PaneRow>("inbox");
+  const row = paneRowForPath(location, props.navItems, lastRow);
   const here = `${location.pathname}${location.search}`;
-  if (tab && tabPaths[tab] !== here) {
-    setTabPaths({ ...tabPaths, [tab]: here });
-  }
-  const [lastTab, setLastTab] = useState<PaneTab>("inbox");
-  if (tab && tab !== lastTab) setLastTab(tab);
+  const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
+    {},
+  );
+  if (row && rowPaths[row] !== here) setRowPaths({ ...rowPaths, [row]: here });
+  if (row && row !== lastRow) setLastRow(row);
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
   const { onOpenChange } = props;
@@ -230,16 +195,16 @@ export function PaneNavProvider(props: {
   }, [open, setOpen, toggleZen, zenActive, zenAvailable]);
   const value = useMemo(
     () => ({
-      lastTab,
+      currentRow: row,
+      lastRow,
       navItems: props.navItems,
       onSearch: props.onSearch,
       open,
       profile: props.profile,
+      rowPaths,
+      scroll,
       setOpen,
       spend: props.spend,
-      shownTab,
-      tabPaths,
-      tabScroll,
       takeToggleFocus: () => {
         const take = focusToggle.current;
         focusToggle.current = false;
@@ -249,17 +214,17 @@ export function PaneNavProvider(props: {
       zen,
     }),
     [
-      lastTab,
+      lastRow,
       open,
       props.navItems,
       props.onSearch,
       props.profile,
       props.spend,
       props.workspaceActive,
+      row,
+      rowPaths,
+      scroll,
       setOpen,
-      shownTab,
-      tabPaths,
-      tabScroll,
       zen,
     ],
   );
@@ -277,15 +242,53 @@ export function PaneNavProvider(props: {
   );
 }
 
-const TAB_LABELS: Record<PaneTab, string> = {
-  automations: "Automations",
-  inbox: "Inbox",
-};
-
-/** The way back to the tab the reader came from, where it left off. */
-export function usePaneBackToTab(): { label: string; to: string } {
+/** The way back to the row the reader came from, where it left off. */
+export function usePaneBack(): { label: string; to: string } {
   const pane = usePaneNav();
-  return { label: TAB_LABELS[pane.lastTab], to: pane.tabPaths[pane.lastTab] };
+  return {
+    label: paneRowLabel(pane.lastRow, pane.navItems),
+    to: pane.rowPaths[pane.lastRow] ?? paneRowRoot(pane.lastRow, pane.navItems),
+  };
+}
+
+/**
+ * Where a row's link goes, and whether it owns the page that shows. From
+ * another destination, a row reopens where the reader left it. A row that
+ * owns the page goes back to its top level, and inside the Inbox each view
+ * opens its list.
+ */
+export function usePaneRowLink(row: PaneRow): { current: boolean; to: string } {
+  const pane = usePaneNav();
+  const root = paneRowRoot(row, pane.navItems);
+  const current = pane.currentRow === row;
+  const sameInbox = isInboxView(row) && isInboxView(pane.currentRow);
+  return {
+    current,
+    to: current || sameInbox ? root : (pane.rowPaths[row] ?? root),
+  };
+}
+
+/** Read the pane's primary destinations, such as primary plugin pages. */
+export function usePaneNavItems(): DashboardHeaderNavItem[] {
+  return usePaneNav().navItems;
+}
+
+/**
+ * Keep a page list's scroll position while the reader is on another row.
+ * Spread the result on the element that scrolls; the offset comes back once
+ * `ready` says its rows are there.
+ */
+export function usePaneRowScroll(key: string, ready: boolean) {
+  const { scroll } = usePaneNav();
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (ready && ref.current) ref.current.scrollTop = scroll.get(key) ?? 0;
+  }, [key, ready, scroll]);
+  return {
+    onScroll: (event: { currentTarget: HTMLElement }) =>
+      scroll.set(key, event.currentTarget.scrollTop),
+    ref,
+  };
 }
 
 /** Read whether the desktop pane shows. */
@@ -378,314 +381,7 @@ export function PaneCollapsedControls() {
   );
 }
 
-const TAB_ICONS: Record<PaneTab, LucideIcon> = {
-  automations: Zap,
-  inbox: Inbox,
-};
-
-/** One pane tab, with where it opens and whether it shows now. */
-type PaneTabLink = {
-  active: boolean;
-  count?: number;
-  icon: LucideIcon;
-  key: string;
-  label: string;
-  to: string;
-};
-
-/**
- * Build the pane tabs: Inbox and Automations, then any other
- * primary destination, such as a plugin page. A tab opens where the reader
- * left it. A press on the tab that shows now goes back to its root.
- */
-function usePaneTabs(): PaneTabLink[] {
-  const pane = usePaneNav();
-  const { pathname } = useLocation();
-  const current = paneTabForPath(pathname);
-  const tab = (key: PaneTab, label: string, count?: number): PaneTabLink => ({
-    active: current === key,
-    count,
-    icon: TAB_ICONS[key],
-    key,
-    label,
-    to: current === key ? TAB_ROOTS[key] : pane.tabPaths[key],
-  });
-  const inbox = pane.navItems.find((item) => item.key === "inbox");
-  const automations = pane.navItems.find((item) => item.key === "automations");
-  const others = pane.navItems.filter(
-    (item) => item.key !== "inbox" && item.key !== "automations",
-  );
-  return [
-    tab("inbox", "Inbox", inbox?.count),
-    ...(automations ? [tab("automations", automations.label)] : []),
-    ...others.map((item) => ({
-      active: pathname === item.to || pathname.startsWith(`${item.to}/`),
-      icon: navItemIcon(item.key),
-      key: item.key,
-      label: item.label,
-      to: item.to,
-    })),
-  ];
-}
-
-/** Show a count on a tab. The Inbox count shows on every tab. */
-function PaneTabCount(props: { active?: boolean; count?: number }) {
-  if (!props.count) return null;
-  return (
-    <span
-      className={cn(
-        "grid h-4 min-w-4 place-items-center rounded-full px-1 text-2xs font-semibold tabular-nums",
-        props.active
-          ? "bg-dashboard-accent text-dashboard-text-inverse"
-          : "bg-dashboard-accent/80 text-dashboard-text-inverse",
-      )}
-    >
-      {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
-    </span>
-  );
-}
-
-/**
- * The tab the highlight sits on. On a tab switch the pane remounts, so the
- * first frame keeps the tab that showed before and the next frame moves to
- * the new one, which lets the highlight slide and the labels fade.
- */
-function useShownTab(current: string | undefined): string | undefined {
-  const { shownTab } = usePaneNav();
-  const [shown, setShown] = useState(() => shownTab.get() ?? current);
-  useLayoutEffect(() => {
-    shownTab.set(current);
-    if (shown === current) return;
-    const frame = requestAnimationFrame(() => setShown(current));
-    return () => cancelAnimationFrame(frame);
-  }, [current, shown, shownTab]);
-  return shown;
-}
-
-// The container width at which every tab shows its label.
-const TABS_LABELLED_REM = 22;
-
-// A bit past the 180ms transitions, for when no transitionend fires.
-const SWITCH_MS = 250;
-
-/**
- * Where the shown tab ends up once the labels finish opening and closing.
- * Below `TABS_LABELLED_REM`, the other tabs close to their icon and the
- * shown tab takes the rest of the row. Above it, no tab changes size.
- */
-function finalTabBox(nav: HTMLElement, target: HTMLElement) {
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  const style = getComputedStyle(nav);
-  const start = parseFloat(style.paddingLeft);
-  const inner = nav.clientWidth - start - parseFloat(style.paddingRight);
-  if (inner >= TABS_LABELLED_REM * rem) {
-    return { left: target.offsetLeft, width: target.offsetWidth };
-  }
-  const gap = parseFloat(style.columnGap) || 0;
-  const tabs = [...nav.querySelectorAll<HTMLElement>("a")];
-  // Each tab at its content width without the label, as the other tabs
-  // end up. The tab that showed before may hold free space as well. Plugin
-  // tabs have no label and keep their size.
-  const labelled = (tab: HTMLElement) =>
-    Boolean(tab.querySelector("[data-tab-label]"));
-  const closed = tabs.map((tab) => {
-    if (!labelled(tab)) return tab.offsetWidth;
-    const pad = getComputedStyle(tab);
-    return [...tab.children].reduce(
-      (sum, child) => {
-        if (child.hasAttribute("data-tab-label")) return sum;
-        const margin = getComputedStyle(child);
-        return (
-          sum +
-          child.getBoundingClientRect().width +
-          parseFloat(margin.marginLeft) +
-          parseFloat(margin.marginRight)
-        );
-      },
-      parseFloat(pad.paddingLeft) + parseFloat(pad.paddingRight),
-    );
-  });
-  const index = tabs.indexOf(target);
-  const before = closed
-    .slice(0, index)
-    .reduce((sum, width) => sum + width + gap, 0);
-  const others = closed.reduce(
-    (sum, width, at) => (at === index ? sum : sum + width + gap),
-    0,
-  );
-  // A shown labelled tab takes the rest of the row.
-  return {
-    left: start + before,
-    width: labelled(target) ? inner - others : target.offsetWidth,
-  };
-}
-
-/**
- * Keep the highlight under the shown tab. A switch slides it to where the
- * tab ends up, while the labels open and close beside it. Other resizes,
- * such as a pane drag, move it at once.
- */
-function useTabHighlight(shown: string | undefined) {
-  const nav = useRef<HTMLElement>(null);
-  const highlight = useRef<HTMLSpanElement>(null);
-  const switching = useRef(false);
-  const place = useCallback((animate: boolean) => {
-    const box = highlight.current;
-    const row = nav.current;
-    if (!box || !row) return;
-    const target = row.querySelector<HTMLElement>("[data-tab-shown]");
-    box.hidden = !target;
-    if (!target) return;
-    const next = animate
-      ? finalTabBox(row, target)
-      : { left: target.offsetLeft, width: target.offsetWidth };
-    if (!animate) box.style.transition = "none";
-    box.style.width = `${next.width}px`;
-    box.style.transform = `translateX(${next.left}px)`;
-    if (!animate) {
-      void box.offsetWidth;
-      box.style.transition = "";
-    }
-  }, []);
-  useLayoutEffect(() => {
-    const observer = new ResizeObserver(() => {
-      // During a switch the labels resize the tabs; the slide covers it.
-      if (!switching.current) place(false);
-    });
-    for (const tab of nav.current?.querySelectorAll("a") ?? []) {
-      observer.observe(tab);
-    }
-    return () => observer.disconnect();
-  }, [place]);
-  const placed = useRef(false);
-  useLayoutEffect(() => {
-    const animate = placed.current;
-    placed.current = true;
-    place(animate);
-    if (!animate) return;
-    switching.current = true;
-    const timer = window.setTimeout(() => {
-      switching.current = false;
-      // Settle on the tab's real box, in case the prediction missed.
-      place(false);
-    }, SWITCH_MS);
-    return () => {
-      window.clearTimeout(timer);
-      switching.current = false;
-    };
-  }, [place, shown]);
-  return { highlight, nav };
-}
-
-/**
- * The pane tabs as one segmented control. Each tab shows its icon and label.
- * When the labels do not fit, the other tabs show only their icon, with the
- * label as tooltip; the tab that shows now and the Inbox count stay.
- * Destinations past the three tabs, such as plugin pages, always show as
- * icons. One highlight slides between tabs, and labels fade as they open or
- * close; reduced motion turns both off.
- */
-export function PaneTabs(props: { className?: string }) {
-  const tabs = usePaneTabs();
-  const main = tabs.slice(0, 3);
-  const extra = tabs.slice(3);
-  const shown = useShownTab(tabs.find((tab) => tab.active)?.key);
-  const { highlight, nav } = useTabHighlight(shown);
-  return (
-    <nav
-      aria-label="Primary"
-      className={cn(
-        "@container/tabs relative flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5",
-        props.className,
-      )}
-      ref={nav}
-    >
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute top-0.5 bottom-0.5 left-0 rounded-[0.625rem] bg-dashboard-surface-raised shadow-sm ring-1 ring-dashboard-border transition-[transform,width] duration-180 ease-out motion-reduce:transition-none"
-        ref={highlight}
-      />
-      {main.map((tab) => {
-        const Icon = tab.icon;
-        const on = tab.key === shown;
-        return (
-          // 22rem fits the three labelled tabs with the Inbox count.
-          <Tooltip key={tab.key}>
-            <TooltipTrigger
-              render={
-                <Link
-                  aria-current={tab.active ? "page" : undefined}
-                  aria-label={
-                    tab.count ? `${tab.label}, ${tab.count} waiting` : tab.label
-                  }
-                  className={cn(
-                    "relative flex h-8 min-w-0 items-center justify-center rounded-[0.625rem] px-2 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-                    on
-                      ? "flex-auto text-dashboard-text"
-                      : "flex-none text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text @[22rem]/tabs:flex-auto",
-                  )}
-                  data-tab-shown={on ? "" : undefined}
-                  to={tab.to}
-                />
-              }
-            >
-              <Icon
-                aria-hidden="true"
-                className="size-4 shrink-0"
-                strokeWidth={1.9}
-              />
-              {/* The label column opens from zero width, so it fades in as
-                  the tab widens, and the reverse as it closes. */}
-              <span
-                data-tab-label=""
-                className={cn(
-                  "grid min-w-0 transition-[grid-template-columns,opacity,visibility] duration-180 ease-out motion-reduce:transition-none",
-                  on
-                    ? "grid-cols-[1fr] opacity-100"
-                    : "invisible grid-cols-[0fr] opacity-0 @[22rem]/tabs:visible @[22rem]/tabs:grid-cols-[1fr] @[22rem]/tabs:opacity-100",
-                )}
-              >
-                <span className="min-w-0 overflow-hidden">
-                  <span className="block truncate pl-1.5">{tab.label}</span>
-                </span>
-              </span>
-              {tab.count ? (
-                <span className="ml-1.5">
-                  <PaneTabCount active={on} count={tab.count} />
-                </span>
-              ) : null}
-            </TooltipTrigger>
-            <TooltipContent size="compact">{tab.label}</TooltipContent>
-          </Tooltip>
-        );
-      })}
-      {extra.map((tab) => {
-        const Icon = tab.icon;
-        const on = tab.key === shown;
-        return (
-          <Link
-            aria-current={tab.active ? "page" : undefined}
-            aria-label={tab.label}
-            className={cn(
-              "relative grid size-8 shrink-0 place-items-center rounded-[0.625rem] no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-              on
-                ? "text-dashboard-text"
-                : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
-            )}
-            data-tab-shown={on ? "" : undefined}
-            key={tab.key}
-            title={tab.label}
-            to={tab.to}
-          >
-            <Icon aria-hidden="true" className="size-4" strokeWidth={1.9} />
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-/** What "New" does on the tab that shows now. */
+/** What "New" does on the page that shows now. */
 export type PaneNewAction = { label: string } & (
   | { onClick(): void; to?: undefined }
   | { onClick?: undefined; to: string }
@@ -706,7 +402,7 @@ const NEW_CONVERSATION_ACTION: PaneNewAction = {
   to: NEW_CONVERSATION_PATH,
 };
 
-/** A square "+" in the pane header. Its name says what the tab creates. */
+/** A square "+" in the pane header. Its name says what the page creates. */
 function NewButton(props: { action: PaneNewAction }) {
   const navigate = useNavigate();
   return (
@@ -746,9 +442,6 @@ function PaneNavHeader(props: { newAction: PaneNewAction }) {
         <NewButton action={props.newAction} />
         <PaneToggle open />
       </div>
-      <div className="border-b border-b-dashboard-border-subtle px-3 py-3">
-        <PaneTabs />
-      </div>
     </div>
   );
 }
@@ -781,16 +474,17 @@ function PaneSearchBar() {
 }
 
 /**
- * Keep one tab's list scroll position while another tab shows. The list
- * unmounts on a tab switch, so its offset is saved on scroll and put back
- * once the list has rows again.
+ * Keep the pane list's scroll position across pages. Each page mounts its
+ * own pane, so the offset is saved on scroll and put back once the list has
+ * rows again.
  */
-function usePaneScrollMemory(tab: PaneTab | undefined) {
+function usePaneScrollMemory(list: string | undefined) {
   const pane = usePaneNav();
   const ref = useRef<HTMLDivElement>(null);
-  const { tabScroll } = pane;
+  const { scroll } = pane;
+  const key = list && `pane:${list}`;
   useLayoutEffect(() => {
-    const saved = tab ? tabScroll.get(tab) : undefined;
+    const saved = key ? scroll.get(key) : undefined;
     if (!saved || !ref.current) return;
     let frame = 0;
     let tries = 0;
@@ -804,11 +498,11 @@ function usePaneScrollMemory(tab: PaneTab | undefined) {
     };
     restore();
     return () => cancelAnimationFrame(frame);
-  }, [tab, tabScroll]);
+  }, [key, scroll]);
   return {
     onScrollCapture: (event: { target: EventTarget }) => {
-      if (tab && event.target instanceof HTMLElement) {
-        tabScroll.set(tab, event.target.scrollTop);
+      if (key && event.target instanceof HTMLElement) {
+        scroll.set(key, event.target.scrollTop);
       }
     },
     ref,
@@ -907,8 +601,9 @@ function PaneResizeHandle() {
 }
 
 /**
- * Lay out one desktop pane: the tabs, then the tab's own list, then the
- * profile. A page without a list passes no children. Phones show only the
+ * Lay out one desktop pane: the header, then the list, such as the
+ * destinations or an area's pages, then the profile. `scrollList` names a
+ * list whose scroll position holds across pages. Phones show only the
  * list, under the app header. Children draw their own pane edge, like
  * `PANE_EDGE_CLASS`. On desktop the pane takes the shared width. `newAction`
  * names what New in the header creates; a new conversation by default.
@@ -917,10 +612,10 @@ export function ListPane(props: {
   children?: ReactNode;
   className?: string;
   newAction?: PaneNewAction;
-  tab?: PaneTab;
+  scrollList?: string;
 }) {
   const pane = usePaneNav();
-  const scroll = usePaneScrollMemory(props.tab);
+  const scroll = usePaneScrollMemory(props.scrollList);
   return (
     <div
       className={cn(

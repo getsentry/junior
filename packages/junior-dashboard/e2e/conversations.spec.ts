@@ -42,7 +42,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
-  const conversationList = page.getByRole("navigation", { name: "Inbox" });
+  const conversationList = page.getByRole("navigation", { name: "Primary" });
   const hideList = page.getByRole("button", { name: "Hide sidebar" });
   await expect(conversationList).toBeVisible();
   await expect(hideList).toHaveAttribute("aria-expanded", "true");

@@ -256,7 +256,7 @@ test("opens and closes a conversation on mobile", async ({
   await page.goto(`${dashboard.baseURL}/conversations`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // A phone opens on the Inbox entries: the list of lists.
-  const entries = page.getByRole("navigation", { name: "Inbox" });
+  const entries = page.getByRole("navigation", { name: "Primary" });
   await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
   await expect(
     entries.getByRole("link", { name: "Conversations", exact: true }),

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
   Link,
+  Navigate,
   NavigationType,
   useLocation,
   useNavigate,
@@ -12,8 +13,6 @@ import {
   useSearchParams,
 } from "react-router";
 
-import { useConversationsData } from "../api";
-import { InboxDataProvider } from "../review-desk/inboxData";
 import { InboxList } from "../review-desk/InboxList";
 import {
   useInboxReturnPath,
@@ -29,11 +28,7 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
-import {
-  usePendingArchiveConversationUpdates,
-  withoutThreads,
-  type PendingArchiveConversationUpdate,
-} from "./conversationArchive";
+import { useInboxConversations } from "./useInboxConversations";
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import {
@@ -51,10 +46,8 @@ import {
   readReplyFocus,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import { buildConversations } from "../format";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
@@ -70,8 +63,6 @@ import { HomeSummary } from "./HomeSummary";
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
-  /** Asks and Automations need a viewer; signed out, only Conversations show. */
-  signedIn: boolean;
 }) {
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
@@ -87,11 +78,9 @@ export function ConversationWorkspace(props: {
   const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
-  // Older feed pages load only when the list scrolls to its end. The feed
-  // query keeps every loaded page, so Back restores every row.
-  const feed = useConversationsData();
+  const { conversations, feed, pendingArchiveUpdates } =
+    useInboxConversations();
   const returnPath = useInboxReturnPath();
-  const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const offerPushNotifications = usePushNotificationsTip();
   const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
@@ -100,22 +89,6 @@ export function ConversationWorkspace(props: {
   if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
-  const conversations = useMemo(
-    () =>
-      applyPendingArchiveUpdates(
-        buildConversations(feed.data?.conversations ?? []),
-        pendingArchiveUpdates,
-      ),
-    [feed.data?.conversations, pendingArchiveUpdates],
-  );
-  const loadNextPage = () => void feed.fetchNextPage({ cancelRefetch: false });
-  const feedPages = {
-    failed: feed.isFetchNextPageError,
-    hasMore: feed.hasNextPage,
-    loadingMore: feed.isFetchingNextPage,
-    loadMore: loadNextPage,
-    retry: loadNextPage,
-  };
   const openCreate = () => {
     createConversation.reset();
     if (!composing)
@@ -300,73 +273,71 @@ export function ConversationWorkspace(props: {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [navigate, returnPath, selectedId]);
 
+  // The Automations bundle became its own page.
+  if (home && searchParams.get("view") === "automations")
+    return <Navigate replace to="/automations" />;
+
   return (
-    <InboxDataProvider
-      conversations={conversations}
-      feed={feedPages}
-      signedIn={props.signedIn}
-    >
-      <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
-        {/* The pane hides itself while the reader hides it, and keeps the
+    <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
+      {/* The pane hides itself while the reader hides it, and keeps the
           list mounted so its scroll position stays. */}
-        {sidebarFits ? (
-          <ListPane
-            newAction={{ label: "New conversation", onClick: openCreate }}
-            tab="inbox"
-          >
-            <InboxNav selectedConversationId={selectedId} />
-          </ListPane>
-        ) : null}
-        <div className="h-full min-h-0 min-w-0 flex-1">
-          {home ? (composing ? homePane : listPane) : null}
-          {/* A pending create shows in the same section as the page that
+      {sidebarFits ? (
+        <ListPane
+          newAction={{ label: "New conversation", onClick: openCreate }}
+          scrollList="destinations"
+        >
+          <InboxNav selectedConversationId={selectedId} />
+        </ListPane>
+      ) : null}
+      <div className="h-full min-h-0 min-w-0 flex-1">
+        {home ? (composing ? homePane : listPane) : null}
+        {/* A pending create shows in the same section as the page that
             replaces it, so the swap keeps this element. */}
-          {selectedId || pendingCreate ? (
-            <section
-              aria-busy={home || undefined}
-              aria-label="Selected conversation"
-              className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-            >
-              {selectedId ? (
-                <UnsentAnswersProvider
-                  conversationId={selectedId}
-                  key={selectedId}
-                >
-                  <FeedThreads value={feedThreads}>
-                    <ConversationPage
-                      conversationId={selectedId}
-                      detail={props.detail}
-                      listPath={returnPath}
-                      data={
-                        feed.data
-                          ? {
-                              conversations: feed.data,
-                            }
-                          : undefined
-                      }
-                      pendingArchiveUpdate={pendingArchiveUpdates.find(
-                        (update) => update.conversationId === selectedId,
-                      )}
-                      sidebarToggle={
-                        <span className="flex items-center gap-1">
-                          <PaneCollapsedControls />
-                          <BackToList />
-                        </span>
-                      }
-                    />
-                  </FeedThreads>
-                </UnsentAnswersProvider>
-              ) : pendingCreate ? (
-                <NewConversationPending
-                  pending={pendingCreate}
-                  sidebarToggle=<PaneCollapsedControls />
-                />
-              ) : null}
-            </section>
-          ) : null}
-        </div>
+        {selectedId || pendingCreate ? (
+          <section
+            aria-busy={home || undefined}
+            aria-label="Selected conversation"
+            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+          >
+            {selectedId ? (
+              <UnsentAnswersProvider
+                conversationId={selectedId}
+                key={selectedId}
+              >
+                <FeedThreads value={feedThreads}>
+                  <ConversationPage
+                    conversationId={selectedId}
+                    detail={props.detail}
+                    listPath={returnPath}
+                    data={
+                      feed.data
+                        ? {
+                            conversations: feed.data,
+                          }
+                        : undefined
+                    }
+                    pendingArchiveUpdate={pendingArchiveUpdates.find(
+                      (update) => update.conversationId === selectedId,
+                    )}
+                    sidebarToggle={
+                      <span className="flex items-center gap-1">
+                        <PaneCollapsedControls />
+                        <BackToList />
+                      </span>
+                    }
+                  />
+                </FeedThreads>
+              </UnsentAnswersProvider>
+            ) : pendingCreate ? (
+              <NewConversationPending
+                pending={pendingCreate}
+                sidebarToggle=<PaneCollapsedControls />
+              />
+            ) : null}
+          </section>
+        ) : null}
       </div>
-    </InboxDataProvider>
+    </div>
   );
 }
 
@@ -466,46 +437,4 @@ function NewConversationView(props: {
       ) : null}
     </section>
   );
-}
-
-function applyPendingArchiveUpdates(
-  conversations: Conversation[],
-  updates: PendingArchiveConversationUpdate[],
-): Conversation[] {
-  // The optimistic cache write in useArchiveConversation sets archivedAt on
-  // success too, ahead of the feed invalidation settling. Drop already-
-  // archived rows here so they cannot reappear until the mutation leaves
-  // "pending" but the stale cache has not refetched yet.
-  const byId = new Map(
-    conversations
-      .filter((conversation) => !conversation.archivedAt)
-      .map((conversation) => [conversation.id, conversation]),
-  );
-  for (const update of updates) {
-    if (update.archived) {
-      byId.delete(update.conversationId);
-      continue;
-    }
-    const existing = byId.get(update.conversationId);
-    const conversation =
-      existing ??
-      (update.conversation
-        ? buildConversations([update.conversation])[0]
-        : undefined);
-    if (!conversation) continue;
-    byId.set(update.conversationId, { ...conversation, archivedAt: null });
-  }
-  const rows = [...byId.values()].sort((a, b) =>
-    b.lastSeenAt.localeCompare(a.lastSeenAt),
-  );
-  // A refetch can bring back a Thread whose archive is still pending.
-  const archivedIds = new Set(
-    updates
-      .filter((update) => update.archived)
-      .map((update) => update.conversationId),
-  );
-  // Keep row identity when nothing is pending, so memoized rows skip renders.
-  return archivedIds.size === 0
-    ? rows
-    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }

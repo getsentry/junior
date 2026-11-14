@@ -99,7 +99,7 @@ test("moving between pages never flashes the bare agent name in the tab", async 
   await mockOneAsk(page);
   await page.goto(`${dashboard.baseURL}/`);
   await expect(page).toHaveTitle("(1) Inbox - Junior");
-  const nav = page.getByRole("navigation", { name: "Inbox" });
+  const nav = page.getByRole("navigation", { name: "Primary" });
   await nav.getByRole("link", { name: /^Pull requests/ }).click();
   await expect(page).toHaveTitle("(1) Pull requests - Junior");
   await nav.getByRole("link", { name: /^Snoozed/ }).click();

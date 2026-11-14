@@ -1,18 +1,15 @@
 import { memo, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { ChevronRight } from "lucide-react";
 import { useAutomationsData } from "../../api";
-import { Button } from "../../components/ui/button";
+import { Button, buttonVariants } from "../../components/ui/button";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../../components/ui/collapsible";
-import { FilterToolbar } from "../../components/filters/FilterToolbar";
+  ActiveFilterChips,
+  FilterToggle,
+} from "../../components/filters/FilterToolbar";
 import {
   activeAutomationFilters,
   AutomationFilterPanel,
@@ -20,15 +17,17 @@ import {
 import { InlineError } from "../../components/InlineError";
 import { FilteredList } from "../../components/filters/FilterPanel";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
-import { Card } from "../../components/layout/Card";
-import { PageHeader } from "../../components/layout/PageHeader";
+import { HeaderBar } from "../../components/layout/HeaderBar";
+import { usePaneRowScroll } from "../../components/layout/PaneNav";
+import { useDocumentTitle } from "../../documentTitle";
 import { automationPath } from "../../format";
 import { COMMAND_PALETTE_SHORTCUT } from "../../components/CommandPalette";
+import { InboxAutomationRow } from "../../review-desk/InboxAutomationRow";
+import { useInboxData } from "../../review-desk/inboxData";
+import { InboxEmptyState, InboxSection } from "../../review-desk/InboxSection";
+import { DOCK_GUTTER } from "../../review-desk/useDockHover";
 import { pathWithSearch } from "../../searchParams";
-import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
-import { automationNeedsAttention } from "./AutomationStatus";
-import { SectionTitle } from "../../components/layout/SectionTitle";
 
 const EMPTY: AutomationSummary[] = [];
 
@@ -40,21 +39,17 @@ const LANDING_PAGE_SIZE = "100";
 // to all; the command palette finds an Automation by name.
 const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
-type AutomationGroup = {
-  automations: AutomationSummary[];
-  collapsed?: boolean;
-  key: string;
-  label: string;
-};
-
 /**
- * Landing page for Automations: problems first, then what runs, then what
- * is stopped. Each row shows recent runs and the next run, so the page
- * answers "is my work healthy" without opening each Automation.
+ * Landing page for Automations, in the Inbox's style: To do first, the
+ * viewer's Automations that need attention as the Inbox lists them, then
+ * what runs, then what is stopped. Each card shows recent runs and the next
+ * run, so the page answers "is my work healthy" without opening each
+ * Automation.
  */
 export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  useDocumentTitle("Automations");
   // Ignore only invalid URL values. One bad field must not reset other filters.
   const filters = automationListQuerySchema.parse(
     Object.fromEntries(
@@ -89,69 +84,105 @@ export function AutomationsPage(props: { enabled: boolean }) {
     setSearchParams(next, { replace: true });
   };
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtered = LANDING_FILTERS.some((key) => searchParams.has(key));
+  // To do is the Inbox's own list, so its count matches the Automations
+  // row. Filters narrow the whole list instead.
+  const inbox = useInboxData();
+  const todo = filtered ? EMPTY : inbox.automations;
   const automations = query.data?.automations ?? EMPTY;
   const loading = !query.data && !query.error;
+  const scroll = usePaneRowScroll("automations", Boolean(query.data));
+  const toolbar = {
+    active: activeAutomationFilters({ data: query.data, filters }),
+    onRemove: (key: string) => setFilter(key, ""),
+    onToggle: () => setFiltersOpen((open) => !open),
+    open: filtersOpen,
+  };
 
   return (
-    <>
-      <PageHeader title="Automations" />
-      <FilteredList
-        toolbar={
-          <FilterToolbar
-            filters={{
-              active: activeAutomationFilters({ data: query.data, filters }),
-              onRemove: (key) => setFilter(key, ""),
-              onToggle: () => setFiltersOpen((open) => !open),
-              open: filtersOpen,
-            }}
-          />
+    <section
+      aria-label="Automations"
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
+    >
+      <HeaderBar
+        actions={
+          <>
+            <Link
+              className={buttonVariants({ variant: "ghost" })}
+              to="/automations/runs"
+            >
+              Runs
+            </Link>
+            <FilterToggle filters={toolbar} />
+          </>
         }
-        filters={
-          filtersOpen ? (
-            <AutomationFilterPanel
-              data={query.data}
-              filters={filters}
-              onChange={setFilter}
-              onClear={clearFilters}
-              onClose={() => setFiltersOpen(false)}
-            />
-          ) : null
-        }
+        title="Automations"
+      />
+      <div
+        className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
+        onScroll={scroll.onScroll}
+        ref={scroll.ref}
       >
-        {loading ? (
-          <PageContentSkeleton label="Loading automations" variant="list" />
-        ) : null}
-        {query.error ? (
-          <InlineError>
-            Automations could not be loaded.{" "}
-            <Button variant="outline" onClick={() => void query.refetch()}>
-              Try again
-            </Button>
-          </InlineError>
-        ) : null}
-        {query.data && automations.length === 0 ? (
-          <Card padding="md">
-            <p className="m-0 text-sm text-dashboard-text-muted">
-              {LANDING_FILTERS.some((key) => searchParams.has(key))
-                ? "No automations matched these filters."
-                : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
-            </p>
-          </Card>
-        ) : null}
-        {query.isFetching && query.data ? (
-          <span className="sr-only" role="status">
-            Updating results…
-          </span>
-        ) : null}
-        <AutomationGroups automations={automations} search={location.search} />
-        {query.data && query.data.total > automations.length ? (
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            Showing {automations.length} of {query.data.total}. Filter, or
-            search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.
-          </p>
-        ) : null}
-      </FilteredList>
-    </>
+        <div
+          className="mx-auto w-full max-w-6xl pt-3 pb-16"
+          style={{ paddingInline: DOCK_GUTTER }}
+        >
+          <FilteredList
+            toolbar={<ActiveFilterChips filters={toolbar} />}
+            filters={
+              filtersOpen ? (
+                <AutomationFilterPanel
+                  data={query.data}
+                  filters={filters}
+                  onChange={setFilter}
+                  onClear={clearFilters}
+                  onClose={() => setFiltersOpen(false)}
+                />
+              ) : null
+            }
+          >
+            {loading ? (
+              <PageContentSkeleton label="Loading automations" variant="list" />
+            ) : null}
+            {query.error ? (
+              <InlineError>
+                Automations could not be loaded.{" "}
+                <Button variant="outline" onClick={() => void query.refetch()}>
+                  Try again
+                </Button>
+              </InlineError>
+            ) : null}
+            {query.data && automations.length === 0 && todo.length === 0 ? (
+              <InboxEmptyState
+                label={
+                  filtered
+                    ? "No automations matched these filters."
+                    : "No automations yet"
+                }
+              />
+            ) : null}
+            {query.isFetching && query.data ? (
+              <span className="sr-only" role="status">
+                Updating results…
+              </span>
+            ) : null}
+            {query.data ? (
+              <AutomationGroups
+                automations={automations}
+                search={location.search}
+                todo={todo}
+              />
+            ) : null}
+            {query.data && query.data.total > automations.length ? (
+              <p className="m-0 text-xs text-dashboard-text-muted">
+                Showing {automations.length} of {query.data.total}. Filter, or
+                search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.
+              </p>
+            ) : null}
+          </FilteredList>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -163,56 +194,86 @@ export function AutomationsPage(props: { enabled: boolean }) {
 const AutomationGroups = memo(function AutomationGroups(props: {
   automations: AutomationSummary[];
   search: string;
+  todo: AutomationSummary[];
 }) {
   const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
+    completed: true,
+    paused: true,
+  });
+  const [expanded, setExpanded] = useState<string>();
   // The Automation page keeps the list query, so its back link restores it.
   const pagePath = (id: string) =>
     pathWithSearch(automationPath(id), props.search);
-  return groupAutomations(props.automations).map((group) => (
-    <AutomationGroupSection
-      group={group}
-      key={group.key}
-      onSelect={(id) => navigate(pagePath(id))}
-      pagePath={pagePath}
-    />
-  ));
+  const todoIds = new Set(props.todo.map((automation) => automation.id));
+  const sorted = props.automations
+    .filter((automation) => !todoIds.has(automation.id))
+    .sort(byLatestRun);
+  const toggle = (key: string) =>
+    setCollapsed((current) => ({ ...current, [key]: !current[key] }));
+  return (
+    <div>
+      {/* To do is the Inbox's section, so its cards open in place. */}
+      <InboxSection
+        collapsed={Boolean(collapsed.todo)}
+        count={props.todo.length}
+        label="To do"
+        onToggle={() => toggle("todo")}
+      >
+        {props.todo.map((automation) => (
+          <InboxAutomationRow
+            automation={automation}
+            expanded={expanded === automation.id}
+            key={automation.id}
+            onToggle={() =>
+              setExpanded((current) =>
+                current === automation.id ? undefined : automation.id,
+              )
+            }
+            rowKey={automation.id}
+          />
+        ))}
+      </InboxSection>
+      {GROUPS.map((group) => {
+        const rows = sorted.filter((automation) =>
+          group.statuses.includes(automation.status),
+        );
+        return (
+          <InboxSection
+            collapsed={Boolean(collapsed[group.key])}
+            count={rows.length}
+            key={group.key}
+            label={group.label}
+            onToggle={() => toggle(group.key)}
+          >
+            {rows.map((automation) => (
+              <AutomationRow
+                automation={automation}
+                key={`${automation.kind}:${automation.id}`}
+                onSelect={() => navigate(pagePath(automation.id))}
+                to={pagePath(automation.id)}
+              />
+            ))}
+          </InboxSection>
+        );
+      })}
+    </div>
+  );
 });
 
 /**
- * Group by what needs a person, then by what still runs. Every group uses
- * one order, latest run first, so the "Ran" times read top to bottom.
+ * The sections after To do. A blocked Automation still runs once fixed, so
+ * it stays with the active ones and shows its problem.
  */
-function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
-  const sorted = [...automations].sort(byLatestRun);
-  const attention = sorted.filter(
-    (automation) =>
-      automation.status !== "completed" && automationNeedsAttention(automation),
-  );
-  const rest = sorted.filter((automation) => !attention.includes(automation));
-  const groups: AutomationGroup[] = [
-    { automations: attention, key: "attention", label: "Needs attention" },
-    {
-      automations: rest.filter((automation) => automation.status === "active"),
-      key: "active",
-      label: "Active",
-    },
-    {
-      automations: rest.filter((automation) => automation.status === "paused"),
-      collapsed: true,
-      key: "paused",
-      label: "Paused",
-    },
-    {
-      automations: rest.filter(
-        (automation) => automation.status === "completed",
-      ),
-      collapsed: true,
-      key: "completed",
-      label: "Completed",
-    },
-  ];
-  return groups.filter((group) => group.automations.length > 0);
-}
+const GROUPS: readonly {
+  key: string;
+  label: string;
+  statuses: readonly AutomationSummary["status"][];
+}[] = [
+  { key: "active", label: "Active", statuses: ["active", "blocked"] },
+  { key: "paused", label: "Paused", statuses: ["paused"] },
+  { key: "completed", label: "Completed", statuses: ["completed"] },
+];
 
 /** Latest run first. Automations that never ran follow, newest first. */
 function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
@@ -220,65 +281,5 @@ function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
     (b.lastRunAt ?? "").localeCompare(a.lastRunAt ?? "") ||
     b.createdAt.localeCompare(a.createdAt) ||
     a.title.localeCompare(b.title)
-  );
-}
-
-function AutomationGroupSection(props: {
-  group: AutomationGroup;
-  onSelect(id: string): void;
-  pagePath(id: string): string;
-}) {
-  const { group } = props;
-  const [open, setOpen] = useState(!group.collapsed);
-  const rows = (
-    <Card>
-      <div role="list">
-        {group.automations.map((automation) => (
-          <AutomationRow
-            automation={automation}
-            key={`${automation.kind}:${automation.id}`}
-            onSelect={() => props.onSelect(automation.id)}
-            to={props.pagePath(automation.id)}
-          />
-        ))}
-      </div>
-    </Card>
-  );
-  const heading = (
-    <>
-      {group.label}
-      <span className="ml-2 tabular-nums text-dashboard-text-faint">
-        {group.automations.length}
-      </span>
-    </>
-  );
-  if (!group.collapsed) {
-    return (
-      <section aria-label={group.label} className="grid gap-2.5">
-        <SectionTitle>{heading}</SectionTitle>
-        {rows}
-      </section>
-    );
-  }
-  return (
-    <Collapsible
-      aria-label={group.label}
-      className="grid gap-2.5"
-      onOpenChange={setOpen}
-      open={open}
-      render={<section />}
-    >
-      <h3 className="m-0">
-        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent p-0 text-xs font-medium text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
-          <ChevronRight
-            aria-hidden="true"
-            className={cn("transition-transform", open && "rotate-90")}
-            size={14}
-          />
-          {heading}
-        </CollapsibleTrigger>
-      </h3>
-      <CollapsibleContent>{rows}</CollapsibleContent>
-    </Collapsible>
   );
 }

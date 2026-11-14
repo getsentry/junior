@@ -12,7 +12,7 @@ import { desktop, mobile, screenshot } from "./screenshot";
 /** Open the Conversations bundle from the Inbox entries. */
 async function openConversations(page: Page) {
   await page
-    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { exact: true, name: "Conversations" })
     .click();
 }

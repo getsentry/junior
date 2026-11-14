@@ -20,16 +20,16 @@ import {
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 
 import { useAutomationData } from "../../api";
-import { Button } from "../../components/ui/button";
+import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
-import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
+import { useDocumentTitle } from "../../documentTitle";
 import { automationPath, type AutomationTab } from "../../format";
 import { DashboardApiError, fetchDashboardJson } from "../../http";
 import { pathWithSearch, useSearchParamEnum } from "../../searchParams";
@@ -123,9 +123,9 @@ export function AutomationPage(props: {
         />
       ) : (
         <PageLayout>
-          <BackLink to={listPath} />
-          <PageHeader
+          <AutomationHeader
             description="Settings, runs, and versions for one automation."
+            listPath={listPath}
             title="Automation"
           />
           {summary.error ? (
@@ -174,43 +174,41 @@ function AutomationPageContent(props: {
     location.search,
   );
   const header = (
-    <>
-      <BackLink to={props.listPath} />
-      <PageHeader
-        actions={
-          tab === "edit" ? undefined : (
-            <div className="flex flex-wrap items-start gap-2 md:justify-end">
-              {tab === "runs" ? (
-                <TimeRangeSelector
-                  onChange={props.onRangeChange}
-                  value={props.range}
-                />
-              ) : null}
-              <AutomationActions
-                automation={automation}
-                editPath={editPath}
-                editVariant={
-                  tab === "overview" && automationNeedsAttention(automation)
-                    ? "outline"
-                    : "default"
-                }
-                onDelete={(source) => {
-                  deleteSource.current = source;
-                  setDeleting(true);
-                }}
+    <AutomationHeader
+      actions={
+        tab === "edit" ? undefined : (
+          <div className="flex flex-wrap items-center gap-2">
+            {tab === "runs" ? (
+              <TimeRangeSelector
+                onChange={props.onRangeChange}
+                value={props.range}
               />
-            </div>
-          )
-        }
-        description={<AutomationHeaderLine automation={automation} />}
-        documentTitle={
-          tab === "overview"
-            ? automation.title
-            : `${automation.title} · ${TAB_LABELS[tab]}`
-        }
-        title={automation.title}
-      />
-    </>
+            ) : null}
+            <AutomationActions
+              automation={automation}
+              editPath={editPath}
+              editVariant={
+                tab === "overview" && automationNeedsAttention(automation)
+                  ? "outline"
+                  : "default"
+              }
+              onDelete={(source) => {
+                deleteSource.current = source;
+                setDeleting(true);
+              }}
+            />
+          </div>
+        )
+      }
+      description={<AutomationHeaderLine automation={automation} />}
+      documentTitle={
+        tab === "overview"
+          ? automation.title
+          : `${automation.title} · ${TAB_LABELS[tab]}`
+      }
+      listPath={props.listPath}
+      title={automation.title}
+    />
   );
   const dialog = deleting ? (
     <AutomationDeleteDialog
@@ -330,15 +328,36 @@ function AutomationHeaderLine(props: { automation: AutomationSummary }) {
   );
 }
 
-function BackLink(props: { to: string }) {
+/**
+ * The Automation's header, in the header bar's style: the way back, the
+ * title, and the actions on one row, then what it does and its state.
+ */
+function AutomationHeader(props: {
+  actions?: ReactNode;
+  description: ReactNode;
+  documentTitle?: string;
+  listPath: string;
+  title: string;
+}) {
+  useDocumentTitle(props.documentTitle ?? props.title);
   return (
-    <Link
-      aria-label="Back to automations"
-      className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-      to={props.to}
-    >
-      <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
-      Automations
-    </Link>
+    <header className="grid min-w-0 gap-1 border-b border-dashboard-border-subtle pb-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
+        <Link
+          aria-label="Back to automations"
+          className={buttonVariants({ size: "icon", variant: "ghost" })}
+          to={props.listPath}
+        >
+          <ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />
+        </Link>
+        <h1 className="m-0 min-w-0 flex-1 truncate font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text">
+          {props.title}
+        </h1>
+        {props.actions}
+      </div>
+      <div className="min-w-0 pl-11 text-sm text-dashboard-text-muted max-md:pl-0">
+        {props.description}
+      </div>
+    </header>
   );
 }

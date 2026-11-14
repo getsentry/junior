@@ -8,6 +8,7 @@ import {
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { pinnedFirst } from "../conversations/conversationSections";
+import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
 import type { InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
@@ -197,7 +198,7 @@ function useBuildInboxData(input: {
 
   // The server counts each entry, so items past the loaded pages count
   // too. Done has no count: it would need every closed item.
-  const counts: Partial<Record<InboxView, number>> = {
+  const counts: Partial<Record<InboxView | "automations", number>> = {
     automations: serverCounts?.automations,
     decisions: serverCounts?.decisions,
     inbox: todoCount,
@@ -237,18 +238,29 @@ function useBuildInboxData(input: {
 }
 
 /**
- * Load and shape what the Inbox sidebar and its lists show: the open asks,
+ * Load and shape what the pane and the Inbox lists show: the open asks,
  * the Automations that need attention, snoozes, sweeps, and the
- * Conversations they belong to. Both read this one value, so a count always
- * matches its list and a sweep shows in both at once.
+ * Conversations they belong to. The shell provides it once, so the pane on
+ * every page, the phone navigation, and the lists read one value: a count
+ * always matches its list, and a sweep shows in all at once.
  */
 export function InboxDataProvider(props: {
   children: ReactNode;
-  conversations: Conversation[];
-  feed: InboxFeedPages;
   signedIn: boolean;
 }) {
-  const value = useBuildInboxData(props);
+  const { conversations, feed } = useInboxConversations();
+  const loadMore = () => void feed.fetchNextPage({ cancelRefetch: false });
+  const value = useBuildInboxData({
+    conversations,
+    feed: {
+      failed: feed.isFetchNextPageError,
+      hasMore: feed.hasNextPage,
+      loadingMore: feed.isFetchingNextPage,
+      loadMore,
+      retry: loadMore,
+    },
+    signedIn: props.signedIn,
+  });
   return (
     <InboxDataContext.Provider value={value}>
       {props.children}

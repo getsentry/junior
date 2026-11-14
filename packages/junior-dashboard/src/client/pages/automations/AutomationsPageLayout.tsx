@@ -12,6 +12,7 @@ import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation
  */
 export function hasAutomationDetailsFrame(pathname: string): boolean {
   return (
+    pathname === "/automations" ||
     Boolean(matchPath("/automations/runs", pathname)) ||
     Boolean(matchPath("/automations/:automationId/runs", pathname))
   );

@@ -10,12 +10,11 @@ import {
 } from "./reviewItemFormat";
 
 /**
- * The entries of the Inbox sidebar, as in Google Inbox. Each one names a
- * list in the main area: the Inbox, Snoozed, Done, then the automatic
- * bundles.
+ * The Inbox entries in the pane, as in Google Inbox. Each one names a list
+ * in the main area: the Inbox, Snoozed, Done, Conversations, then the asks
+ * by type.
  */
 export type InboxView =
-  | "automations"
   | "conversations"
   | "decisions"
   | "done"
@@ -24,7 +23,6 @@ export type InboxView =
   | "snoozed";
 
 const INBOX_VIEWS: readonly InboxView[] = [
-  "automations",
   "conversations",
   "decisions",
   "done",
@@ -35,7 +33,6 @@ const INBOX_VIEWS: readonly InboxView[] = [
 
 /** The list heading of each entry. The Inbox itself has no heading. */
 export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
-  automations: "Automations",
   conversations: "Conversations",
   decisions: "Decisions",
   done: "Done",
@@ -219,17 +216,11 @@ export function viewSections(
   );
 }
 
-/** Why an Automation needs attention, as the Automations bundle groups it. */
+/** Why an Automation needs attention. */
 type AutomationAttentionGroup =
   | "Blocked"
   | "Trigger unavailable"
   | "Last run failed or blocked";
-
-const AUTOMATION_GROUPS: readonly AutomationAttentionGroup[] = [
-  "Blocked",
-  "Trigger unavailable",
-  "Last run failed or blocked",
-];
 
 /**
  * Say why an Automation needs attention. It mirrors the `attention` scope
@@ -243,18 +234,6 @@ export function automationAttentionGroup(
   if (automation.kind === "event" && automation.trigger.problems.length > 0)
     return "Trigger unavailable";
   return "Last run failed or blocked";
-}
-
-/** Group Automations by why they need attention, in a fixed order. */
-export function automationSections(
-  automations: readonly AutomationSummary[],
-): { label: AutomationAttentionGroup; automations: AutomationSummary[] }[] {
-  return AUTOMATION_GROUPS.map((label) => ({
-    automations: automations.filter(
-      (automation) => automationAttentionGroup(automation) === label,
-    ),
-    label,
-  })).filter((section) => section.automations.length > 0);
 }
 
 /**

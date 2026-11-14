@@ -32,14 +32,14 @@ import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import {
   AUTOMATION_LIST_SEARCH,
   automationSelectPath,
-} from "../pages/automations/AutomationSidebarList";
+} from "../pages/automations/newAutomation";
 import { useReviewItemsData } from "../review-desk/queries";
 import { inboxViewPath } from "../review-desk/inboxModel";
 import { reviewItemPath } from "../review-desk/reviewItemFormat";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { paneTabForPath } from "./layout/PaneNav";
+import { paneDestinationForPath } from "./layout/paneRows";
 import {
   directoryGroupForPath,
   pluginPageGroupForPath,
@@ -69,26 +69,27 @@ export const COMMAND_PALETTE_SHORTCUT = platformShortcut("k");
 /** Name of the command palette and the controls that open it. */
 export const COMMAND_PALETTE_LABEL = "Go to conversation";
 
-type PaletteTab = "automations" | "inbox";
-
-// The Inbox tab lists Conversations, so they rank first there.
-const TAB_GROUPS: Record<PaletteTab, string> = {
+// The Inbox lists Conversations, so they rank first there.
+const DESTINATION_GROUPS: Record<"automations" | "inbox", string> = {
   automations: "Automations",
   inbox: "Conversations",
 };
 
 /**
  * The palette group of the page that shows, which ranks first: a
- * directory such as People or Runs, the event log's Events, or the pane
- * tab's group.
+ * directory such as People or Runs, the event log's Events, or the
+ * destination's group.
  */
 export function paletteGroupForPath(
   pathname: string,
   eventLogShown: boolean,
 ): string | undefined {
   if (eventLogShown) return "Events";
-  const tab = paneTabForPath(pathname);
-  return directoryGroupForPath(pathname) ?? (tab && TAB_GROUPS[tab]);
+  const destination = paneDestinationForPath(pathname);
+  return (
+    directoryGroupForPath(pathname) ??
+    (destination && DESTINATION_GROUPS[destination])
+  );
 }
 
 /** A command that acts on the page, such as Zen mode, rather than going somewhere. */

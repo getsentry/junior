@@ -106,21 +106,24 @@ test("opens scheduled and event automations in the native Automations view", asy
     .click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
-  await expect(
-    page.getByRole("navigation", { name: "Automations navigation" }),
-  ).toBeVisible();
+  // The header bar holds the title, Runs, and Filters, as the Inbox's does.
   await expect(
     page.getByRole("heading", { name: "Automations", exact: true }),
   ).toBeVisible();
-  // Problems lead the page, each with the link that fixes it.
-  const attention = page.getByRole("region", { name: "Needs attention" });
-  await expect(attention.getByRole("listitem")).toHaveCount(1);
-  await expect(attention).toContainText("Incident change alerts");
   await expect(
-    attention.getByRole("link", { name: "Change trigger", exact: true }),
-  ).toHaveAttribute("href", "/automations/event-2/edit");
+    page.getByRole("main").getByRole("link", { exact: true, name: "Runs" }),
+  ).toHaveAttribute("href", "/automations/runs");
+  // To do holds only the viewer's own; someone else's problem stays with
+  // the active Automations, with the link that fixes it.
+  await expect(
+    page.getByRole("region", { exact: true, name: "To do" }),
+  ).toHaveCount(0);
   const active = page.getByRole("main").getByRole("region", { name: "Active" });
-  await expect(active.getByRole("listitem")).toHaveCount(2);
+  await expect(active.getByRole("listitem")).toHaveCount(3);
+  await expect(active).toContainText("Incident change alerts");
+  await expect(
+    active.getByRole("link", { name: "Change trigger", exact: true }),
+  ).toHaveAttribute("href", "/automations/event-2/edit");
   await screenshot(page, "automations");
   const weeklySummary = page
     .getByRole("main")
@@ -415,9 +418,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.goto(
     `${dashboard.baseURL}/automations?scope=mine&sort=title&page=2`,
   );
-  await expect(
-    page.getByRole("region", { name: "Needs attention" }),
-  ).toContainText("Incident change alerts");
+  await expect(active).toContainText("Incident change alerts");
   const pendingDetail = Promise.withResolvers<void>();
   let detailRequests = 0;
   await page.route("**/api/automations/scheduled-1", async (route) => {
@@ -834,16 +835,14 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     return route.fulfill({ json: editor.value });
   });
   await page.goto(`${dashboard.baseURL}/automations`);
-  const attention = page.getByRole("region", { name: "Needs attention" });
-  // A failed last run moves the Automation into the attention group.
-  await expect(attention).toContainText("Weekly project summary");
-  await expect(
-    attention.getByRole("link", { name: "Open last run", exact: true }),
-  ).toBeVisible();
+  const todo = page.getByRole("region", { exact: true, name: "To do" });
+  // A failed last run puts the viewer's Automation in To do, as the Inbox
+  // lists it.
+  await expect(todo).toContainText("Weekly project summary");
   await screenshot(page, "automation-attention");
-  await page
-    .getByRole("link", { name: "Open automation: Weekly project summary" })
-    .click();
+  await todo.getByRole("button", { name: /Weekly project summary/ }).click();
+  await page.getByRole("link", { name: "Open editor" }).click();
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
   // A failed last run leads the page with one notice.
   await expect(
     page.getByText("Last run failed", { exact: true }),
@@ -921,14 +920,14 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
 });
 
-test("groups automations by what needs attention on the landing page", async ({
+test("groups automations into To do, then by state, on the landing page", async ({
   page,
   dashboard,
 }) => {
   await mockLandingAutomationApis(page);
   await page.goto(`${dashboard.baseURL}/automations`);
   await expect(
-    page.getByRole("region", { name: "Needs attention" }),
+    page.getByRole("link", { name: /^Open automation: / }).first(),
   ).toBeVisible();
   await screenshot(page, "automations-landing", { lightTheme: true });
 

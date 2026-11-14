@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
@@ -28,7 +28,6 @@ import {
   ListPane,
   PaneCollapsedControls,
   PaneNavProvider,
-  paneTabForPath,
   useZenMode,
   ZEN_MODE_SHORTCUT,
 } from "./components/layout/PaneNav";
@@ -40,10 +39,10 @@ import {
   AreaSidebar,
   areaListsPages,
 } from "./components/layout/AreaSidebar";
-import {
-  AutomationSidebarList,
-  useNewAutomationAction,
-} from "./pages/automations/AutomationSidebarList";
+import { paneRowForPath } from "./components/layout/paneRows";
+import { useNewAutomationAction } from "./pages/automations/newAutomation";
+import { InboxDataProvider } from "./review-desk/inboxData";
+import { InboxNav } from "./review-desk/InboxNav";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
@@ -204,9 +203,22 @@ export function DashboardShell() {
   return (
     <InboxListProvider>
       <DocumentTitleProvider>
-        <Shell />
+        <ShellInboxData>
+          <Shell />
+        </ShellInboxData>
       </DocumentTitleProvider>
     </InboxListProvider>
+  );
+}
+
+/**
+ * One Inbox read feeds the pane on every page, the phone navigation, and
+ * the Inbox lists.
+ */
+function ShellInboxData(props: { children: ReactNode }) {
+  const signedIn = Boolean(useDashboardCoreData().data?.me.user.email);
+  return (
+    <InboxDataProvider signedIn={signedIn}>{props.children}</InboxDataProvider>
   );
 }
 
@@ -262,7 +274,6 @@ function Shell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
-  const automationsTab = paneTabForPath(location.pathname) === "automations";
   const newAutomation = useNewAutomationAction();
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
@@ -307,14 +318,15 @@ function Shell() {
         userPages.filter((page) => page.navigation === "profile"),
       )
     : [];
-  // Outside the tabs, the pane lists the area's pages. Phones show that
-  // list first at the area's root, then each page with a way back to it.
+  // Away from the destinations, the pane lists the area's pages. Phones
+  // show that list first at the area's root, then each page with a way
+  // back to it.
   // An area of sections on one page, such as Settings, opens that page.
   const sidebarFits = useSidebarFits();
   const area = useArea(
     location.pathname,
     { primary: primaryNavItems, profile: profileNavItems },
-    Boolean(paneTabForPath(location.pathname)),
+    paneRowForPath(location, primaryNavItems, undefined) !== undefined,
   );
   const areaListed =
     area !== undefined && Boolean(area.root) && areaListsPages(area);
@@ -378,8 +390,8 @@ function Shell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        {/* The Inbox puts its own entries in the pane. Other pages get the
-            pane with the primary destinations only. */}
+        {/* The Inbox mounts its own pane. An area lists its pages; every
+            other page lists the destinations. */}
         {workspace ? null : (
           <div
             className={cn(
@@ -387,12 +399,21 @@ function Shell() {
               !paneOpen && "md:hidden",
             )}
           >
-            {automationsTab ? (
-              <ListPane newAction={newAutomation} tab="automations">
-                <AutomationSidebarList />
+            {area ? (
+              <ListPane>
+                <AreaSidebar area={area} />
               </ListPane>
             ) : (
-              <ListPane>{area ? <AreaSidebar area={area} /> : null}</ListPane>
+              <ListPane
+                newAction={
+                  location.pathname.startsWith("/automations")
+                    ? newAutomation
+                    : undefined
+                }
+                scrollList="destinations"
+              >
+                <InboxNav />
+              </ListPane>
             )}
           </div>
         )}
@@ -406,8 +427,13 @@ function Shell() {
           }
         >
           <DashboardChrome
-            // Conversation pages put these in their own header.
-            desktopControls={workspace ? undefined : <PaneCollapsedControls />}
+            // Conversation pages and the Automations list put these in
+            // their own header.
+            desktopControls={
+              workspace || location.pathname === "/automations" ? undefined : (
+                <PaneCollapsedControls />
+              )
+            }
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -543,17 +569,8 @@ function Shell() {
               />
               <Route
                 element={
-                  loading ? (
-                    <AutomationsPageLayout>
-                      <AutomationsRouteLoading
-                        label="Loading automations"
-                        title="Automations"
-                      />
-                    </AutomationsPageLayout>
-                  ) : loggedIn ? (
-                    <AutomationsPageLayout>
-                      <AutomationsPage enabled={loggedIn} />
-                    </AutomationsPageLayout>
+                  loading || loggedIn ? (
+                    <AutomationsPage enabled={loggedIn} />
                   ) : (
                     <Navigate replace to="/" />
                   )
@@ -600,10 +617,7 @@ function Shell() {
                   loading ? (
                     <ConversationWorkspaceLoading detail={false} />
                   ) : data ? (
-                    <ConversationWorkspace
-                      detail={conversationDetail}
-                      signedIn={loggedIn}
-                    />
+                    <ConversationWorkspace detail={conversationDetail} />
                   ) : (
                     <LoadingView
                       label={query.error?.message ?? "Dashboard unavailable"}
@@ -630,10 +644,7 @@ function Shell() {
                   loading ? (
                     <ConversationWorkspaceLoading detail={false} />
                   ) : data ? (
-                    <ConversationWorkspace
-                      detail={conversationDetail}
-                      signedIn={loggedIn}
-                    />
+                    <ConversationWorkspace detail={conversationDetail} />
                   ) : (
                     <LoadingView
                       label={query.error?.message ?? "Dashboard unavailable"}
@@ -647,10 +658,7 @@ function Shell() {
                   loading ? (
                     <ConversationWorkspaceLoading detail />
                   ) : data ? (
-                    <ConversationWorkspace
-                      detail={conversationDetail}
-                      signedIn={loggedIn}
-                    />
+                    <ConversationWorkspace detail={conversationDetail} />
                   ) : (
                     <LoadingView
                       label={query.error?.message ?? "Dashboard unavailable"}

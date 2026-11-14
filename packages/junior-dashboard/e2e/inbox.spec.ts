@@ -41,11 +41,7 @@ test("lists To do first, and the tab badge counts it", async ({
     .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
   const badge = (await tab.getAttribute("aria-label"))!.replace(/\D/g, "");
-  await expect(
-    page.getByRole("navigation", { name: "Inbox" }).getByRole("link", {
-      name: `Inbox ${badge}`,
-    }),
-  ).toBeVisible();
+  await expect(tab).toHaveText(new RegExp(`^Inbox\\s*${badge}$`));
   await expect(todo.getByText(badge, { exact: true })).toBeVisible();
   // The Inbox has no heading of its own, and closed items show only in Done.
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
@@ -79,7 +75,7 @@ test("each entry lists its own rows under its name", async ({
     open: [rollout, license, audit, prReady, migration, prMerge, prReview],
   });
   await page.goto(`${dashboard.baseURL}/`);
-  const nav = page.getByRole("navigation", { name: "Inbox" });
+  const nav = page.getByRole("navigation", { name: "Primary" });
   // An entry counts what waits on the viewer, like the badge: the
   // "Pull request ready for review" notice does not.
   await expect(nav.getByRole("link")).toHaveText([
@@ -87,9 +83,9 @@ test("each entry lists its own rows under its name", async ({
     /^Snoozed/,
     /^Done$/,
     /^Conversations$/,
+    /^Automations/,
     /^Pull requests\s*2$/,
     /^Decisions\s*4$/,
-    /^Automations/,
     new RegExp(checkout),
     "Show all",
   ]);
@@ -197,7 +193,7 @@ test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     todo.getByRole("link", { name: new RegExp(checkout) }),
   ).toHaveCount(0);
 
-  const nav = page.getByRole("navigation", { name: "Inbox" });
+  const nav = page.getByRole("navigation", { name: "Primary" });
   await nav.getByRole("link", { name: /^Snoozed/ }).click();
   await expect(page).toHaveURL(/\/\?view=snoozed$/);
   await rowHead(page, checkout).click();
@@ -362,10 +358,11 @@ test("an Automations row expands in place, and only its buttons leave", async ({
     .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
 
-  await page.goto(`${dashboard.baseURL}/?view=automations`);
-  const blocked = page.getByRole("region", { name: "Blocked" });
-  await blocked.getByRole("button", { name: /Weekly project summary/ }).click();
-  await expect(page).toHaveURL(/\/\?view=automations$/);
+  // The Automations page lists them first, as To do, with the Inbox's rows.
+  await page.goto(`${dashboard.baseURL}/automations`);
+  const todo = page.getByRole("region", { exact: true, name: "To do" });
+  await todo.getByRole("button", { name: /Weekly project summary/ }).click();
+  await expect(page).toHaveURL(/\/automations$/);
   const details = page.getByRole("region", {
     name: "Weekly project summary: attention",
   });
@@ -452,7 +449,7 @@ test("Done lists closed items, and a row expands in place", async ({
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/`);
   await page
-    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: "Done", exact: true })
     .click();
   await expect(page).toHaveURL(/\/\?view=done$/);

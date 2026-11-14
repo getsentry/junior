@@ -37,7 +37,7 @@ test("the asks and Done load their next pages at the end of the list", async ({
   await expect(page.getByText("Loading more…")).toHaveCount(0);
 
   await page
-    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: "Done", exact: true })
     .click();
   await expect(
@@ -347,7 +347,7 @@ test("the entry counts cover the asks past the loaded pages", async ({
   await mockReviewItems(page, { open: [...decisions, ...prs], pageSize: 2 });
   await holdLaterReviewItemPages(page);
   await page.goto(`${dashboard.baseURL}/`);
-  const nav = page.getByRole("navigation", { name: "Inbox" });
+  const nav = page.getByRole("navigation", { name: "Primary" });
   await expect(
     page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
   ).toHaveCount(2);
@@ -372,7 +372,7 @@ test("the Automations entry counts from the server while its list fails", async 
     route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
   );
   await page.goto(`${dashboard.baseURL}/`);
-  const nav = page.getByRole("navigation", { name: "Inbox" });
+  const nav = page.getByRole("navigation", { name: "Primary" });
   // The same server count as the badge, not the list that failed to load.
   await expect(nav.getByRole("link", { name: /^Automations/ })).toHaveText(
     /^Automations\s*3$/,

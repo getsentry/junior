@@ -1,9 +1,9 @@
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight, Inbox } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
 import { cn } from "../../styles";
 import { useCurrentAnchor } from "./AnchorHeading";
-import { usePaneBackToTab } from "./PaneNav";
+import { usePaneBack, usePaneNavItems } from "./PaneNav";
 
 /** One page in an area, such as "Users" in System, or a section of one. */
 type AreaItem = {
@@ -22,7 +22,8 @@ type AreaItem = {
 };
 
 /**
- * A part of the dashboard outside the tabs, such as Settings or System.
+ * A part of the dashboard outside the pane's destinations, such as Settings
+ * or System.
  * Its pages list in the pane, like Android settings, so the pane is never
  * empty. The main pane shows the page that is picked.
  */
@@ -65,12 +66,15 @@ function areaItemHref(area: Area, item: AreaItem, phone: boolean) {
 }
 
 /**
- * List an area's pages in the pane, under the way back to the tab the
+ * List an area's pages in the pane, under the way back to the row the
  * reader came from. On phones the same list is the area's first screen.
  */
 export function AreaSidebar(props: { area: Area; phone?: boolean }) {
   const { pathname } = useLocation();
-  const back = usePaneBackToTab();
+  const back = usePaneBack();
+  const inboxCount = usePaneNavItems().find(
+    (item) => item.key === "inbox",
+  )?.count;
   const { area } = props;
   // Sections of the page that shows mark the one in view; pages mark the
   // one that shows.
@@ -89,13 +93,27 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
       )}
     >
       <div className="grid gap-1 px-3.5 pt-3 pb-2">
-        <Link
-          className="inline-flex w-fit items-center gap-1 rounded font-sans text-xs font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-          to={back.to}
-        >
-          <ArrowLeft aria-hidden="true" size={13} />
-          {back.label}
-        </Link>
+        {/* The way out, with the Inbox count, which every pane keeps in view. */}
+        <nav aria-label="Primary" className="flex items-center gap-2">
+          <Link
+            className="inline-flex w-fit items-center gap-1 rounded font-sans text-xs font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            to={back.to}
+          >
+            <ArrowLeft aria-hidden="true" size={13} />
+            {back.label}
+          </Link>
+          <span className="flex-1" />
+          {inboxCount ? (
+            <Link
+              aria-label={`Inbox, ${inboxCount} waiting`}
+              className="inline-flex items-center gap-1 rounded-full bg-dashboard-accent px-1.5 font-sans text-2xs leading-4 font-semibold tabular-nums text-dashboard-text-inverse no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+              to="/"
+            >
+              <Inbox aria-hidden="true" size={11} strokeWidth={2.2} />
+              {inboxCount}
+            </Link>
+          ) : null}
+        </nav>
         <h2 className="m-0 font-display text-lg font-medium leading-tight tracking-tight text-dashboard-text">
           {area.label}
         </h2>

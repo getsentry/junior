@@ -48,3 +48,12 @@ export function InboxSection(props: {
     </section>
   );
 }
+
+/** What an Inbox list, or a list in its style, says when it has no rows. */
+export function InboxEmptyState(props: { label: string }) {
+  return (
+    <p className="m-0 py-16 text-center font-display text-base font-medium text-dashboard-text">
+      {props.label}
+    </p>
+  );
+}

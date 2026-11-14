@@ -197,10 +197,11 @@ test("opens conversation details beside the chat", async ({
     page.getByText("PAYMENTS-42 contained 418 events."),
   ).toBeVisible();
 
+  // The view that opened the Conversation stays marked in the pane.
   await expect(
     page
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Inbox/ }),
+      .getByRole("link", { name: "Conversations", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 

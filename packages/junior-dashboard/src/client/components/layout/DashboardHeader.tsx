@@ -2,8 +2,6 @@ import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
 
-import { PaneTabs } from "./PaneNav";
-
 import { getDashboardAgentName } from "../../agentName";
 import { COMMAND_PALETTE_LABEL } from "../CommandPalette";
 import { Button } from "../ui/button";
@@ -16,6 +14,7 @@ import {
   useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
+import { PaneDestinations } from "../../review-desk/PaneDestinations";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 
@@ -189,9 +188,11 @@ export function DashboardHeader(props: {
                   <Search aria-hidden="true" className="size-4" />
                   {COMMAND_PALETTE_LABEL}
                 </Button>
+                {/* The same destinations as the desktop pane. */}
+                <div className="mt-2">
+                  <PaneDestinations phone />
+                </div>
               </nav>
-              {/* The same tabs as the desktop pane. */}
-              <PaneTabs className="mt-2" />
               <MobileSecondaryNavigationSlot />
               {props.mobileProfile ? (
                 <div className="mt-4 border-t border-dashboard-border-subtle pt-3">

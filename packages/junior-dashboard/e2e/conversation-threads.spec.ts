@@ -34,7 +34,7 @@ function conversationsList(page: Page) {
 /** Open the Conversations bundle from the Inbox entries, in the app. */
 async function openConversations(page: Page) {
   await page
-    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { exact: true, name: "Conversations" })
     .click();
 }

@@ -107,7 +107,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
     name: "System",
   });
   await expect(systemNavigation.getByRole("link")).toHaveText([
+    // The way back, then the Inbox count that every pane keeps in view.
     "Inbox",
+    /^\d+$/,
     "Overview",
     "People",
     "Locations",
@@ -293,8 +295,9 @@ test("keeps System navigation usable on mobile", async ({
     name: "System",
   });
   await expect(systemNavigation.getByRole("link")).toHaveText([
-    // The way back to the last tab leads the list.
+    // The way back to the last row leads the list, with the Inbox count.
     "Inbox",
+    /^\d+$/,
     "Overview",
     "People",
     "Locations",

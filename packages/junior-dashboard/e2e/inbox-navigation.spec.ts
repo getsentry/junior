@@ -104,7 +104,7 @@ test("+ opens a new Conversation in the main area", async ({
   await expect(page.getByLabel("Start a conversation")).toBeFocused();
   // The pane keeps its entries beside the composer.
   await expect(
-    page.getByRole("navigation", { name: "Inbox" }).getByRole("link", {
+    page.getByRole("navigation", { name: "Primary" }).getByRole("link", {
       name: /^Inbox/,
     }),
   ).toBeVisible();
@@ -435,7 +435,7 @@ test("a failed page still lets another list show its loaded rows", async ({
   // The Inbox shows its first rows. The failure does not stop the rows
   // that are already loaded from showing as the reader scrolls.
   await page
-    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("navigation", { name: "Primary" })
     .getByRole("link", { name: /^Inbox\b/ })
     .click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
@@ -479,7 +479,7 @@ test.describe("on a phone", () => {
   }) => {
     await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/`);
-    const entries = page.getByRole("navigation", { name: "Inbox" });
+    const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
     await screenshot(page, "inbox-phone-entries", { lightTheme: true });
 
@@ -510,7 +510,7 @@ test.describe("on a phone, from the entries", () => {
   }) => {
     await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/`);
-    const entries = page.getByRole("navigation", { name: "Inbox" });
+    const entries = page.getByRole("navigation", { name: "Primary" });
     // A list leaves its path as the place Back returns to.
     await entries.getByRole("link", { name: /^Decisions/ }).click();
     await expect(page).toHaveURL(/\/\?view=decisions$/);

@@ -12,6 +12,7 @@ import type { AutomationSummary } from "@sentry/junior/api/schema";
 
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
+import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -35,7 +36,6 @@ import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
 import { DOCK_GUTTER, useDockHover } from "./useDockHover";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
-  automationSections,
   INBOX_VIEW_LABELS,
   inboxViewPath,
   itemRowSubtitle,
@@ -46,7 +46,7 @@ import {
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
-import { InboxSection } from "./InboxSection";
+import { InboxEmptyState, InboxSection } from "./InboxSection";
 import {
   useReviewItemAction,
   useReviewItemData,
@@ -155,14 +155,6 @@ function RowsLoading() {
         </div>
       ))}
     </div>
-  );
-}
-
-function EmptyState(props: { label: string }) {
-  return (
-    <p className="m-0 py-16 text-center font-display text-base font-medium text-dashboard-text">
-      {props.label}
-    </p>
   );
 }
 
@@ -668,29 +660,10 @@ export function InboxList(props: {
   } else if (view === "conversations") {
     body =
       streamRows.length === 0 ? (
-        <EmptyState label="No conversations yet" />
+        <InboxEmptyState label="No conversations yet" />
       ) : (
         stream()
       );
-  } else if (view === "automations") {
-    const sections = automationSections(data.automations);
-    body = data.automationsError ? (
-      automationsError
-    ) : sections.length === 0 ? (
-      <EmptyState label="No Automations need attention" />
-    ) : (
-      sections.map((section) => (
-        <InboxSection
-          collapsed={collapsed.has(section.label)}
-          count={section.automations.length}
-          key={section.label}
-          label={section.label}
-          onToggle={() => toggleSection(section.label)}
-        >
-          {section.automations.map(automationRow)}
-        </InboxSection>
-      ))
-    );
   } else if (view === "done") {
     // A failed first read has no rows to page, so it shows its own retry.
     body =
@@ -704,7 +677,7 @@ export function InboxList(props: {
       ) : !done.query.data ? (
         <RowsLoading />
       ) : doneItems.length === 0 ? (
-        <EmptyState label="Nothing done yet" />
+        <InboxEmptyState label="Nothing done yet" />
       ) : (
         <InboxDoneView
           collapsed={collapsed}
@@ -719,7 +692,7 @@ export function InboxList(props: {
   } else if (view === "snoozed") {
     body =
       data.snoozedRows.length === 0 ? (
-        <EmptyState label="Nothing snoozed" />
+        <InboxEmptyState label="Nothing snoozed" />
       ) : (
         // Snoozed rows expand in place like the others, and wake there.
         <ul className="m-0 grid gap-2 p-0 pt-1" {...dock}>
@@ -730,7 +703,7 @@ export function InboxList(props: {
     body = pullRequests.loading ? (
       <RowsLoading />
     ) : pullRequests.sections.length === 0 ? (
-      <EmptyState label="Nothing left here" />
+      <InboxEmptyState label="Nothing left here" />
     ) : (
       pullRequests.sections.map((section) => (
         <InboxSection
@@ -770,7 +743,7 @@ export function InboxList(props: {
     const sections = viewSections(viewRows(data.awake, view), titleOf);
     body =
       sections.length === 0 ? (
-        <EmptyState label="Nothing left here" />
+        <InboxEmptyState label="Nothing left here" />
       ) : (
         sections.map((section) => (
           <InboxSection
@@ -795,12 +768,7 @@ export function InboxList(props: {
       className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
     >
       {heading && !props.phone ? (
-        <div className="flex h-header min-w-0 items-center gap-2 border-b border-dashboard-border-subtle pr-4 pl-6">
-          <PaneCollapsedControls />
-          <h1 className="m-0 font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text">
-            {heading}
-          </h1>
-        </div>
+        <HeaderBar title={heading} />
       ) : (
         <div className="absolute top-2 left-3 z-10 max-md:hidden">
           <PaneCollapsedControls />
@@ -843,11 +811,9 @@ export function InboxList(props: {
 export function InboxRedirect() {
   const [params] = useSearchParams();
   const bundle = params.get("bundle");
+  if (bundle === "automations") return <Navigate replace to="/automations" />;
   const view =
-    bundle === "prs" ||
-    bundle === "decisions" ||
-    bundle === "automations" ||
-    bundle === "done"
+    bundle === "prs" || bundle === "decisions" || bundle === "done"
       ? bundle
       : "inbox";
   return (

@@ -1,16 +1,6 @@
-import {
-  CircleCheck,
-  Clock3,
-  GitPullRequest,
-  Inbox,
-  MessageCircleQuestion,
-  MessagesSquare,
-  Pin,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
+import { Pin } from "lucide-react";
 import { useCallback } from "react";
-import { Link, useLocation, useSearchParams } from "react-router";
+import { Link } from "react-router";
 
 import { Spinner } from "../components/ui/spinner";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
@@ -24,80 +14,8 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
 import { useInboxReturnHere } from "./inboxListState";
-import {
-  INBOX_VIEW_LABELS,
-  inboxViewPath,
-  parseInboxView,
-  type InboxView,
-} from "./inboxModel";
-
-const ICONS: Record<InboxView, LucideIcon> = {
-  automations: Workflow,
-  conversations: MessagesSquare,
-  decisions: MessageCircleQuestion,
-  done: CircleCheck,
-  inbox: Inbox,
-  prs: GitPullRequest,
-  snoozed: Clock3,
-};
-
-const entryClass = (selected: boolean, phone?: boolean) =>
-  cn(
-    "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-    phone ? "h-11" : "h-8",
-    selected
-      ? "bg-dashboard-accent/[0.12] text-dashboard-accent-text"
-      : "text-dashboard-text hover:bg-dashboard-fill-hover",
-  );
-
-function Entry(props: {
-  count?: number;
-  phone?: boolean;
-  selected: boolean;
-  /** The count waits on the viewer, so it shows in the accent. */
-  strong?: boolean;
-  view: InboxView;
-}) {
-  const Icon = ICONS[props.view];
-  return (
-    <li className="list-none">
-      <Link
-        aria-current={props.selected ? "page" : undefined}
-        className={entryClass(props.selected, props.phone)}
-        // On a phone the Inbox entry needs `?view=`, since `/` alone lists
-        // the entries.
-        to={
-          props.phone && props.view === "inbox"
-            ? "/?view=inbox"
-            : inboxViewPath(props.view)
-        }
-      >
-        <Icon
-          aria-hidden="true"
-          className={cn(
-            "size-4",
-            props.selected ? "text-current" : "text-dashboard-text-muted",
-          )}
-          strokeWidth={1.9}
-        />
-        <span className="truncate font-medium">
-          {INBOX_VIEW_LABELS[props.view]}
-        </span>
-        {props.count ? (
-          props.strong ? (
-            <span className="rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
-              {props.count}
-            </span>
-          ) : (
-            <span className="text-xs tabular-nums text-dashboard-text-faint">
-              {props.count}
-            </span>
-          )
-        ) : null}
-      </Link>
-    </li>
-  );
-}
+import { inboxViewPath } from "./inboxModel";
+import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -116,7 +34,7 @@ function InFlightRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-        className={entryClass(props.selected, props.phone)}
+        className={paneEntryClass(props.selected, props.phone)}
         draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       >
@@ -141,18 +59,16 @@ function InFlightRow(props: {
 }
 
 /**
- * The Inbox sidebar, like Google Inbox: no list of Conversations, only the
- * entries that open a list in the main area. The Inbox, Snoozed, and Done
- * come first, then the bundles, then the Conversations in flight, running
- * or pinned, each one click away. Pins drag into a new order here.
+ * The pane, like Google Inbox: no list of Conversations, only the
+ * destinations that open a list in the main area, then the Conversations
+ * in flight, running or pinned, each one click away. Pins drag into a new
+ * order here. Every page with destinations shows it.
  */
 export function InboxNav(props: {
   /** On a phone the entries are a page, and each opens its list page. */
   phone?: boolean;
   selectedConversationId?: string;
 }) {
-  const { pathname } = useLocation();
-  const [params] = useSearchParams();
   const data = useInboxData();
   // On a phone the entries are a screen of their own, so Back from what
   // they open returns here.
@@ -164,21 +80,9 @@ export function InboxNav(props: {
       showActionError(conversation, "Could not reorder"),
     [showActionError],
   );
-  const onList = pathname === "/" && (!props.phone || params.has("view"));
-  const current = onList ? parseInboxView(params.get("view")) : undefined;
-  const entry = (view: InboxView, strong?: boolean) => (
-    <Entry
-      count={data.counts[view]}
-      key={view}
-      phone={props.phone}
-      selected={current === view}
-      strong={strong}
-      view={view}
-    />
-  );
   return (
     <nav
-      aria-label="Inbox"
+      aria-label="Primary"
       className={cn(
         "thin-scrollbar h-full min-h-0 overflow-y-auto overscroll-contain bg-dashboard-surface-panel pb-6",
         props.phone
@@ -186,28 +90,7 @@ export function InboxNav(props: {
           : "border-r border-dashboard-border px-3 pt-2",
       )}
     >
-      <ul className="m-0 grid gap-0.5 p-0">
-        {entry("inbox", true)}
-        {data.signedIn ? (
-          <>
-            {entry("snoozed")}
-            {entry("done")}
-          </>
-        ) : null}
-      </ul>
-      <h2 className="m-0 px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
-        Bundles
-      </h2>
-      <ul className="m-0 grid gap-0.5 p-0">
-        {entry("conversations")}
-        {data.signedIn ? (
-          <>
-            {entry("prs")}
-            {entry("decisions")}
-            {entry("automations", Boolean(data.counts.automations))}
-          </>
-        ) : null}
-      </ul>
+      <PaneDestinations phone={props.phone} />
       {data.inFlightCount > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
