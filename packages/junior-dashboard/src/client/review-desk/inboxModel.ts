@@ -64,9 +64,9 @@ export function inboxViewPath(
   return search ? `/?${search}` : "/";
 }
 
-/** A pull request ask or notice from a plugin, such as GitHub. */
-function isPullRequestItem(item: ReviewItemPayload): boolean {
-  return Boolean(item.subject?.url && /\/pull\/\d+/.test(item.subject.url));
+/** An ask or notice about a code change, such as a GitHub pull request. */
+function isCodeChangeItem(item: ReviewItemPayload): boolean {
+  return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
@@ -79,7 +79,7 @@ export function itemsInView(
   items: readonly ReviewItemPayload[],
   view: "decisions" | "prs",
 ): ReviewItemPayload[] {
-  return items.filter(view === "prs" ? isPullRequestItem : isDecisionItem);
+  return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
 function singleRow(item: ReviewItemPayload): InboxBundle {
@@ -155,6 +155,7 @@ export function doneSections(
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
 function pullRequestState(item: ReviewItemPayload): string {
+  if (!isCodeChangeItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }

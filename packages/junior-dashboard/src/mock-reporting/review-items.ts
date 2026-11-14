@@ -184,6 +184,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
+        objectType: "code_change",
         title: "Update Junior to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
@@ -198,6 +199,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
+        objectType: "code_change",
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
       },
@@ -242,6 +244,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
+        objectType: "code_change",
         title: "Tabs in the dashboard sidebar",
         url: "https://github.com/getsentry/junior/pull/3052",
       },
@@ -257,6 +260,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
+        objectType: "code_change",
         title: "Fix the stable list order",
         url: "https://github.com/getsentry/junior/pull/3037",
       },
@@ -495,8 +499,8 @@ export function readMockReviewItemCounts(
   return {
     decisions: needsViewer.filter((item) => item.request).length,
     needsViewer: needsViewer.length,
-    codeChanges: needsViewer.filter((item) =>
-      /\/pull\/\d+/.test(item.subject?.url ?? ""),
+    codeChanges: needsViewer.filter(
+      (item) => item.subject?.objectType === "code_change",
     ).length,
     snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
       snoozedIds.includes(item.id),

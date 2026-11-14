@@ -79,6 +79,7 @@ export const prReady = {
   kind: "notice" as const,
   subject: {
     id: "acme/payments#42",
+    objectType: "code_change" as const,
     title: "fix(payments): Retry declined webhooks",
     url: "https://github.com/acme/payments/pull/42",
   },
@@ -135,6 +136,7 @@ export const prMerge = {
   kind: "action" as const,
   subject: {
     id: "https://github.com/getsentry/payments/pull/42",
+    objectType: "code_change" as const,
     title: "Retry checkout writes after lock timeouts",
     url: "https://github.com/getsentry/payments/pull/42",
   },
@@ -151,6 +153,7 @@ export const prReview = {
   id: "item-pr-review",
   subject: {
     id: "https://github.com/getsentry/payments/pull/91",
+    objectType: "code_change" as const,
     title: "Pin the release train",
     url: "https://github.com/getsentry/payments/pull/91",
   },
@@ -240,8 +243,8 @@ export async function mockReviewItems(
           decisions: needsViewer.filter((i) => "request" in i && i.request)
             .length,
           needsViewer: needsViewer.length,
-          codeChanges: needsViewer.filter((i) =>
-            /\/pull\/\d+/.test(i.subject?.url ?? ""),
+          codeChanges: needsViewer.filter(
+            (i) => i.subject?.objectType === "code_change",
           ).length,
           snoozed: open.filter((i) => snoozed.includes(i.id)).length,
         },
