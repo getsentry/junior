@@ -27,7 +27,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
@@ -56,7 +56,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { PLAN_DELTA_TAG, renderPlanSnapshot } from "@/chat/plan/prompt";
+import { listPlanItems } from "@/chat/plan/store";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -217,16 +218,25 @@ function withoutSections(text: string, tags: string[]): string {
   return tags.reduce(
     (result, tag) =>
       result.replace(
-        new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
+        new RegExp(
+          `\\n\\n<${tag}(?: [^>\\n]*)?>\\n[\\s\\S]*?\\n</${tag}>`,
+          "g",
+        ),
         "",
       ),
     text,
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
+/**
+ * Remove the sections that only the Turn that received them can use, and
+ * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ */
 function withoutRequestContext(text: string): string {
-  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+  return withoutSections(text, [
+    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
+    PLAN_DELTA_TAG,
+  ]);
 }
 
 /**
@@ -570,6 +580,22 @@ export function renderCompactionSummary(summary: string): string {
   ].join("\n");
 }
 
+/**
+ * Render the summary message of a history replacement. It ends with one
+ * `<plan>` snapshot of the open items, read from the database, so the plan
+ * and its version survive the replacement.
+ */
+export async function renderCompactionSummaryWithPlan(
+  summary: string,
+  conversationId: string,
+): Promise<string> {
+  const snapshot = renderPlanSnapshot(
+    await listPlanItems(getSqlExecutor(), conversationId),
+  );
+  const text = renderCompactionSummary(summary);
+  return snapshot ? `${text}\n\n${snapshot}` : text;
+}
+
 function timestampOf(message: PiMessage): number | undefined {
   const { timestamp } = message as { timestamp?: unknown };
   return typeof timestamp === "number" ? timestamp : undefined;
@@ -903,7 +929,7 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      appendOpenPlan(renderCompactionSummary(summary), source.messages),
+      await renderCompactionSummaryWithPlan(summary, args.conversationId),
     ),
     provenance: contextProvenance,
   };

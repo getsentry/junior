@@ -179,7 +179,11 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updatePlan: () => createUpdatePlanTool(),
+  updatePlan: (run) =>
+    createUpdatePlanTool(
+      run.context,
+      run.reviewItemServices().findMentionedUserId,
+    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
   bash: () => createBashTool(),

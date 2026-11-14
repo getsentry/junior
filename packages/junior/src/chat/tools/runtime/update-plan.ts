@@ -1,46 +1,239 @@
 import * as z from "zod";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { findChildAgentConversationId } from "@/chat/agent-invocations/bindings";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { renderPlanAssignee } from "@/chat/plan/prompt";
+import {
+  changePlan,
+  listPlanItems,
+  type StoredPlanAssignee,
+} from "@/chat/plan/store";
+import {
+  isOpenPlanItemStatus,
+  PLAN_ITEM_STATUSES,
+  type PlanItem,
+} from "@/chat/plan/types";
+import {
+  resolveAssignee,
+  type FindMentionedUserId,
+} from "@/chat/review-items/assignees";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-const planItemSchema = z
-  .object({
-    step: z.string().describe("Task step text."),
-    status: z
-      .enum(["pending", "in_progress", "completed"])
-      .describe("Step status."),
-  })
-  .strict();
+/** Text that assigns an item to the plan's own agent. */
+const SELF_ASSIGNEE = "self";
+
+const MAX_ITEMS_PER_CALL = 50;
+
+const statusSchema = z
+  .enum(PLAN_ITEM_STATUSES)
+  .describe("done and cancelled close the item.");
+
+const assigneeSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(320)
+  .describe(
+    "Who does the item: `self`, the name or conversation_id of a child agent, or a person's email or mention such as `<@U123>`. Null or omitted on a new item means `self`.",
+  );
+
+const titleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .describe("Short outcome to reach.");
+
+const notesSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2000)
+  .describe(
+    "What you need to do the item later, such as the brief for a child agent.",
+  );
+
+const itemIdSchema = z
+  .number()
+  .int()
+  .positive()
+  .describe("Plan item id from an earlier result or a plan block.");
+
+const changesSchema = <T extends z.ZodTypeAny>(item: T) =>
+  z.array(item).min(1).max(MAX_ITEMS_PER_CALL).nullable().optional();
 
 const updatePlanInputSchema = z
   .object({
-    explanation: z
-      .string()
-      .optional()
-      .describe("Optional explanation for this plan update."),
-    plan: z.array(planItemSchema).describe("The list of steps"),
+    add: changesSchema(
+      z
+        .object({
+          title: titleSchema,
+          notes: notesSchema.nullable().optional(),
+          status: statusSchema
+            .nullable()
+            .optional()
+            .describe("Null or omitted means pending."),
+          assignee: assigneeSchema.nullable().optional(),
+        })
+        .strict(),
+    ).describe("New items."),
+    update: changesSchema(
+      z
+        .object({
+          id: itemIdSchema,
+          title: titleSchema.nullable().optional(),
+          notes: notesSchema
+            .nullable()
+            .optional()
+            .describe("New notes. Null clears them; omit to keep them."),
+          status: statusSchema.nullable().optional(),
+          assignee: assigneeSchema.nullable().optional(),
+        })
+        .strict(),
+    ).describe("Changes to existing items. Null or omitted fields stay."),
+    remove: changesSchema(itemIdSchema).describe(
+      "Ids of items added by mistake. Close finished or dropped work with a status instead.",
+    ),
   })
   .strict();
+
+const planItemOutputSchema = z
+  .object({
+    id: z.number().int(),
+    title: z.string(),
+    notes: z.string().optional(),
+    status: z.enum(PLAN_ITEM_STATUSES),
+    assignee: z.string(),
+  })
+  .strict();
+
+const updatePlanOutputSchema = juniorToolOutputSchema.extend({
+  items: z
+    .array(planItemOutputSchema)
+    .describe(
+      "Items that this call added or changed, or every open item when it changed none.",
+    ),
+  removed_ids: z.array(z.number().int()).optional(),
+});
+
+/** One Plan item as `updatePlan` returns it. */
+export type UpdatePlanOutputItem = z.output<typeof planItemOutputSchema>;
 
 export const updatePlanToolDefinition = zodToolDefinition({
   annotations: {
     destructiveHint: false,
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: false,
     readOnlyHint: false,
   },
-  description: [
-    "Updates the task plan.",
-    "Provide an optional explanation and a list of plan items, each with a step and status.",
-    "At most one step can be in_progress at a time. Mark finished steps completed and mark all steps completed when the work is done.",
-  ].join("\n"),
+  description:
+    "Change the plan: the durable list of work that this conversation has not finished. It survives context compaction and sandbox resets. Each assignee can have one item in progress. Returns the items that changed, or every open item when the call changes nothing.",
   inputSchema: updatePlanInputSchema,
+  outputSchema: updatePlanOutputSchema,
 });
 
-/** Create the internal tool the model uses to replace its task plan. */
-export function createUpdatePlanTool() {
+function outputItem(item: PlanItem): UpdatePlanOutputItem {
+  return {
+    id: item.id,
+    title: item.title,
+    ...(item.notes ? { notes: item.notes } : undefined),
+    status: item.status,
+    assignee: renderPlanAssignee(item.assignee),
+  };
+}
+
+/**
+ * Resolve the assignee text of the model: the plan's own agent, one of its
+ * child agents, or a person. Only a child of this conversation can take an
+ * item, as with `stopAgent`.
+ */
+async function resolvePlanAssignee(
+  context: Pick<ToolRuntimeContext, "conversationId">,
+  value: string,
+  findMentionedUserId: FindMentionedUserId,
+): Promise<StoredPlanAssignee> {
+  const text = value.trim();
+  if (
+    text.toLowerCase() === SELF_ASSIGNEE ||
+    text === context.conversationId
+  ) {
+    return { conversationId: context.conversationId };
+  }
+  const childConversationId = await findChildAgentConversationId({
+    parentConversationId: context.conversationId,
+    target: text,
+  });
+  if (childConversationId) return { conversationId: childConversationId };
+  // An email or a mention. Its errors say how to fix a person who has no
+  // Junior User.
+  if (text.includes("@")) {
+    const db = getDb();
+    const tenant = (
+      await readConversationAccessFromSql(db, [context.conversationId])
+    ).get(context.conversationId)?.tenant;
+    const person = await resolveAssignee(db, text, tenant, findMentionedUserId);
+    if ("userId" in person) return { userId: person.userId };
+  }
+  throw new ToolInputError(
+    `Unknown assignee ${JSON.stringify(text)}. Use ${SELF_ASSIGNEE}, the name or conversation_id of a child agent from listAgents, or the email or mention of one person.`,
+  );
+}
+
+/** Create the tool that changes the durable plan of one conversation. */
+export function createUpdatePlanTool(
+  context: Pick<ToolRuntimeContext, "conversationId">,
+  findMentionedUserId: FindMentionedUserId,
+) {
+  const assignee = (value: string) =>
+    resolvePlanAssignee(context, value, findMentionedUserId);
   return zodTool({
     ...updatePlanToolDefinition,
-    execute: async () => ({
-      content: [{ type: "text" as const, text: "Plan updated" }],
-    }),
+    execute: async (input) => {
+      const add = input.add ?? [];
+      const update = input.update ?? [];
+      const remove = input.remove ?? [];
+      const executor = getSqlExecutor();
+      if (add.length + update.length + remove.length === 0) {
+        const items = await listPlanItems(executor, context.conversationId);
+        return {
+          items: items
+            .filter((item) => isOpenPlanItemStatus(item.status))
+            .map(outputItem),
+        };
+      }
+      const items = await changePlan(executor, {
+        conversationId: context.conversationId,
+        nowMs: Date.now(),
+        change: {
+          add: await Promise.all(
+            add.map(async (item) => ({
+              title: item.title,
+              ...(item.notes ? { notes: item.notes } : undefined),
+              status: item.status ?? "pending",
+              assignee: await assignee(item.assignee ?? SELF_ASSIGNEE),
+            })),
+          ),
+          update: await Promise.all(
+            update.map(async (item) => ({
+              id: item.id,
+              ...(item.title ? { title: item.title } : undefined),
+              ...(item.notes !== undefined ? { notes: item.notes } : undefined),
+              ...(item.status ? { status: item.status } : undefined),
+              ...(item.assignee
+                ? { assignee: await assignee(item.assignee) }
+                : undefined),
+            })),
+          ),
+          remove,
+        },
+      });
+      return {
+        items: items.map(outputItem),
+        ...(remove.length > 0 ? { removed_ids: remove } : undefined),
+      };
+    },
   });
 }

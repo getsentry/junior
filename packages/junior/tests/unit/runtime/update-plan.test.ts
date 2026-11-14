@@ -3,82 +3,72 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
   buildPlanStatus,
   latestProgressStatus,
 } from "@/chat/runtime/report-progress";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 
-const plan = [
-  { step: "Inspect current behavior", status: "completed" as const },
-  { step: "Implement the MVP", status: "in_progress" as const },
-  { step: "Run checks", status: "pending" as const },
-];
+const output = {
+  items: [
+    { id: 4, title: "Brief the child", status: "pending", assignee: "Echo" },
+    {
+      id: 5,
+      title: "Implement the MVP",
+      status: "in_progress",
+      assignee: "self",
+    },
+  ],
+};
 
-describe("task plan", () => {
-  it("projects the active step as assistant status", () => {
-    expect(buildPlanStatus({ plan })).toEqual({ text: "Implement the MVP" });
+function planResult(details: unknown, id = "plan-1"): PiMessage[] {
+  return [
+    fauxAssistantMessage([fauxToolCall("updatePlan", {}, { id })], {
+      stopReason: "toolUse",
+    }),
+    {
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "updatePlan",
+      content: [{ type: "text", text: JSON.stringify(details) }],
+      isError: false,
+      timestamp: 1,
+    } as PiMessage,
+  ];
+}
+
+describe("plan status", () => {
+  it("shows the item that the plan's own agent has in progress", () => {
+    expect(buildPlanStatus(output)).toEqual({ text: "Implement the MVP" });
+    // A child agent's item in progress is not this agent's status.
     expect(
       buildPlanStatus({
-        plan: plan.map((item) => ({ ...item, status: "completed" })),
+        items: [{ ...output.items[0], status: "in_progress" }],
       }),
     ).toBeUndefined();
   });
 
-  it("recovers the latest plan from Pi history", () => {
-    expect(
-      latestProgressStatus([
-        fauxAssistantMessage(
-          [fauxToolCall("updatePlan", { plan }, { id: "plan-1" })],
-          {
-            stopReason: "toolUse",
-          },
-        ),
-      ]),
-    ).toEqual({ text: "Implement the MVP" });
-  });
-
-  it("does not revive older progress after the plan completes", () => {
+  it("recovers the status from the latest result that changed an own item", () => {
     expect(
       latestProgressStatus([
         fauxAssistantMessage(
           [fauxToolCall("reportProgress", { message: "Old status" })],
           { stopReason: "toolUse" },
         ),
+        ...planResult(output),
+        // Changing only a child's item keeps the status.
+        ...planResult({ items: [output.items[0]] }, "plan-2"),
+      ]),
+    ).toEqual({ text: "Implement the MVP" });
+    // Closing the own item clears the status, without reviving older ones.
+    expect(
+      latestProgressStatus([
         fauxAssistantMessage(
-          [
-            fauxToolCall("updatePlan", {
-              plan: plan.map((item) => ({
-                ...item,
-                status: "completed",
-              })),
-            }),
-          ],
+          [fauxToolCall("reportProgress", { message: "Old status" })],
           { stopReason: "toolUse" },
         ),
+        ...planResult({ items: [{ ...output.items[1], status: "done" }] }),
       ]),
     ).toBeUndefined();
-  });
-
-  it("matches the Codex schema and result", async () => {
-    const tool = createUpdatePlanTool();
-    const input = tool.prepareArguments({
-      explanation: "Scope changed",
-      plan: [
-        { step: "First", status: "in_progress" },
-        { step: "Second", status: "in_progress" },
-      ],
-    });
-
-    expect(input).toEqual({
-      explanation: "Scope changed",
-      plan: [
-        { step: "First", status: "in_progress" },
-        { step: "Second", status: "in_progress" },
-      ],
-    });
-    await expect(tool.execute?.(input, {})).resolves.toEqual({
-      content: [{ type: "text", text: "Plan updated" }],
-    });
   });
 });

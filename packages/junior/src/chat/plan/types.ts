@@ -36,7 +36,9 @@ export interface PlanItem {
   /** Plan version of the latest change to the item. */
   version: number;
   /** The person who made the latest change. Unset when the plan's agent did. */
-  changedBy?: { userId: string; name?: string | undefined } | undefined;
+  changedBy?:
+    | { userId: string; email: string; name?: string | undefined }
+    | undefined;
   createdAtMs: number;
   updatedAtMs: number;
 }

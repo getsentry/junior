@@ -170,14 +170,26 @@ export async function changePlan(
           ),
         );
     }
+    // Write items that end in progress as pending first, then set them in
+    // progress. The unique index checks each statement, and only the final
+    // state is checked above, so no step in between can break it.
+    const endsInProgress = change.update
+      .filter(
+        (update) =>
+          (update.status ?? rows.get(update.id)!.status) === "in_progress",
+      )
+      .map((update) => update.id);
     const changedIds: number[] = [];
     for (const update of change.update) {
+      const status = endsInProgress.includes(update.id)
+        ? "pending"
+        : update.status;
       await db
         .update(juniorPlanItems)
         .set({
           ...(update.title !== undefined ? { title: update.title } : undefined),
           ...(update.notes !== undefined ? { notes: update.notes } : undefined),
-          ...(update.status ? { status: update.status } : undefined),
+          ...(status ? { status } : undefined),
           ...(update.assignee ? assigneeColumns(update.assignee) : undefined),
           changedByUserId: null,
           updatedAt: now,
@@ -190,6 +202,17 @@ export async function changePlan(
           ),
         );
       changedIds.push(update.id);
+    }
+    if (endsInProgress.length > 0) {
+      await db
+        .update(juniorPlanItems)
+        .set({ status: "in_progress" })
+        .where(
+          and(
+            eq(juniorPlanItems.conversationId, conversationId),
+            inArray(juniorPlanItems.id, endsInProgress),
+          ),
+        );
     }
     // Insert one at a time, so ids follow the order of `add`.
     for (const item of change.add) {
@@ -267,6 +290,7 @@ export async function listPlanItems(
       agentName: juniorAgentBindings.name,
       assignedUserEmail: assignedUser.primaryEmail,
       assignedUserName: assignedUser.displayName,
+      changedByEmail: changedByUser.primaryEmail,
       changedByName: changedByUser.displayName,
     })
     .from(juniorPlanItems)
@@ -293,6 +317,7 @@ export async function listPlanItems(
       agentName,
       assignedUserEmail,
       assignedUserName,
+      changedByEmail,
       changedByName,
     }) => ({
       id: item.id,
@@ -319,6 +344,7 @@ export async function listPlanItems(
         ? {
             changedBy: {
               userId: item.changedByUserId,
+              email: changedByEmail ?? "",
               ...(changedByName ? { name: changedByName } : undefined),
             },
           }

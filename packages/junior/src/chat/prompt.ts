@@ -729,6 +729,8 @@ type TurnContextPromptInput = {
   conversationNotes?: string[];
   /** Latest copy of each capability section in history, with its tags. */
   latestCapabilitySections?: Partial<Record<CapabilitySectionTag, string>>;
+  /** From `renderPlanDelta`: plan changes that others made. */
+  planDelta?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** From `renderScriptTools`. Set it only when history lacks this copy. */
@@ -834,6 +836,7 @@ export function buildTurnContextPrompt(
     !params.scriptTools &&
     !pluginPromptContributions &&
     !conversationNotes &&
+    !params.planDelta &&
     !disabledTools &&
     !userCustomization
   ) {
@@ -847,6 +850,7 @@ export function buildTurnContextPrompt(
     ...capabilitySections,
     pluginPromptContributions,
     conversationNotes,
+    params.planDelta,
     disabledTools,
     userCustomization,
     includeSessionContext

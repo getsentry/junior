@@ -9,7 +9,8 @@ import {
 } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { updatePlanToolDefinition } from "@/chat/tools/runtime/update-plan";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -70,7 +71,20 @@ describe("Pi tool adapter", () => {
     const onStatus = vi.fn(async () => undefined);
     const [updatePlanTool, bashTool] = createPiAgentTools(
       {
-        updatePlan: createUpdatePlanTool(),
+        // The plan is in the database. Only its result shape matters here.
+        updatePlan: zodTool({
+          ...updatePlanToolDefinition,
+          execute: async () => ({
+            items: [
+              {
+                id: 2,
+                title: "Implement the MVP",
+                status: "in_progress" as const,
+                assignee: "self",
+              },
+            ],
+          }),
+        }),
         bash: {
           description: "bash",
           inputSchema: {},
@@ -82,10 +96,7 @@ describe("Pi tool adapter", () => {
     );
 
     await updatePlanTool!.execute("tool-plan", {
-      plan: [
-        { step: "Inspect current behavior", status: "completed" },
-        { step: "Implement the MVP", status: "in_progress" },
-      ],
+      update: [{ id: 2, status: "in_progress" }],
     });
     await bashTool!.execute("tool-bash", { command: "pwd" });
 

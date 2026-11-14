@@ -39,7 +39,7 @@ import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
   estimateReplacementTokens,
-  renderCompactionSummary,
+  renderCompactionSummaryWithPlan,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
   userMessage,
@@ -47,7 +47,6 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -314,7 +313,10 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        appendOpenPlan(renderCompactionSummary(prepared.summary), summarized),
+        await renderCompactionSummaryWithPlan(
+          prepared.summary,
+          args.conversationId,
+        ),
       ),
       provenance: contextProvenance,
     },

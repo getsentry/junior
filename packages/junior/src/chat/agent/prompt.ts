@@ -23,8 +23,11 @@ import {
 import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { latestSeenPlanVersion, renderPlanDelta } from "@/chat/plan/prompt";
+import { listPlanItems } from "@/chat/plan/store";
+import type { PlanItem } from "@/chat/plan/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -100,6 +103,8 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
+  /** Every item of the Conversation's plan, for the `<plan-delta>`. */
+  planItems?: PlanItem[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
 }
@@ -544,6 +549,7 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
+    planItems,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
@@ -557,9 +563,11 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
+    listPlanItems(getSqlExecutor(), args.context.conversationId),
   ]);
   return {
     conversationNotes,
+    planItems,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -639,6 +647,7 @@ export async function assemblePrompt(args: {
   // so `loadPromptTurnContext` returns nothing for it.
   const {
     conversationNotes,
+    planItems,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -670,6 +679,14 @@ export async function assemblePrompt(args: {
             latestTurnContextSection(promptHistoryMessages, tag),
           ]),
         ),
+        // Only changes that others made after the plan version that history
+        // shows. The model's own changes are in its tool results.
+        planDelta: planItems
+          ? renderPlanDelta(
+              planItems,
+              latestSeenPlanVersion(promptHistoryMessages),
+            )
+          : null,
         pluginPromptContributions: pluginUserPromptContributions,
         scriptTools,
         toolGuidance: args.toolGuidance,

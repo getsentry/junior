@@ -450,6 +450,12 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       toolCallId,
       toolName,
     });
+    // The plan is in the database, so only the result knows the active item.
+    const planStatus =
+      toolName === "updatePlan" ? buildPlanStatus(toolResult.details) : undefined;
+    if (planStatus) {
+      await onStatus?.(planStatus);
+    }
     return { result: toolResult, nudges };
   };
   const executeDefinition = async (args: {
@@ -485,11 +491,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     params: Record<string, unknown>,
   ) => {
     const status =
-      executionToolName === "updatePlan"
-        ? buildPlanStatus(params)
-        : executionToolName === "reportProgress"
-          ? buildReportedProgressStatus(params)
-          : undefined;
+      executionToolName === "reportProgress"
+        ? buildReportedProgressStatus(params)
+        : undefined;
     if (status) {
       await onStatus?.(status);
     }

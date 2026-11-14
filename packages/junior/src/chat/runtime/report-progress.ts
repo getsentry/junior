@@ -1,16 +1,26 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
 
-function isActivePlanItem(value: unknown): value is { step: string } {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const item = value as { status?: unknown; step?: unknown };
-  return (
-    item.status === "in_progress" &&
-    typeof item.step === "string" &&
-    item.step.trim().length > 0
-  );
+interface PlanOutputItem {
+  assignee?: unknown;
+  status?: unknown;
+  title?: unknown;
+}
+
+/** Items of the plan's own agent in an `updatePlan` result. */
+function ownPlanItems(output: unknown): PlanOutputItem[] {
+  const items =
+    output && typeof output === "object"
+      ? (output as { items?: unknown }).items
+      : undefined;
+  return Array.isArray(items)
+    ? items.filter(
+        (item): item is PlanOutputItem =>
+          Boolean(item) &&
+          typeof item === "object" &&
+          (item as PlanOutputItem).assignee === "self",
+      )
+    : [];
 }
 
 /** Convert a `reportProgress` tool payload into assistant status text. */
@@ -34,21 +44,34 @@ export function buildReportedProgressStatus(
   return { text };
 }
 
-/** Convert an `updatePlan` payload into the active assistant status. */
+/**
+ * Convert an `updatePlan` result into the active assistant status: the
+ * item that the plan's own agent has in progress.
+ */
 export function buildPlanStatus(
-  input: unknown,
+  output: unknown,
 ): AssistantStatusSpec | undefined {
-  if (!input || typeof input !== "object") {
+  const active = ownPlanItems(output).find(
+    (item) => item.status === "in_progress",
+  );
+  const text = typeof active?.title === "string" ? active.title.trim() : "";
+  return text ? { text } : undefined;
+}
+
+function toolResultOutput(message: {
+  content?: unknown;
+  isError?: unknown;
+}): unknown {
+  if (message.isError === true || !Array.isArray(message.content)) {
     return undefined;
   }
-
-  const plan = (input as { plan?: unknown }).plan;
-  if (!Array.isArray(plan)) {
+  const text = (message.content[0] as { text?: unknown } | undefined)?.text;
+  if (typeof text !== "string") return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
     return undefined;
   }
-
-  const active = plan.find(isActivePlanItem);
-  return active ? { text: active.step.trim() } : undefined;
 }
 
 /** Recover the latest progress status from a resumable Pi transcript. */
@@ -63,7 +86,18 @@ export function latestProgressStatus(
     const message = messages[messageIndex] as {
       role?: unknown;
       content?: unknown;
+      isError?: unknown;
+      toolName?: unknown;
     };
+    // A result that changed an item of the plan's own agent sets the status,
+    // and clears it when no item of that agent is in progress.
+    if (message.role === "toolResult" && message.toolName === "updatePlan") {
+      const output = toolResultOutput(message);
+      if (ownPlanItems(output).length > 0) {
+        return buildPlanStatus(output);
+      }
+      continue;
+    }
     if (message.role !== "assistant" || !Array.isArray(message.content)) {
       continue;
     }
@@ -83,9 +117,6 @@ export function latestProgressStatus(
       };
       if (toolCall.type !== "toolCall") {
         continue;
-      }
-      if (toolCall.name === "updatePlan") {
-        return buildPlanStatus(toolCall.arguments);
       }
       if (toolCall.name === "reportProgress") {
         const status = buildReportedProgressStatus(toolCall.arguments);
