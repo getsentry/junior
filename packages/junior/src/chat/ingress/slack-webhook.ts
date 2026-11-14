@@ -13,6 +13,7 @@ import { saveSkippedSlackMessage } from "./slack-skipped-message";
 import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
+import { routeSlackCodeChannelEvent } from "./slack-code-channel";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
 import {
@@ -662,6 +663,26 @@ async function handleSlackEvent(args: {
 
         if (event.type === "app_home_opened" && event.user) {
           await publishAppHomeViewBestEffort(event.user);
+          return;
+        }
+
+        // A code channel that a channel Thread owns routes by its channel
+        // binding first, also for a stop scoped to a Slack thread in it.
+        if (
+          (event.type === "agent_session_stopped" ||
+            event.type === "message" ||
+            event.type === "app_mention") &&
+          (await routeSlackCodeChannelEvent({
+            adapter,
+            allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+            allowedDomains: args.services.allowedDomains ?? [],
+            event,
+            installation,
+            queue: args.services.queue,
+            receivedAtMs,
+            state,
+          }))
+        ) {
           return;
         }
 

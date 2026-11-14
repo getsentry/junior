@@ -215,6 +215,9 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
+    // Open a Slack code channel for each Thread that a root in a public
+    // channel starts. Needs the Slack `code_channels` app feature.
+    "code-channels": true,
   },
 });
 ```
@@ -266,6 +269,14 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
+
+`code-channels` lets a root Conversation in a public Slack channel open a Slack
+code channel for each Thread it starts. People talk to the Thread in the code
+channel, and Junior answers there without a mention. The flag controls only the
+creation of new code channels. A code channel that already exists keeps working
+when the flag is off. Turn the flag on only after Slack allows the app to create
+code channels and the app has the `code_channels` feature and the
+`code_channels:manage` scope.
 
 ## Allowed domains
 

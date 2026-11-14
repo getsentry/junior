@@ -1,13 +1,23 @@
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import {
+  juniorAgentBindings,
+  juniorAgentInvocations,
+  juniorConversations,
+} from "@/db/schema";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import {
   countOpenParentMessages,
   listOpenChildAgentsWithoutAgentInvocations,
 } from "./list";
-import { readAgentConfig } from "@/chat/conversations/agent-config";
+import {
+  agentConfigSchema,
+  readAgentConfig,
+  type AgentConfig,
+} from "@/chat/conversations/agent-config";
 import {
   AgentInvocationLimitError,
   AgentMessageQueueFullError,
@@ -416,6 +426,129 @@ export async function createAgentInvocationForMessage(
         throw new Error(`Agent invocation creation raced for ${invocationId}`);
       }
       return { invocation, queued: openCount > 0 };
+    },
+  );
+}
+
+/** A new child agent that gets its work as parent messages, with no row. */
+type NewChildWithoutAgentInvocation = {
+  agentConfig: AgentConfig;
+  agentName?: string;
+  idempotencyKey: string;
+  kind: "task" | "thread";
+  parentConversationId: string;
+  title?: string;
+};
+
+/** Return the Conversation id that a new child agent gets. */
+export function newChildAgentConversationId(
+  input: Pick<
+    NewChildWithoutAgentInvocation,
+    "agentName" | "idempotencyKey" | "parentConversationId"
+  >,
+): string {
+  return input.agentName
+    ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
+    : getUnnamedAgentConversationId(
+        getAgentInvocationId(input.parentConversationId, input.idempotencyKey),
+      );
+}
+
+async function assertCanCreateChild(
+  input: NewChildWithoutAgentInvocation,
+  childConversationId: string,
+): Promise<void> {
+  const open = await listOpenAgentInvocations(input.parentConversationId);
+  await assertCanGiveChildWork(input.parentConversationId, open);
+  if (
+    input.agentName &&
+    (await getAgentBinding({
+      name: input.agentName,
+      parentConversationId: input.parentConversationId,
+    }))
+  ) {
+    throw new AgentNameInUseError(input.agentName);
+  }
+  await assertChildAgentCapacity(open, {
+    childConversationId,
+    parentConversationId: input.parentConversationId,
+  });
+}
+
+/**
+ * Throw when the parent cannot start this child agent now, with the same
+ * checks that `createChildWithoutAgentInvocation` runs. Call it before a
+ * side effect that the child needs, such as a provider channel, so that a
+ * refused spawn leaves nothing behind.
+ */
+export async function assertCanCreateChildWithoutAgentInvocation(
+  input: NewChildWithoutAgentInvocation,
+): Promise<void> {
+  const childConversationId = newChildAgentConversationId(input);
+  await getSqlExecutor().withLock(
+    getChildAgentLockName(input.parentConversationId),
+    async () => {
+      if (
+        await getConversationStore().get({
+          conversationId: childConversationId,
+        })
+      )
+        return;
+      await assertCanCreateChild(input, childConversationId);
+    },
+  );
+}
+
+/**
+ * Create or replay one child agent that no Agent invocation names. Its agent
+ * config marks it, and its work arrives as parent messages
+ * (`appendParentMessage`). Returns its Conversation id.
+ */
+export async function createChildWithoutAgentInvocation(
+  input: NewChildWithoutAgentInvocation,
+  nowMs = Date.now(),
+): Promise<string> {
+  const childConversationId = newChildAgentConversationId(input);
+  return await getSqlExecutor().withLock(
+    getChildAgentLockName(input.parentConversationId),
+    async () => {
+      const existing = await getConversationStore().get({
+        conversationId: childConversationId,
+      });
+      if (existing) {
+        // The id derives from the parent, so only the kind can differ.
+        if (existing.kind !== input.kind) {
+          throw new Error(
+            `Child agent ${childConversationId} was reused with different input`,
+          );
+        }
+        return childConversationId;
+      }
+      await assertCanCreateChild(input, childConversationId);
+      await getConversationStore().createChild({
+        childConversationId,
+        kind: input.kind,
+        parentConversationId: input.parentConversationId,
+        nowMs,
+        source: "internal",
+        ...(input.title ? { title: input.title } : undefined),
+      });
+      await getSqlExecutor()
+        .db()
+        .update(juniorConversations)
+        .set({
+          agentConfig: agentConfigSchema.parse(input.agentConfig),
+          detailVersion: nextDetailVersion,
+        })
+        .where(eq(juniorConversations.conversationId, childConversationId));
+      if (input.agentName) {
+        await getSqlExecutor().db().insert(juniorAgentBindings).values({
+          childConversationId,
+          name: input.agentName,
+          parentConversationId: input.parentConversationId,
+        });
+      }
+      return childConversationId;
     },
   );
 }

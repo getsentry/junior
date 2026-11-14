@@ -139,7 +139,17 @@ export interface SlackConversationInfo {
   isIm: boolean;
   isMpim: boolean;
   isMember?: boolean;
+  /** Shared with another organization (Slack Connect). */
+  isExtShared: boolean;
+  /** A Slack code channel, also one that Junior did not create. */
+  isCodeChannel: boolean;
 }
+
+// Slack writes this block when it creates a code channel.
+// https://docs.slack.dev/ai/slack-code/lifecycle#added-to-channel
+const codeChannelPropertiesSchema = z.object({
+  record_channel: z.object({ record_type: z.literal("agent_channel") }),
+});
 
 /** Return whether anyone in the workspace can read the conversation. */
 export function isPublicSlackChannel(info: SlackConversationInfo): boolean {
@@ -180,6 +190,10 @@ export async function getConversationInfo(
     isPrivate: channel.is_private === true,
     isIm: channel.is_im === true,
     isMpim: channel.is_mpim === true,
+    isExtShared: channel.is_ext_shared === true,
+    isCodeChannel: codeChannelPropertiesSchema.safeParse(
+      (channel as { properties?: unknown }).properties,
+    ).success,
     ...(typeof channel.is_member === "boolean"
       ? { isMember: channel.is_member }
       : undefined),

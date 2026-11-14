@@ -34,6 +34,7 @@ import { AGENT_PARENT_MESSAGE_EVENT_TYPE } from "@/chat/agent-invocations/result
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
+import { parseCodeChannelMessages } from "@/chat/slack/code-channel/input";
 
 const MAILBOX_TURN_READ_CONCURRENCY = 8;
 
@@ -83,6 +84,14 @@ export function turnInputFactsFromConversationMessage(
               args.visibility === "private" ? "private" : "public",
             )
           : createLocalSource(args.conversationId)),
+    };
+  }
+  // A person's Turn in a channel Thread, such as a Slack code channel.
+  if (args.savedActor?.platform === "slack" && args.savedSource) {
+    return {
+      actor: args.savedActor,
+      author: message.author ?? { userId: args.savedActor.userId },
+      source: args.savedSource,
     };
   }
   const actor =
@@ -237,6 +246,8 @@ function isActiveMailboxTurn(
     record.surface !== "internal" &&
     (record.source?.kind === "web" ||
       record.source?.kind === "event" ||
+      // A channel Thread's Slack Turn names no Slack thread.
+      (record.source?.kind === "slack" && !record.source.threadTs) ||
       (!record.source &&
         (record.surface === "api" || hasEventActor(record.actors)))) &&
     (record.state === "paused" || record.state === "running")
@@ -397,6 +408,10 @@ export async function resolveMailboxTurnWork(
   const batch = parseWebMessages(context.attempt.messages);
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
+  }
+  const channelBatch = parseCodeChannelMessages(context.attempt.messages);
+  if (channelBatch.length > 0) {
+    return { kind: "mailbox", batch: channelBatch };
   }
   const resourceBatch = parseEventMessages(context.attempt.messages);
   if (resourceBatch.length > 0) {

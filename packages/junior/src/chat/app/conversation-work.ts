@@ -38,6 +38,7 @@ import {
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
+import { withCodeChannelStatus } from "@/chat/slack/code-channel/status";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
@@ -152,13 +153,15 @@ export function createConversationWork(
       queue: options.queue,
       state: options.state,
     });
-  const conversationTurnWorker = createConversationTurnWorker(
-    options.agentRunner,
-    createSlackSystemTurnDelivery({
-      getSlackAdapter: options.getSlackAdapter,
-      state: options.state,
-    }),
-    createDeliverToParent({ queue: options.queue, state: options.state }),
+  const conversationTurnWorker = withCodeChannelStatus(
+    createConversationTurnWorker(
+      options.agentRunner,
+      createSlackSystemTurnDelivery({
+        getSlackAdapter: options.getSlackAdapter,
+        state: options.state,
+      }),
+      createDeliverToParent({ queue: options.queue, state: options.state }),
+    ),
   );
   const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult,
