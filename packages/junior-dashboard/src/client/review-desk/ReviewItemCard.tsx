@@ -67,7 +67,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
         <Link
           className="inline-flex items-center gap-2 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-          to={reviewItemPath(item.id)}
+          to={reviewItemPath(item)}
         >
           Open in the Inbox
           <ArrowRight aria-hidden="true" size={14} />

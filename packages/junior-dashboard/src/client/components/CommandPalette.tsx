@@ -515,7 +515,7 @@ function inboxItem(item: ReviewItemPayload, query?: string): PaletteItem {
     label: item.title,
     matches: match?.indices,
     score: match?.score ?? 0,
-    to: reviewItemPath(item.id),
+    to: reviewItemPath(item),
   };
 }
 

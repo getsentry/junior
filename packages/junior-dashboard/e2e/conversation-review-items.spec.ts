@@ -110,6 +110,15 @@ test("review item changes show as rows, not as context for other items", async (
     page.getByRole("region", { name: `Took ${rollout.title}` }),
   ).toBeVisible();
   await expect(page.getByText("1 events")).toHaveCount(0);
+
+  // A closed item's link opens Done, with its row expanded.
+  const link = answer.getByRole("link", { name: answered.title });
+  await expect(link).toHaveAttribute("href", `/?view=done&item=${answered.id}`);
+  await link.click();
+  await expect(page).toHaveURL(/\/\?view=done$/);
+  await expect(
+    page.getByRole("region", { name: `${answered.title}: how it closed` }),
+  ).toBeVisible();
 });
 
 test("Send sends docked picks and asks before a message drops others", async ({

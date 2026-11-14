@@ -5,12 +5,14 @@ import {
 } from "@sentry/junior/api/schema";
 
 /**
- * Return the Inbox route that expands one item's row. A closed item opens
- * in Done. The route names the Inbox entry, because phones show the
- * entries at `/`.
+ * Return the Inbox route that expands one item's row: Done for a closed
+ * item. The route names the entry, because phones show the entries at `/`.
  */
-export function reviewItemPath(id: string): string {
-  return `/?view=inbox&item=${encodeURIComponent(id)}`;
+export function reviewItemPath(
+  item: Pick<ReviewItemPayload, "id" | "status">,
+): string {
+  const view = item.status === "open" ? "inbox" : "done";
+  return `/?view=${view}&item=${encodeURIComponent(item.id)}`;
 }
 
 /**
