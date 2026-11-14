@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { defineRule } from "@oxlint/plugins";
@@ -11,9 +10,18 @@ type Entry = {
   names?: string[];
   /** Slack Web API methods, such as `chat.postMessage`. */
   slackMethods?: string[];
-  /** Repo-relative files that own the restricted calls. */
-  allow: string[];
+  /**
+   * Repo-relative files that own the restricted calls, each with the reason
+   * it cannot comply, such as owning the boundary.
+   */
+  allow: Array<{ file: string; reason: string }>;
   message: string;
+};
+
+type Options = {
+  /** Import prefixes and the repo-relative directory each maps to. */
+  aliases?: Record<string, string>;
+  entries: Entry[];
 };
 
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/;
@@ -33,12 +41,19 @@ function toPosix(file: string): string {
   return file.split(path.sep).join("/");
 }
 
-function staticName(node: ESTree.Node, computed: boolean): string | null {
-  if (!computed && node.type === "Identifier") return node.name;
-  if (node.type === "Literal" && typeof node.value === "string") {
+function staticString(node: ESTree.Node | undefined): string | null {
+  if (node?.type === "Literal" && typeof node.value === "string") {
     return node.value;
   }
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? null;
+  }
   return null;
+}
+
+function staticName(node: ESTree.Node, computed: boolean): string | null {
+  if (!computed && node.type === "Identifier") return node.name;
+  return staticString(node);
 }
 
 /** A type-position reference, such as `typeof gateway.completeText`. */
@@ -50,19 +65,28 @@ function isTypePosition(node: ESTree.Node): boolean {
   return false;
 }
 
-// `@/` maps to `<package>/src/`, as in each package's tsconfig `paths`.
-function packageRoot(file: string): string {
-  for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
-    if (path.dirname(dir) === dir) return path.dirname(file);
+/** `node` is the callee of a call, such as `f()`, `f<T>()`, or `a.f?.()`. */
+function isCalled(node: ESTree.Node): boolean {
+  let current = node;
+  while (
+    current.parent &&
+    VALUE_WRAPPERS.has(current.parent.type) &&
+    current.parent.type !== "AwaitExpression"
+  ) {
+    current = current.parent;
   }
+  return (
+    current.parent?.type === "CallExpression" &&
+    current.parent.callee === current
+  );
 }
 
 /**
  * Report uses of functions and Slack Web API methods that only their owner
  * modules may call. Each function use resolves through scope analysis to its
  * import, so renamed, namespace, destructured, and dynamic imports resolve to
- * the same restricted function.
+ * the same restricted function. Owners may only call the restricted function,
+ * so they cannot hand it to another module under a new name.
  */
 export const restrictedCallRule = defineRule({
   meta: {
@@ -73,7 +97,9 @@ export const restrictedCallRule = defineRule({
     },
     messages: {
       restricted:
-        "Do not use {{subject}} here. {{message}} For a one-off exception, put `// oxlint-disable-next-line junior/restricted-call -- <reason>` on the line before it. Add a file to this entry's `allow` list in .oxlintrc.json only when that file takes ownership of the call.",
+        "Do not use {{subject}} here. {{message}} For a one-off exception, put `// oxlint-disable-next-line junior/restricted-call -- <reason>` on the line before it. Add a file to this entry's `allow` list in .oxlintrc.json only when it owns the boundary, with a `reason` that says why it cannot comply.",
+      ownerLeak:
+        "Only call {{subject}} here. Do not export, alias, destructure, or pass it: another module could then call it without this check. Wrap it in a function that applies the owner's rules instead.",
     },
     schema: [
       {
@@ -81,6 +107,10 @@ export const restrictedCallRule = defineRule({
         additionalProperties: false,
         required: ["entries"],
         properties: {
+          aliases: {
+            type: "object",
+            additionalProperties: { type: "string" },
+          },
           entries: {
             type: "array",
             items: {
@@ -91,7 +121,18 @@ export const restrictedCallRule = defineRule({
                 module: { type: "string" },
                 names: { type: "array", items: { type: "string" } },
                 slackMethods: { type: "array", items: { type: "string" } },
-                allow: { type: "array", items: { type: "string" } },
+                allow: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["file", "reason"],
+                    properties: {
+                      file: { type: "string" },
+                      reason: { type: "string", minLength: 1 },
+                    },
+                  },
+                },
                 message: { type: "string" },
               },
             },
@@ -101,23 +142,28 @@ export const restrictedCallRule = defineRule({
     ],
   },
   create(context) {
-    const [options] = context.options as [{ entries: Entry[] }?];
+    const [options] = context.options as [Options?];
     // Option paths are relative to the repo root, where oxlint runs.
     const file = toPosix(path.relative(context.cwd, context.filename));
-    const entries = (options?.entries ?? []).filter(
-      (entry) => !entry.allow.includes(file),
-    );
+    const entries = options?.entries ?? [];
     if (entries.length === 0) return {};
+    const aliases = Object.entries(options?.aliases ?? {});
 
+    const isOwner = (entry: Entry) =>
+      entry.allow.some((owner) => owner.file === file);
     const moduleEntries = entries.filter((entry) => entry.module);
     const slackEntries = entries.flatMap((entry) =>
-      (entry.slackMethods ?? []).map((method) => ({
-        entry,
-        segments: method.split("."),
-      })),
+      (entry.slackMethods ?? []).map((method) => ({ entry, method })),
     );
+    const guardedSlackEntry = slackEntries.find(
+      ({ entry }) => !isOwner(entry),
+    )?.entry;
 
     function report(node: ESTree.Node, subject: string, entry: Entry) {
+      if (isOwner(entry)) {
+        context.report({ node, messageId: "ownerLeak", data: { subject } });
+        return;
+      }
       context.report({
         node,
         messageId: "restricted",
@@ -125,21 +171,29 @@ export const restrictedCallRule = defineRule({
       });
     }
 
+    // A use that is allowed: any use outside a type in a non-owner, or a
+    // direct call in an owner.
+    function reportUse(node: ESTree.Node, subject: string, entry: Entry) {
+      if (isOwner(entry) && isCalled(node)) return;
+      report(node, subject, entry);
+    }
+
     function entryFor(specifier: string): Entry | undefined {
       let resolved = specifier;
-      if (specifier.startsWith("./") || specifier.startsWith("../")) {
-        resolved = path.resolve(path.dirname(context.filename), specifier);
-      } else if (specifier.startsWith("@/")) {
+      const alias = aliases.find(([prefix]) => specifier.startsWith(prefix));
+      if (alias) {
         resolved = path.join(
-          packageRoot(context.filename),
-          "src",
-          specifier.slice(2),
+          context.cwd,
+          alias[1],
+          specifier.slice(alias[0].length),
         );
+      } else if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        resolved = path.resolve(path.dirname(context.filename), specifier);
       }
       if (path.isAbsolute(resolved)) {
         resolved = toPosix(path.relative(context.cwd, resolved));
       }
-      const id = resolved.replace(SOURCE_EXTENSION, "");
+      const id = resolved.replace(/\/$/, "").replace(SOURCE_EXTENSION, "");
       return moduleEntries.find((entry) => entry.module === id);
     }
 
@@ -186,61 +240,38 @@ export const restrictedCallRule = defineRule({
       if (parent.type === "MemberExpression" && parent.object === node) {
         const name = staticName(parent.property, parent.computed);
         if (name === null || entry.names?.includes(name)) {
-          report(parent, subjectOf(entry, name ?? "[computed]"), entry);
+          reportUse(parent, subjectOf(entry, name ?? "[computed]"), entry);
         }
         return;
       }
       if (parent.type === "VariableDeclarator" && parent.init === node) {
         if (parent.id.type === "ObjectPattern") {
           checkPattern(parent.id, entry);
-        } else {
+        } else if (parent.id.type === "Identifier") {
           checkReferences(parent, (identifier) =>
             checkModuleValue(identifier, entry),
           );
+        } else {
+          report(node, subjectOf(entry, "*"), entry);
         }
         return;
       }
       report(node, subjectOf(entry, "*"), entry);
     }
 
-    function isSlackMember(node: ESTree.Node, segments: string[]): boolean {
-      let current = node;
-      for (let index = segments.length - 1; index >= 0; index -= 1) {
-        if (current.type !== "MemberExpression") return false;
-        if (
-          staticName(current.property, current.computed) !== segments[index]
-        ) {
-          return false;
-        }
-        current = current.object;
+    // `import(...)` and `require(...)` with a static specifier.
+    function checkModuleLoad(node: ESTree.Node, source: ESTree.Node) {
+      const specifier = staticString(source);
+      const entry = specifier === null ? undefined : entryFor(specifier);
+      if (!entry) return;
+      if (node.type === "CallExpression") {
+        checkModuleValue(node, entry);
+      } else if (node.parent?.type === "AwaitExpression") {
+        checkModuleValue(node.parent, entry);
+      } else {
+        // `.then(...)` hides which member it reads.
+        report(node, subjectOf(entry, "*"), entry);
       }
-      return true;
-    }
-
-    // `const { postMessage } = client.chat` or
-    // `const { chat: { postMessage } } = client`.
-    function isSlackDestructure(
-      property: ESTree.Node,
-      segments: string[],
-    ): boolean {
-      if (property.type !== "Property") return false;
-      if (staticName(property.key, property.computed) !== segments.at(-1)) {
-        return false;
-      }
-      const pattern = property.parent;
-      if (pattern.type !== "ObjectPattern") return false;
-      const holder = pattern.parent;
-      const namespace = segments.slice(0, -1);
-      if (holder.type === "VariableDeclarator" && holder.id === pattern) {
-        return holder.init !== null && isSlackMember(holder.init, namespace);
-      }
-      if (holder.type === "AssignmentExpression" && holder.left === pattern) {
-        return isSlackMember(holder.right, namespace);
-      }
-      return (
-        holder.type === "Property" &&
-        staticName(holder.key, holder.computed) === namespace.at(-1)
-      );
     }
 
     return {
@@ -264,22 +295,22 @@ export const restrictedCallRule = defineRule({
           const name = staticName(specifier.imported, false);
           if (name === null || !entry.names?.includes(name)) continue;
           checkReferences(specifier, (identifier) =>
-            report(identifier, subjectOf(entry, name), entry),
+            reportUse(identifier, subjectOf(entry, name), entry),
           );
         }
       },
-      ImportExpression(node) {
-        if (node.source.type !== "Literal") return;
-        if (typeof node.source.value !== "string") return;
-        const entry = entryFor(node.source.value);
+      TSImportEqualsDeclaration(node) {
+        if (node.importKind === "type") return;
+        const reference = node.moduleReference;
+        if (reference.type !== "TSExternalModuleReference") return;
+        const entry = entryFor(reference.expression.value);
         if (!entry) return;
-        // `await import(...)` is the module namespace. Anything else, such
-        // as `.then(...)`, hides which member it reads.
-        if (node.parent.type === "AwaitExpression") {
-          checkModuleValue(node.parent, entry);
-        } else {
-          report(node, subjectOf(entry, "*"), entry);
-        }
+        checkReferences(node, (identifier) =>
+          checkModuleValue(identifier, entry),
+        );
+      },
+      ImportExpression(node) {
+        checkModuleLoad(node, node.source);
       },
       ExportNamedDeclaration(node) {
         if (!node.source || node.exportKind === "type") return;
@@ -301,33 +332,68 @@ export const restrictedCallRule = defineRule({
         const entry = entryFor(node.source.value);
         if (entry) report(node, subjectOf(entry, "*"), entry);
       },
+      // The Slack client can be aliased or passed around, so a method
+      // matches on its name, such as `postMessage`, on any object.
       MemberExpression(node) {
-        for (const { entry, segments } of slackEntries) {
-          if (isSlackMember(node, segments)) {
-            report(node, `Slack \`${segments.join(".")}\``, entry);
+        const name = staticName(node.property, node.computed);
+        if (name === null) {
+          // `client.chat[method]` hides which method it calls.
+          if (
+            guardedSlackEntry &&
+            node.object.type === "MemberExpression" &&
+            staticName(node.object.property, node.object.computed) === "chat"
+          ) {
+            report(node, "a computed Slack `chat` method", guardedSlackEntry);
+          }
+          return;
+        }
+        if (name === "apiCall" && guardedSlackEntry && !isCalled(node)) {
+          report(node, "Slack `apiCall`", guardedSlackEntry);
+          return;
+        }
+        for (const { entry, method } of slackEntries) {
+          if (method.split(".").at(-1) === name) {
+            reportUse(node, `Slack \`${method}\``, entry);
           }
         }
       },
       Property(node) {
-        for (const { entry, segments } of slackEntries) {
-          if (isSlackDestructure(node, segments)) {
-            report(node, `Slack \`${segments.join(".")}\``, entry);
+        if (node.parent.type !== "ObjectPattern") return;
+        const name = staticName(node.key, node.computed);
+        for (const { entry, method } of slackEntries) {
+          if (method.split(".").at(-1) === name) {
+            report(node, `Slack \`${method}\``, entry);
           }
         }
       },
       CallExpression(node) {
-        const [method] = node.arguments;
         if (
+          node.callee.type === "Identifier" &&
+          node.callee.name === "require" &&
+          node.arguments[0]
+        ) {
+          checkModuleLoad(node, node.arguments[0]);
+          return;
+        }
+        if (
+          !guardedSlackEntry ||
           node.callee.type !== "MemberExpression" ||
-          staticName(node.callee.property, node.callee.computed) !==
-            "apiCall" ||
-          method?.type !== "Literal"
+          staticName(node.callee.property, node.callee.computed) !== "apiCall"
         ) {
           return;
         }
-        for (const { entry, segments } of slackEntries) {
-          if (method.value === segments.join(".")) {
-            report(node, `Slack \`${segments.join(".")}\``, entry);
+        const method = staticString(node.arguments[0]);
+        if (method === null) {
+          report(
+            node,
+            "Slack `apiCall` with a computed method",
+            guardedSlackEntry,
+          );
+          return;
+        }
+        for (const { entry, method: restricted } of slackEntries) {
+          if (method === restricted && !isOwner(entry)) {
+            report(node, `Slack \`${restricted}\``, entry);
           }
         }
       },

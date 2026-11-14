@@ -6,10 +6,7 @@ import { runBestEffort } from "@/chat/logging";
 import { readScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
-import {
-  openSlackDirectMessage,
-  postSlackMessage,
-} from "@/chat/slack/outbound";
+import { postSlackDirectMessage } from "@/chat/slack/outbound";
 
 /** Identify the Automation that a run blocked. */
 export interface BlockedAutomationRef {
@@ -60,9 +57,8 @@ export async function notifyAutomationBlocked(
             ? "Scheduled automation"
             : "Event automation",
         );
-      // oxlint-disable-next-line junior/restricted-call -- DM to the Automation creator, not Turn output
-      await postSlackMessage({
-        channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
+      await postSlackDirectMessage({
+        userId: task.createdBy.slackUserId,
         text: buildBlockedNoticeText(ref.automationId, title, ref.reason),
       });
     },

@@ -85,6 +85,7 @@
       }
     ],
     "preserve-caught-error": "error",
+    "unicorn/no-abusive-eslint-disable": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
@@ -120,6 +121,7 @@
         "junior/restricted-call": [
           "error",
           {
+            "aliases": { "@/": "packages/junior/src/" },
             "entries": [
               {
                 "module": "packages/junior/src/chat/pi/client",
@@ -130,20 +132,37 @@
                   "embedTexts"
                 ],
                 "allow": [
-                  "packages/junior/src/chat/core-model.ts",
-                  "packages/junior/src/chat/plugins/model.ts"
+                  {
+                    "file": "packages/junior/src/chat/core-model.ts",
+                    "reason": "It owns the boundary: the wrapper that names each core model call's operation and records its cost."
+                  },
+                  {
+                    "file": "packages/junior/src/chat/plugins/model.ts",
+                    "reason": "It owns the plugin model boundary: cost goes to the host recorder for each plugin, and prompts are named for the plugin. The operation and Conversation attribution in core-model cannot express either."
+                  }
                 ],
                 "message": "Call it from `@/chat/core-model` (packages/junior/src/chat/core-model.ts). That wrapper makes each call name its operation and where its cost goes, so no core model call drops its cost. Plugins get the same rule through `chat/plugins/model.ts`."
               },
               {
                 "module": "packages/junior/src/chat/slack/outbound",
                 "names": ["postSlackMessage"],
-                "slackMethods": ["chat.postMessage"],
                 "allow": [
-                  "packages/junior/src/chat/slack/outbound.ts",
-                  "packages/junior/src/chat/slack/reply.ts"
+                  {
+                    "file": "packages/junior/src/chat/slack/reply.ts",
+                    "reason": "It owns Turn reply delivery: sendSlackReply adds the Conversation footer and posts in the thread from resolveSlackReplyTarget."
+                  }
                 ],
-                "message": "Post visible Turn output with `sendSlackReply` from `@/chat/slack/reply` (packages/junior/src/chat/slack/reply.ts), and get its channel and thread from `resolveSlackReplyTarget`. A raw post skips the Conversation footer and chooses its own thread. Only a post that is not Turn output, such as a private notice or DM, is a valid one-off."
+                "message": "Post visible Turn output with `sendSlackReply` from `@/chat/slack/reply` (packages/junior/src/chat/slack/reply.ts), and get its channel and thread from `resolveSlackReplyTarget`. A raw post skips the Conversation footer and chooses its own thread. Post a private notice with `postSlackDirectMessage` or `postSlackEphemeralMessage` from `@/chat/slack/outbound`."
+              },
+              {
+                "slackMethods": ["chat.postMessage", "chat.scheduleMessage"],
+                "allow": [
+                  {
+                    "file": "packages/junior/src/chat/slack/outbound.ts",
+                    "reason": "It owns the Slack Web API boundary: validation, retries, and post telemetry for every outbound message."
+                  }
+                ],
+                "message": "Post through the Slack outbound boundary: `sendSlackReply` from `@/chat/slack/reply` for visible Turn output, or `postSlackDirectMessage` or `postSlackEphemeralMessage` from `@/chat/slack/outbound` for a private notice. A raw Web API post skips validation, retries, the Conversation footer, and thread resolution."
               }
             ]
           }

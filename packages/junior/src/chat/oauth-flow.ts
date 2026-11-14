@@ -9,14 +9,10 @@ import {
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getSlackClient, isDmChannel } from "@/chat/slack/client";
 import {
-  getSlackClient,
-  isDmChannel,
-  withSlackRetries,
-} from "@/chat/slack/client";
-import {
+  postSlackDirectMessage,
   postSlackEphemeralMessage,
-  postSlackMessage,
 } from "@/chat/slack/outbound";
 import type {
   OAuthAuthorization,
@@ -148,9 +144,8 @@ export async function deliverPrivateMessage(input: {
   text: string;
   blocks?: KnownBlock[];
 }): Promise<PrivateDeliveryResult> {
-  let client: ReturnType<typeof getSlackClient>;
   try {
-    client = getSlackClient();
+    getSlackClient();
   } catch {
     logWarn("oauth.private_delivery.skipped", {
       "app.reason": "missing_bot_token",
@@ -161,8 +156,7 @@ export async function deliverPrivateMessage(input: {
   if (input.channelId) {
     try {
       if (isDmChannel(input.channelId)) {
-        // oxlint-disable-next-line junior/restricted-call -- private auth link, ephemeral or DM, not Turn output
-        await postSlackMessage({
+        await postSlackDirectMessage({
           channelId: input.channelId,
           text: input.text,
           blocks: input.blocks,
@@ -188,24 +182,8 @@ export async function deliverPrivateMessage(input: {
   }
 
   try {
-    const dmChannelId = (
-      await withSlackRetries(
-        () => client.conversations.open({ users: input.userId }),
-        3,
-        {
-          action: "conversations.open",
-          spanAttributes: { "app.slack.user_id": input.userId },
-        },
-      )
-    ).channel?.id;
-    if (!dmChannelId) {
-      logWarn("oauth.dm.fallback.failed", { "app.reason": "no_dm_channel_id" });
-      return false;
-    }
-
-    // oxlint-disable-next-line junior/restricted-call -- private auth link, ephemeral or DM, not Turn output
-    await postSlackMessage({
-      channelId: dmChannelId,
+    await postSlackDirectMessage({
+      userId: input.userId,
       text: input.text,
       blocks: input.blocks,
     });

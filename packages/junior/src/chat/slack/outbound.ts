@@ -6,6 +6,7 @@ import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
   getSlackClient,
+  isDmChannel,
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
@@ -177,6 +178,32 @@ export async function postSlackMessage(input: {
         }
       : undefined),
   };
+}
+
+/**
+ * Post a private message in the bot's direct message with one Slack user.
+ * Pass the open DM `channelId`, or a `userId` to open it. Only that user
+ * sees the post, so it is not Turn output and needs no Conversation footer.
+ */
+export async function postSlackDirectMessage(
+  input: ({ channelId: string } | { userId: string }) & {
+    blocks?: KnownBlock[] | undefined;
+    text: string;
+    threadTs?: string | undefined;
+  },
+): Promise<void> {
+  if ("channelId" in input && !isDmChannel(input.channelId)) {
+    throw new Error("Slack direct message posting requires a DM channel ID");
+  }
+  await postSlackMessage({
+    blocks: input.blocks,
+    channelId:
+      "channelId" in input
+        ? input.channelId
+        : await openSlackDirectMessage(input.userId),
+    text: input.text,
+    threadTs: input.threadTs,
+  });
 }
 
 /**

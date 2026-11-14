@@ -138,7 +138,7 @@ async function postMovedMessage(
     });
     if (!joined.ok) return { refused: joined.error };
   }
-  // oxlint-disable-next-line junior/restricted-call -- first message of a dashboard Conversation that moves to Slack
+  // oxlint-disable-next-line junior/restricted-call -- not Turn output: the first post of a moved Conversation starts the thread the user chose, and its title already links the Conversation
   const posted = await postSlackMessage({
     channelId: channel.channelId,
     includePermalink: true,

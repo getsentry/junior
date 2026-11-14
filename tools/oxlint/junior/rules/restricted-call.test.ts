@@ -19,21 +19,27 @@ const repoRoot = path.resolve(
 );
 const src = "packages/junior/src";
 
+const owner = (file: string) => ({ file: `${src}/${file}`, reason: "Owner." });
 const options = [
   {
+    aliases: { "@/": `${src}/` },
     entries: [
       {
         module: `${src}/chat/pi/client`,
         names: ["completeText"],
-        allow: [`${src}/chat/core-model.ts`],
+        allow: [owner("chat/core-model.ts")],
         message: "Use core-model.",
       },
       {
         module: `${src}/chat/slack/outbound`,
         names: ["postSlackMessage"],
-        slackMethods: ["chat.postMessage"],
-        allow: [`${src}/chat/slack/outbound.ts`],
+        allow: [owner("chat/slack/reply.ts")],
         message: "Use sendSlackReply.",
+      },
+      {
+        slackMethods: ["chat.postMessage"],
+        allow: [owner("chat/slack/outbound.ts")],
+        message: "Use the outbound boundary.",
       },
     ],
   },
@@ -50,6 +56,8 @@ function inFile(file: string) {
 const nonOwner = inFile("chat/services/example.ts");
 const restricted = (count = 1) =>
   Array.from({ length: count }, () => ({ messageId: "restricted" }));
+const coreModel = inFile("chat/core-model.ts");
+const ownerLeak = [{ messageId: "ownerLeak" }];
 
 new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
   valid: [
@@ -77,9 +85,18 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
     nonOwner(
       `const { completeText } = await import("@/chat/pi/client.other");`,
     ),
+    coreModel(
+      `import * as gateway from "@/chat/pi/client"; export const run = (p) => gateway.completeText<T>(p);`,
+    ),
+    inFile("chat/slack/reply.ts")(
+      `import { postSlackMessage } from "./outbound"; await postSlackMessage({});`,
+    ),
+    nonOwner(
+      `import { completeText } from "@/chat/pi/clientx"; completeText({});`,
+    ),
     nonOwner(`getSlackClient().chat.update({ channel, ts, text });`),
     nonOwner(`getSlackClient().apiCall("assistant.search.context", {});`),
-    nonOwner(`const { postMessage } = client.views;`),
+    nonOwner(`client.chat.getPermalink({ channel, message_ts });`),
   ],
   invalid: [
     {
@@ -212,6 +229,84 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
       ),
       errors: restricted(),
     },
+    {
+      ...nonOwner(`await getSlackClient().apiCall(method, { channel, text });`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`const call = client.apiCall.bind(client); await call("x");`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`await client.chat[method]({ channel, text });`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`const chat = client.chat; await chat.postMessage({});`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `await getSlackClient().apiCall(\`chat.postMessage\`, { channel });`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import { postSlackMessage } from "@/chat/slack/outbound"; await postSlackMessage({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...inFile("chat/slack/outbound.ts")(
+        `export const post = getSlackClient().chat.postMessage;`,
+      ),
+      errors: ownerLeak,
+    },
+    {
+      ...coreModel(
+        `import * as gateway from "@/chat/pi/client"; export const raw = gateway.completeText;`,
+      ),
+      errors: ownerLeak,
+    },
+    {
+      ...coreModel(`export { completeText as raw } from "@/chat/pi/client";`),
+      errors: ownerLeak,
+    },
+    {
+      ...coreModel(
+        `import { completeText } from "@/chat/pi/client"; export default completeText;`,
+      ),
+      errors: ownerLeak,
+    },
+    {
+      ...coreModel(
+        `import * as gateway from "@/chat/pi/client"; export { gateway };`,
+      ),
+      errors: ownerLeak,
+    },
+    {
+      ...nonOwner(
+        `import gateway = require("@/chat/pi/client"); gateway.completeText({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`require("../pi/client").completeText({});`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `const { completeText } = await import(\`@/chat/pi/client\`); completeText({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import { completeText } from "@/chat/pi/../pi/client/"; completeText({});`,
+      ),
+      errors: restricted(),
+    },
   ],
 });
 
@@ -234,6 +329,7 @@ async function lintFile(code: string) {
         "junior/restricted-call": [
           "error",
           {
+            aliases: { "@/": "src/" },
             entries: [
               {
                 module: "src/chat/pi/client",

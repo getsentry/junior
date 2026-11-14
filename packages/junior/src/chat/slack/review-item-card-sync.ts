@@ -94,7 +94,7 @@ async function postCard(
   getSlackAdapter: (() => SlackAdapter) | undefined,
 ): Promise<void> {
   await inWorkspace(thread.teamId, getSlackAdapter, async () => {
-    // oxlint-disable-next-line junior/restricted-call -- review item card that changes in place, not reply text
+    // oxlint-disable-next-line junior/restricted-call -- one card message that updateSlackMessage replaces in place; sendSlackReply chunks and adds a footer. The thread comes from resolveSlackReplyTarget
     const posted = await postSlackMessage({
       ...buildSlackReviewItemCard(item),
       channelId: thread.channelId,

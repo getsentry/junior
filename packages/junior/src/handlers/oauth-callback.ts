@@ -525,7 +525,7 @@ export async function GET(
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>
-      // oxlint-disable-next-line junior/restricted-call -- "Account connected" notice when no Turn resumes
+      // oxlint-disable-next-line junior/restricted-call -- "Account connected" notice when no Turn resumes; there is no Conversation for a sendSlackReply footer
       postSlackMessage({
         channelId,
         threadTs,
