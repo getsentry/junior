@@ -64,26 +64,29 @@ export function ObjectRow(props: {
       ) : (
         <ObjectIcon {...card} size={16} />
       )}
-      {card.url ? (
-        <OutboundLink
-          // The link covers the row, so the whole row opens the source.
-          className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
-          href={card.url}
-          title={card.title}
-        >
-          {card.title}
-        </OutboundLink>
-      ) : (
-        <span
-          className="min-w-0 truncate font-medium text-dashboard-text"
-          title={card.title}
-        >
-          {card.title}
+      {/* The title truncates first, so a long title keeps the reference. */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+        {card.url ? (
+          <OutboundLink
+            // The link covers the row, so the whole row opens the source.
+            className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
+            href={card.url}
+            title={card.title}
+          >
+            {card.title}
+          </OutboundLink>
+        ) : (
+          <span
+            className="min-w-0 truncate font-medium text-dashboard-text"
+            title={card.title}
+          >
+            {card.title}
+          </span>
+        )}
+        <span className="max-w-1/2 shrink-0 truncate text-xs text-dashboard-text-faint">
+          {reference}
         </span>
-      )}
-      <span className="min-w-0 flex-1 truncate text-xs text-dashboard-text-faint">
-        {reference}
-      </span>
+      </div>
       {card.warning ? (
         // Positioned above the row's link so a pointer gets the tooltip.
         <span
