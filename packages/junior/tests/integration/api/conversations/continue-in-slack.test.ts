@@ -16,7 +16,7 @@ import {
   getConversationWorkState,
   startConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorDestinations } from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -136,6 +136,11 @@ describe("continue a dashboard conversation in Slack", () => {
       },
       fixture,
     );
+    // A person chooses the title, so it must not add markup or mentions.
+    await getDb()
+      .update(juniorConversations)
+      .set({ title: "<!channel> *ship* @U0123ABCD" })
+      .where(eq(juniorConversations.conversationId, conversationId));
     const locationId = await publicChannelLocationId(fixture);
     const app = viewerApp(fixture);
     expect((await readDetail(app, conversationId)).canContinueInSlack).toBe(
@@ -165,7 +170,7 @@ describe("continue a dashboard conversation in Slack", () => {
     expect(slackApiOutbox.messages()[0]?.params["blocks"]).toEqual([
       {
         type: "markdown",
-        text: "**Junior conversation**\n\nAlice Example moved this conversation here from the dashboard. Mention me in this thread to continue.",
+        text: "**\\<!channel\\> \\*ship\\* @\u2060U0123ABCD**\n\nAlice Example moved this conversation here from the dashboard. Mention me in this thread to continue.",
       },
       expect.objectContaining({
         type: "context",

@@ -15,7 +15,6 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 
-
 import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";

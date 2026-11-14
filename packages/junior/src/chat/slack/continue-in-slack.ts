@@ -15,6 +15,7 @@ import {
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
+import { escapeSlackMarkdownText } from "@/chat/slack/mrkdwn";
 import {
   deleteSlackMessage,
   getSlackMessagePermalink,
@@ -100,13 +101,14 @@ async function movedMessageText(
     getDb(),
     conversation.conversationId,
   );
-  const label = title.replace(/[[\]\\]/g, "\\$&");
+  // People choose the title and their name, so none of it may add markup.
+  const label = escapeSlackMarkdownText(title);
   return [
     url
       ? `**[${label}](${url.replaceAll("(", "%28").replaceAll(")", "%29")})**`
-      : `**${title}**`,
-    ...(brief ? [`> ${brief.content.summary}`] : []),
-    `${actorName} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
+      : `**${label}**`,
+    ...(brief ? [`> ${escapeSlackMarkdownText(brief.content.summary)}`] : []),
+    `${escapeSlackMarkdownText(actorName)} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
   ].join("\n\n");
 }
 
