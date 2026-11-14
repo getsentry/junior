@@ -64,6 +64,7 @@ import {
   userLookupIdentityProviders,
 } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
@@ -182,6 +183,7 @@ const STATIC_TOOL_BINDERS = {
   updatePlan: () => createUpdatePlanTool(),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
+  submitFeedback: (run) => createSubmitFeedbackTool(run.context),
   bash: () => createBashTool(),
   readFile: () => createReadFileTool(),
   editFile: () => createEditFileTool(),

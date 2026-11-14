@@ -74,6 +74,7 @@ import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conv
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
 import { systemTimeToolDefinition } from "@/chat/tools/system-time";
+import { submitFeedbackToolDefinition } from "@/chat/tools/submit-feedback";
 import { updateUserCustomizationToolDefinition } from "@/chat/tools/user-customization";
 import {
   userLookupIdentityProviders,
@@ -152,6 +153,7 @@ const CORE_TOOLS = {
   updatePlan: always(updatePlanToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
+  submitFeedback: always(submitFeedbackToolDefinition),
   bash: always(bashToolDefinition),
   readFile: always(readFileToolDefinition),
   editFile: always(editFileToolDefinition),

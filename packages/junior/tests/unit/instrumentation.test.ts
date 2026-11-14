@@ -40,7 +40,7 @@ function resetEnv(): void {
 async function loadInstrumentationModule() {
   vi.resetModules();
   const init = vi.fn();
-  const globalScope = { setAttributes: vi.fn() };
+  const globalScope = { addEventProcessor: vi.fn(), setAttributes: vi.fn() };
   vi.doMock("@/chat/sentry", () => ({
     getClient: () => undefined,
     init,
@@ -135,6 +135,23 @@ describe("initSentry", () => {
     );
     expect(span.attributes["gen_ai.input.messages"]).toBeUndefined();
     expect(span.attributes["app.conversation.payload_redacted"]).toBe(true);
+
+    const processEvent = globalScope.addEventProcessor.mock.calls[0]?.[0];
+    const breadcrumbs = () => [
+      {
+        category: "http",
+        data: { url: "https://files.slack.com/files-pri/T1/secret.png" },
+      },
+    ];
+    expect(
+      processEvent?.({ type: "feedback", breadcrumbs: breadcrumbs() }),
+    ).toMatchObject({
+      breadcrumbs: [{ data: { url: "https://files.slack.com" } }],
+    });
+    // Error events are scrubbed once, by `beforeSend`.
+    expect(processEvent?.({ breadcrumbs: breadcrumbs() })).toEqual({
+      breadcrumbs: breadcrumbs(),
+    });
 
     expect(globalScope.setAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
