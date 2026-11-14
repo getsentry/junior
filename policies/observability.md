@@ -54,8 +54,7 @@ recipes.
 - Instrument real edges: ingress, queue dispatch, workers, agent runs,
   provider requests, sandbox creation and egress, plugin hooks, delivery.
 - Set error status and capture exceptions at the edge that owns the failure.
-  Lower helpers return errors. Preserve `Error.cause` (oxlint
-  `preserve-caught-error`).
+  Lower helpers return errors.
 - Record retry attempts without reporting each transient attempt as terminal.
 - Telemetry adapters must not change behavior when telemetry is unavailable.
 - Record safe metadata only. Follow `data-redaction.md`.
