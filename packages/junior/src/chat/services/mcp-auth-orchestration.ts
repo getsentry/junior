@@ -19,7 +19,7 @@ import {
 } from "@/chat/mcp/auth-store";
 import {
   createMcpServiceAccountClientProvider,
-  getMcpServiceAccountCredentials,
+  getMcpServiceAccount,
 } from "@/chat/mcp/service-account";
 import {
   authorizationId,
@@ -155,9 +155,9 @@ export function createMcpAuthOrchestration(
     ) {
       return undefined;
     }
-    const credentials = await getMcpServiceAccountCredentials(provider);
-    return credentials
-      ? createMcpServiceAccountClientProvider(provider, credentials)
+    const account = await getMcpServiceAccount(provider);
+    return account?.status === "connected"
+      ? createMcpServiceAccountClientProvider(provider, account)
       : undefined;
   };
 
