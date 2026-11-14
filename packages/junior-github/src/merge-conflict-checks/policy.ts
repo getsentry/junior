@@ -267,6 +267,9 @@ export async function applyGitHubConflictPolicy(args: {
     try {
       await addNotice(args, history.fixes);
     } catch (error) {
+      // best-effort: retried: the notice history is written only after the
+      // notice, so the next merge conflict check adds the notice again. A throw
+      // here would drop the conflict events of this check.
       logFailOpenFailure(
         args.log,
         "GitHub merge conflict notice failed",
@@ -313,12 +316,11 @@ export async function closeGitHubConflictNotice(args: {
 
 /**
  * Close the merge conflict notices of some Junior pull requests, such as
- * ones that GitHub reports as mergeable. A notice is optional, so a failed
- * close is logged, and the next check closes it again.
+ * ones that GitHub reports as mergeable. Every notice gets a close. A failed
+ * close throws after the others, so the check keeps its claim and runs again.
  */
 export async function closeGitHubConflictNotices(args: {
   db: GitHubDb;
-  log?: Pick<PluginLogger, "error" | "warn">;
   numbers: number[];
   reason: string;
   repositoryFullName: string;
@@ -331,6 +333,7 @@ export async function closeGitHubConflictNotices(args: {
     numbers: args.numbers,
     repositoryFullName,
   });
+  const errors: unknown[] = [];
   for (const [number, opener] of openers) {
     if (!opener.conversationId) continue;
     try {
@@ -340,12 +343,18 @@ export async function closeGitHubConflictNotices(args: {
         status: args.status,
       });
     } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub merge conflict notice close failed",
-        error,
-        { number, repository: repositoryFullName },
+      errors.push(
+        new Error(
+          `GitHub merge conflict notice close failed: ${repositoryFullName}#${number}`,
+          { cause: error },
+        ),
       );
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "GitHub merge conflict notice close failed",
+    );
   }
 }

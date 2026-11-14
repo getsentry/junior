@@ -370,7 +370,7 @@ describe("daily reconcile of open pull requests", () => {
       ...desk,
       close: () => Promise.reject(new Error("The review desk is down")),
     });
-    await h.heartbeat(now);
+    await expect(h.heartbeat(now)).rejects.toThrow("GitHub heartbeat failed");
     const state949 = async () =>
       (
         await fixture
@@ -392,7 +392,7 @@ describe("daily reconcile of open pull requests", () => {
     vi.spyOn(h.events, "publish").mockRejectedValueOnce(
       new Error("The event queue is down"),
     );
-    await h.heartbeat(now);
+    await expect(h.heartbeat(now)).rejects.toThrow("GitHub heartbeat failed");
     const states = async () =>
       (
         await fixture

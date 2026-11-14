@@ -832,6 +832,9 @@ export async function loadCheckSuiteFacts(args: {
       });
       if (failing.length > 0) facts.failingChecks = failing;
     } catch (error) {
+      // best-effort: external edge: the webhook delivery has no retrier, and
+      // the other events still publish. Without the failing checks, the event
+      // carries no check details.
       logFailOpenFailure(args.log, "GitHub check suite load failed", error, {
         checkSuiteId: target.checkSuiteId,
         repository: `${target.owner}/${target.repoName}`,
@@ -860,6 +863,9 @@ export async function loadCheckSuiteFacts(args: {
         facts.allCheckSuitesPassed = true;
       }
     } catch (error) {
+      // best-effort: external edge: the webhook delivery has no retrier, and
+      // the other events still publish. Without the suites, checks.passed does
+      // not publish.
       // The other events still publish. Without the suites, checks.passed
       // does not.
       logFailOpenFailure(
@@ -880,6 +886,8 @@ export async function loadCheckSuiteFacts(args: {
       const incidents = await args.loadGitHubIncidents();
       if (incidents.length > 0) facts.githubIncidents = incidents;
     } catch (error) {
+      // best-effort: external edge: a GitHub status page outage must not block
+      // the check event. The delivery has no retrier.
       logFailOpenFailure(args.log, "GitHub status load failed", error, {});
     }
   }
@@ -904,6 +912,9 @@ export async function loadCheckSuiteFacts(args: {
             const loadedFacts = pullRequestFactsFromResponse(response);
             return loadedFacts ? ([number, loadedFacts] as const) : undefined;
           } catch (error) {
+            // best-effort: external edge: a 404 is a stale pull request number,
+            // and other errors leave out one pull request's facts. The delivery
+            // has no retrier.
             // 404 is expected when the suite lists a stale PR number.
             if (!isGitHubNotFoundError(error)) {
               logFailOpenFailure(
@@ -932,6 +943,8 @@ export async function loadCheckSuiteFacts(args: {
         facts.pullRequestFactsByNumber = pullRequestFactsByNumber;
       }
     } catch (error) {
+      // best-effort: external edge: the webhook delivery has no retrier, and
+      // the event still publishes without the pull request facts.
       logFailOpenFailure(
         args.log,
         "GitHub check suite pull request data load failed",

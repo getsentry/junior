@@ -269,10 +269,50 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        // The daily pull request reconcile in the same heartbeat reads it.
+        http.get("https://api.github.com/repositories/1", () =>
+          HttpResponse.json({ full_name: "getsentry/junior", id: 1 }),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
             variables: { number?: number; query?: string };
           };
+          // The daily pull request reconcile reads lifecycles by `n<index>`.
+          const reconciled = Object.entries(variables)
+            .filter(([name]) => /^n\d+$/.test(name))
+            .map(([, number]) => Number(number));
+          if (reconciled.length > 0) {
+            return HttpResponse.json({
+              data: {
+                repository: {
+                  databaseId: 1,
+                  nameWithOwner: "getsentry/junior",
+                  ...Object.fromEntries(
+                    reconciled.map((number, index) => [
+                      `pr${index}`,
+                      {
+                        assignees: { nodes: [] },
+                        author: { __typename: "Bot", login: "sentry-junior" },
+                        closedAt: null,
+                        createdAt: new Date(
+                          pushedAt - 60 * minute,
+                        ).toISOString(),
+                        databaseId: number * 10,
+                        headRefName: `feat/pr-${number}`,
+                        isDraft: drafts.has(number),
+                        merged: false,
+                        mergedAt: null,
+                        number,
+                        state: "OPEN",
+                        title: `Pull request ${number}`,
+                        updatedAt: new Date(pushedAt).toISOString(),
+                      },
+                    ]),
+                  ),
+                },
+              },
+            });
+          }
           if (variables.number !== undefined) {
             historyReads += 1;
             return HttpResponse.json({

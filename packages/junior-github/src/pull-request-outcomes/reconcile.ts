@@ -297,6 +297,7 @@ export async function reconcileGitHubPullRequests(
     repositories.set(row.repositoryId, repository);
   }
   let reconciled = 0;
+  const errors: unknown[] = [];
   for (const [
     repositoryId,
     { drafts, name: repositoryFullName },
@@ -314,19 +315,26 @@ export async function reconcileGitHubPullRequests(
     try {
       await reconcileRepository(args, Number(repositoryId), drafts);
     } catch (error) {
-      if (error instanceof GitHubRepositoryUnreachableError) {
-        // The repository is gone, or the installation lost it. The rows
-        // stay open, and the check tries again the next day.
-        args.log.warn("GitHub pull request reconcile skipped a repository", {
-          repository: repositoryFullName,
-          repositoryId,
-        });
-      } else {
-        args.log.error("GitHub pull request reconcile failed", {
-          errorType: error instanceof Error ? error.name : "UnknownError",
-          repository: repositoryFullName,
-        });
+      // best-effort: an unreachable repository is an expected state, not a
+      // failure. It is gone, or the installation lost it. The rows stay open,
+      // and the check tries again the next day. Other errors throw below.
+      if (!(error instanceof GitHubRepositoryUnreachableError)) {
+        // One repository's failure must not skip the repositories after it.
+        errors.push(
+          new Error(
+            `GitHub pull request reconcile failed: ${repositoryFullName}`,
+            { cause: error },
+          ),
+        );
+        continue;
       }
+      args.log.warn("GitHub pull request reconcile skipped a repository", {
+        repository: repositoryFullName,
+        repositoryId,
+      });
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "GitHub pull request reconcile failed");
   }
 }

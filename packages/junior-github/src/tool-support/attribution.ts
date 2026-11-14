@@ -234,6 +234,8 @@ export async function resolveGitHubRequester(ctx: {
   try {
     return await ctx.users.resolveActor();
   } catch (error) {
+    // best-effort: decision (optional context): today the GitHub write goes on
+    // without a requester, so the pull request has no attribution or assignee.
     ctx.log.warn("github.requester.resolve_actor.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),

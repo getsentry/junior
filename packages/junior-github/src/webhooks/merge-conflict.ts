@@ -185,6 +185,9 @@ export async function loadGitHubMergeConflictEvents(args: {
         })),
       );
     } catch (error) {
+      // best-effort: external edge: the delivered events still publish without
+      // the conflict check. The webhook delivery has no retrier, and a throw
+      // would drop them.
       // The delivered events still publish without the conflict check.
       logFailOpenFailure(
         args.log,

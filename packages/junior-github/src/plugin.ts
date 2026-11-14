@@ -346,6 +346,8 @@ export function githubPlugin(
       async heartbeat(ctx) {
         const db = ctx.db as GitHubDb;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
+        // Both jobs run when one fails. The core heartbeat reports the errors.
+        const errors: unknown[] = [];
         await runGitHubConflictChecks({
           db,
           events: ctx.events,
@@ -365,6 +367,8 @@ export function githubPlugin(
             });
           },
           state: ctx.state,
+        }).catch((error: unknown) => {
+          errors.push(error);
         });
         await reconcileGitHubPullRequests({
           annotations: ctx.annotations,
@@ -380,7 +384,12 @@ export function githubPlugin(
           nowMs: ctx.nowMs,
           reviewItems: ctx.reviewItems,
           state: ctx.state,
+        }).catch((error: unknown) => {
+          errors.push(error);
         });
+        if (errors.length > 0) {
+          throw new AggregateError(errors, "GitHub heartbeat failed");
+        }
       },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
@@ -533,6 +542,9 @@ export function githubPlugin(
           // Verified emails only help link the account. An email lookup
           // failure must not block the connection.
           listVerifiedUserEmails(ctx.tokens).catch((error: unknown) => {
+            // best-effort: decision (optional context): verified emails only
+            // help link the account. Today an email lookup failure connects the
+            // account without them.
             ctx.log.warn("github.oauth_account.emails_lookup.failed", {
               "exception.message":
                 error instanceof Error ? error.message : String(error),

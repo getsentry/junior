@@ -79,6 +79,8 @@ export async function docSummary(
         "body.content(paragraph(elements(textRun(content)),paragraphStyle(namedStyleType)))",
     },
   }).catch((error: unknown) => {
+    // best-effort: decision (optional context): today a failed Google Doc read
+    // shows the link card without a summary.
     ctx.log.warn("Google Doc summary read failed", { error: String(error) });
     return undefined;
   });

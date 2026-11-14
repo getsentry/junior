@@ -172,6 +172,9 @@ export async function createMemoryPromptContributions(
       query: context.text,
     }));
   } catch (error) {
+    // best-effort: decision (optional context): automatic recall is optional
+    // context. Today a reranker failure continues the turn without recalled
+    // memory.
     // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
     // Log only the error class; provider messages can echo request text.

@@ -124,7 +124,6 @@ async function checkRepository(
     }
     await closeGitHubConflictNotices({
       db: args.db,
-      log: args.log,
       numbers: mergeable,
       reason: GITHUB_CONFLICT_GONE_REASON,
       repositoryFullName,
@@ -156,16 +155,14 @@ async function runCheck(
   try {
     unknown = await checkRepository(args, check.repositoryFullName);
   } catch (error) {
-    args.log.error("GitHub merge conflict check failed", {
-      attempts: check.attempts,
-      errorType: error instanceof Error ? error.name : "UnknownError",
-      repository: check.repositoryFullName,
-    });
     // Keep the claim, so the check runs again when the claim ends.
     if (check.attempts >= MAX_ATTEMPTS) {
       await settleGitHubConflictCheck(args.state, check);
     }
-    return;
+    throw new Error(
+      `GitHub merge conflict check failed: ${check.repositoryFullName} (attempt ${check.attempts})`,
+      { cause: error },
+    );
   }
   await settleGitHubConflictCheck(
     args.state,
@@ -183,6 +180,7 @@ async function runCheck(
 export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
   const nowMs = args.now.getTime();
   let checked = 0;
+  const errors: unknown[] = [];
   for (const repositoryFullName of await listGitHubRepositoriesWithOpenPullRequests(
     args.db,
   )) {
@@ -195,6 +193,14 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
     });
     if (!check) continue;
     checked += 1;
-    await runCheck(args, check);
+    try {
+      await runCheck(args, check);
+    } catch (error) {
+      // One repository's failure must not skip the repositories after it.
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "GitHub merge conflict checks failed");
   }
 }

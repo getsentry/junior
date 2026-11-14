@@ -359,6 +359,9 @@ async function assignPullRequestRequester(
     }
     // GitHub may ignore an ineligible assignee. An unassigned PR is acceptable.
   } catch (error) {
+    // best-effort: decision (silent side effect): the pull request exists.
+    // Today a failed assignee update leaves it unassigned, and the tool result
+    // does not say so.
     ctx.log.warn("github.pull_request.assign_after_create.failed", {
       error: error instanceof Error ? error.message : String(error),
       number: result.number,
@@ -436,6 +439,9 @@ async function requestPullRequestReviewers(
       );
     }
   } catch (error) {
+    // best-effort: decision (silent side effect): the pull request exists.
+    // Today a failed reviewer request is not in the tool result, even when the
+    // person named reviewers.
     ctx.log.warn("github.pull_request.request_reviewers_after_create.failed", {
       error: error instanceof Error ? error.message : String(error),
       number: result.number,

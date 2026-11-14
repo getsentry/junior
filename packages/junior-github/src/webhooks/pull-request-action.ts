@@ -330,6 +330,8 @@ export async function syncGitHubPullRequestActions(args: {
     try {
       await syncOne(args, target);
     } catch (error) {
+      // best-effort: external edge: one pull request's sync failing must not
+      // skip the other targets of this delivery. GitHub does not redeliver it.
       logFailOpenFailure(args.log, "GitHub pull request action failed", error, {
         deliveryId: args.deliveryId,
         number: target.number,

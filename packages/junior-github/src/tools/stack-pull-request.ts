@@ -160,6 +160,9 @@ export async function stackGitHubPullRequest(
     );
     return created && result(created);
   } catch (error) {
+    // best-effort: decision (silent side effect): the pull request exists.
+    // Today a failed stack link returns no stack, and the tool result does not
+    // say why.
     ctx.log.warn("github.pull_request.stack_after_create.failed", {
       error: error instanceof Error ? error.message : String(error),
       number: target.number,

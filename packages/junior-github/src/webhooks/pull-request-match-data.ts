@@ -128,6 +128,9 @@ async function withJuniorOpeners(
     try {
       logins.set(identityId, await context.loadGitHubLogin?.(identityId));
     } catch (error) {
+      // best-effort: external edge: a failed login read leaves this match fact
+      // unknown. The delivery has no retrier, and a throw would drop every
+      // event in it.
       logFailure(context, "opener", error);
     }
   }
@@ -172,16 +175,26 @@ async function withRolesAndAuthors(
       if (loadRole && typeof login === "string" && !roles.has(login)) {
         roles.set(
           login,
-          loadRole({ login, repositoryFullName }).catch((error: unknown) =>
-            logFailure(context, "role", error),
-          ),
+          loadRole({ login, repositoryFullName }).catch((error: unknown) => {
+            // best-effort: external edge. A failed GitHub read leaves this
+            // match fact unknown; the delivery has no retrier, and a throw
+            // would drop every event in it.
+            logFailure(context, "role", error);
+            return undefined;
+          }),
         );
       }
       if (loadAuthors && !authors.has(number)) {
         authors.set(
           number,
-          loadAuthors({ number, repositoryFullName }).catch((error: unknown) =>
-            logFailure(context, "authors", error),
+          loadAuthors({ number, repositoryFullName }).catch(
+            (error: unknown) => {
+              // best-effort: external edge. A failed GitHub read leaves this
+              // match fact unknown; the delivery has no retrier, and a throw
+              // would drop every event in it.
+              logFailure(context, "authors", error);
+              return undefined;
+            },
           ),
         );
       }

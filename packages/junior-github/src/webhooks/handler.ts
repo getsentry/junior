@@ -258,6 +258,9 @@ export function createGitHubWebhookRoute(args: {
               repositoryFullName: pullRequestOutcome.repositoryFullName,
             });
           } catch (error) {
+            // best-effort: external edge: the merged event still publishes
+            // without the commit composition. The webhook delivery has no
+            // retrier, and a throw would drop the event.
             args.log?.error("GitHub PR commit classification failed", {
               deliveryId,
               errorType: error instanceof Error ? error.name : "UnknownError",
@@ -410,6 +413,9 @@ export function createGitHubWebhookRoute(args: {
         try {
           await args.markFeedbackReviewing(feedbackTarget);
         } catch (error) {
+          // best-effort: decision (silent side effect): the eyes reaction only
+          // shows that Junior saw the feedback. Today a failed reaction still
+          // delivers the feedback.
           args.log?.error("GitHub pull request feedback reaction failed", {
             commentId: feedbackTarget.commentId,
             deliveryId,

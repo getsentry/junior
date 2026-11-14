@@ -206,6 +206,10 @@ export async function loadGitHubConversationTitleContext(args: {
             : `${reference.owner}/${reference.name}#${reference.id}`;
         return `${label}: ${title.slice(0, TITLE_MAX_LENGTH)}`;
       } catch (error) {
+        // best-effort: external edge: loadObject cannot read some references
+        // (private, deleted, or rate limited). As documented above, such a
+        // reference is left out, and the other references still describe the
+        // title.
         args.log.warn("github.conversation_title_context.load_failed", {
           "app.github.object_kind": reference.kind,
           "exception.message":

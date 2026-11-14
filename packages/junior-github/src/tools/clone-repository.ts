@@ -130,6 +130,9 @@ async function removePartialClone(
       });
     }
   } catch (error) {
+    // best-effort: error path: this runs only after the clone failed, and the
+    // caller rethrows or reports that failure. A cleanup error must not replace
+    // it.
     ctx.log.warn("github.clone.cleanup.failed", {
       path,
       error: error instanceof Error ? error.message : String(error),
@@ -188,6 +191,8 @@ export const gitHubCloneRepositoryTool = definePluginTool({
         ctx.workspaces.active(),
       ]);
     } catch (error) {
+      // best-effort: decision (optional context): the Workspace suggestion is
+      // advisory. Today a lookup failure clones without it.
       // Fail open: a lookup outage must not block inspection clones.
       ctx.log.error("github.clone.workspaces_lookup.failed", {
         repo: repoId,

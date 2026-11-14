@@ -63,6 +63,8 @@ export async function requestGitHubReviewersWhenReady(args: {
     if (reviewers.length === 0) return;
     await requestPullRequestReviewers(args.env, { ...target, reviewers });
   } catch (error) {
+    // best-effort: decision (silent side effect): today a failed review request
+    // on ready for review is dropped, and nobody is told.
     args.log?.warn("GitHub pull request review request failed", {
       deliveryId: args.deliveryId,
       errorType: error instanceof Error ? error.name : "UnknownError",
