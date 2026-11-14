@@ -672,6 +672,36 @@ export interface PluginWorkspaceToolContext {
   }): Promise<string[]>;
 }
 
+/** One Conversation that the current Conversation may find. */
+export interface PluginConversationMatch {
+  conversationId: string;
+  /** Root of a child agent. Missing for a root Conversation. */
+  rootConversationId?: string;
+  /**
+   * What its agent does now. pending: waiting to run. running or paused:
+   * working. idle: waits for a message. A failed Turn shows as idle.
+   */
+  status: "pending" | "running" | "paused" | "idle";
+  /** Summary of the latest Brief, when it has one. */
+  summary?: string;
+  title?: string;
+  /** ISO time of the latest activity. */
+  updatedAt: string;
+}
+
+export interface PluginConversationToolContext {
+  /**
+   * Find other Conversations that have an Annotation with `annotation`, or a
+   * nested key that continues with `#`. Core applies the Conversation access
+   * rules, and leaves out archived Conversations and the current tree.
+   * Newest activity first.
+   */
+  search(input: {
+    annotation: string;
+    limit?: number;
+  }): Promise<PluginConversationMatch[]>;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -681,6 +711,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   annotations?: PluginAnnotations;
+  /** Other Conversations. Set only when the turn has a `conversationId`. */
+  conversations?: PluginConversationToolContext;
   /** Host-owned dashboard link to the Automation that started this run. */
   automationLink?: { url: string };
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */

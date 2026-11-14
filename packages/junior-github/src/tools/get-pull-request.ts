@@ -2,6 +2,8 @@ import { githubObjectAnnotation } from "../annotations.js";
 import { readDraftReadiness } from "../draft-readiness.js";
 import { githubObjectFacts } from "../object-facts.js";
 import {
+  type PluginConversationMatch,
+  type PluginConversationToolContext,
   type PluginEgress,
   definePluginTool,
   PluginToolInputError,
@@ -16,6 +18,11 @@ import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
+const RELATED_CONVERSATIONS_MAX = 10;
+// Fetch more than the result shows, so working Conversations can rank first.
+const RELATED_CONVERSATIONS_FETCH = 25;
+const SUMMARY_MAX_LENGTH = 300;
+const WORKING_STATUSES = new Set(["pending", "running", "paused"]);
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
@@ -55,6 +62,22 @@ const checksSchema = z.object({
     .describe("true when auto-merge is on for the pull request."),
 });
 type Checks = z.output<typeof checksSchema>;
+const relatedConversationSchema = z.object({
+  conversation_id: z.string(),
+  root_conversation_id: z
+    .string()
+    .optional()
+    .describe("Root of a child agent."),
+  status: z
+    .enum(["pending", "running", "paused", "idle"])
+    .describe(
+      "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
+    ),
+  title: z.string().optional(),
+  summary: z.string().optional().describe("Summary from the latest Brief."),
+  updated_at: z.string().describe("Time of the latest activity."),
+});
+type RelatedConversation = z.output<typeof relatedConversationSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
   agents_md: z
@@ -75,6 +98,12 @@ const pullRequestSchema = z.object({
   head_sha: commitShaSchema,
   merged: z.boolean(),
   number: z.number(),
+  related_conversations: z
+    .array(relatedConversationSchema)
+    .optional()
+    .describe(
+      "Other conversations that touched this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
+    ),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
   title: z.string(),
@@ -205,8 +234,46 @@ async function readPullRequestChecks(
   };
 }
 
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+/**
+ * Other Conversations that touched one pull request: working ones first,
+ * then newest activity.
+ */
+async function readRelatedConversations(
+  conversations: PluginConversationToolContext | undefined,
+  annotation: string,
+): Promise<RelatedConversation[]> {
+  if (!conversations) return [];
+  const matches = await conversations.search({
+    annotation,
+    limit: RELATED_CONVERSATIONS_FETCH,
+  });
+  const working = (match: PluginConversationMatch) =>
+    WORKING_STATUSES.has(match.status) ? 0 : 1;
+  // Array sort is stable, so each group keeps the newest-first order.
+  return matches
+    .sort((left, right) => working(left) - working(right))
+    .slice(0, RELATED_CONVERSATIONS_MAX)
+    .map((match) => ({
+      conversation_id: match.conversationId,
+      ...(match.rootConversationId
+        ? { root_conversation_id: match.rootConversationId }
+        : undefined),
+      status: match.status,
+      ...(match.title ? { title: match.title } : undefined),
+      ...(match.summary
+        ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
+        : undefined),
+      updated_at: match.updatedAt,
+    }));
+}
+
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
 export function createGitHubGetPullRequestTool(ctx: {
+  conversations?: PluginConversationToolContext;
   egress: PluginEgress;
   events: { canSubscribe: boolean };
 }) {
@@ -218,7 +285,7 @@ export function createGitHubGetPullRequestTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -247,11 +314,23 @@ export function createGitHubGetPullRequestTool(ctx: {
           title: z.string(),
         })
         .parse(response.body);
-      const checks = await readPullRequestChecks(
-        ctx.egress,
-        repo,
-        providerResult.number,
-      );
+      const annotation = githubObjectAnnotation({
+        repo: repo.ref,
+        number: providerResult.number,
+        title: providerResult.title,
+        url: providerResult.html_url,
+        objectType: "code_change",
+        status: providerResult.merged
+          ? "merged"
+          : providerResult.state === "open" && providerResult.draft
+            ? "draft"
+            : providerResult.state,
+        ...githubObjectFacts("code_change", response.body),
+      });
+      const [checks, relatedConversations] = await Promise.all([
+        readPullRequestChecks(ctx.egress, repo, providerResult.number),
+        readRelatedConversations(ctx.conversations, annotation.key),
+      ]);
       // Only a draft can still ask its code owners by being marked ready.
       const readiness =
         providerResult.draft && providerResult.state === "open"
@@ -277,27 +356,16 @@ export function createGitHubGetPullRequestTool(ctx: {
         head_sha: providerResult.head.sha.toLowerCase(),
         merged: providerResult.merged,
         number: providerResult.number,
+        ...(relatedConversations.length > 0
+          ? { related_conversations: relatedConversations }
+          : undefined),
         state: providerResult.state,
         ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };
       return {
-        objectAnnotations: [
-          githubObjectAnnotation({
-            repo: repo.ref,
-            number: data.number,
-            title: data.title,
-            url: data.url,
-            objectType: "code_change",
-            status: data.merged
-              ? "merged"
-              : data.state === "open" && data.draft
-                ? "draft"
-                : data.state,
-            ...githubObjectFacts("code_change", response.body),
-          }),
-        ],
+        objectAnnotations: [annotation],
         target: "getPullRequest",
         ...data,
       };
