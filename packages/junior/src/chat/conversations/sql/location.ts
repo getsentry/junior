@@ -5,7 +5,11 @@ import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, type juniorDestinations } from "@/db/schema";
-import type { ProviderConversationBinding } from "./bindings";
+import {
+  claimProviderConversationOwner,
+  WHOLE_DESTINATION_BINDING_ID,
+  type ProviderConversationBinding,
+} from "./bindings";
 import { nextDetailVersion } from "./detail-version";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
@@ -156,6 +160,52 @@ export async function setFirstConversationLocation(
   return rows.length > 0;
 }
 
+/**
+ * Give a Thread a whole provider place, such as a Slack code channel, as its
+ * Location, and bind that place to it, in the caller's SQL scope. The place
+ * replaces the Location that the Thread copied from its parent. Returns false
+ * when another Conversation owns the place.
+ */
+export async function setChannelThreadLocation(
+  executor: JuniorSqlDatabase,
+  args: {
+    channelName?: string;
+    conversationId: string;
+    location: Location;
+  },
+): Promise<boolean> {
+  const location = locationSchema.parse(args.location);
+  if (location.threadTs) {
+    throw new Error("A channel Thread Location names no provider thread");
+  }
+  const owner = await claimProviderConversationOwner(executor, {
+    conversationId: args.conversationId,
+    provider: location.provider,
+    providerTenantId: location.teamId,
+    providerDestinationId: location.channelId,
+    providerConversationId: WHOLE_DESTINATION_BINDING_ID,
+  });
+  if (owner !== args.conversationId) {
+    return false;
+  }
+  await executor
+    .db()
+    .update(juniorConversations)
+    .set({
+      location,
+      destinationId: location.id,
+      ...(args.channelName ? { channelName: args.channelName } : undefined),
+      detailVersion: nextDetailVersion,
+    })
+    .where(
+      and(
+        eq(juniorConversations.conversationId, args.conversationId),
+        eq(juniorConversations.kind, "thread"),
+      ),
+    );
+  return true;
+}
+
 /** Store a channel-level Location's first bound post as its thread. */
 export async function startLocationThread(
   executor: JuniorSqlDatabase,
@@ -176,6 +226,8 @@ export async function startLocationThread(
         sql`${location}->>'teamId' = ${binding.providerTenantId}`,
         sql`${location}->>'channelId' = ${binding.providerDestinationId}`,
         isNull(sql`${location}->>'threadTs'`),
+        // A channel Thread owns its whole channel. Its posts start no thread.
+        isNull(juniorConversations.parentConversationId),
       ),
     );
 }

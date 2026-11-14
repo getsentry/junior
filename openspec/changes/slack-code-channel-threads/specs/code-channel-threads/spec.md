@@ -11,8 +11,8 @@ When the `code-channels` experimental feature is on, Junior SHALL open a code
 channel for a new Thread only when all of these are true:
 
 - the parent is a root Conversation
-- the root's Location is a public Slack channel that is not shared with
-  another organization
+- a live `conversations.info` shows the origin channel is public, not shared
+  with another organization, and not itself a code channel
 - the Thread starts from a Slack message in that channel.
 
 Junior SHALL NOT open a code channel for a Task, a root, a Thread below
@@ -38,7 +38,15 @@ another Thread, or a Thread that starts inside a code channel.
 #### Scenario: Experiment off
 
 - **WHEN** the `code-channels` experimental feature is off
-- **THEN** no Thread gets a code channel.
+- **THEN** no new Thread gets a code channel
+- **AND** open channel Threads keep their routing, delivery, status, stop,
+  and archive, because the binding decides them.
+
+#### Scenario: One per origin Slack thread
+
+- **WHEN** a root with an open channel Thread starts another Thread
+- **THEN** `spawnAgent` returns the open channel Thread
+- **AND** sends it the new task as a parent message.
 
 ### Requirement: Fallback To A Plain Thread
 
@@ -49,14 +57,21 @@ failure.
 #### Scenario: Slack does not allow the app
 
 - **WHEN** `agents.conversations.create` fails with `feature_disabled`
-- **THEN** the Thread starts with no Location
+- **THEN** the Thread starts as a plain Thread in the origin Slack thread
 - **AND** `spawnAgent` returns the dashboard link and no code channel.
+
+#### Scenario: The channel exists after an error
+
+- **WHEN** `agents.conversations.create` fails with `invite_failed` or
+  `open_failed`
+- **THEN** Junior calls it again with the same `session_id` and binds the
+  channel that it returns.
 
 ### Requirement: Channel Thread Delivers To Its Code Channel
 
 A channel Thread SHALL deliver the final response of each Turn to its code
 channel as a top-level message, unless the Turn ends with `noReply`. This
-SHALL apply to a person's Turn, an Agent invocation Turn, a Task result Turn,
+SHALL apply to a person's Turn, a parent message Turn, a Task result Turn,
 and a Watch Event Turn.
 
 #### Scenario: Person asks in the code channel
@@ -73,15 +88,23 @@ and a Watch Event Turn.
 
 ### Requirement: Code Channel Messages Go To The Channel Thread
 
-Every message from a person in a code channel SHALL go to its channel Thread,
-also without a mention. A mention in a code channel SHALL NOT open another
-code channel or start a root Turn.
+Every message from a person in a bound code channel SHALL go to its channel
+Thread, also without a mention and with `passive-routing` off. A mention in
+a bound code channel SHALL NOT open another code channel or start a root
+Turn. A mention in an unbound code channel SHALL run a root Turn that does
+not open a code channel.
 
 #### Scenario: People talk to each other
 
 - **WHEN** two people discuss something in the code channel that is not for
   Junior
 - **THEN** the channel Thread ends the Turn with `noReply`.
+
+#### Scenario: Code channel opened from Slack's UI
+
+- **WHEN** a person mentions Junior in a code channel that no Thread owns
+- **THEN** a root Turn runs
+- **AND** no code channel opens.
 
 #### Scenario: Question for Junior without a mention
 
@@ -94,7 +117,14 @@ code channel or start a root Turn.
 A channel Thread SHALL reach its parent only with `messageAgent`. It SHALL
 NOT have a `reply` tool. It SHALL message the parent only when a person or
 agent outside the code channel must know or act (`design.md`, Notify The
-Parent).
+Parent). The runtime SHALL NOT send the parent a `completed` result, a
+`replaced` result, or a `failed` notice for a channel Thread. A failure
+stays in the code channel. A channel Thread SHALL NOT be in `waiting_on`.
+
+#### Scenario: Turn ends
+
+- **WHEN** a channel Thread Turn ends with final text, or fails
+- **THEN** the parent gets no message for it.
 
 #### Scenario: Progress
 
@@ -115,20 +145,15 @@ Parent).
 ### Requirement: Wrap-Up Message On Archive
 
 When a code channel is archived, the runtime SHALL send one Agent message to
-the parent. Its text SHALL be the summary message, or the outcome of the
-latest Brief when there is no summary message. The model SHALL NOT decide
-whether this message is sent.
-
-#### Scenario: Junior archives after a summary
-
-- **WHEN** a person uses the archive action on Junior's summary
-- **THEN** Junior archives the code channel with that summary message
-- **AND** the parent gets the summary as an Agent message.
+the parent. Its text SHALL be the outcome of the latest Brief, and it SHALL
+say whether the channel Thread already messaged the parent. The model SHALL
+NOT decide whether this message is sent. A redelivered archive event SHALL
+NOT send a second one.
 
 #### Scenario: Person archives in Slack
 
 - **WHEN** a person archives the code channel in Slack
-- **THEN** the Thread is archived
+- **THEN** the Thread and its child agents are archived
 - **AND** the parent gets the outcome of the latest Brief.
 
 ### Requirement: Origin Slack Thread Stays Quiet
@@ -156,11 +181,19 @@ its child agents.
 
 #### Scenario: Junior waits for a person
 
-- **WHEN** a Turn ends with a question for a person or an open review item
-- **THEN** the session status is `suspended`.
+- **WHEN** a Turn ends with an open review item
+- **THEN** the session status is `suspended`
+- **AND** otherwise it is `active`.
 
 #### Scenario: Stop button
 
-- **WHEN** a person presses Stop in the code channel
+- **WHEN** a person presses Stop in the code channel, also in a Slack thread
+  there
 - **THEN** the active Turn stops
-- **AND** the child agents of the channel Thread stop.
+- **AND** the child agents of the channel Thread stop
+- **AND** Junior posts no ack and makes no `agents.sessions.*` call.
+
+#### Scenario: Stop in the origin Slack thread
+
+- **WHEN** a person stops the root in the origin Slack thread
+- **THEN** the channel Thread does not stop.

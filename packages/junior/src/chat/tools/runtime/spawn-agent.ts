@@ -14,6 +14,7 @@ import {
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -41,7 +42,33 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Dashboard link of the child. People can message a Thread there.",
     ),
+  code_channel: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Slack code channel of a channel Thread, as a mention to share. People work with the Thread there.",
+    ),
+  reports: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("How this child reaches you, when it differs from a result."),
 });
+
+const THREAD_KIND_DESCRIPTION =
+  "thread: one work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread.";
+// Shown only while the `code-channels` flag can create code channels.
+const CODE_CHANNEL_KIND_DESCRIPTION =
+  "From a public Slack channel, a thread gets its own Slack code channel where people work with it. Such a channel Thread sends no result: it reaches you only with messageAgent, plus one wrap-up when its channel is archived. A Slack thread has at most one open channel Thread, so a second thread spawn gives the task to that one.";
+
+function kindDescription(codeChannels: boolean): string {
+  return [
+    THREAD_KIND_DESCRIPTION,
+    ...(codeChannels ? [CODE_CHANNEL_KIND_DESCRIPTION] : []),
+    "task (default): background work only you message.",
+  ].join(" ");
+}
 
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
@@ -102,7 +129,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "thread: one work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread. task (default): background work only you message.",
+            kindDescription(isExperimentalFeatureEnabled("code-channels")),
           ),
         agent_type: z
           .enum(AGENT_TYPES)
@@ -176,6 +203,16 @@ export function createSpawnAgentTool(
           );
         }
         throw error;
+      }
+      if (result.channel) {
+        // People find a channel Thread in its channel, not on the dashboard.
+        return {
+          conversation_id: result.childConversationId,
+          code_channel: `<#${result.channel.id}>`,
+          reports: result.channel.reused
+            ? "This Slack thread already had this open channel Thread, so it got your task as a message. It reaches you only with messageAgent and one wrap-up when its channel is archived."
+            : "It sends no result. It reaches you only with messageAgent and one wrap-up when its channel is archived.",
+        };
       }
       const dashboardUrl = getDashboardConversationLink(
         result.childConversationId,

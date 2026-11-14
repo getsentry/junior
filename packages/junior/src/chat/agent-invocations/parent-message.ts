@@ -1,9 +1,17 @@
-import { actorSchema } from "@sentry/junior-plugin-api";
+import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { and, desc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
-import { credentialContextSchema } from "@/chat/credentials/context";
+import {
+  credentialContextSchema,
+  type CredentialContext,
+} from "@/chat/credentials/context";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -197,4 +205,64 @@ export async function childAgentTurnOptions(args: {
         : {},
     run: options?.reasoningLevel ? { reasoning: options.reasoningLevel } : {},
   };
+}
+
+/**
+ * Append one parent agent task or message to a child that no Agent
+ * invocation names, and wake the child. It runs on the child's Conversation
+ * loop as the Actor of the parent's Turn, with its grants. The mailbox id
+ * comes from the parent and `idempotencyKey`, so a replayed tool call adds
+ * nothing. It does not end a stop of the child: on a channel Thread, only a
+ * person ends a stop.
+ */
+export async function appendParentMessage(args: {
+  actor: Actor;
+  childConversationId: string;
+  credentialContext?: CredentialContext;
+  fork?: true;
+  idempotencyKey: string;
+  parentConversationId: string;
+  parentToolCallId: string;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+  text: string;
+}): Promise<string> {
+  const inboundMessageId = getAgentInvocationMessageId(
+    getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
+  );
+  const nowMs = Date.now();
+  await appendAndEnqueueInboundMessage({
+    message: {
+      conversationId: args.childConversationId,
+      createdAtMs: nowMs,
+      delivery: "defer",
+      inboundMessageId,
+      input: {
+        authorId: parentMessageAuthorId(args.parentConversationId),
+        authorIdentityId: SYSTEM_IDENTITY_ID,
+        metadata: {
+          actor: args.actor,
+          ...(args.credentialContext
+            ? { credentialContext: args.credentialContext }
+            : undefined),
+          event: {
+            eventKey: inboundMessageId,
+            eventType: AGENT_PARENT_MESSAGE_EVENT_TYPE,
+            identifier: args.parentConversationId,
+            namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+            trustedSummary: "Your parent agent sent a task.",
+          },
+          ...(args.fork ? { fork: true } : undefined),
+          kind: "event",
+          parentToolCallId: args.parentToolCallId,
+        },
+        text: args.text,
+      },
+      receivedAtMs: nowMs,
+      source: "event",
+    },
+    queue: args.queue,
+    state: args.state,
+  });
+  return inboundMessageId;
 }

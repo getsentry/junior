@@ -7,7 +7,10 @@ import type {
 } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { isChannelThread } from "@/chat/conversations/channel-thread";
+import { getConversationStore } from "@/chat/db";
 import { findChildAgentConversationId } from "./bindings";
+import { appendParentMessage } from "./parent-message";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
@@ -87,6 +90,30 @@ export function bindMessageAgent(
         to: input.to,
       });
       return { conversationId: input.to, delivery: "queued" };
+    }
+    // A channel Thread gets parent messages on its Conversation loop. An
+    // Agent invocation would send its result to the parent.
+    if (
+      await isChannelThread(
+        await getConversationStore().get({
+          conversationId: childConversationId,
+        }),
+      )
+    ) {
+      await appendParentMessage({
+        actor,
+        childConversationId,
+        ...(run.credentialContext
+          ? { credentialContext: run.credentialContext }
+          : undefined),
+        idempotencyKey: `${run.turnId}:${call.toolCallId}`,
+        parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
+        queue,
+        state: options.state,
+        text: input.text,
+      });
+      return { conversationId: childConversationId, delivery: "queued" };
     }
     const { invocation, queued } = await createAgentInvocationForMessage({
       actor,

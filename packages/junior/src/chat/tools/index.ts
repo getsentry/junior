@@ -261,7 +261,10 @@ export function createTools(
   }
 
   if (context.messageAgent) {
-    tools.messageAgent = createMessageAgentTool(context.messageAgent);
+    tools.messageAgent = createMessageAgentTool(
+      context.messageAgent,
+      turnTools.messageAgent,
+    );
   }
 
   if (turnTools.reply !== "none") {

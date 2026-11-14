@@ -151,7 +151,8 @@ async function postMovedMessage(
   };
 }
 
-async function readChannelLocationId(
+/** Read the id of the Location row of one Slack channel. */
+export async function readChannelLocationId(
   channel: ContinueInSlackChannel,
 ): Promise<string> {
   const [row] = await getDb()

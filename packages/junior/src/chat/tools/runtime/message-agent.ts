@@ -23,15 +23,21 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
+// A channel Thread's final responses go to its channel. The parent sees
+// only what this tool sends, so the Thread decides what the parent must know.
+const CHANNEL_THREAD_PARENT_STEERING =
+  "You work with people in your own channel, and your responses go there. Your parent agent sees none of it: this tool is the only way to reach it. Message your parent when it needs to know or act: you finished the work it gave you, you need a decision or access only it has, or you are blocked. Keep it short and include links. Do not send it each update that you post in your channel. When your channel is archived, the runtime sends your parent one wrap-up.";
+
 /**
  * Create the tool that sends one message to the parent, a child agent, or
  * another top-level agent.
  */
 export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
+  variant?: "channel_thread",
 ) {
   return zodTool({
-    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent.`,
+    description: `${variant === "channel_thread" ? `${CHANNEL_THREAD_PARENT_STEERING} ` : ""}Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent.`,
     exposure: "modelOnly",
     // Action review judges the actions that the message names.
     approvalMode: "auto",
