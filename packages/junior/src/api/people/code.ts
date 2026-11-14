@@ -14,6 +14,7 @@ export async function readPeopleCode(email: string, offset?: number) {
       summary: {
         closed: 0,
         created: 0,
+        idle: 0,
         merged: 0,
         open: 0,
       },
