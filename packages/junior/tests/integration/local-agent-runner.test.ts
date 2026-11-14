@@ -386,8 +386,10 @@ describe("local agent runner", () => {
       alias: "model-failure",
       cwd: "/tmp/local-agent-runner-model-failure",
     });
+    // Pi retries most transient failures with real backoff. Pi does not retry
+    // this text, and Junior still gives it transient-failure copy.
     const rawError =
-      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
+      "bad gateway: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
