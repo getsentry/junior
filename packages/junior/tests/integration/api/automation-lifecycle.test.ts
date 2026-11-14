@@ -1,7 +1,6 @@
 import {
   claimDueScheduledRun,
-  advanceScheduledAutomationAfterRun,
-  markScheduledRunFailed,
+  transitionScheduledRun,
 } from "@/chat/scheduled-automations/runs";
 import { describe, expect, test } from "vitest";
 import { getDb } from "@/chat/db";
@@ -150,15 +149,10 @@ describe("Automation lifecycle API", () => {
       expect(
         await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
       ).toBeUndefined();
-      await markScheduledRunFailed(getDb(), {
-        runId: run.id,
-        completedAtMs: Date.now(),
-        errorMessage: "Run failed after pause",
-      });
-      await advanceScheduledAutomationAfterRun(getDb(), {
+      await transitionScheduledRun(getDb(), {
         nowMs: Date.now(),
-        status: "failed",
         run,
+        transition: { errorMessage: "Run failed after pause", to: "failed" },
       });
       expect((await read()).status).toBe("paused");
       expect((await lifecycle("resume")).status).toBe(200);
