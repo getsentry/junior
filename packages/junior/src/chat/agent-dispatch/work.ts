@@ -357,7 +357,7 @@ async function projectDispatchTurnResult(
         dispatchId,
         result.errorMessage ??
           "Dispatch requires authorization that is unavailable for background work",
-        result.resultMessageTs,
+        { resultMessageTs: result.resultMessageTs },
       );
       break;
     case "failed":
@@ -412,11 +412,17 @@ async function persistBlockedDispatchTurn(
     state: "failed",
     surface: "api",
   });
+  if (!(error instanceof AuthorizationFlowDisabledError)) {
+    await markDispatchBlocked(dispatch.id, error.message);
+    return;
+  }
   await markDispatchBlocked(
     dispatch.id,
-    error instanceof AuthorizationFlowDisabledError
-      ? missingAuthorizationReason(dispatch, error.provider)
-      : error.message,
+    missingAuthorizationReason(dispatch, error.provider),
+    // Only a run with creator credentials has an account to connect.
+    dispatch.credentialSubject
+      ? { authorizationProvider: error.provider }
+      : undefined,
   );
 }
 

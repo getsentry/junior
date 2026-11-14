@@ -68,6 +68,8 @@ export interface PluginAuthOrchestrationInput {
   ) => void | Promise<void>;
   /** When false, required auth hard-fails instead of pausing for an OAuth link. */
   interactiveAuthEnabled?: boolean;
+  /** Ends the run when required auth hard-fails. */
+  onAuthorizationFlowDisabled?: (error: AuthorizationFlowDisabledError) => void;
   userTokenStore?: UserTokenStore;
   authorization?: OAuthAuthorization;
 }
@@ -128,6 +130,12 @@ export function createPluginAuthOrchestration(
 ): PluginAuthOrchestration {
   let pendingPause: PluginAuthorizationPauseError | undefined;
 
+  const flowDisabled = (provider: string): AuthorizationFlowDisabledError => {
+    const error = new AuthorizationFlowDisabledError("plugin", provider);
+    input.onAuthorizationFlowDisabled?.(error);
+    return error;
+  };
+
   const startAuthorizationPause = async (
     provider: string,
     options?: {
@@ -141,7 +149,7 @@ export function createPluginAuthOrchestration(
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
     if (input.interactiveAuthEnabled === false) {
-      throw new AuthorizationFlowDisabledError("plugin", provider);
+      throw flowDisabled(provider);
     }
     const recordPendingAuth = input.sessionId
       ? input.recordPendingAuth
@@ -259,7 +267,7 @@ export function createPluginAuthOrchestration(
 
       if (!input.actorId || !input.userTokenStore) {
         if (input.interactiveAuthEnabled === false) {
-          throw new AuthorizationFlowDisabledError("plugin", provider);
+          throw flowDisabled(provider);
         }
         throw new PluginCredentialFailureError(
           provider,

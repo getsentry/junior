@@ -7,11 +7,16 @@ import {
   completeAuth,
   file,
   githubWebhook,
+  heartbeat,
   person,
   slackMention,
   slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
-import { insertWatch } from "@junior-evals/fixture/insert";
+import {
+  insertScheduledAutomation,
+  insertWatch,
+  slackChannel,
+} from "@junior-evals/fixture/insert";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
@@ -26,6 +31,10 @@ import {
 
 const ALICE = person("UALICE", "Alice");
 const BOB = person("UBOB", "Bob");
+// The fixture forgets the MCP credentials of message authors only. A run with
+// creator credentials stores an OAuth client for its creator, so the
+// automation test uses a creator that no other test uses.
+const CAROL = person("UCAROL", "Carol");
 const BUDGET_ECHO = "mcp__eval-auth__budget-echo";
 const HANDBOOK_SEARCH = "mcp__eval-handbook__handbook-search";
 const PULL_REQUEST = "getsentry/junior#691";
@@ -223,6 +232,27 @@ describe("MCP Authorization", () => {
     expect(turnStates(conversation)).toEqual(["succeeded"]);
     expect(conversation.replies).toHaveLength(1);
     expect(completedMcpToolCalls(BUDGET_ECHO, conversation)).toEqual([]);
+  });
+
+  test("when a scheduled automation needs a provider that its creator has not connected, the run stops without a declared result", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      createdBy: CAROL,
+      credentialMode: "creator",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "/eval-auth Look up the budget and post it here.",
+    });
+
+    const blocked = await run(heartbeat());
+
+    // A scheduled run cannot ask for authorization. The runtime ends it and
+    // blocks the automation, so the model does not report the block itself.
+    expect(blocked.replies).toEqual([]);
+    expect(toolCallsOf("finishAutomationRun", blocked)).toEqual([]);
+    expect(completedMcpToolCalls(BUDGET_ECHO, blocked)).toEqual([]);
   });
 
   test("when the person unlinks the provider, the next use asks them to authorize again", async ({

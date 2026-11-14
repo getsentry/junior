@@ -9,6 +9,7 @@ import {
   getDispatchRecord,
   markDispatchBlocked,
 } from "@/chat/agent-dispatch/store";
+import { AUTOMATION_CONNECT_ACTION_ID } from "@/chat/automations/blocked-notice";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -114,6 +115,7 @@ describe("event automation blocking", () => {
           .sentRecords()
           [index]!.conversationId!.replace(/^agent-dispatch:/, ""),
         reason,
+        { authorizationProvider: "github" },
       );
 
     expect(await ingest("github:blocked-1")).toEqual({ dispatched: 1 });
@@ -121,7 +123,8 @@ describe("event automation blocking", () => {
     await blockRun(0);
     await blockRun(0);
 
-    // Nothing posts to the Destination. The creator gets one private notice.
+    // Nothing posts to the Destination. The creator gets one private notice
+    // with a button that connects the missing account.
     expect(
       getCapturedSlackApiCalls("conversations.open").map(
         ({ params }) => params.users,
@@ -129,11 +132,25 @@ describe("event automation blocking", () => {
     ).toEqual(["U123"]);
     expect(
       slackApiOutbox.messages().map(({ params }) => ({
+        blocks: params.blocks,
         channel: params.channel,
         text: params.text,
       })),
     ).toEqual([
       {
+        blocks: [
+          expect.objectContaining({ type: "section" }),
+          {
+            type: "actions",
+            elements: [
+              expect.objectContaining({
+                action_id: AUTOMATION_CONNECT_ACTION_ID,
+                text: { type: "plain_text", text: "Connect GitHub" },
+                value: "github",
+              }),
+            ],
+          },
+        ],
         channel: expect.stringMatching(/^D/),
         text: expect.stringContaining(reason),
       },
