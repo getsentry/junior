@@ -195,6 +195,38 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
       )
       .max(12),
   }),
+  // Dashboards: the saved filters, the first widgets, and small charts of
+  // a few of them. Projects are the ones Sentry lists for the viewer, or a
+  // name such as "All projects". A chart shows its widget's shape, the way
+  // a chart card does.
+  z.strictObject({
+    type: z.literal("dashboard"),
+    summary: summary.optional(),
+    widgetCount: count,
+    projects: z.array(text).max(5),
+    environments: z.array(text).max(5),
+    // The time range, such as "Last 24 hours".
+    range: text,
+    // The display is a name, such as "Line chart" or "Table".
+    widgets: z.array(z.strictObject({ title: text, display: text })).max(8),
+    charts: z
+      .array(
+        z.strictObject({
+          title: text,
+          display: z.enum(["line", "bar", "area"]),
+          series: z
+            .array(
+              z.strictObject({
+                label: text,
+                points: z.array(z.number().finite()).min(2).max(60),
+              }),
+            )
+            .min(1)
+            .max(3),
+        }),
+      )
+      .max(3),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -377,6 +409,12 @@ export function objectFactFields(
         `${plural(facts.errorCount, "error")}, ${plural(facts.performanceIssueCount, "performance issue")}`,
       );
       add("projects", "Projects", list(facts.projects));
+      break;
+    case "dashboard":
+      add("widgets", "Widgets", facts.widgetCount.toLocaleString("en-US"));
+      add("projects", "Projects", list(facts.projects));
+      add("environments", "Environments", list(facts.environments));
+      add("range", "Time range", facts.range);
       break;
     case "person":
       add("email", "Email", facts.email);
