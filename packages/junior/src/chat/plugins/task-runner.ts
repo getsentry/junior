@@ -102,7 +102,7 @@ function toolResultText(message: PiMessage): string {
   const record = message as PiMessage & Record<string, unknown>;
   const parts = [
     messageText(message),
-    record.output,
+    record["output"],
     record["result"],
     record["stdout"],
     record["stderr"],
