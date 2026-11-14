@@ -808,7 +808,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      recorder.wrap((() => undefined) as never)(model, turnContext, {});
+      void recorder.wrap((() => undefined) as never)(model, turnContext, {});
       await recorder.record({
         ...finalReply,
         usage: {
