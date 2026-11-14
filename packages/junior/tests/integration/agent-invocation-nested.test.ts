@@ -118,7 +118,7 @@ describe("nested agent invocations", () => {
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
       // listAgents shows the state of open work. A `replaced` child still
-      // has work.
+      // has work, so it shows no result and no error.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
         kind: "task",
@@ -128,16 +128,10 @@ describe("nested agent invocations", () => {
         updated_at: expect.any(String),
       });
       await expect(listAgents(slackParentConversationId)).resolves.toEqual([
-        {
-          ...listedChild(child.childConversationId),
-          error: "Started a helper.",
-        },
+        listedChild(child.childConversationId),
       ]);
       await expect(listAgents(child.childConversationId)).resolves.toEqual([
-        {
-          ...listedChild(helper.childConversationId),
-          error: "Started a helper.",
-        },
+        listedChild(helper.childConversationId),
       ]);
 
       // The result runs on the helper as the Actor that started the tree,

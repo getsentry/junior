@@ -16,11 +16,11 @@ import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
+import { SENT_PARENT_MAILBOX_STATUSES } from "./statuses";
 import {
   getLatestAgentInvocationForConversation,
-  invocationFromRow,
-  isTerminalAgentInvocation,
-  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  moveParentMailboxStatus,
+  stopOpenAgentInvocations,
 } from "./store";
 import type { TerminalAgentInvocation } from "./types";
 
@@ -171,17 +171,15 @@ async function skipUnreadResults(
   if (invocationIds.length === 0) {
     return;
   }
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "skipped", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.parentConversationId, conversationId),
-        inArray(juniorAgentInvocations.invocationId, invocationIds),
-        eq(juniorAgentInvocations.parentMailboxStatus, "appended"),
-      ),
-    );
+  await moveParentMailboxStatus({
+    from: ["appended"],
+    nowMs,
+    to: "skipped",
+    where: and(
+      eq(juniorAgentInvocations.parentConversationId, conversationId),
+      inArray(juniorAgentInvocations.invocationId, invocationIds),
+    )!,
+  });
 }
 
 /**
@@ -454,8 +452,6 @@ async function stopLockedAgentInvocationTree(
   nowMs: number,
   options: { includeRoot: boolean; taskedAfterMs?: number },
 ): Promise<StoppedAgentTree> {
-  const db = getSqlExecutor().db();
-  const now = new Date(nowMs);
   const lockedIds = await lockAgentConversationTree(conversationId);
   const conversationIds =
     options.taskedAfterMs === undefined
@@ -470,55 +466,32 @@ async function stopLockedAgentInvocationTree(
     : conversationIds.filter((id) => id !== conversationId);
   // Stop open work first. After this write no agent invocation in the tree
   // can finish, so no new result can appear.
-  const stopped = await db
-    .update(juniorAgentInvocations)
-    .set({
-      errorMessage: "Stopped by the parent conversation",
-      parentMailboxStatus: "skipped",
-      result: null,
-      status: "stopped",
-      terminalAt: now,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        inArray(juniorAgentInvocations.childConversationId, stoppedChildIds),
-        inArray(
-          juniorAgentInvocations.status,
-          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-        ),
-      ),
-    )
-    .returning();
-  await db
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "skipped", updatedAt: now })
-    .where(
-      or(
-        // A result sent to the tree would start new work there.
-        and(
-          inArray(juniorAgentInvocations.parentConversationId, stoppedChildIds),
-          inArray(juniorAgentInvocations.parentMailboxStatus, [
-            "pending",
-            "appended",
-          ]),
-        ),
-        // With `includeRoot: false`, an `appended` result sent to the
-        // Conversation can be one that it already read, so only `pending`
-        // results are skipped here. See `skipUnreadResults`.
-        and(
-          eq(juniorAgentInvocations.parentConversationId, conversationId),
-          eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
-        ),
-        // No later agent invocation in the tree sends a `replaced` report.
-        and(
-          inArray(juniorAgentInvocations.childConversationId, stoppedChildIds),
-          eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
-        ),
-      ),
-    );
-  return {
-    conversationIds,
-    stopped: stopped.map(invocationFromRow).filter(isTerminalAgentInvocation),
-  };
+  const stopped = await stopOpenAgentInvocations(stoppedChildIds, nowMs);
+  // A result sent to the tree would start new work there.
+  await moveParentMailboxStatus({
+    from: SENT_PARENT_MAILBOX_STATUSES,
+    nowMs,
+    to: "skipped",
+    where: inArray(
+      juniorAgentInvocations.parentConversationId,
+      stoppedChildIds,
+    ),
+  });
+  // With `includeRoot: false`, an `appended` result sent to the Conversation
+  // can be one that it already read, so only `pending` results are skipped
+  // here. See `skipUnreadResults`.
+  await moveParentMailboxStatus({
+    from: ["pending"],
+    nowMs,
+    to: "skipped",
+    where: eq(juniorAgentInvocations.parentConversationId, conversationId),
+  });
+  // No later agent invocation in the tree sends a `replaced` report.
+  await moveParentMailboxStatus({
+    from: ["replaced"],
+    nowMs,
+    to: "skipped",
+    where: inArray(juniorAgentInvocations.childConversationId, stoppedChildIds),
+  });
+  return { conversationIds, stopped };
 }

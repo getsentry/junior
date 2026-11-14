@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { isEventMailboxMetadata } from "@/chat/events/notification";
@@ -20,6 +20,10 @@ import {
 import { readChildConversationSender } from "./child-input";
 import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
+import {
+  SENT_PARENT_MAILBOX_STATUSES,
+  type AgentInvocationParentMailboxStatus,
+} from "./statuses";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -286,10 +290,10 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
     .where(
       and(
         eq(juniorAgentInvocations.parentConversationId, conversationId),
-        inArray(juniorAgentInvocations.parentMailboxStatus, [
-          "pending",
-          "appended",
-        ]),
+        inArray(
+          juniorAgentInvocations.parentMailboxStatus,
+          SENT_PARENT_MAILBOX_STATUSES,
+        ),
       ),
     );
   if (marked.length === 0) {
@@ -347,6 +351,53 @@ export async function listPendingAgentInvocationResults(
 }
 
 /**
+ * The parent mailbox statuses that each later status can follow. An agent
+ * invocation gets its first parent mailbox status when it ends. Each later
+ * change goes through `moveParentMailboxStatus`, which writes only rows in one
+ * of these statuses, so an illegal or late change writes nothing.
+ */
+const PARENT_MAILBOX_MOVES = {
+  // The result is in the parent mailbox.
+  appended: ["pending"],
+  // A stop ended the open work that was to send a `replaced` report.
+  pending: ["replaced"],
+  // A stop ended the work that the result would start or report.
+  skipped: ["pending", "appended", "replaced"],
+} as const satisfies Partial<
+  Record<
+    AgentInvocationParentMailboxStatus,
+    readonly AgentInvocationParentMailboxStatus[]
+  >
+>;
+
+type ParentMailboxMove = keyof typeof PARENT_MAILBOX_MOVES;
+
+/**
+ * Move the parent mailbox status of the matching terminal agent invocations
+ * to `to`. Only rows in one of `from` change, and `from` must be a legal
+ * source of `to`.
+ */
+export async function moveParentMailboxStatus<
+  To extends ParentMailboxMove,
+>(args: {
+  from: readonly (typeof PARENT_MAILBOX_MOVES)[To][number][];
+  nowMs: number;
+  to: To;
+  where: SQL;
+}): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ parentMailboxStatus: args.to, updatedAt: new Date(args.nowMs) })
+    .where(
+      and(
+        args.where,
+        inArray(juniorAgentInvocations.parentMailboxStatus, [...args.from]),
+      ),
+    );
+}
+
+/**
  * Send a `replaced` result to the parent now. A stop ended the open work of
  * the child, so no later agent invocation sends the report.
  */
@@ -354,16 +405,12 @@ export async function reportReplacedAgentInvocation(
   invocationId: string,
   nowMs = Date.now(),
 ): Promise<AgentInvocation | undefined> {
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "pending", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.invocationId, invocationId),
-        eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
-      ),
-    );
+  await moveParentMailboxStatus({
+    from: ["replaced"],
+    nowMs,
+    to: "pending",
+    where: eq(juniorAgentInvocations.invocationId, invocationId),
+  });
   return await getAgentInvocation(invocationId);
 }
 
@@ -412,16 +459,12 @@ export async function markAgentInvocationParentMailboxAppended(
   invocationId: string,
   nowMs = Date.now(),
 ): Promise<void> {
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "appended", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.invocationId, invocationId),
-        eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
-      ),
-    );
+  await moveParentMailboxStatus({
+    from: ["pending"],
+    nowMs,
+    to: "appended",
+    where: eq(juniorAgentInvocations.invocationId, invocationId),
+  });
 }
 
 /** Record that the invocation's idempotent mailbox append completed. */
@@ -433,7 +476,12 @@ export async function markAgentInvocationMailboxAppended(
     .db()
     .update(juniorAgentInvocations)
     .set({ mailboxStatus: "appended", updatedAt: new Date(nowMs) })
-    .where(eq(juniorAgentInvocations.invocationId, invocationId));
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.mailboxStatus, "pending"),
+      ),
+    );
 }
 
 /** Mark one non-terminal invocation as actively executing. */
@@ -562,6 +610,42 @@ export async function markAgentInvocationSteered(
       ),
     );
   return await getAgentInvocation(invocationId);
+}
+
+/**
+ * Stop every open agent invocation of the given child Conversations. A stop
+ * is not a result, so the parent never gets one. Returns the agent
+ * invocations that this call stopped.
+ */
+export async function stopOpenAgentInvocations(
+  childConversationIds: readonly string[],
+  nowMs: number,
+): Promise<TerminalAgentInvocation[]> {
+  const now = new Date(nowMs);
+  const rows = await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({
+      errorMessage: "Stopped by the parent conversation",
+      parentMailboxStatus: "skipped",
+      result: null,
+      status: "stopped",
+      terminalAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        inArray(juniorAgentInvocations.childConversationId, [
+          ...childConversationIds,
+        ]),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
+    .returning();
+  return rows.map(invocationFromRow).filter(isTerminalAgentInvocation);
 }
 
 /** Return whether an agent invocation has finished. */
