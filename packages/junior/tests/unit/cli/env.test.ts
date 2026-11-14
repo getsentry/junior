@@ -21,6 +21,8 @@ const TEST_ENV_KEYS = [
   "JUNIOR_SCHEDULER_SECRET",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "VERCEL",
+  "VERCEL_ENV",
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -144,9 +146,30 @@ describe("loadCliEnvFiles", () => {
     expect(process.env.CLI_ENV_PRIORITY).toBe("local");
   });
 
-  it("applies development defaults after loading env files", () => {
+  it("applies development defaults after loading a pulled Vercel env", () => {
     clearTestEnv();
     delete mutableEnv.NODE_ENV;
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
+    writeFile(path.join(tempRoot, "package.json"), "{}\n");
+    writeFile(
+      path.join(tempRoot, ".env.local"),
+      ['VERCEL="1"', 'VERCEL_ENV="production"', ""].join("\n"),
+    );
+
+    loadCliEnvFiles(tempRoot);
+
+    expect(process.env.JUNIOR_SECRET).toBe(JUNIOR_LOCAL_DEV_INTERNAL_SECRET);
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
+    expect(process.env.JUNIOR_SCHEDULER_SECRET).toBe(
+      JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
+    );
+  });
+
+  it("keeps only the secret defaults in a Vercel build", () => {
+    clearTestEnv();
+    delete mutableEnv.NODE_ENV;
+    process.env.VERCEL_ENV = "production";
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -154,7 +177,7 @@ describe("loadCliEnvFiles", () => {
     loadCliEnvFiles(tempRoot);
 
     expect(process.env.JUNIOR_SECRET).toBe(JUNIOR_LOCAL_DEV_INTERNAL_SECRET);
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBeUndefined();
     expect(process.env.JUNIOR_SCHEDULER_SECRET).toBe(
       JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
     );

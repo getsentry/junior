@@ -21,7 +21,7 @@ function hasValue(value: string | undefined): value is string {
 /** Apply global development defaults after env files have been loaded. */
 export function applyJuniorDevelopmentDefaults(
   env: NodeJS.ProcessEnv,
-  options: { baseUrl?: string } = {},
+  options: { baseUrl?: string; vercelDeployment?: boolean } = {},
 ): void {
   const nodeEnv = env.NODE_ENV ?? "development";
   if (nodeEnv !== "development") {
@@ -31,7 +31,9 @@ export function applyJuniorDevelopmentDefaults(
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
   }
-  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
+  // Vercel builds leave NODE_ENV unset, but `junior snapshot create` runs
+  // there and must use the deployment's Redis.
+  if (!hasValue(env.JUNIOR_STATE_ADAPTER) && !options.vercelDeployment) {
     env.JUNIOR_STATE_ADAPTER = "memory";
   }
   if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {
@@ -87,6 +89,11 @@ function resolveCliEnvRoots(cwd: string): string[] {
  */
 export function loadCliEnvFiles(cwd: string = process.cwd()): void {
   const nodeEnv = process.env.NODE_ENV ?? "development";
+  // Read VERCEL_ENV before loading env files: `vercel env pull` can write
+  // VERCEL_ENV=production to .env.local, and local runs keep memory state.
+  const vercelDeployment =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
 
   for (const root of resolveCliEnvRoots(cwd)) {
     for (const envFile of envFileNames(nodeEnv)) {
@@ -99,5 +106,5 @@ export function loadCliEnvFiles(cwd: string = process.cwd()): void {
     }
   }
 
-  applyJuniorDevelopmentDefaults(process.env);
+  applyJuniorDevelopmentDefaults(process.env, { vercelDeployment });
 }
