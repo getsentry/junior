@@ -3,6 +3,7 @@ import {
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
+  type ObjectType,
   type OwnedObjectAnnotation,
   type PluginRegistration,
   type User,
@@ -138,6 +139,19 @@ export function readObjectLinkTypes(
   const linkTypes = [...coreLinkTypes(), ...plugins.flatMap(pluginLinkTypes)];
   assertNoObjectLinkConflicts(linkTypes);
   return linkTypes;
+}
+
+/**
+ * Return the object type of the link type that claims a URL, such as
+ * `code_change` for a pull request link from the GitHub plugin. The plugin
+ * that owns the link type decides; core only reads its filters.
+ */
+export function readLinkObjectType(
+  url: string,
+  linkTypes: readonly ObjectLinkType[] = readObjectLinkTypes(),
+): ObjectType | undefined {
+  if (!URL.canParse(url)) return undefined;
+  return findObjectLinkType(linkTypes, new URL(url))?.objectType;
 }
 
 type ResolvedObjectLink = {
