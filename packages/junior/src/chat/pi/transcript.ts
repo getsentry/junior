@@ -115,7 +115,7 @@ export function isAssistantMessage(value: unknown): value is AssistantMessage {
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
-): value is ToolResultMessage<any> {
+): value is ToolResultMessage {
   return (
     typeof value === "object" &&
     value !== null &&

@@ -286,10 +286,10 @@ function parameterText(schema: unknown): string[] {
   }
   const record = schema as Record<string, unknown>;
   const text: string[] = [];
-  if (typeof record.description === "string") {
-    text.push(record.description);
+  if (typeof record["description"] === "string") {
+    text.push(record["description"]);
   }
-  const properties = record.properties;
+  const properties = record["properties"];
   if (properties && typeof properties === "object") {
     for (const [name, property] of Object.entries(properties)) {
       text.push(name, ...parameterText(property));
@@ -659,6 +659,8 @@ function toolMetadata(
 /**
  * Create the model-visible search tool for the executable tool catalog.
  * Direct tools stay out of results: the model already has their schemas.
+ *
+ * @runBuilt searchTools
  */
 export function createSearchToolsTool(
   allCatalogTools: Record<string, AnyToolDefinition>,

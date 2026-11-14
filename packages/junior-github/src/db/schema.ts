@@ -20,6 +20,12 @@ export type GitHubPullRequestState = z.output<
   typeof githubPullRequestStateSchema
 >;
 
+/**
+ * What waits on the requester of a Junior pull request: merge it, or review
+ * it. They take one, not both.
+ */
+export type GitHubPullRequestAction = "merge" | "review";
+
 export const githubPullRequestCommitCompositionSchema = z.enum([
   "junior_only",
   "mixed",
@@ -93,13 +99,13 @@ export const juniorGitHubPullRequests = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     /**
-     * When Junior saw the pull request become ready to merge and added its
-     * review desk notice. Null when it is not ready.
+     * The requester's next action that Junior last derived from GitHub, and
+     * shows on the review desk. Null when no action waits on them.
      */
-    readyToMergeAt: timestamp("ready_to_merge_at", { withTimezone: true }),
+    nextAction: text("next_action").$type<GitHubPullRequestAction>(),
     /**
-     * Webhooks that asked to check whether the pull request is ready to
-     * merge. The check runs again when this changes during a check.
+     * Webhooks that asked to check the next action. The check runs again
+     * when this changes during a check.
      */
     readySyncRequests: integer("ready_sync_requests").notNull().default(0),
     /**

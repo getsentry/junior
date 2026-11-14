@@ -229,7 +229,11 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  await expect(row(transcript, MEMORY_CAPTURE_SEQ)).toHaveCount(0);
+  // The capture shows under the reply that ends its Turn.
+  const captured = transcript.getByRole("button", {
+    name: "Captured 2 memories",
+  });
+  await expect(captured).toHaveCount(0);
 
   // A memory jump mounts its far row before it scrolls there.
   const details = page.getByRole("complementary", {
@@ -247,7 +251,7 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await expect(
     page.getByRole("dialog", { name: "Captured 2 memories" }),
   ).toBeVisible();
-  await expect(row(transcript, MEMORY_CAPTURE_SEQ)).toBeInViewport();
+  await expect(captured).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
@@ -278,7 +282,7 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     window.addEventListener(
       "keydown",
       (event) => {
-        document.body.dataset.findPrevented = String(event.defaultPrevented);
+        document.body.dataset["findPrevented"] = String(event.defaultPrevented);
       },
       { once: true },
     );
@@ -570,10 +574,10 @@ test.describe("on a touch screen", () => {
     // scroll needs none.
     await transcript.evaluate((element) => {
       const scrollTo = element.scrollTo.bind(element);
-      element.dataset.scrollCorrections = "0";
+      element.dataset["scrollCorrections"] = "0";
       element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
-        element.dataset.scrollCorrections = String(
-          Number(element.dataset.scrollCorrections) + 1,
+        element.dataset["scrollCorrections"] = String(
+          Number(element.dataset["scrollCorrections"]) + 1,
         );
         scrollTo(...args);
       };

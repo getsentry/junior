@@ -4,9 +4,13 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { cn } from "@dashboard/lib/utils";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
+import { Sparkline } from "../components/charts/Sparkline";
+import { TraceWaterfall } from "../components/charts/TraceWaterfall";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -16,21 +20,110 @@ import {
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
+import { displayPlainText } from "../display-text/plainText";
+import { formatRelativeTime, formatTime } from "../format";
+import { ObjectAttachAction } from "./ObjectAttach";
+import { objectSource } from "./objectSource";
+import { useSavedObject } from "./savedObjects";
+
+// A thumbnail that fails to load does not render.
+function Thumbnail({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      alt=""
+      className="aspect-video max-h-44 w-full rounded-md border border-dashboard-border object-cover"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={src}
+    />
+  );
+}
+
+// The image route answers 404 to a viewer who cannot see the source, so a
+// preview image that fails to load does not render.
+function PreviewImage({
+  alt,
+  image,
+}: {
+  alt: string;
+  image: { src: string; srcSet: string };
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      alt={alt}
+      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
+      decoding="async"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={image.src}
+      srcSet={image.srcSet}
+    />
+  );
+}
+
+// A web page names its site, then its author, such as "YouTube · Sentry".
+// Its type and its core plugin tell the viewer nothing, and its label is
+// its title. An event ends with when it happened, in the viewer's time.
+function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  const parts =
+    card.objectType === "web_page"
+      ? [
+          webPageSite(card),
+          card.facts?.type === "web_page" ? card.facts.author : undefined,
+        ]
+      : [
+          type,
+          objectSource(card.plugin),
+          // A label that repeats the title or the type says nothing new.
+          [card.title, type].includes(card.label) ? "" : card.label,
+          card.facts?.type === "event" && card.facts.occurredAt
+            ? new Date(card.facts.occurredAt).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : undefined,
+        ];
+  return parts.filter(Boolean).join(" · ") || type;
+}
+
+function webPageSite(card: OwnedObjectAnnotation): string | undefined {
+  if (card.facts?.type === "web_page" && card.facts.siteName) {
+    return card.facts.siteName;
+  }
+  if (!card.url || !URL.canParse(card.url)) return undefined;
+  return new URL(card.url).hostname.replace(/^www\./, "");
+}
 
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit.
+ * for a link. Opening a source is always explicit. A live card can attach
+ * its object to the Conversation. A saved card tells when Junior fetched its
+ * facts. With `fill`, the card fills the height of its container and its body
+ * scrolls.
  */
 export function ObjectCard({
   card,
+  className,
+  fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
-  live?: boolean;
+  className?: string;
+  fill?: boolean | undefined;
+  live?: boolean | undefined;
 }) {
+  const saved = useSavedObject(card);
+  const images = saved.previewImages;
+  const fetchedAt = live ? undefined : saved.updatedAt;
+  const attachable = live && card.objectType !== "person";
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
+        className={className}
         card={{
           id: card.key,
           title: card.title,
@@ -42,11 +135,20 @@ export function ObjectCard({
       />
     );
   }
-  const fields = objectFactFields(card.facts);
+  // The header already names the site and author of a web page, and the
+  // chart caption shows its range.
+  const fields = objectFactFields(card.facts).filter((field) =>
+    card.facts?.type === "web_page"
+      ? field.key !== "siteName" && field.key !== "author"
+      : card.facts?.type !== "chart" || field.key !== "range",
+  );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   return (
-    <MessageCard aria-label={`${type}: ${card.title}`} className="my-1">
+    <MessageCard
+      aria-label={`${type}: ${card.title}`}
+      className={cn("my-1", fill && "my-0 flex h-full flex-col", className)}
+    >
       <MessageCardHeader
         icon={
           card.facts?.type === "person" && card.facts.avatarUrl ? (
@@ -59,9 +161,7 @@ export function ObjectCard({
             <ObjectIcon {...card} size={18} />
           )
         }
-        meta={[type, card.plugin, card.label === card.title ? "" : card.label]
-          .filter(Boolean)
-          .join(" · ")}
+        meta={cardMeta(card, type)}
         title={
           card.url ? (
             <OutboundLink
@@ -77,7 +177,54 @@ export function ObjectCard({
           )
         }
       />
-      <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
+      <div
+        className={cn(
+          "grid min-w-0 gap-4 px-4 pb-4 md:px-5",
+          fill && "min-h-0 flex-1 content-start overflow-y-auto",
+        )}
+      >
+        {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
+          card.facts.thumbnailUrl && (
+            <Thumbnail src={card.facts.thumbnailUrl} />
+          )}
+        {images.length > 0 && (
+          // Screenshots often come as a before and after pair, side by side.
+          <div className="grid grid-cols-2 gap-2">
+            {images.map((image, index) => (
+              <PreviewImage
+                key={image.src}
+                alt={`Description image ${index + 1}`}
+                image={image}
+              />
+            ))}
+          </div>
+        )}
+        {card.facts?.summary && (
+          <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
+            {displayPlainText(card.facts.summary)}
+          </p>
+        )}
+        {card.facts?.type === "task" && card.facts.trend && (
+          <Sparkline
+            label={card.facts.trend.label}
+            series={[card.facts.trend]}
+          />
+        )}
+        {card.facts?.type === "chart" && (
+          <Sparkline
+            display={card.facts.display}
+            label={card.facts.range}
+            series={card.facts.series}
+            tall
+          />
+        )}
+        {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
+          <TraceWaterfall
+            durationMs={card.facts.durationMs}
+            label="Top-level spans"
+            spans={card.facts.spans}
+          />
+        )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
           <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
@@ -134,19 +281,28 @@ export function ObjectCard({
           </p>
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
-        {card.url && (
-          <OutboundLink
-            href={card.url}
-            className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
-          >
-            Open {type.toLowerCase()}
-          </OutboundLink>
-        )}
-        {!live && (
-          <span className="text-dashboard-text-muted">Latest saved state</span>
-        )}
-      </div>
+      {(card.url || fetchedAt || attachable) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
+          {card.url && (
+            <OutboundLink
+              href={card.url}
+              className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+            >
+              Open {type.toLowerCase()}
+            </OutboundLink>
+          )}
+          {fetchedAt && (
+            <time
+              className="text-dashboard-text-muted"
+              dateTime={fetchedAt}
+              title={formatTime(fetchedAt)}
+            >
+              Last fetched {formatRelativeTime(fetchedAt)}
+            </time>
+          )}
+          {attachable && <ObjectAttachAction card={card} />}
+        </div>
+      )}
     </MessageCard>
   );
 }

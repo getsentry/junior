@@ -53,7 +53,9 @@ function scrubSelector(value: string): string {
 
 function scrubAttribute(value: string): string {
   // Page and API URLs carry search text in the query string.
-  if (/^https?:\/\//.test(value)) return value.split(/[?#]/, 1)[0] ?? value;
+  if (value.startsWith("https://") || value.startsWith("http://")) {
+    return value.split(/[?#]/, 1)[0] ?? value;
+  }
   return scrubSelector(value);
 }
 

@@ -58,7 +58,7 @@ async function addParticipant(args: {
 
 describe("conversation auto-archive API", () => {
   afterEach(async () => {
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
     await closeDb();
   });
 
@@ -148,7 +148,7 @@ describe("conversation auto-archive API", () => {
       autoArchiveGraceHours: 36,
     });
     const finishedAt = new Date(nowMs - 30 * hour).toISOString();
-    process.env.JUNIOR_SCHEDULER_SECRET = "auto-archive-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "auto-archive-secret";
     const juniorApp = await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([

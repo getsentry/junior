@@ -13,10 +13,10 @@ import {
 import type { SlackUserId } from "@/chat/slack/ids";
 
 export interface ListColumnMap {
-  titleColumnId?: string;
-  completedColumnId?: string;
-  assigneeColumnId?: string;
-  dueDateColumnId?: string;
+  titleColumnId?: string | undefined;
+  completedColumnId?: string | undefined;
+  assigneeColumnId?: string | undefined;
+  dueDateColumnId?: string | undefined;
 }
 
 type SlackListsSchemaColumnResponse = NonNullable<
@@ -105,7 +105,7 @@ const DEFAULT_TODO_SCHEMA = [
 export async function createTodoList(name: string): Promise<{
   listId: string;
   listColumnMap: ListColumnMap;
-  permalink?: string;
+  permalink?: string | undefined;
 }> {
   const client = getSlackClient();
   const result = await withSlackRetries(
@@ -155,8 +155,8 @@ export async function addListItems(input: {
   listId: string;
   titles: string[];
   listColumnMap?: ListColumnMap;
-  assigneeUserId?: SlackUserId;
-  dueDate?: string;
+  assigneeUserId?: SlackUserId | undefined;
+  dueDate?: string | undefined;
 }): Promise<{ createdItemIds: string[]; listColumnMap?: ListColumnMap }> {
   const client = getSlackClient();
 
@@ -251,8 +251,8 @@ export async function updateListItem(input: {
   listId: string;
   itemId: string;
   listColumnMap: ListColumnMap;
-  completed?: boolean;
-  title?: string;
+  completed?: boolean | undefined;
+  title?: string | undefined;
 }): Promise<void> {
   const client = getSlackClient();
   const listColumnMap =

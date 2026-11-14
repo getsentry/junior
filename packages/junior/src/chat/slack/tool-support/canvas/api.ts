@@ -25,10 +25,10 @@ export interface CanvasCreateInput {
 
 export interface CanvasReadResult {
   canvasId: string;
-  title?: string;
-  permalink?: string;
-  mimetype?: string;
-  filetype?: string;
+  title?: string | undefined;
+  permalink?: string | undefined;
+  mimetype?: string | undefined;
+  filetype?: string | undefined;
   content: string;
   byteLength: number;
 }
@@ -41,7 +41,7 @@ export interface CanvasReadResult {
  */
 export async function createCanvas(
   input: CanvasCreateInput,
-): Promise<{ canvasId: string; permalink?: string }> {
+): Promise<{ canvasId: string; permalink?: string | undefined }> {
   const client = getSlackClient();
   const normalizedChannelId = normalizeSlackConversationId(input.channelId);
   const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";

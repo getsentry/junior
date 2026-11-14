@@ -85,8 +85,8 @@ export interface CreateContainerInput {
   timeoutMs: number;
   /** Keep the container and its files after it stops. */
   persistent: boolean;
-  vcpus?: number;
-  signal?: AbortSignal;
+  vcpus?: number | undefined;
+  signal?: AbortSignal | undefined;
 }
 
 function isStatus(error: unknown, status: number): boolean {

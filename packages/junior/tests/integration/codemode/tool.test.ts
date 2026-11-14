@@ -52,18 +52,22 @@ const post = tool({
 
 describe("codemode tool", () => {
   it("runs the script's calls through the Run's pipeline and keeps the script result in details", async () => {
-    const registry = createTools([], {}, {
-      conversationId: CONVERSATION_ID,
-      destination: DESTINATION,
-      egress: {
-        async fetch() {
-          return new Response("ok");
+    const registry = createTools(
+      [],
+      {},
+      {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
         },
+        source: SOURCE,
+        turnTools: ROOT_TURN_TOOLS,
+        workspace: {} as never,
       },
-      source: SOURCE,
-      turnTools: ROOT_TURN_TOOLS,
-      workspace: {} as never,
-    } as never);
+    );
     const resume = createResumeState({
       checkpoint: { resumed: false, sliceId: 1 },
       conversationId: CONVERSATION_ID,
@@ -77,7 +81,7 @@ describe("codemode tool", () => {
     });
     const started: string[] = [];
     const agentTools = createPiAgentTools(
-      { ...registry, post } as Record<string, AnyToolDefinition>,
+      { ...registry, post },
       new SkillSandbox([], []),
       {
         spanContext: {},

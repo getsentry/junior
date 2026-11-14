@@ -120,7 +120,7 @@ describe("Google credential issuing", () => {
         })),
       },
     });
-    const body = new URLSearchParams(String(fetch.mock.calls[0]![1]!.body));
+    const body = new URLSearchParams(String(fetch.mock.calls[0][1]!.body));
     expect(body.get("grant_type")).toBe("refresh_token");
     expect(body.get("refresh_token")).toBe("refresh-token");
   });

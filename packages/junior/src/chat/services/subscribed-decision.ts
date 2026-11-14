@@ -30,14 +30,14 @@ export type SubscribedReplyReason =
 export interface SubscribedDecisionInput {
   rawText: string;
   text: string;
-  conversationContext?: string;
+  conversationContext?: string | undefined;
   hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
-    threadId?: string;
-    actorId?: string;
-    channelId?: string;
-    runId?: string;
+    threadId?: string | undefined;
+    actorId?: string | undefined;
+    channelId?: string | undefined;
+    runId?: string | undefined;
   };
 }
 
@@ -61,7 +61,7 @@ interface RouterEvidence {
   currentMessageHasDirectedFollowUpCue: boolean;
   currentMessageIsTerseClarification: boolean;
   entries: TranscriptMessage[];
-  humanMessagesSinceLastAssistant?: number;
+  humanMessagesSinceLastAssistant?: number | undefined;
   latestPriorAssistantMessage: string;
   latestPriorMessageRole: string;
   omittedEntries: number;
@@ -159,7 +159,7 @@ export function getThreadStopDecision(args: {
   botUserName: string;
   rawText: string;
   text: string;
-  isExplicitMention?: boolean;
+  isExplicitMention?: boolean | undefined;
 }): SubscribedDecisionResult | undefined {
   if (getSubscribedReplyPreflightDecision(args)) {
     return undefined;
@@ -396,7 +396,7 @@ export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
   rawText: string;
   text: string;
-  isExplicitMention?: boolean;
+  isExplicitMention?: boolean | undefined;
 }): SubscribedDecisionResult | undefined {
   const text = args.text.trim();
   const rawText = args.rawText.trim();

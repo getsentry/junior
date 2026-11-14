@@ -36,7 +36,7 @@ export interface MemoryRecallContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
-  events?: PluginConversationEvents;
+  events?: PluginConversationEvents | undefined;
   log: PluginLogger;
   locationId?: string;
   actor?: Actor;
@@ -120,7 +120,7 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
 }
 
 async function emitRecallOutcome(args: {
-  events?: PluginConversationEvents;
+  events?: PluginConversationEvents | undefined;
   memories: string[];
 }): Promise<void> {
   await args.events?.emit(memoriesRecalledEvent({ memories: args.memories }));

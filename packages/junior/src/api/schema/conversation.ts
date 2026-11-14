@@ -21,6 +21,7 @@ import {
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+import { objectPreviewImageSchema } from "./object-preview-image";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -56,6 +57,16 @@ export const conversationAttachmentParamsSchema = z
   .object({
     attachmentId: z.string().min(1),
     conversationId: z.string().min(1),
+  })
+  .strict();
+
+export const conversationAttachmentQuerySchema = z
+  .object({
+    /**
+     * Send `Content-Disposition: attachment` even for a type that previews
+     * inline, so a same-window download link saves the file.
+     */
+    download: z.stringbool().optional(),
   })
   .strict();
 
@@ -234,6 +245,7 @@ const conversationAnnotationReportSchema =
       plugin: z.string().min(1),
       createdAt: z.string().datetime(),
       updatedAt: z.string().datetime(),
+      previewImages: z.array(objectPreviewImageSchema).optional(),
     }),
   );
 

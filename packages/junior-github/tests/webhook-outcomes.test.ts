@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
   conversationAnnotationInputSchema,
@@ -68,11 +69,11 @@ function checkSuitePullRequest(
     head: {
       ...(headRef ? { ref: headRef } : undefined),
       sha: "abcdef1234567890",
-      repo: { id: repositoryId, name: name!, url: repoUrl },
+      repo: { id: repositoryId, name: name, url: repoUrl },
     },
     base: {
       sha: "0000000000000000",
-      repo: { id: repositoryId, name: name!, url: repoUrl },
+      repo: { id: repositoryId, name: name, url: repoUrl },
     },
   };
 }
@@ -1346,6 +1347,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 89021857045,
       headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadCheckSuites: false,
       loadFailingChecks: true,
       loadPullRequestFacts: false,
       owner: "getsentry",
@@ -1377,6 +1379,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 7,
       headSha: "abcdef1234567890",
+      loadCheckSuites: false,
       loadFailingChecks: false,
       loadPullRequestFacts: true,
       owner: "getsentry",
@@ -1397,7 +1400,10 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       // Core uses the repo to skip broad triggers for other repositories.
       data: { repo: "getsentry/junior" },
-      eventTypes: ["pull_request.checks.recovered"],
+      eventTypes: [
+        "pull_request.checks.recovered",
+        "pull_request.checks.passed",
+      ],
       identifiers: ["getsentry/junior", "getsentry/junior#10"],
     });
   });
@@ -1566,7 +1572,7 @@ describe("GitHub webhook events", () => {
         botEmail: "41898282+junior-test[bot]@users.noreply.github.com",
         deliveryId: "delivery-issue-mention",
         eventName: "issue_comment",
-      })[0]?.data?.mentionsBot;
+      })[0]?.data?.["mentionsBot"];
     expect(mentionData("@junior-test please triage")).toBe(true);
     expect(mentionData("cc @Junior-Test.")).toBe(true);
     expect(mentionData("@junior-tester or me@junior-test")).toBe(false);
@@ -2349,7 +2355,7 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       expect(
-        (await route!.handler(signedRequest(pullRequestPayload()))).status,
+        (await route.handler(signedRequest(pullRequestPayload()))).status,
       ).toBe(202);
       await expect(
         fixture.db().select().from(juniorGitHubPullRequests),
@@ -2415,7 +2421,7 @@ describe("GitHub-owned pull request outcomes", () => {
         sender: { login: "octocat", type: input.senderType },
       });
 
-      await route!.handler(
+      await route.handler(
         signedRequest(
           comment({ number: 946, senderType: "Bot" }),
           "issue_comment",
@@ -2423,13 +2429,13 @@ describe("GitHub-owned pull request outcomes", () => {
       );
       expect(recordActivity).not.toHaveBeenCalled();
 
-      await route!.handler(
+      await route.handler(
         signedRequest(
           comment({ number: 946, senderType: "User" }),
           "issue_comment",
         ),
       );
-      await route!.handler(
+      await route.handler(
         signedRequest(
           {
             action: "submitted",
@@ -2527,8 +2533,8 @@ describe("GitHub-owned pull request outcomes", () => {
         events: { async publish() {} },
       });
       const opened = pullRequestPayload();
-      await route!.handler(signedRequest(opened));
-      await route!.handler(
+      await route.handler(signedRequest(opened));
+      await route.handler(
         signedRequest(
           pullRequestPayload({
             action: "closed",
@@ -2553,7 +2559,7 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(commitRequests[0]?.headers.get("authorization")).toBe(
         "Bearer installation-token",
       );
-      const commitUrl = new URL(commitRequests[0]!.url);
+      const commitUrl = new URL(commitRequests[0].url);
       expect(commitUrl.searchParams.get("page")).toBe("1");
       expect(commitUrl.searchParams.get("per_page")).toBe("100");
       await expect(
@@ -2662,13 +2668,13 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       });
       // Without a matching Watch or event automation, no commits load.
-      await route!.handler(signedRequest(review, "pull_request_review"));
+      await route.handler(signedRequest(review, "pull_request_review"));
       expect(commitRequests).toHaveLength(0);
       expect(published.every((event) => !event.people)).toBe(true);
 
       matches = true;
       published.length = 0;
-      await route!.handler(signedRequest(review, "pull_request_review"));
+      await route.handler(signedRequest(review, "pull_request_review"));
 
       expect(commitRequests).toHaveLength(1);
       const people = [
@@ -2795,15 +2801,15 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       const loaded = () => {
         const fields = published.map((event) => [
-          event.data?.openerRole,
-          event.data?.authors,
+          event.data?.["openerRole"],
+          event.data?.["authors"],
         ]);
         published.length = 0;
         return fields;
       };
 
       // With no Watch, nothing loads.
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(0);
       expect(commitRequests).toHaveLength(0);
       expect(
@@ -2815,7 +2821,7 @@ describe("GitHub-owned pull request outcomes", () => {
       // A filter on the role loads only the role. The event does not match,
       // so the authors do not load.
       watch = { match: { openerRole: "admin" } };
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(commitRequests).toHaveLength(0);
       expect(loaded()).toEqual(Array(4).fill(["write", undefined]));
@@ -2823,7 +2829,7 @@ describe("GitHub-owned pull request outcomes", () => {
       // A filter on one commit author matches. The role is then added for
       // the agent from the cache.
       watch = { match: { authors: "HeLper" } };
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(commitRequests).toHaveLength(1);
       expect(loaded()).toEqual(
@@ -2861,7 +2867,7 @@ describe("GitHub-owned pull request outcomes", () => {
       http.get(
         "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
         ({ params }) => {
-          const login = String(params.login);
+          const login = String(params["login"]);
           roleLogins.push(login);
           const role = login === "dcramer" ? "admin" : "none";
           return HttpResponse.json({ permission: role, role_name: role });
@@ -2951,7 +2957,10 @@ describe("GitHub-owned pull request outcomes", () => {
     const openerFields = () => {
       const fields = published
         .filter((event) => event.eventType === "pull_request.opened")
-        .map((event) => [event.data?.openerUsername, event.data?.openerRole]);
+        .map((event) => [
+          event.data?.["openerUsername"],
+          event.data?.["openerRole"],
+        ]);
       published.length = 0;
       return fields;
     };
@@ -2968,7 +2977,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { status: 201 },
       );
     const state = new Map<string, unknown>();
-    const tools = plugin.hooks!.tools!({
+    const toolCtx = {
       ...pluginCtx,
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       conversationId: "slack:C123:1712345.0001",
@@ -2999,6 +3008,7 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       events: { canSubscribe: false },
       users: {
+        replaceSlackMentions: async (value: unknown) => value,
         async resolveActor() {
           return identityOf(person);
         },
@@ -3017,7 +3027,8 @@ describe("GitHub-owned pull request outcomes", () => {
           return await run();
         },
       },
-    } as any);
+    } as any;
+    const tools = bindPluginTools(plugin.hooks!.tools!(), toolCtx);
     const createInput = {
       base: "main",
       head: "fix/requester-role",
@@ -3044,16 +3055,16 @@ describe("GitHub-owned pull request outcomes", () => {
           },
           { status: 201 },
         );
-        return route!.handler(signedRequest(opened)).then(() => response);
+        return route.handler(signedRequest(opened)).then(() => response);
       };
-      await tools.createPullRequest!.execute!(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-create",
       });
       expect(openerFields()).toEqual([
         [undefined, undefined],
         [undefined, undefined],
       ]);
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(openerFields()).toEqual([
         ["dcramer", "admin"],
         ["dcramer", "admin"],
@@ -3062,7 +3073,7 @@ describe("GitHub-owned pull request outcomes", () => {
       // The call can stop after it saves its completed state but before it
       // saves the opener. A retry of the same call saves the opener.
       await db.delete(juniorGitHubPullRequestRequesters);
-      await tools.createPullRequest!.execute!(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-create",
       });
       expect(await savedRequesters()).toEqual([
@@ -3077,7 +3088,7 @@ describe("GitHub-owned pull request outcomes", () => {
           { status: 422 },
         );
       await expect(
-        tools.createPullRequest!.execute!(createInput, {
+        tools["createPullRequest"].execute(createInput, {
           toolCallId: "call-rejected",
         }),
       ).rejects.toThrow("HTTP 422");
@@ -3086,11 +3097,11 @@ describe("GitHub-owned pull request outcomes", () => {
       ]);
 
       // An update adds a requester. The opener does not change.
-      await tools.updatePullRequest!.execute!(
+      await tools["updatePullRequest"].execute(
         { body: "Updated", number: 946, repo: "getsentry/junior" },
         { toolCallId: "call-update" },
       );
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(openerFields()).toEqual([
         ["dcramer", "admin"],
         ["dcramer", "admin"],
@@ -3118,10 +3129,10 @@ describe("GitHub-owned pull request outcomes", () => {
           },
           { status: 201 },
         );
-      await tools.createPullRequest!.execute!(createInput, {
+      await tools["createPullRequest"].execute(createInput, {
         toolCallId: "call-unlinked",
       });
-      await route!.handler(signedRequest(reused));
+      await route.handler(signedRequest(reused));
       expect(openerFields()).toEqual([
         [undefined, undefined],
         [undefined, undefined],
@@ -3130,7 +3141,7 @@ describe("GitHub-owned pull request outcomes", () => {
       // The row keeps the identity, not a login. Once the opener links a
       // GitHub account, events use it.
       linkedGitHub.add("burak");
-      await route!.handler(signedRequest(reused));
+      await route.handler(signedRequest(reused));
       expect(openerFields()).toEqual([
         ["burak", "none"],
         ["burak", "none"],
@@ -3138,7 +3149,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
       // A person's pull request uses the GitHub user who opened it.
       opened.pull_request.user = { login: "octocat" };
-      await route!.handler(signedRequest(opened));
+      await route.handler(signedRequest(opened));
       expect(openerFields()).toEqual([
         ["octocat", "none"],
         ["octocat", "none"],

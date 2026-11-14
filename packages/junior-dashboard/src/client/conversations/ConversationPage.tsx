@@ -18,7 +18,6 @@ import type {
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
-import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import {
   applyPendingArchiveUpdate,
   useArchiveConversation,
@@ -50,8 +49,10 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
-import { useDetailsPanel } from "../components/DetailsPanel";
+import {
+  saveDetailsOpen,
+  useDetailsStartOpen,
+} from "./conversationSidebarLayout";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -144,16 +145,15 @@ export { liveModelId } from "./ConversationMeta";
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
-  data?: { conversations: ConversationFeed };
+  data?: { conversations: ConversationFeed } | undefined;
   /**
    * This Conversation's data. The shell fetches it, so a direct load does
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  pendingArchiveUpdate?: PendingArchiveConversationUpdate | undefined;
   sidebarToggle?: ReactNode;
 }) {
-  const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -183,14 +183,7 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const panelFits = useDetailsPanel();
-  const [savedDetailsOpen] = useState(readDetailsOpen);
-  // A saved open choice applies only beside the transcript, so a narrow
-  // screen does not load into a bottom sheet.
-  const detailsDefault =
-    savedDetailsOpen === undefined
-      ? detailsDefaultOpen
-      : savedDetailsOpen && panelFits;
+  const detailsDefault = useDetailsStartOpen();
   const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);
@@ -315,7 +308,7 @@ export function ConversationPage(props: {
     // Archiving hides this conversation, so go home at once. The mutation
     // keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      void navigate("/", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,
@@ -857,6 +850,7 @@ export function ConversationPage(props: {
                           history.newer ? undefined : detail.inlineMessages
                         }
                         pinRequestVersion={pinRequestVersion}
+                        onShowQuestion={showQuestion}
                         revealAsk={askReveal}
                         revealSeq={revealSeq}
                         responding={

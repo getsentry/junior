@@ -19,7 +19,11 @@ const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
 });
 
-/** Create a tool that publishes one sandbox image at a public internet URL. */
+/**
+ * Create a tool that publishes one sandbox image at a public internet URL.
+ *
+ * @runBuilt publishImage
+ */
 export function createPublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;

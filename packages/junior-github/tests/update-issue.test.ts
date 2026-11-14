@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
+import { gitHubUpdateIssueTool } from "../src/tools/update-issue";
 
 const linkedUser = {
   displayName: "David Cramer",
@@ -29,10 +30,7 @@ function assignedIssue(assignees: string[]): Response {
   );
 }
 
-function toolContext(
-  response?: Response,
-  user: typeof linkedUser | undefined = undefined,
-) {
+function toolContext(response?: Response, user?: typeof linkedUser) {
   const fetch = vi.fn(async (input: { operation: string }) => {
     // Updates read the body that is on GitHub before they write.
     if (input.operation === "github.issue.get") {
@@ -73,7 +71,7 @@ function toolContext(
       resolveActor: async () => (user ? { user } : undefined),
     },
   };
-  return { fetch, tool: createGitHubUpdateIssueTool(ctx) };
+  return { fetch, tool: bindPluginTool(gitHubUpdateIssueTool, ctx) };
 }
 
 describe("updateIssue", () => {

@@ -175,6 +175,30 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+/** The result of one tool call as the viewer, or `not_connected`. */
+export type PluginViewerMcpToolResult =
+  | PluginMcpToolError
+  | PluginMcpToolSuccess
+  | { status: "not_connected" };
+
+/**
+ * Read-only access to this plugin's hosted MCP provider as the viewer, for
+ * link cards and their images.
+ */
+export interface PluginViewerMcp {
+  /**
+   * Call one tool of this plugin's `allowedTools` that the provider marks
+   * read-only, with only the viewer's own stored login. It never asks the
+   * viewer to sign in: a viewer without a usable login gets
+   * `not_connected`. Provider rejections return an error result. Transport
+   * failures throw.
+   */
+  callTool(input: {
+    arguments?: Record<string, unknown>;
+    name: string;
+  }): Promise<PluginViewerMcpToolResult>;
+}
+
 /** Complete Workspace repository preparation after credential egress is removed. */
 export type WorkspaceFinalize = () => Promise<void> | void;
 
@@ -192,7 +216,7 @@ export interface WorkspacePrepareHookContext extends PluginContext {
 }
 
 export interface SandboxPrepareHookContext extends PluginContext {
-  actor?: Actor;
+  actor?: Actor | undefined;
   sandbox: PluginSandbox;
 }
 
@@ -201,7 +225,7 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   env: PluginEnv;
   /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
   juniorRoot: string;
-  actor?: Actor;
+  actor?: Actor | undefined;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];
   tool: {
@@ -266,7 +290,7 @@ export interface AfterMcpToolHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   result: {
     /** Provider content before model-facing truncation. */
-    content?: PluginMcpContent[];
+    content?: PluginMcpContent[] | undefined;
     structuredContent?: unknown;
   };
   tool: {
@@ -322,10 +346,19 @@ export const pluginToolOutputSchema = z
 
 export type PluginToolOutput = z.output<typeof pluginToolOutputSchema>;
 
-export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
+/**
+ * Run a plugin tool. The host passes the Turn context as `ctx` on each call,
+ * so a tool definition never holds Turn state.
+ */
+export type PluginToolExecute<
+  TInput = unknown,
+  TOutput = unknown,
+  TContext = ToolRegistrationHookContext,
+> = {
   bivarianceHack(
     input: TInput,
     options: PluginToolExecuteOptions,
+    ctx: TContext,
   ): Promise<TOutput> | TOutput;
 }["bivarianceHack"];
 
@@ -351,11 +384,11 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
  */
 export interface ToolAnnotations {
   [key: string]: unknown;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
-  openWorldHint?: boolean;
-  readOnlyHint?: boolean;
-  title?: string;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
+  readOnlyHint?: boolean | undefined;
+  title?: string | undefined;
 }
 
 export const REQUIRED_TOOL_ANNOTATION_KEYS = [
@@ -382,7 +415,7 @@ export function missingToolAnnotationKeys(
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
   /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode;
+  approvalMode?: ToolApprovalMode | undefined;
   annotations?: ToolAnnotations;
   /**
    * Describe the reviewed semantic action for the review request.
@@ -419,16 +452,12 @@ export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
   TExecuteOutput = TOutput,
+  TContext = ToolRegistrationHookContext,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
-  /**
-   * Why the current Turn cannot run this tool. The host keeps the tool in the
-   * tool list, so the cached prompt stays the same, and rejects its calls.
-   */
-  disabledReason?: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
-  exposure?: ToolExposure;
+  exposure?: ToolExposure | undefined;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -449,7 +478,7 @@ export interface PluginToolDefinition<
    * future major version.
    */
   promptSnippet?: string;
-  execute?: PluginToolExecute<TInput, TExecuteOutput>;
+  execute?: PluginToolExecute<TInput, TExecuteOutput, TContext>;
 }
 
 type ZodPluginToolDefinition<
@@ -458,6 +487,7 @@ type ZodPluginToolDefinition<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext,
 > = Omit<
   PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -468,6 +498,7 @@ type ZodPluginToolDefinition<
   execute?: (
     input: z.output<TInputSchema>,
     options: PluginToolExecuteOptions,
+    ctx: TContext,
   ) => Promise<TExecuteResult> | TExecuteResult;
 };
 
@@ -518,17 +549,20 @@ function createZodTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
   helperName: "definePluginTool" | "zodTool",
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   const { inputSchema, outputSchema, prepareArguments, execute, ...tool } =
     definition;
@@ -563,11 +597,8 @@ function createZodTool<
     },
     ...(execute
       ? {
-          async execute(input, options) {
-            const result = await execute(
-              input as z.output<TInputSchema>,
-              options,
-            );
+          async execute(input, options, ctx) {
+            const result = await execute(input, options, ctx);
             if (isPluginToolOutputEnvelope(result)) {
               return {
                 content: z.array(pluginToolContentSchema).parse(result.content),
@@ -581,8 +612,36 @@ function createZodTool<
   } as PluginToolDefinition<
     z.output<TInputSchema>,
     z.output<TOutputSchema>,
-    ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+    ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+    TContext
   >;
+}
+
+/**
+ * Run tools that take a plugin-built context, such as deployment config plus
+ * the Turn capabilities that they use. `toContext` runs on each call.
+ */
+export function withToolContext<TContext>(
+  tools: Record<
+    string,
+    PluginToolDefinition<unknown, unknown, unknown, TContext>
+  >,
+  toContext: (ctx: ToolRegistrationHookContext) => TContext,
+): Record<string, PluginToolDefinition> {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, { execute, ...tool }]) => [
+      name,
+      {
+        ...tool,
+        ...(execute
+          ? {
+              execute: async (input, options, ctx) =>
+                await execute(input, options, toContext(ctx)),
+            }
+          : undefined),
+      } satisfies PluginToolDefinition,
+    ]),
+  );
 }
 
 /** Define a plugin tool with Zod input parsing and validated structured results. */
@@ -592,16 +651,19 @@ export function zodTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext = ToolRegistrationHookContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   return createZodTool(definition, "zodTool");
 }
@@ -613,16 +675,19 @@ export function definePluginTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext = ToolRegistrationHookContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   return createZodTool(definition, "definePluginTool");
 }
@@ -672,6 +737,38 @@ export interface PluginWorkspaceToolContext {
   }): Promise<string[]>;
 }
 
+/** One Conversation that the current Conversation may find. */
+export interface PluginConversationMatch {
+  conversationId: string;
+  /** Root of a child agent. Missing for a root Conversation. */
+  rootConversationId?: string;
+  /**
+   * What its agent does now. pending: waiting to run. running or paused:
+   * working. idle: waits for a message. A failed Turn shows as idle.
+   */
+  status: "pending" | "running" | "paused" | "idle";
+  /** Summary of the latest Brief, when it has one. */
+  summary?: string;
+  title?: string;
+  /** ISO time of the latest activity. */
+  updatedAt: string;
+}
+
+export interface PluginConversationToolContext {
+  /**
+   * Find other Conversations that have an Annotation with `annotation`, or a
+   * nested key that continues with `#`. A root does not match for the
+   * Annotation of its child agent. Core applies the Conversation access
+   * rules, and leaves out archived Conversations and the current tree.
+   * Working Conversations (pending, running, paused) first, then newest
+   * activity.
+   */
+  search(input: {
+    annotation: string;
+    limit?: number;
+  }): Promise<PluginConversationMatch[]>;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -681,6 +778,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   annotations?: PluginAnnotations;
+  /** Other Conversations. Set only when the turn has a `conversationId`. */
+  conversations?: PluginConversationToolContext;
   /** Host-owned dashboard link to the Automation that started this run. */
   automationLink?: { url: string };
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
@@ -703,6 +802,13 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      * Junior knows it, else the install default. Always returns a timezone.
      */
     resolveTimezone(): Promise<string>;
+    /**
+     * Rewrite Slack mention syntax in every string of `value`, such as a tool
+     * input that goes to `provider`. A Slack user becomes `@handle` of their
+     * linked `provider` account, or else their name. Markdown code stays as
+     * written. Call it before you send model text out.
+     */
+    replaceSlackMentions<T>(value: T, provider: string): Promise<T>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

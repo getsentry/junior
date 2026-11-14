@@ -16,8 +16,8 @@ interface PluginEgressAuth {
     grant: {
       access: "read" | "write";
       name: string;
-      reason?: string;
-      requirements?: string[];
+      reason?: string | undefined;
+      requirements?: string[] | undefined;
     };
     kind: "auth_required" | "unavailable";
     message: string;
@@ -27,9 +27,14 @@ interface PluginEgressAuth {
 
 interface PluginEgressDeps {
   credentialAuditSource?: CredentialAuditSource;
-  credentialContext?: CredentialContext;
+  credentialContext?: CredentialContext | undefined;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
+  /**
+   * Use only the credential subject's own stored OAuth token, never a
+   * plugin grant or an environment token.
+   */
+  userOAuthOnly?: boolean;
 }
 
 function credentialContextForPluginEgress(
@@ -102,6 +107,7 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         provider: input.provider,
         request: input.request,
         upstreamUrl,
+        ...(deps.userOAuthOnly ? { userOAuthOnly: true } : undefined),
       });
     },
   };

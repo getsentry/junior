@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -28,6 +29,7 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
 import type { TranscriptHistory } from "./transcriptAroundHistory";
 import {
   TurnContextPanelProvider,
@@ -41,38 +43,40 @@ export function Transcript(props: {
   historyVersion?: string;
   live?: boolean;
   /** The stored read position of the viewer. */
-  lastReadSeq?: number;
+  lastReadSeq?: number | undefined;
   loadingPreviousPage?: boolean;
   /**
    * Newer pages between the read position and the latest. They load on
    * scroll. Jump to latest skips them.
    */
-  newerHistory?: TranscriptHistory["newer"];
+  newerHistory?: TranscriptHistory["newer"] | undefined;
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   /** Receive the last event sequence the reader saw in the transcript. */
-  onRead?: (seq: number) => void;
+  onRead?: ((seq: number) => void) | undefined;
+  /** Show the row of a question that an answer row quotes. */
+  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
-  pendingMessages?: readonly ConversationMailboxMessage[];
+  pendingMessages?: readonly ConversationMailboxMessage[] | undefined;
   responding?: boolean;
   /** Show the row of the question that docks above the message box. */
-  revealAsk?: TranscriptAskReveal;
+  revealAsk?: TranscriptAskReveal | undefined;
   /** Keep the rows around this event seq mounted, so the page can show it. */
-  revealSeq?: number;
+  revealSeq?: number | undefined;
   search?: string;
   onSearchChange?(value: string): void;
   /** Index of the current search match. */
   searchMatch?: number;
   onSearchMatches?(count: number, prepended: number): void;
-  selectedEventSeq?: number;
+  selectedEventSeq?: number | undefined;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
   }) => void;
-  transcript?: ConversationTranscript;
+  transcript?: ConversationTranscript | undefined;
   /** Show turn context in the owner's panel. Without it, a drawer opens. */
   turnContextPanel?: TurnContextPanel;
   /** Open where a link shows its row instead of the latest message. */
@@ -80,7 +84,7 @@ export function Transcript(props: {
   /** Open at the "New" marker instead of the latest message. */
   startAtUnread?: boolean;
   /** Rows that were unread when the Conversation opened get a marker. */
-  unread?: TranscriptUnreadRange;
+  unread?: TranscriptUnreadRange | undefined;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
@@ -109,6 +113,13 @@ export function Transcript(props: {
   const askReveal = useMemo(
     () => (revealAsk ? { ...revealAsk, showRow } : undefined),
     [revealAsk, showRow],
+  );
+  const { onShowQuestion } = props;
+  const showQuestion = useMemo(
+    () =>
+      onShowQuestion &&
+      ((item: ReviewItemPayload) => onShowQuestion(item, false)),
+    [onShowQuestion],
   );
 
   // Read positions follow the transcript rows, not the event log. Search
@@ -203,15 +214,17 @@ export function Transcript(props: {
           <TurnContextPanelProvider panel={props.turnContextPanel}>
             <TranscriptJumpToLatestContext value={jumpToLatest}>
               <TranscriptAskRevealContext value={askReveal}>
-                <ConversationTranscriptView
-                  onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                  conversation={props.transcript}
-                  pendingMessages={props.pendingMessages}
-                  responding={props.responding ?? props.live ?? false}
-                  revealSeq={props.revealSeq}
-                  scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                  unread={props.unread}
-                />
+                <TranscriptShowQuestion value={showQuestion}>
+                  <ConversationTranscriptView
+                    onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                    conversation={props.transcript}
+                    pendingMessages={props.pendingMessages}
+                    responding={props.responding ?? props.live ?? false}
+                    revealSeq={props.revealSeq}
+                    scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                    unread={props.unread}
+                  />
+                </TranscriptShowQuestion>
               </TranscriptAskRevealContext>
             </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
@@ -260,7 +273,7 @@ function HistoryPageControl(props: {
   children: ReactNode;
   className: string;
   label: string;
-  loading?: boolean;
+  loading?: boolean | undefined;
   onClick: () => void;
   ref?: Ref<HTMLDivElement>;
 }) {

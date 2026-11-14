@@ -179,12 +179,10 @@ function searchMcpCatalog(
   }
 
   return tools
-    .map(
-      (toolDef): RankedTool => ({
-        tool: toolDef,
-        score: scoreTool(toolDef, query),
-      }),
-    )
+    .map((toolDef): RankedTool => ({
+      tool: toolDef,
+      score: scoreTool(toolDef, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -207,12 +205,10 @@ function searchProviderCatalog(
   }
 
   return sorted
-    .map(
-      (provider): RankedProvider => ({
-        provider,
-        score: scoreProvider(provider, query),
-      }),
-    )
+    .map((provider): RankedProvider => ({
+      provider,
+      score: scoreProvider(provider, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -243,9 +239,13 @@ function unknownProviderSuggestions(
   return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
 }
 
-/** Create the progressive MCP catalog search tool used before callMcpTool. */
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
+/**
+ * Create the progressive MCP catalog search tool used before callMcpTool.
+ *
+ * @runBuilt searchMcpTools
+ */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
     annotations: {

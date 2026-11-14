@@ -3,13 +3,14 @@
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI.
- * Calendar, Docs, Sheets, and Slides tools use host-owned egress, and the
- * sandbox gets no Google credential.
+ * Calendar, Docs, Sheets, and Slides tools and link cards use host-owned
+ * egress, and the sandbox gets no Google credential.
  */
 import {
   defineJuniorPlugin,
   type PluginRegistration,
   type PluginToolDefinition,
+  withToolContext,
 } from "@sentry/junior-plugin-api";
 import { createGoogleCliCommand } from "./cli";
 import {
@@ -24,23 +25,25 @@ import {
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
+import { googleCalendarLinks } from "./links/calendar";
+import { googleFileLinks } from "./links/files";
+import { googleImages } from "./links/thumbnails";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
-import { createCancelCalendarEventTool } from "./tools/cancel-event";
-import { createCreateGoogleDocTool } from "./tools/create-doc";
-import { createCreateCalendarEventTool } from "./tools/create-event";
-import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
-import { createInsertGoogleDocContentTool } from "./tools/insert-doc-content";
-import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
-import { createListCalendarEventsTool } from "./tools/list-events";
-import { createReadGoogleDocTool } from "./tools/read-doc";
-import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
-import { createReadGoogleSheetTool } from "./tools/read-sheet";
-import { createReadGoogleSlidesTool } from "./tools/read-slides";
-import { createReplaceGoogleDocContentTool } from "./tools/replace-doc-content";
-import { createReplaceGoogleDocTextTool } from "./tools/replace-doc-text";
-import { createSearchGoogleFilesTool } from "./tools/search-files";
-import { createUpdateCalendarEventTool } from "./tools/update-event";
+import type { GoogleToolContext } from "./tools/shared";
+import { cancelCalendarEventTool } from "./tools/cancel-event";
+import { createGoogleDocTool } from "./tools/create-doc";
+import { createCalendarEventTool } from "./tools/create-event";
+import { findMeetingTimesTool } from "./tools/find-meeting-times";
+import { insertGoogleDocContentTool } from "./tools/insert-doc-content";
+import { listGoogleFileCommentsTool } from "./tools/list-file-comments";
+import { listCalendarEventsTool } from "./tools/list-events";
+import { readGoogleFileTool } from "./tools/read-file";
+import { readMeetingTranscriptTool } from "./tools/read-meeting-transcript";
+import { replaceGoogleDocContentTool } from "./tools/replace-doc-content";
+import { replaceGoogleDocTextTool } from "./tools/replace-doc-text";
+import { searchGoogleFilesTool } from "./tools/search-files";
+import { updateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
 export function googlePlugin(): PluginRegistration {
@@ -63,6 +66,8 @@ export function googlePlugin(): PluginRegistration {
       commands: [createGoogleCliCommand()],
     },
     userPages: [createGoogleSetupPage()],
+    objectLinks: [googleFileLinks, googleCalendarLinks],
+    images: googleImages,
     hooks: {
       apiRoutes(ctx) {
         const config = readGoogleConfig();
@@ -72,36 +77,35 @@ export function googlePlugin(): PluginRegistration {
       },
       grantForEgress: googleGrantForEgress,
       issueCredential: issueGoogleCredential,
-      tools(ctx): Record<string, PluginToolDefinition> {
+      tools(): Record<string, PluginToolDefinition> {
         const config = readGoogleConfig();
         if (!config) {
           return {};
         }
-        const toolContext = {
-          accountEmail: config.accountEmail,
-          allowedDomains: config.allowedDomains,
-          egress: ctx.egress,
-          sandbox: ctx.sandbox,
-          users: ctx.users,
-        };
-        return {
-          cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
-          createCalendarEvent: createCreateCalendarEventTool(toolContext),
-          createGoogleDoc: createCreateGoogleDocTool(toolContext),
-          findMeetingTimes: createFindMeetingTimesTool(toolContext),
-          insertGoogleDocContent: createInsertGoogleDocContentTool(toolContext),
-          listCalendarEvents: createListCalendarEventsTool(toolContext),
-          listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
-          readGoogleDoc: createReadGoogleDocTool(toolContext),
-          readGoogleSheet: createReadGoogleSheetTool(toolContext),
-          readGoogleSlides: createReadGoogleSlidesTool(toolContext),
-          readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
-          replaceGoogleDocContent:
-            createReplaceGoogleDocContentTool(toolContext),
-          replaceGoogleDocText: createReplaceGoogleDocTextTool(toolContext),
-          searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
-          updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
-        };
+        return withToolContext(
+          {
+            cancelCalendarEvent: cancelCalendarEventTool,
+            createCalendarEvent: createCalendarEventTool,
+            createGoogleDoc: createGoogleDocTool,
+            findMeetingTimes: findMeetingTimesTool,
+            insertGoogleDocContent: insertGoogleDocContentTool,
+            listCalendarEvents: listCalendarEventsTool,
+            listGoogleFileComments: listGoogleFileCommentsTool,
+            readGoogleFile: readGoogleFileTool,
+            readMeetingTranscript: readMeetingTranscriptTool,
+            replaceGoogleDocContent: replaceGoogleDocContentTool,
+            replaceGoogleDocText: replaceGoogleDocTextTool,
+            searchGoogleFiles: searchGoogleFilesTool,
+            updateCalendarEvent: updateCalendarEventTool,
+          },
+          (ctx): GoogleToolContext => ({
+            accountEmail: config.accountEmail,
+            allowedDomains: config.allowedDomains,
+            egress: ctx.egress,
+            sandbox: ctx.sandbox,
+            users: ctx.users,
+          }),
+        );
       },
     },
   });

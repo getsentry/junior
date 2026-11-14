@@ -58,8 +58,8 @@ function webActorIds(rows: RecordedEventRow[]): string[] {
     if (Array.isArray(value)) return value.forEach(visit);
     if (!value || typeof value !== "object") return;
     const record = value as Record<string, unknown>;
-    if (record.platform === "web" && typeof record.userId === "string") {
-      ids.add(record.userId);
+    if (record["platform"] === "web" && typeof record["userId"] === "string") {
+      ids.add(record["userId"]);
     }
     Object.values(record).forEach(visit);
   };

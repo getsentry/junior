@@ -26,10 +26,12 @@ export async function viewAsParticipant(page: Page) {
       const json = Array.isArray(body.conversations)
         ? {
             ...body,
-            conversations: body.conversations.map((conversation: object) => ({
-              ...conversation,
-              isParticipant: true,
-            })),
+            conversations: body.conversations.map(
+              (conversation: Record<string, unknown>) => ({
+                ...conversation,
+                isParticipant: true,
+              }),
+            ),
           }
         : "isParticipant" in body
           ? { ...body, isParticipant: true }

@@ -73,7 +73,7 @@ describe("Pi tool adapter", () => {
         updatePlan: createUpdatePlanTool(),
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -129,7 +129,7 @@ describe("Pi tool adapter", () => {
       supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
         ok: true,
-        command: (input as Record<string, unknown>).command,
+        command: (input as Record<string, unknown>)["command"],
         cwd: "/vercel/sandbox",
         exit_code: 0,
         signal: null,
@@ -145,7 +145,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -196,7 +196,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -236,7 +236,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -281,7 +281,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -318,7 +318,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -349,7 +349,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -378,7 +378,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -505,7 +505,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -561,7 +561,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the recurring report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -667,7 +667,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: vi.fn(),
         },
       },
@@ -695,7 +695,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => {
             throw new Error("Thing not found.");
           },
@@ -730,7 +730,7 @@ describe("Pi tool adapter", () => {
       {
         editFile: {
           description: "edit",
-          inputSchema: {} as any,
+          inputSchema: {},
           prepareArguments,
           executionMode: "sequential",
           execute: async () => ({ ok: true }),
@@ -755,14 +755,14 @@ describe("Pi tool adapter", () => {
         automaticReview: {
           approvalMode: "auto",
           description: "automatic review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
         requiredReview: {
           approvalMode: "review",
           description: "required review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
@@ -834,7 +834,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -886,7 +886,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },

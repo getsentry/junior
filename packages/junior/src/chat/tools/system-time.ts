@@ -4,7 +4,7 @@ import {
   isValidTimeZone,
 } from "@/chat/scheduled-automations/cadence";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const systemTimeInputSchema = z.object({
@@ -28,6 +28,26 @@ const systemTimeOutputSchema = juniorToolOutputSchema.extend({
   timezone_offset_minutes: z.number(),
 });
 
+export const systemTimeToolDefinition = zodToolDefinition({
+  description:
+    "Return current system time in UTC and optional local IANA timezone formats. Use when the user asks for current time/date context. Pass timezone when the answer should be in a known IANA zone such as America/Los_Angeles.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: systemTimeInputSchema,
+  outputSchema: systemTimeOutputSchema,
+  privateTraceResult: (result) => ({
+    unix_ms: result.unix_ms,
+    iso_utc: result.iso_utc,
+    iso_local: result.iso_local,
+    timezone: result.timezone,
+    timezone_offset_minutes: result.timezone_offset_minutes,
+  }),
+});
+
 /**
  * Current-time lookup for turn answers.
  *
@@ -36,23 +56,7 @@ const systemTimeOutputSchema = juniorToolOutputSchema.extend({
  */
 export function createSystemTimeTool() {
   return zodTool({
-    description:
-      "Return current system time in UTC and optional local IANA timezone formats. Use when the user asks for current time/date context. Pass timezone when the answer should be in a known IANA zone such as America/Los_Angeles.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: systemTimeInputSchema,
-    outputSchema: systemTimeOutputSchema,
-    privateTraceResult: (result) => ({
-      unix_ms: result.unix_ms,
-      iso_utc: result.iso_utc,
-      iso_local: result.iso_local,
-      timezone: result.timezone,
-      timezone_offset_minutes: result.timezone_offset_minutes,
-    }),
+    ...systemTimeToolDefinition,
     execute: async (input) => {
       const now = new Date();
       const timezone = input.timezone?.trim() || null;

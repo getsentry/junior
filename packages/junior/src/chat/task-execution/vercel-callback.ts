@@ -26,6 +26,7 @@ import {
   type ConversationWorkerResult,
   type ConversationWorkerContext,
 } from "./worker";
+import type { BeforeWorkStops } from "./store";
 import { verifyConversationQueueMessage } from "./queue-signing";
 import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
@@ -34,17 +35,18 @@ export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
   "junior_conversation_work_dev";
 
 export interface ProcessConversationQueueMessageOptions {
+  beforeWorkStops?: BeforeWorkStops | undefined;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
   /** Slack installation lookup for work that runs after the Run ends. */
   getSlackAdapter?: () => SlackAdapter;
-  nowMs?: () => number;
+  nowMs?: (() => number) | undefined;
   queue?: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
   /** Keep background work started by a turn, such as titles, alive. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
 }
 
 export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
@@ -116,6 +118,7 @@ export async function processConversationQueueMessage(
       async (setSpanAttributes) => {
         try {
           const result = await processConversationWork(parsed, {
+            beforeWorkStops: options.beforeWorkStops,
             checkInIntervalMs: options.checkInIntervalMs,
             conversationStore: options.conversationStore,
             getSlackAdapter: options.getSlackAdapter,

@@ -104,7 +104,7 @@ const googleErrorSchema = z.object({
  * returned as text.
  */
 export async function googleApiRequest(
-  ctx: GoogleToolContext,
+  ctx: Pick<GoogleToolContext, "egress">,
   input: {
     body?: unknown;
     headers?: Record<string, string>;
@@ -131,7 +131,7 @@ export async function googleApiRequest(
         "Content-Type": "application/json",
         ...input.headers,
       },
-      body: input.body === undefined ? undefined : JSON.stringify(input.body),
+      body: input.body === undefined ? null : JSON.stringify(input.body),
     }),
   });
   const body: unknown = response.headers.get("content-type")?.includes("json")
@@ -402,7 +402,7 @@ const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
  */
 export function parseEventId(value: string): string {
   let eventId = value;
-  if (/^https?:\/\//.test(value)) {
+  if (value.startsWith("https://") || value.startsWith("http://")) {
     const link = URL.parse(value);
     const target = link?.searchParams.get("continue");
     const eid = (target ? URL.parse(target) : link)?.searchParams.get("eid");

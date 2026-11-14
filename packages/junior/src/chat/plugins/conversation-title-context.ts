@@ -4,6 +4,7 @@ import { getDb } from "@/chat/db";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { pluginConfigValues } from "@/chat/plugins/hook-context";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 // Title context is optional. A slow provider must not hold the title back.
@@ -17,21 +18,6 @@ const CONVERSATION_TITLE_SYSTEM_ACTOR = {
   platform: "system",
   name: "conversation-title",
 } as const;
-
-/** Pick one plugin's string config values and drop the plugin name prefix. */
-function pluginConfig(
-  pluginName: string,
-  configuration: Record<string, unknown>,
-): Record<string, string> {
-  const prefix = `${pluginName}.`;
-  return Object.fromEntries(
-    Object.entries(configuration).flatMap(([key, value]) =>
-      key.startsWith(prefix) && typeof value === "string"
-        ? [[key.slice(prefix.length), value]]
-        : [],
-    ),
-  );
-}
 
 /**
  * Collect plugin facts, such as linked issue titles, for one new
@@ -65,7 +51,10 @@ export async function getPluginConversationTitleContext(args: {
       try {
         const lines = await Promise.race([
           hook({
-            config: pluginConfig(plugin.manifest.name, args.configuration),
+            config: pluginConfigValues(
+              plugin.manifest.name,
+              args.configuration,
+            ),
             db: getDb(),
             egress,
             log: createPluginLogger(plugin.manifest.name),

@@ -11,18 +11,7 @@ const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
     agentMode: {
-      value: "providerRetry" as
-        | "providerRetry"
-        | "activeCompaction"
-        | "preflightCompaction"
-        | "pendingProviderCall"
-        | "cooperativeYield"
-        | "silentResume"
-        | "terminalDelivery"
-        | "steering"
-        | "steeringDelivery"
-        | "steeringSteerThrows"
-        | "toolActivity",
+      value: "providerRetry",
     },
     compactionState: {
       checkpointTurnStartMessageIndex: undefined as number | undefined,
@@ -99,7 +88,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   function durableTestMessage(message: unknown) {
     const data = message as Record<string, unknown>;
-    if (data.role === "assistant") {
+    if (data["role"] === "assistant") {
       return {
         api: "openai-responses",
         provider: "openai",
@@ -110,14 +99,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         ...data,
       };
     }
-    if (data.role === "toolResult") {
+    if (data["role"] === "toolResult") {
       return {
         toolCallId: "test-tool-call",
         timestamp: Date.now(),
         ...data,
       };
     }
-    if (data.role === "user") {
+    if (data["role"] === "user") {
       return { timestamp: Date.now(), ...data };
     }
     return message;
@@ -130,7 +119,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private finishPendingRun?: () => void;
     private steeringMessages: unknown[] = [];
     private subscribers: Array<(event: unknown) => unknown> = [];
@@ -200,6 +191,35 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       );
     }
 
+    // Like Pi 0.85.1: await `turn_end` listeners. Only when another model
+    // call follows, prepare it and use its context. A failure of either
+    // becomes a failed model message.
+    private async endTurn(
+      message: unknown,
+      toolResults: unknown[],
+    ): Promise<boolean> {
+      try {
+        for (const subscriber of this.subscribers) {
+          await subscriber({ type: "turn_end", message, toolResults });
+        }
+        if (toolResults.length === 0 && this.steeringMessages.length === 0) {
+          return true;
+        }
+        const update = (await this.prepareNextTurn?.({
+          context: { messages: this.state.messages },
+          message,
+          toolResults,
+        })) as { context?: { messages?: unknown[] } } | undefined;
+        if (update?.context?.messages) {
+          this.state.messages = [...update.context.messages];
+        }
+        return true;
+      } catch (error) {
+        this.recordRunFailure(error);
+        return false;
+      }
+    }
+
     private recordRunFailure(error: unknown) {
       this.pushMessages({
         role: "assistant",
@@ -238,19 +258,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           usage: { input: 2, output: 2 },
         });
         this.pushMessages(toolResult);
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: this.state.messages.at(-2),
-              toolResults: [toolResult],
-            }),
-          ),
-        );
-        await this.prepareNextTurn?.({
-          context: { messages: this.state.messages },
-          toolResults: [toolResult],
-        });
+        if (!(await this.endTurn(this.state.messages.at(-2), [toolResult]))) {
+          return {};
+        }
         // The compaction checkpoint is the resume point if this slice stops.
         compactionState.checkpointTurnStartMessageIndex = (
           await turnSessionState.getTurnRecord(
@@ -327,23 +337,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
             subscriber({ type: "message_end", message: finalMessage }),
           ),
         );
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: finalMessage,
-              toolResults: [],
-            }),
-          ),
-        );
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
-        }
+        await this.endTurn(finalMessage, []);
         return {};
       }
       if (
@@ -367,13 +361,43 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           );
         }
         repositoryState.available ||= repositoryState.availableAtBoundary;
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
+        // A yield needs a step that does not end the run: a tool batch that
+        // a model call follows, or steering.
+        const toolResults: unknown[] = [];
+        if (agentMode.value === "cooperativeYield") {
+          const toolResult = {
+            role: "toolResult",
+            toolCallId: "yield-tool-call",
+            toolName: "systemTime",
+            isError: false,
+            content: [{ type: "text", text: "ok" }],
+          };
+          this.pushMessages(
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "yield-tool-call",
+                  name: "systemTime",
+                  arguments: {},
+                },
+              ],
+              stopReason: "toolUse",
+              usage: { input: 2, output: 1 },
+            },
+            toolResult,
+          );
+          toolResults.push(toolResult);
+        }
+        if (
+          !(await this.endTurn(
+            toolResults.length > 0
+              ? this.state.messages.at(-2)
+              : this.state.messages.at(-1),
+            toolResults,
+          ))
+        ) {
           return {};
         }
         if (agentMode.value === "steeringDelivery") {
@@ -696,7 +720,7 @@ describe("agent run continuation", () => {
     repositoryState.available = false;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
   });
@@ -704,7 +728,7 @@ describe("agent run continuation", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
   });
 
   it("continues the user's request when active compaction writes a wrong summary", async () => {
@@ -754,7 +778,9 @@ describe("agent run continuation", () => {
       inputTokens: 4,
       outputTokens: 4,
     });
-    const history = await (await import("@/chat/db"))
+    const history = await (
+      await import("@/chat/db")
+    )
       .getConversationEventStore()
       .loadHistory("conversation-active-compaction");
     expect(history.some((event) => event.data.type === "compaction")).toBe(
@@ -1179,13 +1205,15 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "assistant",
+      "toolResult",
       "user",
     ]);
     // A resumed Turn finds AGENTS.md only in context messages.
-    expect(JSON.stringify(sessionRecord?.piMessages[2])).toContain(
+    expect(JSON.stringify(sessionRecord?.piMessages[4])).toContain(
       "# AGENTS.md instructions for /vercel/sandbox/repo",
     );
-    expect(sessionRecord?.piMessageProvenance[2]).toEqual({
+    expect(sessionRecord?.piMessageProvenance[4]).toEqual({
       authority: "context",
     });
     await expect(
@@ -1341,6 +1369,8 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "assistant",
+      "toolResult",
       "user",
     ]);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);

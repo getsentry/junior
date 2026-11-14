@@ -250,7 +250,7 @@ export function sendsResultToParent(
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
  * child agent result that is sent but still waits in its mailbox. A child
- * agent that no Agent invocation names is open as `searchAgents` shows it,
+ * agent that no Agent invocation names is open as `listAgents` shows it,
  * and its unread result or reply also waits.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {

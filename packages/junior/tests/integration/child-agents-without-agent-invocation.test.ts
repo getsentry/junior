@@ -34,7 +34,7 @@ import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   slackInvocationInput,
@@ -144,7 +144,7 @@ describe("child agents that no Agent invocation names", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(reply?.input.metadata?.sender).toEqual({
+      expect(reply?.input.metadata?.["sender"]).toEqual({
         conversationId: childId,
         turnId: "turn_child",
       });
@@ -265,12 +265,12 @@ describe("child agents that no Agent invocation names", () => {
       const childId = await spawnChild(harness, "parent-turn:call-1", {
         title: "Deploy check",
       });
-      const searchAgents = createSearchAgentsTool({
+      const listAgents = createListAgentsTool({
         conversationId: slackParentConversationId,
       });
 
       // The task waits in the child's mailbox.
-      await expect(searchAgents.execute!({}, {})).resolves.toEqual({
+      await expect(listAgents.execute!({}, {})).resolves.toEqual({
         agents: [
           expect.objectContaining({
             conversation_id: childId,
@@ -292,11 +292,11 @@ describe("child agents that no Agent invocation names", () => {
       const statuses: unknown[] = [];
       harness.onPersonRun(async (run) => {
         await commitRunInput(run);
-        statuses.push(await searchAgents.execute!({}, {}));
+        statuses.push(await listAgents.execute!({}, {}));
         return await yieldRun(run);
       });
       await harness.processUntilRun(childId);
-      statuses.push(await searchAgents.execute!({}, {}));
+      statuses.push(await listAgents.execute!({}, {}));
       expect(statuses).toEqual([
         { agents: [expect.objectContaining({ status: "running" })] },
         { agents: [expect.objectContaining({ status: "running" })] },
@@ -308,7 +308,7 @@ describe("child agents that no Agent invocation names", () => {
           {},
         ),
       ).resolves.toMatchObject({ stopped: true });
-      await expect(searchAgents.execute!({}, {})).resolves.toEqual({
+      await expect(listAgents.execute!({}, {})).resolves.toEqual({
         agents: [expect.objectContaining({ status: "stopped" })],
       });
     } finally {

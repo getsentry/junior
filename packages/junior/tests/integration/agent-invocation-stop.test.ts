@@ -43,7 +43,7 @@ import {
   getConversationWorkState,
   hasConversationStop,
 } from "@/chat/task-execution/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   abortableAgentRunner,
@@ -65,9 +65,9 @@ async function stopAgent(
   );
 }
 
-async function searchAgents() {
+async function listAgents() {
   return (
-    await createSearchAgentsTool({ conversationId: parentConversationId })
+    await createListAgentsTool({ conversationId: parentConversationId })
       .execute!({}, {})
   ).agents;
 }
@@ -188,7 +188,7 @@ describe("stopping child agents", () => {
           type: "subagent_ended",
         }),
       );
-      await expect(searchAgents()).resolves.toEqual([
+      await expect(listAgents()).resolves.toEqual([
         {
           conversation_id: running.childConversationId,
           error: "Stopped by the parent conversation",
@@ -367,7 +367,7 @@ describe("stopping child agents", () => {
     const harness = await createHarness({
       run: async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
-        await markConversationsStopped([run.conversationId!], {
+        await markConversationsStopped([run.conversationId], {
           cancelWatches: false,
         });
         // The agent loop checks for a stop at each step boundary.
@@ -574,7 +574,7 @@ describe("stopping child agents", () => {
           getAgentInvocationIdForResult(doneHelper.invocationId),
         ),
       ).resolves.toBeUndefined();
-      await expect(searchAgents()).resolves.toEqual([
+      await expect(listAgents()).resolves.toEqual([
         expect.objectContaining({
           conversation_id: child.childConversationId,
           status: "stopped",

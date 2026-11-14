@@ -53,7 +53,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
       {
         onSuccess: (accepted) => {
           props.onClose();
-          navigate(conversationPath(accepted.conversationId));
+          void navigate(conversationPath(accepted.conversationId));
         },
       },
     );

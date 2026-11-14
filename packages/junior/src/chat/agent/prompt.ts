@@ -61,8 +61,6 @@ import type {
   AgentSteeringMessage,
 } from "@/chat/agent/types";
 
-const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
-
 export type UserContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -102,13 +100,13 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  userCustomization?: string;
+  userCustomization?: string | undefined;
   workspaces?: Workspace[];
 }
 
 interface PromptReplayArgs {
-  existingSessionPiMessages?: PiMessage[];
-  existingTurnStartMessageIndex?: number;
+  existingSessionPiMessages?: PiMessage[] | undefined;
+  existingTurnStartMessageIndex?: number | undefined;
   resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
@@ -203,31 +201,6 @@ export function renderExplicitSkillInstructions(skill: Skill): string {
   ].join("\n");
 }
 
-/** Encode a non-image attachment as base64 XML for the prompt. */
-export function encodeNonImageAttachmentForPrompt(attachment: {
-  data: Buffer;
-  mediaType: string;
-  filename?: string;
-}): string {
-  const base64 = attachment.data.toString("base64");
-  const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
-  const encodedPayload = wasTruncated
-    ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...`
-    : base64;
-
-  return [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-    "encoding: base64",
-    `truncated: ${wasTruncated ? "true" : "false"}`,
-    "<data_base64>",
-    encodedPayload,
-    "</data_base64>",
-    "</attachment>",
-  ].join("\n");
-}
-
 /** Redact image data from prompt content parts for observability. */
 export function toObservablePromptPart(
   part: UserContentPart,
@@ -260,7 +233,7 @@ function buildOmittedImageAttachmentNotice(count: number): string {
 function buildUserTurnInput(args: {
   inputParts: readonly string[];
   omittedImageAttachmentCount: number;
-  userAttachments?: AgentAttachment[];
+  userAttachments?: AgentAttachment[] | undefined;
 }): PromptInput {
   const userContentParts: UserContentPart[] = args.inputParts.map((text) => ({
     type: "text",
@@ -302,18 +275,8 @@ function buildUserTurnInput(args: {
       continue;
     }
 
-    if (!attachment.data) {
-      throw new Error("Attachment is missing attachment data");
-    }
-
-    userContentParts.push({
-      type: "text",
-      text: encodeNonImageAttachmentForPrompt({
-        data: attachment.data,
-        mediaType: attachment.mediaType,
-        filename: attachment.filename,
-      }),
-    });
+    // Producers give every non-image file a loadAttachment pointer.
+    throw new Error("Non-image attachment is missing its prompt text");
   }
 
   return { contextContentParts: [], userContentParts };
@@ -361,7 +324,7 @@ export function buildSteeringPiMessage(
     role: "user",
     content: userContentParts,
     timestamp: message.timestampMs ?? Date.now(),
-  } as PiMessage;
+  };
 }
 
 /**
@@ -404,7 +367,7 @@ export function withoutSavedSteeringMessages<T>(
 function withoutTrailingUncheckpointedUserPrompt(
   messages: PiMessage[] | undefined,
   userContentParts: UserContentPart[],
-): { messages: PiMessage[]; promptTimestamp?: number } {
+): { messages: PiMessage[]; promptTimestamp?: number | undefined } {
   if (!messages || messages.length === 0) {
     return { messages: [] };
   }
@@ -569,7 +532,7 @@ function planPromptReplay(args: PromptReplayArgs) {
 export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
     context: PromptHookContext;
-    currentActor?: Actor;
+    currentActor?: Actor | undefined;
     turnId: string;
   },
 ): Promise<PromptTurnContext> {
@@ -606,19 +569,19 @@ export async function loadPromptTurnContext(
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   contextContentParts: UserContentPart[];
-  conversationPrivacy?: ConversationPrivacy;
-  existingSessionPiMessages?: PiMessage[];
-  existingTurnStartMessageIndex?: number;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  existingSessionPiMessages?: PiMessage[] | undefined;
+  existingTurnStartMessageIndex?: number | undefined;
   explicitSkill: Skill | null;
-  priorPiMessages?: PiMessage[];
+  priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
   /** AGENTS.md read from the sandbox when this slice started. */
-  repositoryInstructions?: RepositoryInstructions;
+  repositoryInstructions?: RepositoryInstructions | undefined;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,

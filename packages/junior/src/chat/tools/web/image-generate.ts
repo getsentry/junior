@@ -166,7 +166,11 @@ function extensionForMediaType(mediaType: string): string {
   return "bin";
 }
 
-/** Create the image tool with sandbox artifact guidance matched to file-send capability. */
+/**
+ * Create the image tool with sandbox artifact guidance matched to file-send capability.
+ *
+ * @runBuilt imageGenerate
+ */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
   options: {

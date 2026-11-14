@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
 
@@ -61,7 +62,10 @@ function toolContext(
   };
   return {
     fetch,
-    tool: createGitHubUpdatePullRequestTool(ctx as any, options.decider as any),
+    tool: bindPluginTool(
+      createGitHubUpdatePullRequestTool(options.decider !== undefined),
+      { ...ctx, decider: options.decider } as any,
+    ),
   };
 }
 

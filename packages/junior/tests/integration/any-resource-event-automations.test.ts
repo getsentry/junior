@@ -24,8 +24,8 @@ import {
 } from "../fixtures/sql";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;
@@ -253,7 +253,7 @@ describe("event automations with no identifier", () => {
         { ...edited, match: { pull_request: null } },
         "drop-pull-request",
       );
-      expect(repoWide.automation.trigger.match).toEqual({
+      expect(repoWide.automation.trigger["match"]).toEqual({
         repo: "getsentry/junior",
       });
 

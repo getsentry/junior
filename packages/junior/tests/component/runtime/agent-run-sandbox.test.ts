@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,
@@ -62,7 +58,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context: unknown) => Promise<unknown> | unknown)
+      | undefined;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurnWithContext?: (
@@ -88,7 +87,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -163,6 +163,15 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           content: [{ type: "text", text: JSON.stringify(toolResult) }],
           isError: false,
         });
+        // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+        // the next model call.
+        for (const listener of this.listeners) {
+          await listener({
+            type: "turn_end",
+            message: assistantMessage,
+            toolResults: [toolResult],
+          });
+        }
         const update = (await this.prepareNextTurn?.({
           context: {
             messages: this.state.messages,

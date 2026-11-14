@@ -17,7 +17,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import {
   slackDestination,
@@ -87,7 +87,7 @@ async function archiveAgent(
 ) {
   const tool = createArchiveAgentTool(conversationId);
   return await tool.execute!(
-    tool.prepareArguments!({
+    tool.prepareArguments({
       conversation_id: childConversationId,
       ...options,
     }),
@@ -131,7 +131,7 @@ describe("Thread spawn and archive", () => {
         { owner: "none" },
       );
       const thread = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: "thread",
           task: "Own the rollout plan.",
           title: "Rollout plan",
@@ -139,7 +139,7 @@ describe("Thread spawn and archive", () => {
         { toolCallId: "call-thread" },
       );
       const task = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: null,
           task: "Check the failing test.",
           title: "Failing test",
@@ -164,7 +164,7 @@ describe("Thread spawn and archive", () => {
 
       // A Thread without a title gets a generated one.
       const untitled = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: "thread",
           task: "Own the rollout follow-ups.",
         }),
@@ -303,8 +303,8 @@ describe("Thread spawn and archive", () => {
       });
       await harness.drain(thread);
       await expect(archivedAtMs(harness, thread)).resolves.toBeUndefined();
-      // searchAgents shows the kind of each child.
-      const listed = await createSearchAgentsTool({
+      // listAgents shows the kind of each child.
+      const listed = await createListAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {});
       expect(listed.agents).toEqual(

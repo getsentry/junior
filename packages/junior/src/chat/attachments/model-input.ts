@@ -6,8 +6,8 @@ import { readLiveAttachment } from "./store";
 import type { AttachmentStorage } from "./storage";
 
 /**
- * Most current-message files that Slack and web send to the model in the
- * prompt. Others stay stored for `loadAttachment`.
+ * Most current-message images that Slack and web send to the model in the
+ * prompt. Other files, and images past the cap, get a `loadAttachment` note.
  */
 export const MAX_MODEL_ATTACHMENTS = 3;
 /** Largest file that Slack and web send to the model in the prompt. */
@@ -16,7 +16,7 @@ export const MAX_MODEL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /** Tell the model how to read a stored file that the prompt does not carry. */
 export function buildStoredAttachmentPromptText(args: {
   attachmentId: string;
-  filename?: string;
+  filename?: string | undefined;
   mediaType: string;
 }): string {
   return [
@@ -39,7 +39,11 @@ async function readStoredBytes(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
-  if (!record || record.storageProvider !== args.storage.provider) {
+  if (
+    !record ||
+    record.storageProvider !== args.storage.provider ||
+    record.storageKey === null
+  ) {
     throw new Error("Input attachment is no longer available.");
   }
   const body = await args.storage.get(record.storageKey);

@@ -10,6 +10,7 @@ export {
   getModels,
   isRetryableAssistantError,
   registerApiProvider,
+  type Api,
   type CacheRetention,
   type Message,
   type Model,

@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
@@ -10,19 +11,44 @@ import {
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
-test("inspects all reporting events and searches full event data", async ({
-  context,
-  page,
-  dashboard,
-}) => {
-  const conversationId = "slack:CQA123:1770003600.000200";
+const conversationId = "slack:CQA123:1770003600.000200";
+
+/** Read the mock Conversation report, then open its transcript. */
+async function openConversation(page: Page, baseURL: string) {
   const response = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
   const report = await response.json();
   await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
+  return report;
+}
+
+/** Open the Event log and the details of the first assistant message. */
+async function openEventDetails(page: Page) {
+  await chooseTranscriptView(page, "Event log");
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  const entry = log.getByRole("button", {
+    name: "Event 3: assistant_message",
+    exact: true,
+  });
+  await entry.click();
+  const panel = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
+  ).toBeVisible();
+  return { entry, log, panel };
+}
+
+test("reveals a closed tool result in transcript search", async ({
+  page,
+  dashboard,
+}) => {
+  await openConversation(page, dashboard.baseURL);
   const transcript = page.getByLabel("Conversation transcript", {
     exact: true,
   });
@@ -56,7 +82,13 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+});
 
+test("inspects all reporting events and steps through event details", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button", { name: /^Event \d+:/ });
@@ -149,6 +181,20 @@ test("inspects all reporting events and searches full event data", async ({
   await entry.click();
   await expect(conversationDetails).toBeHidden();
   await screenshot(page, "conversation-event-details");
+});
+
+test("switches event times between UTC and local time and copies raw JSON", async ({
+  context,
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log, panel } = await openEventDetails(page);
+  const close = panel.getByRole("button", { name: "Close event details" });
+  const otherEntry = log.getByRole("button", {
+    name: "Event 1: turn_lifecycle",
+    exact: true,
+  });
   const localTime = log.getByRole("button", {
     name: "Use local time",
     exact: true,
@@ -242,9 +288,16 @@ test("inspects all reporting events and searches full event data", async ({
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
+});
 
+test("keeps the selected event in a mobile sheet and searches full event data", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log } = await openEventDetails(page);
+  const entries = log.getByRole("button", { name: /^Event \d+:/ });
   // A resize keeps the selected event in a dismissable mobile sheet.
-  await entry.click();
   await page.setViewportSize({ width: 390, height: 844 });
   // The sheet title names the event, so find the sheet by its label.
   const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
@@ -290,7 +343,14 @@ test("inspects all reporting events and searches full event data", async ({
       { exact: true },
     ),
   ).toBeVisible();
+});
 
+test("forks from the transcript and the event log with retry-safe requests", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const log = page.getByRole("region", { name: "Conversation event log" });
   // Both views fork and send the first message with retry-safe requests.
   const forkAction = page
     .getByRole("button", { name: "Fork after this message" })
@@ -416,9 +476,15 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toBeVisible();
   await expect(page.getByText("Released the package.")).toBeVisible();
 
+  // The rich transcript loads earlier events as the reader nears its top.
+  // Its link cards are taller than the viewport, so scroll up to load them
+  // and back down to the latest reply.
+  await page.getByText("Released the package.").hover();
+  await page.mouse.wheel(0, -20_000);
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
+  await page.mouse.wheel(0, 20_000);
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(

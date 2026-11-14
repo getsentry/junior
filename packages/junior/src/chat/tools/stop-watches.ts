@@ -6,7 +6,7 @@ import {
 } from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -19,6 +19,23 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
+export const stopWatchingResourcesToolDefinition = zodToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Stop one watch by id. The watch can belong to the current conversation or to a child agent below it. Omit id only when the user explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
+  exposure: "deferred",
+  source: RESOURCE_WATCH_TOOL_SOURCE,
+  inputSchema: z
+    .object({ id: z.string().min(1).nullable().optional() })
+    .strict(),
+  outputSchema,
+});
+
 /**
  * Create the tool that stops watches this conversation owns. The conversation
  * owns its own watches and those of every child agent below it, so a stop of
@@ -27,20 +44,7 @@ const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
  */
 export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    description:
-      "Stop one watch by id. The watch can belong to the current conversation or to a child agent below it. Omit id only when the user explicitly asks to stop every watch in this conversation; that also stops every watch of its child agents. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
-    exposure: "deferred",
-    source: RESOURCE_WATCH_TOOL_SOURCE,
-    inputSchema: z
-      .object({ id: z.string().min(1).nullable().optional() })
-      .strict(),
-    outputSchema,
+    ...stopWatchingResourcesToolDefinition,
     async execute({ id }) {
       let stoppedIds: string[];
       if (id) {

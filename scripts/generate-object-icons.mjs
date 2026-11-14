@@ -16,6 +16,12 @@ const names = [
   "calendar",
   "comment-discussion",
   "person",
+  "file",
+  "comment",
+  "globe",
+  "graph",
+  "pulse",
+  "rows",
   "package",
 ];
 const paths = Object.fromEntries(

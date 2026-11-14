@@ -10,6 +10,7 @@ import {
 import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
@@ -193,9 +194,7 @@ async function buildThread(args: {
 }
 
 function shouldIgnoreMessage(message: Message): boolean {
-  return (
-    message.author.isMe === true || !parseActorUserId(message.author.userId)
-  );
+  return message.author.isMe || !parseActorUserId(message.author.userId);
 }
 
 /**
@@ -229,7 +228,7 @@ async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
   /** Claim an unowned thread for the Conversation this message starts. */
   claimAtMs?: number;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
 }): Promise<string> {
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
@@ -237,14 +236,12 @@ async function resolveSlackConversationId(args: {
   if (!providerThread) {
     return args.canonicalThreadId;
   }
-  const thread = {
-    provider: "slack",
-    providerDestinationId: providerThread.channelId,
-    providerTenantId: args.installation.teamId ?? "",
-    providerConversationId: providerThread.threadTs,
-  };
-  const ownerId =
-    await conversationStore.getConversationIdByProviderConversation(thread);
+  const ownerId = await findSlackThreadOwnerId({
+    channelId: providerThread.channelId,
+    conversationStore,
+    teamId: args.installation.teamId ?? "",
+    threadTs: providerThread.threadTs,
+  });
   if (ownerId) {
     return ownerId;
   }
@@ -255,9 +252,12 @@ async function resolveSlackConversationId(args: {
   // Conversation that posts here first takes the thread, and later replies
   // split between the two.
   return await conversationStore.claimProviderConversation({
-    ...thread,
     atMs: args.claimAtMs,
     conversationId: args.canonicalThreadId,
+    provider: "slack",
+    providerConversationId: providerThread.threadTs,
+    providerDestinationId: providerThread.channelId,
+    providerTenantId: args.installation.teamId,
   });
 }
 
@@ -268,7 +268,7 @@ async function resolveSlackConversationId(args: {
 async function buildSlackInput(args: {
   adapter: SlackAdapter;
   conversationId: string;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
@@ -292,10 +292,10 @@ async function buildSlackInput(args: {
 
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   route: SlackConversationRoute;
@@ -364,7 +364,7 @@ async function routeParsedMessage(args: {
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
@@ -546,7 +546,7 @@ async function ingestChannelMessage(args: {
   author: SlackChannelMessageAuthor;
   event: SlackInboundEvent;
   queue: ConversationWorkQueue;
-  teamId?: string;
+  teamId?: string | undefined;
 }): Promise<void> {
   // Use only `message`: Slack also sends `app_mention` for a mention in code.
   const { event } = args;
@@ -610,7 +610,7 @@ async function handleSlackEvent(args: {
           event.type === "assistant_thread_context_changed"
         ) {
           const parsed = slackAssistantThreadSchema.safeParse(
-            event.assistant_thread,
+            event["assistant_thread"],
           );
           if (!parsed.success) return;
 
@@ -634,7 +634,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "entity_details_requested") {
-          const ref = event.external_ref;
+          const ref = event["external_ref"];
           if (
             ref &&
             typeof ref === "object" &&
@@ -759,6 +759,7 @@ async function handleSlackEvent(args: {
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
+            // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
           ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
@@ -776,7 +777,7 @@ async function handleSlackEvent(args: {
  */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   services: SlackWebhookServices;

@@ -15,9 +15,9 @@ async function runOrThrow(
   params: {
     cmd: string;
     args?: string[];
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
     sudo?: boolean;
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
   },
   label: string,
 ): Promise<void> {
@@ -36,9 +36,9 @@ async function tryRun(
   params: {
     cmd: string;
     args?: string[];
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
     sudo?: boolean;
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
   },
 ): Promise<boolean> {
   const result = await runNonInteractiveCommand(sandbox, params);

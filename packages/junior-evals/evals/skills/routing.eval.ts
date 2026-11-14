@@ -1,8 +1,20 @@
 import { describe, expect } from "vitest";
+import { defineJuniorPlugins } from "@sentry/junior";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
+
+/** A plugin whose package ships the `pantry-stock` skill. */
+const pantryPlugin = defineJuniorPlugin({
+  manifest: {
+    name: "eval-pantry",
+    displayName: "Eval Pantry",
+    description: "Eval-only plugin that ships one skill",
+  },
+  packageName: "@sentry/junior-eval-pantry",
+});
 
 /** Names of the skills that the agent loaded with `loadSkill`. */
 function loadedSkills(conversation: Conversation): unknown[] {
@@ -67,5 +79,20 @@ describe("Skill Invocation Control", () => {
     );
 
     expect(loadedSkills(conversation)).toContain("visual-web-qa");
+  });
+
+  test("when a deploy adds a skill after the first turn, load it in a later turn", async ({
+    agent,
+  }) => {
+    // Only the plugin changes between the two deploys.
+    const { run, redeploy } = await agent({ plugins: defineJuniorPlugins([]) });
+    const first = await run(slackMention("Reply with exactly: ready"));
+
+    await redeploy({ plugins: defineJuniorPlugins([pantryPlugin]) });
+    const second = await first.continue(
+      slackMention("Which snacks does the office pantry have right now?"),
+    );
+
+    expect(loadedSkills(second)).toContain("pantry-stock");
   });
 });

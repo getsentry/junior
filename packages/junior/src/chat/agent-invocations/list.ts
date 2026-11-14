@@ -236,7 +236,7 @@ async function listChildAgentsFromInvocations(
           limit(async () =>
             (await runsOnConversationLoop(
               conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0]!,
+              byChild.get(row.conversationId)![0],
               row.stoppedAt?.getTime(),
               workStates.get(row.conversationId)?.execution.pendingMessages ??
                 [],
@@ -609,7 +609,7 @@ export type ParentAgent = {
  */
 export async function listAgentRelatives(input: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }): Promise<{
   children: ChildAgent[];
   parent?: ParentAgent;

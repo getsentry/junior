@@ -1,4 +1,8 @@
+import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { closeDb, getSqlExecutor } from "@/chat/db";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   getCapturedSlackApiCalls,
@@ -7,13 +11,14 @@ import {
 
 describe("sendSlackReply", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     resetSlackApiMockState();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetSlackApiMockState();
+    await closeDb();
   });
 
   it("posts text with compact attribution in the conversation footer", async () => {
@@ -172,7 +177,7 @@ describe("sendSlackReply", () => {
     expect(posts).toHaveLength(2);
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
     expect(posts[1]?.params).toMatchObject({ thread_ts: timestamps[0] });
-    expect(posts[1]?.params.blocks).toContainEqual({
+    expect(posts[1]?.params["blocks"]).toContainEqual({
       type: "section",
       text: {
         type: "mrkdwn",
@@ -180,7 +185,7 @@ describe("sendSlackReply", () => {
       },
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
-    expect(posts[1]?.params.text).toBe(
+    expect(posts[1]?.params["text"]).toBe(
       "Automation\nReminder &lt;@U123&gt;\nEvery Monday",
     );
     for (const post of posts) {
@@ -198,5 +203,60 @@ describe("sendSlackReply", () => {
       }),
     ).resolves.toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
+  it("formats plugin references with the Location config and known people", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const slack = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U123",
+      email: "requester@example.com",
+      emailVerified: true,
+    });
+    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "gh-requester",
+      handle: "Requester",
+    });
+
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      formatting: {
+        configuration: { "github.repo": "getsentry/junior" },
+        teamId: "T123",
+      },
+      text: "@requester fixed #12. Thanks @octocat.",
+      threadTs: "1700000000.000100",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: "<@U123> fixed [#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
+        }),
+      }),
+    ]);
+
+    // A bare Slack user ID stays a Slack mention, not a GitHub login.
+    resetSlackApiMockState();
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      formatting: { teamId: "T123" },
+      text: "@U012ABCDEF reviewed getsentry/junior#13 with @octocat.",
+      threadTs: "1700000000.000100",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: "<@U012ABCDEF> reviewed [getsentry/junior#13](https://github.com/getsentry/junior/issues/13) with [@octocat](https://github.com/octocat).",
+        }),
+      }),
+    ]);
   });
 });

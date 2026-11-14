@@ -10,9 +10,9 @@ import {
 // Chat config reads the queue provider when it loads, so set it first. CI
 // runs Redis at REDIS_URL. Locally, compose.yaml runs it on port 6382.
 vi.hoisted(() => {
-  process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
-  process.env.JUNIOR_QUEUE_REDIS_URL =
-    process.env.REDIS_URL?.trim() || "redis://localhost:6382";
+  process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
+  process.env["JUNIOR_QUEUE_REDIS_URL"] =
+    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382";
 });
 
 let worker: QueueWorker | undefined;

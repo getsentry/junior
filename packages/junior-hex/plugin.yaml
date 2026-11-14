@@ -1,6 +1,6 @@
 name: hex
 display-name: Hex
-description: Hex analytics platform — run data warehouse queries for customer usage data
+description: Hex analytics platform — run data warehouse queries and read Hex projects
 
 env-vars:
   HEX_MCP_URL:
@@ -8,7 +8,17 @@ env-vars:
 
 mcp:
   url: ${HEX_MCP_URL}
+  # Read-only on purpose: Hex's editing tools change live project drafts.
   allowed-tools:
     - create_thread
     - get_thread
     - continue_thread
+    - search_projects
+    - get_me
+    - get_project
+    - list_cells
+    - get_cell
+    - get_cell_image
+    - get_cell_output
+    - get_run
+    - list_data_connections

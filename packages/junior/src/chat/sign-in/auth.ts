@@ -87,7 +87,7 @@ export interface SignInAuthConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   secret?: string;
-  sessionMaxAgeSeconds?: number;
+  sessionMaxAgeSeconds?: number | undefined;
   trustedOrigins: string[];
 }
 
@@ -109,7 +109,9 @@ function trimSlashes(value: string, leading: boolean): string {
 }
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 /** Resolve sign-in settings from dashboard options and environment. */
@@ -171,11 +173,11 @@ function createBetterAuth(config: SignInAuthConfig) {
     socialProviders: {
       google: {
         clientId: required(
-          config.googleClientId ?? process.env.GOOGLE_CLIENT_ID,
+          config.googleClientId ?? process.env["GOOGLE_CLIENT_ID"],
           "GOOGLE_CLIENT_ID",
         ),
         clientSecret: required(
-          config.googleClientSecret ?? process.env.GOOGLE_CLIENT_SECRET,
+          config.googleClientSecret ?? process.env["GOOGLE_CLIENT_SECRET"],
           "GOOGLE_CLIENT_SECRET",
         ),
         hd: hostedDomain,
@@ -197,7 +199,7 @@ function createBetterAuth(config: SignInAuthConfig) {
           return {
             user: {
               email: claims.email,
-              emailVerified: claims.email_verified === true,
+              emailVerified: claims.email_verified,
               // `null` clears a photo that the person removed.
               image: claims.picture ?? null,
               name: claims.name,

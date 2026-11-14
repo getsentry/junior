@@ -9,6 +9,12 @@ export const objectTypeSchema = z.enum([
   "calendar_event",
   "conversation",
   "person",
+  "document",
+  "message",
+  "web_page",
+  "chart",
+  "event",
+  "trace",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -21,6 +27,12 @@ const objectTypeLabels = {
   calendar_event: "Calendar event",
   conversation: "Conversation",
   person: "Person",
+  document: "Document",
+  message: "Message",
+  web_page: "Web page",
+  chart: "Chart",
+  event: "Event",
+  trace: "Trace",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -36,6 +48,12 @@ const objectIconNames = [
   "calendar",
   "comment-discussion",
   "person",
+  "file",
+  "comment",
+  "globe",
+  "graph",
+  "pulse",
+  "rows",
   "package",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
@@ -50,8 +68,8 @@ export type ObjectTone =
 /** Resolve identity and state without replacing the type icon with a warning. */
 export function objectPresentation(object: {
   objectType: ObjectType;
-  status?: string;
-  facts?: { type: string };
+  status?: string | undefined;
+  facts?: { type: string } | undefined;
 }): { icon: ObjectIconName; tone: ObjectTone; label: string } {
   // Saved deployment cards used Item before Deployment became a native type.
   const type =
@@ -68,6 +86,12 @@ export function objectPresentation(object: {
       calendar_event: "calendar",
       conversation: "comment-discussion",
       person: "person",
+      document: "file",
+      message: "comment",
+      web_page: "globe",
+      chart: "graph",
+      event: "pulse",
+      trace: "rows",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];

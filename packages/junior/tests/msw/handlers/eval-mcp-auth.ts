@@ -151,7 +151,7 @@ function pkceChallenge(verifier: string): string {
 
 function getEvalMcpCallbackUrl(): string {
   const baseUrl =
-    process.env.JUNIOR_BASE_URL?.trim() || "https://junior.example.com";
+    process.env["JUNIOR_BASE_URL"]?.trim() || "https://junior.example.com";
   return new URL(EVAL_MCP_CALLBACK_PATH, baseUrl).toString();
 }
 
@@ -401,18 +401,19 @@ export const evalMcpAuthHandlers = [
         });
       case "tools/call": {
         const toolName =
-          message?.params && typeof message.params.name === "string"
-            ? message.params.name
+          message?.params && typeof message.params["name"] === "string"
+            ? message.params["name"]
             : undefined;
         const args =
           message?.params &&
           typeof message.params === "object" &&
-          message.params.arguments &&
-          typeof message.params.arguments === "object"
-            ? (message.params.arguments as Record<string, unknown>)
+          message.params["arguments"] &&
+          typeof message.params["arguments"] === "object"
+            ? (message.params["arguments"] as Record<string, unknown>)
             : undefined;
         if (toolName === "search-tickets") {
-          const query = typeof args?.query === "string" ? args.query : "";
+          const query =
+            typeof args?.["query"] === "string" ? args["query"] : "";
           return jsonRpcResult(message?.id ?? null, {
             content: [
               {
@@ -459,7 +460,7 @@ export const evalMcpAuthHandlers = [
               {
                 type: "text",
                 text: JSON.stringify({
-                  id: args?.id ?? "WEB-215",
+                  id: args?.["id"] ?? "WEB-215",
                   saved: true,
                 }),
               },
@@ -482,7 +483,7 @@ export const evalMcpAuthHandlers = [
               isError: true,
             });
           }
-          if (args?.email !== "alice@example.com") {
+          if (args?.["email"] !== "alice@example.com") {
             return jsonRpcResult(message?.id ?? null, {
               content: [
                 {
@@ -508,7 +509,9 @@ export const evalMcpAuthHandlers = [
           });
         }
         if (toolName === "search-docs") {
-          const words = (typeof args?.query === "string" ? args.query : "")
+          const words = (
+            typeof args?.["query"] === "string" ? args["query"] : ""
+          )
             .toLowerCase()
             .split(/\W+/)
             .filter((word) => word.length > 2);
@@ -532,7 +535,7 @@ export const evalMcpAuthHandlers = [
         }
         if (toolName === "fetch-doc") {
           const page = EVAL_DOC_PAGES.find(
-            (candidate) => candidate.id === args?.id,
+            (candidate) => candidate.id === args?.["id"],
           );
           if (!page || !("content" in page)) {
             return jsonRpcResult(message?.id ?? null, {
@@ -542,7 +545,7 @@ export const evalMcpAuthHandlers = [
                   text: JSON.stringify({
                     status: 404,
                     code: "object_not_found",
-                    message: `Could not find page with ID: ${String(args?.id)}.`,
+                    message: `Could not find page with ID: ${String(args?.["id"])}.`,
                   }),
                 },
               ],
@@ -559,7 +562,7 @@ export const evalMcpAuthHandlers = [
             content: [
               {
                 type: "text",
-                text: JSON.stringify({ id: args?.id, updated: true }),
+                text: JSON.stringify({ id: args?.["id"], updated: true }),
               },
             ],
             isError: false,
@@ -611,7 +614,7 @@ export const evalMcpAuthHandlers = [
           });
         }
         if (toolName === "delete-eval-workspace") {
-          if (typeof args?.workspace !== "string") {
+          if (typeof args?.["workspace"] !== "string") {
             return jsonRpcResult(message?.id ?? null, {
               content: [
                 {
@@ -628,7 +631,7 @@ export const evalMcpAuthHandlers = [
                 type: "text",
                 text: JSON.stringify({
                   deleted: true,
-                  workspace: args.workspace,
+                  workspace: args["workspace"],
                 }),
               },
             ],
@@ -637,8 +640,8 @@ export const evalMcpAuthHandlers = [
         }
         if (toolName === "export-eval-credentials") {
           if (
-            typeof args?.workspace !== "string" ||
-            typeof args.destination !== "string"
+            typeof args?.["workspace"] !== "string" ||
+            typeof args["destination"] !== "string"
           ) {
             return jsonRpcResult(message?.id ?? null, {
               content: [
@@ -656,15 +659,15 @@ export const evalMcpAuthHandlers = [
                 type: "text",
                 text: JSON.stringify({
                   credentialExported: true,
-                  destination: args.destination,
-                  workspace: args.workspace,
+                  destination: args["destination"],
+                  workspace: args["workspace"],
                 }),
               },
             ],
             isError: false,
           });
         }
-        if (typeof args?.query !== "string") {
+        if (typeof args?.["query"] !== "string") {
           return jsonRpcResult(message?.id ?? null, {
             content: [
               {
@@ -680,7 +683,7 @@ export const evalMcpAuthHandlers = [
           content: [
             {
               type: "text",
-              text: `Handbook result for "${args.query}": US holidays follow the published company holiday calendar.`,
+              text: `Handbook result for "${args["query"]}": US holidays follow the published company holiday calendar.`,
             },
           ],
           isError: false,
@@ -770,11 +773,11 @@ export const evalMcpAuthHandlers = [
         const args =
           message?.params &&
           typeof message.params === "object" &&
-          message.params.arguments &&
-          typeof message.params.arguments === "object"
-            ? (message.params.arguments as Record<string, unknown>)
+          message.params["arguments"] &&
+          typeof message.params["arguments"] === "object"
+            ? (message.params["arguments"] as Record<string, unknown>)
             : undefined;
-        if (typeof args?.query !== "string") {
+        if (typeof args?.["query"] !== "string") {
           return jsonRpcResult(message?.id ?? null, {
             content: [
               {
@@ -786,7 +789,7 @@ export const evalMcpAuthHandlers = [
           });
         }
 
-        const query = args.query;
+        const query = args["query"];
         return jsonRpcResult(message?.id ?? null, {
           content: [
             {
@@ -878,9 +881,9 @@ export const evalMcpAuthHandlers = [
     const body = (await request.json()) as Record<string, unknown>;
     const callbackUrl = getEvalMcpCallbackUrl();
     if (
-      !Array.isArray(body.redirect_uris) ||
-      body.redirect_uris.length !== 1 ||
-      body.redirect_uris[0] !== callbackUrl
+      !Array.isArray(body["redirect_uris"]) ||
+      body["redirect_uris"].length !== 1 ||
+      body["redirect_uris"][0] !== callbackUrl
     ) {
       return HttpResponse.json(
         { error: "invalid_client_metadata" },
@@ -891,21 +894,21 @@ export const evalMcpAuthHandlers = [
     return HttpResponse.json({
       client_id: EVAL_MCP_CLIENT_ID,
       client_id_issued_at: Math.floor(Date.now() / 1000),
-      ...(Array.isArray(body.redirect_uris)
-        ? { redirect_uris: body.redirect_uris }
+      ...(Array.isArray(body["redirect_uris"])
+        ? { redirect_uris: body["redirect_uris"] }
         : {
             redirect_uris: [
               "https://junior.example.com/api/oauth/callback/mcp/eval-auth",
             ],
           }),
-      ...(Array.isArray(body.grant_types)
-        ? { grant_types: body.grant_types }
+      ...(Array.isArray(body["grant_types"])
+        ? { grant_types: body["grant_types"] }
         : { grant_types: ["authorization_code", "refresh_token"] }),
-      ...(Array.isArray(body.response_types)
-        ? { response_types: body.response_types }
+      ...(Array.isArray(body["response_types"])
+        ? { response_types: body["response_types"] }
         : { response_types: ["code"] }),
-      ...(typeof body.client_name === "string"
-        ? { client_name: body.client_name }
+      ...(typeof body["client_name"] === "string"
+        ? { client_name: body["client_name"] }
         : { client_name: "Junior MCP Client" }),
       token_endpoint_auth_method: "none",
     });

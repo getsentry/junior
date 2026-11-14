@@ -1,4 +1,4 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -20,6 +20,7 @@ import type { HistoryReplacement } from "@/chat/conversations/history";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { closeConversationFixture } from "../fixtures/conversation";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const CONVERSATION_ID = "local:web:background-compaction";
 
@@ -187,10 +188,10 @@ function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
  */
 function replies(texts: Array<string | { error: string }>): {
   calls: Context[];
-  streamFn: StreamFn;
+  streamFn: AgentRequestStreamFn;
 } {
   const calls: Context[] = [];
-  const streamFn: StreamFn = (_model, context) => {
+  const streamFn: AgentRequestStreamFn = (_model, context) => {
     const reply = texts[calls.length]!;
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
@@ -425,7 +426,7 @@ describe("background compaction job", () => {
       liveAgent(getAgentBackgroundCompactionMarkTokens(MODEL_ID)),
     );
     const model = replies(["<summary>Late.</summary>"]);
-    const streamFn: StreamFn = async (...args) => {
+    const streamFn: AgentRequestStreamFn = async (...args) => {
       await events.replaceHistory(CONVERSATION_ID, compaction("Foreground."));
       return await model.streamFn(...args);
     };

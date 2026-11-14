@@ -64,7 +64,6 @@ interface Result extends PluginToolOutput {
 
 /** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
 export function createGitHubResolvePullRequestReviewThreadTool(
-  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -83,7 +82,11 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

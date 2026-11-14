@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   resolve as resolveSnapshot,
@@ -106,7 +107,7 @@ function logSnapshotProfile(
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
 ): Promise<void> {
-  if (process.env.JUNIOR_SKIP_SNAPSHOT === "1") {
+  if (process.env["JUNIOR_SKIP_SNAPSHOT"] === "1") {
     log("Skipping sandbox snapshot create (JUNIOR_SKIP_SNAPSHOT=1)");
     return;
   }
@@ -134,6 +135,7 @@ export async function runSnapshotCreate(
       `resolve_outcome=${snapshot.resolveOutcome}`,
       `cache_hit=${snapshot.cacheHit}`,
       `dependency_count=${snapshot.dependencyCount}`,
+      `state=${getChatConfig().state.adapter}`,
       ...(snapshot.profileHash ? [`profile_hash=${snapshot.profileHash}`] : []),
       ...(snapshot.snapshotId ? [`snapshot_id=${snapshot.snapshotId}`] : []),
       ...(snapshot.rebuildReason

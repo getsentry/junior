@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { RemSize } from "../components/ui/resizable";
 import { DESKTOP_LAYOUT_QUERY } from "../layoutMedia";
 
-import { hasPanelSpace } from "../components/DetailsPanel";
+import { hasPanelSpace, useDetailsPanel } from "../components/DetailsPanel";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
 const DETAILS_OPEN_KEY = "junior:conversation:details-open";
@@ -97,8 +97,22 @@ export function useSidebarFits(): boolean {
 
 const DETAILS_DEFAULT_OPEN_QUERY = "(min-width: 90rem)";
 
-/** Report whether a Conversation opens with its details panel. */
-export function useDetailsDefaultOpen(): boolean {
+/**
+ * Report whether a Conversation opens with its details panel. The pending
+ * view of a new Conversation and the page that replaces it both use this,
+ * so details do not open and then close when the page loads.
+ */
+export function useDetailsStartOpen(): boolean {
+  const defaultOpen = useDetailsDefaultOpen();
+  const panelFits = useDetailsPanel();
+  // Read once, so a choice made on this page does not change its default.
+  const [saved] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  return saved === undefined ? defaultOpen : saved && panelFits;
+}
+
+function useDetailsDefaultOpen(): boolean {
   return useSyncExternalStore(
     (onChange) => {
       const media = window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY);

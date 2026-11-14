@@ -28,34 +28,34 @@ export type SlackActionErrorCode =
 
 export class SlackActionError extends Error {
   code: SlackActionErrorCode;
-  apiError?: string;
-  needed?: string;
-  provided?: string;
-  statusCode?: number;
-  requestId?: string;
-  errorData?: string;
-  retryAfterSeconds?: number;
-  detail?: string;
-  detailLine?: number;
-  detailRule?: string;
+  apiError?: string | undefined;
+  needed?: string | undefined;
+  provided?: string | undefined;
+  statusCode?: number | undefined;
+  requestId?: string | undefined;
+  errorData?: string | undefined;
+  retryAfterSeconds?: number | undefined;
+  detail?: string | undefined;
+  detailLine?: number | undefined;
+  detailRule?: string | undefined;
   /** Network error code, such as `ECONNABORTED`, when no Slack response arrived. */
-  networkCode?: string;
+  networkCode?: string | undefined;
 
   constructor(
     message: string,
     code: SlackActionErrorCode,
     options: {
-      apiError?: string;
-      needed?: string;
-      provided?: string;
-      statusCode?: number;
-      requestId?: string;
-      errorData?: string;
-      retryAfterSeconds?: number;
+      apiError?: string | undefined;
+      needed?: string | undefined;
+      provided?: string | undefined;
+      statusCode?: number | undefined;
+      requestId?: string | undefined;
+      errorData?: string | undefined;
+      retryAfterSeconds?: number | undefined;
       detail?: string;
       detailLine?: number;
       detailRule?: string;
-      networkCode?: string;
+      networkCode?: string | undefined;
     } = {},
   ) {
     super(message);
@@ -291,7 +291,7 @@ function mapSlackError(error: unknown): SlackActionError {
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
     errorData: serializeSlackErrorData(candidate.data),
-    ...parseSlackCanvasDetail(candidate.data?.detail),
+    ...parseSlackCanvasDetail(candidate.data?.["detail"]),
   };
 
   if (apiError === "missing_scope") {
@@ -678,7 +678,45 @@ export async function getFilePermalink(
   return response.file?.permalink;
 }
 
-export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
+/**
+ * Read the private download URL and size of one Slack file.
+ *
+ * Return undefined when Slack no longer has the file, or keeps only a
+ * tombstone without a download URL.
+ */
+export async function readPrivateSlackFile(
+  fileId: string,
+): Promise<{ bytes: number; url: string } | undefined> {
+  const client = getClient();
+  let response;
+  try {
+    response = await withSlackRetries(
+      () => client.files.info({ file: fileId }),
+      3,
+      {
+        action: "files.info",
+        idempotent: true,
+        spanAttributes: { "app.slack.file_id": fileId },
+      },
+    );
+  } catch (error) {
+    if (
+      error instanceof SlackActionError &&
+      (error.code === "not_found" ||
+        error.apiError === "file_not_found" ||
+        error.apiError === "file_deleted")
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  const url = response.file?.url_private_download ?? response.file?.url_private;
+  const bytes = response.file?.size;
+  if (!url || typeof bytes !== "number") return undefined;
+  return { bytes, url };
+}
+
+async function fetchPrivateSlackFile(url: string): Promise<Response> {
   // Private file URLs are workspace-scoped, so downloads use the same
   // destination-installation token resolution as Web API calls.
   const token = resolveSlackToken();
@@ -689,7 +727,30 @@ export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
     },
   });
   if (!response.ok) {
-    throw new Error(`Slack file download failed: ${response.status}`);
+    throw new SlackActionError(
+      `Slack file download failed: ${response.status}`,
+      response.status === 404 || response.status === 410
+        ? "not_found"
+        : "internal_error",
+      { statusCode: response.status },
+    );
   }
+  return response;
+}
+
+/** Download a small private Slack file into memory. */
+export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
+  const response = await fetchPrivateSlackFile(url);
   return Buffer.from(await response.arrayBuffer());
+}
+
+/** Open a private Slack file as a stream, so a large file is never held whole. */
+export async function streamPrivateSlackFile(
+  url: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await fetchPrivateSlackFile(url);
+  if (!response.body) {
+    throw new Error("Slack file download returned no body");
+  }
+  return response.body;
 }

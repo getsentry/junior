@@ -13,5 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    globalSetup: ["@sentry/junior-testing/postgres/global-setup"],
+    setupFiles: ["@sentry/junior-testing/postgres/setup"],
   },
 });

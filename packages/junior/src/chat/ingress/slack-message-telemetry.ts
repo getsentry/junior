@@ -21,8 +21,8 @@ export function slackMessageAttributes(body: SlackEventEnvelope) {
     "app.slack.bot_id": field(event?.bot_id, /^B[A-Z0-9]+$/),
     "app.slack.team_id": field(body.team_id, /^T[A-Z0-9]+$/),
     "app.slack.enterprise_id": field(body.enterprise_id, /^E[A-Z0-9]+$/),
-    "app.slack.user_team": field(event?.user_team, teamId),
-    "app.slack.source_team": field(event?.source_team, teamId),
+    "app.slack.user_team": field(event?.["user_team"], teamId),
+    "app.slack.source_team": field(event?.["source_team"], teamId),
     "app.slack.event_team": field(event?.team, teamId),
     "app.slack.context_team_id": field(body.context_team_id, /^T[A-Z0-9]+$/),
     "app.slack.context_enterprise_id":

@@ -12,6 +12,7 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
+  setBotName,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
@@ -180,6 +181,11 @@ export type {
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME`, then `junior`.
+   */
+  botName?: string;
+  /**
    * Generate a durable Brief after each completed Turn. This costs one
    * default-model call per completed Turn. Disabled by default.
    */
@@ -261,7 +267,7 @@ export interface JuniorAppOptions extends BotModelConfig {
      * Entries may be exact domains or leading wildcard domains such as
      * `*.sentry.io`; wildcard entries match subdomains, not the apex domain.
      */
-    egressTracePropagationDomains?: string[];
+    egressTracePropagationDomains?: string[] | undefined;
   };
   waitUntil?: WaitUntilFn;
 }
@@ -271,24 +277,26 @@ function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
-    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
   if (configured) return configured;
 
   const vercelURL =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-    process.env.VERCEL_URL?.trim();
+    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
+    process.env["VERCEL_URL"]?.trim();
   if (!vercelURL) return undefined;
-  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
+  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
+    ? vercelURL
+    : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
-  functionMaxDurationSeconds?: number;
-  createDashboardApp?: CreateDashboardApp;
-  dashboard?: JuniorVirtualDashboardOptions;
-  pluginSet?: JuniorPluginSet;
-  plugins?: PluginCatalogConfig;
+  functionMaxDurationSeconds?: number | undefined;
+  createDashboardApp?: CreateDashboardApp | undefined;
+  dashboard?: JuniorVirtualDashboardOptions | undefined;
+  pluginSet?: JuniorPluginSet | undefined;
+  plugins?: PluginCatalogConfig | undefined;
   pluginRuntimeRegistrations: string[];
 }
 
@@ -315,10 +323,10 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
-      createDashboardApp?: CreateDashboardApp;
+      createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
-      dashboard?: JuniorVirtualDashboardOptions;
-      pluginSet?: JuniorPluginSet;
+      dashboard?: JuniorVirtualDashboardOptions | undefined;
+      pluginSet?: JuniorPluginSet | undefined;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
@@ -553,6 +561,7 @@ export async function createApp(
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
+    setBotName(options?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.
@@ -826,7 +835,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env.NODE_ENV === "development") {
+  if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
@@ -869,6 +878,7 @@ export async function createApp(
     return heartbeatGET(c.req.raw, waitUntil, {
       conversationWorkQueue,
       events,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
     });
   });
 

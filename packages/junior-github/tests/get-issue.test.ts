@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubGetIssueTool } from "../src/tools/get-issue";
+import { gitHubGetIssueTool } from "../src/tools/get-issue";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
 const linkedUser = {
@@ -41,7 +42,7 @@ function toolContext(
   const adapter = createGitHubApiTestAdapter(
     Array.isArray(response) ? response : [response],
   );
-  const tool = createGitHubGetIssueTool({
+  const tool = bindPluginTool(gitHubGetIssueTool, {
     actor: {
       platform: "slack",
       fullName: "David Cramer",

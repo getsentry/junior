@@ -156,7 +156,7 @@ function egressAttributes(input: {
   egressId?: string;
   grantAccess?: "read" | "write";
   grantName?: string;
-  grantReason?: string;
+  grantReason?: string | undefined;
   host?: string;
   method?: string;
   path?: string;
@@ -568,6 +568,8 @@ export async function executeCredentialedEgressRequest(input: {
   provider: string;
   request: Request;
   upstreamUrl: URL;
+  /** Use only the credential subject's own stored OAuth token. */
+  userOAuthOnly?: boolean;
 }): Promise<Response> {
   const {
     activeEgressId,
@@ -618,6 +620,7 @@ export async function executeCredentialedEgressRequest(input: {
         ? { graphql: await readGraphqlRequest(body) }
         : undefined),
       ...(operation ? { operation } : undefined),
+      ...(input.userOAuthOnly ? { userOAuthOnly: true } : undefined),
       provider,
       method: request.method,
       upstreamUrl,

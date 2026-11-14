@@ -2,7 +2,7 @@ import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import { vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -36,6 +36,8 @@ import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
 import { readProxyProperty } from "./proxy-property";
+import { fauxRequestStream } from "./model-stream";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_DESTINATION = {
@@ -228,7 +230,7 @@ export function observeConversationMutationLock(args: {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -294,7 +296,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Delay one conversation's mutation lock until the fake clock reaches a point. */
@@ -317,7 +319,7 @@ export function delayMutationLockUntil(args: {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Build a signed Slack JSON webhook request for Slack ingress tests. */
@@ -332,7 +334,7 @@ export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
   text?: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   ts?: string;
   user?: string;
 }) {
@@ -393,7 +395,7 @@ export const THREAD_TS = "1712345.0001";
 
 export type ModelStreamStep =
   | string
-  | { tool: string; args?: Record<string, unknown> }
+  | { tool: string; args?: Record<string, JsonValue> }
   | (() => Promise<ReturnType<typeof fauxAssistantMessage>>);
 
 function buildStreamResponses(steps: ModelStreamStep[]) {
@@ -411,21 +413,23 @@ function buildStreamResponses(steps: ModelStreamStep[]) {
 }
 
 /** Model stream that returns one completed assistant reply per call. */
-export function streamReplies(...texts: string[]): StreamFn {
+export function streamReplies(...texts: string[]): AgentRequestStreamFn {
   const faux = createFauxCore({ api: "test", provider: "test" });
   const built = buildStreamResponses(texts);
   if (built.length === 0) {
     throw new Error("streamReplies requires at least one reply");
   }
   faux.setResponses(built);
-  return faux.stream;
+  return fauxRequestStream(faux.stream);
 }
 
 /**
  * Queue model steps and repeat the last reply for resume / follow-up model
  * calls in the same agent run. Fake only generation; tools still run for real.
  */
-export function streamScript(...steps: ModelStreamStep[]): StreamFn {
+export function streamScript(
+  ...steps: ModelStreamStep[]
+): AgentRequestStreamFn {
   const faux = createFauxCore({ api: "test", provider: "test" });
   const built = buildStreamResponses(steps);
   const last = built.at(-1);
@@ -433,7 +437,7 @@ export function streamScript(...steps: ModelStreamStep[]): StreamFn {
     throw new Error("streamScript requires at least one step");
   }
   faux.setResponses([...built, ...Array.from({ length: 12 }, () => last)]);
-  return faux.stream;
+  return fauxRequestStream(faux.stream);
 }
 
 export type ConversationWorkSlackHarness = {
@@ -497,6 +501,7 @@ export async function createConversationWorkHarness(
     processOptions: { softYieldAfterMs?: number } = {},
   ) =>
     await processConversationQueueMessage(message, {
+      beforeWorkStops: work.beforeWorkStops,
       conversationStore,
       queue,
       run: work.run,
@@ -577,7 +582,7 @@ export async function runHeartbeatAfterLeasesExpire(
 export async function createConversationWorkSlackHarness(
   options: {
     agentRunner?: AgentRunner;
-    modelStream?: StreamFn;
+    modelStream?: AgentRequestStreamFn;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
   const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
@@ -614,7 +619,7 @@ export async function createConversationWorkSlackHarness(
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       const process = async () => await work.process(wakes.takeMessage());

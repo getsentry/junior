@@ -30,7 +30,7 @@ import { requireAdmin } from "../viewer";
  */
 function callbackUrl(request: Request, provider: string): string {
   const base =
-    process.env.JUNIOR_BASE_URL?.trim() || new URL(request.url).origin;
+    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
   return new URL(
     `api/service-accounts/${encodeURIComponent(provider)}/callback`,
     base.endsWith("/") ? base : `${base}/`,

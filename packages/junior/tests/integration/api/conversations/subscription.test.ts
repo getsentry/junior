@@ -16,7 +16,7 @@ import {
 } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
+import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -113,9 +113,8 @@ async function agentSetsSubscription(actor: Person, subscribed: boolean) {
     source: createLocalSource(CONVERSATION_ID),
     workspace: {} as ToolRuntimeContext["workspace"],
   } as ToolRuntimeContext;
-  const tool =
-    createConversationSubscriptionTools(context).setConversationSubscription;
-  if (!tool?.execute || !tool.prepareArguments) {
+  const tool = createSetConversationSubscriptionTool(context);
+  if (!tool.execute || !tool.prepareArguments) {
     throw new Error("setConversationSubscription is missing");
   }
   return await tool.execute(tool.prepareArguments({ subscribed }), {});

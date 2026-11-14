@@ -156,7 +156,7 @@ async function conversationRows(
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
-    query?: string;
+    query?: string | undefined;
     status: "active" | "archived" | "all";
   },
 ) {
@@ -441,9 +441,9 @@ export async function readConversationFeedFromSql(
     actorEmail?: string;
     codeRepositoryId?: string;
     /** `nextCursor` of the previous page. */
-    cursor?: string;
+    cursor?: string | undefined;
     limit?: number;
-    q?: string;
+    q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
   } = {},
@@ -707,7 +707,7 @@ export async function readConversationFeed(
     actorEmail?: string;
     codeRepositoryId?: string;
     cursor?: string;
-    q?: string;
+    q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
   } = {},

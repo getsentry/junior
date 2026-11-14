@@ -112,8 +112,8 @@ describe("Pi tool adapter integration", () => {
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
                   const input = args as Record<string, unknown>;
-                  return typeof input.customer_id === "string"
-                    ? { customerId: input.customer_id }
+                  return typeof input["customer_id"] === "string"
+                    ? { customerId: input["customer_id"] }
                     : (input as { customerId: string });
                 },
                 execute: async ({ customerId }) =>
@@ -138,8 +138,8 @@ describe("Pi tool adapter integration", () => {
         actionReview,
       });
 
-      expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
-      expect(registry.agentDemo_lookupCustomer?.source).toEqual({
+      expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
+      expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
@@ -206,7 +206,7 @@ describe("Pi tool adapter integration", () => {
           {
             toolCallId: "tool-execute",
             toolName: "agentDemo_lookupCustomer",
-            tool: registry.agentDemo_lookupCustomer,
+            tool: registry["agentDemo_lookupCustomer"],
             input: { customerId: "C123" },
           },
         ],
