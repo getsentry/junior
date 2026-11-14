@@ -343,6 +343,9 @@ importers:
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      '@sentry/junior-notion':
+        specifier: workspace:*
+        version: link:../junior-notion
       '@sentry/junior-sentry':
         specifier: workspace:*
         version: link:../junior-sentry
@@ -828,7 +831,30 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12(@types/node@25.9.1)(tsx@4.22.3)
 
-  packages/junior-notion: {}
+  packages/junior-notion:
+    dependencies:
+      '@sentry/junior-plugin-api':
+        specifier: workspace:*
+        version: link:../junior-plugin-api
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@oxlint/plugins':
+        specifier: 1.79.0
+        version: 1.79.0
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      oxlint:
+        specifier: ^1.79.0
+        version: 1.79.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   packages/junior-octolens: {}
 
@@ -860,6 +886,9 @@ importers:
 
   packages/junior-sentry:
     dependencies:
+      '@sentry/api':
+        specifier: 2.3.0
+        version: 2.3.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -4431,6 +4460,21 @@ packages:
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
+
+  '@sentry/api@2.3.0':
+    resolution: {integrity: sha512-DaFq7/eAVyo11cT7fzDc0NVhAsUjhP9S8hRJIi4K1UKLe7rrViyvXCmtonnoBJKTY9I1r8G5LgeGUsB7CawDsw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      typescript: '*'
+      valibot: '*'
+      zod: ^4.6.6
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+      valibot:
+        optional: true
+      zod:
+        optional: true
 
   '@sentry/browser-utils@11.10.0':
     resolution: {integrity: sha512-P/bYHTgj76sYBYCZa524YoZ/hZac2XCW3i3qShrMXnh7s63x1cweUjD7BDVDb0L/lGMwtuObuZeRnCif4hWLNg==}
@@ -8441,6 +8485,10 @@ packages:
 
   p-limit@7.3.1:
     resolution: {integrity: sha512-0trZaiG7Y7kN/Egy9a8j47t9osC0Tch4PaIWd9yGF6bvmlk7muExRvGNYb8sXBwEKMoNKsbNN9P8EefuQekE4Q==}
+    engines: {node: '>=20'}
+
+  p-limit@7.3.3:
+    resolution: {integrity: sha512-SKgVvDU5TNIxQ4r30U75BNLC6a+6GOEjngrk/ysM5+Zu3oJuk1SC5ApzIzY/7PjCEjoVPMWJ0zho/4QUiEB7TQ==}
     engines: {node: '>=20'}
 
   p-locate@3.0.0:
@@ -13536,6 +13584,14 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
+  '@sentry/api@2.3.0(typescript@7.0.2)(zod@4.6.7)':
+    dependencies:
+      http-cache-semantics: 4.2.0
+      p-limit: 7.3.3
+    optionalDependencies:
+      typescript: 7.0.2
+      zod: 4.6.7
+
   '@sentry/browser-utils@11.10.0':
     dependencies:
       '@sentry/conventions': 0.29.0
@@ -13612,6 +13668,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4
+      ignore: 7.0.5
       marked: 18.1.2
       mdast-util-from-markdown: 2.0.3
       mdast-util-gfm: 3.1.0
@@ -13658,6 +13715,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      ignore: 7.0.5
       marked: 18.1.2
       mdast-util-from-markdown: 2.0.3
       mdast-util-gfm: 3.1.0
@@ -19160,6 +19218,10 @@ snapshots:
       yocto-queue: 0.1.0
 
   p-limit@7.3.1:
+    dependencies:
+      yocto-queue: 1.2.2
+
+  p-limit@7.3.3:
     dependencies:
       yocto-queue: 1.2.2
 

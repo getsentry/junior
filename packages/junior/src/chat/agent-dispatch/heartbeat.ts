@@ -1,4 +1,5 @@
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
+import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { settleDueWakeAutomations } from "@/chat/wake-automations/store";
@@ -277,5 +278,10 @@ export async function runHeartbeat(args: {
     await backfillCacheWarmingGaps({ nowMs: args.nowMs });
   } catch (error) {
     logException(error, "cache_warming.backfill.failed");
+  }
+  try {
+    await runSavingsRefillSlice({ nowMs: args.nowMs });
+  } catch (error) {
+    logException(error, "cache_warming.savings_refill.failed");
   }
 }

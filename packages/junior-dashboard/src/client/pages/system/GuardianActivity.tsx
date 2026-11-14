@@ -12,6 +12,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { StatTile } from "../../components/metrics/StatTile";
 
 function totals(days: GuardianMetricDay[]) {
   return days.reduce(
@@ -23,23 +24,6 @@ function totals(days: GuardianMetricDay[]) {
       requests: result.requests + day.requests,
     }),
     { allow: 0, ask: 0, costUsd: 0, deny: 0, requests: 0 },
-  );
-}
-
-function Stat(props: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="rounded-md border border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-3">
-      <div className="font-display text-xl font-light text-dashboard-text">
-        <span className={props.valueClassName}>{props.value}</span>
-      </div>
-      <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-        {props.label}
-      </div>
-    </div>
   );
 }
 
@@ -78,23 +62,26 @@ export function GuardianActivity(props: {
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <Stat label="Requests" value={formatCompactNumber(period.requests)} />
-          <Stat
+          <StatTile
+            label="Requests"
+            value={formatCompactNumber(period.requests)}
+          />
+          <StatTile
             label="Allowed"
             value={formatCompactNumber(period.allow)}
             valueClassName="text-emerald-100"
           />
-          <Stat
+          <StatTile
             label="Asked"
             value={formatCompactNumber(period.ask)}
             valueClassName="text-amber-100"
           />
-          <Stat
+          <StatTile
             label="Denied"
             value={formatCompactNumber(period.deny)}
             valueClassName="text-rose-100"
           />
-          <Stat
+          <StatTile
             label="Estimated cost"
             value={formatCostSummary({ total: period.costUsd })}
           />

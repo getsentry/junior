@@ -1,7 +1,8 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { http, HttpResponse } from "msw";
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetStatusTool } from "../src/tools/get-status";
+import { gitHubGetStatusTool } from "../src/tools/get-status";
 import { mswServer } from "./msw";
 
 function memoryCache(): PluginCache {
@@ -68,7 +69,7 @@ describe("getStatus", () => {
         });
       }),
     );
-    const tool = createGitHubGetStatusTool({ cache: memoryCache() });
+    const tool = bindPluginTool(gitHubGetStatusTool, { cache: memoryCache() });
 
     const first = await tool.execute?.({}, { toolCallId: "status-1" });
     const second = await tool.execute?.({}, { toolCallId: "status-2" });
@@ -106,7 +107,7 @@ describe("getStatus", () => {
         () => new HttpResponse(null, { status: 503 }),
       ),
     );
-    const tool = createGitHubGetStatusTool({ cache: memoryCache() });
+    const tool = bindPluginTool(gitHubGetStatusTool, { cache: memoryCache() });
 
     await expect(
       tool.execute?.({}, { toolCallId: "status-failed" }),

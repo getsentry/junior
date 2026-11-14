@@ -12,6 +12,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -20,7 +21,6 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -427,6 +427,21 @@ export function useStatsData() {
   });
 }
 
+/** Fetch what cache warming saved over the trailing UTC days of a range. */
+export function useCacheWarmingSavings(days: number) {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "savings", days],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheWarmingSavingsReportSchema,
+        `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -436,16 +451,6 @@ export function useSystemData(coreData: DashboardCoreData) {
       fetchDashboardJson(
         conversationStatsReportSchema,
         "/api/conversations/stats",
-        signal,
-      ),
-    retry: false,
-  });
-  const replyTimesQuery = useQuery({
-    queryKey: ["dashboard", "reply-times"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        replyTimeSegmentsReportSchema,
-        "/api/reply-times",
         signal,
       ),
     retry: false,
@@ -468,10 +473,6 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
-          ...(replyTimesQuery.data
-            ? { replyTimes: replyTimesQuery.data }
-            : undefined),
-          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

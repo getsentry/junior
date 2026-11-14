@@ -31,7 +31,7 @@ import {
 } from "@/chat/slack/review-item-card";
 import {
   createSlackReviewItemShow,
-  readSlackReviewItemCardConversationId,
+  resolveSlackReviewItemCardConversationId,
   syncReviewItemSlackCards,
 } from "@/chat/slack/review-item-card-sync";
 import {
@@ -131,11 +131,11 @@ async function act(args: {
   const { services, target } = args;
   const actor = await resolveActingUser(services, args.payload, target);
   if (!actor) return;
-  const conversationId =
-    (await readSlackReviewItemCardConversationId({
-      ...target,
-      itemId: args.itemId,
-    })) ?? `slack:${target.channelId}:${target.threadTs}`;
+  const conversationId = await resolveSlackReviewItemCardConversationId({
+    channelId: target.channelId,
+    teamId: actor.teamId,
+    threadTs: target.threadTs,
+  });
   const delivery: ReviewItemDelivery = {
     queue: services.queue,
     show: createSlackReviewItemShow(() => services.adapter),

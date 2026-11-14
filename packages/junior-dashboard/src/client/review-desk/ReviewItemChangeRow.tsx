@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import { use, type ReactNode } from "react";
+import { use, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   ReviewItemChangeRecord,
@@ -7,12 +7,16 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
+import { HoverPreview } from "../components/ui/hover-preview";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
   useAnswerLinked,
 } from "../conversations/TranscriptAnswerLinks";
+import { DisplayText } from "../display-text/DisplayText";
 import { useConversationReviewItemData } from "./queries";
+import { AnswerSummary } from "./ReviewItemActions";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
   answerLine,
   answerRows,
@@ -29,6 +33,41 @@ const CHANGE_VERBS = {
   submitted: "Answered",
   taken: "Took",
 } as const satisfies Record<ReviewItemChangeRecord["kind"], string>;
+
+/**
+ * Show what an item asked, and its answer, when the reader hovers or focuses
+ * its title. A transcript record names the item only by its title.
+ */
+function ReviewItemPreview(props: {
+  children: ReactNode;
+  item: ReviewItemPayload;
+  trigger: ReactElement;
+}) {
+  const { answer, request } = props.item;
+  return (
+    <HoverPreview
+      className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
+      content={
+        <>
+          {/* A quote line can truncate the title, so the card repeats it. */}
+          <p className="m-0 break-words text-base font-semibold leading-snug">
+            {props.item.title}
+          </p>
+          {/* A notice or a plugin item has no question: its text is the ask. */}
+          <ReviewItemObjects conversationId={props.item.addedByConversationId}>
+            <DisplayText text={request?.question ?? props.item.body} />
+          </ReviewItemObjects>
+          {request && answer ? (
+            <AnswerSummary answer={answer} request={request} />
+          ) : null}
+        </>
+      }
+      trigger={props.trigger}
+    >
+      {props.children}
+    </HoverPreview>
+  );
+}
 
 // The change reads as the person's reply to a question, and an answer stands
 // out in a bubble. A line in the avatar column links an answer to its "Asked"
@@ -62,24 +101,25 @@ function ChangeRow(props: {
     >
       <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
         <span className="shrink-0">{verb}</span>
-        {showQuestion && scrollsToQuestion ? (
-          <button
-            className={QUOTE_TITLE_CLASS}
-            onClick={() => showQuestion(item)}
-            title={item.title}
-            type="button"
-          >
-            {item.title}
-          </button>
-        ) : (
-          <Link
-            className={QUOTE_TITLE_CLASS}
-            title={item.title}
-            to={reviewItemPath(item.id)}
-          >
-            {item.title}
-          </Link>
-        )}
+        <ReviewItemPreview
+          item={item}
+          trigger={
+            showQuestion && scrollsToQuestion ? (
+              <button
+                className={QUOTE_TITLE_CLASS}
+                onClick={() => showQuestion(item)}
+                type="button"
+              />
+            ) : (
+              <Link
+                className={QUOTE_TITLE_CLASS}
+                to={reviewItemPath(item.id)}
+              />
+            )
+          }
+        >
+          {item.title}
+        </ReviewItemPreview>
       </p>
       {rows.length ? (
         <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
@@ -108,12 +148,17 @@ function ChangeRow(props: {
 
 function ReviewItemTitle(props: { item: ReviewItemPayload }) {
   return (
-    <Link
-      className="break-words text-base font-semibold text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-      to={reviewItemPath(props.item.id)}
+    <ReviewItemPreview
+      item={props.item}
+      trigger={
+        <Link
+          className="break-words text-base font-semibold text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
+          to={reviewItemPath(props.item.id)}
+        />
+      }
     >
       {props.item.title}
-    </Link>
+    </ReviewItemPreview>
   );
 }
 
