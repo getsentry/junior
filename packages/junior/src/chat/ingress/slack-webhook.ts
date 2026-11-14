@@ -231,6 +231,7 @@ async function resolveSlackConversationId(args: {
   conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
 }): Promise<string> {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
   if (!providerThread) {
@@ -456,6 +457,7 @@ async function routeParsedMessage(args: {
       conversationStore: args.conversationStore,
       queue: args.queue,
       request: inbound,
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       slackThread: parseSlackThreadId(canonicalThreadId),
       state: args.state,
       stopMessage: {

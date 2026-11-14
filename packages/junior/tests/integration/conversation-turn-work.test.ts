@@ -637,15 +637,7 @@ describe("Conversation mailbox Turn work", () => {
         quiet: undefined,
         text: "Code change checks failed",
       },
-      {
-        role: "assistant",
-        source: undefined,
-        eventType: undefined,
-        trustedSummary: undefined,
-        // The noReply note, kept as a Quiet message.
-        quiet: true,
-        text: "Handled the event.",
-      },
+      // The noReply note stays in agent history only. It is not a Message.
     ]);
   }, 10_000);
 

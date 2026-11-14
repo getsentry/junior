@@ -274,7 +274,6 @@ export function readMockWaitingConversations(nowMs: number) {
           createdAt < oldest ? createdAt : oldest,
         ),
     })),
-    needsViewer: open.length,
   };
 }
 

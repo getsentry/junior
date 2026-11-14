@@ -855,9 +855,7 @@ function booleanConsoleToken(
 
 function shouldShowPrettyCorrelation(eventName: string): boolean {
   return !(
-    eventName === "plugin.loaded" ||
-    eventName === "startup.discovery.completed" ||
-    eventName.endsWith(".loaded")
+    eventName === "startup.discovery.completed" || eventName.endsWith(".loaded")
   );
 }
 

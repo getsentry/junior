@@ -409,7 +409,7 @@ function logLoadedPlugins(state: LoadedPluginState): void {
       continue;
     }
     loggedPluginNames.add(plugin.manifest.name);
-    logInfo("plugin.loaded", {
+    logInfo("plugin.manifest.loaded", {
       "app.plugin.name": plugin.manifest.name,
       "app.plugin.config_key_count": plugin.manifest.configKeys.length,
       "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),

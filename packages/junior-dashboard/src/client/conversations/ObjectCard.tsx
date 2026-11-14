@@ -22,6 +22,7 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { formatRelativeTime, formatTime } from "../format";
+import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
@@ -65,20 +66,19 @@ function PreviewImage({
   );
 }
 
-function localTime(iso: string | undefined): string | undefined {
-  return iso
-    ? new Date(iso).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : undefined;
-}
-
 // A web page names its site, then its author, such as "YouTube · Sentry".
 // Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event ends with when it happened, and a monitor with when
-// it last checked, in the viewer's time.
+// its title. An event or a release ends with when it happened, and a
+// monitor with when it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  const time =
+    card.facts?.type === "event"
+      ? card.facts.occurredAt
+      : card.facts?.type === "release"
+        ? card.facts.releasedAt
+        : card.facts?.type === "monitor"
+          ? card.facts.lastCheckedAt
+          : undefined;
   const parts =
     card.objectType === "web_page"
       ? [
@@ -90,13 +90,12 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
           objectSource(card.plugin),
           // A label that repeats the title or the type says nothing new.
           [card.title, type].includes(card.label) ? "" : card.label,
-          localTime(
-            card.facts?.type === "event"
-              ? card.facts.occurredAt
-              : card.facts?.type === "monitor"
-                ? card.facts.lastCheckedAt
-                : undefined,
-          ),
+          time
+            ? new Date(time).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : undefined,
         ];
   return parts.filter(Boolean).join(" · ") || type;
 }
@@ -229,6 +228,9 @@ export function ObjectCard({
             series={card.facts.series}
             tall
           />
+        )}
+        {card.facts?.type === "dashboard" && (
+          <DashboardPreview facts={card.facts} />
         )}
         {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
           <TraceWaterfall

@@ -104,14 +104,19 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n");
+  // A `noReply` call ends the Turn with nothing posted, whatever text the run
+  // also wrote.
+  const noReplyCall = readNoReply(newMessages);
+  const primaryText = noReplyCall
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
   // A tool-call tail is not a no-reply. Only the tool, or a final response that
   // is only a legacy marker, is.
   const terminalTexts = terminalAssistantMessages.map((message) =>
@@ -120,9 +125,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const legacyMarkerOnly =
     terminalTexts.some((text) => isLegacyNoReplyMarker(text)) &&
     terminalTexts.every((text) => !text || isLegacyNoReplyMarker(text));
-  const noReply = primaryText
-    ? undefined
-    : (readNoReply(newMessages) ?? (legacyMarkerOnly ? {} : undefined));
+  const noReply =
+    noReplyCall ?? (!primaryText && legacyMarkerOnly ? {} : undefined);
   const noReplyRequested = Boolean(noReply);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;

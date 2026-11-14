@@ -166,6 +166,7 @@ export function resolveSlackConversationContextFromThreadId(input: {
   channelName?: string | undefined;
   visibility?: SlackConversationVisibility;
 }): SlackConversationContext | undefined {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const slackThread = parseSlackThreadId(input.threadId);
   const context = resolveSlackConversationContext({
     channelId: slackThread?.channelId,

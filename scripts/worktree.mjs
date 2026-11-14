@@ -70,7 +70,7 @@ function runRequired(command, args, options = {}) {
     }`;
 
     if (!exitOnFailure) {
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
 
     fail(message);

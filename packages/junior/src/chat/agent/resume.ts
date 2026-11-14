@@ -347,7 +347,7 @@ export function createResumeState(args: ResumeStateArgs) {
         resumedBoundaryKey.length > 0 &&
         parkKey === resumedBoundaryKey
       ) {
-        logWarn("agent.turn.no_progress_fail", {
+        logWarn("agent.turn.no_progress.failed", {
           "app.ai.resume_conversation_id": args.conversationId,
           "app.ai.resume_session_id": args.turnId,
           "app.ai.resume_slice_id": currentSliceId,

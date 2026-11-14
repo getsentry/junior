@@ -84,6 +84,7 @@
         ]
       }
     ],
+    "preserve-caught-error": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
@@ -103,6 +104,7 @@
     "anti-slop/no-unknown-returns": "off",
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "junior/no-read-only-object-annotations": "error",
     "junior/zod-namespace-import": "error"
   },
   "overrides": [

@@ -143,6 +143,56 @@ const SENTRY_CHART: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_CHART_PATH = "/explore/traces/";
 
+// The mock release thread links to the checkout team's Sentry dashboard,
+// with small charts of its first three span, log, and metric widgets.
+const SENTRY_DASHBOARD: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "dashboard",
+  key: "dashboard:acme:42:3b9d0c1e5f7a2468",
+  label: "Sentry dashboard",
+  title: "Checkout health",
+  displayType: "Sentry dashboard",
+  facts: {
+    type: "dashboard",
+    widgetCount: 9,
+    projects: ["junior", "junior-dashboard"],
+    environments: ["production"],
+    range: "Last 24 hours",
+    widgets: [
+      { title: "Checkout p95", display: "Line chart" },
+      { title: "Log volume by severity", display: "Bar chart" },
+      { title: "Token usage", display: "Area chart" },
+      { title: "Errors by release", display: "Line chart" },
+      { title: "Slowest endpoints", display: "Table" },
+      { title: "Crash-free sessions", display: "Big number" },
+      { title: "Cart size", display: "Line chart" },
+      { title: "Payment retries", display: "Bar chart" },
+    ],
+    charts: [
+      {
+        title: "Checkout p95",
+        display: "line",
+        series: [{ label: "p95(span.duration)", points: wave(180, 240) }],
+      },
+      {
+        title: "Log volume by severity",
+        display: "bar",
+        series: [
+          { label: "error", points: wave(20, 30).slice(0, 24) },
+          { label: "warning", points: wave(40, 10).slice(0, 24) },
+        ],
+      },
+      {
+        title: "Token usage",
+        display: "area",
+        series: [{ label: "sum(value)", points: wave(60, 20) }],
+      },
+    ],
+  },
+  plugin: "sentry",
+};
+const SENTRY_DASHBOARD_PATH = "/dashboard/42/";
+
 // The mock release thread links to one Sentry event of the checkout issue.
 const SENTRY_EVENT_ID = "7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b";
 const SENTRY_EVENT: Omit<OwnedObjectAnnotation, "url"> = {
@@ -164,6 +214,30 @@ const SENTRY_EVENT: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "sentry",
 };
 const SENTRY_EVENT_PATH = `/projects/junior/events/${SENTRY_EVENT_ID}/`;
+// The mock release thread links to the Sentry release it shipped.
+const SENTRY_RELEASE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "release",
+  key: "release:acme/:junior@4.2.0",
+  label: "4.2.0",
+  title: "junior@4.2.0",
+  displayType: "Sentry release",
+  facts: {
+    type: "release",
+    version: "junior@4.2.0",
+    projects: ["junior", "junior-dashboard"],
+    newIssues: 3,
+    crashFreeSessions: 99.42,
+    deployCount: 2,
+    lastDeploy: {
+      environment: "production",
+      finishedAt: new Date(1770021300_000).toISOString(),
+    },
+    releasedAt: new Date(1770020700_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_RELEASE_PATH = "/releases/junior%404.2.0/";
 // The mock release thread links to the metric alert that paged on the
 // checkout slowdown.
 const SENTRY_MONITOR: Omit<OwnedObjectAnnotation, "url"> = {
@@ -344,11 +418,23 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
     return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
   }
+  if (
+    url.hostname === "acme.sentry.io" &&
+    url.pathname === SENTRY_RELEASE_PATH
+  ) {
+    return [{ object: { ...SENTRY_RELEASE, url: href }, url: href }];
+  }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_CHART_PATH) {
     return [{ object: { ...SENTRY_CHART, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_TRACE_PATH) {
     return [{ object: { ...SENTRY_TRACE, url: href }, url: href }];
+  }
+  if (
+    url.hostname === "acme.sentry.io" &&
+    url.pathname === SENTRY_DASHBOARD_PATH
+  ) {
+    return [{ object: { ...SENTRY_DASHBOARD, url: href }, url: href }];
   }
   if (url.hostname.endsWith(".slack.com")) {
     if (url.pathname !== SLACK_MESSAGE_PATH) return [];
