@@ -147,17 +147,14 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         });
         throw new McpToolError(missingToolMessage(tool_name, provider));
       }
-      const result = await mcpTool.execute(
-        resolveMcpArguments(input as Record<string, unknown>),
-        {
-          ...(intent ? { authorizationIntent: intent } : undefined),
-          conversationPrivacy: options?.conversationPrivacy ?? "private",
-          ...(options?.signal ? { signal: options.signal } : undefined),
-          ...(options?.toolCallId
-            ? { toolCallId: options.toolCallId }
-            : undefined),
-        },
-      );
+      const result = await mcpTool.execute(resolveMcpArguments(input), {
+        ...(intent ? { authorizationIntent: intent } : undefined),
+        conversationPrivacy: options?.conversationPrivacy ?? "private",
+        ...(options?.signal ? { signal: options.signal } : undefined),
+        ...(options?.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
+      });
       // Scripts get `details`, so it carries the MCP result. The result is
       // nested, so provider data cannot set fields that the runtime reads,
       // such as `objectCards`.

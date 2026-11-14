@@ -28,10 +28,10 @@
     "hono": "^4.13.11"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "catalog:",
     "jiti": "^2.7.0",
     "nitro": "3.0.260522-beta",
-    "typescript": "^7.0.2"
+    "typescript": "catalog:"
   },
   "engines": {
     "node": "24.x"

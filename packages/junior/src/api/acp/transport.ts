@@ -886,6 +886,7 @@ function createSseBody(args: {
         .catch((error: unknown) => {
           if (!cleaned && !args.requestSignal.aborted) fail(error);
         })
+        // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
         .finally(cleanup);
     },
     async cancel() {

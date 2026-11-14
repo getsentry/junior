@@ -830,7 +830,7 @@ describe("event delivery", () => {
         const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter;
+    });
     const subscription = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
       state,

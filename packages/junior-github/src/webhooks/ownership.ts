@@ -71,6 +71,8 @@ function ownTokenText(tokens: readonly Token[], separator = ""): string {
           .join(" ");
       }
       if ("tokens" in token && token.tokens) return ownTokenText(token.tokens);
+      // marked's generic token types `text` as `any`.
+      // oxlint-disable-next-line typescript/no-unsafe-return
       return "text" in token ? token.text : token.raw;
     })
     .join(separator);

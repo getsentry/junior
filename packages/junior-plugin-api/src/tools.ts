@@ -598,11 +598,7 @@ function createZodTool<
     ...(execute
       ? {
           async execute(input, options, ctx) {
-            const result = await execute(
-              input as z.output<TInputSchema>,
-              options,
-              ctx,
-            );
+            const result = await execute(input, options, ctx);
             if (isPluginToolOutputEnvelope(result)) {
               return {
                 content: z.array(pluginToolContentSchema).parse(result.content),

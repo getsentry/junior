@@ -1192,6 +1192,9 @@ export async function runCheck(
   }
 
   io.info(
-    `${formatHeading("ok", `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`)}`,
+    formatHeading(
+      "ok",
+      `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`,
+    ),
   );
 }

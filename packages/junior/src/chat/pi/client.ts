@@ -6,6 +6,7 @@ import {
   streamAnthropic,
   streamSimpleAnthropic,
   type CacheRetention,
+  type Api,
   type Message,
   type Model,
   type ThinkingLevel,
@@ -73,7 +74,7 @@ const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 // Pi's bundled catalog can lag behind the gateway. Keep missing models and
 // metadata corrections here until the catalog includes them. Remove these
 // overrides when Pi supplies the same metadata or Junior uses a live catalog.
-const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
   // Metadata from https://ai-gateway.vercel.sh/v1/models.
   "anthropic/claude-opus-5.5": {
     id: "anthropic/claude-opus-5.5",
@@ -248,11 +249,11 @@ function extractText(message: {
 }
 
 /** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<any> {
+export function resolveGatewayModel(modelId: string): Model<Api> {
   const matched =
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
-      (model: Model<any>) => model.id === modelId,
+      (model: Model<Api>) => model.id === modelId,
     );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);

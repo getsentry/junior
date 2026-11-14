@@ -20,7 +20,7 @@ export function createSlackSystemTurnDelivery(args: {
   return async ({ conversationId, location, text, cards }) => {
     if (location.provider !== "slack") {
       throw new Error(
-        `Slack system Turn cannot deliver to ${location.provider} Location`,
+        `Slack system Turn cannot deliver to ${String(location.provider)} Location`,
       );
     }
     let messageIds: string[];

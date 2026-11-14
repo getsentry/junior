@@ -615,7 +615,7 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
+    expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -1129,9 +1129,9 @@ describe("memory plugin storage", () => {
       );
 
       expect(supersessionCalls).toHaveLength(1);
-      expect(
-        strictProviderSchemaProblems(supersessionCalls[0]!.schema),
-      ).toEqual([]);
+      expect(strictProviderSchemaProblems(supersessionCalls[0].schema)).toEqual(
+        [],
+      );
 
       const rows = await memoryDb(fixture)
         .select()
@@ -1345,7 +1345,7 @@ describe("memory plugin storage", () => {
       );
 
       expect(calls).toHaveLength(1);
-      expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
+      expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -1595,7 +1595,7 @@ describe("memory plugin storage", () => {
               object: {
                 decision: "supersedes_old",
                 duplicateId: null,
-                supersededIds: [existing[0]!.id],
+                supersededIds: [existing[0].id],
               },
             };
           }

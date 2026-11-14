@@ -56,7 +56,7 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /**
@@ -96,7 +96,7 @@ function failNextConversationRecord(state: StateAdapter) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -123,7 +123,7 @@ function failNextExecutionWrite(store: ConversationStore) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as ConversationStore,
+    }),
   };
 }
 

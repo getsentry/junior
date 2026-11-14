@@ -86,7 +86,9 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
     }
   }
 
-  const edits = Array.isArray(raw.edits) ? [...raw.edits] : [];
+  const edits: unknown[] = Array.isArray(raw.edits)
+    ? Array.from<unknown>(raw.edits)
+    : [];
   const oldText = raw.old_text ?? raw.oldText;
   const newText = raw.new_text ?? raw.newText;
   if (typeof oldText === "string" && typeof newText === "string") {

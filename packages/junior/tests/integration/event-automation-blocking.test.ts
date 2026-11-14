@@ -112,7 +112,7 @@ describe("event automation blocking", () => {
       markDispatchBlocked(
         queue
           .sentRecords()
-          [index]!.conversationId!.replace(/^agent-dispatch:/, ""),
+          [index]!.conversationId.replace(/^agent-dispatch:/, ""),
         reason,
       );
 
@@ -250,7 +250,7 @@ describe("event automation blocking", () => {
       expect(await ingest("github:skill-1")).toEqual({ dispatched: 1 });
       const dispatchId = queue
         .sentRecords()[0]!
-        .conversationId!.replace(/^agent-dispatch:/, "");
+        .conversationId.replace(/^agent-dispatch:/, "");
       await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
         skill: "release-check",
       });

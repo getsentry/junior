@@ -196,7 +196,9 @@ function taskDedupeFingerprint(task: ScheduledAutomation): string {
             month: task.schedule.recurrence.month ?? null,
             startDate: task.schedule.recurrence.startDate,
             time: task.schedule.recurrence.time,
-            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(),
+            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(
+              (left, right) => left - right,
+            ),
           }
         : null,
       timezone: task.schedule.timezone,

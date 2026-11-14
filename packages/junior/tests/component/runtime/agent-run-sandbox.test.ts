@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,

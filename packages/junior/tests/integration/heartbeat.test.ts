@@ -368,7 +368,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(
       async () => new Response("Accepted", { status: 202 }),
     );
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const schedulerCtx = createTestHeartbeatContext({
       plugin: "scheduler",
@@ -430,7 +430,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
@@ -460,7 +460,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const ctx = createTestHeartbeatContext({
       plugin: "scheduler",

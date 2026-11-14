@@ -257,14 +257,14 @@ export function scrubPrivateSentryEvent(
 ): SentryErrorEvent | null {
   const eventRecord = event as AttributeContainer;
   scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
+  scrubSensitiveRequest(event.request);
   if (event.transaction) {
     event.transaction = scrubSpanName(event.transaction);
   }
-  scrubContainer(event.contexts?.trace as AttributeContainer);
+  scrubContainer(event.contexts?.trace);
 
   for (const breadcrumb of event.breadcrumbs ?? []) {
-    scrubContainer(breadcrumb as AttributeContainer);
+    scrubContainer(breadcrumb);
   }
 
   return event;

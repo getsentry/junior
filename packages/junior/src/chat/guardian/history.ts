@@ -90,7 +90,7 @@ function getCodeModeRejectionMarkers(
   ) {
     return [];
   }
-  return message.details.calls.flatMap((call) => {
+  return message.details.calls.flatMap((call: unknown) => {
     const marker = getToolActionRejectionMarker({ details: call });
     return marker ? [marker] : [];
   });
@@ -173,7 +173,7 @@ export function restoreToolActionRejections(
     for (const rejection of getCodeModeRejectionMarkers(record)) {
       addPriorRejection(priorRejections, rejection.priorRejection);
     }
-    if (record.isError !== true) {
+    if (!record.isError) {
       continue;
     }
     const rejection = getToolActionRejectionMarker(record);

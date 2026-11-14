@@ -121,7 +121,9 @@ export function githubPreviewImageUrls(
   body: string | null | undefined,
 ): string[] {
   const sources: string[] = [];
-  walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+  void walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+    // marked's generic token types `href` as `any`.
+    // oxlint-disable-next-line typescript/no-unsafe-argument
     if (token.type === "image") sources.push(token.href);
     if (token.type === "html") sources.push(...htmlImageSources(token.raw));
   });

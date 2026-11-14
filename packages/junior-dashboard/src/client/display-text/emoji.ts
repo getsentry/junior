@@ -2,6 +2,8 @@
 // `:man-shrugging:` resolve the same way that Slack shows them.
 import iamcalShortcodes from "emojibase-data/en/shortcodes/iamcal.json";
 
+// TypeScript does not infer a type for this large JSON module.
+// oxlint-disable-next-line typescript/no-unsafe-assignment
 const SHORTCODES: Readonly<Record<string, string | readonly string[]>> =
   iamcalShortcodes;
 

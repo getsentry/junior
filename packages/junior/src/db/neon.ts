@@ -114,6 +114,7 @@ class OverflowPool extends Pool {
   }
 
   // Loose parameters satisfy every pg `query` overload.
+  /* oxlint-disable typescript/no-explicit-any, typescript/no-unsafe-argument, typescript/no-unsafe-assignment -- pg overloads need loose parameters. */
   override query(input: any, values?: any, callback?: any): any {
     const query: PlainQuery | undefined =
       typeof input === "string" ? { text: input } : input;
@@ -126,6 +127,7 @@ class OverflowPool extends Pool {
       return super.query(input, values, callback);
     }
     const params: unknown[] = values ?? query.values ?? [];
+    /* oxlint-enable typescript/no-explicit-any, typescript/no-unsafe-argument, typescript/no-unsafe-assignment */
     // An empty pool opens its first client inline, as before, so the warm
     // path stays on WebSocket.
     if (
@@ -216,7 +218,7 @@ class OverflowPool extends Pool {
         if (client) {
           resolve(client);
         } else {
-          reject(error);
+          reject(error ?? new Error("pg pool returned no client"));
         }
       });
     });

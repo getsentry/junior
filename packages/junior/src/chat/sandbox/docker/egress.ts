@@ -333,7 +333,7 @@ async function handleRequest(
     ...(hasBody
       ? { body: Readable.toWeb(req) as ReadableStream, duplex: "half" }
       : undefined),
-  } as RequestInit);
+  });
   const response =
     intercept.mode === "credential"
       ? await executeSandboxEgressRequest({
@@ -388,6 +388,8 @@ function replay(socket: net.Socket, data: Buffer): Duplex {
       socket.resume();
     },
     write(chunk, encoding, callback) {
+      // Node types Duplex chunks as `any`; pass them through unchanged.
+      // oxlint-disable-next-line typescript/no-unsafe-argument
       socket.write(chunk, encoding, callback);
     },
     final(callback) {

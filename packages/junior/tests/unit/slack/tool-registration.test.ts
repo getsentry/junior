@@ -277,11 +277,15 @@ describe("Slack tool registration", () => {
     ];
 
     for (const turn of otherTurns) {
-      const tools = createTools([], {}, {
-        ...ctx("C12345"),
-        ...turn,
-        slackActionToken: undefined,
-      } as ToolRuntimeContext);
+      const tools = createTools(
+        [],
+        {},
+        {
+          ...ctx("C12345"),
+          ...turn,
+          slackActionToken: undefined,
+        },
+      );
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
@@ -338,14 +342,18 @@ describe("Slack tool registration", () => {
     expect(tools.addReviewItem?.disabledReason).toBeUndefined();
 
     // An Agent invocation reports the need to its parent.
-    const childTools = createTools([], {}, {
-      ...ctx("C12345"),
-      parentConversationId: "slack:C12345:1700000000.000",
-      turnTools: turnBehavior({
-        kind: "task",
-        personInput: false,
-      }).tools,
-    } as ToolRuntimeContext);
+    const childTools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        parentConversationId: "slack:C12345:1700000000.000",
+        turnTools: turnBehavior({
+          kind: "task",
+          personInput: false,
+        }).tools,
+      },
+    );
     expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
   });
 

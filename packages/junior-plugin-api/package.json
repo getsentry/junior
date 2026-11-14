@@ -28,13 +28,10 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsdown.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.79.0",
-    "oxlint": "^1.79.0",
-    "tsdown": "0.23.1",
-    "typescript": "^7.0.2"
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
   }
 }

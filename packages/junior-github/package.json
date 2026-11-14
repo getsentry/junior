@@ -30,7 +30,6 @@
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -49,18 +48,16 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
     "@types/mdast": "^4.0.4",
-    "@types/node": "^25.9.1",
+    "@types/node": "catalog:",
     "@types/pg": "^8.15.6",
     "drizzle-kit": "catalog:",
     "graphql": "^16.14.0",
     "msw": "^2.14.6",
-    "oxlint": "^1.79.0",
     "pg": "^8.16.3",
     "tsup": "^8.5.1",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

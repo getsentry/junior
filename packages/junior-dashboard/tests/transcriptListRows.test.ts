@@ -92,7 +92,7 @@ function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
       type: "tool_call",
     },
     seq,
-  } as RenderedTranscriptEntry;
+  };
 }
 
 function captureEntry(seq: number): RenderedTranscriptEntry {
@@ -108,7 +108,7 @@ function captureEntry(seq: number): RenderedTranscriptEntry {
       version: 1,
     },
     seq,
-  } as RenderedTranscriptEntry;
+  };
 }
 
 function rowSummary(rows: TranscriptListRow[]) {

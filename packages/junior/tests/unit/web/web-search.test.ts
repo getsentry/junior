@@ -64,7 +64,7 @@ describe("createWebSearchTool", () => {
 
     const result = await tool.execute(
       { query: "vercel ai gateway", max_results: 2 },
-      {} as never,
+      {},
     );
 
     expect(createGatewayProvider).toHaveBeenCalledWith({
@@ -110,7 +110,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await tool.execute({ query: "oidc query" }, {} as never);
+    await tool.execute({ query: "oidc query" }, {});
 
     expect(createGatewayProvider).toHaveBeenCalledWith({
       apiKey: "oidc-token",
@@ -127,9 +127,9 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(
-      tool.execute({ query: "test query" }, {} as never),
-    ).rejects.toThrow('400 Invalid input: expected "function"');
+    await expect(tool.execute({ query: "test query" }, {})).rejects.toThrow(
+      '400 Invalid input: expected "function"',
+    );
   });
 
   it("throws when search times out", async () => {
@@ -146,9 +146,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "test query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "test query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -177,9 +175,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "slow query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "slow query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -210,7 +206,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await tool.execute({ query: "fast query" }, {} as never);
+    await tool.execute({ query: "fast query" }, {});
     expect(capturedSignal?.aborted).toBe(false);
   });
 
@@ -228,9 +224,9 @@ describe("createWebSearchTool", () => {
     globalThis.AbortController = class extends originalAC {
       constructor() {
         super();
-        return brokenController as AbortController;
+        return brokenController;
       }
-    } as typeof AbortController;
+    };
 
     vi.mocked(generateText).mockImplementation(
       () =>
@@ -244,9 +240,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "boom query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "boom query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -273,7 +267,7 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test" }, {} as never)).rejects.toThrow(
+    await expect(tool.execute({ query: "test" }, {})).rejects.toThrow(
       "AI Gateway authentication failed: No authentication provided.",
     );
   });

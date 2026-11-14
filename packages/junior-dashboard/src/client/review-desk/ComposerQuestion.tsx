@@ -157,6 +157,12 @@ export function ComposerQuestion(props: {
   // A step, or an answer to the shown question, moves the reader to the
   // next question. A question that docks by itself is not their move.
   const readerMovedRef = useRef(false);
+  // A closed question leaves the list, so the oldest open one shows next.
+  const index = Math.max(
+    0,
+    props.questions.findIndex((item) => item.id === selectedId),
+  );
+  const item = props.questions[index];
   useImperativeHandle(props.answersRef, () => ({
     send: async () => {
       sendingFromMessageBoxRef.current = true;
@@ -178,12 +184,6 @@ export function ComposerQuestion(props: {
       }
     },
   }));
-  // A closed question leaves the list, so the oldest open one shows next.
-  const index = Math.max(
-    0,
-    props.questions.findIndex((item) => item.id === selectedId),
-  );
-  const item = props.questions[index];
   const shownIdRef = useRef<string>(undefined);
   const { onShow } = props;
   useEffect(() => {

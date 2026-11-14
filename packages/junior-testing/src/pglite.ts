@@ -29,6 +29,8 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   }
 
   db(): TDatabase {
+    // Each package passes its own Drizzle database type for the same client.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     return drizzle(this.queryClient() as PGlite, {
       schema: this.schema,
     }) as unknown as TDatabase;
@@ -50,7 +52,7 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
     params: readonly unknown[] = [],
   ): Promise<T[]> {
     const result = await this.queryClient().query<T>(statement, [...params]);
-    return result.rows as T[];
+    return result.rows;
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {

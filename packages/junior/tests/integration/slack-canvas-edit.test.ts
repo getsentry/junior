@@ -58,7 +58,7 @@ describe("Slack canvas file-like tools", () => {
         canvas: "F0PREVIOUS",
         edits: [{ old_text: "Old summary", new_text: "New summary" }],
       },
-      {} as never,
+      {},
     );
 
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
@@ -116,7 +116,7 @@ describe("Slack canvas file-like tools", () => {
         canvas: "F0PREVIOUS",
         edits: [{ old_text: "Old summary", new_text: "New summary" }],
       },
-      {} as never,
+      {},
     );
 
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
@@ -155,7 +155,7 @@ describe("Slack canvas file-like tools", () => {
           { old_text: "Gamma", new_text: "Gamma updated" },
         ],
       },
-      {} as never,
+      {},
     );
 
     expect(result).toMatchObject({
@@ -195,7 +195,7 @@ describe("Slack canvas file-like tools", () => {
         canvas: "F0PREVIOUS",
         edits: [{ old_text: "Old summary", new_text: "New summary" }],
       },
-      {} as never,
+      {},
     );
 
     expect(result).toMatchObject({
@@ -224,7 +224,7 @@ describe("Slack canvas file-like tools", () => {
           canvas: "F0PREVIOUS",
           edits: [{ old_text: "Missing", new_text: "Replacement" }],
         },
-        {} as never,
+        {},
       ),
     ).rejects.toThrow("Could not find");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
@@ -245,7 +245,7 @@ describe("Slack canvas file-like tools", () => {
           canvas: "F0PREVIOUS",
           edits: [{ old_text: "Duplicate", new_text: "Replacement" }],
         },
-        {} as never,
+        {},
       ),
     ).rejects.toThrow("occurrences");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
@@ -267,7 +267,7 @@ describe("Slack canvas file-like tools", () => {
         canvas: "F0PREVIOUS",
         content: "# Replacement\n\nNew body",
       },
-      {} as never,
+      {},
     );
 
     expect(result).toMatchObject({

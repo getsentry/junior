@@ -11,7 +11,11 @@
  * `VERCEL_BLOB_API_URL`. Reads go to the URL of the store, which no setting
  * changes, so an `undici` interceptor sends them to the local server.
  */
-import { createServer, type IncomingMessage } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
@@ -45,7 +49,10 @@ function isBlobStore(origin: string | URL | undefined): boolean {
 export async function installBlobMock(): Promise<BlobMock> {
   const objects = new Map<string, { body: Buffer; contentType: string }>();
 
-  const server = createServer(async (request, response) => {
+  const handleRequest = async (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> => {
     const url = new URL(request.url ?? "/", "http://blob.test");
     const body = await readBody(request);
     if (request.method === "GET") {
@@ -119,7 +126,10 @@ export async function installBlobMock(): Promise<BlobMock> {
     }
     response.statusCode = 404;
     response.end(JSON.stringify({ error: { code: "not_found" } }));
-  });
+  };
+  const server = createServer(
+    (request, response) => void handleRequest(request, response),
+  );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   const localOrigin = `http://127.0.0.1:${port}`;

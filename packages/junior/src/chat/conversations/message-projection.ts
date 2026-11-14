@@ -36,9 +36,7 @@ function splitMeta(meta: Record<string, unknown> | undefined): {
   delete rest.author;
   return {
     ...(author ? { author } : undefined),
-    ...(Object.keys(rest).length > 0
-      ? { meta: rest as ConversationMessageMeta }
-      : undefined),
+    ...(Object.keys(rest).length > 0 ? { meta: rest } : undefined),
   };
 }
 

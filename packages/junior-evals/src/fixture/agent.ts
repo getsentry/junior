@@ -449,7 +449,9 @@ export async function createFixtureAgent(
         : record.idempotencyKey;
       const uploadIds = input.files?.length
         ? await uploadWebFiles(api, {
-            ...(started ? { conversationId: record.conversationId } : {}),
+            ...(started
+              ? { conversationId: record.conversationId }
+              : undefined),
             files: input.files,
             idempotencyKey,
             viewerEmail: record.viewerEmail,

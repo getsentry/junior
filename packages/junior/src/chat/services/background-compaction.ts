@@ -272,6 +272,8 @@ async function requestAboveMark(args: {
       name: tool.name,
       label: tool.label,
       description: tool.description,
+      // pi-ai types tool parameters with a generic that defaults to `any`.
+      // oxlint-disable-next-line typescript/no-unsafe-assignment
       parameters: tool.parameters,
       ...(tool.constrainedSampling === undefined
         ? undefined

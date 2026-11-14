@@ -80,7 +80,7 @@ function ProfileAvatar({
     >
       <AvatarImage alt="User avatar" src={user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
-        {initials(user.name, user.email!)}
+        {initials(user.name, user.email)}
       </AvatarFallback>
     </Avatar>
   );
@@ -151,7 +151,7 @@ export function ProfileMenu({
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const email = identity.user.email!;
+  const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
   const sevenDaySpend = spend
     ? formatCostSummary({ total: spend.sevenDaysUsd })

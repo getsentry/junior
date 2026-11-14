@@ -165,7 +165,7 @@ async function startWorker(consumers: QueueConsumer[]): Promise<QueueWorker> {
       try {
         const failures = (
           await Promise.allSettled(workers.map((worker) => worker.close()))
-        ).flatMap((result) =>
+        ).flatMap((result): unknown[] =>
           result.status === "rejected" ? [result.reason] : [],
         );
         if (failures.length > 0) {

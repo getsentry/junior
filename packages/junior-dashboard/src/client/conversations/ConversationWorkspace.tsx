@@ -130,7 +130,7 @@ export function ConversationWorkspace(props: {
     if (selectedId) {
       // The reader asked to type, so home takes focus even on a touch screen.
       createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
+      void navigate(NEW_CONVERSATION_PATH);
     } else createComposer.current?.focus();
   };
 

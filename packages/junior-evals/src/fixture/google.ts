@@ -36,6 +36,8 @@ export interface MockCalendar {
 
 /** Store the connection of Junior's Google account. */
 export async function connectGoogleAccount(): Promise<void> {
+  // Junior and the plugin type the same Drizzle client with separate schemas.
+  // oxlint-disable-next-line anti-slop/no-chained-type-assertions
   await saveGoogleAccount(getDb() as unknown as GoogleDb, {
     accountEmail: GOOGLE_ACCOUNT_EMAIL,
     connectedAtMs: Date.now(),

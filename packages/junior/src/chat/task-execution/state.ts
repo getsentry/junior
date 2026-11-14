@@ -798,10 +798,8 @@ function parseRedisIndexEntries(values: unknown): ConversationIndexEntry[] {
   const entries: ConversationIndexEntry[] = [];
   for (let index = 0; index < values.length; index += 2) {
     const conversationId = toOptionalString(values[index]);
-    const score =
-      typeof values[index + 1] === "number"
-        ? values[index + 1]
-        : Number(values[index + 1]);
+    const rawScore: unknown = values[index + 1];
+    const score = typeof rawScore === "number" ? rawScore : Number(rawScore);
     if (!conversationId || !Number.isFinite(score)) {
       continue;
     }

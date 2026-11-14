@@ -637,7 +637,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           {
             content: "I prefer terse status updates.",
             scope: "public",
-          } as never,
+          },
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);

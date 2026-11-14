@@ -1146,7 +1146,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 return;
               }
               if (event.type === "tool_started") {
-                await options.onToolInvocation?.({
+                options.onToolInvocation?.({
                   params: event.params,
                   toolName: event.toolName,
                 });

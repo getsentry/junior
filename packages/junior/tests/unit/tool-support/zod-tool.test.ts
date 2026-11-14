@@ -21,7 +21,7 @@ describe("zodTool", () => {
       destructiveHint: true,
       readOnlyHint: false,
     });
-    const input = tool.prepareArguments!({ recordId: 42 });
+    const input = tool.prepareArguments({ recordId: 42 });
     expect(tool.describeProposal?.(input)).toBe("Delete record 42.");
   });
 
@@ -50,7 +50,7 @@ describe("zodTool", () => {
       type: "object",
     });
 
-    const parsed = tool.prepareArguments!({ count: "3" });
+    const parsed = tool.prepareArguments({ count: "3" });
     expect(parsed).toEqual({ count: 3 });
 
     await tool.execute?.(parsed, {});
@@ -73,7 +73,7 @@ describe("zodTool", () => {
       }),
     });
 
-    const result = await tool.execute?.(tool.prepareArguments!({}), {});
+    const result = await tool.execute?.(tool.prepareArguments({}), {});
 
     expect(tool.privateTraceResult?.(result)).toEqual({
       visible: "catalog metadata",
@@ -138,7 +138,7 @@ describe("zodTool", () => {
       required: ["count"],
       type: "object",
     });
-    const parsed = tool.prepareArguments!({ value: "test" });
+    const parsed = tool.prepareArguments({ value: "test" });
     await expect(tool.execute?.(parsed, {})).rejects.not.toThrow(
       ToolInputError,
     );
@@ -160,7 +160,7 @@ describe("zodTool", () => {
     });
 
     await expect(
-      tool.execute?.(tool.prepareArguments!({ value: "hello" }), {}),
+      tool.execute?.(tool.prepareArguments({ value: "hello" }), {}),
     ).resolves.toEqual({
       content: [{ type: "text", text: "value: hello" }],
       details: {
@@ -187,7 +187,7 @@ describe("zodTool", () => {
 
     expect(tool.outputSchema).toBeUndefined();
     await expect(
-      tool.execute?.(tool.prepareArguments!({ value: "hello" }), {}),
+      tool.execute?.(tool.prepareArguments({ value: "hello" }), {}),
     ).resolves.toEqual({
       content: [
         { type: "text", text: "hello" },
@@ -212,7 +212,7 @@ describe("zodTool", () => {
     });
 
     await expect(
-      tool.execute?.(tool.prepareArguments!({ value: "x" }), {}),
+      tool.execute?.(tool.prepareArguments({ value: "x" }), {}),
     ).rejects.toThrow(
       "zodTool() content-only tools must return { content } without details.",
     );

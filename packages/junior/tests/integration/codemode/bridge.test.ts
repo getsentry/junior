@@ -236,19 +236,23 @@ describe("Code Mode bridge", () => {
 
   it("refuses model-only tools inside the script", async () => {
     const spawnAgent = vi.fn();
-    const registry = createTools([], {}, {
-      conversationId: CONVERSATION_ID,
-      destination: DESTINATION,
-      egress: {
-        async fetch() {
-          return new Response("ok");
+    const registry = createTools(
+      [],
+      {},
+      {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
         },
+        source: SOURCE,
+        spawnAgent,
+        turnTools: ROOT_TURN_TOOLS,
+        workspace: {} as never,
       },
-      source: SOURCE,
-      spawnAgent,
-      turnTools: ROOT_TURN_TOOLS,
-      workspace: {} as never,
-    } as never);
+    );
     const { directTools, scriptTools } = planToolExposure(registry);
     const modelOnlyTools = Object.keys(directTools).filter(
       (name) => !Object.hasOwn(scriptTools, name),
@@ -405,19 +409,23 @@ describe("Code Mode bridge", () => {
     ]);
     try {
       expect(await manager.activateProvider("ci")).toBe(true);
-      const registry = createTools([], {}, {
-        conversationId: CONVERSATION_ID,
-        destination: DESTINATION,
-        egress: {
-          async fetch() {
-            return new Response("ok");
+      const registry = createTools(
+        [],
+        {},
+        {
+          conversationId: CONVERSATION_ID,
+          destination: DESTINATION,
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
           },
+          mcpToolManager: manager,
+          source: SOURCE,
+          turnTools: ROOT_TURN_TOOLS,
+          workspace: {} as never,
         },
-        mcpToolManager: manager,
-        source: SOURCE,
-        turnTools: ROOT_TURN_TOOLS,
-        workspace: {} as never,
-      } as never);
+      );
       const { scriptTools } = planToolExposure(registry);
 
       const result = await runCodeModeScript({

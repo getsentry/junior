@@ -106,7 +106,7 @@ export async function createDashboardRouteRegistrations(args: {
 async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
   try {
     const appRequire = createRequire(`${process.cwd()}/package.json`);
-    const mod = await import(
+    const mod: unknown = await import(
       pathToFileURL(appRequire.resolve(DASHBOARD_PACKAGE_NAME)).href
     );
     return dashboardAppFactoryFromModule(mod);

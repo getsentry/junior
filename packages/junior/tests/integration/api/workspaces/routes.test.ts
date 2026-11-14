@@ -245,7 +245,7 @@ describe("workspace admin API", () => {
 
     const workspace = await getWorkspace(getDb(), created.id);
     expect(workspace).toBeDefined();
-    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
     expect(profileHash).toBeTruthy();
 
     await insertReadySnapshot(created.id, {
@@ -288,7 +288,7 @@ describe("workspace admin API", () => {
     const created = workspaceSchema.parse(await createResponse.json());
     const workspace = await getWorkspace(getDb(), created.id);
     expect(workspace).toBeDefined();
-    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
     expect(profileHash).toBeTruthy();
 
     await insertReadySnapshot(created.id, {
@@ -348,7 +348,7 @@ describe("workspace admin API", () => {
     expect(changedWorkspace).toBeDefined();
     const changedProfileHash = workspaceProfileHash(
       SANDBOX_RUNTIME,
-      changedWorkspace!,
+      changedWorkspace,
     );
     expect(changedProfileHash).toBeTruthy();
     await insertReadySnapshot(created.id, {

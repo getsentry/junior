@@ -151,7 +151,7 @@ async function mockReviewItems(
     }
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
-      const id = decodeURIComponent(action[1]!);
+      const id = decodeURIComponent(action[1]);
       actions.push({ body: route.request().postDataJSON(), id });
       const acted = items.find((i) => i.id === id);
       return acted

@@ -7,13 +7,13 @@ export function sanitizePostgresJson<T>(value: T): T {
     return value.replaceAll("\u0000", " ") as T;
   }
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizePostgresJson(item)) as T;
+    return value.map((item: unknown) => sanitizePostgresJson(item)) as T;
   }
   if (value === null || typeof value !== "object") {
     return value;
   }
 
-  const prototype = Object.getPrototypeOf(value);
+  const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     return value;
   }

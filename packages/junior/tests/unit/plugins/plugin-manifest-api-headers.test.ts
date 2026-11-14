@@ -118,7 +118,7 @@ describe("plugin manifest API headers", () => {
 
   it("registers the packaged GitHub command env host bindings", async () => {
     const { githubPlugin } = await import("@sentry/junior-github");
-    const manifest = githubPlugin().manifest!;
+    const manifest = githubPlugin().manifest;
 
     expect(manifest.domains).toEqual([
       "api.github.com",

@@ -11,18 +11,7 @@ const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
     agentMode: {
-      value: "providerRetry" as
-        | "providerRetry"
-        | "activeCompaction"
-        | "preflightCompaction"
-        | "pendingProviderCall"
-        | "cooperativeYield"
-        | "silentResume"
-        | "terminalDelivery"
-        | "steering"
-        | "steeringDelivery"
-        | "steeringSteerThrows"
-        | "toolActivity",
+      value: "providerRetry",
     },
     compactionState: {
       checkpointTurnStartMessageIndex: undefined as number | undefined,

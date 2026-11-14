@@ -78,7 +78,7 @@ export function parseEmbeddingBatch(
     throw new Error("Embedding provider returned an unexpected vector size.");
   }
   return {
-    dimensions: result.dimensions as MemoryEmbeddingDimensions,
+    dimensions: result.dimensions,
     model: result.model,
     provider: result.provider,
     vectors: result.vectors,

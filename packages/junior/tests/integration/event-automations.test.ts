@@ -494,10 +494,10 @@ describe("event automations", () => {
       const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
       await expect(
-        getConversationStore().get({ conversationId: conversationId! }),
+        getConversationStore().get({ conversationId: conversationId }),
       ).resolves.toMatchObject({ kind: "automation" });
       const dispatch = await getDispatchRecord(
-        conversationId!.replace(/^agent-dispatch:/, ""),
+        conversationId.replace(/^agent-dispatch:/, ""),
       );
       const destination = { platform: "slack", teamId, channelId };
       expect(dispatch?.destination).toEqual(destination);
@@ -730,7 +730,7 @@ describe("event automations", () => {
 
     const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
-      conversationId!.replace(/^agent-dispatch:/, ""),
+      conversationId.replace(/^agent-dispatch:/, ""),
     );
     expect(dispatch?.destination).toMatchObject({ teamId });
   });

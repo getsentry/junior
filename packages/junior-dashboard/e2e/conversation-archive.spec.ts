@@ -57,7 +57,7 @@ test("archives and restores a conversation from the sidebar", async ({
               !archived ||
               conversation.displayTitle !== "Dashboard QA edge cases",
           )
-          .map((conversation: object) => ({
+          .map((conversation: Record<string, unknown>) => ({
             ...conversation,
             isParticipant: true,
           })),

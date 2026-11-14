@@ -1,6 +1,10 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { streamAnthropic, type Message as PiAiMessage } from "@/chat/pi/sdk";
+import {
+  streamAnthropic,
+  type Message as PiAiMessage,
+  type Model,
+} from "@/chat/pi/sdk";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
@@ -74,7 +78,10 @@ describe("eval AI Gateway dispatcher", () => {
 
     try {
       const stream = streamAnthropic(
-        resolveGatewayModel("openai/gpt-5.6-sol"),
+        // The gateway serves every model through the Anthropic Messages API.
+        resolveGatewayModel(
+          "openai/gpt-5.6-sol",
+        ) as Model<"anthropic-messages">,
         { messages: [userMessage] },
         {
           client: {

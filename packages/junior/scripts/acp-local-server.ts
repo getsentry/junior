@@ -120,7 +120,10 @@ try {
     },
     stdio: "inherit",
   });
-  const [code, signal] = await once(smoke, "exit");
+  const [code, signal] = (await once(smoke, "exit")) as [
+    number | null,
+    NodeJS.Signals | null,
+  ];
   if (signal) {
     throw new Error(`Local ACP smoke client stopped with ${signal}`);
   }

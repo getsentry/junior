@@ -141,7 +141,7 @@ export async function loadPluginSetFromModule(
   const mod = await importModule(moduleRef);
   const value =
     moduleRef.exportName === "default"
-      ? (mod.default as unknown)
+      ? mod.default
       : mod[moduleRef.exportName];
   return assertPluginSet(
     value,

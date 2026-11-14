@@ -92,6 +92,8 @@ test("turns on push notifications from a one-time tip", async ({
   await page.addInitScript(() => {
     PushManager.prototype.getSubscription = async () => null;
     PushManager.prototype.subscribe = async () =>
+      // A partial PushSubscription stub holds only what the app reads.
+      // oxlint-disable-next-line anti-slop/no-chained-type-assertions
       ({
         toJSON: () => ({
           endpoint: "https://fcm.googleapis.com/fcm/send/e2e",

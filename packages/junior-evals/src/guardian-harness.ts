@@ -121,7 +121,7 @@ export const guardianHarness = createHarness<
         model: resolveGuardianModelId(),
         ...(decision.costUsd !== undefined
           ? { metadata: { costUsd: decision.costUsd } }
-          : {}),
+          : undefined),
       },
     };
   },

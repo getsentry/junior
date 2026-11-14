@@ -3822,6 +3822,7 @@ Conversation: \`local:test:old-conversation\`
         }) {
           runs.push(input.args ?? []);
           if (input.cmd === "git") {
+            // oxlint-disable-next-line vitest/no-conditional-expect -- only git commands carry this env.
             expect(input.env).toEqual({
               GIT_CONFIG_GLOBAL: "/dev/null",
               GIT_CONFIG_NOSYSTEM: "1",

@@ -163,7 +163,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(
       db,
@@ -381,7 +381,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(db, createTask());
 
@@ -509,7 +509,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const task = createDailyTask();
     await saveScheduledAutomation(db, task);
@@ -533,7 +533,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",

@@ -23,7 +23,6 @@
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -32,10 +31,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.79.0",
-    "@types/node": "^25.9.1",
-    "oxlint": "^1.79.0",
+    "@types/node": "catalog:",
     "tsup": "^8.5.1",
-    "typescript": "^7.0.2"
+    "typescript": "catalog:"
   }
 }

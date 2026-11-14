@@ -308,8 +308,8 @@ function gitHubIdentifierMatch(event: {
   if (deployment) {
     const [, repo, environment, commitSha] = deployment;
     return {
-      repo: repo!,
-      commitSha: commitSha!,
+      repo: repo,
+      commitSha: commitSha,
       ...(environment
         ? { environment: decodeURIComponent(environment) }
         : undefined),
@@ -319,14 +319,14 @@ function gitHubIdentifierMatch(event: {
   if (release) {
     const [, repo, tag] = release;
     return {
-      repo: repo!,
+      repo: repo,
       ...(tag ? { tag: decodeURIComponent(tag) } : undefined),
     };
   }
   const numbered = /^([^#]+\/[^#]+)#(\d+)$/.exec(identifier);
   if (numbered) {
     const key = eventType.startsWith("issue.") ? "issue" : "pullRequest";
-    return { repo: numbered[1]!, [key]: Number(numbered[2]) };
+    return { repo: numbered[1], [key]: Number(numbered[2]) };
   }
   return /^[^/:#]+\/[^/:#]+$/.test(identifier)
     ? { repo: identifier }

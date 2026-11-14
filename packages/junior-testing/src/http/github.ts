@@ -48,23 +48,27 @@ function base64Url(input: string): string {
     .replace(/\//g, "_");
 }
 
+// Spreading HeadersInit drops entries from a Headers instance or an array.
+function headersWithContentType(
+  init: ResponseInit | undefined,
+  contentType: string,
+): Headers {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("content-type")) headers.set("content-type", contentType);
+  return headers;
+}
+
 function json(value: unknown, init?: ResponseInit): Response {
   return Response.json(value, {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "application/json; charset=utf-8"),
   });
 }
 
 function text(value: string, init?: ResponseInit): Response {
   return new Response(value, {
     ...init,
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "text/plain; charset=utf-8"),
   });
 }
 
@@ -372,11 +376,11 @@ async function githubResponse(
       const body = await requestJson(request);
       const updated: EvalIssue = {
         ...issue,
-        ...(typeof body.title === "string" ? { title: body.title } : {}),
-        ...(typeof body.body === "string" ? { body: body.body } : {}),
+        ...(typeof body.title === "string" ? { title: body.title } : undefined),
+        ...(typeof body.body === "string" ? { body: body.body } : undefined),
         ...(body.state === "closed" || body.state === "open"
           ? { state: body.state }
-          : {}),
+          : undefined),
         updated_at: timestamp,
       };
       issues.set(key, updated);

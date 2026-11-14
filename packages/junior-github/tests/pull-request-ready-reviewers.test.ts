@@ -132,7 +132,7 @@ function route(
           : undefined,
     },
   } as never);
-  return webhook!;
+  return webhook;
 }
 
 async function seedJuniorPullRequest(fixture: GitHubFixture): Promise<void> {
@@ -213,7 +213,7 @@ describe("review request when a draft is ready", () => {
         },
       } as never,
     );
-    await tool.execute!(
+    await tool.execute(
       {
         base: "main",
         draft: true,
@@ -221,8 +221,8 @@ describe("review request when a draft is ready", () => {
         repo: "getsentry/junior",
         title: pullRequest.title,
         ...(reviewers ? { reviewers } : undefined),
-      } as never,
-      { toolCallId: `call-${reviewers?.join("-") ?? "requester"}` } as never,
+      },
+      { toolCallId: `call-${reviewers?.join("-") ?? "requester"}` },
     );
     return operations;
   }

@@ -63,9 +63,10 @@ export default defineConfig({
     maxWorkers: 1,
     // `fetch-setup.ts` must run after the Roach setup file.
     sequence: { setupFiles: "list" },
+    // Guardian cases must not depend on Slack egress, Postgres, Redis fixture
+    // resets, or MSW, so they skip those setup files.
     setupFiles: [
       path.resolve(__dirname, "src/stable-setup.ts"),
-      path.resolve(__dirname, "src/guardian-setup.ts"),
       "@sentry/roach/vitest/setup",
       path.resolve(__dirname, "src/fetch-setup.ts"),
     ],

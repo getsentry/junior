@@ -91,7 +91,7 @@ describe("createImageGenerateTool", () => {
       { fetch: fetchMock },
     );
 
-    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
+    const result = await tool.execute!({ prompt: "test prompt" }, {});
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(requestBody(fetchMock)).toMatchObject({
@@ -127,7 +127,7 @@ describe("createImageGenerateTool", () => {
       { ...defaultImageOptions, canSendFilesToActiveConversation: true },
       { fetch: gatewayFetch([imageResponse()]) },
     );
-    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
+    const result = await tool.execute!({ prompt: "test prompt" }, {});
 
     expect(result).toMatchObject({
       image_count: 1,
@@ -181,7 +181,7 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe(
       "a dark, high-contrast dog with glowing eyes",
@@ -202,7 +202,7 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
     expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
@@ -218,7 +218,7 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
     expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
@@ -238,7 +238,7 @@ describe("createImageGenerateTool", () => {
     );
     const result = await tool.execute!(
       { prompt: "change the sign text", images: ["photo.png"] },
-      {} as any,
+      {},
     );
 
     expect(mockCompleteText).not.toHaveBeenCalled();
@@ -266,7 +266,7 @@ describe("createImageGenerateTool", () => {
         ]),
       },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(result).toMatchObject({
       image_count: 0,
@@ -310,7 +310,7 @@ describe("createImageGenerateTool", () => {
         prompt: "change the sign",
         images: ["photo.png", "logo.png", "icon.png", "badge.png"],
       },
-      {} as any,
+      {},
     );
 
     const [sentPhoto, sentLogo] = requestBody(fetchMock).files;

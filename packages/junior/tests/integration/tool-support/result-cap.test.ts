@@ -126,7 +126,7 @@ async function bigMcpTool(): Promise<{
   ]);
   expect(await manager.activateProvider("docs")).toBe(true);
   return {
-    callMcpTool: createCallMcpToolTool(manager) as AnyToolDefinition,
+    callMcpTool: createCallMcpToolTool(manager),
     close: () => manager.close(),
   };
 }

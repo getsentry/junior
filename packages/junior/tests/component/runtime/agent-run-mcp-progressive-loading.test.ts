@@ -52,7 +52,7 @@ const {
   deliverPrivateMessageMock: vi.fn(),
   directMcpProviderFailure: { value: false },
   guardianDecision: {
-    value: "allow" as "allow" | "deny" | "unavailable",
+    value: "allow",
   },
   guardianProposals: [] as unknown[],
   listToolsMock: vi.fn(),

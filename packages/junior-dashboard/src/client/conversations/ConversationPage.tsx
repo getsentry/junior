@@ -308,7 +308,7 @@ export function ConversationPage(props: {
     // Archiving hides this conversation, so go home at once. The mutation
     // keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      void navigate("/", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,

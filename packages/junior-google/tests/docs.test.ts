@@ -23,8 +23,8 @@ function docTools(responses: Response[], requester: string | null = REQUESTER) {
     },
   } as never);
   const run = (name: string, input: Record<string, unknown>) => {
-    const tool = tools[name]!;
-    return tool.execute!(tool.prepareArguments!(input), { toolCallId: name });
+    const tool = tools[name];
+    return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
   };
   /** Operation and JSON body of each Google request, in order. */
   const calls = async () =>
@@ -158,12 +158,12 @@ describe("Google Docs write tools", () => {
       "google.docs.document.get",
       "google.docs.document.batchUpdate",
     ]);
-    expect(list!.url.pathname).toBe(`/drive/v3/files/${DOC_ID}/permissions`);
-    expect(update!.url.host).toBe("docs.googleapis.com");
-    expect(update!.url.pathname).toBe(`/v1/documents/${DOC_ID}:batchUpdate`);
+    expect(list.url.pathname).toBe(`/drive/v3/files/${DOC_ID}/permissions`);
+    expect(update.url.host).toBe("docs.googleapis.com");
+    expect(update.url.pathname).toBe(`/v1/documents/${DOC_ID}:batchUpdate`);
     // "Intro\n" ends at index 7. The text goes before its final newline, after
     // a newline that ends "Intro".
-    expect(update!.body).toEqual({
+    expect(update.body).toEqual({
       requests: [
         {
           insertText: { location: { index: 6 }, text: "\nAgenda\nPlan\nShip" },
@@ -268,7 +268,7 @@ describe("Google Docs write tools", () => {
     ).rejects.toThrow('"Rethinking" starts with a table');
 
     // The image paragraph is not empty, so the text goes after a new line.
-    expect((await calls())[3]!.body.requests[0]).toEqual({
+    expect((await calls())[3].body.requests[0]).toEqual({
       insertText: { location: { index: 2 }, text: "\nHi" },
     });
   });
@@ -307,7 +307,7 @@ describe("Google Docs write tools", () => {
     });
 
     const all = await calls();
-    expect(all[3]!.body.requests.slice(0, 2)).toEqual([
+    expect(all[3].body.requests.slice(0, 2)).toEqual([
       { deleteContentRange: { range: { endIndex: 10, startIndex: 1 } } },
       { insertText: { location: { index: 1 }, text: "New" } },
     ]);
@@ -317,7 +317,7 @@ describe("Google Docs write tools", () => {
       "google.docs.document.get",
       "google.docs.document.batchUpdate",
     ]);
-    expect(all[7]!.body).toEqual({
+    expect(all[7].body).toEqual({
       requests: [
         {
           replaceAllText: {
@@ -347,27 +347,27 @@ describe("Google Docs write tools", () => {
     });
 
     const [create, update, transfer, about, remove] = await calls();
-    expect(create!.url.toString()).toBe(
+    expect(create.url.toString()).toBe(
       "https://docs.googleapis.com/v1/documents",
     );
-    expect(create!.body).toEqual({ title: "Plan" });
+    expect(create.body).toEqual({ title: "Plan" });
     // Content goes in while Junior's account can still edit.
-    expect(update!.body.requests[0]).toEqual({
+    expect(update.body.requests[0]).toEqual({
       insertText: { location: { index: 1 }, text: "Hello" },
     });
-    expect(update!.body.writeControl).toEqual({ requiredRevisionId: "rev-0" });
-    expect(transfer!.operation).toBe("google.drive.permission.create");
-    expect(transfer!.url.searchParams.get("transferOwnership")).toBe("true");
+    expect(update.body.writeControl).toEqual({ requiredRevisionId: "rev-0" });
+    expect(transfer.operation).toBe("google.drive.permission.create");
+    expect(transfer.url.searchParams.get("transferOwnership")).toBe("true");
     // Google refuses an ownership transfer without the email.
-    expect(transfer!.url.searchParams.has("sendNotificationEmail")).toBe(false);
-    expect(transfer!.body).toEqual({
+    expect(transfer.url.searchParams.has("sendNotificationEmail")).toBe(false);
+    expect(transfer.body).toEqual({
       emailAddress: REQUESTER,
       role: "owner",
       type: "user",
     });
-    expect(about!.operation).toBe("google.drive.about.get");
-    expect(remove!.operation).toBe("google.drive.permission.delete");
-    expect(remove!.url.pathname).toBe(
+    expect(about.operation).toBe("google.drive.about.get");
+    expect(remove.operation).toBe("google.drive.permission.delete");
+    expect(remove.url.pathname).toBe(
       `/drive/v3/files/${DOC_ID}/permissions/perm-junior`,
     );
     expect(result).toEqual({
@@ -396,7 +396,7 @@ describe("Google Docs write tools", () => {
     ).rejects.toThrow(
       `Could not hand Google Doc "Plan" (${DOC_LINK}) to ${REQUESTER}: Google google.drive.permission.create failed with HTTP 403: Denied. The Doc was deleted.`,
     );
-    const deleted = (await transferFailed.calls())[2]!;
+    const deleted = (await transferFailed.calls())[2];
     expect(deleted.operation).toBe("google.drive.file.delete");
     expect(deleted.url.pathname).toBe(`/drive/v3/files/${DOC_ID}`);
 

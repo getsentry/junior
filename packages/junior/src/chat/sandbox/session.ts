@@ -179,8 +179,7 @@ export function createSandboxRuntime(
   let dependencyProfileHash =
     options.sandboxRef?.profileHash ??
     profileHash(SANDBOX_RUNTIME, activeWorkspace);
-  const resolveCommandEnv =
-    options.commandEnv ?? (async () => ({}) as Record<string, string>);
+  const resolveCommandEnv = options.commandEnv ?? (async () => ({}));
 
   const withSandboxSpan = <T>(
     name: string,
@@ -652,7 +651,7 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async (setSpanAttributes) => {
-        const cachedSandbox = await tryReuseCachedSandbox();
+        const cachedSandbox = tryReuseCachedSandbox();
         if (cachedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return { session: cachedSandbox, fresh: false };
@@ -775,7 +774,7 @@ export function createSandboxRuntime(
       Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
     );
     const schedule = (): void => {
-      keepAliveTimer = setTimeout(async () => {
+      const tick = async (): Promise<void> => {
         keepAliveTimer = undefined;
         if (closed || activeSandbox?.session !== session) return;
         try {
@@ -786,7 +785,8 @@ export function createSandboxRuntime(
         }
         if (closed || activeSandbox?.session !== session) return;
         schedule();
-      }, intervalMs);
+      };
+      keepAliveTimer = setTimeout(() => void tick(), intervalMs);
       keepAliveTimer.unref?.();
     };
     schedule();
@@ -869,7 +869,7 @@ export function createSandboxRuntime(
           }
         }
       },
-      fs: sandboxInstance.fs as SandboxFileSystem,
+      fs: sandboxInstance.fs,
       runCommand: async (input) => await sandboxInstance.runCommand(input),
     };
   };

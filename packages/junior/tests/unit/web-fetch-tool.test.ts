@@ -52,10 +52,7 @@ describe("web fetch tool", () => {
 
     const tool = createWebFetchTool({});
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/article" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/article" }, {});
 
     expect(result).toEqual({
       url: safeUrl.toString(),
@@ -94,10 +91,7 @@ describe("web fetch tool", () => {
       { canSendFilesToActiveConversation: true },
     );
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/logo.png" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/logo.png" }, {});
 
     expect(writeGeneratedArtifacts).toHaveBeenCalledWith([
       {
@@ -141,10 +135,7 @@ describe("web fetch tool", () => {
 
     const tool = createWebFetchTool({ writeGeneratedArtifacts });
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/local.png" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/local.png" }, {});
 
     expect(JSON.stringify(result)).not.toContain("sendFiles");
     expect(result).toMatchObject({

@@ -82,7 +82,7 @@ async function endTurn(
     ...definitionsKey,
     mode,
   });
-  recorder.wrap((() => undefined) as never)(model, turnContext, {});
+  void recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }
 
@@ -100,11 +100,11 @@ async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
     mode,
   });
   const stream = recorder.wrap((() => undefined) as never);
-  stream(model, context, {});
+  void stream(model, context, {});
   await recorder.record(toolCall("systemTime"));
   recorder.toolsReturned();
   vi.advanceTimersByTime(MINUTE);
-  stream(model, context, {});
+  void stream(model, context, {});
   await recorder.record(toolCall(toolName));
   recorder.answerToolEnded(toolName);
   await recorder.stop();
@@ -637,7 +637,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      reply.wrap((() => undefined) as never)(model, context, {});
+      void reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
           await state.get(
@@ -719,7 +719,7 @@ describe("cache warming gap segments", () => {
     };
     const requests: Array<Record<string, unknown>> = [];
     mockTitleModel("", {
-      onRequest: (request) => requests.push(request as Record<string, unknown>),
+      onRequest: (request) => requests.push(request),
     });
     try {
       // The Turn sends its request to the model service, like a run does.
@@ -801,7 +801,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      recorder.wrap(base as never)(
+      void recorder.wrap(base as never)(
         resolveGatewayModel(modelId),
         context,
         cacheRetention ? { cacheRetention } : {},

@@ -937,7 +937,7 @@ describe("Slack behavior: subscribed messages", () => {
       id: "slack:C0REGRESS:1700010000.003",
     });
     // Subscribe first so opt-out has something to unsubscribe from.
-    thread.subscribe();
+    await thread.subscribe();
 
     await slackRuntime.handleSubscribedMessage(
       thread,

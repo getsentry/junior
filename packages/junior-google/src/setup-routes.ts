@@ -84,7 +84,7 @@ function adminEmail(
 ): string | undefined {
   const user = context?.auth.user;
   const email = user?.email?.trim().toLowerCase();
-  if (!email || user?.emailVerified !== true || user.isAdmin !== true) {
+  if (!email || user?.emailVerified !== true || !user.isAdmin) {
     return undefined;
   }
   return email;

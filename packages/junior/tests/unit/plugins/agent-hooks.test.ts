@@ -319,7 +319,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),
@@ -497,7 +497,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),

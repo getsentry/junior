@@ -212,7 +212,7 @@ export function useConversationPageArchiveResult(
     if (status === "success") onArchived(conversation);
     else onArchiveError(conversation, true);
     // Clear the state so a reload or a later restore does not report again.
-    navigate(
+    void navigate(
       { hash: location.hash, search: location.search },
       { replace: true, state: null },
     );
@@ -306,7 +306,7 @@ export function archiveConversationMutationOptions(
               ? markFeedConversation(pageRows, conversationId, viewerMarks)
               : restoreParentId
                 ? withRestoredThread(pageRows, restoreParentId, {
-                    ...archivedSnapshot!.conversation,
+                    ...archivedSnapshot.conversation,
                     archivedAt: null,
                   })
                 : first

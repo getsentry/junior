@@ -91,7 +91,7 @@ export function ReplyTimeSegments(props: {
           <ToggleGroup
             aria-label="Segment group"
             onValueChange={([next]) => {
-              if (next) setGroup(next as Group);
+              if (next) setGroup(next);
             }}
             value={[group]}
           >

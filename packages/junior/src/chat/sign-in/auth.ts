@@ -199,7 +199,7 @@ function createBetterAuth(config: SignInAuthConfig) {
           return {
             user: {
               email: claims.email,
-              emailVerified: claims.email_verified === true,
+              emailVerified: claims.email_verified,
               // `null` clears a photo that the person removed.
               image: claims.picture ?? null,
               name: claims.name,

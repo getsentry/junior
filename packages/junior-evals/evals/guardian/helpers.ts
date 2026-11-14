@@ -164,11 +164,13 @@ export async function proposal(input: {
   );
   return {
     context: input.context,
-    ...(input.evidence ? { evidence: input.evidence } : {}),
+    ...(input.evidence ? { evidence: input.evidence } : undefined),
     input: input.input,
-    ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
-    ...(root ? { rootConversation: { messages: root, truncated: false } } : {}),
-    ...(input.script ? { script: input.script } : {}),
+    ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : undefined),
+    ...(root
+      ? { rootConversation: { messages: root, truncated: false } }
+      : undefined),
+    ...(input.script ? { script: input.script } : undefined),
     tool: await resolveTool(input.tool, input.input),
   };
 }
@@ -198,9 +200,9 @@ export function priorRejection(input: {
     input: input.input,
     reason: input.reason,
     tool: input.tool,
-    ...(input.riskLevel ? { riskLevel: input.riskLevel } : {}),
+    ...(input.riskLevel ? { riskLevel: input.riskLevel } : undefined),
     ...(input.userAuthorization
       ? { userAuthorization: input.userAuthorization }
-      : {}),
+      : undefined),
   };
 }

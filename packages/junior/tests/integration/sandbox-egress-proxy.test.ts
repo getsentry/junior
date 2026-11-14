@@ -989,7 +989,7 @@ describe("sandbox egress proxy integration", () => {
         upstreamPath: "/v1/issues",
       }),
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );
@@ -1409,7 +1409,7 @@ describe("sandbox egress proxy integration", () => {
     const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       request,
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );

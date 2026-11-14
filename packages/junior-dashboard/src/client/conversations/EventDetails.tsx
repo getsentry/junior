@@ -216,7 +216,7 @@ function DetailValue({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
     return value.length ? (
       <ol className="m-0 grid min-w-0 list-decimal gap-4 pl-5 text-sm text-dashboard-text-muted">
-        {value.map((item, index) => (
+        {value.map((item: unknown, index) => (
           <li key={index}>
             <DetailValue value={item} />
           </li>
@@ -227,7 +227,7 @@ function DetailValue({ value }: { value: unknown }) {
     );
   }
   if (typeof value === "object" && value !== null) {
-    const fields = Object.entries(value).filter(
+    const fields: [string, unknown][] = Object.entries(value).filter(
       ([, entry]) => entry !== undefined,
     );
     return fields.length ? (

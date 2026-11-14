@@ -565,9 +565,7 @@ export async function wireAgentTools(
     },
   );
 
-  const plannedToolExposure = planToolExposure(
-    tools as Record<string, AnyToolDefinition>,
-  );
+  const plannedToolExposure = planToolExposure(tools);
   const disabledTools = Object.entries(
     tools as Record<string, AnyToolDefinition>,
   ).flatMap(([name, definition]) =>

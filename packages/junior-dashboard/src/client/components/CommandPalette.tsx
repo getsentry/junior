@@ -167,7 +167,7 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to, { state: item.state });
+                    void navigate(item.to, { state: item.state });
                     props.onClose();
                   }}
                   value={item.id}

@@ -63,7 +63,10 @@ export function decodeHistoryPayload(
       replacementHistory: z
         .array(replacementEntrySchema)
         .parse(fields.replacementHistory)
-        .map(({ item, ...entry }) => ({ ...entry, item: JSON.parse(item) })),
+        .map(({ item, ...entry }) => {
+          const parsedItem: unknown = JSON.parse(item);
+          return { ...entry, item: parsedItem };
+        }),
     };
   }
   const message = messageFieldsSchema.parse(

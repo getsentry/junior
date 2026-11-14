@@ -24,10 +24,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "catalog:",
     "@types/pg": "^8.15.6",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "vitest": "^4.1.12"

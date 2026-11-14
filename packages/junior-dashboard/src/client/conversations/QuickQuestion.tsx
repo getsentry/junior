@@ -611,7 +611,7 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
       onClick={() =>
         forkId &&
         keep.mutate(forkId, {
-          onSuccess: () => navigate(conversationPath(forkId)),
+          onSuccess: () => void navigate(conversationPath(forkId)),
         })
       }
       variant="ghost"

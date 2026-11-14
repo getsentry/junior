@@ -15,7 +15,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: " Failing checks ",
           name: null,
@@ -42,7 +42,7 @@ describe("spawnAgent", () => {
     const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
 
     await tool.execute!(
-      tool.prepareArguments!({
+      tool.prepareArguments({
         agent_type: "explore",
         fork: true,
         task: "Check the other path.",
@@ -66,7 +66,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({ task: "Investigate the failing checks." }),
+        tool.prepareArguments({ task: "Investigate the failing checks." }),
         {},
       ),
     ).rejects.toBeInstanceOf(ToolInputError);
@@ -80,7 +80,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: "Failing checks",
           name: "researcher",
@@ -105,7 +105,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: "Failing checks",
         }),

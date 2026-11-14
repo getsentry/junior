@@ -173,7 +173,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   return {
     ...actual,
     logWarn: vi.fn(actual.logWarn),
-    withSpan: (async (name, op, context, callback, attributes = {}) => {
+    withSpan: (async (name, op, context, callback, attributes) => {
       const span = { name, attributes: { ...attributes } };
       recordedSpans.push(span);
       return await actual.withSpan(

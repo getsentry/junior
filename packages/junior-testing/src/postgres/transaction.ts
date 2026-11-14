@@ -12,7 +12,6 @@ const { Pool } = pg;
 declare global {
   // Vitest can re-evaluate setup modules inside a worker. Cache the worker
   // database promise on globalThis so one worker owns one cloned database.
-  // eslint-disable-next-line no-var
   var __juniorPostgresWorkerDatabases:
     | Map<string, Promise<PostgresWorkerDatabase>>
     | undefined;

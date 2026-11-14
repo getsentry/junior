@@ -114,7 +114,7 @@ describe("Vercel webhook events", () => {
         body.id = `evt_delivery_${index}`;
         body.payload.deployment = {
           id: `dpl_${index}`,
-          meta: { githubCommitSha: commitSha! },
+          meta: { githubCommitSha: commitSha },
         };
         body.payload.project.id = projectId!;
         return normalizeVercelEvents({ body });
@@ -123,7 +123,7 @@ describe("Vercel webhook events", () => {
     const toMatch = ({ identifier }: { identifier: string }): EventMatch => {
       const [projectId, target, commitSha] = identifier.split(":");
       return {
-        projectId: projectId!,
+        projectId: projectId,
         ...(target ? { target } : undefined),
         ...(commitSha ? { commitSha } : undefined),
       };
@@ -144,12 +144,12 @@ describe("Vercel webhook events", () => {
     const subscribables = new Map(
       deployments
         .flatMap(([projectId, target, commitSha]) => [
-          { projectId: projectId! },
-          { projectId: projectId!, target: target as VercelDeploymentTarget },
+          { projectId: projectId },
+          { projectId: projectId, target: target as VercelDeploymentTarget },
           {
-            projectId: projectId!,
+            projectId: projectId,
             target: target as VercelDeploymentTarget,
-            commitSha: commitSha!.toUpperCase(),
+            commitSha: commitSha.toUpperCase(),
           },
         ])
         .map((input) =>

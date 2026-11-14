@@ -63,10 +63,7 @@ function payloadKeys(payload: unknown): string[] | undefined {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return undefined;
   }
-  const keys = Object.keys(payload as Record<string, unknown>).slice(
-    0,
-    SAFE_METADATA_KEY_LIMIT,
-  );
+  const keys = Object.keys(payload).slice(0, SAFE_METADATA_KEY_LIMIT);
   return keys.length > 0 ? keys : undefined;
 }
 
@@ -238,7 +235,7 @@ export function toCanonicalInputMessage(
     };
   }
   // AssistantMessage appearing as a prior turn in input context
-  return toCanonicalOutputMessage(message as AssistantMessage);
+  return toCanonicalOutputMessage(message);
 }
 
 /** Summarize a message list without exposing raw message content. */

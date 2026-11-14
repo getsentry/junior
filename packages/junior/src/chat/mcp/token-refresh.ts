@@ -48,7 +48,7 @@ export function serializeMcpTokenRefresh(
   // The access token of this client's last MCP request: the one that the
   // provider rejected when a refresh follows.
   let sentAccessToken: string | undefined;
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
     const sentRefreshToken = refreshTokenOf(init?.body);
     if (!sentRefreshToken) {
       // Discovery requests carry no token.
@@ -100,7 +100,7 @@ export function serializeMcpTokenRefresh(
               typeof tokens.refresh_token === "string"
                 ? tokens.refresh_token
                 : sentRefreshToken,
-          } as typeof current,
+          },
         });
         return response;
       },
@@ -114,5 +114,5 @@ export function serializeMcpTokenRefresh(
       );
     }
     return attempt.value;
-  }) as typeof fetch;
+  };
 }

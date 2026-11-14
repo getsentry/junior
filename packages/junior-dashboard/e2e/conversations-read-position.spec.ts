@@ -639,5 +639,5 @@ test("opens far behind at the read position and loads newer pages after it", asy
       ].map((match) => Number(match[1])),
     ),
   ]);
-  expect(shown.at(-1)! - shown[0]! + 1).toBe(shown.length);
+  expect(shown.at(-1)! - shown[0] + 1).toBe(shown.length);
 });

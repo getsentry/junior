@@ -29,7 +29,7 @@ for (const touch of [false, true]) {
             configurable: true,
             value: (data: ShareData) =>
               (
-                window as unknown as {
+                window as Window & {
                   recordShare: (data: ShareData) => Promise<void>;
                 }
               ).recordShare(data),

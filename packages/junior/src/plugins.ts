@@ -164,7 +164,10 @@ function readEnvPluginPackages(
 
   if (
     !Array.isArray(parsed) ||
-    parsed.some((item) => typeof item !== "string" || !item.trim())
+    !parsed.every(
+      (item: unknown): item is string =>
+        typeof item === "string" && item.trim() !== "",
+    )
   ) {
     throw new Error(
       "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",

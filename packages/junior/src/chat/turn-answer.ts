@@ -95,8 +95,9 @@ function parseAnswer(
           return { blocked: { missing: parsed.data.reason } };
       }
     }
+    default:
+      return undefined;
   }
-  return undefined;
 }
 
 /**

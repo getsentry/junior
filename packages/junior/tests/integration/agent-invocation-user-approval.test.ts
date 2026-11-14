@@ -160,7 +160,7 @@ describe("user approval for child agents", () => {
             actor: user,
             conversationId: slackParentConversationId,
             destination: slackDestination,
-            source: parent.source!,
+            source: parent.source,
             userIntent: () => "Clean up the images.",
             rootConversation: async () =>
               await readRootConversation({

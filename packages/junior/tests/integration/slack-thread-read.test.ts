@@ -666,7 +666,7 @@ describe("slackThreadRead", () => {
                 ],
               },
             ],
-          } as any,
+          },
         ],
       }),
     });

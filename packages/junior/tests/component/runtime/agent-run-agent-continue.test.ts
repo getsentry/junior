@@ -10,11 +10,7 @@ const { continueCalls, promptAborted, promptCalls, promptMode, promptSettled } =
     promptAborted: { value: false },
     promptCalls: { value: 0 },
     promptMode: {
-      value: "settlesAfterAbort" as
-        | "settlesAfterAbort"
-        | "hangsAfterAbort"
-        | "continueSettlesAfterAbort"
-        | "providerRetryThenHangs",
+      value: "settlesAfterAbort",
     },
     promptSettled: { value: false },
   }));

@@ -59,7 +59,7 @@ export const githubGraphqlSchemaRule = defineRule({
         }
         for (const error of schemaErrors(document)) {
           context.report({
-            node: argument!,
+            node: argument,
             messageId: "invalidDocument",
             data: { error },
           });

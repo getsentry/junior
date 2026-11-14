@@ -53,7 +53,7 @@ async function handleChatSdkWebhook(args: {
   return await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
     handler(request, {
       waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
-    } as Parameters<typeof handler>[1]),
+    }),
   );
 }
 

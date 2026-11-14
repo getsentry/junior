@@ -73,7 +73,7 @@ describe("generateShortTitle", () => {
 
     await expect(
       generateShortTitle({
-        completeText: completeText as never,
+        completeText: completeText,
         cost: { owner: "none" },
         kind: "conversation",
         sourceText: "Help me debug this incident",

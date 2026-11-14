@@ -151,7 +151,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
   if (!Array.isArray(value)) {
     return value;
   }
-  return value.map((reason) =>
+  return value.map((reason: unknown) =>
     typeof reason === "string" ? normalizeGenAiFinishReason(reason) : reason,
   );
 }
@@ -643,7 +643,7 @@ function getLogTapeLogger(category: readonly string[] = []): LogTapeLogger {
     throw new Error("LogTape backend is unavailable");
   }
 
-  let logger = rootLogger as LogTapeLogger;
+  let logger = rootLogger;
   for (const part of category) {
     logger = logger.getChild(part);
   }

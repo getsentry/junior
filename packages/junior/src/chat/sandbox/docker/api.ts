@@ -82,6 +82,8 @@ export function dockerStream(
 export async function readStream(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
+    // Node types stream chunks as `any`; Docker streams yield Buffers or strings.
+    // oxlint-disable-next-line typescript/no-unsafe-argument
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);

@@ -250,9 +250,14 @@ function jsonResponse(
   status: number,
   headers?: HeadersInit,
 ): Response {
+  // Spreading HeadersInit drops entries from a Headers instance or an array.
+  const responseHeaders = new Headers(headers);
+  if (!responseHeaders.has("Content-Type")) {
+    responseHeaders.set("Content-Type", ACP_JSON_MIME_TYPE);
+  }
   return new Response(JSON.stringify(value), {
     status,
-    headers: { "Content-Type": ACP_JSON_MIME_TYPE, ...headers },
+    headers: responseHeaders,
   });
 }
 
@@ -590,7 +595,7 @@ async function handleConnectedResponse(args: {
 }): Promise<Response> {
   await handleAcpAuthorizationResponse({
     connectionId: args.connectionId,
-    response: args.response as acp.AnyResponse,
+    response: args.response,
     state: args.state,
   });
   return emptyResponse(202);

@@ -90,7 +90,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -109,7 +109,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       {
@@ -329,7 +329,7 @@ describe("createTracedStreamFn", () => {
       "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base,
       conversationPrivacy: "private",
     });
     await traced(
@@ -376,7 +376,7 @@ describe("createTracedStreamFn", () => {
       "app.caller.input": message.usage.input,
     }));
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base,
       conversationPrivacy: "public",
       endAttributes: callerAttributes,
     });
@@ -423,7 +423,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base,
       conversationPrivacy: "public",
     });
     await traced(
@@ -494,7 +494,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -519,7 +519,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
 
     await withLogContext(
       { conversationId: "conv_123", runId: "run_456" },
@@ -544,7 +544,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
 
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -576,7 +576,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -639,7 +639,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -671,7 +671,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -711,7 +711,7 @@ describe("createTracedStreamFn", () => {
       throw new Error("gateway down");
     });
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await expect(
       traced(
         fakeModel("openai/gpt-5.4"),
@@ -734,7 +734,7 @@ describe("createTracedStreamFn", () => {
     stream.result = () => Promise.reject(new Error("stream failure"));
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -757,7 +757,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

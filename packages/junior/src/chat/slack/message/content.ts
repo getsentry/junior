@@ -6,6 +6,7 @@
  */
 import { SlackFormatConverter } from "@chat-adapter/slack";
 import { stringifyMarkdown, type Message } from "chat";
+import { isRecord } from "@/chat/coerce";
 import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { renderBlockText } from "@/chat/slack/message/blocks";
 import { SLACK_USER_MENTION_RE } from "@/chat/slack/mrkdwn";
@@ -83,7 +84,7 @@ export function renderSlackPlainText(
 ): string {
   // The SDK shows a labeled mention as `@label`.
   const labeled = mrkdwn
-    .replace(SLACK_USER_MENTION_RE, (mention, id) => {
+    .replace(SLACK_USER_MENTION_RE, (mention: string, id: string) => {
       const name = userNames.get(id);
       return name ? `<@${id}|${name.replace(/[<>|]/g, "")}>` : mention;
     })
@@ -99,7 +100,9 @@ function renderTopLevelText(
   // Section blocks contain the body; text can be only a notification summary.
   if (
     Array.isArray(blocks) &&
-    blocks.some((block) => block?.type === "section") &&
+    blocks.some(
+      (block: unknown) => isRecord(block) && block.type === "section",
+    ) &&
     blockText
   ) {
     return blockText;

@@ -360,10 +360,10 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     automations: [
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
-        ...automationReport.automations[0]!,
+        ...automationReport.automations[0],
         // Enough Destinations that the filter needs its search box.
         destination: {
-          ...automationReport.automations[0]!.destination,
+          ...automationReport.automations[0].destination,
           channelId: `C-extra-${index}`,
           label: `#team-${String(index).padStart(2, "0")}`,
         },

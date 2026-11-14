@@ -229,7 +229,7 @@ export function observeConversationMutationLock(args: {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -295,7 +295,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Delay one conversation's mutation lock until the fake clock reaches a point. */
@@ -318,7 +318,7 @@ export function delayMutationLockUntil(args: {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Build a signed Slack JSON webhook request for Slack ingress tests. */

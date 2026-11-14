@@ -630,7 +630,7 @@ function expandCommandEnvPlaceholders(
 ): string {
   return template.replace(ENV_PLACEHOLDER_RE, (match, name) => {
     const varName = name as string;
-    const declaration = envVars[varName] as PluginEnvVarDeclaration | undefined;
+    const declaration = envVars[varName];
     if (declaration?.default === undefined) {
       return match;
     }
@@ -727,7 +727,7 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
 
   for (const [key, value] of Object.entries(commandEnv)) {
     for (const name of envReferences(value)) {
-      const declaration = envVars[name] as PluginEnvVarDeclaration | undefined;
+      const declaration = envVars[name];
       if (
         declaration &&
         declaration.default === undefined &&
@@ -1182,7 +1182,9 @@ function parseManifestSource(
     const issue = sourceResult.error.issues[0];
     const path = formatPath(issue?.path ?? []);
     if (path === "name") {
-      throw new Error(`Invalid plugin name in ${dir}: "${parsedSource.name}"`);
+      throw new Error(
+        `Invalid plugin name in ${dir}: "${String(parsedSource.name)}"`,
+      );
     }
     if (path === "description") {
       throw new Error(`Invalid plugin description in ${dir}`);

@@ -53,7 +53,7 @@ function editTool(
     {
       editFile: {
         description: "Edit a file.",
-        inputSchema: {} as any,
+        inputSchema: {},
         execute,
       },
     },
@@ -246,7 +246,7 @@ describe("afterToolExecute plugin hooks", () => {
           inputSchema: Type.Object({ path: Type.String() }),
           execute: async () => ({ ok: true, path: "evals/a.eval.ts" }),
         },
-      } as never,
+      },
       new SkillSandbox([], []),
       {
         spanContext: {},

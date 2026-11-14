@@ -186,7 +186,7 @@ describe("agent invocation spawn and result delivery", () => {
       });
       expect(spawnAgent).toBeDefined();
       const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
-      const input = tool.prepareArguments!({
+      const input = tool.prepareArguments({
         task: "Inspect the failing checks.",
         title: "Failing checks",
         name: "reviewer",
@@ -234,7 +234,7 @@ describe("agent invocation spawn and result delivery", () => {
       ]);
       await expect(
         tool.execute!(
-          tool.prepareArguments!({
+          tool.prepareArguments({
             task: "Start overlapping work.",
             name: "reviewer",
             reasoning_level: "high",
@@ -320,7 +320,7 @@ describe("agent invocation spawn and result delivery", () => {
         );
         const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
         return tool.execute!(
-          tool.prepareArguments!({
+          tool.prepareArguments({
             task: "Inspect the failing checks.",
             title: "Failing checks",
           }),

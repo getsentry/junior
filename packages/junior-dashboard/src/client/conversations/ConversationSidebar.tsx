@@ -581,7 +581,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             // page replaces its entry, so Back does not land on the same
             // page in the event log.
             eventLog: () =>
-              navigate(conversationPath(props.conversation.id), {
+              void navigate(conversationPath(props.conversation.id), {
                 replace: props.selected,
                 state: OPEN_EVENT_LOG_STATE,
               }),

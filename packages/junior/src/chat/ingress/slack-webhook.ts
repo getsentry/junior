@@ -194,9 +194,7 @@ async function buildThread(args: {
 }
 
 function shouldIgnoreMessage(message: Message): boolean {
-  return (
-    message.author.isMe === true || !parseActorUserId(message.author.userId)
-  );
+  return message.author.isMe || !parseActorUserId(message.author.userId);
 }
 
 /**
@@ -761,6 +759,7 @@ async function handleSlackEvent(args: {
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
+            // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
           ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");

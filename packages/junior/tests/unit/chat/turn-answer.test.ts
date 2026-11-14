@@ -100,7 +100,7 @@ describe("turn answer", () => {
 describe("reply", () => {
   function call(text: string) {
     const tool = createReplyTool("automation");
-    return tool.execute!(tool.prepareArguments!({ text }), {});
+    return tool.execute!(tool.prepareArguments({ text }), {});
   }
 
   it("rejects an empty reply and the legacy no-reply marker", async () => {

@@ -393,7 +393,7 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed = JSON.parse(serialized);
+  const parsed: unknown = JSON.parse(serialized);
   if (!isRecord(parsed)) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
@@ -421,9 +421,8 @@ function toUserPromptContributionContext(args: {
   if (!context.success) {
     return undefined;
   }
-  const text = promptMessageSchema.safeParse({
-    text: args.value.renderPrompt(),
-  });
+  const renderPrompt = args.value.renderPrompt as () => unknown;
+  const text = promptMessageSchema.safeParse({ text: renderPrompt() });
   if (!text.success) {
     return undefined;
   }
@@ -763,7 +762,11 @@ export function getStaticPluginToolDefinitions(): Record<
   string,
   AnyToolDefinition
 > {
-  return Object.assign({}, ...getPlugins().map(pluginToolDefinitions));
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const plugin of getPlugins()) {
+    Object.assign(definitions, pluginToolDefinitions(plugin));
+  }
+  return definitions;
 }
 
 /** Collect turn-scoped tools exposed by plugins. */
