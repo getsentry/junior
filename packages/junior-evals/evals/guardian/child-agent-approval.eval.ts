@@ -11,7 +11,6 @@
 import { describeEval } from "vitest-evals";
 import {
   type RootConversationMessage,
-  type ToolActionEvidence,
   type ToolActionProposal,
 } from "@/chat/guardian/proposal";
 import { renderTaskInput } from "@/chat/task-input";
@@ -23,6 +22,7 @@ import {
   slackContext,
   type PriorRejectionSnapshot,
   type SnapshotTool,
+  type TranscriptEntry,
 } from "./helpers";
 
 const deleteAutomationTool = "deleteAutomation";
@@ -40,7 +40,7 @@ const automationList =
 /** One action of a child agent, as core builds its proposal. */
 function childProposal(args: {
   context?: Partial<ToolActionProposal["context"]>;
-  entries: ToolActionEvidence["entries"];
+  entries: TranscriptEntry[];
   input: Record<string, unknown>;
   /** The instruction of the current child Turn: the parent's text. */
   intent: string;

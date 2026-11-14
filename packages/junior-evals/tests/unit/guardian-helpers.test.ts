@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TOOL_RESULT_NOT_SHOWN } from "@/chat/guardian/evidence";
 import {
   evidence,
   localContext,
@@ -48,7 +49,7 @@ describe("guardian eval helpers", () => {
     expect(snapshot).not.toHaveProperty("priorRejectedActions");
   });
 
-  it("copies a person's messages into the root and keeps the evidence", async () => {
+  it("copies a person's messages into the root and projects the evidence as core builds it", async () => {
     const tool = {
       description: "Delete a workspace.",
       name: "delete-eval-workspace",
@@ -88,8 +89,7 @@ describe("guardian eval helpers", () => {
     expect(snapshot.evidence).toEqual({
       entries: [
         { role: "user", text: "Check preview-42." },
-        { role: "assistant", text: "preview-42 is idle." },
-        { role: "tool listWorkspaces result", text: "preview-42: idle" },
+        { role: "tool listWorkspaces result", text: TOOL_RESULT_NOT_SHOWN },
       ],
       omittedEntries: 0,
     });

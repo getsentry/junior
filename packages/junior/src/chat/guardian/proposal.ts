@@ -39,14 +39,14 @@ export interface ToolActionReviewDecision {
   userAuthorization: UserAuthorization;
 }
 
-/** Bounded transcript entries of the Run, without aligned authors. */
+/**
+ * Bounded transcript entries of the Run, in order: user messages without
+ * aligned authors, and finished tool calls with their input. A result entry
+ * only marks that its call returned.
+ */
 export interface ToolActionEvidence {
   entries: Array<{
-    role:
-      | "assistant"
-      | "user"
-      | `tool ${string} call`
-      | `tool ${string} result`;
+    role: "user" | `tool ${string} call` | `tool ${string} result`;
     text: string;
   }>;
   omittedEntries: number;

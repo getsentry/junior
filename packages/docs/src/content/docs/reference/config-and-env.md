@@ -87,8 +87,9 @@ Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_t
 Guardian action review sends the configured Guardian model a bounded review request with
 hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
-context, and bounded user, assistant, tool-call, and tool-result evidence using
-the Codex Guardian transcript selection rules. Guardian defaults to
+context, the author-labeled thread, and bounded evidence of the run's user
+messages and earlier tool calls. The evidence leaves out assistant text and
+tool result bodies. Guardian defaults to
 `openai/gpt-6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
 
