@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-sentry",
-  "version": "0.299.0",
+  "version": "0.301.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -35,11 +35,15 @@
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^25.9.1",
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",

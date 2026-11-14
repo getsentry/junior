@@ -120,6 +120,8 @@ async function writeParts(args: {
  *
  * A large Slack file is never stored: each load streams it from Slack
  * through the host. The sandbox never gets a Slack URL or token.
+ *
+ * @runBuilt loadAttachment
  */
 export function createLoadAttachmentTool(args: {
   conversationId: string;

@@ -14,13 +14,17 @@ export interface ObjectLinkType {
    * change shows at once instead of after the card cache expires.
    */
   cacheCards?: false;
+  /** Whether the viewer may see the object. Called before `resolve`. */
+  canView(viewer: User, url: URL): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
   objectType: ObjectType;
   /** `junior` for core, or the plugin name. */
   owner: string;
   /** The tool that reads the object live, for a Turn after an attach. */
-  readTool?: string;
+  readTool?(object: ObjectAnnotation): string | undefined;
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
+  /** Show the web page card when `canView` returns false. */
+  webPageFallback?: true;
 }
 
 function compareSpecificity(left: number[], right: number[]): number {

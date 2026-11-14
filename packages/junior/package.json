@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.299.0",
+  "version": "0.301.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -93,7 +93,7 @@
     "@vercel/functions": "^3.6.0",
     "@vercel/oidc": "^3.4.1",
     "@vercel/queue": "^0.2.0",
-    "@vercel/sandbox": "2.8.0",
+    "@vercel/sandbox": "4.0.0",
     "ai": "^7.0.153",
     "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.14",
@@ -136,6 +136,8 @@
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
+    "@sentry/junior-notion": "workspace:*",
+    "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",

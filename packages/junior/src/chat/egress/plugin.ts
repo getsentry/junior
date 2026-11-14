@@ -30,6 +30,11 @@ interface PluginEgressDeps {
   credentialContext?: CredentialContext;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
+  /**
+   * Use only the credential subject's own stored OAuth token, never a
+   * plugin grant or an environment token.
+   */
+  userOAuthOnly?: boolean;
 }
 
 function credentialContextForPluginEgress(
@@ -102,6 +107,7 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         provider: input.provider,
         request: input.request,
         upstreamUrl,
+        ...(deps.userOAuthOnly ? { userOAuthOnly: true } : undefined),
       });
     },
   };

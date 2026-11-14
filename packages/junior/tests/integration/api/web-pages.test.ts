@@ -76,7 +76,12 @@ describe("web page cards", () => {
       objectType: "web_page",
       plugin: "junior",
       title: "Launch demo",
-      facts: { type: "web_page", siteName: "YouTube", author: "Sentry" },
+      facts: {
+        type: "web_page",
+        siteName: "YouTube",
+        author: "Sentry",
+        media: "video",
+      },
     });
     expect(asked).toEqual([url]);
     expect(body).not.toContain("iframe");
@@ -106,6 +111,7 @@ describe("web page cards", () => {
               "<meta property='og:site_name' content='Example Blog'>",
               '<meta name="description" content="What changed in 4.2.">',
               '<meta property="og:image" content="/covers/4-2.png">',
+              '<meta property="og:type" content="article">',
             ].join(""),
           ),
         );
@@ -123,6 +129,8 @@ describe("web page cards", () => {
       description: "What changed in 4.2.",
       facts: { type: "web_page", siteName: "Example Blog" },
     });
+    // An article is not a video or image page.
+    expect(object?.facts).not.toHaveProperty("media");
     const thumbnail =
       object?.facts?.type === "web_page" ? object.facts.thumbnailUrl : "";
     const image = await signedInApi().request(`http://localhost${thumbnail}`);
@@ -137,6 +145,53 @@ describe("web page cards", () => {
       (await resolveLinks([url], "other@example.com")).objects.get(url),
     ).toMatchObject({ title: "Release & notes" });
     expect(pageFetches).toBe(1);
+  });
+
+  test("marks a page with an Open Graph video type as a video", async () => {
+    mswServer.use(
+      http.get("https://clips.example.com/launch", () =>
+        HttpResponse.html(
+          page(
+            [
+              '<meta property="og:title" content="Launch clip">',
+              '<meta property="og:type" content="video.other">',
+            ].join(""),
+          ),
+        ),
+      ),
+    );
+    const url = "https://clips.example.com/launch";
+
+    expect((await resolveLinks([url])).objects.get(url)).toMatchObject({
+      title: "Launch clip",
+      facts: { type: "web_page", media: "video" },
+    });
+  });
+
+  test("asks oEmbed only for a listed provider and reads Open Graph for every other page", async () => {
+    const asked: string[] = [];
+    mswServer.use(
+      http.get("https://www.loom.com/v1/oembed", ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get("url") ?? "");
+        return HttpResponse.json({ title: "Standup recording" });
+      }),
+      http.get("https://www.canva.com/_oembed", ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get("url") ?? "");
+        return HttpResponse.json({ title: "From oEmbed" });
+      }),
+      http.get("https://www.canva.com/design/deck/view", () =>
+        HttpResponse.html(
+          page('<meta property="og:title" content="Launch deck">'),
+        ),
+      ),
+    );
+    const listed = "https://www.loom.com/share/standup";
+    const unlisted = "https://www.canva.com/design/deck/view";
+
+    const { objects } = await resolveLinks([listed, unlisted]);
+    expect(objects.get(listed)).toMatchObject({ title: "Standup recording" });
+    expect(objects.get(unlisted)).toMatchObject({ title: "Launch deck" });
+    expect(asked).toEqual([listed]);
   });
 
   test("keeps a plugin link type ahead of the web page link type", async () => {
@@ -161,6 +216,7 @@ describe("web page cards", () => {
             {
               filters: [{ host: "tickets.example.com" }],
               objectType: "task",
+              canView: async () => true,
               resolve: async (_ctx, url) => ({
                 kind: "object",
                 objectType: "task",

@@ -11,7 +11,9 @@ related:
 
 The Hex plugin uses Hex's hosted MCP server so Slack users can run analytical queries against the data warehouse from Junior.
 
-Junior exposes only Hex's `create_thread` and `get_thread` MCP tools. These support creating new analysis threads and polling for results — the core primitives needed for data retrieval workflows.
+Junior exposes only Hex's read tools: Threads (`create_thread`, `get_thread`, `continue_thread`), `search_projects`, `get_me`, `get_project`, `list_cells`, `get_cell`, `get_cell_image`, `get_cell_output`, `get_run`, and `list_data_connections`. Hex's tools that create, edit, or run projects are not exposed, because their edits change live project drafts.
+
+Hex checks each user's workspace role and project permissions on every call. Threads and project search need the Explorer role or higher. The project tools need the Editor role or higher. See [Hex MCP Server](https://learn.hex.tech/docs/api-integrations/mcp-server).
 
 Requires a Hex Team or Enterprise plan.
 
@@ -66,6 +68,7 @@ The plugin ships one skill:
 ## What users can do
 
 - Query data from the Hex data warehouse using natural language or raw SQL.
+- Find Hex projects and read their cells and charts.
 - Get structured output suitable for downstream processing or display.
 
 ## Verify

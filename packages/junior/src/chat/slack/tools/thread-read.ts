@@ -10,7 +10,7 @@ import {
 } from "@/chat/slack/tool-support/channel-target";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { parseSlackMessageReference } from "@/chat/slack/tool-support/slack-message-url";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import {
@@ -215,57 +215,61 @@ async function findThreadConversationIds(args: {
   return ids;
 }
 
+export const slackThreadReadToolDefinition = zodToolDefinition({
+  description: `Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns \`conversation_ids\` when you took part in the thread; pass one to \`searchConversationEvents\`. In the current conversation's thread, stores up to ${MAX_MODEL_ATTACHMENTS} new files per call and returns their \`attachment_id\` for \`loadAttachment\`; \`unstored_file_count\` counts the files left for a later call.`,
+  // Not read-only: it stores files of the current thread as Conversation
+  // attachments. Reading again stores nothing new for the same files.
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  inputSchema: z.object({
+    url: z
+      .string()
+      .min(1)
+      .describe("Slack message archive URL.")
+      .nullable()
+      .optional(),
+    channel_id: slackChannelRefParam
+      .describe(
+        `${slackChannelRefParam.description} Defaults to the current conversation's channel.`,
+      )
+      .nullable()
+      .optional(),
+    slack_ts: slackTimestampParam(
+      "Slack message timestamp. May be the thread root or any message in the thread.",
+    )
+      .nullable()
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .describe("Maximum number of thread messages to fetch.")
+      .nullable()
+      .optional(),
+    max_pages: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .describe("Maximum number of Slack API pages to traverse.")
+      .nullable()
+      .optional(),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
 export function createSlackThreadReadTool(
   context: SlackToolContext,
   attachmentDeps?: ThreadReadAttachmentDeps,
 ) {
   return zodTool({
-    description: `Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns \`conversation_ids\` when you took part in the thread; pass one to \`searchConversationEvents\`. In the current conversation's thread, stores up to ${MAX_MODEL_ATTACHMENTS} new files per call and returns their \`attachment_id\` for \`loadAttachment\`; \`unstored_file_count\` counts the files left for a later call.`,
-    // Not read-only: it stores files of the current thread as Conversation
-    // attachments. Reading again stores nothing new for the same files.
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    inputSchema: z.object({
-      url: z
-        .string()
-        .min(1)
-        .describe("Slack message archive URL.")
-        .nullable()
-        .optional(),
-      channel_id: slackChannelRefParam
-        .describe(
-          `${slackChannelRefParam.description} Defaults to the current conversation's channel.`,
-        )
-        .nullable()
-        .optional(),
-      slack_ts: slackTimestampParam(
-        "Slack message timestamp. May be the thread root or any message in the thread.",
-      )
-        .nullable()
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(1000)
-        .describe("Maximum number of thread messages to fetch.")
-        .nullable()
-        .optional(),
-      max_pages: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(10)
-        .describe("Maximum number of Slack API pages to traverse.")
-        .nullable()
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackThreadReadToolDefinition,
     execute: async ({ url, channel_id, slack_ts, limit, max_pages }) => {
       let channelId: SlackChannelId;
       let messageTs: SlackMessageTs;

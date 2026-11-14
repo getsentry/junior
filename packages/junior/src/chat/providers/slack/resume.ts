@@ -510,6 +510,15 @@ async function resumeSlackTurnInContext(
       failureCode = "delivery_failed";
       const cards = await loadPendingMessageCards(conversationId);
       const deliveryState = await getDeliveryConversation();
+      // Plugin reply formatting reads Location defaults, as the Run did.
+      const configuration = {
+        ...savedRun.environment?.configuration,
+        ...(await savedRun.environment?.locationConfiguration?.resolveValues()),
+      };
+      const replyTeamId =
+        savedRun.destination.platform === "slack"
+          ? savedRun.destination.teamId
+          : undefined;
       let slackMessageTs: string[] = [];
       try {
         const outcomes = runArgs.run?.dispatch?.outcomes;
@@ -519,6 +528,10 @@ async function resumeSlackTurnInContext(
               ...(await sendSlackReply({
                 cards,
                 channelId: outcome.destination.channelId,
+                formatting: {
+                  configuration,
+                  teamId: outcome.destination.teamId,
+                },
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
@@ -530,6 +543,9 @@ async function resumeSlackTurnInContext(
           slackMessageTs = await sendSlackReply({
             cards,
             channelId: runArgs.channelId,
+            ...(replyTeamId
+              ? { formatting: { configuration, teamId: replyTeamId } }
+              : undefined),
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
             text,
