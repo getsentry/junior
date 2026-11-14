@@ -151,6 +151,7 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  take?: string;
 }) {
   const { item } = props;
   const showBody = item.kind === "notice" || !item.request;
@@ -194,7 +195,11 @@ function RowItem(props: {
       </ReviewItemObjects>
       {/* The row's bar holds Dismiss. A card on its own, as in a
           Conversation, keeps its own. */}
-      <ReviewItemActions dismiss={!props.done} item={item} />
+      <ReviewItemActions
+        dismiss={!props.done}
+        item={item}
+        take={props.take ?? false}
+      />
     </section>
   );
 }
@@ -287,6 +292,8 @@ type InboxRowProps = {
   /** The row's Threads show the action bar on their last line instead. */
   actionsBelow?: boolean;
   snoozeMenuOpen: boolean;
+  /** Label of each ask's take button. Only Up for grabs offers one. */
+  take?: string;
   time: string;
   title: string;
 };
@@ -783,6 +790,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              take={props.take}
             />
           ))}
           {props.actionsBelow ? null : rowActions(props)}

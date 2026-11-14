@@ -22,7 +22,11 @@ import {
   useReviewItemsData,
   scrollPages,
 } from "./queries";
-import { inboxBundles, type InboxBundle } from "./reviewItemFormat";
+import {
+  inboxBundles,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
 
 /** A Conversation row, with what it asks of the viewer when it asks. */
@@ -155,7 +159,11 @@ function useBuildInboxData(input: {
   const bundleByConversation = new Map(
     bundles.map((bundle) => [bundle.conversationId, bundle]),
   );
-  const todoRows = bundles.filter((bundle) => bundle.needsYou);
+  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  const todoRows = inboxBundles(
+    awake.filter((item) => !itemUpForGrabs(item)),
+  ).filter((bundle) => bundle.needsYou);
+  const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(live.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
@@ -240,6 +248,7 @@ function useBuildInboxData(input: {
     titleOf,
     todoCount,
     todoRows,
+    grabRows,
   };
 }
 

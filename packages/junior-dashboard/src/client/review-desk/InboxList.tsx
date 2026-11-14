@@ -53,7 +53,7 @@ import {
   useReviewItemsData,
   scrollPages,
 } from "./queries";
-import type { InboxBundle } from "./reviewItemFormat";
+import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -239,6 +239,7 @@ export function InboxList(props: {
   };
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
+  const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
   const pullRequests = usePullRequestSections(
     viewRows(data.awake, "prs"),
     data.itemPages,
@@ -246,7 +247,11 @@ export function InboxList(props: {
   );
   const streamRows =
     view === "inbox"
-      ? data.conversationRows.filter((row) => !todoIds.has(row.conversationId))
+      ? data.conversationRows.filter(
+          (row) =>
+            !todoIds.has(row.conversationId) &&
+            !grabIds.has(row.conversationId),
+        )
       : view === "conversations"
         ? data.conversationRows
         : [];
@@ -282,9 +287,14 @@ export function InboxList(props: {
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
     const conversationId = item.addedByConversationId;
-    return view === "inbox" && todoIds.has(conversationId)
+    if (view !== "inbox") return `conversation:${conversationId}`;
+    if (itemUpForGrabs(item) && grabIds.has(conversationId))
+      return `grabs:${conversationId}`;
+    return todoIds.has(conversationId)
       ? `todo:${conversationId}`
-      : `conversation:${conversationId}`;
+      : grabIds.has(conversationId)
+        ? `grabs:${conversationId}`
+        : `conversation:${conversationId}`;
   })();
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
@@ -409,6 +419,7 @@ export function InboxList(props: {
       subjectShown?: boolean;
       /** A snoozed row wakes instead of snoozing. */
       snoozed?: boolean;
+      take?: string;
       time?: string;
     } = {},
   ) => {
@@ -451,6 +462,7 @@ export function InboxList(props: {
         selected={false}
         showThreads={!options.itemRow}
         snoozeMenuOpen={snoozeKey === key}
+        take={options.take}
         time={options.time ?? row.waitingSince}
         title={titleOf(row.conversationId) ?? row.newest.title}
       />
@@ -681,6 +693,16 @@ export function InboxList(props: {
             )}
           </InboxSection>
         ) : null}
+        <InboxSection
+          collapsed={collapsed.has("grabs")}
+          count={data.grabRows.length}
+          label="Up for grabs"
+          onToggle={() => toggleSection("grabs")}
+        >
+          {data.grabRows.map((row) =>
+            bundleRow(row, { key: `grabs:${row.key}`, take: "I'll take it" }),
+          )}
+        </InboxSection>
         {automationsError}
         {stream()}
       </>

@@ -170,6 +170,31 @@ export const digest = {
   title: "Digest skipped two noisy alerts",
 };
 
+// An ask for Everyone in its own Conversation: up for grabs until someone
+// takes it.
+export const grab = {
+  ...base,
+  addedByConversationId: "slack:CGRAB:1770003600.000300",
+  assignedToEveryone: true,
+  assignees: [],
+  body: "The usual on-call is out on Friday.",
+  canTake: true,
+  createdAt: "2026-08-07T10:00:00.000Z",
+  id: "item-grab",
+  request: {
+    question: "Who covers the Friday deploy?",
+    fields: [
+      {
+        id: "cover",
+        kind: "choice",
+        label: "Cover",
+        options: [{ label: "I can" }, { label: "Not this week" }],
+      },
+    ],
+  },
+  title: "Cover the Friday deploy",
+};
+
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
@@ -268,7 +293,19 @@ export async function mockReviewItems(
       const item = open.find((i) => i.id === id);
       if (options.failActions?.includes(id))
         return route.fulfill({ json: { error: "Failed" }, status: 500 });
-      actions.push({ body: route.request().postDataJSON(), id });
+      const body = route.request().postDataJSON();
+      actions.push({ body, id });
+      // A take makes the viewer the only assignee, and the ask stays open.
+      if (item && body?.action === "take") {
+        const taken = {
+          ...item,
+          assignedToEveryone: false,
+          assignees: [viewer],
+          canTake: false,
+        };
+        open = open.map((i) => (i.id === id ? taken : i));
+        return route.fulfill({ json: taken });
+      }
       if (options.keepOpen) return route.fulfill({ json: item });
       open = open.filter((i) => i.id !== id);
       if (item) closedNow.push({ ...item, status: "done" });
