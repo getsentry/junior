@@ -201,6 +201,39 @@ describe("snoozes", () => {
     expect(active).toHaveLength(1);
   });
 
+  it("does not let a snooze wake on Slack channel messages", async () => {
+    const ana = await user("ana@example.com");
+    await addItem(ROOT, [ana], "Review acme entry");
+    const asAna = api(fixture, ana);
+
+    for (const trigger of [
+      { identifier: "CPRIVATE" },
+      { match: { channelId: "CPRIVATE" } },
+    ]) {
+      const response = await asAna.snooze({
+        action: "wake",
+        subject: { conversationId: ROOT },
+        triggers: [
+          NEW_ITEM,
+          {
+            kind: "event",
+            namespace: "slack",
+            resourceType: "channel",
+            events: ["message.posted"],
+            ...trigger,
+          },
+        ],
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(
+      await getDb()
+        .select()
+        .from(juniorAutomations)
+        .where(eq(juniorAutomations.action, "wake")),
+    ).toEqual([]);
+  });
+
   it("does not let a viewer snooze a row they cannot see", async () => {
     const ana = await user("ana@example.com");
     const bob = await user("bob@example.com");

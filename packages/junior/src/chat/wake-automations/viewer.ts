@@ -12,6 +12,7 @@ import {
   reviewItemVisibleTo,
 } from "@/chat/review-items/access";
 import { getReviewItem } from "@/chat/review-items/store";
+import { SLACK_EVENT_NAMESPACE } from "@/chat/slack/channel-message-events";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorReviewItems } from "@/db/schema/review-items";
 import {
@@ -99,6 +100,14 @@ function requireUsableTriggers(triggers: WakeTrigger[], nowMs: number): void {
   }
   const event = wakeEventTrigger(triggers);
   if (!event) return;
+  // A Slack channel-message Event runs only in its own channel. A snooze has
+  // no channel, and its wake would show activity in a channel that the
+  // creator may not be in.
+  if (event.namespace === SLACK_EVENT_NAMESPACE) {
+    throw new WakeAutomationInputError(
+      "A snooze cannot wake on Slack channel messages.",
+    );
+  }
   const problems = registeredEventTriggerProblems(
     automationEventCatalog(getEventCatalog()),
     event,
