@@ -57,7 +57,7 @@ it("reads link cards through plugin-owned credentials as a system Actor", async 
         objectLinks: [
           {
             filters: [{ host: "docs.test", pathPrefix: "/d/" }],
-            objectType: "document",
+            objectTypes: ["document"],
             canView: async () => true,
             async resolve(ctx, url) {
               const response = await ctx.egress.fetch({
@@ -170,7 +170,7 @@ it("checks link access with only the viewer's own OAuth token", async () => {
               statuses.push(response.status);
               return response.ok;
             },
-            objectType: "task",
+            objectTypes: ["task"],
             async resolve(_ctx, url) {
               return {
                 kind: "object",

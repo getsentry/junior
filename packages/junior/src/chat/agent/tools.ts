@@ -93,6 +93,7 @@ import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
 interface RunSandboxArgs {
@@ -149,7 +150,16 @@ export async function createRunSandbox(
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
-    prepareSandbox: pluginHooks.prepareSandbox,
+    prepareSandbox: async (sandbox) => {
+      const actor = args.currentActor;
+      if (actor) {
+        await renewPreviewOrigins(
+          sandbox,
+          async () => (await readActorIdentity(actor))?.user,
+        );
+      }
+      await pluginHooks.prepareSandbox(sandbox);
+    },
     prepareWorkspace: async (sandbox, recipe, signal) =>
       await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
