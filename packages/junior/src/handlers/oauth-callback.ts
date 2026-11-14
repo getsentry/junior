@@ -18,7 +18,7 @@ import {
 // ast-grep-ignore: no-raw-slack-turn-post -- "Account connected" notice when no Turn resumes
 import { postSlackMessage } from "@/chat/slack/outbound";
 
-import { logWarn, runBestEffort } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 
@@ -413,44 +413,50 @@ export async function GET(
     !isNativeIdentityProvider(provider) &&
     (linkActor?.platform === "slack" || linkActor?.platform === "web")
   ) {
-    await runBestEffort(
-      async () => {
-        await linkOAuthAccountIdentity({
-          account,
-          actor: linkActor,
-          provider,
-          verifiedEmails,
-        });
-      },
-      "oauth.callback.identity_link.failed",
-      { "app.credential.provider": provider },
-    );
+    try {
+      await linkOAuthAccountIdentity({
+        account,
+        actor: linkActor,
+        provider,
+        verifiedEmails,
+      });
+    } catch (error) {
+      // best-effort: decision (secondary write). The token is already stored; a
+      // throw would show a failed connect for a working connection. See the PR
+      // decisions.
+      logException(error, "oauth.callback.identity_link.failed", {
+        "app.credential.provider": provider,
+      });
+    }
   }
 
   const resumeConversationId = stored.resumeConversationId;
   if (resumeConversationId) {
-    await runBestEffort(
-      async () => {
-        await recordAuthenticationLinked({
-          conversationId: resumeConversationId,
-          provider,
-          actorId: stored.userId,
-          providerLabel,
-          ...(account?.label ? { accountLabel: account.label } : undefined),
-          ...(stored.resumeSessionId
-            ? {
-                authorizationId: pluginAuthorizationId({
-                  provider,
-                  sessionId: stored.resumeSessionId,
-                }),
-                turnId: stored.resumeSessionId,
-              }
-            : undefined),
-        });
-      },
-      "oauth.callback.authentication_event.failed",
-      { "app.credential.provider": provider },
-    );
+    try {
+      await recordAuthenticationLinked({
+        conversationId: resumeConversationId,
+        provider,
+        actorId: stored.userId,
+        providerLabel,
+        ...(account?.label ? { accountLabel: account.label } : undefined),
+        ...(stored.resumeSessionId
+          ? {
+              authorizationId: pluginAuthorizationId({
+                provider,
+                sessionId: stored.resumeSessionId,
+              }),
+              turnId: stored.resumeSessionId,
+            }
+          : undefined),
+      });
+    } catch (error) {
+      // best-effort: decision (secondary write). The token is already stored; a
+      // throw would show a failed connect for a working connection. See the PR
+      // decisions.
+      logException(error, "oauth.callback.authentication_event.failed", {
+        "app.credential.provider": provider,
+      });
+    }
   }
 
   // Dashboard-started connections belong to a web actor with no App Home.

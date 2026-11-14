@@ -2,7 +2,7 @@ import { automationTaskDescription } from "@/chat/automations/task";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
-import { runBestEffort } from "@/chat/logging";
+import { logException } from "@/chat/logging";
 import { readScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
@@ -46,31 +46,30 @@ export async function notifyAutomationBlocked(
     reason: string;
   },
 ): Promise<void> {
-  await runBestEffort(
-    async () => {
-      const task =
-        ref.kind === "scheduled"
-          ? await readScheduledAutomation(getDb(), ref.automationId)
-          : await getEventAutomation(getDb(), ref.automationId);
-      if (!task) return;
-      const title =
-        task.title ??
-        fallbackShortTitle(
-          automationTaskDescription(task.task),
-          ref.kind === "scheduled"
-            ? "Scheduled automation"
-            : "Event automation",
-        );
-      // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
-      await postSlackMessage({
-        channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
-        text: buildBlockedNoticeText(ref.automationId, title, ref.reason),
-      });
-    },
-    "automation.blocked_notice.failed",
-    {
+  try {
+    const task =
+      ref.kind === "scheduled"
+        ? await readScheduledAutomation(getDb(), ref.automationId)
+        : await getEventAutomation(getDb(), ref.automationId);
+    if (!task) return;
+    const title =
+      task.title ??
+      fallbackShortTitle(
+        automationTaskDescription(task.task),
+        ref.kind === "scheduled" ? "Scheduled automation" : "Event automation",
+      );
+    // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
+    await postSlackMessage({
+      channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
+      text: buildBlockedNoticeText(ref.automationId, title, ref.reason),
+    });
+  } catch (error) {
+    // best-effort: decision (silent side effect). The Automation is already
+    // stored as blocked, and the dashboard shows why; a throw would fail the
+    // run that blocked it. See the PR decisions.
+    logException(error, "automation.blocked_notice.failed", {
       "app.task.type": ref.kind,
       ...(ref.dispatchId ? { "app.dispatch.id": ref.dispatchId } : undefined),
-    },
-  );
+    });
+  }
 }

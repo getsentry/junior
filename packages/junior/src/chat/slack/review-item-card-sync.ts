@@ -1,7 +1,7 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import { runBestEffort } from "@/chat/logging";
+import { logException } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
@@ -164,62 +164,63 @@ export async function syncReviewItemSlackCards(args: {
   itemId: string;
 }): Promise<void> {
   const { getSlackAdapter, itemId } = args;
-  await runBestEffort(
-    async () => {
-      const attempt = await withLock(
-        getStateAdapter(),
-        `review-item-slack-cards:${itemId}`,
-        async () => {
-          const db = getDb();
-          const item = await getReviewItem(db, itemId);
-          if (!item) return;
-          const rows = await db
-            .select()
-            .from(juniorReviewItemSlackCards)
-            .where(eq(juniorReviewItemSlackCards.itemId, item.id));
-          // A card is per Slack thread, not per Conversation: a child agent
-          // shares the thread of its parent, so an item linked to both shows
-          // one card. The row names the Conversation whose routing found the
-          // thread.
-          const [linked, carded] = await Promise.all([
-            Promise.all(item.conversationIds.map(resolveCardThread)),
-            Promise.all(
-              rows.map((row) => resolveCardThread(row.conversationId)),
-            ),
-          ]);
-          const linkedThreads = new Map<string, CardThread>();
-          for (const thread of linked) {
-            if (thread && !linkedThreads.has(threadKey(thread))) {
-              linkedThreads.set(threadKey(thread), thread);
-            }
+  try {
+    const attempt = await withLock(
+      getStateAdapter(),
+      `review-item-slack-cards:${itemId}`,
+      async () => {
+        const db = getDb();
+        const item = await getReviewItem(db, itemId);
+        if (!item) return;
+        const rows = await db
+          .select()
+          .from(juniorReviewItemSlackCards)
+          .where(eq(juniorReviewItemSlackCards.itemId, item.id));
+        // A card is per Slack thread, not per Conversation: a child agent
+        // shares the thread of its parent, so an item linked to both shows
+        // one card. The row names the Conversation whose routing found the
+        // thread.
+        const [linked, carded] = await Promise.all([
+          Promise.all(item.conversationIds.map(resolveCardThread)),
+          Promise.all(rows.map((row) => resolveCardThread(row.conversationId))),
+        ]);
+        const linkedThreads = new Map<string, CardThread>();
+        for (const thread of linked) {
+          if (thread && !linkedThreads.has(threadKey(thread))) {
+            linkedThreads.set(threadKey(thread), thread);
           }
-          const cardedKeys = new Set(
-            carded.flatMap((thread) => (thread ? [threadKey(thread)] : [])),
-          );
-          const missing =
-            item.status === "open"
-              ? [...linkedThreads.values()].filter(
-                  (thread) => !cardedKeys.has(threadKey(thread)),
-                )
-              : [];
-          const results = await Promise.allSettled([
-            ...rows.map((row, index) => {
-              const thread = carded[index];
-              const shown = !!thread && linkedThreads.has(threadKey(thread));
-              return updateCard(item, row, shown, getSlackAdapter);
-            }),
-            ...missing.map((thread) => postCard(item, thread, getSlackAdapter)),
-          ]);
-          const failed = results.find((result) => result.status === "rejected");
-          if (failed) throw failed.reason;
-        },
-        { waitMs: SYNC_LOCK_WAIT_MS },
-      );
-      if (!attempt.acquired) {
-        throw new Error("Another Review item card sync held the lock");
-      }
-    },
-    "review_item.slack_card.sync.failed",
-    { "app.review_item.id": itemId },
-  );
+        }
+        const cardedKeys = new Set(
+          carded.flatMap((thread) => (thread ? [threadKey(thread)] : [])),
+        );
+        const missing =
+          item.status === "open"
+            ? [...linkedThreads.values()].filter(
+                (thread) => !cardedKeys.has(threadKey(thread)),
+              )
+            : [];
+        const results = await Promise.allSettled([
+          ...rows.map((row, index) => {
+            const thread = carded[index];
+            const shown = !!thread && linkedThreads.has(threadKey(thread));
+            return updateCard(item, row, shown, getSlackAdapter);
+          }),
+          ...missing.map((thread) => postCard(item, thread, getSlackAdapter)),
+        ]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) throw failed.reason;
+      },
+      { waitMs: SYNC_LOCK_WAIT_MS },
+    );
+    if (!attempt.acquired) {
+      throw new Error("Another Review item card sync held the lock");
+    }
+  } catch (error) {
+    // best-effort: decision (silent side effect). The item change is already
+    // stored and shows on the dashboard; a throw would fail that change over
+    // its Slack card. See the PR decisions.
+    logException(error, "review_item.slack_card.sync.failed", {
+      "app.review_item.id": itemId,
+    });
+  }
 }

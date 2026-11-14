@@ -5,7 +5,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
-import { runBestEffort } from "@/chat/logging";
+import { logException } from "@/chat/logging";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
@@ -384,10 +384,15 @@ const RUN_BUILT_TOOL_BUILDERS = {
       // Lets the requester send this Preview a personal token for live data.
       // The Preview works without the record: Connect then refuses it, and
       // the viewer pastes a token instead.
-      await runBestEffort(async () => {
+      try {
         const owner = (await context.resolveActorIdentity?.())?.user;
         if (owner) await recordPreviewOrigin({ ownerEmail: owner.email, url });
-      }, "sandbox.preview_origin.record.failed");
+      } catch (error) {
+        // best-effort: after commit. The Preview already exists; a throw would
+        // fail the tool for a working Preview. Without the record, the viewer
+        // pastes a token.
+        logException(error, "sandbox.preview_origin.record.failed");
+      }
       return url;
     });
   },

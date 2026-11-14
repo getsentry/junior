@@ -10,7 +10,7 @@ import type { ZodTypeAny } from "zod";
 import type * as z from "zod";
 import { getConversationEventStore } from "@/chat/db";
 import { JUNIOR_NATIVE_EVENT_NAMESPACE } from "@/chat/conversations/structured-events";
-import { extractGenAiUsageSummary, runBestEffort } from "@/chat/logging";
+import { extractGenAiUsageSummary, logException } from "@/chat/logging";
 import * as gateway from "@/chat/pi/client";
 import { agentTurnCostUsd } from "@/chat/usage";
 
@@ -73,29 +73,32 @@ async function recordCost(
   if (costUsd === undefined || !("conversationId" in cost)) return;
   // A failed write is logged, not thrown, so it cannot discard a model
   // result that already succeeded.
-  await runBestEffort(
-    async () => {
-      await getConversationEventStore().append(
-        cost.conversationId,
-        [
-          {
-            createdAtMs: Date.now(),
-            data: {
-              type: "structured_event",
-              namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-              name: operation,
-              version: 1,
-              ...(cost.turnId ? { turnId: cost.turnId } : undefined),
-              content: { costUsd },
-            },
+  try {
+    await getConversationEventStore().append(
+      cost.conversationId,
+      [
+        {
+          createdAtMs: Date.now(),
+          data: {
+            type: "structured_event",
+            namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+            name: operation,
+            version: 1,
+            ...(cost.turnId ? { turnId: cost.turnId } : undefined),
+            content: { costUsd },
           },
-        ],
-        { activity: "preserve" },
-      );
-    },
-    "model_cost.record.failed",
-    { "gen_ai.prompt.name": `junior.${operation}` },
-  );
+        },
+      ],
+      { activity: "preserve" },
+    );
+  } catch (error) {
+    // best-effort: decision (secondary write). The model call already ran and
+    // is paid for; a throw would discard its result and pay again on retry. See
+    // the PR decisions.
+    logException(error, "model_cost.record.failed", {
+      "gen_ai.prompt.name": `junior.${operation}`,
+    });
+  }
 }
 
 /** Run a text completion and attribute its cost. */
