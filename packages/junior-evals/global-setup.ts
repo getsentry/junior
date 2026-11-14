@@ -169,6 +169,7 @@ export default async function setup(
     try {
       await cleanup();
     } catch (cleanupError) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- `errors` keeps both failures; `cause` keeps the setup failure first.
       throw new AggregateError(
         [error, cleanupError],
         "Eval global setup and cleanup failed",

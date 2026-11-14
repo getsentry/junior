@@ -1426,6 +1426,7 @@ export function parsePluginManifest(
   } catch (error) {
     throw new Error(
       `Invalid plugin manifest in ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 
