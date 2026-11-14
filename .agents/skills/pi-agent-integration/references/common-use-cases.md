@@ -26,7 +26,6 @@ Use `streamFn` when model calls must pass through a backend, trace layer, gatewa
 - Preserve the `StreamFn` contract. Return a stream and encode expected provider failures.
 - Use `streamProxy` when an untrusted client needs server-owned auth.
 - Use `onPayload` and `onResponse` for observation or patching without replacing the stream function.
-- Do not rely on finalized tool-call metadata through published `0.84.1` `streamProxy`; read the troubleshooting reference.
 
 ## Resolve short-lived credentials
 
@@ -75,12 +74,10 @@ Call `reset()` only after `waitForIdle()`. It rejects while a run is active.
 
 ## Stop or prepare the next turn
 
-Use `shouldStopAfterTurn` on `Agent` or `AgentLoopConfig` to stop after a complete turn and before queues are polled.
+Use `finishTurn` on `Agent` or `AgentLoopConfig` and return `{ action: "end" }` to stop after a complete turn. It leaves the queues untouched.
 
 Use `Agent.prepareNextTurnWithContext` when the next provider request needs a replacement context, model, or thinking level. Use low-level `prepareNextTurn` for the same turn-context contract in `AgentLoopConfig`.
 
 ## Add durable sessions
 
-Use `Session` and a `SessionRepo` directly when the app needs a durable tree but can keep orchestration in bare `Agent`. Use `InMemorySessionRepo`, `JsonlSessionRepo`, or a backend that passes the `/session/testing` conformance suite.
-
-Do not use published `0.84.1` `AgentHarness` operation methods as a production orchestration layer. They are scaffold paths and most reject with `HarnessNotImplemented`.
+Pi `1.0.0` removed sessions from this package. Use `@earendil-works/pi-durable`.

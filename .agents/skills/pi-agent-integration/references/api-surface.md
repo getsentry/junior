@@ -3,17 +3,17 @@
 Open this when wiring or updating Pi `Agent`, low-level loop, provider, stream, or tool APIs.
 
 Primary package: `@earendil-works/pi-agent-core`
-Published baseline: npm `latest` `0.84.1`
+Published baseline: npm `latest` `1.5.2`
 
 ## Package facts
 
-| Area         | Current contract                                                                                                 |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Runtime      | Node `>=22.19.0`                                                                                                 |
-| Repository   | `github.com/earendil-works/pi`, package directory `packages/agent`                                               |
-| Imports      | Root package, `/node` for `NodeExecutionEnv`, and `/session/testing` for session backend conformance tests       |
-| Model layer  | `@earendil-works/pi-ai`; a bound `Models.streamSimple` satisfies `StreamFn`                                      |
-| Main exports | Core agent and loops, proxy helpers, harness and session APIs, compaction helpers, search helpers, and telemetry |
+| Area         | Current contract                                                                                               |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| Runtime      | Node `>=22.19.0`                                                                                               |
+| Repository   | `github.com/earendil-works/pi`, package directory `packages/agent`                                             |
+| Imports      | Root package only                                                                                              |
+| Model layer  | `@earendil-works/pi-ai`; a bound `Models.streamSimple` satisfies `StreamFn`, which takes a `TranscriptContext` |
+| Main exports | `Agent`, the agent loops, `streamProxy`, `setDefaultStreamFn`, `DEFAULT_AGENT_IDENTITY`, and their types       |
 
 ## `Agent` options
 
@@ -26,11 +26,12 @@ Published baseline: npm `latest` `0.84.1`
 | `getApiKey(provider)`                | Resolve credentials for each model call. Return `undefined` for an expected missing credential.                            |
 | `onPayload`, `onResponse`            | Observe or patch provider payloads and responses through `pi-ai` stream options.                                           |
 | `beforeToolCall`, `afterToolCall`    | Block, inspect, patch, or terminate tool results. Honor the `AbortSignal`.                                                 |
-| `shouldStopAfterTurn`                | Stop after a complete turn and before queues or another model call. Receives turn context and the run signal.              |
+| `finishTurn`                         | Runs after the turn is finalized and before `turn_end`. Return `{ action: "end" }` to stop after `turn_end`.               |
+| `prepareRequest`                     | Update the request just before each provider call.                                                                         |
 | `prepareNextTurn`                    | Return a next-turn update. This compatibility-shaped `Agent` hook receives only the run signal.                            |
 | `prepareNextTurnWithContext`         | Return a next-turn context, model, or thinking update with the completed-turn context and run signal. Prefer this variant. |
 | `steeringMode`, `followUpMode`       | Drain queues as `"one-at-a-time"` or `"all"`. Both default to one-at-a-time.                                               |
-| Other request options                | `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, and `toolExecution`.                                       |
+| Other request options                | `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `toolExecution`, and `identity`.                           |
 
 `Agent` requires an options object and `streamFn` in the public type contract. The runtime fallback for older compiled consumers is not a latest-API integration path. The public mutable stream property is `agent.streamFunction`.
 
@@ -70,6 +71,7 @@ Keep custom messages in state when useful. Filter or map them in `convertToLlm`.
 - Default batch mode is `parallel`. Preflight is sequential. Allowed tools run concurrently.
 - `tool_execution_end` follows completion order. Tool-result messages and `turn_end.toolResults` follow assistant source order.
 - Global `toolExecution: "sequential"` or any per-tool `executionMode: "sequential"` makes the full batch sequential.
+- Pi calls the tool's `prepareArguments`, then validates with `@earendil-works/pi-schema` and coerces values, for example `null` to `"null"` for a string.
 - `beforeToolCall` runs after start emission and argument validation. A blocked result can include `reason` and `terminate`.
 - `afterToolCall` can replace `content`, `details`, `isError`, `usage`, or `terminate`. These values are replacements, not deep merges.
 - `AgentToolResult` can include `usage`, `addedToolNames`, and `terminate`.
@@ -83,7 +85,7 @@ Keep custom messages in state when useful. Filter or map them in `convertToLlm`.
 - The `runAgentLoop` variants also require an event sink before `signal` and `streamFn`.
 - Pass `undefined` in the signal position when no signal exists. The final `streamFn` argument is required.
 - Low-level-only queue providers are `getSteeringMessages` and `getFollowUpMessages`.
-- `shouldStopAfterTurn` and `prepareNextTurn` exist on both the low-level config and the `Agent` wrapper.
+- `finishTurn`, `prepareRequest`, and `prepareNextTurn` exist on both the low-level config and the `Agent` wrapper.
 - Raw streams preserve event order but do not await consumer event handling between producer phases.
 
 ## Proxy streams
@@ -91,4 +93,3 @@ Keep custom messages in state when useful. Filter or map them in `convertToLlm`.
 - `StreamFn` structurally matches `Models.streamSimple`.
 - Encode expected failures with protocol events and a final assistant message whose `stopReason` is `"error"` or `"aborted"`.
 - `streamProxy(model, context, options)` accepts `authToken`, `proxyUrl`, a local `signal`, and serializable stream options, including OpenAI-compatible `samplingParams`.
-- Check `references/troubleshooting-workarounds.md` for the published `0.84.1` finalized tool-call metadata defect.

@@ -1,18 +1,17 @@
 ---
 name: pi-agent-integration
-description: Guides implementation and review of the latest `@earendil-works/pi-agent-core` API. Use when a task mentions Pi `Agent`, agent loops, streaming, tools, queues, continuation, proxying, aborts, sessions, skills, compaction, or the current `AgentHarness` scaffold.
+description: Guides implementation and review of the latest `@earendil-works/pi-agent-core` API. Use when a task mentions Pi `Agent`, agent loops, streaming, tools, queues, continuation, proxying, or aborts.
 ---
 
 Implement Pi consumers against the latest published API. Keep streaming stable, queue behavior explicit, and wrapper code small.
 
 ## Step 1: Classify the request
 
-| Request type                                                                      | Read first                                  |
-| --------------------------------------------------------------------------------- | ------------------------------------------- |
-| Wire or update `Agent`, loop, provider, stream, or tool APIs                      | `references/api-surface.md`                 |
-| Add Pi behavior in an app, library, runtime, or adapter                           | `references/common-use-cases.md`            |
-| Use `AgentHarness`, sessions, skills, resources, compaction, or execution helpers | `references/harness.md`                     |
-| Debug streaming, tools, queues, continuation, proxy, abort, or harness failures   | `references/troubleshooting-workarounds.md` |
+| Request type                                                           | Read first                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------- |
+| Wire or update `Agent`, loop, provider, stream, or tool APIs           | `references/api-surface.md`                 |
+| Add Pi behavior in an app, library, runtime, or adapter                | `references/common-use-cases.md`            |
+| Debug streaming, tools, queues, continuation, proxy, or abort failures | `references/troubleshooting-workarounds.md` |
 
 Load each reference that the task needs. Keep guidance Pi-specific unless the user asks about a consuming product.
 
@@ -27,11 +26,11 @@ Load each reference that the task needs. Keep guidance Pi-specific unless the us
 7. Continue a normal run only from a non-empty `user` or `toolResult` tail. An `assistant` tail can only drain queued steering or follow-up messages.
 8. Keep `streamFn`, `convertToLlm`, `transformContext`, `getApiKey`, queue providers, and loop hooks no-throw for expected failures. Return safe values or encode the failure in stream events.
 9. Keep tool calls, progress, results, thinking deltas, and provider payloads internal unless the product exposes them on purpose.
-10. In `0.84.1`, do not recommend `AgentHarness` run, queue, hook, or navigation paths for production use. They are scaffold APIs and most reject with `HarnessNotImplemented`. Use bare `Agent`, session APIs, and standalone helpers until the published implementation is complete.
+10. Since `1.0.0`, the package contains only `Agent`, the agent loop, the proxy stream, and their types. The harness, sessions, compaction, skills, and prompt-template helpers are gone. Do not recommend them.
 
 ## Step 3: Implement with minimal surface
 
-1. Prefer Pi options over wrapper state machines: `streamFn`, `getApiKey`, `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `onPayload`, `onResponse`, `beforeToolCall`, `afterToolCall`, `shouldStopAfterTurn`, `prepareNextTurnWithContext`, `toolExecution`, `steeringMode`, and `followUpMode`.
+1. Prefer Pi options over wrapper state machines: `streamFn`, `getApiKey`, `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `identity`, `onPayload`, `onResponse`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest`, `prepareNextTurnWithContext`, `toolExecution`, `steeringMode`, and `followUpMode`.
 2. Mutate `Agent` through `agent.state` and public runtime options. Call `reset()` only when idle.
 3. Use `transformContext` for message-level pruning or injection. Use `convertToLlm` for provider-compatible role conversion and filtering.
 4. Set queue modes to `"one-at-a-time"` or `"all"` when ordering or batching matters.
@@ -48,7 +47,6 @@ Load each reference that the task needs. Keep guidance Pi-specific unless the us
 5. Verify `streamFn` encodes expected provider failures instead of throwing or rejecting.
 6. Verify parallel and sequential tool ordering, hook blocking and patches, progress updates, usage, added tools, and termination.
 7. Verify `Agent.subscribe()` listener settlement and `waitForIdle()` with async listeners.
-8. When reviewing the `AgentHarness` scaffold, verify implemented status in the published source before recommending any method.
 
 ## Step 5: Keep version discipline
 

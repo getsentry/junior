@@ -14,8 +14,6 @@ In scope:
 - Low-level agent loop APIs.
 - `streamFn`, `streamProxy`, provider request hooks, and failure contracts.
 - Tool execution, progress, result metadata, ordering, and termination.
-- Current `AgentHarness` readiness and declared surface.
-- Session, repository, environment, skill, prompt-template, compaction, search, and helper APIs.
 - Known published defects and source-backed workarounds.
 
 Out of scope:
@@ -28,7 +26,7 @@ Out of scope:
 ## Users And Trigger Context
 
 - Primary users: agents that implement, debug, or review Pi integrations.
-- Common requests: integrate Pi, wire `Agent`, stream text, debug `continue()`, execute tools, proxy model calls, add sessions, or assess `AgentHarness`.
+- Common requests: integrate Pi, wire `Agent`, stream text, debug `continue()`, execute tools, or proxy model calls.
 - Should not trigger for generic LLM SDK use or product-specific behavior that does not clearly depend on Pi.
 
 ## Runtime Contract
@@ -61,7 +59,6 @@ Do not store secrets, customer data, private application identifiers, or unrelat
 - `SKILL.md` contains routing, universal guardrails, implementation rules, verification, and version discipline.
 - `references/api-surface.md` contains core `Agent`, loop, tool, stream, and proxy contracts.
 - `references/common-use-cases.md` contains consumer task guidance.
-- `references/harness.md` contains current harness readiness, sessions, and helper guidance.
 - `references/troubleshooting-workarounds.md` contains failure diagnosis and workarounds.
 - `SOURCES.md` contains provenance, decisions, coverage, triggers, and open gaps.
 - `scripts/` and `assets/` are unused.
@@ -72,13 +69,12 @@ Do not store secrets, customer data, private application identifiers, or unrelat
 - Confirm each runtime reference is routed directly from `SKILL.md`.
 - Confirm files use skill-root-relative paths and contain no host-specific paths.
 - Confirm the package identity, npm latest version, Node engine, exports, public types, and implementation status.
-- Confirm streaming, continuation, queues, tools, loop signatures, proxy limitations, and harness readiness against the published package.
+- Confirm streaming, continuation, queues, tools, loop signatures, and proxy behavior against the published package.
 - Confirm trigger language covers Pi tasks and rejects generic SDK or unrelated product tasks.
 
 ## Known Limitations
 
 - The skill follows npm `latest` and can become stale after any Pi release.
-- `AgentHarness` is changing quickly. Every harness task needs a fresh implementation check.
 - Upstream fixes can exist on `main` before npm publishes them.
 
 ## Maintenance Notes
