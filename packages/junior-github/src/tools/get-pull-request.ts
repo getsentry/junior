@@ -269,7 +269,7 @@ export const gitHubGetPullRequestTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "Get a GitHub pull request with its required checks, merge state, and other conversations that created or changed it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+    "Get a GitHub pull request with its required checks, merge state, and other conversations that touched it, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
   inputSchema,
   outputSchema,
   async execute(
