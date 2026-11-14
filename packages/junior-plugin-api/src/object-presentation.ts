@@ -14,6 +14,7 @@ export const objectTypeSchema = z.enum([
   "web_page",
   "chart",
   "event",
+  "trace",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -31,6 +32,7 @@ const objectTypeLabels = {
   web_page: "Web page",
   chart: "Chart",
   event: "Event",
+  trace: "Trace",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -51,6 +53,7 @@ const objectIconNames = [
   "globe",
   "graph",
   "pulse",
+  "rows",
   "package",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
@@ -88,6 +91,7 @@ export function objectPresentation(object: {
       web_page: "globe",
       chart: "graph",
       event: "pulse",
+      trace: "rows",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];

@@ -262,6 +262,52 @@ describe("Sentry chart link cards", () => {
     ]);
   });
 
+  it("names the aggregate of each group when a chart has two", async () => {
+    const series = (yAxis: string, group: string, order: number) => ({
+      yAxis,
+      groupBy: [{ key: "span.op", value: group }],
+      meta: { interval: 300_000, order },
+      values: [1, 2].map((value, index) => ({
+        timestamp: 1782896400000 + index * 300_000,
+        value,
+      })),
+    });
+    fakeSentry(
+      { alice: ["11"] },
+      {
+        timeSeries: [
+          series("p95(span.duration)", "http.client", 0),
+          series("count(span.duration)", "http.client", 0),
+          series("p95(span.duration)", "db", 1),
+          series("count(span.duration)", "db", 1),
+        ],
+      },
+    );
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url = new URL(EXPLORE_URL);
+    url.searchParams.set(
+      "aggregateField",
+      field({
+        chartType: 1,
+        yAxes: ["p95(span.duration)", "count(span.duration)"],
+      }),
+    );
+    url.searchParams.append("aggregateField", field({ groupBy: "span.op" }));
+
+    const { objects } = await readCards(alice, [url.href]);
+
+    const facts = objects[0]?.object.facts;
+    expect(facts?.type === "chart" && facts.series.map((s) => s.label)).toEqual(
+      [
+        "http.client · p95(span.duration)",
+        "http.client · count(span.duration)",
+        "db · p95(span.duration)",
+        "db · count(span.duration)",
+      ],
+    );
+  });
+
   it("fits long series in the card facts limit", async () => {
     const points = Array.from({ length: 1000 }, (_, index) => 1000 + index / 7);
     fakeSentry(

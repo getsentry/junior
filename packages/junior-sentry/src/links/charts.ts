@@ -136,21 +136,24 @@ function fitFacts(chart: SentryChart): ChartFacts | undefined {
   return undefined;
 }
 
+// With more than one aggregate, each group has one series per aggregate,
+// so the label names both.
 function groupLabel(
   series: z.infer<typeof timeseriesSchema>["timeSeries"][number],
-  grouped: boolean,
+  link: SentryExploreLink,
 ): string {
-  if (series.meta?.isOther) return "Other";
-  if (!grouped) return series.yAxis;
-  return (
-    (series.groupBy ?? [])
-      .map(({ value }) =>
-        value === null || value === undefined || value === ""
-          ? "(no value)"
-          : String(value),
-      )
-      .join(", ") || series.yAxis
-  );
+  if (link.groupBy.length === 0) return series.yAxis;
+  const group = series.meta?.isOther
+    ? "Other"
+    : (series.groupBy ?? [])
+        .map(({ value }) =>
+          value === null || value === undefined || value === ""
+            ? "(no value)"
+            : String(value),
+        )
+        .join(", ");
+  if (!group) return series.yAxis;
+  return link.yAxes.length > 1 ? `${group} · ${series.yAxis}` : group;
 }
 
 /**
@@ -202,7 +205,7 @@ async function readExploreChart(
     series: [...parsed.data.timeSeries]
       .sort((a, b) => (a.meta?.order ?? 0) - (b.meta?.order ?? 0))
       .map((series) => ({
-        label: groupLabel(series, grouped),
+        label: groupLabel(series, link),
         points: fillGaps(series.values.map(({ value }) => value)),
       })),
   };

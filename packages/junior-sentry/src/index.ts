@@ -23,6 +23,7 @@ import {
 import { sentryChartLinks } from "./links/charts.js";
 import { sentryEventLinks } from "./links/events.js";
 import { sentryIssueLinks } from "./links/issues.js";
+import { sentryTraceLinks } from "./links/traces.js";
 import { linkifySentryShortIds } from "./links/short-ids.js";
 import {
   SENTRY_API_DOMAINS,
@@ -79,7 +80,12 @@ export function sentryPlugin(): PluginRegistration {
       isEnabled: () => Boolean(sentryWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
-    objectLinks: [sentryIssueLinks, sentryChartLinks, sentryEventLinks],
+    objectLinks: [
+      sentryIssueLinks,
+      sentryChartLinks,
+      sentryTraceLinks,
+      sentryEventLinks,
+    ],
     manifest: {
       commandEnv: {
         SENTRY_AUTH_TOKEN: "host_managed_credential",

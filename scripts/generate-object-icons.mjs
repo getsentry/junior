@@ -21,6 +21,7 @@ const names = [
   "globe",
   "graph",
   "pulse",
+  "rows",
   "package",
 ];
 const paths = Object.fromEntries(
