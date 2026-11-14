@@ -100,23 +100,41 @@ export function textMentionsBot(text: string, botUserId: string): boolean {
   return new RegExp(`<@${id}(?:\\|[^>]+)?>`).test(outside);
 }
 
+function sectionsMentionBot(
+  blocks: SlackInboundEvent["blocks"],
+  botUserId: string,
+): boolean {
+  return Boolean(
+    blocks?.some(
+      (block) =>
+        block.type === "section" &&
+        typeof block.text === "object" &&
+        block.text.type === "mrkdwn" &&
+        textMentionsBot(block.text.text, botUserId),
+    ),
+  );
+}
+
 /**
  * Return true when a Slack message mentions the bot in its text or in a
- * section block, outside code.
+ * section block, outside code. Section blocks inside the author's own
+ * attachments count too: Sentry metric alerts put their notes there to get a
+ * colored severity bar. Unfurl attachments show another message or URL, not
+ * the author's request, so they do not count.
  */
 export function eventMentionsBot(
-  event: Pick<SlackInboundEvent, "blocks" | "text">,
+  event: Pick<SlackInboundEvent, "attachments" | "blocks" | "text">,
   botUserId: string | undefined,
 ): boolean {
   return Boolean(
     botUserId &&
     (textMentionsBot(event.text ?? "", botUserId) ||
-      event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
+      sectionsMentionBot(event.blocks, botUserId) ||
+      event.attachments?.some(
+        (attachment) =>
+          !attachment.from_url &&
+          !attachment.app_unfurl_url &&
+          sectionsMentionBot(attachment.blocks, botUserId),
       )),
   );
 }

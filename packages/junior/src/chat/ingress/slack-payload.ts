@@ -40,6 +40,36 @@ type MessageFields = Partial<
     Pick<GenericMessageEvent, "channel_type">
 >;
 
+const slackBlocksSchema = z.array(
+  z.looseObject({
+    type: z.string(),
+    elements: z
+      .array(
+        z.looseObject({
+          type: z.string(),
+          elements: z
+            .array(
+              z.looseObject({
+                type: z.string(),
+                url: z.string().optional(),
+              }),
+            )
+            .optional(),
+        }),
+      )
+      .optional(),
+    text: z
+      .union([
+        z.string(),
+        z.looseObject({
+          type: z.enum(["mrkdwn", "plain_text"]),
+          text: z.string(),
+        }),
+      ])
+      .optional(),
+  }),
+);
+
 // Validate fields read by ingress and the adapter's parseMessage/extractLinks.
 // Preserve other fields, including nested blocks and files, for content projection.
 // Membership is checked separately so invalid author fields cannot fall back.
@@ -48,6 +78,8 @@ const slackEventSchema = z.looseObject({
   attachments: z
     .array(
       z.looseObject({
+        app_unfurl_url: z.string().optional(),
+        blocks: slackBlocksSchema.optional(),
         from_url: z.string().optional(),
         original_url: z.string().optional(),
         title: z.string().optional(),
@@ -75,37 +107,7 @@ const slackEventSchema = z.looseObject({
   team: z.string().optional(),
   team_id: z.string().optional(),
   username: z.string().optional(),
-  blocks: z
-    .array(
-      z.looseObject({
-        type: z.string(),
-        elements: z
-          .array(
-            z.looseObject({
-              type: z.string(),
-              elements: z
-                .array(
-                  z.looseObject({
-                    type: z.string(),
-                    url: z.string().optional(),
-                  }),
-                )
-                .optional(),
-            }),
-          )
-          .optional(),
-        text: z
-          .union([
-            z.string(),
-            z.looseObject({
-              type: z.enum(["mrkdwn", "plain_text"]),
-              text: z.string(),
-            }),
-          ])
-          .optional(),
-      }),
-    )
-    .optional(),
+  blocks: slackBlocksSchema.optional(),
   bot_id: z.string().optional(),
   channel: z.string().optional(),
   channel_type: z

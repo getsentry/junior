@@ -323,6 +323,35 @@ describe("Slack webhook auth boundary", () => {
     expect(queue.queuedMessages()).toHaveLength(1);
     await mention("UBOT");
     expect(queue.queuedMessages()).toHaveLength(2);
+
+    // Sentry metric alerts put the mention in a section block of a colored
+    // attachment. An unfurl that shows a mention is not a request.
+    const alert = async (attachment: Record<string, unknown>) => {
+      const envelope = slackEventsApiEnvelope({
+        eventType: "message",
+        channel: "C123",
+        user: "UBOT",
+        ts: `1712345.${String(sequence++).padStart(6, "0")}`,
+        text: "<https://example.com/alerts/1|*Critical: Error spike*>",
+      });
+      Object.assign(envelope.event, {
+        bot_id: "B_SENTRY",
+        attachments: [attachment],
+      });
+      expect((await app.fetch(slack.event(envelope))).status).toBe(200);
+      await waitUntil.flush();
+    };
+    const notes = {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `notes: <@${authTestOk().user_id}> investigate this alert`,
+      },
+    };
+    await alert({ from_url: "https://example.com/post", blocks: [notes] });
+    expect(queue.queuedMessages()).toHaveLength(2);
+    await alert({ color: "#FA4747", blocks: [notes] });
+    expect(queue.queuedMessages()).toHaveLength(3);
   });
 
   it.each(["message", "factory"] as const)(
