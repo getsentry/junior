@@ -115,10 +115,10 @@ function fakeSentry(access: Record<string, string[]>) {
   };
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(`${API}/dashboards/:id/`, ({ params, request }) =>
-      viewerOf(request) && params.id === "42"
+      viewerOf(request) && params["id"] === "42"
         ? HttpResponse.json(CHECKOUT_DASHBOARD)
         : HttpResponse.json({ detail: "Not found" }, { status: 404 }),
     ),
