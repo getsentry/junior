@@ -54,7 +54,7 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
-  replyTimeSegmentsReportSchema,
+  cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemActionSchema,
   reviewItemCountSchema,
@@ -141,7 +141,7 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import { readMockReplyTimeSegments } from "./reply-times";
+import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
@@ -276,9 +276,16 @@ export function createMockReportingApi(): Hono<{
       readMockPeoplePluginReports(params.data.email),
     );
   });
-  app.get("/reply-times", () =>
-    jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
-  );
+  app.get("/cache-warming/savings", (c) => {
+    const days = Number(c.req.query("days") ?? 30);
+    if (![1, 7, 30, 90].includes(days)) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    return jsonResponse(
+      cacheWarmingSavingsReportSchema,
+      readMockCacheWarmingSavings(days),
+    );
+  });
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
     if (!params.success) {
