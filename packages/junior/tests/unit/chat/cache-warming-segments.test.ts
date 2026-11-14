@@ -21,7 +21,6 @@ import {
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
@@ -50,13 +49,8 @@ const parentConversationId = "local:test:cache-warming-segments-parent";
 // Only this Conversation has an Automation run's Watch.
 const automationConversationId = "local:test:cache-warming-segments-automation";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
-const runPrompt = { platform: "local", mode: "conversation" } as const;
-// Warmups compare the stored prompt with the prompt of this deployment.
 const context: Context = {
-  systemPrompt: await buildDeploymentSystemPrompt(
-    runPrompt.platform,
-    runPrompt.mode,
-  ),
+  systemPrompt: "Answer the person.",
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
 };
 const finalReply: AssistantMessage = {
@@ -77,15 +71,17 @@ const finalReply: AssistantMessage = {
   timestamp: 1,
 };
 
+const definitionsKey = { platform: "local", mode: "conversation" } as const;
+
 // Run one Turn that ends with a final response, like one agent run does.
 async function endTurn(
   userActor: boolean,
   id = conversationId,
   turnContext = context,
-  mode: PromptMode = runPrompt.mode,
+  mode: PromptMode = definitionsKey.mode,
 ) {
   const recorder = createCacheWarmingRecorder(id, userActor, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   recorder.wrap((() => undefined) as never)(model, turnContext, {});
@@ -102,7 +98,7 @@ const toolCall = (name: string): AssistantMessage => ({
 // like one agent run does.
 async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
   const recorder = createCacheWarmingRecorder(conversationId, false, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   const stream = recorder.wrap((() => undefined) as never);
@@ -576,40 +572,6 @@ describe("cache warming gap segments", () => {
     }
   });
 
-  it("stops warming an idle period whose system prompt changed", async () => {
-    const state = getStateAdapter();
-    for (let i = 0; i < 20; i++) {
-      await state.appendToList(
-        "junior:cache_warming:gaps:user:1:none",
-        8 * MINUTE,
-      );
-    }
-    mocks.sendCacheWarmup.mockClear();
-    try {
-      const warmupRequests: unknown[] = [];
-      mockTitleModel("", {
-        onRequest: (request) => warmupRequests.push(request),
-      });
-      // A deploy since the Turn changed the system prompt.
-      await endTurn(true, conversationId, {
-        ...context,
-        systemPrompt: "The system prompt of an older deployment.",
-      });
-      const warmup = scheduledWarmup();
-      await runCacheWarmup(warmup);
-
-      expect(warmupRequests).toEqual([]);
-      expect(
-        await state.get(
-          `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
-        ),
-      ).toBeNull();
-      expect(scheduledWarmup()).toBe(warmup);
-    } finally {
-      await state.delete("junior:cache_warming:gaps:user:1:none");
-    }
-  });
-
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {
     vi.useFakeTimers();
     await endTurn(true);
@@ -672,7 +634,11 @@ describe("cache warming gap segments", () => {
       await endTurn(true);
       const warmup = scheduledWarmup();
       // The person replies. The warmup comes due before the model call ends.
-      const reply = createCacheWarmingRecorder(conversationId, true, runPrompt);
+      const reply = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        definitionsKey,
+      );
       reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
@@ -762,7 +728,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       await (await recorder.wrap()(model, imageContext, {})).result();
       await recorder.record(finalReply);
@@ -918,7 +884,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       recorder.wrap(base as never)(
         resolveGatewayModel(modelId),

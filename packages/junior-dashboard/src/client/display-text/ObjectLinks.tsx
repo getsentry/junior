@@ -1,4 +1,3 @@
-import { PreviewCard } from "@base-ui/react/preview-card";
 import type {
   ConversationDetailReport,
   OwnedObjectAnnotation,
@@ -11,12 +10,12 @@ import {
   type ReactNode,
 } from "react";
 
-import { ObjectIcon } from "../components/ObjectIcon";
+import { HoverPreview } from "../components/ui/hover-preview";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
-  ObjectPreviewImagesContext,
-  objectPreviewImagesFromAnnotations,
-} from "../conversations/objectPreviewImages";
+  SavedObjectsContext,
+  savedObjectsFromAnnotations,
+} from "../conversations/savedObjects";
 import {
   knownObjectsFromAnnotations,
   objectUrlKey,
@@ -24,9 +23,11 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { ANCHOR_CLASS } from "./links";
+import { PersonMention } from "./people";
 
-// A pointer that only passes over a link does not open its card.
-const PREVIEW_DELAY_MS = 350;
+// Fits most live cards, such as a pull request or a task. A taller card
+// scrolls in its body.
+const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
 type KnownObjectsValue = {
   objects: KnownObjects;
@@ -63,15 +64,15 @@ export function KnownObjectsProvider(props: {
       objects: knownObjectsFromAnnotations(props.annotations),
     };
   }, [props.annotations]);
-  const images = useMemo(
-    () => objectPreviewImagesFromAnnotations(props.annotations),
+  const saved = useMemo(
+    () => savedObjectsFromAnnotations(props.annotations),
     [props.annotations],
   );
   return (
     <KnownObjectsContext.Provider value={value}>
-      <ObjectPreviewImagesContext.Provider value={images}>
+      <SavedObjectsContext.Provider value={saved}>
         {props.children}
-      </ObjectPreviewImagesContext.Provider>
+      </SavedObjectsContext.Provider>
     </KnownObjectsContext.Provider>
   );
 }
@@ -146,43 +147,46 @@ export function mediaThumbnail(
     : undefined;
 }
 
-/** Show the object card when the reader hovers or focuses the link. */
+/**
+ * Show the object card when the reader hovers or focuses the link. With
+ * `reserveHeight`, the card has a fixed height, so it does not jump when a
+ * live card replaces a saved one.
+ */
 export function ObjectLinkPreview(props: {
   card: OwnedObjectAnnotation;
   children: ReactNode;
   className: string;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
   return (
-    <PreviewCard.Root>
-      <PreviewCard.Trigger
-        delay={PREVIEW_DELAY_MS}
-        // Running text links carry no outbound icon, so a paragraph of links
-        // reads as text.
-        render={
-          <a
-            className={props.className}
-            href={props.href}
-            rel="noreferrer"
-            target="_blank"
-          />
-        }
-      >
-        {props.children}
-      </PreviewCard.Trigger>
-      <PreviewCard.Portal>
-        <PreviewCard.Positioner
-          className="isolate z-50"
-          collisionPadding={8}
-          sideOffset={6}
-        >
-          <PreviewCard.Popup className="w-[30rem] max-w-[calc(100vw-1rem)] rounded-xl shadow-2xl shadow-black/40 outline-none">
-            <ObjectCard card={props.card} live={props.live} />
-          </PreviewCard.Popup>
-        </PreviewCard.Positioner>
-      </PreviewCard.Portal>
-    </PreviewCard.Root>
+    <HoverPreview
+      className={
+        props.reserveHeight ? RESERVED_PREVIEW_HEIGHT_CLASS : undefined
+      }
+      // The hover card is the frame, so it stays whole while the card scrolls.
+      content={
+        <ObjectCard
+          card={props.card}
+          className="my-0 rounded-none border-0"
+          fill={props.reserveHeight}
+          live={props.live}
+        />
+      }
+      // Running text links carry no outbound icon, so a paragraph of links
+      // reads as text.
+      trigger={
+        <a
+          className={props.className}
+          href={props.href}
+          rel="noreferrer"
+          target="_blank"
+        />
+      }
+    >
+      {props.children}
+    </HoverPreview>
   );
 }
 
@@ -194,6 +198,7 @@ export function ObjectTitleLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
   return (
     <ObjectLinkPreview
@@ -201,6 +206,7 @@ export function ObjectTitleLink(props: {
       className={ANCHOR_CLASS}
       href={props.href}
       live={props.live}
+      reserveHeight={props.reserveHeight}
     >
       {objectLinkText(props.card)}
     </ObjectLinkPreview>
@@ -239,30 +245,28 @@ export function ObjectThumbnailLink(props: {
 }
 
 /**
- * Show a bare URL to a person in running text as a compact chip: the avatar
- * and the name. People are the one object type that keeps a chip inline.
+ * Show a bare URL to a person in running text as a GitHub-style mention:
+ * the photo, then `@Name` as a plain link that previews the card.
  */
-export function PersonLinkChip(props: {
+export function PersonLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
   const { card } = props;
+  const facts = card.facts?.type === "person" ? card.facts : undefined;
   return (
-    <ObjectLinkPreview
-      card={card}
-      className="inline-flex max-w-full items-center gap-1 rounded-md border border-dashboard-border bg-dashboard-fill-faint px-1.5 align-bottom text-[0.9em] font-medium leading-6 text-dashboard-text no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      href={props.href}
-      live={props.live}
-    >
-      <ObjectIcon
-        decorative
-        facts={card.facts}
-        objectType={card.objectType}
-        size={14}
-        status={card.status}
-      />
-      <span className="min-w-0 truncate">{card.label}</span>
-    </ObjectLinkPreview>
+    <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
+      <ObjectLinkPreview
+        card={card}
+        className={ANCHOR_CLASS}
+        href={props.href}
+        live={props.live}
+        reserveHeight={props.reserveHeight}
+      >
+        @{card.label}
+      </ObjectLinkPreview>
+    </PersonMention>
   );
 }

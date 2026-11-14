@@ -81,7 +81,11 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import { attachMockObjectLink, readMockObjectLinks } from "./objects";
+import {
+  attachMockObjectLink,
+  MOCK_AVATAR_SVG,
+  readMockObjectLinks,
+} from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -229,6 +233,16 @@ export function createMockReportingApi(): Hono<{
         headers: {
           "cache-control": "private, max-age=86400",
           "content-type": "image/png",
+        },
+      }),
+  );
+  app.get(
+    "/people/avatars/:id",
+    () =>
+      new Response(MOCK_AVATAR_SVG, {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-type": "image/svg+xml",
         },
       }),
   );

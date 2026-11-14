@@ -1,21 +1,29 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
+import { dashboardCoreQueryOptions } from "../src/client/api";
 import {
   DisplayText,
   KnownObjectsProvider,
 } from "../src/client/display-text/DisplayText";
 import { textHasStandaloneUrl } from "../src/client/display-text/knownObjects";
 import { displayPlainText } from "../src/client/display-text/plainText";
+import type { DashboardCoreData } from "../src/client/types";
 
 // Links can ask the API for cards, so display text needs a query client.
-function markup(children: ReactNode) {
+// A viewer email seeds the signed-in person that mentions compare against.
+function markup(children: ReactNode, viewerEmail?: string) {
+  const client = new QueryClient();
+  if (viewerEmail) {
+    client.setQueryData(dashboardCoreQueryOptions().queryKey, {
+      me: { user: { email: viewerEmail } },
+    } as DashboardCoreData);
+  }
   return renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
-      {children}
-    </QueryClientProvider>,
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>,
   );
 }
 
@@ -163,6 +171,8 @@ describe("display text tokens", () => {
 describe("display text object links", () => {
   const PR = "https://github.com/acme/app/pull/7";
   const PERSON = "https://junior.example.com/people/dev%40example.com";
+  const NO_PHOTO_PERSON = "https://junior.example.com/people/ada%40example.com";
+  const PHOTO = "/api/people/avatars/dev";
   const CONVERSATION = "https://junior.example.com/conversations/slack%3AC1";
   const DOC = "https://docs.google.com/document/d/doc1/edit";
   const MESSAGE = "https://acme.slack.com/archives/C1/p1770021700000100";
@@ -188,12 +198,28 @@ describe("display text object links", () => {
     {
       ...saved,
       displayType: "Person",
+      facts: {
+        type: "person" as const,
+        avatarUrl: PHOTO,
+        email: "dev@example.com",
+      },
       key: "dev@example.com",
       label: "Morgan Lee",
       objectType: "person" as const,
       plugin: "junior",
       title: "Morgan Lee",
       url: PERSON,
+    },
+    {
+      ...saved,
+      displayType: "Person",
+      facts: { type: "person" as const, email: "ada@example.com" },
+      key: "ada@example.com",
+      label: "Ada Park",
+      objectType: "person" as const,
+      plugin: "junior",
+      title: "Ada Park",
+      url: NO_PHOTO_PERSON,
     },
     {
       ...saved,
@@ -253,11 +279,16 @@ describe("display text object links", () => {
     },
   ];
 
-  function render(text: string) {
+  function byUrl(url: string) {
+    return annotations.find((annotation) => annotation.url === url)!;
+  }
+
+  function render(text: string, viewerEmail?: string) {
     return markup(
       <KnownObjectsProvider annotations={annotations}>
         <DisplayText text={text} />
       </KnownObjectsProvider>,
+      viewerEmail,
     );
   }
 
@@ -281,7 +312,7 @@ describe("display text object links", () => {
         }),
       ]);
       expect(html).not.toContain("· Open");
-      expect(html).not.toContain("Latest saved state");
+      expect(html).not.toContain("Last fetched");
     }
   });
 
@@ -290,15 +321,15 @@ describe("display text object links", () => {
     const html = markup(
       <KnownObjectsProvider
         annotations={[
-          { ...annotations[0]!, title: "Fix the #72 regression" },
+          { ...byUrl(PR), title: "Fix the #72 regression" },
           {
-            ...annotations[5]!,
+            ...byUrl(PAGE),
             label: `${PAGE_TITLE.slice(0, 255)}…`,
             title: PAGE_TITLE,
           },
           // Some sources cut the label short with no "…".
           {
-            ...annotations[3]!,
+            ...byUrl(DOC),
             label: PAGE_TITLE.slice(0, 256),
             title: PAGE_TITLE,
           },
@@ -314,15 +345,18 @@ describe("display text object links", () => {
     ]);
   });
 
-  it("shows only plain links in a paragraph of links, and a person as a chip", () => {
+  it("shows only plain links in a paragraph of links, and a person as a GitHub-style mention", () => {
     const html = render(
       `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
     );
     const [person, ...rest] = anchors(html);
-    expect(person!.href).toBe(PERSON);
-    expect(person!.anchor).toContain("border");
-    expect(person!.label).toContain('<svg aria-hidden="true"');
-    expect(person!.label).toContain(">Morgan Lee</span>");
+    // The person is a round photo, then `@Name` as plain link text.
+    expect(person).toMatchObject({ href: PERSON, label: "@Morgan Lee" });
+    expect(html).toMatch(
+      new RegExp(
+        `<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/><a `,
+      ),
+    );
     // Each label is only the title text: no icon and no status.
     expect(rest.map(({ href, label }) => ({ href, label }))).toEqual([
       { href: CONVERSATION, label: "Investigate checkout latency" },
@@ -330,32 +364,109 @@ describe("display text object links", () => {
       { href: MESSAGE, label: "#proj-release" },
       { href: PAGE, label: "Release notes" },
     ]);
-    for (const link of rest) {
+    for (const link of [person!, ...rest]) {
       expect(link.anchor).not.toMatch(/border|bg-/);
     }
-    // No status, and no outbound icon: the person icon is the only one.
+    // No status, no outbound icon and no person icon.
     expect(html).not.toContain(" · ");
-    expect(html.split("<svg").length - 1).toBe(1);
+    expect(html).not.toContain("<svg");
+    expect(html).not.toContain("data-self-mention");
+  });
+
+  it("marks only the viewer's own mention", () => {
+    const html = render(
+      `Next, ${PERSON} and ${NO_PHOTO_PERSON} pick it up.`,
+      "DEV@example.com",
+    );
+    expect(html.match(/data-self-mention=""/g)).toHaveLength(1);
+    expect(html).toMatch(
+      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+    );
+
+    const slack = markup(
+      <MemoryRouter>
+        <DisplayText
+          mentions={[
+            {
+              avatarUrl: PHOTO,
+              email: "dev@example.com",
+              fullName: "Morgan Lee",
+              slackUserId: "U123",
+            },
+          ]}
+          text="Ping <@U123>."
+        />
+      </MemoryRouter>,
+      "dev@example.com",
+    );
+    expect(slack).toMatch(
+      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+    );
+  });
+
+  it("shows only the name for a person with no photo", () => {
+    const html = render(`Ask ${NO_PHOTO_PERSON} first.`);
+    expect(anchors(html).map(({ label }) => label)).toEqual(["@Ada Park"]);
+    expect(html).not.toMatch(/<img|<svg/);
   });
 
   it("shows a bare URL alone in a paragraph as the full card", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
       expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
-      expect(html).toContain("Latest saved state");
+      expect(html).toContain("Last fetched");
     }
   });
 
+  // The muted line above the card title.
+  function cardMeta(html: string) {
+    return html.match(/<p class="m-0 mb-1 [^"]*">([^<]*)<\/p>/)?.[1];
+  }
+
   it("shows a card for a URL of any type alone on its line", () => {
-    for (const [url, name] of [
-      [PERSON, "Person: Morgan Lee"],
-      [CONVERSATION, "Conversation: Investigate checkout latency"],
-      [DOC, "Google Doc: Release checklist"],
-      [MESSAGE, "Message: Hold the deploy until the pin lands."],
-      [PAGE, "Web page: Release notes"],
+    // Core owns `junior` objects, so no card names that plugin. A web page
+    // without a site name names its host.
+    for (const [url, name, meta] of [
+      [PERSON, "Person: Morgan Lee", "Person"],
+      [
+        CONVERSATION,
+        "Conversation: Investigate checkout latency",
+        "Conversation",
+      ],
+      [DOC, "Google Doc: Release checklist", "Google Doc · google"],
+      [
+        MESSAGE,
+        "Message: Hold the deploy until the pin lands.",
+        "Message · #proj-release",
+      ],
+      [PAGE, "Web page: Release notes", "blog.example.com"],
     ] as const) {
-      expect(cardCount(render(`Done.\n\n${url}`), name)).toBe(1);
+      const html = render(`Done.\n\n${url}`);
+      expect(cardCount(html, name)).toBe(1);
+      expect(cardMeta(html)).toBe(meta);
     }
+  });
+
+  it("names the site and author of a web page card", () => {
+    const html = markup(
+      <KnownObjectsProvider
+        annotations={[
+          {
+            ...annotations.find((annotation) => annotation.key === PAGE)!,
+            facts: {
+              type: "web_page" as const,
+              author: "Morgan Lee",
+              siteName: "Example Blog",
+            },
+          },
+        ]}
+      >
+        <DisplayText text={`Done.\n\n${PAGE}`} />
+      </KnownObjectsProvider>,
+    );
+    expect(cardMeta(html)).toBe("Example Blog · Morgan Lee");
+    // The header names them, so the facts do not repeat them.
+    expect(html.split("Morgan Lee").length - 1).toBe(1);
   });
 
   it("shows only the thumbnail of a video alone on its line", () => {
@@ -383,7 +494,7 @@ describe("display text object links", () => {
       /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
     );
     expect(html).not.toContain("acme/app#7");
-    expect(html).not.toContain("Latest saved state");
+    expect(html).not.toContain("Last fetched");
   });
 
   it("leaves links to unknown objects and other pages plain", () => {

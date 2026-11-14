@@ -2,6 +2,13 @@ import * as z from "zod";
 
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
+const duration = z.number().finite().nonnegative();
+
+// A Junior image path. Browsers never load a third-party image URL.
+const imagePath = z
+  .string()
+  .max(4000)
+  .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/);
 
 /** The longest object summary, in UTF-16 code units. */
 export const OBJECT_SUMMARY_MAX_LENGTH = 280;
@@ -88,6 +95,8 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     owner: text.optional(),
     modifiedAt: z.iso.datetime({ offset: true }).optional(),
+    // A file thumbnail from `ObjectLinkContext.imagePath`.
+    thumbnailUrl: imagePath.optional(),
   }),
   // Messages: where and when, never the text. The card description holds a
   // short snippet only for a viewer who may read the message.
@@ -107,12 +116,54 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     // A video or image page. A link alone on its line shows only the
     // thumbnail of such a page.
     media: z.enum(["video", "image"]).optional(),
-    // A Junior image path. Browsers never load a third-party image URL.
-    thumbnailUrl: z
-      .string()
-      .max(4000)
-      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+$/)
-      .optional(),
+    thumbnailUrl: imagePath.optional(),
+  }),
+  // Charts: up to five series over one time range, drawn the way the
+  // source page draws them. Points are oldest first and evenly spaced. A
+  // card shows the shape and the series names, not exact values.
+  z.strictObject({
+    type: z.literal("chart"),
+    summary: summary.optional(),
+    display: z.enum(["line", "bar", "area"]),
+    // What the points measure, such as `p95(span.duration)`.
+    yAxis: text,
+    // The time range, such as "Last 24 hours".
+    range: text,
+    series: z
+      .array(
+        z.strictObject({
+          label: text,
+          points: z.array(z.number().finite()).min(2).max(120),
+        }),
+      )
+      .min(1)
+      .max(5),
+  }),
+  // Traces: the root span, totals, and the first top-level spans, which
+  // the card draws as a small waterfall. Times are milliseconds from the
+  // trace start.
+  z.strictObject({
+    type: z.literal("trace"),
+    summary: summary.optional(),
+    rootOp: text.optional(),
+    rootName: text.optional(),
+    durationMs: duration,
+    spanCount: count,
+    errorCount: count,
+    performanceIssueCount: count,
+    projects: z.array(text).max(5),
+    spans: z
+      .array(
+        z.strictObject({
+          op: text.optional(),
+          name: text,
+          startMs: duration,
+          durationMs: duration,
+          // The span has an error or a performance issue.
+          issue: z.boolean().optional(),
+        }),
+      )
+      .max(12),
   }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
@@ -156,6 +207,17 @@ export function objectSummary(text: string): string | undefined {
     if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1);
   }
   return `${cut}…`;
+}
+
+function plural(value: number, noun: string): string {
+  return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`;
+}
+
+/** Format a span or trace duration, such as "850 ms" or "2.4 s". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${Number((ms / 1000).toPrecision(3))} s`;
+  return `${Number((ms / 60_000).toPrecision(3))} min`;
 }
 
 type ObjectField = { href?: string; key: string; label: string; value: string };
@@ -246,6 +308,19 @@ export function objectFactFields(
     case "web_page":
       add("siteName", "Site", facts.siteName);
       add("author", "Author", facts.author);
+      break;
+    case "chart":
+      add("range", "Range", facts.range);
+      break;
+    case "trace":
+      add("duration", "Duration", formatDuration(facts.durationMs));
+      add("spans", "Spans", facts.spanCount.toLocaleString("en-US"));
+      add(
+        "issues",
+        "Issues",
+        `${plural(facts.errorCount, "error")}, ${plural(facts.performanceIssueCount, "performance issue")}`,
+      );
+      add("projects", "Projects", list(facts.projects));
       break;
     case "person":
       add("email", "Email", facts.email);

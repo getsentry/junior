@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { generateKeyPairSync } from "node:crypto";
 import {
   EgressAuthRequired,
@@ -950,7 +951,10 @@ describe("github plugin", () => {
       conversationId: "slack:C123:1712345.0001",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     const result = await tool?.execute?.(
       {
@@ -1031,7 +1035,10 @@ describe("github plugin", () => {
       conversationId: "slack:C123:1712345.0002",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1061,7 +1068,10 @@ describe("github plugin", () => {
       conversationId: "slack:C123:1712345.0003",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1091,7 +1101,10 @@ describe("github plugin", () => {
       conversationId: "slack:C123:1712345.0004",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1123,7 +1136,10 @@ describe("github plugin", () => {
       }),
       automationLink: { url: "https://junior.example.com/automations/evt_1" },
     };
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1143,7 +1159,10 @@ describe("github plugin", () => {
 
   it("keeps issue annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext();
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -1167,7 +1186,10 @@ describe("github plugin", () => {
       conversationLink: "https://junior.example.com/conversations/session",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1195,7 +1217,10 @@ describe("github plugin", () => {
       conversationId: "local:test:new-conversation",
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1230,7 +1255,10 @@ Conversation: \`local:test:old-conversation\`
         }),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1262,7 +1290,10 @@ Conversation: \`local:test:old-conversation\`
   it("refuses to duplicate issue creation after an uncertain pending attempt", async () => {
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     ctx.setState("createIssue:local:test:github-tool:call-pending-create", {
       status: "pending",
       createdAtMs: Date.now(),
@@ -1286,7 +1317,10 @@ Conversation: \`local:test:old-conversation\`
       egressFetch: async () => new Response("created", { status: 201 }),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1322,7 +1356,10 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1366,7 +1403,10 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1394,7 +1434,10 @@ Conversation: \`local:test:old-conversation\`
         }),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1418,7 +1461,10 @@ Conversation: \`local:test:old-conversation\`
         }),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
@@ -1445,7 +1491,10 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createIssue,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -1494,7 +1543,10 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       pullRequestEvents: { subscribeAfterCreate: false },
     });
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     const result = await tool?.execute?.(
       {
@@ -1591,17 +1643,20 @@ Conversation: \`local:test:old-conversation\`
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
-    const tool = githubPlugin({
-      pullRequestEvents: {
-        subscribeAfterCreate: {
-          events: [
-            "pull_request.checks.failed",
-            "pull_request.review.changes_requested",
-          ],
-          intent: "Report failed checks and requested changes.",
+    const tool = bindPluginTool(
+      githubPlugin({
+        pullRequestEvents: {
+          subscribeAfterCreate: {
+            events: [
+              "pull_request.checks.failed",
+              "pull_request.review.changes_requested",
+            ],
+            intent: "Report failed checks and requested changes.",
+          },
         },
-      },
-    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+      }).hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -1665,7 +1720,10 @@ Conversation: \`local:test:old-conversation\`
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1697,7 +1755,10 @@ Conversation: \`local:test:old-conversation\`
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1731,14 +1792,17 @@ Conversation: \`local:test:old-conversation\`
     });
     const ctx = githubToolsContext({ subscribe });
     ctx.log = { ...ctx.log, warn };
-    const tool = githubPlugin({
-      pullRequestEvents: {
-        subscribeAfterCreate: {
-          events: ["pull_request.checks.failed"],
-          intent: "Report failed checks.",
+    const tool = bindPluginTool(
+      githubPlugin({
+        pullRequestEvents: {
+          subscribeAfterCreate: {
+            events: ["pull_request.checks.failed"],
+            intent: "Report failed checks.",
+          },
         },
-      },
-    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+      }).hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     const result = await tool?.execute?.(
       {
@@ -1811,7 +1875,10 @@ Conversation: \`local:test:old-conversation\`
               { status: 201 },
             ),
     });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1877,7 +1944,10 @@ Conversation: \`local:test:old-conversation\`
             )
           : Response.json({}),
     });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -1909,7 +1979,10 @@ Conversation: \`local:test:old-conversation\`
 
   it("rejects an invalid reviewer before it opens the pull request", async () => {
     const ctx = githubToolsContext();
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -1987,7 +2060,10 @@ Conversation: \`local:test:old-conversation\`
           });
         },
       });
-      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.createPullRequest,
+        ctx as any,
+      );
 
       await expect(
         tool?.execute?.(
@@ -2051,7 +2127,10 @@ Conversation: \`local:test:old-conversation\`
           return Response.json({ number: 9, pull_requests: [] });
         },
       });
-      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.createPullRequest,
+        ctx as any,
+      );
 
       const result = await tool?.execute?.(
         {
@@ -2100,7 +2179,10 @@ Conversation: \`local:test:old-conversation\`
           { status: 201 },
         ),
     });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -2133,7 +2215,10 @@ Conversation: \`local:test:old-conversation\`
         throw new Error("identity storage unavailable");
       },
     });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -2168,7 +2253,10 @@ Conversation: \`local:test:old-conversation\`
           { status: 201 },
         ),
     });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -2198,7 +2286,10 @@ Conversation: \`local:test:old-conversation\`
         ),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -2232,7 +2323,10 @@ Conversation: \`local:test:old-conversation\`
         ),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await tool?.execute?.(
       {
@@ -2318,7 +2412,10 @@ Conversation: \`local:test:old-conversation\`
         },
       });
       const plugin = githubPlugin();
-      const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+      const tool = bindPluginTool(
+        plugin.hooks?.tools?.()?.createPullRequest,
+        ctx as any,
+      );
       const input = {
         repo: "getsentry/junior",
         title: "Typed PR",
@@ -2402,7 +2499,10 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
     ctx.setState(
       "createPullRequest:local:test:github-tool:call-legacy-pr-create",
       {
@@ -2437,7 +2537,10 @@ Conversation: \`local:test:old-conversation\`
   it("refuses legacy pending pull request idempotency state", async () => {
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
     ctx.setState(
       "createPullRequest:local:test:github-tool:call-legacy-pending-pr-create",
       {
@@ -2479,7 +2582,10 @@ Conversation: \`local:test:old-conversation\`
         ),
     });
     const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const tool = bindPluginTool(
+      plugin.hooks?.tools?.()?.createPullRequest,
+      ctx as any,
+    );
 
     await expect(
       tool?.execute?.(
@@ -4083,16 +4189,31 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it.each([
-    ["git clone https://github.com/getsentry/junior.git", true],
-    ["cd /tmp && git -C repos clone git@github.com:getsentry/junior.git", true],
-    ["GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior", true],
-    ["gh repo fork getsentry/junior --clone", true],
-    ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
-    ["git clone https://example.com/github.com/getsentry/junior", false],
-    ["git fetch origin main", false],
+    [
+      "git clone https://github.com/getsentry/junior.git",
+      "github_cloneRepository",
+    ],
+    [
+      "cd /tmp && git -C repos clone git@github.com:getsentry/junior.git",
+      "github_cloneRepository",
+    ],
+    [
+      "GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior",
+      "github_cloneRepository",
+    ],
+    ["gh repo fork getsentry/junior --clone", "github_cloneRepository"],
+    ["git clone /vercel/sandbox/repos/junior /tmp/junior", undefined],
+    ["git clone https://example.com/github.com/getsentry/junior", undefined],
+    ["git fetch origin main", undefined],
+    // A hooks path override skips the hook that sets commit attribution.
+    ["git -c core.hooksPath=/dev/null commit -q -m 'feat: x'", "--no-verify"],
+    ["git -C . -c core.hookspath= commit --amend --no-edit", "--no-verify"],
+    ["git --config-env=core.hooksPath=HOOKS commit -m x", "--no-verify"],
+    ["git -c commit.gpgsign=false commit --no-verify -m x", undefined],
+    ["git config --get core.hooksPath", undefined],
   ])(
-    "redirects GitHub clones in bash on a best-effort basis: %s",
-    async (command, redirected) => {
+    "redirects bash Git commands on a best-effort basis: %s",
+    async (command, redirectMessage) => {
       process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
       process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -4105,10 +4226,12 @@ Conversation: \`local:test:old-conversation\`
 
       await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-      expect(before.blocked?.kind).toBe(redirected ? "redirect" : undefined);
+      expect(before.blocked?.kind).toBe(
+        redirectMessage ? "redirect" : undefined,
+      );
       expect(
-        before.blocked?.message.includes("github_cloneRepository") ?? false,
-      ).toBe(redirected);
+        before.blocked?.message.includes(redirectMessage ?? "") ?? false,
+      ).toBe(Boolean(redirectMessage));
     },
   );
 

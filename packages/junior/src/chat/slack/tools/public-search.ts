@@ -6,7 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 10;
@@ -365,60 +365,62 @@ function normalizeContentTypes(
   return [...new Set(selected)];
 }
 
+export const slackPublicSearchToolDefinition = zodToolDefinition({
+  description:
+    "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    query: z.string().trim().min(1).max(500).describe("Slack search query."),
+    content_types: z
+      .array(z.enum(CONTENT_TYPES))
+      .min(1)
+      .max(4)
+      .nullable()
+      .describe("Content types to include. Omit or use null for messages.")
+      .optional(),
+    after: optionalUnixTimestampParam("Unix timestamp lower bound.").nullable(),
+    before: optionalUnixTimestampParam(
+      "Unix timestamp upper bound.",
+    ).nullable(),
+    cursor: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe(
+        "Cursor for the next result page. Omit or use null for the first page.",
+      )
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .nullable()
+      .describe("Maximum results to return; Slack allows at most 20.")
+      .optional(),
+    sort: z
+      .enum(["score", "timestamp"])
+      .nullable()
+      .describe("Rank by relevance or timestamp.")
+      .optional(),
+    sort_dir: z
+      .enum(["asc", "desc"])
+      .nullable()
+      .describe("Sort direction.")
+      .optional(),
+  }),
+  outputSchema: publicSearchOutputSchema,
+});
+
 /** Create the public-channel Slack search tool. */
 export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
   return zodTool({
-    description:
-      "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      query: z.string().trim().min(1).max(500).describe("Slack search query."),
-      content_types: z
-        .array(z.enum(CONTENT_TYPES))
-        .min(1)
-        .max(4)
-        .nullable()
-        .describe("Content types to include. Omit or use null for messages.")
-        .optional(),
-      after: optionalUnixTimestampParam(
-        "Unix timestamp lower bound.",
-      ).nullable(),
-      before: optionalUnixTimestampParam(
-        "Unix timestamp upper bound.",
-      ).nullable(),
-      cursor: z
-        .string()
-        .min(1)
-        .nullable()
-        .describe(
-          "Cursor for the next result page. Omit or use null for the first page.",
-        )
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(20)
-        .nullable()
-        .describe("Maximum results to return; Slack allows at most 20.")
-        .optional(),
-      sort: z
-        .enum(["score", "timestamp"])
-        .nullable()
-        .describe("Rank by relevance or timestamp.")
-        .optional(),
-      sort_dir: z
-        .enum(["asc", "desc"])
-        .nullable()
-        .describe("Sort direction.")
-        .optional(),
-    }),
-    outputSchema: publicSearchOutputSchema,
+    ...slackPublicSearchToolDefinition,
     execute: async ({
       query,
       content_types,

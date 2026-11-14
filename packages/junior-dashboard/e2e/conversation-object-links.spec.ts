@@ -41,6 +41,8 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
   for (const name of [
     /Release 4\.2 checklist/,
     /Release 4\.2 go\/no-go/,
+    /Release 4\.2 metrics\.pdf/,
+    /Release 4\.2 assets/,
     /#proj-release/,
     /Junior 4\.2 launch demo/,
   ]) {
@@ -121,7 +123,7 @@ test("links to saved objects show as a titled link, a hover card, and a card", a
   });
 });
 
-test("links without an Annotation resolve to plain links, a person chip, and a hover card", async ({
+test("links without an Annotation resolve to plain links, a GitHub-style person, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -142,12 +144,18 @@ test("links without an Annotation resolve to plain links, a person chip, and a h
   );
   await waitForResolvedLinks(page);
 
-  // Only the person keeps a chip: its icon is the one icon in the
-  // paragraph. The other links show no icon, status, or outbound mark.
+  // The person is a GitHub-style mention: its photo is the one image in
+  // the paragraph, outside the `@Name` link. The mock viewer is Morgan, so
+  // it is also the self mention. No link shows an icon, status, or mark.
   const paragraph = linksParagraph(page);
-  const person = paragraph.getByRole("link", { name: "Morgan Lee" });
-  await expect(person.locator("svg, img")).toHaveCount(1);
-  await expect(paragraph.locator("svg, img")).toHaveCount(1);
+  const mention = paragraph.locator("[data-self-mention]");
+  await expect(mention).toHaveCount(1);
+  await expect(
+    mention.getByRole("link", { name: "@Morgan Lee" }),
+  ).toBeVisible();
+  await expect(mention.locator("img")).toHaveCount(1);
+  await expect(paragraph.locator("svg")).toHaveCount(0);
+  await expect(paragraph.locator("img")).toHaveCount(1);
   await expect(paragraph).not.toContainText("·");
   await expect(paragraph).not.toContainText("Running");
 
@@ -205,7 +213,7 @@ test("Google Doc and Calendar links resolve to links and hover cards", async ({
   });
 });
 
-test("a Sentry issue link resolves to a chip and a hover card", async ({
+test("Drive file and folder links resolve to links and hover cards", async ({
   page,
   dashboard,
 }) => {
@@ -213,9 +221,66 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare issue URL in a sentence is a chip with the short id and state.
-  const chip = page.getByRole("link", { name: /JUNIOR-3ZK · Unresolved/ });
-  await expect(chip).toHaveAttribute(
+  const pdf = page.getByRole("link", { name: /Release 4\.2 metrics\.pdf/ });
+  await expect(pdf).toHaveAttribute(
+    "href",
+    "https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view",
+  );
+  const folder = page.getByRole("link", { name: /Release 4\.2 assets/ });
+  await expect(folder).toHaveAttribute(
+    "href",
+    "https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+  );
+  await waitForResolvedLinks(page);
+  await expect(pdf).toBeVisible();
+  await expect(folder).toBeVisible();
+
+  await pdf.hover();
+  const pdfCard = page.getByRole("region", {
+    name: "PDF: Release 4.2 metrics.pdf",
+  });
+  await expect(pdfCard).toContainText("Morgan Lee");
+  // The thumbnail comes from the Junior image route, never from Google.
+  const thumbnail = pdfCard.locator("img");
+  await expect(thumbnail).toHaveAttribute("src", /^\/api\/images\//);
+  await expect
+    .poll(() =>
+      thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await screenshot(page, "conversation-google-drive-file-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  await page.mouse.move(0, 0);
+  await expect(pdfCard).toBeHidden();
+  await folder.hover();
+  const folderCard = page.getByRole("region", {
+    name: "Google Drive folder: Release 4.2 assets",
+  });
+  await expect(folderCard).toContainText("Morgan Lee");
+  await expect(folderCard.locator("img")).toHaveCount(0);
+  await screenshot(page, "conversation-google-drive-folder-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry issue link resolves to a titled link and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // A bare issue URL in a sentence is a link titled with the issue and its
+  // short id. The state shows only in the hover card.
+  const link = page.getByRole("link", {
+    name: "TypeError: cart.total is undefined (JUNIOR-3ZK)",
+  });
+  await expect(link).toHaveAttribute(
     "href",
     "https://acme.sentry.io/issues/JUNIOR-3ZK/",
   );
@@ -224,11 +289,12 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   ).toHaveCount(0);
 
   await waitForResolvedLinks(page);
-  await chip.hover();
+  await link.hover();
   const card = page.getByRole("region", {
     name: "Sentry issue: TypeError: cart.total is undefined",
   });
   for (const text of [
+    "unresolved",
     "app/checkout.ts in submitOrder",
     "Morgan Lee",
     "High",
@@ -241,6 +307,102 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
     card.getByRole("figure", { name: "Events, last 24 hours" }),
   ).toBeVisible();
   await screenshot(page, "conversation-sentry-issue-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry Explore link resolves to a titled link, a chart card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url =
+    "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "p95(span.duration) by span.op (Explore traces)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Explore traces: p95(span.duration) by span.op",
+  });
+  await expect(card).toHaveCount(1);
+  const chart = card.getByRole("figure", { name: "Last 24 hours" });
+  await expect(chart).toBeVisible();
+  // Each series is named in the legend. The range is the chart caption.
+  for (const series of ["http.client", "db", "cache.get"]) {
+    await expect(chart).toContainText(series);
+  }
+  await expect(card).not.toContainText("Range");
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-chart-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(
+    card.nth(1).getByRole("figure", { name: "Last 24 hours" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-sentry-chart-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry trace link resolves to a titled link, a waterfall card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url =
+    "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "POST /api/checkout (a8c0e1b2)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry trace: POST /api/checkout",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "2.43 s",
+    "186",
+    "2 errors, 1 performance issue",
+    "storefront, checkout-api, payments",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  const waterfall = card.getByRole("figure", { name: "Top-level spans" });
+  await expect(waterfall.getByRole("listitem")).toHaveCount(8);
+  await expect(waterfall).toContainText(
+    "http.client POST https://payments.internal/charge",
+  );
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-trace-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(
+    card.nth(1).getByRole("figure", { name: "Top-level spans" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-sentry-trace-link", {
     lightTheme: true,
     view: "desktop",
   });
@@ -469,8 +631,11 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const post = page.getByRole("region", {
     name: "Web page: What's new in Release 4.2",
   });
-  await expect(post).toContainText("Example Blog");
+  // The card names the site and author, not its type and core plugin.
+  await expect(post).toContainText("Example Blog · Morgan Lee");
+  await expect(post).not.toContainText("Web page ·");
   await expect(post.locator("img")).toHaveJSProperty("complete", true);
+  await post.scrollIntoViewIfNeeded();
   await screenshot(page, "conversation-web-page-card", {
     lightTheme: true,
     target: post,
@@ -496,7 +661,8 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const card = page.getByRole("region", {
     name: "Web page: Junior 4.2 launch demo",
   });
-  await expect(card).toContainText("YouTube");
+  await expect(card).toContainText("YouTube · Sentry");
+  await expect(card).not.toContainText("junior");
   await expect(card.locator("img")).toHaveAttribute("src", /^\/api\/images\//);
   await screenshot(page, "conversation-web-page-link", {
     lightTheme: true,

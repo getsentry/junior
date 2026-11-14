@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
+import { objectSource } from "./objectSource";
 import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
 type ConversationAnnotation = NonNullable<
@@ -200,7 +201,7 @@ function LinkRow(props: { link: ConversationLink }) {
         )
       }
       title={link.label}
-      tooltip={[link.label, link.plugin, status, link.description]
+      tooltip={[link.label, objectSource(link.plugin), status, link.description]
         .filter(Boolean)
         .join(" · ")}
     >

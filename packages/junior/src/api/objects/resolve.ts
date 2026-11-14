@@ -12,7 +12,9 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { createPluginEgress } from "@/chat/egress/plugin";
+import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
+import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -94,6 +96,8 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
       // A card is optional. It must never ask anyone to authorize.
       pluginAuth: { async handleAuthRequired() {} },
     }),
+    // The width of web page thumbnails, so every card looks the same.
+    imagePath: (ref, version) => imagePath({ ref, source: name }, 640, version),
     findPerson: resolvePersonByAccount,
     log: createPluginLogger(name),
     plugin: { name },
@@ -105,6 +109,7 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,
     }),
+    viewerMcp: createViewerMcp(name, viewer.id),
   };
 }
 
@@ -119,6 +124,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(objectLinkContext(name, viewer), url),
+    ...(link.webPageFallback ? { webPageFallback: true } : undefined),
   }));
 }
 
@@ -134,12 +140,22 @@ export function readObjectLinkTypes(
   return linkTypes;
 }
 
+type ResolvedObjectLink = {
+  linkType: ObjectLinkType;
+  object: OwnedObjectAnnotation;
+};
+
 async function resolveWithLinkType(
   linkType: ObjectLinkType,
   viewer: User,
   url: URL,
-): Promise<OwnedObjectAnnotation | null> {
-  if (!(await linkType.canView(viewer, url))) return null;
+): Promise<ResolvedObjectLink | null> {
+  if (!(await linkType.canView(viewer, url))) {
+    // The web page card reads only what anyone can read signed out.
+    return linkType.webPageFallback
+      ? await resolveWithLinkType(webPageLinkType(), viewer, url)
+      : null;
+  }
   const resolved = await linkType.resolve(viewer, url);
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
@@ -148,10 +164,13 @@ async function resolveWithLinkType(
       `Link type "${linkType.owner}/${linkType.objectType}" returned a ${object.objectType} object.`,
     );
   }
-  return ownedObjectAnnotationSchema.parse({
-    ...object,
-    plugin: linkType.owner,
-  });
+  return {
+    linkType,
+    object: ownedObjectAnnotationSchema.parse({
+      ...object,
+      plugin: linkType.owner,
+    }),
+  };
 }
 
 /**
@@ -162,13 +181,10 @@ async function resolveWithLinkType(
 export async function resolveObjectLinkNow(
   viewer: User,
   url: URL,
-): Promise<
-  { linkType: ObjectLinkType; object: OwnedObjectAnnotation } | undefined
-> {
+): Promise<ResolvedObjectLink | undefined> {
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
   if (!linkType) return undefined;
-  const object = await resolveWithLinkType(linkType, viewer, url);
-  return object ? { linkType, object } : undefined;
+  return (await resolveWithLinkType(linkType, viewer, url)) ?? undefined;
 }
 
 /**
@@ -189,7 +205,8 @@ export async function resolveObjectLinks(
       if (!parsed || !linkType) return [];
       // Each viewer has their own entry: a card holds only what they see.
       const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
+      const resolve = async () =>
+        (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
       try {
         const object =
           linkType.cacheCards === false

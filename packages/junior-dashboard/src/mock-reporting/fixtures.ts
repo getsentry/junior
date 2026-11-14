@@ -58,7 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
-        draft: false,
+        draft: true,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -1415,18 +1415,29 @@ function longConversation(nowMs: number): ConversationDetailReport {
         // No Annotations: the API resolves these dashboard links.
         `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
         "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+        "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
         "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+        "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+        "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
         "",
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message shows a card, and the repeated pull request shows
-        // no second card.
+        // Slack message, the chart, and the trace show a card, and the repeated pull
+        // request shows no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+        "",
+        "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
@@ -1485,6 +1496,28 @@ function longConversation(nowMs: number): ConversationDetailReport {
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
+        // A long body, so its hover card at the bottom of the reply must
+        // scroll when "More details" opens.
+        description: [
+          "The release train read the latest payments build on each run, so a late merge could ship without review.",
+          "",
+          "## Changes",
+          "",
+          "- Pin the release train to payments 4.2.",
+          "- Read the pin from the release manifest, not from the branch head.",
+          "- Fail the train when the manifest and the lockfile disagree.",
+          "- Log the pinned version on each run.",
+          "",
+          "## Testing",
+          "",
+          "- Ran the train against a fork with a newer payments build. It kept 4.2.",
+          "- Changed the lockfile by hand. The train stopped with a clear error.",
+          "- Checked the run log for the pinned version.",
+          "",
+          "## Rollout",
+          "",
+          "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
+        ].join("\n"),
         // The API names description images by Junior image paths.
         previewImages: ["payments-91-before", "payments-91-after"].map(
           (id) => ({

@@ -27,7 +27,7 @@ import {
   ObjectLinkPreview,
   ObjectThumbnailLink,
   ObjectTitleLink,
-  PersonLinkChip,
+  PersonLink,
   useKnownObject,
 } from "./ObjectLinks";
 import {
@@ -508,26 +508,40 @@ function TranscriptAnchor(props: {
 }
 
 // A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it. A saved link shows until then.
+// into view or the reader hovers it. A saved link shows until then. Its hover
+// card keeps one height while the live card can still replace it.
 function ResolvedAnchor(props: {
   bare?: boolean;
   children: ReactNode;
   href: string;
   saved?: OwnedObjectAnnotation;
 }) {
-  const { card, request } = useResolvedObject(props.href);
+  const { card, request, settled } = useResolvedObject(props.href);
   const observe = useWhenVisible(request);
   useRequestWhenSaved(props.saved, request);
+  const reserveHeight =
+    props.saved !== undefined && (card !== undefined || !settled);
   if (card) {
     return (
-      <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+      <ObjectAnchor
+        bare={props.bare}
+        card={card}
+        href={props.href}
+        live
+        reserveHeight={reserveHeight}
+      >
         {props.children}
       </ObjectAnchor>
     );
   }
   if (props.saved) {
     return (
-      <ObjectAnchor bare={props.bare} card={props.saved} href={props.href}>
+      <ObjectAnchor
+        bare={props.bare}
+        card={props.saved}
+        href={props.href}
+        reserveHeight={reserveHeight}
+      >
         {props.children}
       </ObjectAnchor>
     );
@@ -545,25 +559,18 @@ function ObjectAnchor(props: {
   children: ReactNode;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
-  if (props.bare && props.card.objectType === "person") {
-    return (
-      <PersonLinkChip card={props.card} href={props.href} live={props.live} />
-    );
+  const { bare, children, ...link } = props;
+  if (bare && link.card.objectType === "person") {
+    return <PersonLink {...link} />;
   }
-  if (props.bare) {
-    return (
-      <ObjectTitleLink card={props.card} href={props.href} live={props.live} />
-    );
+  if (bare) {
+    return <ObjectTitleLink {...link} />;
   }
   return (
-    <ObjectLinkPreview
-      card={props.card}
-      className={ANCHOR_CLASS}
-      href={props.href}
-      live={props.live}
-    >
-      {props.children}
+    <ObjectLinkPreview {...link} className={ANCHOR_CLASS}>
+      {children}
     </ObjectLinkPreview>
   );
 }
