@@ -147,22 +147,8 @@ async function setPullRequestDraft(input: {
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(
-  ctx: {
-    actor?: Actor;
-    automationLink?: { url: string };
-    conversationId?: string;
-    db: unknown;
-    egress: PluginEgress;
-    log: PluginLogger;
-    events: { canSubscribe: boolean };
-    conversationLink?: { url: string };
-    source?: Source;
-    users: {
-      resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-    };
-  },
   /** Set when the description check experiment is on. */
-  descriptionDecider?: PluginDecider,
+  descriptionChecks = false,
 ) {
   return definePluginTool({
     permission: "review",
@@ -176,7 +162,27 @@ export function createGitHubUpdatePullRequestTool(
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: {
+        actor?: Actor;
+        automationLink?: { url: string };
+        conversationId?: string;
+        db: unknown;
+        decider: PluginDecider;
+        egress: PluginEgress;
+        log: PluginLogger;
+        events: { canSubscribe: boolean };
+        conversationLink?: { url: string };
+        source?: Source;
+        users: {
+          resolveActor(): Promise<
+            { identity?: Identity; user?: User } | undefined
+          >;
+        };
+      },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
@@ -185,8 +191,8 @@ export function createGitHubUpdatePullRequestTool(
         );
       }
       const update = parsedInput.data;
-      if (descriptionDecider && update.body !== undefined) {
-        await checkPullRequestDescription(descriptionDecider, update.body);
+      if (descriptionChecks && update.body !== undefined) {
+        await checkPullRequestDescription(ctx.decider, update.body);
       }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);

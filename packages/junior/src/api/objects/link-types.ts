@@ -23,6 +23,8 @@ export interface ObjectLinkType {
   /** The tool that reads the object live, for a Turn after an attach. */
   readTool?(object: ObjectAnnotation): string | undefined;
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
+  /** Show the web page card when `canView` returns false. */
+  webPageFallback?: true;
 }
 
 function compareSpecificity(left: number[], right: number[]): number {

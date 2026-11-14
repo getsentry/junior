@@ -13,9 +13,35 @@ import {
 import { getDb } from "@/chat/db";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
+
+export const runAutomationNowToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: AUTOMATIONS_TOOL_SOURCE,
+  permission: "review",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  executionMode: "sequential",
+  description:
+    "Queue an existing active scheduled automation to run as soon as possible, without changing its schedule. Use when the user asks to run it now. Anyone who can manage the automation can run it. When it uses its creator's credentials, only the creator can run it now. Event automations run only when a matching event arrives, so they cannot run now.",
+  inputSchema: z
+    .object({
+      automation_id: z
+        .string()
+        .min(1)
+        .describe(
+          "ID of the active scheduled automation to run now, from searchAutomations or its dashboard URL.",
+        ),
+    })
+    .strict(),
+  outputSchema: automationToolResultSchema.omit({ objectCards: true }),
+});
 
 /** Create the tool that marks an active scheduled Automation due now. */
 export function createRunAutomationNowTool(
@@ -23,29 +49,7 @@ export function createRunAutomationNowTool(
   catalog: EventCatalog,
 ) {
   return zodTool({
-    exposure: "deferred",
-    source: AUTOMATIONS_TOOL_SOURCE,
-    permission: "review",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    executionMode: "sequential",
-    description:
-      "Queue an existing active scheduled automation to run as soon as possible, without changing its schedule. Use when the user asks to run it now. Anyone who can manage the automation can run it. When it uses its creator's credentials, only the creator can run it now. Event automations run only when a matching event arrives, so they cannot run now.",
-    inputSchema: z
-      .object({
-        automation_id: z
-          .string()
-          .min(1)
-          .describe(
-            "ID of the active scheduled automation to run now, from searchAutomations or its dashboard URL.",
-          ),
-      })
-      .strict(),
-    outputSchema: automationToolResultSchema.omit({ objectCards: true }),
+    ...runAutomationNowToolDefinition,
     async execute({ automation_id: automationId }) {
       const current = await requireToolAutomation(
         await requireToolCaller(context),

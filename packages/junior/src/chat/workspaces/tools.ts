@@ -13,7 +13,7 @@ import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-re
 import { cancelWatch, createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -116,7 +116,8 @@ function buildingWorkspaceResult(input: {
   };
 }
 
-function workspaceProviderNames(): [string, ...string[]] | undefined {
+/** Return the plugins that can prepare a workspace, sorted, or none. */
+export function workspaceProviderNames(): [string, ...string[]] | undefined {
   const providers = getPlugins()
     .filter((plugin) => plugin.hooks?.workspacePrepare)
     .map((plugin) => plugin.manifest.name)
@@ -226,14 +227,11 @@ function describeWorkspaceWrite(
   return `${action} Workspace ${input.name} (${repositories}${setupText}${vcpuText}).`;
 }
 
-/** Build create/update/delete tools for the currently preparable repository providers. */
-function createWorkspaceWriteTools(
-  providers: [string, ...string[]],
-): ToolRegistry {
+function workspaceWriteToolDefinitions(providers: [string, ...string[]]) {
   const { providerNames, workspaceInputSchema } =
     workspaceWriteSchemas(providers);
   return {
-    createWorkspace: zodTool({
+    createWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
       permission: "review",
@@ -251,14 +249,8 @@ function createWorkspaceWriteTools(
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
       }),
-      async execute(input) {
-        const workspace = await workspaceWrite(() =>
-          createWorkspace(writeInput(input)),
-        );
-        return { workspace: view(workspace) };
-      },
     }),
-    updateWorkspace: zodTool({
+    updateWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
       permission: "review",
@@ -287,17 +279,8 @@ function createWorkspaceWriteTools(
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
       }),
-      async execute({ id, ...input }) {
-        const workspace = await workspaceWrite(() =>
-          updateWorkspace(id, writeInput(input)),
-        );
-        if (!workspace) {
-          throw new ToolInputError(`Workspace not found: ${id}`);
-        }
-        return { workspace: view(workspace) };
-      },
     }),
-    deleteWorkspace: zodTool({
+    deleteWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
       permission: "ask",
@@ -319,6 +302,39 @@ function createWorkspaceWriteTools(
       outputSchema: juniorToolOutputSchema.extend({
         deleted: z.literal(true),
       }),
+    }),
+  };
+}
+
+/** Build create/update/delete tools for the currently preparable repository providers. */
+function createWorkspaceWriteTools(
+  providers: [string, ...string[]],
+): ToolRegistry {
+  const definitions = workspaceWriteToolDefinitions(providers);
+  return {
+    createWorkspace: zodTool({
+      ...definitions.createWorkspace,
+      async execute(input) {
+        const workspace = await workspaceWrite(() =>
+          createWorkspace(writeInput(input)),
+        );
+        return { workspace: view(workspace) };
+      },
+    }),
+    updateWorkspace: zodTool({
+      ...definitions.updateWorkspace,
+      async execute({ id, ...input }) {
+        const workspace = await workspaceWrite(() =>
+          updateWorkspace(id, writeInput(input)),
+        );
+        if (!workspace) {
+          throw new ToolInputError(`Workspace not found: ${id}`);
+        }
+        return { workspace: view(workspace) };
+      },
+    }),
+    deleteWorkspace: zodTool({
+      ...definitions.deleteWorkspace,
       async execute({ id }) {
         const deleted = await workspaceWrite(() => deleteWorkspace(id));
         if (!deleted) {
@@ -330,15 +346,15 @@ function createWorkspaceWriteTools(
   };
 }
 
-/** Build tools for listing, writing, and selecting registered workspaces. */
-export function createWorkspaceTools(
-  context: ToolRuntimeContext,
-): ToolRegistry {
-  if (!context.workspaces) return {};
+/**
+ * Static definitions of the Workspace tools. The write tools exist when a
+ * plugin can prepare repositories, and their text names those providers.
+ */
+export function workspaceToolDefinitions() {
   const providers = workspaceProviderNames();
   return {
-    ...(providers ? createWorkspaceWriteTools(providers) : undefined),
-    listWorkspaces: zodTool({
+    ...(providers ? workspaceWriteToolDefinitions(providers) : undefined),
+    listWorkspaces: zodToolDefinition({
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -352,14 +368,8 @@ export function createWorkspaceTools(
         active_workspace_id: z.string().nullable(),
         workspaces: z.array(workspaceSchema),
       }),
-      async execute() {
-        return {
-          active_workspace_id: context.workspaces!.activeWorkspaceId() ?? null,
-          workspaces: (await listWorkspaces(getDb())).map(view),
-        };
-      },
     }),
-    switchWorkspace: zodTool({
+    switchWorkspace: zodToolDefinition({
       executionMode: "sequential",
       exposure: "modelOnly",
       annotations: {
@@ -384,6 +394,30 @@ export function createWorkspaceTools(
             "Present when the snapshot ready and failed events are already watched for this conversation.",
           ),
       }),
+    }),
+  };
+}
+
+/** Build tools for listing, writing, and selecting registered workspaces. */
+export function createWorkspaceTools(
+  context: ToolRuntimeContext,
+): ToolRegistry {
+  if (!context.workspaces) return {};
+  const providers = workspaceProviderNames();
+  const definitions = workspaceToolDefinitions();
+  return {
+    ...(providers ? createWorkspaceWriteTools(providers) : undefined),
+    listWorkspaces: zodTool({
+      ...definitions.listWorkspaces,
+      async execute() {
+        return {
+          active_workspace_id: context.workspaces!.activeWorkspaceId() ?? null,
+          workspaces: (await listWorkspaces(getDb())).map(view),
+        };
+      },
+    }),
+    switchWorkspace: zodTool({
+      ...definitions.switchWorkspace,
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)

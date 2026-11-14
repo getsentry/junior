@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestFeedbackTool } from "../src/tools/update-pull-request-feedback";
 
@@ -36,10 +37,9 @@ function toolContext(responses: Response[]) {
   });
   return {
     fetch,
-    tool: createGitHubUpdatePullRequestFeedbackTool(
-      { egress: { fetch } },
-      BOT_EMAIL,
-    ),
+    tool: bindPluginTool(createGitHubUpdatePullRequestFeedbackTool(BOT_EMAIL), {
+      egress: { fetch },
+    }),
   };
 }
 

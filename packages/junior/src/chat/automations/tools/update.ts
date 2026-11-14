@@ -281,7 +281,11 @@ async function updateEvent(
   return { ...current, task: saved };
 }
 
-/** Create the tool that edits, pauses, resumes, or moves one Automation. */
+/**
+ * Create the tool that edits, pauses, resumes, or moves one Automation.
+ *
+ * @runBuilt updateAutomation
+ */
 export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,

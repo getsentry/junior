@@ -76,8 +76,9 @@ describe("definePluginTool", () => {
     const parsed = tool.prepareArguments?.({ count: "3" });
     expect(parsed).toEqual({ count: 3 });
 
-    await tool.execute?.(parsed as { count: number }, {});
-    expect(execute).toHaveBeenCalledWith({ count: 3 }, {});
+    const ctx = { conversationId: "local:test" } as never;
+    await tool.execute?.(parsed as { count: number }, {}, ctx);
+    expect(execute).toHaveBeenCalledWith({ count: 3 }, {}, ctx);
   });
 
   it("runs custom argument preparation before Zod parsing", () => {
@@ -118,7 +119,11 @@ describe("definePluginTool", () => {
     });
 
     const input = tool.prepareArguments?.({});
-    const result = await tool.execute?.(input as Record<string, never>, {});
+    const result = await tool.execute?.(
+      input as Record<string, never>,
+      {},
+      undefined as never,
+    );
 
     expect(tool.privateTraceResult?.(result!)).toEqual({ count: 3 });
   });
@@ -146,7 +151,9 @@ describe("definePluginTool", () => {
     if (!tool.execute || !tool.prepareArguments) {
       throw new Error("Expected an executable plugin tool.");
     }
-    await expect(tool.execute(tool.prepareArguments({}), {})).resolves.toEqual({
+    await expect(
+      tool.execute(tool.prepareArguments({}), {}, undefined as never),
+    ).resolves.toEqual({
       content: [
         { type: "text", text: "Created LIN-123" },
         {
@@ -178,9 +185,9 @@ describe("definePluginTool", () => {
     if (!tool.execute || !tool.prepareArguments) {
       throw new Error("Expected an executable plugin tool.");
     }
-    await expect(tool.execute(tool.prepareArguments({}), {})).rejects.toThrow(
-      "Invalid input: expected number",
-    );
+    await expect(
+      tool.execute(tool.prepareArguments({}), {}, undefined as never),
+    ).rejects.toThrow("Invalid input: expected number");
   });
 
   it("rejects parser schemas that cannot be represented as JSON Schema", () => {

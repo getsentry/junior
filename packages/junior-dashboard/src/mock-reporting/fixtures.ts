@@ -1420,6 +1420,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
+        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the

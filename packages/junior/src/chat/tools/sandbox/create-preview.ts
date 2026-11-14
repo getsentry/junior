@@ -8,7 +8,11 @@ const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
 });
 
-/** Create a tool that gives a running sandbox server a public preview URL. */
+/**
+ * Create a tool that gives a running sandbox server a public preview URL.
+ *
+ * @runBuilt createPreview
+ */
 export function createCreatePreviewTool(
   createPreview: NonNullable<SandboxWorkspace["createPreview"]>,
 ) {

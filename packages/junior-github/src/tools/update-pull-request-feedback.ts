@@ -370,7 +370,6 @@ function failed(response: GitHubApiResponse): boolean {
  * Replace only state reactions Junior previously added to the same comment.
  */
 export function createGitHubUpdatePullRequestFeedbackTool(
-  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -388,7 +387,11 @@ export function createGitHubUpdatePullRequestFeedbackTool(
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

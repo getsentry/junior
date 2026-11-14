@@ -81,58 +81,60 @@ function throwReviewError(status: number, body: unknown): never {
 }
 
 /** Submit a comment or change-request review through GitHub's REST API. */
-export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
-  return definePluginTool({
-    permission: "review",
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
-    inputSchema,
-    outputSchema,
-    async execute(review): Promise<Result> {
-      const repo = parseRepo(review.repo);
-      const comments = review.comments?.map((comment) => ({
-        path: comment.path,
-        body: comment.body,
-        line: comment.line,
-        side: comment.side,
-        ...(comment.start_line !== undefined
-          ? { start_line: comment.start_line }
-          : undefined),
-        ...(comment.start_side !== undefined
-          ? { start_side: comment.start_side }
-          : undefined),
-      }));
-      const response = await githubApi(egress, {
-        operation: "github.pull.review.create",
-        method: "POST",
-        path: `${repoPath(repo)}/pulls/${review.number}/reviews`,
-        body: {
-          body: review.body,
-          event: review.event,
-          ...(comments ? { comments } : undefined),
-        },
-      });
-      if (!response.ok) {
-        throwReviewError(response.status, response.body);
-      }
-      const providerResult = z
-        .object({ id: z.number(), html_url: z.string(), state: z.string() })
-        .parse(response.body);
-      return {
-        target: "submitPullRequestReview",
-        repo: repo.ref,
-        number: review.number,
-        reply: { text: review.body, url: providerResult.html_url },
-        review_id: providerResult.id,
-        state: providerResult.state,
-        url: providerResult.html_url,
-      };
-    },
-  });
-}
+export const gitHubSubmitPullRequestReviewTool = definePluginTool({
+  permission: "review",
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    review,
+    _options,
+    { egress }: { egress: PluginEgress },
+  ): Promise<Result> {
+    const repo = parseRepo(review.repo);
+    const comments = review.comments?.map((comment) => ({
+      path: comment.path,
+      body: comment.body,
+      line: comment.line,
+      side: comment.side,
+      ...(comment.start_line !== undefined
+        ? { start_line: comment.start_line }
+        : undefined),
+      ...(comment.start_side !== undefined
+        ? { start_side: comment.start_side }
+        : undefined),
+    }));
+    const response = await githubApi(egress, {
+      operation: "github.pull.review.create",
+      method: "POST",
+      path: `${repoPath(repo)}/pulls/${review.number}/reviews`,
+      body: {
+        body: review.body,
+        event: review.event,
+        ...(comments ? { comments } : undefined),
+      },
+    });
+    if (!response.ok) {
+      throwReviewError(response.status, response.body);
+    }
+    const providerResult = z
+      .object({ id: z.number(), html_url: z.string(), state: z.string() })
+      .parse(response.body);
+    return {
+      target: "submitPullRequestReview",
+      repo: repo.ref,
+      number: review.number,
+      reply: { text: review.body, url: providerResult.html_url },
+      review_id: providerResult.id,
+      state: providerResult.state,
+      url: providerResult.html_url,
+    };
+  },
+});
