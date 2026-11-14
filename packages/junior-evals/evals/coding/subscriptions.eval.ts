@@ -83,14 +83,13 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
 
 // The shared GitHub HTTP fixture serves these drafts: #692 with every
 // required check passing, #693 with an open decision in its body, #694
-// with another required check failing, #695 with no required check
-// reported yet, #696 with code owners for its changed file, and #697
-// whose base branch AGENTS.md asks for draft pull requests.
+// with another required check failing, #696 with code owners for its
+// changed file, and #697 whose base branch AGENTS.md asks for draft pull
+// requests. The integration suite covers #695.
 const draftHeadShas = {
   692: "6920000000000000000000000000000000000692",
   693: "6930000000000000000000000000000000000693",
   694: "6940000000000000000000000000000000000694",
-  695: "6950000000000000000000000000000000000695",
   696: "6960000000000000000000000000000000000696",
   697: "6970000000000000000000000000000000000697",
 };
@@ -321,7 +320,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and end with no reply", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -336,11 +335,9 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    // A routine fix that worked needs nobody, so it posts nothing to Slack.
-    // The quiet reply stays in the Conversation.
+    // A routine fix that worked needs nobody, so it posts nothing.
     expect(delivery.replies).toEqual([]);
-    expect(delivery.quietReplies).toHaveLength(1);
-    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
+    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -426,18 +423,6 @@ describe("Watches", () => {
     const conversation = await startDraftThread(run, 693);
 
     const delivery = await conversation.continue(draftChecksPassedWebhook(693));
-
-    expect(delivery.turns).not.toHaveLength(0);
-    expect(markReadyCalls(delivery)).toEqual([]);
-    expect(delivery.replies).toEqual([]);
-  });
-
-  test("when the required checks of a Junior draft have not reported, stay silent", async ({
-    run,
-  }) => {
-    const conversation = await startDraftThread(run, 695);
-
-    const delivery = await conversation.continue(draftChecksPassedWebhook(695));
 
     expect(delivery.turns).not.toHaveLength(0);
     expect(markReadyCalls(delivery)).toEqual([]);
@@ -543,8 +528,6 @@ describe("Watches", () => {
       }),
     );
 
-    // The person must hear about the merge, so the reply is not quiet.
-    expect(delivery.quietReplies).toEqual([]);
     expect(delivery.replies).toHaveLength(1);
   });
 

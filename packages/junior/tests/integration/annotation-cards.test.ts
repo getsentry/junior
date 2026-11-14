@@ -49,9 +49,15 @@ const annotation: ObjectAnnotation = {
   },
 };
 
+// Built outside the tool definition, as a shared helper would be, so only
+// core's runtime check stops it.
+const readResult = () => ({
+  objectAnnotations: [{ ...annotation, key: "repo#2", label: "repo#2" }],
+});
+
 afterEach(closeConversationFixture);
 
-it("saves plugin object results once per reply, leaves background updates silent, and stores only Message card references", async () => {
+it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
   const previous = setPlugins([
     defineJuniorPlugin({
       manifest: {
@@ -68,7 +74,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               destructiveHint: false,
               idempotentHint: true,
               openWorldHint: false,
-              readOnlyHint: true,
+              readOnlyHint: false,
             },
             description: "Return a verified object for this test.",
             inputSchema: z.object({
@@ -87,6 +93,20 @@ it("saves plugin object results once per reply, leaves background updates silent
               };
             },
           }),
+          read: definePluginTool({
+            approvalMode: "approve",
+            exposure: "direct",
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: true,
+            },
+            description: "Read an object for this test.",
+            inputSchema: z.object({}),
+            outputSchema: pluginToolOutputSchema,
+            execute: readResult,
+          }),
         }),
       },
     }),
@@ -103,6 +123,8 @@ it("saves plugin object results once per reply, leaves background updates silent
           name: "executeTool",
           arguments: { tool_name: "objects_save", arguments: {} },
         },
+        // A read must not save an Annotation, so core rejects its result.
+        { type: "toolCall", name: "objects_read", arguments: {} },
         {
           type: "toolCall",
           // PR creation is a direct plugin tool, not a catalog call.
@@ -155,6 +177,9 @@ it("saves plugin object results once per reply, leaves background updates silent
         "objectCards" in result["details"],
     );
     expect(selectedResults).toHaveLength(2);
+    expect(JSON.stringify(toolResults)).toContain(
+      "Read-only objects tool returned objectAnnotations",
+    );
     for (const result of selectedResults) {
       expect(result["details"]).not.toHaveProperty("objectAnnotations");
     }
