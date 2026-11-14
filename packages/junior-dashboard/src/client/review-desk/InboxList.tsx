@@ -32,7 +32,13 @@ import {
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
 import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
-import { DOCK_GUTTER, useDockHover } from "./useDockHover";
+import {
+  DOCK_GUTTER,
+  InboxFocusProvider,
+  InboxPreviewGate,
+  useCollapseOutside,
+  useInboxFocus,
+} from "./inboxFocus";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   automationSections,
@@ -46,6 +52,7 @@ import {
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
+import { useLeaveRow } from "./rowMotion";
 import { InboxSection } from "./InboxSection";
 import {
   useReviewItemAction,
@@ -205,7 +212,6 @@ export function InboxList(props: {
   const ready = data.itemsLoaded && !props.loading;
   const state = useInboxListState(ready);
   const { view } = state;
-  const dock = useDockHover();
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
   const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
@@ -237,6 +243,13 @@ export function InboxList(props: {
     setSnoozeKey(undefined);
     state.toggle(key);
   };
+  const focus = useInboxFocus(state.scroller, state.expandedKey);
+  useCollapseOutside(state.expandedKey, () => toggle(state.expandedKey));
+  const leave = useLeaveRow(
+    state.scroller,
+    state.expandedKey,
+    state.setExpandedKey,
+  );
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
   const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
@@ -446,13 +459,13 @@ export function InboxList(props: {
             : undefined
         }
         key={key}
-        onDone={() => void markDone(row)}
+        onDone={() => leave(key, () => markDone(row))}
         onSnooze={
           options.snoozed
             ? undefined
             : (choice) => {
-                snoozes.snooze(row, choice);
                 setSnoozeKey(undefined);
+                leave(key, () => snoozes.snooze(row, choice));
               }
         }
         onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
@@ -511,11 +524,12 @@ export function InboxList(props: {
           options.todo
             ? {
                 menuOpen: snoozeKey === key,
-                onDismiss: () => data.alerts.dismiss(automation),
+                onDismiss: () =>
+                  leave(key, () => data.alerts.dismiss(automation)),
                 onMenu: (open) => setSnoozeKey(open ? key : undefined),
                 onSnooze: (choice) => {
-                  data.alerts.snooze(automation, choice);
                   setSnoozeKey(undefined);
+                  leave(key, () => data.alerts.snooze(automation, choice));
                 },
               }
             : undefined
@@ -764,7 +778,7 @@ export function InboxList(props: {
         <EmptyState label="Nothing snoozed" />
       ) : (
         // Snoozed rows expand in place like the others, and wake there.
-        <ul className="m-0 grid gap-2 p-0 pt-1" {...dock}>
+        <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
           {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
         </ul>
       );
@@ -850,8 +864,10 @@ export function InboxList(props: {
       )}
       <div
         className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
+        data-inbox-scroll=""
         onScroll={state.onScroll}
         ref={state.scroller}
+        {...focus.handlers}
       >
         <div
           className={cn(
@@ -867,7 +883,9 @@ export function InboxList(props: {
               Could not close every item. Try again.
             </InlineError>
           ) : null}
-          {body}
+          <InboxFocusProvider focus={focus.focus}>
+            <InboxPreviewGate>{body}</InboxPreviewGate>
+          </InboxFocusProvider>
           {data.itemsError ? null : listEnd}
           {props.error ? (
             <InlineError className="py-2">{props.error}</InlineError>

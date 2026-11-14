@@ -6,7 +6,7 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
@@ -46,12 +46,13 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { inboxItemKind } from "./inboxModel";
 import {
-  INBOX_HOVER_CARD_CLASS,
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { useHoverExpand } from "./hoverExpand";
+import { useHoverExpandAllowed } from "./hoverExpand";
+import { useInboxRowFocused } from "./inboxFocus";
+import { useAnimatedHeight } from "./rowMotion";
 import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
@@ -307,42 +308,37 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
-  const hover = useHoverExpand(props.expanded);
+  const motion = useRowMotion(props);
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
       conversation={props.conversation}
-      hover={hover}
+      motion={motion}
     />
   ) : (
     <li
-      {...hover.handlers}
-      className={cn(inboxCardClass(props.expanded), hover.shown && "z-20")}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
+      data-grown={motion.grown || undefined}
       data-inbox-row={props.rowKey}
+      ref={motion.ref}
     >
-      <InboxRowBody {...props} />
-      {hover.shown ? <HoverCard {...props} /> : null}
+      <InboxRowBody {...props} preview={motion.grown} />
     </li>
   );
 }
 
 /**
- * More of a row while the pointer rests on it: the comfortable layout, the
- * whole summary and every preview. It floats over the rows below, so none
- * of them moves, and the pointer and keyboard pass through it to the row.
+ * How a row moves with the pointer. In focus, a row that may expand on
+ * hover shows its comfortable layout, whole summary and every preview in
+ * place, and the rows below move down with it.
  */
-function HoverCard(props: InboxRowProps) {
-  return (
-    <div
-      aria-hidden="true"
-      className={INBOX_HOVER_CARD_CLASS}
-      data-hover-card=""
-      inert
-    >
-      <InboxRowBody {...props} preview />
-    </div>
-  );
+function useRowMotion(props: InboxRowProps) {
+  const focused = useInboxRowFocused(props.rowKey);
+  const grown = useHoverExpandAllowed() && focused && !props.expanded;
+  const ref = useRef<HTMLLIElement>(null);
+  useAnimatedHeight(ref, `${props.expanded}:${grown}`);
+  return { grown, ref };
 }
 
 /** The id of what a row's head opens. */
@@ -353,7 +349,7 @@ function rowRegionId(rowKey: string): string {
 function ConversationInboxRow(
   props: InboxRowProps & {
     conversation: Conversation;
-    hover: ReturnType<typeof useHoverExpand>;
+    motion: ReturnType<typeof useRowMotion>;
   },
 ) {
   const { conversation, drag } = props;
@@ -376,14 +372,14 @@ function ConversationInboxRow(
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   return (
     <li
-      {...props.hover.handlers}
       className={cn(
         inboxCardClass(props.expanded),
         drag?.dragging && "opacity-40",
-        props.hover.shown && "z-20",
       )}
       data-expanded={props.expanded || undefined}
+      data-grown={props.motion.grown || undefined}
       data-inbox-row={props.rowKey}
+      ref={props.motion.ref}
     >
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
@@ -396,6 +392,7 @@ function ConversationInboxRow(
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
+            preview={props.motion.grown}
             linkProps={{
               "aria-keyshortcuts": drag
                 ? "Alt+ArrowUp Alt+ArrowDown"
@@ -442,7 +439,6 @@ function ConversationInboxRow(
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
-      {props.hover.shown ? <HoverCard {...props} /> : null}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-1.5">
           {threads.threads.map((thread) => (
@@ -525,7 +521,7 @@ function RowSummary(props: {
 function InboxRowBody(
   props: InboxRowProps & {
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
-    /** Draw the hover card: comfortable, unclamped, every preview. */
+    /** In focus on hover: comfortable, unclamped, every preview. */
     preview?: boolean;
   },
 ) {
@@ -660,7 +656,14 @@ function InboxRowBody(
                 </span>
               ) : null}
               {comfortable && conversation ? (
-                <ConversationCast conversation={conversation} />
+                // A compact row that grows under the pointer keeps the name
+                // it reads under.
+                <span
+                  aria-hidden={density === "compact" || undefined}
+                  className="contents"
+                >
+                  <ConversationCast conversation={conversation} />
+                </span>
               ) : null}
             </Link>
             {summary && !columns ? (
