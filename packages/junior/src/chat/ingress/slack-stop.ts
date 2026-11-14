@@ -125,5 +125,6 @@ export async function handleSlackStop(args: {
     channelId: args.adapter.channelIdFromThreadId(args.canonicalThreadId),
     isDM: args.adapter.isDM(args.canonicalThreadId),
   });
+  // ast-grep-ignore: no-raw-slack-turn-post -- a stop control ack, not Turn output; sendSlackReply would add the Conversation footer to it
   await thread.post(SLACK_STOP_ACK);
 }

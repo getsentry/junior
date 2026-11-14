@@ -391,6 +391,7 @@ export function createSlackTurnRuntime<
     await deps.cancelWatches({ conversationId: args.thread.id });
     await args.thread.unsubscribe();
     await args.beforeFirstResponsePost?.();
+    // ast-grep-ignore: no-raw-slack-turn-post -- an opt-out control ack after unsubscribe, not Turn output; sendSlackReply would add the Conversation footer to it
     await args.thread.post(THREAD_OPTOUT_ACK);
     return true;
   };

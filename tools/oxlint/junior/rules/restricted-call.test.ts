@@ -37,7 +37,11 @@ const options = [
         message: "Use sendSlackReply.",
       },
       {
-        slackMethods: ["chat.postMessage"],
+        slackMethods: [
+          "chat.postMessage",
+          "chat.startStream",
+          "files.uploadV2",
+        ],
         allow: [owner("chat/slack/outbound.ts")],
         message: "Use the outbound boundary.",
       },
@@ -98,6 +102,11 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
     nonOwner(`getSlackClient().apiCall("assistant.search.context", {});`),
     nonOwner(`client.chat.getPermalink({ channel, message_ts });`),
     nonOwner(`captureMessage("Slack chat.postMessage returned warnings");`),
+    nonOwner(`const { [key]: value } = record; record[key];`),
+    nonOwner(
+      `import type { GatewayCredential } from "@/chat/pi/client"; let c: import("@/chat/pi/client").GatewayCredential;`,
+    ),
+    nonOwner(`let r: typeof import("@/chat/pi/client").resolveGatewayModel;`),
   ],
   invalid: [
     {
@@ -267,6 +276,64 @@ new RuleTester({ cwd: repoRoot }).run("restricted-call", restrictedCallRule, {
       errors: restricted(),
     },
     {
+      ...nonOwner(
+        `const method = "postMessage"; const { [method]: post } = getSlackClient().chat; await post({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`const chat = getSlackClient().chat; await chat[name]({});`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`const { chat } = client; await chat[name]({});`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `const { apiCall } = client; await apiCall.call(client, "chat.postMessage", {});`,
+      ),
+      errors: restricted(2),
+    },
+    {
+      ...nonOwner(
+        `await client[("api" + "Call") as "apiCall"]("chat.postMessage", {});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`await call.apply(client, ["chat.postMessage", {}]);`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `const gateway = (await import(spec)) as typeof import("@/chat/pi/client"); gateway.completeText({});`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `const f = (await import(spec)).completeText as typeof import("@/chat/pi/client").completeText;`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `import type * as G from "@/chat/pi/client"; const gateway = (await import(spec)) as typeof G;`,
+      ),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(`await client.chat.startStream({ channel });`),
+      errors: restricted(),
+    },
+    {
+      ...nonOwner(
+        `await new WebClient(token).files.uploadV2({ initial_comment: "hi" });`,
+      ),
+      errors: restricted(),
+    },
+    {
       ...coreModel(
         `import * as gateway from "@/chat/pi/client"; export const raw = (params) => gateway.completeText(params);`,
       ),
@@ -431,3 +498,24 @@ describe("restricted-call disable directives", () => {
     assert.match(result.output, /Unused oxlint-disable directive/);
   });
 });
+
+// Editors and language servers can run oxlint from a package directory.
+new RuleTester({ cwd: path.join(repoRoot, "packages/junior") }).run(
+  "restricted-call from a package directory",
+  restrictedCallRule,
+  {
+    valid: [
+      coreModel(
+        `import * as gateway from "./pi/client.js"; gateway.completeText({});`,
+      ),
+    ],
+    invalid: [
+      {
+        ...nonOwner(
+          `import { completeText } from "../pi/client"; completeText({});`,
+        ),
+        errors: restricted(),
+      },
+    ],
+  },
+);

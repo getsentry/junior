@@ -121,7 +121,9 @@
         "junior/restricted-call": [
           "error",
           {
-            "aliases": { "@/": "packages/junior/src/" },
+            "aliases": {
+              "@/": "packages/junior/src/"
+            },
             "entries": [
               {
                 "module": "packages/junior/src/chat/pi/client",
@@ -129,7 +131,8 @@
                   "completeDecision",
                   "completeObject",
                   "completeText",
-                  "embedTexts"
+                  "embedTexts",
+                  "rerankTexts"
                 ],
                 "allow": [
                   {
@@ -141,7 +144,7 @@
                     "reason": "It owns the plugin model boundary: cost goes to the host recorder for each plugin, and prompts are named for the plugin. The operation and Conversation attribution in core-model cannot express either."
                   }
                 ],
-                "message": "Call it from `@/chat/core-model` (packages/junior/src/chat/core-model.ts). That wrapper makes each call name its operation and where its cost goes, so no core model call drops its cost. Plugins get the same rule through `chat/plugins/model.ts`."
+                "message": "Call it from `@/chat/core-model` (packages/junior/src/chat/core-model.ts). That wrapper makes each call name its operation and where its cost goes, so no core model call drops its cost. If it has no wrapper for this call yet, add one there. Plugins get the same rule through `chat/plugins/model.ts`."
               },
               {
                 "module": "packages/junior/src/chat/slack/outbound",
@@ -155,7 +158,15 @@
                 "message": "Post visible Turn output with `sendSlackReply` from `@/chat/slack/reply` (packages/junior/src/chat/slack/reply.ts), and get its channel and thread from `resolveSlackReplyTarget`. A raw post skips the Conversation footer and chooses its own thread. Post a private notice with `postSlackDirectMessage` or `postSlackEphemeralMessage` from `@/chat/slack/outbound`."
               },
               {
-                "slackMethods": ["chat.postMessage", "chat.scheduleMessage"],
+                "slackMethods": [
+                  "chat.meMessage",
+                  "chat.postMessage",
+                  "chat.scheduleMessage",
+                  "chat.startStream",
+                  "files.completeUploadExternal",
+                  "files.uploadV2",
+                  "filesUploadV2"
+                ],
                 "allow": [
                   {
                     "file": "packages/junior/src/chat/slack/outbound.ts",

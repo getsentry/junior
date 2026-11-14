@@ -1,21 +1,13 @@
 id: no-raw-slack-turn-post
 language: TypeScript
 severity: error
-message: "Do not post to Slack with thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it."
+message: "Do not post to Slack with thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. Post a private notice with postSlackDirectMessage or postSlackEphemeralMessage from packages/junior/src/chat/slack/outbound.ts. Only when the post cannot go through either, put `// ast-grep-ignore: no-raw-slack-turn-post -- <why it cannot>` on the line before it."
 # `thread` is a Chat SDK Thread parameter, not an import, so junior/restricted-call
 # cannot resolve it. That oxlint rule owns postSlackMessage and chat.postMessage.
 files:
   - packages/junior/src/**/*.ts
 rule:
-  all:
-    - pattern: $THREAD.post($MESSAGE)
-    # Thread control acks are not Turn output.
-    - not:
-        has:
-          field: arguments
-          has:
-            kind: identifier
-            regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
+  pattern: $THREAD.post($MESSAGE)
 constraints:
   THREAD:
     regex: (^|\.)thread$
