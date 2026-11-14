@@ -22,7 +22,8 @@ import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { readSignInSecret } from "@/chat/secrets";
-import { isAllowedDomain, readEnvList } from "./allowlist";
+import { isAllowedDomain } from "@/chat/identities/trust";
+import { readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;

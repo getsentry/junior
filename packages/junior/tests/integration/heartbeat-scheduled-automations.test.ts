@@ -51,13 +51,11 @@ function testHeartbeat(
     dispatchForIdentity:
       options.dispatchForIdentity ??
       createIdentityDispatcher({
-        allowedDomains: [],
         conversationWorkQueue: () => queue,
       }),
     events:
       options.events ??
       createEventAppPublisher({
-        allowedDomains: () => [],
         conversationWork: () => ({ queue }),
       }),
   });

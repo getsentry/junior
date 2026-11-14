@@ -3,10 +3,9 @@ import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException, logInfo } from "@/chat/logging";
 import {
-  eventAuthorFacts,
-  requireEventAuthorTrust,
-  type EventAuthorTrust,
-} from "@/chat/events/author";
+  eventAuthorTrustOnce,
+  type AuthorTrust,
+} from "@/chat/identities/trust";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { resolveEventMentions, type EventMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
@@ -17,10 +16,10 @@ export async function ingestEvent(
   input: unknown,
   options: {
     /**
-     * Trust decision for the Event author (`eventAuthorTrustOnce`). Without
-     * it, the author of an authored Event is untrusted.
+     * The author trust decision that Event automations share
+     * (`eventAuthorTrustOnce`). Without it, ingest decides it.
      */
-    authorTrust?: () => Promise<EventAuthorTrust>;
+    authorTrust?: () => Promise<AuthorTrust>;
     nowMs?: number;
     queue: ConversationWorkQueue;
     /** Slack workspace whose users Event people resolve to. */
@@ -40,12 +39,12 @@ export async function ingestEvent(
   });
   if (subscriptions.length === 0) return { enqueued: 0 };
   // Only matched Watches pay for the lookups.
-  const trust = await requireEventAuthorTrust(event, options.authorTrust);
+  const trust = await (options.authorTrust ?? eventAuthorTrustOnce(event))();
   if (trust.status === "untrusted") {
     logInfo("event.author.untrusted", {
       "app.event.event_type": event.eventType,
       "app.event.namespace": event.namespace,
-      "app.event.author.reason": trust.author.reason,
+      "app.event.author.reason": trust.reason,
     });
   }
   let mentions: EventMentions = { people: [] };
@@ -63,11 +62,8 @@ export async function ingestEvent(
   // The trust decision matched the immutable account id, so its Slack member
   // names the author better than a handle match.
   const doneBy =
-    trust.status === "trusted" && trust.actor && event.author
-      ? {
-          mention: slackMention(trust.actor.userId),
-          handle: event.author.handle,
-        }
+    trust.status === "trusted" && trust.actor
+      ? { mention: slackMention(trust.actor.userId), handle: trust.handle }
       : mentions.doneBy;
   let enqueued = 0;
   const errors: unknown[] = [];
@@ -86,7 +82,7 @@ export async function ingestEvent(
         waitDeadlineMs,
         deliver: async (current) => {
           const result = await enqueueEventNotification({
-            author: eventAuthorFacts(trust),
+            author: trust,
             doneBy,
             event,
             people: mentions.people,

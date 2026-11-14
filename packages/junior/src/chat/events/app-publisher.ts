@@ -7,14 +7,14 @@ import {
   collectEventAutomationMatchKeys,
   findMatchingEventAutomations,
 } from "@/chat/event-automations/store";
-import { eventAuthorTrustOnce } from "@/chat/events/author";
 import { ingestEvent } from "@/chat/events/ingest";
 import {
   collectEventMatchKeys,
   findMatchingWatches,
 } from "@/chat/events/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { resolveBotSlackTeamId } from "@/chat/events/workspace";
+import { eventAuthorTrustOnce } from "@/chat/identities/trust";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -35,23 +35,17 @@ export type EventAppPublisher = {
 
 /** Build the core event publisher used by plugin routes. */
 export function createEventAppPublisher(args: {
-  /**
-   * Allowed Slack email domains, read when an Event is published. They
-   * decide which Event authors are trusted.
-   */
-  allowedDomains: () => readonly string[];
   conversationWork: () => {
     queue?: ConversationWorkQueue;
     state?: StateAdapter;
   };
 }): EventAppPublisher {
-  // Event automations still key by destination team until that store is conversation-owned.
-  const resolveEventAutomationTeamId = createEventTeamIdResolver();
-
   return {
     async hasMatch(events) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      // Event automations still key by destination team until that store is
+      // conversation-owned.
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       const limit = pLimit(WATCH_MATCH_CONCURRENCY);
       const [subscriptions, tasks] = await Promise.all([
         Promise.all(
@@ -80,7 +74,7 @@ export function createEventAppPublisher(args: {
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       const [watchKeys, taskKeys] = await Promise.all([
         collectEventMatchKeys({
           eventTypes: input.eventTypes,
@@ -104,12 +98,9 @@ export function createEventAppPublisher(args: {
     async publish(event) {
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       // Watches and Event automations share one trust decision.
-      const authorTrust = eventAuthorTrustOnce(event, {
-        allowedDomains: args.allowedDomains(),
-        slackTeamId: eventAutomationTeamId,
-      });
+      const authorTrust = eventAuthorTrustOnce(event);
       await Promise.all([
         ingestEvent(event, {
           authorTrust,

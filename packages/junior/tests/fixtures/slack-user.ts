@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
 
@@ -36,4 +37,34 @@ export async function linkSlackUser(
       set: { userId: user.id },
     });
   return user;
+}
+
+/**
+ * Seed one Slack member, and optionally a provider account that the OAuth
+ * account-linking flow linked to them, like a person who connected it.
+ * Return the User id.
+ */
+export async function seedLinkedPerson(args: {
+  email: string;
+  linked?: { handle?: string; provider: string; subjectId: string };
+  slackTeamId?: string;
+  slackUserId: string;
+}): Promise<string> {
+  const slack = await upsertIdentity(getSqlExecutor(), {
+    kind: "user",
+    provider: "slack",
+    providerTenantId: args.slackTeamId ?? "T123",
+    providerSubjectId: args.slackUserId,
+    email: args.email,
+    emailVerified: true,
+  });
+  if (args.linked) {
+    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
+      kind: "user",
+      provider: args.linked.provider,
+      providerSubjectId: args.linked.subjectId,
+      ...(args.linked.handle ? { handle: args.linked.handle } : undefined),
+    });
+  }
+  return slack.userId!;
 }

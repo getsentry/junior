@@ -28,7 +28,7 @@ import {
 } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
-import type { AuthorInstruction } from "@/chat/events/author";
+import type { AuthorTrust } from "@/chat/identities/trust";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -271,13 +271,14 @@ export async function createConversationWebHarness(
   };
 }
 
-/** Text that a Trusted author wrote in one Event, as core saves it. */
-export const eventAuthorInstruction = {
+/** Core's saved decision for a linked Trusted author of one Event. */
+export const eventAuthorTrust = {
+  status: "trusted",
   actor: { platform: "slack", teamId: "T123", userId: "U123" },
   handle: "dcramer",
   provider: "github",
   text: "Please also retry the flaky job.",
-} as const satisfies AuthorInstruction;
+} as const satisfies AuthorTrust;
 
 /** Return the texts of Messages that saved Events for a stopped Conversation. */
 export async function stoppedConversationMessageTexts(

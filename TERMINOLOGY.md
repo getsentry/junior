@@ -73,14 +73,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
 - **Event author**: the account that wrote the content of an Event, such as
-  a commenter. An Event with no author is a system Event. The author never
-  becomes the Turn Actor.
-- **Trusted author**: an author whose words Junior accepts as their
-  instruction. Core decides it once, in `decideAuthorTrust`, for Slack
-  members, plugin accounts, and verified emails. A Trusted author's own Event
+  a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
+  with no author is a system Event. The author never becomes the Turn Actor.
+- **Author trust**: core's saved decision for one Event, `AuthorTrust`:
+  `system`, `trusted`, or `untrusted` with a reason. `chat/identities/trust.ts`
+  owns it and every other trust check (Slack ingress, Identity dispatch).
+- **Trusted author**: an Event author with `trusted` Author trust. Their own
   text counts as their message, like a chat message. Any other author is an
-  Untrusted author: the Event still runs, and core marks the author as
-  untrusted, so their text is only context.
+  Untrusted author: the Event still runs, and their text is marked context.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops

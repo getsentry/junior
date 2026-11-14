@@ -579,7 +579,9 @@ Your plugin reports facts, and Junior decides trust:
   that account as the author.
 - `bot`: the author is a bot account.
 - `trusted`: your plugin config lists the author, such as a review bot.
-- `text`: the author's own words, without quoted text.
+- `text`: the author's own words, without quoted text. Leave these words out
+  of `untrustedText`, which keeps only the rest, such as the quotes. Junior
+  shows each part once.
 
 Junior trusts the author with the same check as `dispatchForIdentity`, or when
 `trusted` is set. Only a trusted author's `text` counts as their instruction.

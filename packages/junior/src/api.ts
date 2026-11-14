@@ -51,7 +51,7 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
-export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export { isAllowedSignInEmail } from "./chat/identities/trust";
 export {
   DEFAULT_AUTO_ARCHIVE_SETTINGS,
   readUserAutoArchiveSettings,

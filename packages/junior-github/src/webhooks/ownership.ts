@@ -68,8 +68,9 @@ function hasHtmlQuote(token: Token): boolean {
 }
 
 /**
- * Return the text that the author of a comment wrote, or undefined when
- * nothing is left. This is the one parser for a GitHub author's own text.
+ * Split a comment into the text that its author wrote (`own`) and the rest
+ * (`other`), such as quotes. Each part is undefined when it is empty. This is
+ * the one parser for a GitHub author's own text.
  *
  * A quote repeats text that someone else wrote, so it is never the author's
  * own words. Markdown quotes and HTML are removed, also in lists and tables.
@@ -81,12 +82,16 @@ function hasHtmlQuote(token: Token): boolean {
  *
  * Code stays, because an instruction can name a command. `withoutCode` also
  * removes code, where text in code does not count, such as a mention.
+ *
+ * The removed text goes to `other`, so it is shown once, as text that the
+ * author did not write.
  */
-export function ownCommentText(
+export function splitCommentText(
   text: string | null | undefined,
   options: { withoutCode?: boolean } = {},
-): string | undefined {
-  if (!text) return undefined;
+): { other?: string; own?: string } {
+  if (!text) return {};
+  const other: string[] = [];
   const removed = (token: Token): boolean =>
     token.type === "blockquote" ||
     token.type === "html" ||
@@ -100,9 +105,13 @@ export function ownCommentText(
       .map((token): string => {
         if (afterHtmlQuote || hasHtmlQuote(token)) {
           afterHtmlQuote = true;
+          other.push(token.raw);
           return "\n";
         }
-        if (removed(token)) return token.type === "codespan" ? " " : "\n";
+        if (removed(token)) {
+          other.push(token.raw);
+          return token.type === "codespan" ? " " : "\n";
+        }
         if (!hasRemoved(token)) return token.raw;
         if (token.type === "list") {
           return (token as Tokens.List).items
@@ -120,12 +129,18 @@ export function ownCommentText(
         return tokenText(childTokens(token));
       })
       .join(separator);
-  return (
-    tokenText(lexer(text, { gfm: true }))
-      // Removed quotes leave blank lines.
-      .replace(/\n{3,}/g, "\n\n")
-      .trim() || undefined
-  );
+  const own = tokenText(lexer(text, { gfm: true }))
+    // Removed quotes leave blank lines.
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const rest = other
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return {
+    ...(own ? { own } : undefined),
+    ...(rest ? { other: rest } : undefined),
+  };
 }
 
 /**
@@ -143,6 +158,6 @@ export function mentionsBotLogin(
   if (!slug) return false;
   const escaped = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|[^\\w-])@${escaped}(?![\\w-])`, "i").test(
-    ownCommentText(text, { withoutCode: true }) ?? "",
+    splitCommentText(text, { withoutCode: true }).own ?? "",
   );
 }

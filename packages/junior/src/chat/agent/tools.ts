@@ -497,11 +497,8 @@ export async function wireAgentTools(
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
-      ...(args.run.authorInstructions
-        ? { authorInstructions: args.run.authorInstructions }
-        : undefined),
-      ...(args.run.untrustedAuthors
-        ? { untrustedAuthors: args.run.untrustedAuthors }
+      ...(args.run.authorTrusts
+        ? { authorTrusts: args.run.authorTrusts }
         : undefined),
       source: runSource,
       userIntent: args.currentUserIntent,

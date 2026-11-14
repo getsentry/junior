@@ -6,9 +6,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { closeDb, getSqlExecutor } from "@/chat/db";
+import { closeDb } from "@/chat/db";
 import { ingestEvent } from "@/chat/events/ingest";
-import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -17,34 +16,12 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+import { seedLinkedPerson } from "../../fixtures/slack-user";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
 }).tools;
-
-async function seedSlackUser(args: {
-  demoLogin?: string;
-  email: string;
-  slackTeamId?: string;
-  slackUserId: string;
-}): Promise<void> {
-  const slack = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: args.slackTeamId ?? "T123",
-    providerSubjectId: args.slackUserId,
-    email: args.email,
-    emailVerified: true,
-  });
-  if (!args.demoLogin) return;
-  await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
-    kind: "user",
-    provider: "demo",
-    providerSubjectId: `demo-${args.demoLogin}`,
-    handle: args.demoLogin,
-  });
-}
 
 describe("Watch Event people", () => {
   afterEach(async () => {
@@ -78,18 +55,22 @@ describe("Watch Event people", () => {
         }),
       ]),
     });
-    await seedSlackUser({
-      demoLogin: "Requester",
+    await seedLinkedPerson({
       email: "requester@example.com",
+      linked: {
+        handle: "Requester",
+        provider: "demo",
+        subjectId: "demo-Requester",
+      },
       slackUserId: "U123",
     });
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "coauthor@example.com",
       slackUserId: "U456",
     });
     // The same person in another Slack workspace is neither ambiguous nor
     // mentioned.
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "coauthor@example.com",
       slackTeamId: "T999",
       slackUserId: "U999",
@@ -140,7 +121,11 @@ describe("Watch Event people", () => {
           ],
         },
         {
-          authorTrust: async () => ({ status: "trusted" }),
+          authorTrust: async () => ({
+            status: "trusted",
+            handle: "REQUESTER",
+            provider: "demo",
+          }),
           queue,
           slackTeamId: "T123",
         },

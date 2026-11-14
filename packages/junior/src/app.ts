@@ -139,6 +139,7 @@ import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import { setTrustConfig, type TrustConfig } from "@/chat/identities/trust";
 import {
   createIdentityDispatcher,
   type IdentityDispatcher,
@@ -531,7 +532,9 @@ export async function createApp(
   const previousBriefsConfig = setBriefsConfig(options?.briefs);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
+  let previousTrustConfig: TrustConfig | undefined;
   const restoreRuntimeConfig = (): void => {
+    if (previousTrustConfig) setTrustConfig(previousTrustConfig);
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
@@ -544,7 +547,6 @@ export async function createApp(
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const events = createEventAppPublisher({
-    allowedDomains: () => allowedDomains,
     conversationWork: () => ({
       ...getConversationWorkOptions(),
       queue: conversationWorkQueue,
@@ -573,6 +575,10 @@ export async function createApp(
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = resolveAllowedDomains(options?.allowedDomains);
+    previousTrustConfig = setTrustConfig({
+      allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
+      allowedDomains,
+    });
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":
@@ -582,7 +588,6 @@ export async function createApp(
     // One entry point for plugin routes and heartbeats, so both use the
     // same rules for who counts as a person.
     dispatchForIdentity = createIdentityDispatcher({
-      allowedDomains,
       conversationWorkQueue: () => conversationWorkQueue,
     });
     if (dashboard && !dashboard.disabled) {
@@ -753,8 +758,6 @@ export async function createApp(
       queue: conversationWorkQueue,
       services: runtimeServiceOverrides,
     }),
-    allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
-    allowedDomains,
     autoJoinNewChannels: options?.slack?.autoJoinNewChannels === true,
   };
 

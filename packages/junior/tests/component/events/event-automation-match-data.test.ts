@@ -72,7 +72,6 @@ describe("event automation match data", () => {
         },
       });
       const publisher = createEventAppPublisher({
-        allowedDomains: () => [],
         conversationWork: () => ({ state: createMemoryState() }),
       });
 

@@ -7,11 +7,7 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
-import {
-  eventAuthorLabel,
-  type AuthorInstruction,
-  type UntrustedAuthor,
-} from "@/chat/events/author";
+import { authorLabel, type AuthorTrust } from "@/chat/identities/trust";
 import type {
   AnyToolDefinition,
   ToolApprovalResolution,
@@ -44,12 +40,10 @@ export interface ToolActionReviewContext {
   credentialContext?: CredentialContext;
   destination: Destination;
   /**
-   * Text in this Event Turn's input that Trusted authors wrote. Core sends
-   * it only for an Event Source.
+   * Core's saved trust decisions for the Event authors of this Turn. Action
+   * review reads them only for an Event Source.
    */
-  authorInstructions?: readonly AuthorInstruction[];
-  /** Authors of this Event Turn's input that core does not trust. */
-  untrustedAuthors?: readonly UntrustedAuthor[];
+  authorTrusts?: readonly AuthorTrust[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -310,18 +304,16 @@ function buildProposal(
   const credential = actionCredential(context.credentialContext);
   // Only an Event Turn has author instructions. Other Sources have the
   // person's own messages as user intent.
-  const isEvent = context.source.kind === "event";
-  const authorInstructions = isEvent
-    ? (context.authorInstructions ?? []).map((instruction) => ({
-        author: eventAuthorLabel(instruction),
-        text: instruction.text,
-      }))
-    : [];
-  const untrustedAuthors = isEvent
-    ? (context.untrustedAuthors ?? []).map((author) => ({
-        author: eventAuthorLabel(author),
-      }))
-    : [];
+  const authorTrusts =
+    context.source.kind === "event" ? (context.authorTrusts ?? []) : [];
+  const authorInstructions = authorTrusts.flatMap((trust) =>
+    trust.status === "trusted" && trust.text
+      ? [{ author: authorLabel(trust), text: trust.text }]
+      : [],
+  );
+  const untrustedAuthors = authorTrusts.flatMap((trust) =>
+    trust.status === "untrusted" ? [{ author: authorLabel(trust) }] : [],
+  );
   return {
     context: {
       actor: actionActor(context.actor),

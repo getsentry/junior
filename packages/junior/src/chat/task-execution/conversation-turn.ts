@@ -665,8 +665,7 @@ export function createConversationTurnWorker(
                 actor,
                 credentialSubject,
               ),
-              authorInstructions: eventMeta.authorInstructions,
-              untrustedAuthors: eventMeta.untrustedAuthors,
+              authorTrusts: eventMeta.authorTrusts,
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

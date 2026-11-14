@@ -65,7 +65,7 @@ import {
   isSlackWorkspaceMember,
   slackWorkspaceBotId,
 } from "@/chat/ingress/workspace-membership";
-import { isSlackAuthorTrusted } from "@/chat/ingress/slack-author-trust";
+import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -112,10 +112,6 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
-  /** Email domains Slack authors need to start a Turn. Empty allows all. */
-  allowedDomains?: readonly string[];
-  /** Slack user IDs of bots that may start a Turn without an email domain. */
-  allowedBotUserIds?: readonly string[];
   /** Join each public channel created after this is on. Defaults to off. */
   autoJoinNewChannels?: boolean;
   runtime: Pick<
@@ -367,8 +363,6 @@ async function routeParsedMessage(args: {
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
-  allowedBotUserIds: readonly string[];
-  allowedDomains: readonly string[];
   /** Run the task after the caller releases the thread's ingress lock. */
   runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
@@ -413,9 +407,7 @@ async function routeParsedMessage(args: {
     isExplicitMention: isMention,
   });
   const isAuthorTrusted = () =>
-    isSlackAuthorTrusted({
-      allowedBotUserIds: args.allowedBotUserIds,
-      allowedDomains: args.allowedDomains,
+    isTrustedSlackAuthor({
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
@@ -745,8 +737,6 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
-                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-                allowedDomains: args.services.allowedDomains ?? [],
                 runAfterUnlock: (task) => {
                   afterUnlock = task;
                 },
@@ -829,9 +819,7 @@ export async function handleSlackWebhook(args: {
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
       isAuthorAllowed: (userId, installation) =>
-        isSlackAuthorTrusted({
-          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-          allowedDomains: args.services.allowedDomains ?? [],
+        isTrustedSlackAuthor({
           state,
           teamId: installation.teamId,
           user: userId,

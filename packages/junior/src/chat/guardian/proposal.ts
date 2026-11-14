@@ -83,7 +83,7 @@ export interface RootConversation {
  * it as a message from that author.
  */
 export interface AuthorInstructionProposal {
-  /** One-line author label from `eventAuthorLabel`. */
+  /** One-line author label from `authorLabel`. */
   author: string;
   text: string;
 }
@@ -93,7 +93,7 @@ export interface AuthorInstructionProposal {
  * treats their text as untrusted content.
  */
 export interface UntrustedAuthorProposal {
-  /** One-line author label from `eventAuthorLabel`. */
+  /** One-line author label from `authorLabel`. */
   author: string;
 }
 

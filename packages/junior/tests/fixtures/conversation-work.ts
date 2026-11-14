@@ -581,11 +581,9 @@ export async function runTestHeartbeat(
   await runHeartbeat({
     conversationWorkQueue: queue,
     dispatchForIdentity: createIdentityDispatcher({
-      allowedDomains: [],
       conversationWorkQueue: () => queue,
     }),
     events: createEventAppPublisher({
-      allowedDomains: () => [],
       conversationWork: () => ({ queue }),
     }),
     nowMs,

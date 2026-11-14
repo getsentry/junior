@@ -43,12 +43,9 @@ import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  eventAuthorFacts,
-  requireEventAuthorTrust,
-  untrustedAuthorLabels,
-  type EventAuthorTrust,
-  type UntrustedAuthor,
-} from "@/chat/events/author";
+  eventAuthorTrustOnce,
+  type AuthorTrust,
+} from "@/chat/identities/trust";
 import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
@@ -70,7 +67,7 @@ function eventInput(
   event: Event,
   outcomes: TaskOutcome[],
   catalog: EventCatalog,
-  untrustedAuthor: UntrustedAuthor | undefined,
+  author: AuthorTrust,
 ): string {
   const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
@@ -85,10 +82,17 @@ function eventInput(
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
-    ...(untrustedAuthor
-      ? { untrustedAuthor: untrustedAuthorLabels(untrustedAuthor) }
-      : undefined),
-    externalText: event.untrustedText,
+    // An Automation run carries no author instruction to action review yet,
+    // so a Trusted author's text stays external text here. An Untrusted
+    // author is marked, with their text, like in a Watch Turn.
+    ...(author.status === "untrusted" ? { author } : undefined),
+    externalText:
+      [
+        author.status === "trusted" ? author.text : undefined,
+        event.untrustedText,
+      ]
+        .filter(Boolean)
+        .join("\n\n") || undefined,
     externalTextMaxLength: EVENT_TEXT_MAX_LENGTH,
   });
 }
@@ -105,10 +109,10 @@ export async function ingestEventAutomations(
   input: unknown,
   options: {
     /**
-     * Trust decision for the Event author (`eventAuthorTrustOnce`). Without
-     * it, the author of an authored Event is untrusted.
+     * The author trust decision that Watches share (`eventAuthorTrustOnce`).
+     * Without it, ingest decides it.
      */
-    authorTrust?: () => Promise<EventAuthorTrust>;
+    authorTrust?: () => Promise<AuthorTrust>;
     nowMs?: number;
     queue: ConversationWorkQueue;
     teamId: string;
@@ -128,11 +132,7 @@ export async function ingestEventAutomations(
     slackChannelMessageRunsAutomation(event, task),
   );
   if (tasks.length === 0) return { dispatched: 0 };
-  // A Trusted author's text stays external text here: an Automation run
-  // carries no author instruction to action review yet. An Untrusted author
-  // is still marked in the task input.
-  const trust = await requireEventAuthorTrust(event, options.authorTrust);
-  const { untrustedAuthor } = eventAuthorFacts(trust);
+  const author = await (options.authorTrust ?? eventAuthorTrustOnce(event))();
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {
@@ -216,7 +216,7 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes, catalog, untrustedAuthor),
+          input: eventInput(task, event, outcomes, catalog, author),
           ...(skill ? { skill } : undefined),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),

@@ -6,11 +6,11 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import { getConversationStore, getDb } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { usersInfoOk } from "../fixtures/slack/factories/api";
+import { seedLinkedPerson } from "../fixtures/slack-user";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import {
   createConversationWorkQueueTestAdapter,
@@ -20,34 +20,6 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-
-/**
- * Seed one Slack member and, optionally, a provider account linked by OAuth.
- * Return the User id.
- */
-async function seedSlackUser(args: {
-  email: string;
-  linked?: { handle?: string; provider: string; subjectId: string };
-  slackUserId: string;
-}): Promise<string> {
-  const slack = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: "T123",
-    providerSubjectId: args.slackUserId,
-    email: args.email,
-    emailVerified: true,
-  });
-  if (args.linked) {
-    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
-      kind: "user",
-      provider: args.linked.provider,
-      providerSubjectId: args.linked.subjectId,
-      ...(args.linked.handle ? { handle: args.linked.handle } : undefined),
-    });
-  }
-  return slack.userId!;
-}
 
 /** Read the Conversation and the first Message that an Identity dispatch made. */
 async function readStartedConversation(conversationId: string) {
@@ -115,7 +87,7 @@ describe("plugin Identity dispatch", () => {
   });
 
   it("starts one public web Conversation for a linked current Slack member", async () => {
-    const userId = await seedSlackUser({
+    const userId = await seedLinkedPerson({
       email: "requester@example.com",
       linked: { provider: "demo", subjectId: "1001" },
       slackUserId: "U123",
@@ -165,31 +137,31 @@ describe("plugin Identity dispatch", () => {
   });
 
   it("drops identities without exactly one current linked Slack member", async () => {
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "requester@example.com",
       linked: { handle: "octocat", provider: "demo", subjectId: "1001" },
       slackUserId: "U123",
     });
     // Another provider's account id does not name a demo Identity.
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "other@example.com",
       linked: { provider: "github", subjectId: "2001" },
       slackUserId: "U222",
     });
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "former@example.com",
       linked: { provider: "demo", subjectId: "1003" },
       slackUserId: "U456",
     });
     // One person with two Slack accounts in the workspace is ambiguous.
-    await seedSlackUser({ email: "twice@example.com", slackUserId: "U777" });
-    await seedSlackUser({
+    await seedLinkedPerson({ email: "twice@example.com", slackUserId: "U777" });
+    await seedLinkedPerson({
       email: "twice@example.com",
       linked: { provider: "demo", subjectId: "1004" },
       slackUserId: "U778",
     });
     // Core links native Google sign-in identities, not plugin OAuth.
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "signed-in@example.com",
       linked: { provider: "google", subjectId: "google-sub-1" },
       slackUserId: "U333",
@@ -223,7 +195,7 @@ describe("plugin Identity dispatch", () => {
 
   it("drops a linked member whose Slack email is not on the allowed domains", async () => {
     await startApp(["example.com"]);
-    await seedSlackUser({
+    await seedLinkedPerson({
       email: "someone@contractor.dev",
       linked: { provider: "demo", subjectId: "1005" },
       slackUserId: "U555",
@@ -243,11 +215,11 @@ describe("plugin Identity dispatch", () => {
   });
 
   it("starts work from a heartbeat for a verified email of a current member", async () => {
-    const mayaUserId = await seedSlackUser({
+    const mayaUserId = await seedLinkedPerson({
       email: "maya@example.com",
       slackUserId: "U900",
     });
-    await seedSlackUser({ email: "stale@example.com", slackUserId: "U901" });
+    await seedLinkedPerson({ email: "stale@example.com", slackUserId: "U901" });
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({ userId: "U900", email: "Maya@Example.com" }),
     });
