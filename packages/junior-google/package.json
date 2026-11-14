@@ -22,7 +22,7 @@
     "migrations"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "tsdown",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "prepack": "pnpm run build",
     "test": "vitest run",
@@ -41,7 +41,7 @@
     "@types/pg": "^8.15.6",
     "drizzle-kit": "catalog:",
     "pg": "^8.16.3",
-    "tsup": "^8.5.1",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

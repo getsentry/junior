@@ -26,7 +26,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "tsdown",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -43,7 +43,7 @@
     "@sentry/junior-testing": "workspace:*",
     "@types/mdast": "^4.0.4",
     "@types/node": "catalog:",
-    "tsup": "^8.5.1",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

@@ -316,7 +316,7 @@ importers:
     dependencies:
       '@sentry/junior':
         specifier: workspace:*
-        version: link:../../packages/junior
+        version: file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/junior-agent-browser':
         specifier: workspace:*
         version: link:../../packages/junior-agent-browser
@@ -756,7 +756,7 @@ importers:
         version: 0.85.1(zod@4.6.7)
       '@sentry/junior':
         specifier: workspace:*
-        version: link:../junior
+        version: file:packages/junior(@types/node@24.19.2)(vitest@4.1.12)
       '@sentry/junior-eval-pantry':
         specifier: link:fixtures/plugins/eval-pantry
         version: link:fixtures/plugins/eval-pantry
@@ -877,9 +877,9 @@ importers:
       pg:
         specifier: ^8.16.3
         version: 8.21.0
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -920,9 +920,9 @@ importers:
       pg:
         specifier: ^8.16.3
         version: 8.21.0
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -947,9 +947,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1014,9 +1014,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1073,9 +1073,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1128,9 +1128,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -5803,6 +5803,11 @@ packages:
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
+    peerDependencies:
+      ajv: ^8.0.0
+    peerDependenciesMeta:
+      ajv:
+        optional: true
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
@@ -7124,6 +7129,7 @@ packages:
 
   fast-xml-parser@5.8.0:
     resolution: {integrity: sha512-6bIM7fsJxeo3uXv7OncQYsBAMPJ7V16Slahl/6M98C/i2q+vB1+4a0MtrvYwDFEUrwDSbAmeLDRXsOBwrL7yAg==}
+    hasBin: true
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -7464,6 +7470,7 @@ packages:
 
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
+    hasBin: true
 
   headers-polyfill@5.0.1:
     resolution: {integrity: sha512-1TJ6Fih/b8h5TIcv+1+Hw0PDQWJTKDKzFZzcKOiW1wJza3XoAQlkCuXLbymPYB8+ZQyw8mHvdw560e8zVFIWyA==}
@@ -7761,6 +7768,7 @@ packages:
 
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
+    hasBin: true
 
   jose@5.9.6:
     resolution: {integrity: sha512-AMlnetc9+CV9asI19zHmrgS/WYsWUwCn2R7RzlbJWD7F9eWYUTGyBmU9o6PxngtLGOiDGPRu+Uc4fhKzbpteZQ==}
@@ -8574,6 +8582,7 @@ packages:
 
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
 
   node-html-markdown@2.0.0:
     resolution: {integrity: sha512-DqUC3GGP7pwSYxS93SwHoP+qCw78xcMP6C6H2DuC8rPD2AweJRjBzQb5SdXpKtDlqAQ7hVotJcfhgU7hU5Gthw==}
@@ -8585,6 +8594,7 @@ packages:
   node-liblzma@2.2.0:
     resolution: {integrity: sha512-s0KzNOWwOJJgPG6wxg6cKohnAl9Wk/oW1KrQaVzJBjQwVcUGPQCzpR46Ximygjqj/3KhOrtJXnYMp/xYAXp75g==}
     engines: {node: '>=16.0.0'}
+    hasBin: true
 
   node-mock-http@1.0.5:
     resolution: {integrity: sha512-KQyt/wLjG3TAc7DOUhpqWzgd4ERxR80JOlTK5VE5R1S12IaPVN5qkj4klBce9HPG1Njuup4Sb5bljaT34lIyjw==}
@@ -9034,6 +9044,7 @@ packages:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}
     engines: {node: '>=10'}
     deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
+    hasBin: true
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -9136,6 +9147,7 @@ packages:
 
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
+    hasBin: true
 
   re2js@1.3.3:
     resolution: {integrity: sha512-s/I5zEAo79SUK0Qw4dpZKpiMwbQ6Gz0KU2NRr7eaO4x/p2g7Vvmn3hdeXDg8VsaUjfj/ora+e9oi27LX/C9+mw==}
@@ -9496,6 +9508,7 @@ packages:
 
   seek-bzip@2.0.0:
     resolution: {integrity: sha512-SMguiTnYrhpLdk3PwfzHeotrcwi8bNV4iemL9tx9poR/yeaMYwB9VzR1w7b57DuWpuqR8n6oZboi0hj3AxZxQg==}
+    hasBin: true
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -10765,6 +10778,7 @@ packages:
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
     engines: {node: '>= 14.6'}
+    hasBin: true
 
   yargs-parser@20.2.9:
     resolution: {integrity: sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w==}
@@ -14322,12 +14336,12 @@ snapshots:
       '@sentry/nitro': 11.10.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.10.0
       '@sentry/server-utils': 11.10.0
-      '@sinclair/typebox': 0.34.49
+      '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0
-      '@vercel/oidc': 3.4.1
+      '@vercel/oidc': 3.8.5
       '@vercel/queue': 0.2.0
       '@vercel/sandbox': 4.0.0
       ai: 7.0.153(zod@4.6.7)
@@ -14340,14 +14354,14 @@ snapshots:
       graphql: 16.14.0
       hono: 4.13.11
       jiti: 2.7.0
-      jose: 6.2.3
+      jose: 6.2.4
       just-bash: 3.0.1
       nitro: 3.0.260522-beta(jiti@2.7.0)
       node-html-markdown: 2.0.0
-      p-limit: 7.3.1
+      p-limit: 7.3.3
       parse5: 7.3.0
       pg: 8.21.0
-      sharp: 0.35.3(@types/node@24.19.2)
+      sharp: 0.35.5(@types/node@24.19.2)
       undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.0
@@ -14427,12 +14441,12 @@ snapshots:
       '@sentry/nitro': 11.10.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.10.0
       '@sentry/server-utils': 11.10.0
-      '@sinclair/typebox': 0.34.49
+      '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0
-      '@vercel/oidc': 3.4.1
+      '@vercel/oidc': 3.8.5
       '@vercel/queue': 0.2.0
       '@vercel/sandbox': 4.0.0
       ai: 7.0.153(zod@4.6.7)
@@ -14445,14 +14459,14 @@ snapshots:
       graphql: 16.14.0
       hono: 4.13.11
       jiti: 2.7.0
-      jose: 6.2.3
+      jose: 6.2.4
       just-bash: 3.0.1
       nitro: 3.0.260522-beta
       node-html-markdown: 2.0.0
-      p-limit: 7.3.1
+      p-limit: 7.3.3
       parse5: 7.3.0
       pg: 8.21.0
-      sharp: 0.35.3(@types/node@24.19.2)
+      sharp: 0.35.5(@types/node@24.19.2)
       undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.0
@@ -14513,6 +14527,122 @@ snapshots:
       - vue
       - webpack
       - ws
+
+  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(vitest@4.1.12)':
+    dependencies:
+      '@agentclientprotocol/sdk': 1.3.0(zod@4.6.7)
+      '@ai-sdk/gateway': 4.0.126(zod@4.6.7)
+      '@chat-adapter/slack': 4.29.0(ai@7.0.153(zod@4.6.7))(zod@4.6.7)
+      '@chat-adapter/state-memory': 4.29.0(ai@7.0.153(zod@4.6.7))(zod@4.6.7)
+      '@chat-adapter/state-redis': 4.29.0(ai@7.0.153(zod@4.6.7))(zod@4.6.7)
+      '@earendil-works/pi-agent-core': 0.85.1(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(zod@4.6.7)
+      '@earendil-works/pi-ai': 0.85.1(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(zod@4.6.7)
+      '@earendil-works/pi-codemode': 1.4.0
+      '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.6.7)
+      '@logtape/logtape': 2.1.1
+      '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
+      '@neondatabase/serverless': 1.1.0
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sentry/nitro': 11.10.0
+      '@sentry/node': 11.10.0
+      '@sentry/server-utils': 11.10.0
+      '@sinclair/typebox': 0.34.52
+      '@slack/types': 2.21.1
+      '@slack/web-api': 7.16.0
+      '@vercel/blob': 2.8.0
+      '@vercel/functions': 3.6.0
+      '@vercel/oidc': 3.8.5
+      '@vercel/queue': 0.2.0
+      '@vercel/sandbox': 4.0.0
+      ai: 7.0.153(zod@4.6.7)
+      aws4fetch: 1.0.20
+      better-auth: 1.7.14(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0))(pg@8.21.0)(vitest@4.1.12)
+      chat: 4.29.0(ai@7.0.153(zod@4.6.7))(zod@4.6.7)
+      commander: 14.0.3
+      diff: 8.0.4
+      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      graphql: 16.14.0
+      hono: 4.13.11
+      jiti: 2.7.0
+      jose: 6.2.4
+      just-bash: 3.0.1
+      node-html-markdown: 2.0.0
+      p-limit: 7.3.3
+      parse5: 7.3.0
+      pg: 8.21.0
+      sharp: 0.35.5(@types/node@24.19.2)
+      undici: 7.30.1
+      web-push: 3.6.7
+      yaml: 2.9.0
+      zod: 4.6.7
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@aws-sdk/credential-provider-web-identity'
+      - '@cfworker/json-schema'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@lynx-js/react'
+      - '@netlify/db'
+      - '@node-rs/xxhash'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@sveltejs/kit'
+      - '@tanstack/react-start'
+      - '@tanstack/solid-start'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/node'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - bare-abort-controller
+      - better-sqlite3
+      - bufferutil
+      - bun-types
+      - debug
+      - drizzle-kit
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mongodb
+      - mysql2
+      - next
+      - pg-native
+      - postgres
+      - prisma
+      - react
+      - react-dom
+      - react-native-b4a
+      - rollup
+      - solid-js
+      - sql.js
+      - sqlite3
+      - supports-color
+      - svelte
+      - utf-8-validate
+      - vitest
+      - vue
+      - webpack
+      - ws
+
+  '@sentry/nitro@11.10.0':
+    dependencies:
+      '@sentry/bundler-plugins': 11.10.0
+      '@sentry/conventions': 0.29.0
+      '@sentry/core': 11.10.0
+      '@sentry/node': 11.10.0
+      '@sentry/server-runtime-injection': 11.10.0
+      '@sentry/server-utils': 11.10.0
+    transitivePeerDependencies:
+      - rollup
+      - webpack
 
   '@sentry/nitro@11.10.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))':
     dependencies:
@@ -16077,6 +16207,32 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       vitest: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(tsx@4.22.3)
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+
+  better-auth@1.7.14(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0))(pg@8.21.0)(vitest@4.1.12):
+    dependencies:
+      '@better-auth/core': 1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1)
+      '@better-auth/drizzle-adapter': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0))
+      '@better-auth/kysely-adapter': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)(kysely@0.29.4)
+      '@better-auth/memory-adapter': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)
+      '@better-auth/mongo-adapter': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)
+      '@better-auth/prisma-adapter': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)
+      '@better-auth/telemetry': 1.7.14(@better-auth/core@1.7.14(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(better-call@1.4.4(zod@4.6.7))(jose@6.2.4)(kysely@0.29.4)(nanostores@1.4.1))(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)
+      '@better-auth/utils': 0.5.1
+      '@better-fetch/fetch': 1.3.3
+      '@noble/ciphers': 2.2.0
+      '@noble/hashes': 2.2.0
+      better-call: 1.4.4(zod@4.6.7)
+      defu: 6.1.7
+      jose: 6.2.4
+      kysely: 0.29.4
+      nanostores: 1.4.1
+      zod: 4.6.7
+    optionalDependencies:
+      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      pg: 8.21.0
+      vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -20483,7 +20639,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 24.19.2
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:

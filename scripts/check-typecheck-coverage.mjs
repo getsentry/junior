@@ -3,6 +3,7 @@
 // tsconfig.json (except build-only configs) is a project. `tsc --showConfig`
 // lists the files of a project without a type check, so this runs fast.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
@@ -27,15 +28,18 @@ const UNCHECKED = [
   "packages/junior-evals/fixtures/",
 ];
 
-function git(...args) {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8" })
+// Tracked and new files that still exist in the working tree.
+function git(...patterns) {
+  return execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", ...patterns],
+    { cwd: root, encoding: "utf8" },
+  )
     .split("\n")
-    .filter(Boolean);
+    .filter((file) => file && fs.existsSync(path.join(root, file)));
 }
 
-const projects = git("ls-files", "*tsconfig.json", "**/tsconfig.json").map(
-  (file) => path.dirname(file),
-);
+const projects = git("*tsconfig.json").map((file) => path.dirname(file));
 
 const checked = new Set();
 for (const project of projects) {
@@ -48,7 +52,7 @@ for (const project of projects) {
   }
 }
 
-const unchecked = git("ls-files", "*.ts", "*.tsx", "*.mts", "*.cts").filter(
+const unchecked = git("*.ts", "*.tsx", "*.mts", "*.cts").filter(
   (file) =>
     !file.endsWith(".d.ts") &&
     !checked.has(file) &&

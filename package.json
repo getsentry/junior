@@ -29,7 +29,7 @@
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
     "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-google packages/junior-agent-browser packages/junior-amplitude packages/junior-cloudflare packages/junior-datadog packages/junior-figma packages/junior-tts packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-octolens packages/junior-pagerduty packages/junior-restream packages/junior-sentry packages/junior-vercel packages/junior-xdotcom; do pnpm exec publint \"$pkg\" || exit $?; done",
-    "package-types:check": "sh scripts/check-package-types.sh",
+    "package-types:check": "node scripts/check-package-types.mjs",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm build && pnpm -r --workspace-concurrency=1 --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" --filter \"!@sentry/junior-evals\" run test",
