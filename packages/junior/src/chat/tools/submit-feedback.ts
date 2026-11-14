@@ -2,7 +2,7 @@ import * as z from "zod";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import * as Sentry from "@/chat/sentry";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -44,6 +44,19 @@ const submitFeedbackOutputSchema = juniorToolOutputSchema.extend({
   feedback_id: z.string().describe("Id of the feedback sent to maintainers."),
 });
 
+export const submitFeedbackToolDefinition = zodToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Report a problem with your own tools or runtime to the maintainers, not to the user. Use it once when a tool failed, timed out, was too slow, returned wrong data, or was missing, such as a Sandbox that did not start. Skip it when the work went fine, or when the cause is the user's input, access, or a permission they control. Returns the feedback id.",
+  inputSchema: submitFeedbackInputSchema,
+  outputSchema: submitFeedbackOutputSchema,
+});
+
 /**
  * Send the agent's report of a tool or runtime problem to the maintainers as
  * Sentry user feedback, next to the dashboard Reply ratings.
@@ -52,16 +65,7 @@ export function createSubmitFeedbackTool(
   context: Pick<ToolRuntimeContext, "conversationId" | "conversationPrivacy">,
 ) {
   return zodTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Report a problem with your own tools or runtime to the maintainers, not to the user. Use it once when a tool failed, timed out, was too slow, returned wrong data, or was missing, such as a Sandbox that did not start. Skip it when the work went fine, or when the cause is the user's input, access, or a permission they control. Returns the feedback id.",
-    inputSchema: submitFeedbackInputSchema,
-    outputSchema: submitFeedbackOutputSchema,
+    ...submitFeedbackToolDefinition,
     execute: async (input) => {
       if (isPlaceholder(input.message)) {
         throw new ToolInputError(

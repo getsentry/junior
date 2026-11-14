@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it } from "vitest";
-import { createGitHubGetReleaseTool } from "../src/tools/get-release";
+import { gitHubGetReleaseTool } from "../src/tools/get-release";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const RELEASE = {
   created_at: "2026-08-04T05:15:00Z",
@@ -19,7 +20,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetReleaseTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetReleaseTool, ctx) };
 }
 
 describe("getRelease", () => {

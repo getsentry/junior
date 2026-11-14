@@ -17,6 +17,7 @@ import {
   toMcpProviderError,
 } from "./errors";
 import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
+import { type McpLoginOwner, serializeMcpTokenRefresh } from "./token-refresh";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -68,6 +69,8 @@ export interface PluginMcpClientOptions {
 
 type HostManagedSessionProvider = OAuthClientProvider & {
   getMcpServerSessionId?: () => Promise<string | undefined>;
+  /** The stored person login, so its refreshes share one lock. */
+  mcpLoginOwner?: () => Promise<McpLoginOwner>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
 };
 
@@ -230,9 +233,16 @@ export class PluginMcpClient {
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
+    const loginProvider = this.options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
+    const mcpLoginOwner = loginProvider?.mcpLoginOwner?.bind(loginProvider);
+    const providerFetch = mcpLoginOwner
+      ? serializeMcpTokenRefresh(mcpLoginOwner, this.options.fetch)
+      : this.options.fetch;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
       ...(headers ? { requestInit: { headers } } : undefined),
-      fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch, (status) => {
+      fetch: fetchWithBoundedOAuthErrorBodies(providerFetch, (status) => {
         const store = this.providerStatusStore.getStore();
         if (store) {
           store.status = status;

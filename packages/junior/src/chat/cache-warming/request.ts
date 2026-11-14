@@ -166,12 +166,21 @@ export async function breakerOpen(
   );
 }
 
-/** Report whether each warmed provider's breaker is open. */
+/**
+ * Report whether the breaker is open for each warmed provider of these
+ * models. Providers that no model uses are left out.
+ */
 export async function breakerStates(
   state: ConnectedState,
+  modelIds: readonly string[],
 ): Promise<Array<{ provider: string; open: boolean }>> {
+  const providers = new Set(
+    modelIds
+      .map(providerOf)
+      .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
+  );
   return Promise.all(
-    Object.keys(CACHE_TTL_MS).map(async (provider) => ({
+    [...providers].map(async (provider) => ({
       provider,
       open: (await state.get<boolean>(breakerOpenKey(provider))) === true,
     })),

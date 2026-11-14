@@ -9,10 +9,11 @@ import {
   EgressPolicyDenied,
   type EgressHookContext,
   type IssueCredentialHookContext,
+  type PluginContext,
   type PluginCredentialResult,
   type PluginGrant,
 } from "@sentry/junior-plugin-api";
-import { readGoogleConfig } from "./config";
+import { readGoogleConfig, type GoogleConfig } from "./config";
 import { refreshGoogleAccessToken } from "./oauth";
 import {
   deleteRejectedGoogleAccount,
@@ -207,6 +208,46 @@ function unavailable(message: string): PluginCredentialResult {
 
 const NOT_CONNECTED_MESSAGE = `Your own Google account is not connected. It is not the requester's account, and the requester cannot connect it. An admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
 
+type AccountToken =
+  | { accessToken: string; expiresAtMs: number }
+  | { unavailable: string };
+
+// Refresh the access token of Junior's Google account. A token that Google
+// rejects disconnects the account.
+async function refreshAccountToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<AccountToken> {
+  const db = ctx.db as GoogleDb;
+  const record = await getGoogleAccount(db, config.accountEmail);
+  if (!record) return { unavailable: NOT_CONNECTED_MESSAGE };
+  const token = await refreshGoogleAccessToken({
+    config,
+    refreshToken: record.refreshToken,
+  });
+  if (!token) {
+    await deleteRejectedGoogleAccount(db, record);
+    ctx.log.warn("google.account.token_rejected", {
+      "app.google.account": config.accountEmail,
+    });
+    return { unavailable: `Google revoked access. ${NOT_CONNECTED_MESSAGE}` };
+  }
+  return token;
+}
+
+/**
+ * Return a fresh access token for Junior's Google account, for a request
+ * that cannot go through egress, such as a Drive thumbnail that the image
+ * proxy fetches. Return nothing when the account is not connected.
+ */
+export async function readGoogleAccessToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<string | undefined> {
+  const token = await refreshAccountToken(ctx, config);
+  return "accessToken" in token ? token.accessToken : undefined;
+}
+
 /** Mint a short-lived access token for Junior's Google account. */
 export async function issueGoogleCredential(
   ctx: IssueCredentialHookContext,
@@ -222,22 +263,8 @@ export async function issueGoogleCredential(
       "The Google plugin is not configured on this deployment.",
     );
   }
-  const db = ctx.db as GoogleDb;
-  const record = await getGoogleAccount(db, config.accountEmail);
-  if (!record) {
-    return unavailable(NOT_CONNECTED_MESSAGE);
-  }
-  const token = await refreshGoogleAccessToken({
-    config,
-    refreshToken: record.refreshToken,
-  });
-  if (!token) {
-    await deleteRejectedGoogleAccount(db, record);
-    ctx.log.warn("google.account.token_rejected", {
-      "app.google.account": config.accountEmail,
-    });
-    return unavailable(`Google revoked access. ${NOT_CONNECTED_MESSAGE}`);
-  }
+  const token = await refreshAccountToken(ctx, config);
+  if ("unavailable" in token) return unavailable(token.unavailable);
   return {
     type: "lease",
     lease: {

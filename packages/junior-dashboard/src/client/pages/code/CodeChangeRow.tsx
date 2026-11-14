@@ -3,7 +3,13 @@ import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 import { StatusChip } from "../../components/StatusChip";
 import { OutboundLink } from "../../components/OutboundLink";
 
-function stateTone(state: CodeChangeSummaryReport["state"]) {
+// `draft` only means something while the change is open; a closed draft
+// shows as closed.
+function stateLabel(change: CodeChangeSummaryReport) {
+  return change.draft && change.state === "open" ? "draft" : change.state;
+}
+
+function stateTone(state: ReturnType<typeof stateLabel>) {
   if (state === "merged") return "success" as const;
   if (state === "open") return "info" as const;
   return "neutral" as const;
@@ -13,6 +19,7 @@ function stateTone(state: CodeChangeSummaryReport["state"]) {
 export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
+  const state = stateLabel(change);
   return (
     <div className="flex min-w-0 items-center justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0">
       <div className="min-w-0">
@@ -33,8 +40,8 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
           {change.repository} #{change.number}
         </div>
       </div>
-      <StatusChip size="compact" tone={stateTone(change.state)}>
-        {change.state}
+      <StatusChip size="compact" tone={stateTone(state)}>
+        {state}
       </StatusChip>
     </div>
   );
