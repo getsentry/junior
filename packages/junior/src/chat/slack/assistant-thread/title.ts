@@ -48,6 +48,7 @@ export async function maybeSyncAssistantTitle(args: {
       .getSlackAdapter()
       .setAssistantTitle(channelId, threadTs, args.title);
   } catch (error) {
+    // best-effort: retried. The next turn in the thread syncs the title again.
     // Allow a later turn to retry after a transient failure. Stable permission
     // denials stay terminal for this process.
     const slackErrorCode = getSlackApiErrorCode(error);

@@ -144,6 +144,8 @@ async function ensureConversationTitleOnce(args: {
         sourceText,
       });
     } catch (error) {
+      // best-effort: decision (optional context). A failed title model call
+      // uses the fallback title below. See the PR decisions.
       logWarn("conversation.title.generation.failed", {
         "exception.message":
           error instanceof Error ? error.message : String(error),
@@ -163,20 +165,17 @@ async function ensureConversationTitleOnce(args: {
     // must not reorder conversations by recent activity.
     const activityAtMs = titleSourceMessage.createdAtMs;
     const nowMs = args.nowMs ?? Date.now();
-    try {
-      await store.recordActivity({
-        activityAtMs,
-        conversationId: args.conversationId,
-        nowMs,
-        title: normalized,
-      });
-    } catch (error) {
-      logException(error, "conversation.title.persist.failed");
-      return undefined;
-    }
-
+    await store.recordActivity({
+      activityAtMs,
+      conversationId: args.conversationId,
+      nowMs,
+      title: normalized,
+    });
     return normalized;
   } catch (error) {
+    // best-effort: owning boundary. Title work runs detached, and the
+    // scheduler, the DM title projection, and the worker's waitUntil all join
+    // it. This is the one place that reports its failure.
     logException(error, "conversation.title.ensure.failed");
     return undefined;
   }
@@ -197,6 +196,8 @@ export function scheduleConversationTitle(args: {
     conversation: args.conversation,
     conversationId: args.conversationId,
   }).catch((error) => {
+    // best-effort: owning boundary. Title work runs detached after the
+    // transcript write; no caller can receive the error.
     logException(error, "conversation.title.task.failed");
   });
 }

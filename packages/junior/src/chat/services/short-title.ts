@@ -111,6 +111,8 @@ export async function generateShortTitle(args: {
     const title = normalizeShortTitle(result.text);
     return title || undefined;
   } catch (error) {
+    // best-effort: decision (optional context). Callers use a fallback title
+    // when this returns undefined. See the PR decisions.
     args.signal?.throwIfAborted();
     logWarn(`${args.kind}.title.generation.failed`, {
       "exception.message":
