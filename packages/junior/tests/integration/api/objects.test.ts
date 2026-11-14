@@ -283,6 +283,20 @@ describe("object links API", () => {
           permission: params.login === "alice_acme" ? "read" : "none",
         }),
       ),
+      http.get(
+        "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
+        () => HttpResponse.json({ permission: "none" }),
+      ),
+      // A transferred issue redirects to its new repository.
+      http.get("https://api.github.com/repositories/999/issues/56", () =>
+        HttpResponse.json({
+          body: "Secret plans.",
+          html_url: "https://github.com/getsentry/secret/issues/56",
+          number: 56,
+          state: "open",
+          title: "Secret transferred issue",
+        }),
+      ),
       http.get(`${api}/issues/:number`, ({ params }) => {
         reads.push(`issues/${params.number}`);
         if (params.number === "12") {
@@ -296,6 +310,14 @@ describe("object links API", () => {
             title: "Show GitHub links as cards",
             updated_at: "2026-01-02T03:04:05Z",
             user: { login: "byk" },
+          });
+        }
+        if (params.number === "56") {
+          return new HttpResponse(null, {
+            headers: {
+              location: "https://api.github.com/repositories/999/issues/56",
+            },
+            status: 301,
           });
         }
         if (params.number === "34") {
@@ -331,6 +353,10 @@ describe("object links API", () => {
         `${repo}/issues/12`,
         () => new HttpResponse(null, { status: 404 }),
       ),
+      http.get(
+        `${repo}/issues/56`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
       http.get(`${repo}/issues/34`, () => publicPage("Public pull request")),
       http.get(`${repo}/pull/34`, () => publicPage("Public pull request")),
     );
@@ -360,6 +386,7 @@ describe("object links API", () => {
         // A linked `getsentry/junior#34` points at the issue URL.
         `${repo}/issues/34`,
         `${repo}/issues/99`,
+        `${repo}/issues/56`,
       );
       expect(member.objects.get(`${repo}/issues/12`)).toMatchObject({
         description: "Pasted links show as plain links.",
@@ -395,6 +422,10 @@ describe("object links API", () => {
         title: "Public pull request",
       });
       expect(member.objects.has(`${repo}/issues/99`)).toBe(false);
+      // A transferred issue shows only when the viewer can see its new
+      // repository.
+      expect(member.objects.has(`${repo}/issues/56`)).toBe(false);
+      expect(member.body).not.toContain("Secret");
 
       // A viewer who cannot see the repository gets only what GitHub shows
       // signed out, and the App reads nothing more for them.

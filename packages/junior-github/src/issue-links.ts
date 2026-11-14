@@ -70,11 +70,15 @@ function parseLink(url: URL): GitHubObjectLink | undefined {
   };
 }
 
+/** Parse the object link of an API `html_url`. */
+function htmlUrlLink(htmlUrl: string): GitHubObjectLink | undefined {
+  const url = URL.parse(htmlUrl);
+  return url?.host === "github.com" ? parseLink(url) : undefined;
+}
+
 // A transferred issue or a renamed repository answers from its new place.
 function repoRef(htmlUrl: string, link: GitHubObjectLink): string {
-  const url = URL.parse(htmlUrl);
-  const current = url?.host === "github.com" ? parseLink(url) : undefined;
-  const { owner, name } = current ?? link;
+  const { owner, name } = htmlUrlLink(htmlUrl) ?? link;
   return `${owner}/${name}`;
 }
 
@@ -143,12 +147,15 @@ async function readObject(
 async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   const link = parseLink(url);
   if (!link || !(await viewerCanSeeRepository(ctx, link))) return false;
+  const card = await readObject(ctx, link);
   // GitHub opens a pull request at its issue URL too, such as a linked
   // `owner/repo#12`. It is not an issue, so it keeps the web page card.
-  return (
-    link.kind === "pull_request" ||
-    (await readObject(ctx, link)) !== "pull_request"
-  );
+  if (card === "pull_request") return false;
+  if (!card) return true;
+  // A transferred issue or a renamed repository redirects, so the card can
+  // come from another repository. The viewer must see that one too.
+  const source = card.url ? htmlUrlLink(card.url) : undefined;
+  return Boolean(source && (await viewerCanSeeRepository(ctx, source)));
 }
 
 async function resolveLink(
