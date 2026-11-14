@@ -75,12 +75,11 @@ const metricAlertWebhookSchema = z
   .passthrough();
 
 /**
- * Read the org slug from a Sentry URL. Identifiers name the org, and a payload
- * with no readable org is ignored. Event data has no `org`, because one
- * integration belongs to one org. Sentry sends no org slug in issue or
- * metric alert webhooks, so the URL is the only place to read it. Issue API
- * URLs and some web URLs have an `/organizations/<org>/` path. Other web URLs
- * have an `<org>.sentry.io` host.
+ * Read the org slug from a Sentry URL. A delivery of the internal
+ * integration has no installation, and Sentry sends no org slug in issue or
+ * metric alert webhooks, so the URL is the only place to read it. A payload
+ * with no readable org is ignored. Issue API URLs and some web URLs have an
+ * `/organizations/<org>/` path. Other web URLs have an `<org>.sentry.io` host.
  */
 function organizationSlug(url: string): string | undefined {
   const parsed = z.url().safeParse(url);
@@ -129,6 +128,7 @@ function issueText(issue: {
  */
 const issueEventDataSchema = z
   .object({
+    org: sentrySlugDataSchema,
     projects: z.array(sentrySlugDataSchema).length(1),
     issueId: z.string().min(1),
     level: z.enum(SENTRY_ISSUE_LEVELS).optional(),
@@ -141,10 +141,12 @@ const issueEventDataSchema = z
 
 /** Build the trusted data of one issue event. */
 function issueData(
+  org: string,
   issue: z.output<typeof issueWebhookSchema>["data"]["issue"],
 ): EventData {
   return issueEventDataSchema.parse(
     definedValues({
+      org,
       projects: [issue.project.slug],
       issueId: issue.id,
       level: issue.level,
@@ -159,6 +161,7 @@ function issueData(
 /** Trusted data on every metric alert event. See `metricAlertData`. */
 const metricAlertEventDataSchema = z
   .object({
+    org: sentrySlugDataSchema,
     projects: z.array(sentrySlugDataSchema).min(1).optional(),
     alertRuleId: z.string().min(1),
     incidentId: z.string().min(1),
@@ -199,6 +202,8 @@ interface WebhookInput {
   body: unknown;
   hookResource: string;
   hookTimestamp?: string;
+  /** Org of the installation that sent the delivery, which wins over URLs. */
+  org?: string;
 }
 
 function normalizeIssueEvents(input: WebhookInput): EventInput[] {
@@ -206,7 +211,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   if (!parsed.success) return [];
 
   const issue = parsed.data.data.issue;
-  const org = organizationSlug(issue.url);
+  const org = input.org ?? organizationSlug(issue.url);
   if (!org) return [];
   const issueResource = sentryIssueResource({
     issueId: issue.id,
@@ -231,7 +236,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     objectType: "task",
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
-    data: issueData(issue),
+    data: issueData(org, issue),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
@@ -247,7 +252,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const eventType = `metric_alert.${parsed.data.action}` as const;
 
   const { data } = parsed.data;
-  const org = organizationSlug(data.web_url);
+  const org = input.org ?? organizationSlug(data.web_url);
   if (!org) return [];
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
@@ -274,7 +279,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
     data: metricAlertData(
-      { alertRuleId, incidentId, url: data.web_url },
+      { alertRuleId, incidentId, org, url: data.web_url },
       projects,
     ),
     ...(untrustedText ? { untrustedText } : undefined),

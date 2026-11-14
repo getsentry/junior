@@ -4,7 +4,7 @@ export default defineConfig({
   clean: true,
   dts: false,
   entry: ["src/index.ts", "src/testing.ts"],
-  external: ["@sentry/junior-plugin-api", "zod"],
+  external: ["@sentry/junior-plugin-api", "drizzle-orm", "zod"],
   format: ["esm"],
   target: "node24",
 });

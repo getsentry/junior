@@ -1,5 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { PluginRoute, EventPublisher } from "@sentry/junior-plugin-api";
+import type {
+  EventPublisher,
+  PluginContext,
+  PluginRoute,
+} from "@sentry/junior-plugin-api";
+import { activeSentryInstallations } from "../installations/store.js";
+import type { SentryAppConfig } from "../installations/tokens.js";
+import { handleSentryInstallationWebhook } from "../installations/webhook.js";
 import { normalizeSentryEvents } from "./events.js";
 
 function verifySentrySignature(
@@ -23,8 +30,28 @@ function parseJson(body: string): unknown {
   }
 }
 
-/** Create the public, signed Sentry event webhook route. */
+function installationUuid(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const installation = (body as { installation?: unknown }).installation;
+  if (!installation || typeof installation !== "object") return undefined;
+  const uuid = (installation as { uuid?: unknown }).uuid;
+  return typeof uuid === "string" && uuid ? uuid : undefined;
+}
+
+function ignored(): Response {
+  return new Response("Ignored", { status: 202 });
+}
+
+/**
+ * Create the public, signed Sentry event webhook route.
+ *
+ * The public integration and the internal integration sign with their own
+ * client secrets. A delivery from the public integration must come from an
+ * active installation, except the `installation` webhook that creates one.
+ */
 export function createSentryWebhookRoute(args: {
+  appConfig(): SentryAppConfig | undefined;
+  ctx: Pick<PluginContext, "cache" | "db">;
   events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
@@ -34,7 +61,16 @@ export function createSentryWebhookRoute(args: {
     async handler(request) {
       const rawBody = await request.text();
       const signature = request.headers.get("sentry-hook-signature") ?? "";
-      if (!verifySentrySignature(rawBody, signature, args.webhookSecret())) {
+      const appConfig = args.appConfig();
+      const fromApp = verifySentrySignature(
+        rawBody,
+        signature,
+        appConfig?.clientSecret,
+      );
+      if (
+        !fromApp &&
+        !verifySentrySignature(rawBody, signature, args.webhookSecret())
+      ) {
         return new Response("Unauthorized", { status: 401 });
       }
       const body = parseJson(rawBody);
@@ -48,18 +84,40 @@ export function createSentryWebhookRoute(args: {
           status: 400,
         });
       }
+      let org: string | undefined;
+      if (fromApp && appConfig) {
+        if (hookResource === "installation") {
+          const handled = await handleSentryInstallationWebhook(
+            args.ctx,
+            appConfig,
+            body,
+          );
+          return handled
+            ? new Response("Accepted", { status: 202 })
+            : ignored();
+        }
+        const uuid = installationUuid(body);
+        const installations = await activeSentryInstallations(args.ctx);
+        const installation = installations.find(
+          (candidate) => candidate.installationUuid === uuid,
+        );
+        if (!installation) return ignored();
+        // The installation, not a URL in the payload, decides the org.
+        org = installation.orgSlug;
+      }
       const events = normalizeSentryEvents({
         body,
         hookResource,
+        org,
         hookTimestamp:
           request.headers.get("sentry-hook-timestamp")?.trim() || undefined,
       });
       for (const event of events) {
         await args.events.publish(event);
       }
-      return new Response(events.length ? "Accepted" : "Ignored", {
-        status: 202,
-      });
+      return events.length
+        ? new Response("Accepted", { status: 202 })
+        : ignored();
     },
   };
 }

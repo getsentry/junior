@@ -1,0 +1,56 @@
+{
+  "id": "defa7480-9855-45ca-8b89-983965cd7b50",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.junior_sentry_installations": {
+      "name": "junior_sentry_installations",
+      "schema": "",
+      "columns": {
+        "installation_uuid": {
+          "name": "installation_uuid",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_slug": {
+          "name": "org_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "junior_sentry_installations_org_slug_unique": {
+          "name": "junior_sentry_installations_org_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": ["org_slug"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
