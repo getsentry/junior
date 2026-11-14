@@ -1422,6 +1422,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
+        "The team watches it on https://acme.sentry.io/dashboard/42/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
@@ -1431,8 +1432,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, the trace, the event, and the release show a card, and the repeated pull
-        // request shows no second card.
+        // Slack message, the chart, the trace, the event, the release, and
+        // the dashboard show a card, and the repeated pull request shows no
+        // second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1444,6 +1446,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "",
         "https://acme.sentry.io/releases/junior%404.2.0/",
+        "",
+        "https://acme.sentry.io/dashboard/42/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
