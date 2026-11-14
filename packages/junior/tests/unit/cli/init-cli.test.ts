@@ -291,13 +291,8 @@ describe("init cli", () => {
       rootPackage.packageManager.split("+")[0],
     );
 
-    const scaffoldVercelConfig = readJsonFile<Record<string, unknown>>(
-      path.join(target, "vercel.json"),
-    );
-    const exampleVercelConfig = readJsonFile<Record<string, unknown>>(
-      path.join(repoRoot, "apps", "example", "vercel.json"),
-    );
-    expect(scaffoldVercelConfig).toEqual(exampleVercelConfig);
+    // tests/unit/vercel.test.ts checks the example Vercel config, which must
+    // build workspace packages before the scaffold build command.
 
     const scaffoldNitroConfig = fs.readFileSync(
       path.join(target, "nitro.config.ts"),

@@ -44,7 +44,13 @@ describe("juniorVercelConfig", () => {
       ),
     );
 
-    expect(config).toEqual(juniorVercelConfig());
+    // Install does not build workspace packages, so the example runs its
+    // `prebuild` before the scaffold command runs the `junior` CLI.
+    expect(config).toEqual(
+      juniorVercelConfig({
+        buildCommand: `pnpm run prebuild && ${juniorVercelConfig()["buildCommand"]}`,
+      }),
+    );
   });
 
   it("keeps queue triggers out of the root Vercel source-function config", () => {
