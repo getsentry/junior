@@ -46,7 +46,7 @@ function ReviewItemPreview(props: {
   const { answer, request } = props.item;
   return (
     <HoverPreview
-      className="grid max-h-(--available-height) gap-3 overflow-y-auto border border-dashboard-border-emphasis bg-dashboard-surface-panel p-4 font-sans text-sm text-dashboard-text"
+      className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
       content={
         <>
           {/* A quote line can truncate the title, so the card repeats it. */}

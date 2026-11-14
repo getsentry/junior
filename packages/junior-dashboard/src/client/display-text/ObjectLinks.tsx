@@ -153,7 +153,14 @@ export function ObjectLinkPreview(props: {
 }) {
   return (
     <HoverPreview
-      content={<ObjectCard card={props.card} live={props.live} />}
+      // The hover card is the frame, so it stays whole while the card scrolls.
+      content={
+        <ObjectCard
+          card={props.card}
+          className="my-0 rounded-none border-0"
+          live={props.live}
+        />
+      }
       // Running text links carry no outbound icon, so a paragraph of links
       // reads as text.
       trigger={

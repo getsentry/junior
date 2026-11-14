@@ -16,6 +16,7 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
+import { cn } from "@dashboard/lib/utils";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
@@ -95,15 +96,18 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  */
 export function ObjectCard({
   card,
+  className,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  className?: string;
   live?: boolean;
 }) {
   const images = useObjectPreviewImages(card);
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
+        className={className}
         card={{
           id: card.key,
           title: card.title,
@@ -124,7 +128,10 @@ export function ObjectCard({
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   return (
-    <MessageCard aria-label={`${type}: ${card.title}`} className="my-1">
+    <MessageCard
+      aria-label={`${type}: ${card.title}`}
+      className={cn("my-1", className)}
+    >
       <MessageCardHeader
         icon={
           card.facts?.type === "person" && card.facts.avatarUrl ? (
