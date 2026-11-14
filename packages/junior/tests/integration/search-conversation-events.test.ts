@@ -254,6 +254,39 @@ describe("searchConversationEvents", () => {
       }),
     ]);
     expect(oversized.events[0]!.data).not.toHaveProperty("json_preview");
+
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 5,
+        data: {
+          type: "tool_result",
+          toolCallId: "tool-2",
+          toolName: "timed",
+          isError: false,
+          content: [{ type: "text", text: "done" }],
+          durationMs: 8,
+          timestamp: 5,
+        },
+      },
+    ]);
+    const timed = await executeTool({
+      conversation_id: CURRENT_CONVERSATION_ID,
+      after_seq: 3,
+      types: ["tool_result"],
+    });
+
+    expect(timed.events).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "tool_result",
+          toolCallId: "tool-2",
+          toolName: "timed",
+          isError: false,
+          content: [{ type: "text", text: "done" }],
+          timestamp: 5,
+        },
+      }),
+    ]);
   });
 
   it("omits replacement history from unknown event versions", async () => {

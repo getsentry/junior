@@ -1,7 +1,8 @@
 # Sources
 
 Retrieved: 2026-08-12
-Published baseline: `@earendil-works/pi-agent-core@0.84.1`
+Published baseline: `@earendil-works/pi-agent-core@1.5.2`
+Refreshed: 2026-11-14, from the published `1.5.2` declarations and the agent-core changelog from `0.84.1` through `1.5.2`
 Upstream review commit: `9795d602306ef68a97585909e8e79f92a389057b`
 Skill class: `integration-documentation`
 Primary execution shape: `reference-backed-expert`
@@ -9,18 +10,16 @@ Scope: Pi package guidance only. Consuming-product contracts remain out of scope
 
 ## Source inventory
 
-| Source                                                                 | Trust      | Contribution                                                                                  | Constraint                                                |
-| ---------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| npm metadata for `@earendil-works/pi-agent-core`                       | canonical  | Confirmed `latest` `0.84.1`, package identity, repository, engine, and publish dates          | Re-check before each material update                      |
-| Published `0.84.1/package.json` and `README.md`                        | canonical  | Confirmed exports, required `streamFn`, main `Agent` API, loop use, tools, and event flow     | Published contract and public intent                      |
-| Published `0.84.1/dist/agent.d.ts` and `agent.js`                      | canonical  | Confirmed options, state, active-run guards, continuation, queues, and listener settlement    | Implementation resolves declaration ambiguity             |
-| Published `0.84.1/dist/types.d.ts` and `agent-loop.*`                  | canonical  | Confirmed stream shape, turn hooks, loop signatures, tools, usage, added tools, and events    | Published contract and behavior                           |
-| Published `0.84.1/dist/proxy.*`                                        | canonical  | Confirmed proxy options and published finalized-event behavior                                | Published package contains the noted metadata defect      |
-| Published `0.84.1/dist/harness/*`                                      | canonical  | Confirmed session v4 exports, scaffold types, and which `AgentHarness` methods are unfinished | Check implementation, not declarations alone              |
-| Upstream `packages/agent/CHANGELOG.md` at review commit                | primary    | Captured breaking changes from `0.78.0` through `0.84.1` and the unreleased proxy fix         | Unreleased entries are evidence, not published contract   |
-| Upstream `packages/agent/src` and `packages/agent/docs/harness.md`     | primary    | Compared implemented scaffold behavior with intended lane-based harness design                | Design text cannot imply current runtime readiness        |
-| Local Pi catalog and consumers                                         | supporting | Confirmed this repo pins `0.82.1` and already uses `prepareNextTurnWithContext`               | Product dependency upgrades are outside this skill update |
-| Local `skill-writer` workflow, repository instructions, and validators | canonical  | Required material synthesis, precision, trigger, source, and validation passes                | Authoring-process source                                  |
+| Source                                                                 | Trust      | Contribution                                                                               | Constraint                                                |
+| ---------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| npm metadata for `@earendil-works/pi-agent-core`                       | canonical  | Confirmed `latest` `0.84.1`, package identity, repository, engine, and publish dates       | Re-check before each material update                      |
+| Published `0.84.1/package.json` and `README.md`                        | canonical  | Confirmed exports, required `streamFn`, main `Agent` API, loop use, tools, and event flow  | Published contract and public intent                      |
+| Published `0.84.1/dist/agent.d.ts` and `agent.js`                      | canonical  | Confirmed options, state, active-run guards, continuation, queues, and listener settlement | Implementation resolves declaration ambiguity             |
+| Published `0.84.1/dist/types.d.ts` and `agent-loop.*`                  | canonical  | Confirmed stream shape, turn hooks, loop signatures, tools, usage, added tools, and events | Published contract and behavior                           |
+| Published `0.84.1/dist/proxy.*`                                        | canonical  | Confirmed proxy options and published finalized-event behavior                             | Published package contains the noted metadata defect      |
+| Upstream `packages/agent/CHANGELOG.md` at review commit                | primary    | Captured breaking changes from `0.78.0` through `0.84.1` and the unreleased proxy fix      | Unreleased entries are evidence, not published contract   |
+| Local Pi catalog and consumers                                         | supporting | Confirmed this repo pins `1.5.2` and uses `prepareNextTurnWithContext`                     | Product dependency upgrades are outside this skill update |
+| Local `skill-writer` workflow, repository instructions, and validators | canonical  | Required material synthesis, precision, trigger, source, and validation passes             | Authoring-process source                                  |
 
 ## Decisions
 
@@ -34,8 +33,7 @@ Scope: Pi package guidance only. Consuming-product contracts remain out of scope
 | Prefer `prepareNextTurnWithContext` for context-aware `Agent` work          | adopted  | Published `AgentOptions`                                        |
 | Guard `reset()` with idle state                                             | adopted  | `0.84.1` implementation and changelog                           |
 | Include tool usage, added tools, late-update, and blocked termination rules | adopted  | Published types, implementation, and changelog                  |
-| Replace legacy harness guidance with session v4 and scaffold readiness      | adopted  | `0.84.0` breaking change and `0.84.1` implementation            |
-| Recommend bare `Agent` plus direct session/helpers for production work      | adopted  | Most current `AgentHarness` operations reject as unimplemented  |
+| Drop harness, session, and compaction guidance                              | adopted  | `1.0.0` removed them from the package                           |
 | Add old-package migration or compatibility wrappers by default              | rejected | Latest-only scope                                               |
 | Upgrade this repo's Pi dependency as part of the skill refresh              | rejected | Separate product change that needs its own implementation tests |
 
@@ -52,15 +50,14 @@ Scope: Pi package guidance only. Consuming-product contracts remain out of scope
 
 ## Coverage matrix
 
-| Dimension                          | Status  | Evidence                                                                                   |
-| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| API surface and behavior           | covered | Published README, declarations, and implementation                                         |
-| Config and runtime options         | covered | `AgentOptions`, `AgentLoopConfig`, proxy types, scaffold options, and session types        |
-| Downstream use cases               | covered | Ten focused use cases across streaming, proxy, auth, context, queues, tools, and sessions  |
-| Failure modes and workarounds      | covered | Published implementation, changelog fixes, and more than eight troubleshooting entries     |
-| Version variance                   | covered | Diff from `0.78.0`, changelog through `0.84.1`, local `0.82.1`, and unreleased `main` note |
-| Harness, session, helper readiness | covered | Published harness declarations and implementation plus upstream design comparison          |
-| Trigger precision                  | covered | Should-trigger and should-not-trigger sets below                                           |
+| Dimension                     | Status  | Evidence                                                                                   |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------ |
+| API surface and behavior      | covered | Published README, declarations, and implementation                                         |
+| Config and runtime options    | covered | `AgentOptions`, `AgentLoopConfig`, proxy types, scaffold options, and session types        |
+| Downstream use cases          | covered | Ten focused use cases across streaming, proxy, auth, context, queues, tools, and sessions  |
+| Failure modes and workarounds | covered | Published implementation, changelog fixes, and more than eight troubleshooting entries     |
+| Version variance              | covered | Diff from `0.78.0`, changelog through `0.84.1`, local `0.82.1`, and unreleased `main` note |
+| Trigger precision             | covered | Should-trigger and should-not-trigger sets below                                           |
 
 ## Trigger quality
 
@@ -70,7 +67,6 @@ Should trigger:
 - "wire Pi text streaming"
 - "why does Pi continue() reject?"
 - "update our Pi tool hooks"
-- "use Pi sessions or AgentHarness"
 - "proxy Pi model calls"
 - "review whether our Pi integration is current"
 
@@ -86,9 +82,7 @@ The description now names concrete Pi APIs and tasks. It keeps generic SDK, skil
 
 ## Open gaps
 
-- Upstream `main` contains an unreleased fix for `streamProxy()` finalized tool-call metadata. Re-check npm after the next release.
-- `AgentHarness` is a moving scaffold. Re-audit declarations and implementation before any harness guidance change.
-- This repo still pins Pi `0.82.1`. A dependency upgrade is a separate product change and was not made here.
+- None known for `1.5.2`.
 
 ## Validation record
 
