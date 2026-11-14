@@ -7,8 +7,7 @@ import {
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { createEventTeamIdResolver } from "@/chat/events/workspace";
-import { decideAuthorTrust } from "@/chat/identities/trust";
+import { findTrustedUser } from "@/chat/identities/trust";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
@@ -22,7 +21,7 @@ export type IdentityDispatcher = (
  * Build the one entry point that starts work for a person whom a plugin
  * names, from a webhook route or a heartbeat.
  *
- * The person must be a Trusted author with a User (`decideAuthorTrust`): a
+ * The person must be a Trusted author with a User (`findTrustedUser`): a
  * `subjectId` of the calling plugin's provider that the OAuth account-linking
  * flow linked, or a `verifiedEmail` that is the User's primary email. Without
  * a Slack bot, nothing matches.
@@ -32,10 +31,8 @@ export type IdentityDispatcher = (
  * Slack Destination.
  */
 export function createIdentityDispatcher(args: {
-  allowedDomains: readonly string[];
   conversationWorkQueue: () => ConversationWorkQueue;
 }): IdentityDispatcher {
-  const resolveSlackTeamId = createEventTeamIdResolver();
   const notLinked = (plugin: string, reason: string) => {
     logInfo("dispatch.identity.not_linked", {
       "app.plugin.name": plugin,
@@ -46,24 +43,13 @@ export function createIdentityDispatcher(args: {
 
   return async (plugin, options) => {
     const request = identityDispatchOptionsSchema.parse(options);
-    const trust = await decideAuthorTrust(
+    const trust = await findTrustedUser(
       "subjectId" in request
-        ? {
-            kind: "account",
-            // A plugin can name only an account of its own provider.
-            listed: false,
-            provider: plugin,
-            subjectId: request.subjectId,
-          }
-        : { kind: "verified_email", email: request.verifiedEmail },
-      {
-        allowedDomains: args.allowedDomains,
-        slackTeamId: await resolveSlackTeamId(),
-      },
+        ? // A plugin can name only an account of its own provider.
+          { provider: plugin, subjectId: request.subjectId }
+        : { verifiedEmail: request.verifiedEmail },
     );
-    if (!trust.trusted) return notLinked(plugin, trust.reason);
-    // Both author kinds above resolve through a User.
-    if (!trust.user) return notLinked(plugin, "no_single_link");
+    if (trust.status === "untrusted") return notLinked(plugin, trust.reason);
 
     const accepted = await createAndEnqueueConversation(
       {

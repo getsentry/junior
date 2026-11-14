@@ -417,7 +417,9 @@ function normalizeIssueCommentEvents(
           pullRequest: issue,
           repo: input.repo,
         }),
-        untrustedText: comment.body,
+        ...(writtenBy.untrustedText
+          ? { untrustedText: writtenBy.untrustedText }
+          : undefined),
       },
       input.repo,
     );
@@ -439,7 +441,9 @@ function normalizeIssueCommentEvents(
     trustedSummary: `${issueResource.label} received a comment${author ? ` from ${author}` : ""}.`,
     ...(writtenBy.author ? { author: writtenBy.author } : undefined),
     data,
-    untrustedText: comment.body,
+    ...(writtenBy.untrustedText
+      ? { untrustedText: writtenBy.untrustedText }
+      : undefined),
   }));
 }
 
@@ -549,7 +553,9 @@ function normalizePullRequestReviewCommentEvent(
         pullRequest,
         repo,
       }),
-      untrustedText: comment.body,
+      ...(writtenBy.untrustedText
+        ? { untrustedText: writtenBy.untrustedText }
+        : undefined),
     },
     repo,
   );
@@ -622,7 +628,9 @@ function normalizePullRequestReviewEvent(
       pullRequest,
       repo,
     }),
-    untrustedText: review.body ?? undefined,
+    ...(writtenBy.untrustedText
+      ? { untrustedText: writtenBy.untrustedText }
+      : undefined),
   };
   const events = pullRequestTargets(event, repo);
   if (eventType !== "pull_request.review.approved" || !nonBlank(review.body)) {

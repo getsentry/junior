@@ -637,8 +637,9 @@ export const eventAuthorSchema = z
      */
     trusted: z.boolean().optional(),
     /**
-     * The author's own text, without what they quote. When core trusts the
-     * author, this text counts as a message from them.
+     * The author's own text, without what they quote. Leave it out of
+     * `untrustedText`: core shows it once, as a message from the author when
+     * it trusts them, else as text from an Untrusted author.
      */
     text: z
       .string()
@@ -668,6 +669,10 @@ export const eventInputSchema = z
       .transform((value) => value.slice(0, EVENT_SUMMARY_MAX_LENGTH)),
     /** Trusted structured facts. Prefer ids and urls over long prose. */
     data: eventDataSchema.optional(),
+    /**
+     * Provider text that is context, never instruction. When `author.text`
+     * is set, this is only the rest, such as what the author quotes.
+     */
     untrustedText: z
       .string()
       .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))

@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
+import { isAllowedSignInEmail } from "@/chat/identities/trust";
 import { handleMcpAuthorize } from "./oauth/authorization";
 import { authenticateMcpAccessToken } from "./oauth/grants";
 import {

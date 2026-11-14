@@ -187,17 +187,23 @@ Finish #2482.
   - how the task input and Guardian mark an untrusted author.
   - the exact Bugbot and Sentry logins, from real event senders.
 - **Trust part, built with #2217 and #2260:**
-  - one core decision, `decideAuthorTrust` in `chat/identities/trust.ts`, for
-    Slack ingress, Identity dispatch, and event authors.
+  - one owner, `chat/identities/trust.ts`, for every trust decision: Slack
+    ingress (`isTrustedSlackAuthor`), Identity dispatch (`findTrustedUser`),
+    sign-in domains, and Event authors (`eventAuthorTrustOnce`). It reads its
+    own config, keeps the Slack member cache, and owns the saved
+    `AuthorTrust` schema and the author label.
   - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
     `trusted`, and `text`. Its provider is always the Event namespace. The
-    GitHub plugin derives it in `gitHubEventAuthor` and reads own text with
-    one parser, `ownCommentText`.
+    GitHub plugin derives it in `gitHubEventAuthor` and splits own text from
+    the rest with one parser, `splitCommentText`. Own text goes only to
+    `author.text`; `untrustedText` keeps the rest, so core shows it once.
   - Junior decides trust once per published Event, in the app publisher.
     Watch delivery and Event automations still deliver an Event from an
-    untrusted author. The mailbox entry stores `untrustedAuthor`, the task
-    input renders `<untrusted-author reason>`, and Guardian gets an untrusted
-    authors section outside the proposal JSON.
+    untrusted author. Each Event saves one `AuthorTrust` (`system`,
+    `trusted`, or `untrusted`) in its task facts, and the Turn carries them as
+    `authorTrusts`. The task input renders `<untrusted-author reason>` around
+    the author's text, and Guardian gets an untrusted authors section outside
+    the proposal JSON. A trusted author with no text is still `trusted`.
   - trusted text reaches the model in `<author-instruction>` and Guardian in
     `author_instructions`. A linked author's label is their Slack mention.
     Another author's label is the handle, the provider, and "(a bot)" for a

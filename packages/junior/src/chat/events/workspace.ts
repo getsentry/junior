@@ -1,6 +1,9 @@
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
+// The team of a bot token never changes, so each token is looked up once.
+const teamIdsByToken = new Map<string, Promise<string>>();
+
 /**
  * Resolve the single-bot Slack team id for event-automation indexing, Event
  * people mentions, and author trust.
@@ -10,12 +13,13 @@ import { getSlackClient } from "@/chat/slack/client";
  * not gated on Slack. Without a Slack bot, only a listed Event author is
  * trusted.
  */
-export function createEventTeamIdResolver(): () => Promise<string | undefined> {
-  let pending: Promise<string> | undefined;
-  return async () => {
-    // Event automations and Event people need a Slack team key.
-    if (!getSlackBotToken()) return undefined;
-    pending ??= getSlackClient()
+export async function resolveBotSlackTeamId(): Promise<string | undefined> {
+  // Event automations and Event people need a Slack team key.
+  const token = getSlackBotToken();
+  if (!token) return undefined;
+  let pending = teamIdsByToken.get(token);
+  if (!pending) {
+    pending = getSlackClient()
       .auth.test()
       .then((result) => {
         const teamId = result.team_id?.trim();
@@ -23,11 +27,9 @@ export function createEventTeamIdResolver(): () => Promise<string | undefined> {
           throw new Error("Slack auth.test did not return a team id");
         }
         return teamId;
-      })
-      .catch((error) => {
-        pending = undefined;
-        throw error;
       });
-    return await pending;
-  };
+    teamIdsByToken.set(token, pending);
+    pending.catch(() => teamIdsByToken.delete(token));
+  }
+  return await pending;
 }

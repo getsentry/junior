@@ -5,7 +5,7 @@
 import type { EventAuthor, EventInput } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubRepositoryResource } from "../events/repository.js";
-import { isBotLogin, mentionsBotLogin, ownCommentText } from "./ownership.js";
+import { isBotLogin, mentionsBotLogin, splitCommentText } from "./ownership.js";
 
 /**
  * The user who sent a webhook. GitHub authenticates this user, so on a comment
@@ -37,7 +37,8 @@ export interface GitHubAuthorOptions {
  * the sender's numeric id is the `subjectId` only when the sender is that
  * user. The plugin turns its `trustedAuthors` list into `trusted`, so core
  * never reads a login. `text` is the comment body, for comment and review
- * Events only.
+ * Events only. Its author's own words go to `author.text`, and the rest, such
+ * as quotes, to `untrustedText`, so core shows each part once.
  */
 export function gitHubEventAuthor(
   input: {
@@ -50,6 +51,7 @@ export function gitHubEventAuthor(
   author?: EventAuthor;
   data: { mentionsBot?: boolean; senderId?: number; senderLogin?: string };
   isSelf: boolean;
+  untrustedText?: string;
 } {
   const handle = input.login?.trim();
   const { sender } = input;
@@ -60,9 +62,15 @@ export function gitHubEventAuthor(
     senderId: sender?.id,
     senderLogin: sender?.login,
   };
-  if (!handle) return { data, isSelf: false };
+  if (!handle) {
+    return {
+      data,
+      isSelf: false,
+      ...(input.text ? { untrustedText: input.text } : undefined),
+    };
+  }
   const lower = handle.toLowerCase();
-  const text = ownCommentText(input.text);
+  const text = splitCommentText(input.text);
   // GitHub logins are case-insensitive, so the sender and the author match without case.
   const isSender = sender?.login?.toLowerCase() === lower;
   return {
@@ -77,10 +85,11 @@ export function gitHubEventAuthor(
       )
         ? { trusted: true }
         : undefined),
-      ...(text ? { text } : undefined),
+      ...(text.own ? { text: text.own } : undefined),
     },
     data,
     isSelf: isBotLogin(handle, options.botEmail),
+    ...(text.other ? { untrustedText: text.other } : undefined),
   };
 }
 
