@@ -1,6 +1,6 @@
 {
-  "id": "03d6a2fa-875b-48a8-a7c4-99ca95638464",
-  "prevId": "d2dda8f6-4d4a-4540-ac59-ceca77ddde64",
+  "id": "6b367e82-6c5a-4b63-acca-5a877a885042",
+  "prevId": "5a444536-4cd9-4f93-9afb-bd986c973f0a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1358,56 +1358,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_automations_wake_subject_idx": {
-          "name": "junior_automations_wake_subject_idx",
-          "columns": [
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_one_wake_idx": {
-          "name": "junior_automations_one_wake_idx",
-          "columns": [
-            {
-              "expression": "creator_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "coalesce(\"subject_review_item_id\", '')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_automations_match_idx": {
           "name": "junior_automations_match_idx",
           "columns": [
@@ -1675,6 +1625,33 @@
               "expression": "closed_at",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_code_changes_repository_state_idx": {
+          "name": "junior_code_changes_repository_state_idx",
+          "columns": [
+            {
+              "expression": "repository_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],

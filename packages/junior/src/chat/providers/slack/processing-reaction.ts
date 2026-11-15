@@ -38,7 +38,10 @@ function isProcessingReactionEmoji(value: unknown): boolean {
 // capture every other Slack failure.
 function logProcessingReactionFailure(
   error: unknown,
-  eventName: string,
+  eventName:
+    | "slack.processing.reaction_add.failed"
+    | "slack.processing.reaction_remove.failed"
+    | "slack.processing.reaction_complete.failed",
   attributes: Record<string, string>,
 ): void {
   const logAttributes = {
