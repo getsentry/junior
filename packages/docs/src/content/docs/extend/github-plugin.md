@@ -171,13 +171,15 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. It does not watch approvals, merges, or closes, because GitHub already tells people about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
+This watch always includes `pull_request.merge_conflict`, even when `events` omits it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
+
+When a watch or event automation receives `pull_request.review.approved` or `pull_request.merged`, the event lists the people involved. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only lists people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
@@ -383,8 +385,7 @@ channel. See [Automations](/concepts/automations/).
 Junior watches each pull request that it creates. To change the events or
 the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
 `plugins.ts`, or set it to `false` to turn it off. That watch
-also always gets `pull_request.review.approved`, `pull_request.merged`, and
-`pull_request.merge_conflict`. To add short
+also always gets `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
 `pullRequestEvents.guidance`. The guidance applies within each watch or event
 automation instruction. It does not replace or expand that instruction.
