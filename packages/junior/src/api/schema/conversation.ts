@@ -130,22 +130,6 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
 ]);
 
-export const conversationFeedQuerySchema = z
-  .object({
-    actorEmail: z
-      .string()
-      .trim()
-      .email()
-      .transform((value) => value.toLowerCase())
-      .optional(),
-    codeRepositoryId: z.string().uuid().optional(),
-    /** `nextCursor` from the previous page of the same feed. */
-    cursor: z.string().min(1).max(500).optional(),
-    q: z.string().trim().max(200).optional(),
-    status: z.enum(["active", "archived"]).default("active"),
-  })
-  .strict();
-
 /** Client key that makes a retried send the same Message. */
 export const idempotencyKeySchema = z.string().trim().min(1).max(200);
 
