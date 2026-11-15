@@ -189,7 +189,7 @@
   "packages/junior/src/chat/slack/assistant-thread/status-send.ts": 1,
   "packages/junior/src/chat/slack/attachment-fetchers.ts": 1,
   "packages/junior/src/chat/slack/client.ts": 4,
-  "packages/junior/src/chat/slack/context.ts": 4,
+  "packages/junior/src/chat/slack/context.ts": 3,
   "packages/junior/src/chat/slack/conversation-context.ts": 2,
   "packages/junior/src/chat/slack/errors.ts": 3,
   "packages/junior/src/chat/slack/message/attachments.ts": 5,
