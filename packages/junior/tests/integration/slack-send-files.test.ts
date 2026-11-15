@@ -366,8 +366,9 @@ describe("Slack sendFiles", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       conversationId,
-      filename: "report.txt",
+      kind: "file",
       storageProvider: "memory",
+      title: "report.txt",
     });
     // The durable retry reuses the stored object instead of writing another.
     expect([...storage.objects.entries()]).toEqual([

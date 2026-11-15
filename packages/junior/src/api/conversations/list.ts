@@ -68,6 +68,7 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
+import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
@@ -144,7 +145,7 @@ async function conversationRows(
     conversationIds,
     cursor,
     filter,
-    includeMedia = false,
+    include = [],
     includePrivateBriefs = false,
     limit,
     pinnedForUserId,
@@ -157,8 +158,8 @@ async function conversationRows(
     /** Read only rows after this feed position. */
     cursor?: ConversationFeedCursor;
     filter: ConversationFeedMembership | undefined;
-    /** Read each row's newest files in the same statement. */
-    includeMedia?: boolean;
+    /** Extra row content to read in the same statement. */
+    include?: readonly ConversationFeedInclude[];
     includePrivateBriefs?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
@@ -182,7 +183,8 @@ async function conversationRows(
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
       ),
-      media: includeMedia ? feedMediaSql(db) : sql<null>`null`,
+      links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
+      media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -249,7 +251,7 @@ async function waitingRowsOutsidePage(
   db: JuniorDatabase,
   filter: ConversationFeedMembership & { kind: "viewer" },
   page: FeedRow[],
-  includeMedia: boolean,
+  include: readonly ConversationFeedInclude[],
 ): Promise<FeedRow[]> {
   const loaded = new Set(page.map((row) => row.conversation.conversationId));
   const missing = (await listWaitingConversations(db, filter.userId))
@@ -259,7 +261,7 @@ async function waitingRowsOutsidePage(
   return await conversationRows(db, {
     conversationIds: missing,
     filter,
-    includeMedia,
+    include,
     includePrivateBriefs: true,
     limit: missing.length,
     status: "active",
@@ -476,7 +478,7 @@ export async function readConversationFeedFromSql(
   // pages by activity. Pins are not paged, so the cursor stays a plain
   // activity position.
   const pinsFirst = filter?.kind === "viewer" && status === "active";
-  const includeMedia = options.include?.includes("media") ?? false;
+  const include = options.include ?? [];
   const feedQuery = {
     ...(options.codeRepositoryId
       ? {
@@ -489,7 +491,7 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     filter,
-    includeMedia,
+    include,
     includePrivateBriefs: filter?.kind === "viewer",
     query,
     status,
@@ -515,9 +517,7 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(
-      ...(await waitingRowsOutsidePage(db, filter, rows, includeMedia)),
-    );
+    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -664,8 +664,16 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
-      // Files are private content.
+      // Files and links are private content.
       const media = access?.canViewPrivateContent ? row.media : null;
+      const links =
+        access?.canViewPrivateContent && row.links
+          ? pickFeedLinks(
+              conversation.conversationId,
+              row.links,
+              annotationUrls(annotations),
+            )
+          : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -681,6 +689,7 @@ export async function readConversationFeedFromSql(
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
         ...(media?.length ? { media } : undefined),
+        ...(links.length > 0 ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
