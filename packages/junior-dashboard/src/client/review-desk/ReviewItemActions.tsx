@@ -70,8 +70,8 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The Inbox and the side panel use it. An Inbox row with its own
- * Dismiss turns this one off.
+ * closed. The review desk and the side panel use it. A caller that shows
+ * its own Dismiss turns this one off.
  */
 export function ReviewItemActions(props: {
   dismiss?: boolean;

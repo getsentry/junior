@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import {
+  ClampedDisplayText,
   DisplayText,
   KnownObjectsProvider,
 } from "../src/client/display-text/DisplayText";
@@ -539,5 +540,62 @@ describe("display text object links", () => {
       urls: [],
     });
     expect(splitStandaloneUrls(PR)).toEqual({ prose: "", urls: [PR] });
+  });
+
+  it("shows a saved object that no Annotation names by its title", () => {
+    const html = markup(
+      <KnownObjectsProvider annotations={[]} cards={[byUrl(PR)]}>
+        <DisplayText text={`Opened ${PR} for review.`} />
+      </KnownObjectsProvider>,
+    );
+    expect(anchors(html)).toEqual([
+      expect.objectContaining({
+        href: PR,
+        label: "Retry checkout writes (#7)",
+      }),
+    ]);
+  });
+
+  it("shows inline links only with chips", () => {
+    const text = `Opened ${PR} for review.`;
+    expect(
+      anchors(
+        markup(
+          <KnownObjectsProvider annotations={annotations}>
+            <DisplayText inline text={text} />
+          </KnownObjectsProvider>,
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      anchors(
+        markup(
+          <KnownObjectsProvider annotations={annotations}>
+            <DisplayText chips inline text={text} />
+          </KnownObjectsProvider>,
+        ),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        href: PR,
+        label: "Retry checkout writes (#7)",
+      }),
+    ]);
+  });
+
+  it("clamps the prose and shows each bare URL after it", () => {
+    const html = markup(
+      <KnownObjectsProvider annotations={annotations}>
+        <ClampedDisplayText
+          label="the ask"
+          lines={2}
+          text={`Review this first.\n\n${PR}`}
+        />
+      </KnownObjectsProvider>,
+    );
+    const prose = html.indexOf("Review this first.");
+    const card = html.indexOf(PR);
+    expect(prose).toBeGreaterThanOrEqual(0);
+    expect(card).toBeGreaterThan(prose);
   });
 });
