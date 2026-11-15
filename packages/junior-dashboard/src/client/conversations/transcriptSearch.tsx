@@ -5,6 +5,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
@@ -13,19 +15,19 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
-import { transcriptFailureSearchText } from "./transcriptFailure";
-import { stringifyPartValue } from "../format";
+import { scrollRootFor } from "./transcriptBottomPinning";
 import { isPlatformShortcut } from "../keyboard";
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
 type TranscriptSearchContextValue = {
-  /** Raw query string as typed by the user. */
-  query: string;
   /** Trimmed, lowercase query used for matching. */
   normalizedQuery: string;
   /** True when the normalised query is non-empty. */
   active: boolean;
+};
+
+type TranscriptSearchStepValue = {
   /** Index of the current match among the matching rows. */
   match: number;
   /**
@@ -35,16 +37,18 @@ type TranscriptSearchContextValue = {
   onMatches?(count: number, prepended: number): void;
 };
 
-const defaultValue: TranscriptSearchContextValue = {
-  query: "",
+const TranscriptSearchContext = createContext<TranscriptSearchContextValue>({
   normalizedQuery: "",
   active: false,
+});
+
+// The current match is apart from the query, so a step renders the list
+// again, not every highlight in it.
+const TranscriptSearchStepContext = createContext<TranscriptSearchStepValue>({
   match: 0,
-};
+});
 
-const TranscriptSearchContext =
-  createContext<TranscriptSearchContextValue>(defaultValue);
-
+/** Share one search with the rows below. */
 export function TranscriptSearchProvider({
   children,
   match = 0,
@@ -57,23 +61,80 @@ export function TranscriptSearchProvider({
   query: string;
 }) {
   const normalizedQuery = query.trim().toLowerCase();
+  const search = useMemo(
+    () => ({ normalizedQuery, active: normalizedQuery.length > 0 }),
+    [normalizedQuery],
+  );
+  const step = useMemo(() => ({ match, onMatches }), [match, onMatches]);
   return (
-    <TranscriptSearchContext.Provider
-      value={{
-        query,
-        normalizedQuery,
-        active: normalizedQuery.length > 0,
-        match,
-        onMatches,
-      }}
-    >
-      {children}
+    <TranscriptSearchContext.Provider value={search}>
+      <TranscriptSearchStepContext.Provider value={step}>
+        {children}
+      </TranscriptSearchStepContext.Provider>
     </TranscriptSearchContext.Provider>
   );
 }
 
+/** The active search query, for matching and highlighting. */
 export function useTranscriptSearch() {
   return useContext(TranscriptSearchContext);
+}
+
+/**
+ * Connect the transcript list to the search box. While search is active,
+ * every row is a match. Report how many rows match, keep the current match
+ * on its row when earlier history loads, and scroll to it when the reader
+ * steps. Returns the index of the current match row.
+ *
+ * A new query or a loaded page does not scroll: a scroll to the top match
+ * shows the history sentinel, and each loaded page would then load the
+ * next one.
+ */
+export function useTranscriptSearchRows(input: {
+  indexByKey: ReadonlyMap<string, number>;
+  listRef: RefObject<HTMLElement | null>;
+  /** The normalized query, when search is active. */
+  query?: string;
+  rows: readonly { key: string }[];
+}): number | undefined {
+  const { indexByKey, listRef, query, rows } = input;
+  const { match, onMatches } = useContext(TranscriptSearchStepContext);
+  const matchCount = query === undefined ? 0 : rows.length;
+  const shown = useRef<{
+    firstKey?: string;
+    matchKey?: string;
+    query?: string;
+  }>({});
+  useEffect(() => {
+    const previous = shown.current;
+    const sameQuery = previous.query === query;
+    const prepended =
+      matchCount > 0 && sameQuery && previous.firstKey !== undefined
+        ? (indexByKey.get(previous.firstKey) ?? 0)
+        : 0;
+    const current = Math.min(match + prepended, matchCount - 1);
+    const matchKey = matchCount > 0 ? rows[current]?.key : undefined;
+    shown.current = { firstKey: rows[0]?.key, matchKey, query };
+    onMatches?.(matchCount, prepended);
+    if (
+      !sameQuery ||
+      matchKey === undefined ||
+      matchKey === previous.matchKey
+    ) {
+      return;
+    }
+    const row = listRef.current?.querySelector(`[data-index="${current}"]`);
+    const root = scrollRootFor(listRef.current);
+    if (!row || !(root instanceof Element)) return;
+    // Scroll only the transcript. When it cannot center the row,
+    // scrollIntoView also scrolls the page layout and moves the header and
+    // side panels.
+    const rowBox = row.getBoundingClientRect();
+    const rootBox = root.getBoundingClientRect();
+    root.scrollTop +=
+      rowBox.top - rootBox.top - (rootBox.height - rowBox.height) / 2;
+  }, [indexByKey, listRef, match, matchCount, onMatches, query, rows]);
+  return matchCount === 0 ? undefined : match;
 }
 
 /** The current match of one search box, and how many rows match. */
@@ -231,93 +292,21 @@ export function buildSearchDecorations(
 
 // ─── Matching ────────────────────────────────────────────────────────────────
 
-/** Returns true if any rendered field in the entry contains the normalised query. */
+/**
+ * Returns true if a message row contains the normalised query. Search
+ * finds what people and Junior said, so tool calls, reasoning, child
+ * agents, failures, and other activity rows never match.
+ */
 export function entryMatchesSearch(
   entry: RenderedTranscriptEntry,
   normalizedQuery: string,
 ): boolean {
   if (!normalizedQuery) return true;
-
-  if (entry.kind === "message") {
-    return (
-      textContains(entry.message.trustedSummary, normalizedQuery) ||
-      textContains(entry.message.eventType, normalizedQuery) ||
-      textContains(messageRawText(entry.message), normalizedQuery)
-    );
-  }
-
-  if (entry.kind === "failure") {
-    return textContains(
-      transcriptFailureSearchText(
-        entry.failureCode,
-        entry.failureReason,
-        entry.eventId,
-      ),
-      normalizedQuery,
-    );
-  }
-
-  if (entry.kind === "tool") {
-    return [
-      entry.part.name,
-      entry.part.status,
-      stringifyPartValue(entry.part.input),
-      stringifyPartValue(entry.part.output),
-    ].some((value) => textContains(value, normalizedQuery));
-  }
-
-  if (entry.kind === "reasoning") {
-    return textContains(
-      entry.part.redacted ? "reasoning redacted" : entry.part.text,
-      normalizedQuery,
-    );
-  }
-
-  if (entry.kind === "subagent") {
-    return (
-      textContains(
-        entry.part.agentName ?? entry.part.subagentKind,
-        normalizedQuery,
-      ) ||
-      textContains(entry.part.title, normalizedQuery) ||
-      textContains(entry.part.task, normalizedQuery) ||
-      textContains(entry.part.status, normalizedQuery)
-    );
-  }
-
-  if (entry.kind === "structured_event") {
-    const presentation = entry.part.presentation;
-    return [
-      presentation.title,
-      presentation.preview,
-      ...(presentation.details ?? []).flatMap((detail) => [
-        detail.title,
-        detail.description,
-        detail.content,
-        ...(detail.metadata ?? []),
-      ]),
-    ].some((value) => textContains(value, normalizedQuery));
-  }
-
-  if (entry.kind === "attachments_delivered") {
-    return entry.part.attachments.some(
-      (attachment) =>
-        textContains(attachment.filename, normalizedQuery) ||
-        textContains(attachment.contentType, normalizedQuery),
-    );
-  }
-
-  if (entry.kind === "context") {
-    const event = entry.part.event;
-    return ["context compacted", event.summary].some((value) =>
-      textContains(value, normalizedQuery),
-    );
-  }
-
-  return false;
-}
-
-function textContains(text: string | undefined, query: string): boolean {
-  if (!text) return false;
-  return text.toLowerCase().includes(query);
+  if (entry.kind !== "message") return false;
+  const { message } = entry;
+  return [
+    message.trustedSummary,
+    message.eventType,
+    messageRawText(message),
+  ].some((text) => text?.toLowerCase().includes(normalizedQuery));
 }

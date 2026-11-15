@@ -110,18 +110,3 @@ export function transcriptFailureDescription(
       return `${agentName} hit an internal error during this turn.`;
   }
 }
-
-/** Search text for one failed turn in the transcript. */
-export function transcriptFailureSearchText(
-  failureCode: ConversationTurnFailureCode,
-  failureReason?: ConversationTurnFailureReason,
-  eventId?: string,
-): string {
-  return [
-    transcriptFailureTitle(failureCode, failureReason),
-    transcriptFailureDescription(failureCode, failureReason),
-    failureCode.replaceAll("_", " "),
-    ...(failureReason ? [failureReason.replaceAll("_", " ")] : []),
-    ...(eventId ? [`event_id=${eventId}`, eventId] : []),
-  ].join(" ");
-}

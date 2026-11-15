@@ -10,10 +10,7 @@ import {
 } from "../src/client/conversations/transcriptRenderModel";
 import { entryMatchesSearch } from "../src/client/conversations/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
-import type {
-  ConversationTranscript,
-  TranscriptViewMessage,
-} from "../src/client/types";
+import type { ConversationTranscript } from "../src/client/types";
 
 function event(
   seq: number,
@@ -199,20 +196,6 @@ describe("canonical event transcript reduction", () => {
         timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
       },
     ]);
-  });
-
-  it("matches the visible label for redacted reasoning", () => {
-    const [entry] = groupTranscriptMessages([
-      {
-        role: "assistant",
-        sourceSeq: 1,
-        parts: [{ type: "reasoning", redacted: true }],
-      },
-    ] as TranscriptViewMessage[]);
-
-    expect(entry?.kind).toBe("reasoning");
-    expect(entry && entryMatchesSearch(entry, "reasoning")).toBe(true);
-    expect(entry && entryMatchesSearch(entry, "redacted")).toBe(true);
   });
 
   it("keeps Event fields for transcript display", () => {
@@ -598,7 +581,6 @@ describe("canonical event transcript reduction", () => {
         status: "completed",
       },
     });
-    expect(entryMatchesSearch(entries[0]!, "release checklist")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain(
       "Preserve the release checklist.",
     );
@@ -763,7 +745,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it("searches canonical tool, failure, context, and subagent rows", () => {
+  it("searches only message rows", () => {
     const entries = groupTranscriptMessages(
       conversationTranscriptMessages(
         conversation([
@@ -827,26 +809,20 @@ describe("canonical event transcript reduction", () => {
       ),
     );
 
+    // Tool calls, child agents, compaction, and failures are activity, not
+    // what people and Junior said.
     for (const query of [
       "sentry.search",
       "checkout-project",
       "payments-v42",
       "advisor",
-      "completed",
       "compacted",
-      "failed",
       "delivery failed",
     ]) {
       expect(entries.some((entry) => entryMatchesSearch(entry, query))).toBe(
-        true,
+        false,
       );
     }
-    expect(entries.some((entry) => entryMatchesSearch(entry, "child-1"))).toBe(
-      false,
-    );
-    expect(entries.some((entry) => entryMatchesSearch(entry, "started"))).toBe(
-      false,
-    );
   });
 
   it.each(["agent_invocation.completed", "agent.reply"])(

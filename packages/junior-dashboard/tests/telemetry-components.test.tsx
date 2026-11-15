@@ -109,9 +109,7 @@ function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <TranscriptSearchProvider query="">
-          <ConversationTranscriptView conversation={detail} />
-        </TranscriptSearchProvider>
+        <ConversationTranscriptView conversation={detail} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -233,9 +231,7 @@ describe("dashboard canonical-event components", () => {
 
   it("preserves snake_case identifiers while rendering emphasis", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText text="some_var_name and *italic text*" />
-      </TranscriptSearchProvider>,
+      <DisplayText text="some_var_name and *italic text*" />,
     );
 
     expect(html).toContain("some_var_name");
@@ -247,9 +243,7 @@ describe("dashboard canonical-event components", () => {
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-        </TranscriptSearchProvider>
+        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
       </QueryClientProvider>,
     );
 
@@ -291,9 +285,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders labeled event sections followed by semantic lists", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText text={"Handling:\n- first item\n- second item"} />
-      </TranscriptSearchProvider>,
+      <DisplayText text={"Handling:\n- first item\n- second item"} />,
     );
 
     expect(html).toContain("<p");
@@ -302,11 +294,9 @@ describe("dashboard canonical-event components", () => {
     expect(html.match(/<li/g)).toHaveLength(2);
 
     const slackHtml = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText
-          text={"Checking:\n• first item\n• second item\n\n2) next step"}
-        />
-      </TranscriptSearchProvider>,
+      <DisplayText
+        text={"Checking:\n• first item\n• second item\n\n2) next step"}
+      />,
     );
 
     expect(slackHtml.match(/<li/g)).toHaveLength(3);
@@ -315,11 +305,9 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).toContain('start="2"');
 
     const nestedHtml = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText
-          text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
-        />
-      </TranscriptSearchProvider>,
+      <DisplayText
+        text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
+      />,
     );
 
     expect(nestedHtml).toMatch(
@@ -330,47 +318,41 @@ describe("dashboard canonical-event components", () => {
     expect(nestedHtml).toContain(">old</del>");
   });
 
-  it("keeps a running tool name searchable and accessible", () => {
+  it("keeps a running tool name accessible", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="search">
-          <TranscriptToolView
-            conversationId="slack:C1:123"
-            part={{
-              id: "tool-1",
-              input: { query: "regression" },
-              name: "webSearch",
-              status: "running",
-              type: "tool_call",
-            }}
-          />
-        </TranscriptSearchProvider>
+        <TranscriptToolView
+          conversationId="slack:C1:123"
+          part={{
+            id: "tool-1",
+            input: { query: "regression" },
+            name: "webSearch",
+            status: "running",
+            type: "tool_call",
+          }}
+        />
       </QueryClientProvider>,
     );
 
     expect(html).toContain('aria-label="webSearch (running)"');
-    expect(html).toContain("query");
     expect(html).toContain("regression");
-    expect(html).toContain("<mark");
   });
 
   it("shows response size beside tool duration", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <TranscriptToolView
-            conversationId="slack:C1:123"
-            part={{
-              id: "tool-1",
-              name: "webSearch",
-              output: "x".repeat(5_100),
-              resultTimestamp: 6_000,
-              status: "completed",
-              type: "tool_call",
-            }}
-            timestamp={1_000}
-          />
-        </TranscriptSearchProvider>
+        <TranscriptToolView
+          conversationId="slack:C1:123"
+          part={{
+            id: "tool-1",
+            name: "webSearch",
+            output: "x".repeat(5_100),
+            resultTimestamp: 6_000,
+            status: "completed",
+            type: "tool_call",
+          }}
+          timestamp={1_000}
+        />
       </QueryClientProvider>,
     );
 
@@ -1220,12 +1202,10 @@ describe("dashboard canonical-event components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <ConversationTranscriptView
-            conversation={conversation(events)}
-            onOpenSubagentTranscript={() => {}}
-          />
-        </TranscriptSearchProvider>
+        <ConversationTranscriptView
+          conversation={conversation(events)}
+          onOpenSubagentTranscript={() => {}}
+        />
       </QueryClientProvider>,
     );
     expect(html).toContain(`aria-label="Open advisor transcript (${label})"`);
@@ -1291,22 +1271,20 @@ describe("dashboard canonical-event components", () => {
   it("keeps a child transcript openable when its end event is missing", () => {
     const parentHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <ConversationTranscriptView
-            conversation={conversation([
-              event(0, {
-                type: "subagent",
-                startedSeq: 0,
-                startedAt: "2026-01-01T00:00:00.000Z",
-                childConversationId: "child-1",
-                childKind: "task",
-                subagentKind: "advisor",
-                status: "running",
-              }),
-            ])}
-            onOpenSubagentTranscript={() => {}}
-          />
-        </TranscriptSearchProvider>
+        <ConversationTranscriptView
+          conversation={conversation([
+            event(0, {
+              type: "subagent",
+              startedSeq: 0,
+              startedAt: "2026-01-01T00:00:00.000Z",
+              childConversationId: "child-1",
+              childKind: "task",
+              subagentKind: "advisor",
+              status: "running",
+            }),
+          ])}
+          onOpenSubagentTranscript={() => {}}
+        />
       </QueryClientProvider>,
     );
 

@@ -28,6 +28,8 @@ const rowClass =
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
   onSearchChange(value: string): void;
+  /** The search box value. */
+  searchValue: string;
   onSelectedSeqChange?(seq: number | undefined): void;
   /** The row that holds the reader's place, from the scroll owner. */
   scrollAnchorKey?: () => string | undefined;
@@ -112,7 +114,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             onChange={props.onSearchChange}
             placeholder="Search events…"
             size="compact"
-            value={search.query}
+            value={props.searchValue}
           />
           <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted @max-[28rem]:w-full @max-[28rem]:justify-between">
             <span role="status">

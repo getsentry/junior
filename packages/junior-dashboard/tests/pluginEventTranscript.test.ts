@@ -8,7 +8,6 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "../src/client/conversations/transcriptRenderModel";
-import { entryMatchesSearch } from "../src/client/conversations/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import { buildConversationMarkdown } from "../src/client/markdownExport";
 import type { ConversationTranscript } from "../src/client/types";
@@ -44,7 +43,7 @@ function conversation(
 }
 
 describe("plugin event transcript projection", () => {
-  it("creates a searchable standalone event entry", () => {
+  it("creates a standalone event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
@@ -77,7 +76,6 @@ describe("plugin event transcript projection", () => {
         }),
       }),
     ]);
-    expect(entryMatchesSearch(entries[0]!, "pnpm")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("Use pnpm.");
   });
 
@@ -101,7 +99,7 @@ describe("plugin event transcript projection", () => {
     expect(markdown).toContain("2026-01-01T00:00:01.000Z - +1.0s");
   });
 
-  it("creates a searchable standalone native authentication event entry", () => {
+  it("creates a standalone native authentication event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
@@ -129,11 +127,10 @@ describe("plugin event transcript projection", () => {
         }),
       }),
     ]);
-    expect(entryMatchesSearch(entries[0]!, "dcramer")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("GitHub connected");
   });
 
-  it("creates a searchable AGENTS.md load event entry", () => {
+  it("creates an AGENTS.md load event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
@@ -167,7 +164,6 @@ describe("plugin event transcript projection", () => {
         }),
       }),
     ]);
-    expect(entryMatchesSearch(entries[0]!, "use pnpm")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("Loaded AGENTS.md");
     expect(messageRawText(messages[0]!)).toContain("Use pnpm.");
   });

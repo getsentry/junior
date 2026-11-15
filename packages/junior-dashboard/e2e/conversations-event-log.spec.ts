@@ -44,7 +44,7 @@ async function openEventDetails(page: Page) {
   return { entry, log, panel };
 }
 
-test("reveals a closed tool result in transcript search", async ({
+test("searches messages, not tool calls, in the transcript", async ({
   page,
   dashboard,
 }) => {
@@ -74,13 +74,14 @@ test("reveals a closed tool result in transcript search", async ({
   await expect(toolResult).toBeHidden();
   await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
-  // Search must still reveal a result that the reader has closed.
+  // Search finds what people and Junior said, not tool calls. The reply and
+  // the tool result both name payments-v42.
   await page.getByRole("button", { name: "Search transcript" }).click();
-  await page
-    .getByPlaceholder("Search transcript…")
-    .fill("payments-v42 deploy notes");
-  await expect(toolResult).toBeVisible();
+  await page.getByPlaceholder("Search transcript…").fill("payments-v42");
+  await expect(transcript.getByText("p95 jumped after")).toBeVisible();
+  await expect(toolRow).toBeHidden();
   await page.getByPlaceholder("Search transcript…").fill("");
+  await expect(toolRow).toBeVisible();
   await expect(toolResult).toBeHidden();
 });
 

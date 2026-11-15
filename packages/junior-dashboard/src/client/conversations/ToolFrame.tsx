@@ -11,7 +11,6 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { useTranscriptSearch } from "./transcriptSearch";
 
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
@@ -24,12 +23,10 @@ export function ToolFrame(props: {
   mobileSummaryMeta?: string;
   signature: ReactNode;
 }) {
-  const { active: searchActive } = useTranscriptSearch();
   const [open, setOpen] = useState(false);
   const metaText = props.meta.join(" · ");
   const expandable = props.expandable ?? Boolean(props.children);
-  // Force-expand tool details during search so highlighted matches are visible.
-  const expanded = expandable && (searchActive || open);
+  const expanded = expandable && open;
   const Icon = props.icon;
   const row = (
     <TranscriptHeadingRow
@@ -87,8 +84,6 @@ export function ToolFrame(props: {
   return (
     <TraceCollapsible
       className="max-w-full"
-      // Search holds rows open, so the row button is off until search ends.
-      disabled={searchActive}
       open={expanded}
       onOpenChange={setOpen}
     >

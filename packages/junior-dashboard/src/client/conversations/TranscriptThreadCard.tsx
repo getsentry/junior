@@ -13,7 +13,6 @@ import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
-import { HighlightText } from "./transcriptSearch";
 
 /**
  * Link a Thread that the parent started to its page: title, status, and age.
@@ -46,7 +45,7 @@ export function TranscriptThreadCard(props: {
       to={conversationPath(id)}
     >
       <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-dashboard-text">
-        <HighlightText text={title} />
+        {title}
       </span>
       {thread ? (
         <ChildConversationStatusPill

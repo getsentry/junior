@@ -15,7 +15,6 @@ import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {
@@ -87,10 +86,8 @@ function ToolSignature(props: {
   preview: string | null;
   status: TranscriptViewToolCallPart["status"];
 }) {
-  const { active: searchActive } = useTranscriptSearch();
   const running = props.status === "running";
   const failed = props.status === "error";
-  const shimmering = running && !searchActive;
   const statusLabel = running
     ? `${props.name} (running)`
     : failed
@@ -100,19 +97,19 @@ function ToolSignature(props: {
   return (
     <>
       <ShimmerText
-        active={shimmering}
+        active={running}
         aria-label={statusLabel}
         as="strong"
         className={cn(
           "shrink-0 font-bold",
-          failed ? "!text-rose-300" : !shimmering && "text-dashboard-text",
+          failed ? "!text-rose-300" : !running && "text-dashboard-text",
         )}
       >
-        <HighlightText text={props.name} />
+        {props.name}
       </ShimmerText>
-      {props.preview && !searchActive ? (
+      {props.preview ? (
         <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-aria-expanded/trace-collapsible-trigger:hidden">
-          (<HighlightText text={props.preview} />)
+          ({props.preview})
         </code>
       ) : null}
     </>

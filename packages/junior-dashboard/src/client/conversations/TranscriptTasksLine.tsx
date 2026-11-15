@@ -6,7 +6,6 @@ import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { subagentStatusTone } from "./ConversationChildAgents";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
-import { HighlightText } from "./transcriptSearch";
 
 type TaskStatus = TranscriptViewSubagentPart["status"];
 type RenderedTaskEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
@@ -62,9 +61,7 @@ function TaskChip(props: {
         className="size-3.5 shrink-0 text-dashboard-text-faint"
         strokeWidth={2}
       />
-      <span className="min-w-0 truncate">
-        <HighlightText text={label} />
-      </span>
+      <span className="min-w-0 truncate">{label}</span>
       {/* Color only: the running step is the one thing that moves. */}
       <span
         aria-hidden="true"
