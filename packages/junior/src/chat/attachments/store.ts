@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorAttachments, juniorConversations } from "@/db/schema";
+import {
+  juniorAttachments,
+  juniorConversations,
+  juniorMessageAttachments,
+} from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import {
   conversationDetailTouch,
@@ -32,6 +36,35 @@ export interface AttachmentRecord {
   /** Null for a large Slack file, which Junior never stores. */
   storageKey: string | null;
   storageProvider: string;
+}
+
+/** Only `file` rows: a `url` row has no storage or file fields. */
+export const isFileAttachment = eq(juniorAttachments.kind, "file");
+
+/**
+ * The storage and file fields of a `file` row. Every `file` row has them, so
+ * a missing one is a broken row.
+ */
+export function fileFields(row: {
+  bytes: number | null;
+  contentType: string | null;
+  id: string;
+  storageProvider: string | null;
+  title: string | null;
+}): Pick<
+  AttachmentRecord,
+  "bytes" | "contentType" | "filename" | "storageProvider"
+> {
+  const { bytes, contentType, storageProvider, title } = row;
+  if (
+    bytes === null ||
+    contentType === null ||
+    storageProvider === null ||
+    title === null
+  ) {
+    throw new Error(`Attachment ${row.id} has no file fields`);
+  }
+  return { bytes, contentType, filename: title, storageProvider };
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -326,7 +359,7 @@ export async function storeAttachment(args: {
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
+      filename: juniorAttachments.title,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
       providerId: juniorAttachments.providerId,
@@ -447,7 +480,7 @@ export async function storeAttachment(args: {
         storageKey,
         provider: source?.provider,
         providerId: source?.id,
-        filename: args.file.filename,
+        title: args.file.filename,
         contentType: args.file.mimeType,
         ...written,
         createdAt: now,
@@ -584,9 +617,15 @@ export async function recordUploadedAttachment(args: {
     .with(conversationDetailTouch(args.db.db(), [attachment.conversationId]))
     .insert(juniorAttachments)
     .values({
-      ...attachment,
-      storageProvider: args.storage.provider,
+      bytes: attachment.bytes,
+      contentType: attachment.contentType,
+      conversationId: attachment.conversationId,
       createdAt: now,
+      id: attachment.id,
+      sha256: attachment.sha256,
+      storageKey: attachment.storageKey,
+      storageProvider: args.storage.provider,
+      title: attachment.filename,
     })
     .onConflictDoNothing({ target: juniorAttachments.id })
     .returning({ id: juniorAttachments.id });
@@ -618,17 +657,18 @@ export async function readLiveAttachment(args: {
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
       providerId: juniorAttachments.providerId,
       storageProvider: juniorAttachments.storageProvider,
       storageKey: juniorAttachments.storageKey,
+      title: juniorAttachments.title,
     })
     .from(juniorAttachments)
     .where(
       and(
         eq(juniorAttachments.id, args.attachmentId),
+        isFileAttachment,
         eq(juniorAttachments.conversationId, args.conversationId),
         isNull(juniorAttachments.deleteRequestedAt),
       ),
@@ -638,17 +678,14 @@ export async function readLiveAttachment(args: {
     return null;
   }
   return {
-    bytes: row.bytes,
-    contentType: row.contentType,
+    ...fileFields(row),
     conversationId: row.conversationId,
-    filename: row.filename,
     id: row.id,
     source:
       row.provider && row.providerId
         ? { id: row.providerId, provider: row.provider }
         : null,
     storageKey: row.storageKey,
-    storageProvider: row.storageProvider,
   };
 }
 
@@ -702,10 +739,11 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Eligible rows are 30 days old, explicitly purge-marked, or owned by a
- * conversation whose transcript is already purged. Delete object keys first,
- * then remove rows that are still eligible so a failed blob delete remains
- * retryable.
+ * Eligible files are 30 days old, explicitly purge-marked, or owned by a
+ * conversation whose transcript is already purged. A `url` row has no bytes,
+ * so it lives as long as its message: it is eligible only when purge-marked
+ * or purged. Delete object keys first, then remove rows that are still
+ * eligible so a failed blob delete remains retryable.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -714,6 +752,12 @@ export async function collectAttachmentGarbage(args: {
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
   const expiresBefore = new Date(args.nowMs - ATTACHMENT_RETENTION_MS);
+  const purged = or(
+    isNotNull(juniorAttachments.deleteRequestedAt),
+    isNotNull(juniorConversations.transcriptPurgedAt),
+  );
+  const eligible = or(lte(juniorAttachments.createdAt, expiresBefore), purged);
+  const isUrl = eq(juniorAttachments.kind, "url");
   const rows = await args.db
     .db()
     .select({
@@ -726,13 +770,12 @@ export async function collectAttachmentGarbage(args: {
       eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
-      and(
-        eq(juniorAttachments.storageProvider, args.storage.provider),
-        or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          isNotNull(juniorConversations.transcriptPurgedAt),
+      or(
+        and(
+          eq(juniorAttachments.storageProvider, args.storage.provider),
+          eligible,
         ),
+        and(isNull(juniorAttachments.storageProvider), isUrl, purged),
       ),
     )
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
@@ -756,11 +799,7 @@ export async function collectAttachmentGarbage(args: {
           juniorAttachments.id,
           rows.map((row) => row.id),
         ),
-        or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          isNotNull(juniorConversations.transcriptPurgedAt),
-        ),
+        or(and(isFileAttachment, eligible), and(isUrl, purged)),
       ),
     );
   if (stillEligible.length === 0) return { deleted: 0 };
@@ -775,7 +814,29 @@ export async function collectAttachmentGarbage(args: {
     )
     .returning({
       conversationId: juniorAttachments.conversationId,
+      id: juniorAttachments.id,
+      kind: juniorAttachments.kind,
     });
+  // Purge deletes where messages use links. A purge by a worker from before
+  // `url` rows existed did not.
+  const urls = removed.filter((row) => row.kind === "url");
+  if (urls.length > 0) {
+    await args.db
+      .db()
+      .delete(juniorMessageAttachments)
+      .where(
+        and(
+          inArray(
+            juniorMessageAttachments.conversationId,
+            urls.map((row) => row.conversationId),
+          ),
+          inArray(
+            juniorMessageAttachments.attachmentId,
+            urls.map((row) => row.id),
+          ),
+        ),
+      );
+  }
   await touchConversationDetail(
     args.db.db(),
     removed.map((row) => row.conversationId),

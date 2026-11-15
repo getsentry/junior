@@ -1,19 +1,25 @@
-import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-/** Durable metadata for files owned by one conversation. */
+/**
+ * What a Message carries: a stored file (`file`) or a web link that its text
+ * names (`url`). Rows are owned by one Conversation, and a repeat of the same
+ * thing in that Conversation reuses its row.
+ */
 export const juniorAttachments = pgTable(
   "junior_attachments",
   {
     id: text("id").primaryKey(),
+    /** `file` or `url`. Only `file` rows have storage and file fields. */
+    kind: text("kind").notNull().default("file"),
     conversationId: text("conversation_id")
       .notNull()
       .references(() => juniorConversations.conversationId, {
         onDelete: "cascade",
       }),
     /** Service that stores the file bytes. */
-    storageProvider: text("storage_provider").notNull(),
+    storageProvider: text("storage_provider"),
     /**
      * Object key of the stored bytes. Null for a file that Junior records
      * without storing, such as a large Slack file.
@@ -23,9 +29,15 @@ export const juniorAttachments = pgTable(
     provider: text("provider"),
     /** File id assigned by the source provider. */
     providerId: text("provider_id"),
-    filename: text("filename").notNull(),
-    contentType: text("content_type").notNull(),
-    bytes: integer("bytes").notNull(),
+    /**
+     * File name of a file. The column keeps its old name until no worker
+     * that reads `filename` runs.
+     */
+    title: text("filename"),
+    contentType: text("content_type"),
+    bytes: integer("bytes"),
+    /** Web link of a `url` row, as its message text wrote it. */
+    url: text("url"),
     /** Digest of the stored bytes. Null when `storage_key` is null. */
     sha256: text("sha256"),
     visionSummary: text("vision_summary"),
@@ -45,6 +57,29 @@ export const juniorAttachments = pgTable(
       table.deleteRequestedAt,
       table.createdAt,
     ),
+  ],
+);
+
+/**
+ * Where each stored message event uses an Attachment. `seq` is the seq of the
+ * first save of its message, as in the transcript. `position` is the 1-based
+ * order of a link in the message text, and null for an Attachment that is not
+ * in the text. No foreign keys, so creating the table locks no existing
+ * table.
+ */
+export const juniorMessageAttachments = pgTable(
+  "junior_message_attachments",
+  {
+    conversationId: text("conversation_id").notNull(),
+    seq: integer("seq").notNull(),
+    attachmentId: text("attachment_id").notNull(),
+    position: integer("position"),
+  },
+  (table) => [
+    primaryKey({
+      name: "junior_message_attachments_pk",
+      columns: [table.conversationId, table.seq, table.attachmentId],
+    }),
   ],
 );
 
