@@ -24,6 +24,10 @@ function baseKey(key) {
   return key.replace(/\(.*$/, "");
 }
 
+function compareVersions(a, b) {
+  return a.localeCompare(b, "en", { numeric: true });
+}
+
 function scopeOf(name) {
   return name.startsWith("@") ? name.slice(0, name.indexOf("/") + 1) : null;
 }
@@ -34,14 +38,16 @@ function scopeOf(name) {
  * the Sentry SDK and the Pi packages. Only families with a catalog package
  * count: the catalog is where the workspace pins one version for every
  * importer. Third-party families outside the catalog (`@aws-sdk/*`,
- * `@img/*`) may keep their own copies.
+ * `@img/*`) may keep their own copies. Snapshots that no importer reaches are
+ * ignored: nothing installs them, and no importer can fix them.
  */
-function lockstepFamilies(lockfile) {
+function lockstepFamilies(lockfile, paths) {
   const versionsByName = new Map();
   const links = new Map();
   const link = (from, to) =>
     links.set(from, new Set([...(links.get(from) ?? []), to]));
   for (const [key, snapshot] of Object.entries(lockfile.snapshots)) {
+    if (!paths.has(baseKey(key))) continue;
     const { name, version } = splitKey(baseKey(key));
     versionsByName.set(
       name,
@@ -61,9 +67,10 @@ function lockstepFamilies(lockfile) {
       }
     }
   }
-  const catalogNames = Object.values(lockfile.catalogs).flatMap((catalog) =>
-    Object.keys(catalog),
+  const catalogEntries = Object.values(lockfile.catalogs).flatMap((catalog) =>
+    Object.entries(catalog),
   );
+  const catalogNames = catalogEntries.map(([name]) => name);
   const families = new Map();
   for (const start of catalogNames) {
     if (!links.has(start)) continue;
@@ -74,9 +81,14 @@ function lockstepFamilies(lockfile) {
     const sorted = [...members].sort();
     families.set(sorted.join(" "), {
       catalogNames: sorted.filter((name) => catalogNames.includes(name)),
+      catalogVersions: new Set(
+        catalogEntries
+          .filter(([name]) => members.has(name))
+          .map(([, entry]) => entry.version),
+      ),
       members: sorted.map((name) => ({
         name,
-        versions: [...versionsByName.get(name)].sort(),
+        versions: [...versionsByName.get(name)].sort(compareVersions),
       })),
     });
   }
@@ -134,10 +146,10 @@ function importerPaths(lockfile) {
 /** Report lockstep families that resolve to more than one version, with the importers that pull each one. */
 export function checkLockfileFamilies(lockfile) {
   const paths = importerPaths(lockfile);
-  return lockstepFamilies(lockfile).flatMap((family) => {
+  return lockstepFamilies(lockfile, paths).flatMap((family) => {
     const versions = [
       ...new Set(family.members.flatMap((member) => member.versions)),
-    ].sort();
+    ].sort(compareVersions);
     if (versions.length < 2) return [];
     return [
       `${scopeOf(family.members[0].name)}* lockstep family resolves to ${versions.join(", ")}. Each copy loads its own module state.`,
@@ -155,7 +167,7 @@ export function checkLockfileFamilies(lockfile) {
           }
         }
         return [
-          `  ${version}: ${names.join(", ")}`,
+          `  ${version}${family.catalogVersions.has(version) ? " (catalog)" : ""}: ${names.join(", ")}`,
           ...[...shortest].map(
             ([importer, chain]) => `    ${importer} > ${chain.join(" > ")}`,
           ),
