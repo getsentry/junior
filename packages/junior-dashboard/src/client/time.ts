@@ -4,8 +4,9 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
 
+// Days are the largest unit: idle and runtime thresholds count days, and
+// narrow Intl writes months as `m`, which reads like minutes.
 const DURATION_UNITS: Array<[Intl.DurationFormatUnit, number]> = [
-  ["weeks", WEEK_MS],
   ["days", DAY_MS],
   ["hours", HOUR_MS],
   ["minutes", MINUTE_MS],
@@ -43,7 +44,7 @@ function formatUnit(unit: "millisecond" | "second", value: number): string {
 
 /**
  * Format milliseconds as compact units: `999ms` and `3.5s` below a minute,
- * then the largest `maxUnits` non-zero units, such as `2h 5m` or `1w 2d`.
+ * then the largest `maxUnits` non-zero units, such as `2h 5m` or `9d 17h`.
  */
 export function formatDuration(
   value: number | undefined,

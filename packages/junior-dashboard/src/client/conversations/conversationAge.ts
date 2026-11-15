@@ -3,6 +3,7 @@ import { formatDuration } from "../time";
 import { calendarDay, calendarDaysAgo } from "./conversationSections";
 
 const MINUTE_MS = 60_000;
+const WEEK_MS = 7 * 86_400_000;
 const MONTH_MS = 30 * 86_400_000;
 
 /**
@@ -15,7 +16,8 @@ export function formatCompactAge(value: string, nowMs = Date.now()): string {
 
   const elapsed = Math.max(0, nowMs - time);
   if (elapsed < MINUTE_MS) return "now";
-  if (elapsed < MONTH_MS) return formatDuration(elapsed, 1);
+  if (elapsed < WEEK_MS) return formatDuration(elapsed, 1);
+  if (elapsed < MONTH_MS) return `${Math.floor(elapsed / WEEK_MS)}w`;
   return new Date(time).toLocaleDateString("en-US", {
     day: "numeric",
     month: "short",

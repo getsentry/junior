@@ -20,8 +20,8 @@ describe("time formatting", () => {
     expect(formatDuration(2_700_000)).toBe("45m");
     expect(formatDuration(4_500_000)).toBe("1h 15m");
     expect(formatDuration(90_061_000)).toBe("1d 1h");
-    expect(formatDuration(839_497_000)).toBe("1w 2d");
-    expect(formatDuration(839_497_000, 1)).toBe("1w");
+    expect(formatDuration(839_497_000)).toBe("9d 17h");
+    expect(formatDuration(839_497_000, 1)).toBe("9d");
     expect(formatDuration(undefined)).toBe("");
     expect(formatDuration(Number.NaN)).toBe("");
   });
