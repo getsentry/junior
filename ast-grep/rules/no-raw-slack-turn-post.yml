@@ -1,7 +1,7 @@
 id: no-raw-slack-turn-post
 language: TypeScript
 severity: error
-message: "Do not post to Slack with postSlackMessage, chat.postMessage, or thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it. Do not add the file to this rule's ignores; they are only for the Slack outbound boundary."
+message: "Do not post to Slack with postSlackMessage, chat.postMessage, or a Chat SDK post (post, schedule, stream, postChannelMessage, openDM). Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it. Do not add the file to this rule's ignores; they are only for the Slack outbound boundary."
 files:
   - packages/junior/src/**/*.ts
 ignores:
@@ -17,8 +17,35 @@ rule:
         - has:
             kind: identifier
             regex: ^postSlackMessage$
+    # Chat SDK posts on a Thread, Channel, or adapter.
     - all:
-        - pattern: $THREAD.post($MESSAGE)
+        - any:
+            - pattern: $RECV.post($$$)
+            - pattern: $RECV.schedule($$$)
+            - pattern: $RECV.stream($$$)
+        - any:
+            # A receiver named thread, channel, or adapter, or one made inline
+            # such as `chat.channel(id)`.
+            - regex: ^(?:[\w$]+\.)*(?:thread|channel|adapter)(?:\([^()]*\))?\.\w+\(
+            # A renamed Thread or Channel in the same function.
+            - inside:
+                stopBy: end
+                any:
+                  - kind: statement_block
+                  - kind: arrow_function
+                  - kind: function_declaration
+                  - kind: function_expression
+                  - kind: method_definition
+                has:
+                  stopBy: end
+                  any:
+                    - pattern: const $RECV = new ThreadImpl($$$)
+                    - all:
+                        - kind: required_parameter
+                        - has: { field: pattern, pattern: $RECV }
+                        - has:
+                            field: type
+                            regex: ^:\s*(Thread|ThreadImpl|Channel)\b
         # Thread control acks are not Turn output.
         - not:
             has:
@@ -26,6 +53,7 @@ rule:
               has:
                 kind: identifier
                 regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
-constraints:
-  THREAD:
-    regex: (^|\.)thread$
+    - pattern: $_.postChannelMessage($$$)
+    - pattern: $_.postChannelMessage?.($$$)
+    - pattern: $_.openDM($$$)
+    - pattern: $_.openDM?.($$$)
