@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   CONVERSATION_FEED_MEDIA_LIMIT,
   type ConversationFeedMedia,
@@ -33,6 +33,10 @@ export async function readFeedMedia(
           juniorAttachments.conversationId,
           juniorConversations.conversationId,
         ),
+        // Only a stored file has a storage provider. Rows for web links
+        // will share this table, and a worker that runs during their deploy
+        // must not list them as files.
+        isNotNull(juniorAttachments.storageProvider),
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     )
