@@ -89,7 +89,7 @@ async function viewerApi() {
  */
 async function completeDashboardTurn(
   reply: string,
-  stored: { text: string; quiet?: true } | null = { text: reply },
+  stored: { text: string } | null = { text: reply },
 ): Promise<string[]> {
   const conversationId = `local:web:${randomUUID()}`;
   const source = createWebSource(conversationId, "private");
@@ -137,7 +137,6 @@ async function completeDashboardTurn(
           messageId: "turn-1:assistant:1",
           role: "assistant",
           text: stored.text,
-          ...(stored.quiet ? { meta: { quiet: true } } : undefined),
         },
       },
     ]);
@@ -234,12 +233,8 @@ describe("reply notification task", () => {
     const after = await api("GET", "/api/notifications");
     expect(after?.deviceCount).toBe(1);
 
-    // A Turn with no reply, or with a Quiet message, notifies nobody.
+    // A Turn with no reply notifies nobody.
     await completeDashboardTurn("Nothing to send.", null);
-    await completeDashboardTurn("Fixed the lint failure and pushed.", {
-      text: "Fixed the lint failure and pushed.",
-      quiet: true,
-    });
     expect(pushes).toHaveLength(1);
   });
 

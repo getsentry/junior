@@ -16,6 +16,7 @@ import {
 } from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
+  // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import type {
@@ -161,6 +162,7 @@ export async function deliverPrivateMessage(input: {
   if (input.channelId) {
     try {
       if (isDmChannel(input.channelId)) {
+        // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
         await postSlackMessage({
           channelId: input.channelId,
           text: input.text,
@@ -202,6 +204,7 @@ export async function deliverPrivateMessage(input: {
       return false;
     }
 
+    // ast-grep-ignore: no-raw-slack-turn-post -- private auth link, ephemeral or DM, not Turn output
     await postSlackMessage({
       channelId: dmChannelId,
       text: input.text,

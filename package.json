@@ -13,7 +13,7 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm file-length:check && pnpm typecheck-coverage:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm file-length:check && pnpm typecheck-coverage:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm type-assertions:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
@@ -22,8 +22,9 @@
     "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
+    "type-assertions:check": "node --test scripts/check-type-assertions.test.mjs && node scripts/check-type-assertions.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
-    "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan",
+    "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan --error=unused-suppression --error=no-suppress-all && node --test scripts/check-ast-grep-ignores.test.mjs && node scripts/check-ast-grep-ignores.mjs",
     "lint-staged": "lint-staged",
     "build": "pnpm -r --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" run build",
     "build:example": "pnpm --filter @sentry/junior-example build",
@@ -78,7 +79,8 @@
     "simple-git-hooks": "^2.13.1",
     "squawk-cli": "2.72.0",
     "tsx": "^4.22.3",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": "24.x"

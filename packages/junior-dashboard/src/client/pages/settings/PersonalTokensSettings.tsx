@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -14,7 +14,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { SettingsSection } from "./SettingsPageLayout";
 import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
@@ -34,10 +34,12 @@ function defaultTokenName(now = new Date()): string {
  * the token name, for example from a link that asks for a token. `?preview=`
  * offers to send a new token to that Preview.
  */
-export function PersonalTokensPage() {
+export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const previewOrigin = parsePreviewOrigin(searchParams.get("preview"));
   const [name, setName] = useState(
     () =>
@@ -132,7 +134,8 @@ export function PersonalTokensPage() {
       : undefined);
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="api-tokens"
       description={
         <>
           Use a token to read {getDashboardAgentName()} APIs from a local agent
@@ -143,7 +146,10 @@ export function PersonalTokensPage() {
     >
       {previewOrigin ? (
         <PreviewTokenHandoff
-          onCancel={() => setSearchParams({}, { replace: true })}
+          onCancel={() =>
+            // Keep the hash, so the page stays on this section.
+            navigate({ hash: location.hash, search: "" }, { replace: true })
+          }
           previewOrigin={previewOrigin}
         />
       ) : createdToken ? (
@@ -240,6 +246,6 @@ export function PersonalTokensPage() {
           </ul>
         )}
       </Card>
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }

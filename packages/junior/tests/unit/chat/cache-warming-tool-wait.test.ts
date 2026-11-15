@@ -13,12 +13,27 @@ const mocks = vi.hoisted(() => ({
     costUsd: 0.05,
     attributes: {},
   })),
+  // The warmup timer writes its cost, and nothing awaits that write.
+  warmupCostWrites: [] as Promise<void>[],
 }));
 
 vi.mock("@/chat/cache-warming/request", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/cache-warming/request")>()),
   sendWarmup: mocks.sendWarmup,
 }));
+
+vi.mock("@/chat/cache-warming/savings", async (importOriginal) => {
+  const savings =
+    await importOriginal<typeof import("@/chat/cache-warming/savings")>();
+  return {
+    ...savings,
+    recordWarmupCost: (modelId: string, costUsd: number) => {
+      const write = savings.recordWarmupCost(modelId, costUsd);
+      mocks.warmupCostWrites.push(write);
+      return write;
+    },
+  };
+});
 
 const { createToolWaitWarmer } = await import("@/chat/cache-warming/tool-wait");
 
@@ -82,6 +97,8 @@ describe("tool wait cache warming", () => {
   });
 
   afterEach(async () => {
+    // A write that lands later would count on the day of the next case.
+    await Promise.all(mocks.warmupCostWrites.splice(0));
     vi.useRealTimers();
     await getStateAdapter().delete(GAPS_KEY);
     await getStateAdapter().delete(OPEN_WAIT_KEY);
@@ -178,6 +195,7 @@ describe("tool wait cache warming", () => {
     await vi.advanceTimersByTimeAsync(7 * MINUTE);
     expect(mocks.sendWarmup).toHaveBeenCalledTimes(1);
     await warmer.record(request(), message("stop"));
+    await Promise.all(mocks.warmupCostWrites);
 
     const response = await createJuniorApi().request(
       "http://localhost/api/cache-warming/savings?days=1",

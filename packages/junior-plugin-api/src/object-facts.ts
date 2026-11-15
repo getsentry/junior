@@ -150,6 +150,39 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     environment: text.optional(),
     occurredAt: z.iso.datetime({ offset: true }).optional(),
   }),
+  // Releases: health and rollout totals. Each surface formats the times
+  // for its reader. Projects are the ones Sentry lists for the viewer.
+  z.strictObject({
+    type: z.literal("release"),
+    summary: summary.optional(),
+    version: text,
+    projects: z.array(text).max(5),
+    newIssues: count.optional(),
+    // A percentage, such as 99.42.
+    crashFreeSessions: z.number().finite().min(0).max(100).optional(),
+    deployCount: count.optional(),
+    lastDeploy: z
+      .strictObject({
+        environment: text,
+        finishedAt: z.iso.datetime({ offset: true }).optional(),
+      })
+      .optional(),
+    releasedAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Monitors: something that checks on a schedule, such as an alert on a
+  // metric, a cron job, or an uptime check. `state` is the shared state
+  // that sets the tone. The annotation status names it the provider's way.
+  z.strictObject({
+    type: z.literal("monitor"),
+    summary: summary.optional(),
+    kind: z.enum(["metric", "cron", "uptime"]),
+    state: z.enum(["ok", "failing", "pending", "paused"]),
+    project: text.optional(),
+    environment: text.optional(),
+    detail: text.optional(),
+    lastCheckedAt: z.iso.datetime({ offset: true }).optional(),
+    trend: trend.optional(),
+  }),
   // Traces: the root span, totals, and the first top-level spans, which
   // the card draws as a small waterfall. Times are milliseconds from the
   // trace start.
@@ -175,6 +208,38 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
         }),
       )
       .max(12),
+  }),
+  // Dashboards: the saved filters, the first widgets, and small charts of
+  // a few of them. Projects are the ones Sentry lists for the viewer, or a
+  // name such as "All projects". A chart shows its widget's shape, the way
+  // a chart card does.
+  z.strictObject({
+    type: z.literal("dashboard"),
+    summary: summary.optional(),
+    widgetCount: count,
+    projects: z.array(text).max(5),
+    environments: z.array(text).max(5),
+    // The time range, such as "Last 24 hours".
+    range: text,
+    // The display is a name, such as "Line chart" or "Table".
+    widgets: z.array(z.strictObject({ title: text, display: text })).max(8),
+    charts: z
+      .array(
+        z.strictObject({
+          title: text,
+          display: z.enum(["line", "bar", "area"]),
+          series: z
+            .array(
+              z.strictObject({
+                label: text,
+                points: z.array(z.number().finite()).min(2).max(60),
+              }),
+            )
+            .min(1)
+            .max(3),
+        }),
+      )
+      .max(3),
   }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
@@ -232,6 +297,18 @@ export function formatDuration(ms: number): string {
 }
 
 type ObjectField = { href?: string; key: string; label: string; value: string };
+
+const MONITOR_KINDS = {
+  metric: "Metric alert",
+  cron: "Cron job",
+  uptime: "Uptime check",
+} as const;
+// What `detail` holds for each kind of monitor.
+const MONITOR_DETAILS = {
+  metric: "Alerts on",
+  cron: "Schedule",
+  uptime: "Checks",
+} as const;
 
 /** Show at most four card attributes, in priority order, on every surface. */
 export function objectFactFields(
@@ -329,6 +406,32 @@ export function objectFactFields(
       add("release", "Release", facts.release);
       add("environment", "Environment", facts.environment);
       break;
+    case "release":
+      add("projects", "Projects", list(facts.projects));
+      add("newIssues", "New issues", facts.newIssues?.toLocaleString("en-US"));
+      add(
+        "crashFreeSessions",
+        "Crash-free sessions",
+        facts.crashFreeSessions === undefined
+          ? undefined
+          : `${Number(facts.crashFreeSessions.toFixed(2))}%`,
+      );
+      add(
+        "deploys",
+        "Deploys",
+        facts.deployCount === undefined
+          ? undefined
+          : facts.lastDeploy
+            ? `${facts.deployCount.toLocaleString("en-US")}, last to ${facts.lastDeploy.environment}`
+            : facts.deployCount.toLocaleString("en-US"),
+      );
+      break;
+    case "monitor":
+      add("kind", "Kind", MONITOR_KINDS[facts.kind]);
+      add("project", "Project", facts.project);
+      add("environment", "Environment", facts.environment);
+      add("detail", MONITOR_DETAILS[facts.kind], facts.detail);
+      break;
     case "trace":
       add("duration", "Duration", formatDuration(facts.durationMs));
       add("spans", "Spans", facts.spanCount.toLocaleString("en-US"));
@@ -338,6 +441,12 @@ export function objectFactFields(
         `${plural(facts.errorCount, "error")}, ${plural(facts.performanceIssueCount, "performance issue")}`,
       );
       add("projects", "Projects", list(facts.projects));
+      break;
+    case "dashboard":
+      add("widgets", "Widgets", facts.widgetCount.toLocaleString("en-US"));
+      add("projects", "Projects", list(facts.projects));
+      add("environments", "Environments", list(facts.environments));
+      add("range", "Time range", facts.range);
       break;
     case "person":
       add("email", "Email", facts.email);

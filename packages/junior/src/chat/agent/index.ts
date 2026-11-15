@@ -865,8 +865,10 @@ async function executeAgentRunInPrivacyContext(
           pendingMessages,
           mode,
           piMessages: messages,
+          // Not `agent.state.systemPrompt`: it also folds in saved system
+          // messages, which the history estimate counts.
           requestOverheadTokens: estimateRequestOverheadTokens(
-            agent!.state.systemPrompt,
+            baseInstructions,
             agent!.state.tools,
             activeModelId,
           ),
@@ -1193,7 +1195,7 @@ async function executeAgentRunInPrivacyContext(
         }
         if (decision === "wrap_up") {
           runResume.markTurnLimitWrappedUp();
-          logWarn("agent.turn.limit.wrap_up", {
+          logWarn("agent.turn.limit.wrapped_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });

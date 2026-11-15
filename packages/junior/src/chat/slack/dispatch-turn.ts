@@ -18,7 +18,7 @@ type ExecuteSlackTurn = (
   message: Message,
   options: {
     ack?: () => Promise<void>;
-    conversationId?: string;
+    conversationId: string;
     destination: DispatchRecord["destination"];
     execution: DispatchTurnContext;
     onTurnDeliveryAccepted?: (messageId?: string) => void;
@@ -49,11 +49,17 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
+    // Thread.id is the Slack thread on every path. A top-level post has no
+    // thread yet, so it gets the channel-level id.
+    const slackThreadId = adapter.encodeThreadId({
+      channel: dispatch.destination.channelId,
+      threadTs: dispatch.destination.threadTs ?? "",
+    });
     // TODO(dcramer): Remove this synthetic Slack Message and Thread after
     // dispatch work supplies Slack Delivery to the shared Turn path.
     const message = new Message({
       id: getDispatchInputMessageId(dispatch.id),
-      threadId: conversationId,
+      threadId: slackThreadId,
       text: dispatch.input,
       attachments: [],
       formatted: { type: "root", children: [] },
@@ -80,7 +86,7 @@ export function createSlackDispatchTurnRunner(options: {
     const thread = new ThreadImpl({
       adapter,
       stateAdapter: state,
-      id: conversationId,
+      id: slackThreadId,
       channelId: dispatch.destination.channelId,
       channelVisibility:
         dispatch.destinationVisibility === "public" ? "workspace" : "private",

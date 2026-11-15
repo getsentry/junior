@@ -48,7 +48,7 @@ export interface ConversationMessageMeta {
   imageAttachmentCount?: number | undefined;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
-  /** Quiet message: stored, but not delivered to the Location. */
+  /** Quiet message from older history: stored, but not delivered. */
   quiet?: true;
   replied?: boolean;
   /** Person changes to Review items that this Message records. */

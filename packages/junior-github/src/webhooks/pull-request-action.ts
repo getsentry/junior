@@ -196,8 +196,8 @@ async function showAction(
       assigneeIdentityIds: [args.identityId],
       body:
         action === "merge"
-          ? `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`
-          : `GitHub asks you to review **${state.title}**: ${state.url}`,
+          ? `**${state.title}** (#${number}) is approved, and GitHub says that it can merge: ${state.url}`
+          : `GitHub asks you to review **${state.title}** (#${number}): ${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {

@@ -184,6 +184,6 @@ export const googleCalendarLinks: PluginObjectLinkDefinition = {
     { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
   ],
   canView: canViewGoogleCalendarLink,
-  objectType: "calendar_event",
+  objectTypes: ["calendar_event"],
   resolve: resolveGoogleCalendarLink,
 };

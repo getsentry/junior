@@ -47,6 +47,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
@@ -206,7 +207,14 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockCodeRepository(params.data.repositoryId);
+    const query = codeRepositoryQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    const report = readMockCodeRepository(
+      params.data.repositoryId,
+      query.data.state,
+    );
     return report
       ? jsonResponse(codeRepositoryReportSchema, report)
       : errorResponse("Repository not found.", 404);
@@ -830,11 +838,16 @@ export function createMockReportingApi(): Hono<{
       items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
     });
   });
-  app.get("/review-items/count", () =>
-    jsonResponse(reviewItemCountSchema, {
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
-    }),
-  );
+  app.get("/review-items/count", () => {
+    const open = readMockReviewItems(NOW_MS, {});
+    return jsonResponse(reviewItemCountSchema, {
+      // Mock items have no subjects, so none is a code change.
+      codeChanges: 0,
+      decisions: open.filter((item) => item.request).length,
+      needsViewer: open.length,
+      snoozed: 0,
+    });
+  });
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,

@@ -176,16 +176,11 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
-    const conversationId =
-      args.context.conversationId ??
-      args.context.threadId ??
-      args.context.runId;
-    const existingState = conversationId
-      ? await getPersistedThreadState(conversationId)
-      : await args.thread.state;
-    const sandboxRef = getPersistedSandboxState(existingState ?? {});
+    const { conversationId } = args.context;
+    const existingState = await getPersistedThreadState(conversationId);
+    const sandboxRef = getPersistedSandboxState(existingState);
     const conversation = coerceThreadConversationState(existingState);
-    if (conversationId && isVisionEnabled()) {
+    if (isVisionEnabled()) {
       conversation.vision = await loadConversationVisionCache(conversationId);
     }
     await hydrateConversationMessages({ conversation, conversationId });
@@ -247,33 +242,23 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
         channelId: args.context.channelId,
         actorId: args.context.actorId,
         runId: args.context.runId,
-        threadTs: getThreadTs(args.context.threadId),
+        threadTs: getThreadTs(args.message),
       });
-      if (conversationId) {
-        await persistConversationVisionCache(
-          conversationId,
-          conversation.vision,
-        );
-      }
+      await persistConversationVisionCache(conversationId, conversation.vision);
     }
 
     // Record the visible transcript after vision hydration (so the current
     // turn's messages capture their image-context meta) but before trimming
     // drops older Messages, so every live message reaches SQL at least once.
     await persistConversationMessages({ conversation, conversationId });
-    if (conversationId) {
-      // Reload so every Message has its seq. The Turn saves the highest seq
-      // as its thread context cursor.
-      await hydrateConversationMessages({ conversation, conversationId });
-    }
+    // Reload so every Message has its seq. The Turn saves the highest seq
+    // as its thread context cursor.
+    await hydrateConversationMessages({ conversation, conversationId });
 
     if (
-      (await trimConversationMessages(conversation, async () =>
-        conversationId
-          ? await loadThreadContextTrimFloor(conversationId)
-          : undefined,
+      (await trimConversationMessages(conversation, () =>
+        loadThreadContextTrimFloor(conversationId),
       )) &&
-      conversationId &&
       conversation.historyFromSeq !== undefined
     ) {
       await persistConversationMessageWindow({

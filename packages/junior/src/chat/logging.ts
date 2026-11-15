@@ -66,6 +66,7 @@ import {
   spanToJSON,
   withScope,
 } from "@/chat/sentry";
+import type { LogEventName } from "@/chat/log-event-name";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
 
@@ -855,9 +856,7 @@ function booleanConsoleToken(
 
 function shouldShowPrettyCorrelation(eventName: string): boolean {
   return !(
-    eventName === "plugin.loaded" ||
-    eventName === "startup.discovery.completed" ||
-    eventName.endsWith(".loaded")
+    eventName === "startup.discovery.completed" || eventName.endsWith(".loaded")
   );
 }
 
@@ -1168,36 +1167,36 @@ function emit(
  * exists for adapters that must preserve an external free-form body.
  */
 export const log = {
-  debug(
-    eventName: string,
+  debug<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("debug", eventName, attrs, body);
   },
-  info(
-    eventName: string,
+  info<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("info", eventName, attrs, body);
   },
-  warn(
-    eventName: string,
+  warn<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("warn", eventName, attrs, body);
   },
-  error(
-    eventName: string,
+  error<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("error", eventName, attrs, body);
   },
-  exception(
-    eventName: string,
+  exception<const N extends string>(
+    eventName: LogEventName<N>,
     error: unknown,
     attrs: Record<string, unknown> = {},
     body?: string,
@@ -1535,8 +1534,8 @@ export function captureException(error: unknown): void {
  * Bind correlation context at the owning operation boundary instead of
  * passing it here.
  */
-export function logInfo(
-  eventName: string,
+export function logInfo<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, attributes);
@@ -1549,8 +1548,8 @@ export function logInfo(
  * info events stay out of Sentry in production. Sentry log retention is not
  * durable audit storage.
  */
-export function logAudit(
-  eventName: string,
+export function logAudit<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, { ...attributes, [AUDIT_LOG_ATTRIBUTE]: true });
@@ -1562,8 +1561,8 @@ export function logAudit(
  * Bind correlation context at the owning operation boundary instead of
  * passing it here.
  */
-export function logWarn(
-  eventName: string,
+export function logWarn<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.warn(eventName, attributes);
@@ -1574,8 +1573,8 @@ export function logWarn(
  *
  * Use `logException` when an actual exception instance owns the failure.
  */
-export function logError(
-  eventName: string,
+export function logError<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.error(eventName, attributes);
@@ -1588,9 +1587,9 @@ export function logError(
  * generic operation exception. Existing domain failure events may retain a
  * `.failed` outcome when the event also covers non-exception failures.
  */
-export function logException(
+export function logException<const N extends string>(
   error: unknown,
-  eventName: string,
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): string | undefined {
   const normalizedError =
@@ -1599,9 +1598,9 @@ export function logException(
 }
 
 /** Run an optional side effect without changing the successful primary outcome. */
-export async function runBestEffort(
+export async function runBestEffort<const N extends string>(
   operation: () => Promise<void>,
-  eventName: string,
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): Promise<void> {
   try {

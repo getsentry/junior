@@ -54,6 +54,7 @@ function normalizeRangeTimestamp(
     return timestamp;
   }
 
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const threadId = parseSlackThreadId(trimmed);
   const threadTimestamp = threadId
     ? parseSlackTimestampParam(field, threadId.threadTs)

@@ -61,7 +61,7 @@ export const githubAccountLinks: PluginObjectLinkDefinition = {
   filters: [{ host: "github.com", pathPattern: "/*" }],
   // A GitHub profile is public, and the card holds only the login.
   canView: async () => true,
-  objectType: "person",
+  objectTypes: ["person"],
   async resolve(ctx, url) {
     const login = url.pathname.split("/")[1] ?? "";
     if (

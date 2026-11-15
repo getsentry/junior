@@ -30,7 +30,7 @@ export async function GET(
       nowMs,
       showReviewItem: options.showReviewItem,
     }).catch((error) => {
-      logException(error, "heartbeat.failed", {
+      logException(error, "heartbeat.run.failed", {
         "app.heartbeat.now_ms": nowMs,
       });
     }),

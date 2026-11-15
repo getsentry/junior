@@ -5,7 +5,7 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
 import {
-  countReviewItemsNeedingUser,
+  countReviewItemsNeedingUserBySubject,
   getOpenReviewItemByDedupeKey,
   getReviewItem,
   listWaitingConversations,
@@ -130,7 +130,9 @@ describe("plugin review items", () => {
         waitingSince: expect.any(String),
       },
     ]);
-    expect(await countReviewItemsNeedingUser(getDb(), ana.user.id)).toBe(1);
+    expect(
+      await countReviewItemsNeedingUserBySubject(getDb(), ana.user.id),
+    ).toEqual([expect.objectContaining({ decisions: 0, total: 1 })]);
 
     // A reply cannot close it: the plugin closes it when the provider state
     // changes. No item can match, so the reply check stops early.
