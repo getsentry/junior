@@ -169,16 +169,30 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # The type-cost check reads the baseline from the parent commit.
+          # The type-cost check reads trailers from the pull request head,
+          # the second parent of the merge commit.
           fetch-depth: 2
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Packages check against the declarations that their dependencies build.
       - run: pnpm build
+      # Type-check counts of the base commit, or of the latest main run.
+      - if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/type-cost.json
+          key: type-cost-${{ github.event.pull_request.base.sha }}
+          restore-keys: type-cost-
       # Runs every `pnpm typecheck` project once and checks its cost.
       - run: pnpm type-cost:check
         env:
-          TYPE_COST_BASE: HEAD^1
+          TYPE_COST_FILE: ${{ runner.temp }}/type-cost.json
+          TYPE_COST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/type-cost.json
+          key: type-cost-${{ github.sha }}
 
   eval-report-tests:
     name: test / eval reporting
