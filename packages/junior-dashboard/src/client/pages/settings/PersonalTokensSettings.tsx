@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -37,7 +37,9 @@ function defaultTokenName(now = new Date()): string {
 export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const previewOrigin = parsePreviewOrigin(searchParams.get("preview"));
   const [name, setName] = useState(
     () =>
@@ -144,7 +146,10 @@ export function PersonalTokensSettings() {
     >
       {previewOrigin ? (
         <PreviewTokenHandoff
-          onCancel={() => setSearchParams({}, { replace: true })}
+          onCancel={() =>
+            // Keep the hash, so the page stays on this section.
+            navigate({ hash: location.hash, search: "" }, { replace: true })
+          }
           previewOrigin={previewOrigin}
         />
       ) : createdToken ? (
