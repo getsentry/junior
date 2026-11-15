@@ -105,6 +105,7 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     },
     compat: {
       forceAdaptiveThinking: true,
+      supportsMidConvoSystemMessages: true,
       supportsTemperature: false,
     },
   },
@@ -154,6 +155,9 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     thinkingLevelMap: {
       xhigh: "xhigh",
       max: "max",
+    },
+    compat: {
+      supportsMidConvoSystemMessages: true,
     },
   },
   "openai/gpt-6-astra": {
