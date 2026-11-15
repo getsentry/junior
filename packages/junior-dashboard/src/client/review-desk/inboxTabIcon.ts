@@ -18,8 +18,8 @@ export function useInboxTabIconCount() {
 }
 
 /**
- * Badge the browser tab icon with the Inbox count, over Junior's icon in the
- * theme's accent. Above 9 it shows `9+`. At zero, or with the choice off,
+ * Badge the top-right corner of the browser tab icon with the Inbox count,
+ * in the theme's accent. Above 9 it shows `9+`. At zero, or with the choice off,
  * the original icon comes back.
  */
 export function useInboxTabIcon(count: number | undefined): void {
@@ -89,16 +89,18 @@ async function drawBadgedIcon(src: string, label: string): Promise<string> {
   const tokens = getComputedStyle(document.documentElement);
   const fill = tokens.getPropertyValue("--color-dashboard-accent").trim();
   const ink = tokens.getPropertyValue("--color-dashboard-ink").trim();
-  const height = ICON_SIZE * 0.6;
-  const width = label.length > 1 ? ICON_SIZE * 0.84 : height;
-  const x = ICON_SIZE - width;
-  const y = ICON_SIZE - height;
+  // The badge sits in the top-right corner, above Junior's face.
+  const height = ICON_SIZE * 0.44;
+  const width = label.length > 1 ? ICON_SIZE * 0.62 : height;
+  const ring = ICON_SIZE * 0.06;
+  const x = ICON_SIZE - width - ring / 2;
+  const y = ring / 2;
   context.beginPath();
   context.roundRect(x, y, width, height, height / 2);
   context.fillStyle = fill;
   context.fill();
   // An ink ring keeps the badge apart from the icon below it.
-  context.lineWidth = ICON_SIZE * 0.06;
+  context.lineWidth = ring;
   context.strokeStyle = ink;
   context.stroke();
   context.fillStyle = ink;

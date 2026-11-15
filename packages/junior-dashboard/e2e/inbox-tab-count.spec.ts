@@ -57,6 +57,46 @@ test("the tab title and icon count the Inbox until it is zero", async ({
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
 });
 
+test("the tab icon count sits in the top-right corner", async ({
+  dashboard,
+  page,
+}) => {
+  await mockInboxCount(page, { value: 3 });
+  await page.goto(`${dashboard.baseURL}/review`);
+  const icon = page.locator('link[rel="icon"]');
+  await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
+  const href = (await icon.getAttribute("href"))!;
+  // Which corners of the icon have the badge's accent fill.
+  const accentCorners = await page.evaluate(async (src) => {
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue("--color-dashboard-accent")
+      .trim();
+    context.fillRect(0, 0, 1, 1);
+    const accent = [...context.getImageData(0, 0, 1, 1).data];
+    context.drawImage(image, 0, 0);
+    const size = image.width;
+    const inset = Math.round(size * 0.16);
+    const corners = {
+      bottomRight: [size - inset, size - inset],
+      topRight: [size - inset, inset],
+    };
+    return Object.entries(corners)
+      .filter(([, [x, y]]) => {
+        const pixel = [...context.getImageData(x!, y!, 1, 1).data];
+        return pixel.every((value, i) => Math.abs(value - accent[i]!) < 8);
+      })
+      .map(([name]) => name);
+  }, href);
+  expect(accentCorners).toEqual(["topRight"]);
+});
+
 test("turning off the tab icon count keeps the title count", async ({
   dashboard,
   page,
