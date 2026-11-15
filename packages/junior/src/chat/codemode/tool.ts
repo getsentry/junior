@@ -100,8 +100,8 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
 }
 
 /**
- * Tell the script which tools it may call, for the `<script-tools>` Turn
- * context section. Direct tools are only named: the model already has their
+ * Tell the script which tools it may call, for the `<script-tools>` system
+ * prompt section. Direct tools are only named: the model already has their
  * input schemas. The other tools are declared within the token budget,
  * cheapest first, so that the most tools fit. The others stay callable. The
  * model finds their input with `searchTools`. Script-only tools come first,
@@ -167,7 +167,7 @@ export function renderScriptTools(
   ].join("\n");
 }
 
-// The tool list is in the `<script-tools>` Turn context section, so this text
+// The tool list is in the `<script-tools>` system prompt section, so this text
 // stays the same when the tools change. A changed tool definition would
 // invalidate the provider prompt cache. When to pick a script over direct
 // calls is a `<tool-policy>` rule in `system-prompt-rules.ts`.
@@ -181,7 +181,7 @@ const DESCRIPTION = [
   `- The script has ${CODE_MODE_SCRIPT_TIMEOUT_MS / 1000} seconds, including its tool calls.`,
   `- Start at most ${MAX_TOOL_ACTION_BATCH} calls before the script awaits. A larger batch fails, and none of its calls run.`,
   "- The result lists each tool call and its status. When action review rejects a call, do what its instructions say, such as ask the user, before you try it again.",
-  "- `<script-tools>` in the runtime context lists the tools that a script can call. Only the latest `<script-tools>` is current.",
+  "- `<script-tools>` in the system prompt lists the tools that a script can call.",
 ].join("\n");
 
 function renderCall(call: CodeModeCall, index: number): string {

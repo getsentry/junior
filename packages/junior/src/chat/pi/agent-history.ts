@@ -12,6 +12,7 @@
  * - Write with `writeAgentHistory`. It keeps the leading system message of
  *   the current list, so Pi still sends the prompt and tools.
  * - Fold with `foldSystemMessages` when a history replacement drops them.
+ * - Change named sections with `systemSectionsUpdate`.
  */
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -21,6 +22,7 @@ import {
   type Context,
   type Model,
   type SimpleStreamOptions,
+  type SystemMessage,
 } from "@earendil-works/pi-ai/compat";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -76,6 +78,30 @@ export function foldSystemMessages(
   if (!current) return undefined;
   const { toolsAdded: _, ...folded } = current;
   return folded.content || folded.sections ? folded : undefined;
+}
+
+/**
+ * Return a system message that sets each section of `sections` that differs
+ * from the current state of Junior history, or none when all match. A null
+ * section removes it; a section that history does not have needs no removal.
+ */
+export function systemSectionsUpdate(
+  history: readonly PiMessage[],
+  sections: Record<string, string | null>,
+  timestamp: number,
+): SystemMessage | undefined {
+  const current = getCurrentSystemMessage(history)?.sections ?? {};
+  const changed = Object.entries(sections).filter(
+    ([name, value]) => (current[name] ?? null) !== value,
+  );
+  return changed.length > 0
+    ? {
+        role: "system",
+        content: "",
+        sections: Object.fromEntries(changed),
+        timestamp,
+      }
+    : undefined;
 }
 
 /**

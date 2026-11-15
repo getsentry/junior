@@ -13,6 +13,10 @@ When this policy and the code do not agree, fix one of them in the same change.
 ### Parts
 
 - The **system prompt** holds rules for every Turn. It has operator authority.
+- **Capability sections** (`CAPABILITY_SECTION_TAG`) list the skills, MCP
+  catalogs, tool guidance, Workspaces, and `<script-tools>` that the model
+  can use now. They are named sections of a later system message. Keep text
+  from people and providers out of them; it goes in the context message.
 - The **context message** is a user-role message before the current
   instruction. It holds `<runtime-turn-context>`: facts for this request only.
 - The **current instruction** is a separate user-role message. It is the job.
@@ -76,10 +80,11 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
   `REQUEST_CONTEXT_SECTION_TAG` in `packages/junior/src/chat/turn-context-tag.ts`.
 - Put the tools that a Code Mode script can call in `<script-tools>`, not in
   the `codemode` description.
-- A Turn adds `<script-tools>` or a capability section
-  (`CAPABILITY_SECTION_TAG`) only when it differs from the latest copy in
-  history. An empty section that had a copy says "none". Context compaction
-  keeps the latest copy of each.
+- At Turn start, one system message sets each capability section that
+  differs from the section state of history, or removes an empty one. Pi
+  sends it before the next assistant message, or collapses it into the
+  system prompt for a model without mid-conversation system messages.
+  Context compaction folds the section state into one system message.
 
 ### Changes
 

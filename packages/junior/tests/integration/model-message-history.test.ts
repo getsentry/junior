@@ -93,12 +93,10 @@ describe("model message history", () => {
     const after = requests[2]!;
     expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
     expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
-    // The first Turn sends the script tools. The same tools are not sent
-    // again.
-    const scriptToolsCount = (messages: unknown) =>
-      JSON.stringify(messages).split("<script-tools>\\n").length - 1;
-    expect(scriptToolsCount(requests[0]!.messages)).toBe(1);
-    expect(scriptToolsCount(after.messages)).toBe(1);
+    // This model takes no later system messages, so Pi collapses the
+    // capability sections into the system prompt.
+    expect(JSON.stringify(requests[0]!.system)).toContain("<script-tools>");
+    expect(JSON.stringify(after.messages)).not.toContain("<script-tools>");
     // Do not sort in the assertion: the real provider bytes must already match.
     expect(
       JSON.stringify(
@@ -151,16 +149,18 @@ describe("model message history", () => {
     const agent = await createAgent({
       responses: ["First.", "Second.", "Third.", "Fourth."],
     });
-    const newText = (
-      before: { messages: unknown[] },
-      after: { messages: unknown[] },
-    ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const count = (text: string, tag: string) =>
-      text.split(`<${tag}>\\n`).length - 1;
+    const sectionUpdates = async () =>
+      (await agent.agentHistory()).flatMap((message) =>
+        message.role === "system" ? [message.sections ?? {}] : [],
+      );
 
     await agent.run("first");
     const first = agent.snapshot();
-    expect(count(JSON.stringify(first.messages), "workspaces")).toBe(0);
+    const [initial] = await sectionUpdates();
+    expect(Object.keys(initial!)).toEqual(
+      expect.arrayContaining(["available-skills", "script-tools"]),
+    );
+    expect(initial).not.toHaveProperty("workspaces");
     // A deploy adds a skill, and someone creates a Workspace.
     const removeSkills = await installTestSkills([
       {
@@ -173,34 +173,39 @@ describe("model message history", () => {
       name: "docs",
       repos: [{ provider: "github", repo: "getsentry/docs" }],
     });
-    let third: ReturnType<typeof agent.snapshot>;
     try {
       await agent.run("second");
       const second = agent.snapshot();
       await agent.run("third");
-      third = agent.snapshot();
 
-      // The changed sections go after the cached prefix, once.
+      // One system message after the cached prefix sets only the changed
+      // sections. The next Turn sets none.
       expect(second.messages.slice(0, first.messages.length)).toEqual(
         first.messages,
       );
-      const changed = newText(first, second);
-      expect(changed).toContain("<name>release-notes</name>");
-      expect(changed).toContain("- docs: getsentry/docs");
-      expect(count(changed, "available-skills")).toBe(1);
-      expect(count(changed, "workspaces")).toBe(1);
-      expect(count(newText(second, third), "available-skills")).toBe(0);
-      expect(count(newText(second, third), "workspaces")).toBe(0);
+      const updates = await sectionUpdates();
+      expect(updates).toHaveLength(2);
+      expect(Object.keys(updates[1]!).sort()).toEqual([
+        "available-skills",
+        "workspaces",
+      ]);
+      expect(updates[1]!["available-skills"]).toContain(
+        "<name>release-notes</name>",
+      );
+      expect(updates[1]!["workspaces"]).toContain("- docs: getsentry/docs");
     } finally {
       await removeSkills();
       await deleteWorkspace(workspace.id);
     }
 
-    // Both changes are undone. An empty section says so.
+    // Both changes are undone. An empty section is removed.
     await agent.run("fourth");
-    const undone = newText(third, agent.snapshot());
-    expect(count(undone, "available-skills")).toBe(1);
-    expect(undone).not.toContain("release-notes");
-    expect(undone).toContain("<workspaces>\\nnone\\n</workspaces>");
+    const undone = (await sectionUpdates()).at(-1)!;
+    expect(Object.keys(undone).sort()).toEqual([
+      "available-skills",
+      "workspaces",
+    ]);
+    expect(undone["available-skills"]).not.toContain("release-notes");
+    expect(undone["workspaces"]).toBeNull();
   });
 });
