@@ -27,7 +27,7 @@ export function urlAttachmentId(conversationId: string, url: string): string {
 }
 
 /** One link of a stored message. `position` starts at 1. */
-export type MessageLink = {
+type MessageLink = {
   conversationId: string;
   createdAt: Date;
   position: number;

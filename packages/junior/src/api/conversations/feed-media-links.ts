@@ -23,15 +23,14 @@ import {
 } from "@/db/schema";
 
 // Links come from each Conversation's newest message links only, so a page
-// reads a bounded range of the message attachments primary key. Repeats and links that the
-// row already shows are dropped after, so this reads more than the row shows.
+// reads a bounded range of the `junior_message_attachments` primary key.
+// Repeats and links that the row already shows are dropped after, so this
+// reads more than the row shows.
 const RECENT_LINK_LIMIT = 50;
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}*_~]+$/;
 
-function cleanUrl(match: string): string | undefined {
-  const trimmed = match.replace(TRAILING_PUNCTUATION, "");
-  if (!URL.canParse(trimmed)) return undefined;
-  const url = new URL(trimmed);
+function cleanUrl(link: string): string | undefined {
+  if (!URL.canParse(link)) return undefined;
+  const url = new URL(link);
   return url.protocol === "http:" || url.protocol === "https:"
     ? url.href
     : undefined;
@@ -62,12 +61,12 @@ export function annotationUrls(
 
 function pickLinks(
   conversationId: string,
-  matches: readonly string[],
+  urls: readonly string[],
   shown: ReadonlySet<string>,
 ): string[] {
   const links: string[] = [];
-  for (const match of matches) {
-    const href = cleanUrl(match);
+  for (const link of urls) {
+    const href = cleanUrl(link);
     if (
       !href ||
       links.includes(href) ||

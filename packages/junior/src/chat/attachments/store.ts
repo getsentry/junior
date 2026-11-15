@@ -775,7 +775,7 @@ export async function collectAttachmentGarbage(args: {
           eq(juniorAttachments.storageProvider, args.storage.provider),
           eligible,
         ),
-        and(isNull(juniorAttachments.storageProvider), isUrl, purged),
+        and(isUrl, purged),
       ),
     )
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
