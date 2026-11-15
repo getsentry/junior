@@ -169,11 +169,16 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # The type-cost check reads the baseline from the parent commit.
+          fetch-depth: 2
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Packages check against the declarations that their dependencies build.
       - run: pnpm build
-      - run: pnpm typecheck
+      # Runs every `pnpm typecheck` project once and checks its cost.
+      - run: pnpm type-cost:check
+        env:
+          TYPE_COST_BASE: HEAD^1
 
   eval-report-tests:
     name: test / eval reporting

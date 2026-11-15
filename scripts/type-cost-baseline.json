@@ -1,0 +1,62 @@
+{
+  "apps/example": {
+    "types": 3662,
+    "instantiations": 4206
+  },
+  "packages/junior": {
+    "types": 1455108,
+    "instantiations": 5714471
+  },
+  "packages/junior-dashboard": {
+    "types": 1470059,
+    "instantiations": 6199271
+  },
+  "packages/junior-evals": {
+    "types": 1100793,
+    "instantiations": 4871306
+  },
+  "packages/junior-github": {
+    "types": 159772,
+    "instantiations": 606545
+  },
+  "packages/junior-google": {
+    "types": 78560,
+    "instantiations": 265208
+  },
+  "packages/junior-linear": {
+    "types": 156001,
+    "instantiations": 310864
+  },
+  "packages/junior-memory": {
+    "types": 118899,
+    "instantiations": 414578
+  },
+  "packages/junior-notion": {
+    "types": 153087,
+    "instantiations": 299605
+  },
+  "packages/junior-plugin-api": {
+    "types": 127386,
+    "instantiations": 270126
+  },
+  "packages/junior-sentry": {
+    "types": 270284,
+    "instantiations": 587804
+  },
+  "packages/junior-testing": {
+    "types": 6570,
+    "instantiations": 5953
+  },
+  "packages/junior-vercel": {
+    "types": 159008,
+    "instantiations": 338288
+  },
+  "tools/configs": {
+    "types": 8552,
+    "instantiations": 7277
+  },
+  "tools/oxlint": {
+    "types": 104348,
+    "instantiations": 143675
+  }
+}

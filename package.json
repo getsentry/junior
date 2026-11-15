@@ -23,6 +23,8 @@
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
     "type-assertions:check": "node --test scripts/check-type-assertions.test.mjs && node scripts/check-type-assertions.mjs",
+    "type-cost:check": "node --test scripts/check-type-cost.test.mjs && node scripts/check-type-cost.mjs",
+    "type-cost:update": "node scripts/check-type-cost.mjs --update",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
     "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan --error=unused-suppression --error=no-suppress-all && node --test scripts/check-ast-grep-ignores.test.mjs && node scripts/check-ast-grep-ignores.mjs",
     "lint-staged": "lint-staged",
