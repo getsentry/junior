@@ -207,7 +207,7 @@ Finish #2482.
     listed bot has no Identity, so it gets its own author id. The Turn Actor
     and credentials stay the system Actor, and the author does not join the
     Conversation.
-  - every author's own text is context in the Event task: external text with
+  - every author's own text is context in the Event task: a `<message>` with
     the same `author_id` and `author_name` as their messages, from one
     shared `authorAttrs()`. The lead says what the text is and that it is
     context, not an instruction. For an untrusted author it also says that

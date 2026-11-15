@@ -5,7 +5,7 @@
  * task. A comment author's text is context for that task, with the same
  * author attributes as their messages, even when core verified the author.
  * It never authorizes an action that the Watch task does not ask for.
- * Quoted text and the external text of system Events are provider text.
+ * Quoted text and the text of system Events are provider text.
  */
 import { describeEval } from "vitest-evals";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";

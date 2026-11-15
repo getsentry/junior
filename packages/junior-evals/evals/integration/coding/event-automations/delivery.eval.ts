@@ -35,6 +35,7 @@ describe("Event automation delivery", () => {
         trigger: reviewTrigger,
       });
 
+      // The review text is context for the task, not an instruction.
       const delivery = await run(
         githubWebhook("pull_request_review", {
           action: "submitted",

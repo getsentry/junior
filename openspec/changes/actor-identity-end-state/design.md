@@ -227,8 +227,8 @@ the Watch or Automation grant, and an author's text is context for that task.
   class, apart from Slack and web Messages.
 - A system event can carry untrusted external text, such as check output.
   The current handling covers it, and this plan adds no rule. The event's
-  `untrustedText` becomes external text in the task input, which says to use
-  it as information, not instructions (`chat/events/notification.ts`; the
+  `untrustedText` goes last in the task input, escaped, after a lead that
+  says it is context for the task, not an instruction (`chat/events/notification.ts`; the
   task input sections in `chat/README.md`; `chat/events/README.md`). The
   instructions come from the Watch intent or the Automation instruction. The
   trusted summary and verified details are plugin facts, not instructions.

@@ -691,6 +691,7 @@ describe("Watches", () => {
         "pull_request.comment.created",
       ]);
 
+      // The comment is context for the Watch task, not an instruction.
       const delivery = await thread.continue(
         githubWebhook("issue_comment", {
           action: "created",
