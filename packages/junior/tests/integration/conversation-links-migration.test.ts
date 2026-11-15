@@ -71,6 +71,34 @@ describe("conversation links migration", () => {
           },
         ]);
       }
+      // An edit replaces the links of its message, at the seq of the first
+      // save. Updates carry the message's meta, as `messages.ts` writes them.
+      const edit = (index: number, text: string) => {
+        const explicitMention = mentions[index % mentions.length];
+        return {
+          createdAtMs: Date.now(),
+          data: {
+            messageId: `message-${index}`,
+            role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+            text,
+            type: "message_updated" as const,
+            ...(explicitMention === undefined
+              ? undefined
+              : { meta: { explicitMention } }),
+          },
+        };
+      };
+      await getConversationEventStore().append(recentId, [
+        edit(0, "Edited to https://edited.example/zero only"),
+        edit(2, "First edit https://edited.example/first"),
+      ]);
+      await getConversationEventStore().append(recentId, [
+        edit(
+          2,
+          "Second edit https://edited.example/second and https://edited.example/third",
+        ),
+        edit(5, "Edited away"),
+      ]);
       await getConversationEventStore().append(oldId, [
         {
           createdAtMs: Date.now(),
@@ -99,8 +127,17 @@ ORDER BY conversation_id, seq, position
       const recentWritten = written.filter(
         (row) => row.conversationId === recentId,
       );
-      // The "false" mention rule drops 3 of the 8 messages.
-      expect(new Set(recentWritten.map((row) => row.seq)).size).toBe(5);
+      // The "false" mention rule drops 3 of the 8 messages, and message 5
+      // lost its links in an edit.
+      expect(new Set(recentWritten.map((row) => row.seq)).size).toBe(4);
+      const urlsOf = (seq: number | undefined) =>
+        recentWritten.filter((row) => row.seq === seq).map((row) => row.url);
+      const seqs = [...new Set(recentWritten.map((row) => row.seq))];
+      expect(urlsOf(seqs[0])).toEqual(["https://edited.example/zero"]);
+      expect(urlsOf(seqs[1])).toEqual([
+        "https://edited.example/second",
+        "https://edited.example/third",
+      ]);
       expect(recentWritten).toContainEqual(
         expect.objectContaining({ url: "https://m.example/путь/😀?q=é," }),
       );
