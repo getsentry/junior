@@ -1,0 +1,7 @@
+id: no-hardcoded-bot-name-in-prompts
+valid:
+  - 'const lead = "The runtime could not verify this account.";'
+  - 'const name = `Your assistant name is ${botConfig.userName}.`;'
+invalid:
+  - 'const lead = "Junior could not verify this account.";'
+  - 'const lead = `${who} asked Junior for this.`;'

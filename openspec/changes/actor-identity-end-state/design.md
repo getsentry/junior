@@ -210,7 +210,7 @@ the Watch or Automation grant, and an author's text is context for that task.
   #3404 review; it replaces "text from a trusted author counts exactly like a
   chat message".
 - An event from an untrusted or unknown author runs, as system context. The
-  task input says that Junior could not verify the account. David changed
+  task input says that the runtime could not verify the account. David changed
   this from the first decision, "does not start a run".
 - Identity renders the same way everywhere: the author's text carries the
   same `author_id` and `author_name` as their messages

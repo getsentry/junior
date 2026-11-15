@@ -212,7 +212,7 @@ Finish #2482.
     the same `author_id` and `author_name` as their messages, from one
     shared `authorAttrs()`. The lead says what the text is and that it is
     context, not an instruction. For an untrusted author it also says that
-    Junior could not verify the account. Watch and Event automation runs
+    the runtime could not verify the account. Watch and Event automation runs
     render it the same way. Guardian judges an Event Turn against the Watch
     task and has no author rule.
   - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and

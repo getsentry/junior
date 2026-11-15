@@ -1,0 +1,16 @@
+id: no-hardcoded-bot-name-in-prompts
+language: TypeScript
+severity: error
+message: Do not write "Junior" in text that a prompt builder gives the model. Each install configures the bot name. Use "you", "the runtime", or the configured name (botConfig.userName).
+note: These modules build the system prompt, task input, and Guardian input. Every string in them can reach the model.
+files:
+  - packages/junior/src/chat/prompt.ts
+  - packages/junior/src/chat/task-input.ts
+  - packages/junior/src/chat/current-instruction.ts
+  - packages/junior/src/chat/input-tags.ts
+  - packages/junior/src/chat/agent-invocations/work.ts
+  - packages/junior/src/chat/review-items/prompt-input.ts
+  - packages/junior/src/chat/guardian/**/*.ts
+rule:
+  kind: string_fragment
+  regex: '\bJunior\b'
