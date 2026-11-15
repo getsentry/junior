@@ -1,23 +1,26 @@
 /**
  * Junior history inside a Pi agent's message list.
  *
- * Later Pi versions keep the system prompt and tool declarations in
- * `role: "system"` messages in `agent.state.messages`. The Agent puts the
- * leading one there from `initialState`. Junior builds its system prompt and
- * tools again for each slice, so system messages are never saved: Junior
- * history never contains them.
+ * Pi keeps the system prompt and tool declarations in `role: "system"`
+ * messages in `agent.state.messages`. The Agent puts the leading one there
+ * from `initialState`. Junior builds its system prompt and tools again for
+ * each slice, so the leading system message is never saved. A later system
+ * message is history: Junior saves it in order and sends it again unchanged,
+ * because a changed or removed system message breaks the provider cache.
  *
- * - Read with `readAgentHistory`. It drops every system message.
+ * - Read with `readAgentHistory`. It drops the leading system message.
  * - Write with `writeAgentHistory`. It keeps the leading system message of
  *   the current list, so Pi still sends the prompt and tools.
+ * - Fold with `foldSystemMessages` when a history replacement drops them.
  */
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
-import type {
-  Api,
-  AssistantMessageEventStream,
-  Context,
-  Model,
-  SimpleStreamOptions,
+import {
+  getCurrentSystemMessage,
+  type Api,
+  type AssistantMessageEventStream,
+  type Context,
+  type Model,
+  type SimpleStreamOptions,
 } from "@earendil-works/pi-ai/compat";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -33,37 +36,52 @@ export type AgentRequestStreamFn = (
   options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
-function isSystemMessage(message: PiMessage): boolean {
-  return (message as { role?: unknown }).role === "system";
+function isSystemMessage(message: PiMessage | undefined): boolean {
+  return (message as { role?: unknown } | undefined)?.role === "system";
 }
 
-/** Return Junior history: the messages without Pi's system messages. */
+/** Return Junior history: Pi's messages without its leading system message. */
 export function readAgentHistory<T extends PiMessage>(
   messages: readonly T[],
 ): T[] {
-  return messages.filter((message) => !isSystemMessage(message));
+  return isSystemMessage(messages[0]) ? messages.slice(1) : [...messages];
 }
 
 /**
  * Return the message list that replaces `current` with `history`. The leading
- * system message of `current` stays first. System messages in `history` are
- * dropped.
+ * system message of `current` stays first. `history` is Junior history, so
+ * each system message in it is a saved later one and stays in place.
  */
 export function writeAgentHistory(
   current: readonly PiMessage[],
   history: readonly PiMessage[],
 ): PiMessage[] {
   const leading = current[0];
-  const messages = readAgentHistory(history);
   return leading && isSystemMessage(leading)
-    ? [leading, ...messages]
-    : messages;
+    ? [leading, ...history]
+    : [...history];
+}
+
+/**
+ * Fold the system messages of Junior history into one system message with
+ * their current content and sections, or none when they hold neither. A
+ * history replacement that drops them keeps it, so the model keeps the
+ * latest sections. Junior's leading system message declares the tools and no
+ * sections, so tool changes are not kept and a removed section is left out.
+ */
+export function foldSystemMessages(
+  history: readonly PiMessage[],
+): PiMessage | undefined {
+  const current = getCurrentSystemMessage(history);
+  if (!current) return undefined;
+  const { toolsAdded: _, ...folded } = current;
+  return folded.content || folded.sections ? folded : undefined;
 }
 
 /**
  * Give the stream path Junior's own system prompt and tools, with Junior
  * history as the messages. The traced stream and cache warming then read the
- * same request on every Pi version, without Pi's system messages.
+ * same request on every Pi version, with saved system messages in place.
  */
 export function withAgentRequest(
   base: AgentRequestStreamFn,
