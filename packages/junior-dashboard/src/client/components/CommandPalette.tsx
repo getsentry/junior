@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useConversationsData } from "../api";
-import { formatCompactAge } from "../conversations/conversationAge";
 import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
@@ -32,6 +31,7 @@ import {
   CommandList,
 } from "./ui/command";
 import { Kbd } from "./ui/kbd";
+import { formatCompactAge } from "../time";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;

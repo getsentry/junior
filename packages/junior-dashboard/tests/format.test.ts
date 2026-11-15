@@ -17,8 +17,6 @@ import {
   formatConversationDuration,
   formatCostTotal,
   formatPayloadSize,
-  formatTime,
-  formatTranscriptTimestampDetails,
   formatUsageTotal,
   peoplePath,
   slackLocationLabel,
@@ -128,27 +126,6 @@ describe("dashboard conversation formatting", () => {
     expect(formatPayloadSize("é")).toBe("2b");
     expect(formatPayloadSize("x".repeat(5_100))).toBe("5kb");
     expect(formatPayloadSize(undefined)).toBeUndefined();
-  });
-
-  it("formats canonical transcript timestamp details in local time and UTC", () => {
-    vi.stubEnv("TZ", "America/Los_Angeles");
-    const details = formatTranscriptTimestampDetails(
-      Date.parse("2026-08-10T16:00:00.000Z"),
-    );
-    expect(details.local).toContain("9:00:00 AM");
-    expect(details.utc).toContain("4:00:00 PM");
-  });
-
-  it("formats absolute timestamps in the viewer's browser timezone", () => {
-    const value = "2026-08-10T16:00:00.000Z";
-    const options: Intl.DateTimeFormatOptions = {
-      dateStyle: "medium",
-      timeStyle: "short",
-    };
-    vi.stubEnv("TZ", "UTC");
-    expect(formatTime(value, options)).toContain("4:00 PM");
-    vi.stubEnv("TZ", "America/Los_Angeles");
-    expect(formatTime(value, options)).toContain("9:00 AM");
   });
 
   it("formats conversation duration from cumulative execution time", () => {

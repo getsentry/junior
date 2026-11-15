@@ -7,9 +7,9 @@ import {
 } from "../components/ui/tooltip";
 import {
   formatMessageTimestamp,
+  formatRelativeTime,
   formatTranscriptTimestampDetails,
-} from "../format";
-import { formatRelativeTime } from "../time";
+} from "../time";
 
 const FULL_TIMESTAMP_AGE_MS = 12 * 60 * 60 * 1000;
 

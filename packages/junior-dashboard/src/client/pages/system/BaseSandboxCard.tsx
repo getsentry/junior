@@ -3,9 +3,8 @@ import type { BaselineSnapshotReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
-import { formatTime } from "../../format";
 import { formatSandboxSize } from "./sandboxSize";
-import { formatDuration, formatRelativeTime } from "../../time";
+import { formatDuration, formatRelativeTime, formatTime } from "../../time";
 
 /**
  * Show the base Sandbox: the default size and the baseline snapshot.

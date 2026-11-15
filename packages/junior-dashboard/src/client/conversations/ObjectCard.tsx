@@ -21,12 +21,11 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
-import { formatTime } from "../format";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
-import { formatRelativeTime } from "../time";
+import { formatRelativeTime, formatTime } from "../time";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -92,10 +91,7 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
           // A label that repeats the title or the type says nothing new.
           [card.title, type].includes(card.label) ? "" : card.label,
           time
-            ? new Date(time).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
+            ? formatTime(time, { dateStyle: "medium", timeStyle: "short" })
             : undefined,
         ];
   return parts.filter(Boolean).join(" · ") || type;

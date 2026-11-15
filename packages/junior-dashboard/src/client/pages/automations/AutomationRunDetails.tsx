@@ -20,14 +20,17 @@ import {
   automationPath,
   formatCompactNumber,
   formatCostSummary,
-  formatMessageTimestamp,
 } from "../../format";
 import { cn, dashboardInlineLinkClass } from "../../styles";
 import {
   automationRunStatusTone,
   automationRunTitle,
 } from "./automationFormat";
-import { formatRelativeTime, formatRuntime } from "../../time";
+import {
+  formatMessageTimestamp,
+  formatRelativeTime,
+  formatRuntime,
+} from "../../time";
 
 /** Search param that owns the selected run, so a run link can be shared. */
 export const AUTOMATION_RUN_PARAM = "run";

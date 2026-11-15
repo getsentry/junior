@@ -1,13 +1,13 @@
 import { RadioTower } from "lucide-react";
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import { formatTime } from "../../format";
 import { cn } from "../../styles";
 import { PluginBarChart } from "./PluginBarChart";
 import { PluginReportRecordSet } from "./PluginReportRecordSet";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
+import { formatTime } from "../../time";
 
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {

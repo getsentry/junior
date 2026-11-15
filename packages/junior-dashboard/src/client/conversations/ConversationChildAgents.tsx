@@ -19,11 +19,7 @@ import {
 import type { StatusChipTone } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
-import {
-  formatConversationCostTotal,
-  formatTime,
-  formatUsageTotal,
-} from "../format";
+import { formatConversationCostTotal, formatUsageTotal } from "../format";
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
@@ -36,7 +32,7 @@ import {
   DetailsRowLine,
 } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
-import { formatRuntime } from "../time";
+import { formatRuntime, formatTime } from "../time";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",

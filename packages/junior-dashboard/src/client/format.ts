@@ -18,15 +18,6 @@ import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import { formatRuntime } from "./time";
 
-/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-}
-
 function isActiveSummary(summary: ConversationSummaryReport): boolean {
   return summary.status === "active";
 }
@@ -59,19 +50,6 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps in the viewer's browser timezone. */
-export function formatTime(
-  value: string | undefined,
-  options?: Intl.DateTimeFormatOptions,
-): string {
-  const time = parseTime(value);
-  if (time == null) return "none";
-  return new Date(time).toLocaleString(undefined, {
-    ...options,
-    timeZone: getDashboardTimeZone(),
-  });
-}
-
 /** Format a serialized payload size for compact transcript metadata. */
 export function formatPayloadSize(value: unknown): string | undefined {
   if (value === undefined) return undefined;
@@ -80,44 +58,6 @@ export function formatPayloadSize(value: unknown): string | undefined {
   const bytes = new TextEncoder().encode(serialized).byteLength;
   if (bytes < 1_000) return `${bytes}b`;
   return `${Math.round(bytes / 1_000)}kb`;
-}
-
-/** Format transcript event timestamps independently from conversation start. */
-export function formatMessageTimestamp(
-  value: number | undefined,
-  includeDate = false,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return "no timestamp";
-  const date = new Date(value);
-  return includeDate
-    ? date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "medium",
-        timeZone: getDashboardTimeZone(),
-      })
-    : date.toLocaleTimeString(undefined, {
-        timeZone: getDashboardTimeZone(),
-      });
-}
-
-/** Format canonical local and UTC values for a transcript timestamp. */
-export function formatTranscriptTimestampDetails(value: number): {
-  local: string;
-  utc: string;
-} {
-  const date = new Date(value);
-  const options: Intl.DateTimeFormatOptions = {
-    dateStyle: "medium",
-    timeStyle: "long",
-  };
-  return {
-    local: date.toLocaleString(undefined, {
-      ...options,
-      timeZone: getDashboardTimeZone(),
-    }),
-    utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
-  };
 }
 
 function formatNumber(value: number | undefined): string {
