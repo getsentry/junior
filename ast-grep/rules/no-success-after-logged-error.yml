@@ -59,7 +59,8 @@ utils:
           has: { field: value, regex: ^2\d\d$ }
   success-value:
     any:
-      # new Response(body) and Response.json(body), with no status or a 2xx one
+      # new Response(body) and Response.json(body), with no status or a 2xx
+      # one in the init object. A status field in the body is not HTTP status.
       - all:
           - any:
               - pattern: new Response($$$)
@@ -67,7 +68,10 @@ utils:
           - not:
               has:
                 field: arguments
-                has: { kind: object, has: { matches: non-success-status } }
+                has:
+                  nthChild: 2
+                  kind: object
+                  has: { matches: non-success-status }
       # Hono context responses: c.json(body), c.text(body, 200), c.body(null, 204)
       - all:
           - any:

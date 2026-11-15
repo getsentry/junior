@@ -80,3 +80,13 @@ invalid:
       ctx.log.warn("github.webhook.failed", { error: String(error) });
       return new Response("ok", { status: 202 });
     }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return Response.json({ status: "error" });
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return new Response(JSON.stringify({ status: 500 }), { headers });
+    }
