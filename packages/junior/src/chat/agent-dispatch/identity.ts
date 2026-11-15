@@ -11,7 +11,7 @@ import { findTrustedUser } from "@/chat/identities/trust";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
-/** Start a public web Conversation for one person on behalf of one plugin. */
+/** Start a public Conversation for one person on behalf of one plugin. */
 export type IdentityDispatcher = (
   plugin: string,
   options: IdentityDispatchOptions,

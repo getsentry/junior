@@ -86,7 +86,7 @@ describe("plugin Identity dispatch", () => {
     await startApp();
   });
 
-  it("starts one public web Conversation for a linked current Slack member", async () => {
+  it("starts one public Conversation for a linked current Slack member", async () => {
     const userId = await seedLinkedPerson({
       email: "requester@example.com",
       linked: { provider: "demo", subjectId: "1001" },
