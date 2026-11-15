@@ -16,9 +16,6 @@ type RequestContainer = {
   query_string?: unknown;
   url?: string;
 };
-type SentryErrorEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSend"]>
->[0];
 type SentrySpan = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSendSpan"]>
 >[0];
@@ -251,10 +248,11 @@ function scrubContainer(container: AttributeContainer | undefined): void {
   scrubSensitiveUrlAttributes(container.attributes);
 }
 
-/** Remove private conversation payloads and boundary secrets from error events. */
-export function scrubPrivateSentryEvent(
-  event: SentryErrorEvent,
-): SentryErrorEvent | null {
+/**
+ * Remove private conversation payloads and boundary secrets from error and
+ * user feedback events.
+ */
+export function scrubPrivateSentryEvent<T extends Sentry.Event>(event: T): T {
   const eventRecord = event as AttributeContainer;
   scrubContainer(eventRecord);
   scrubSensitiveRequest(event.request as RequestContainer | undefined);
