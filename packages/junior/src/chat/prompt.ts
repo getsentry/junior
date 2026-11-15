@@ -57,7 +57,7 @@ function getLoggedMarkdownFiles(): Set<string> {
 function loadOptionalMarkdownFile(
   candidates: string[],
   fileName: string,
-  loadedEventName: string,
+  loadedEventName: "soul.loaded" | "world.loaded",
 ): string | null {
   for (const resolved of candidates) {
     try {
