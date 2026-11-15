@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.303.0
+
+### Breaking Changes 🛠
+
+- (objects) Route typed GitHub references in messages through link cards by @BYK with @sentry-junior in [#3441](https://github.com/getsentry/junior/pull/3441)
+
+### New Features ✨
+
+#### Api
+
+- Code state filter, change counts and idle, and People paging by @BYK with @sentry-junior in [#3439](https://github.com/getsentry/junior/pull/3439)
+- Review item sort, status filter and bundle counts, and Automations owner filter by @BYK with @sentry-junior in [#3445](https://github.com/getsentry/junior/pull/3445)
+
+#### Dashboard
+
+- Show Settings as one page with section anchors by @BYK with @sentry-junior in [#3452](https://github.com/getsentry/junior/pull/3452)
+- Add the per-user experimental UI switch and split UI shells by @BYK with @sentry-junior in [#3446](https://github.com/getsentry/junior/pull/3446)
+
+#### Github
+
+- Add the pull request number to review items by @BYK with @sentry-junior in [#3455](https://github.com/getsentry/junior/pull/3455)
+- Show pasted GitHub issue and pull request links as cards by @BYK with @sentry-junior in [#3429](https://github.com/getsentry/junior/pull/3429)
+
+#### Sentry
+
+- Show Sentry monitor cards with the viewer's own read by @BYK with @sentry-junior in [#3448](https://github.com/getsentry/junior/pull/3448)
+- Show Sentry dashboard cards with the viewer's own read by @BYK with @sentry-junior in [#3434](https://github.com/getsentry/junior/pull/3434)
+- Show Sentry release cards with the viewer's own read by @BYK with @sentry-junior in [#3427](https://github.com/getsentry/junior/pull/3427)
+
+#### Other
+
+- (lint) Stop new type assertions in production source by @dcramer with @sentry-junior in [#3438](https://github.com/getsentry/junior/pull/3438)
+
+### Bug Fixes 🐛
+
+- (agents) Drop the parent message limit for children without a row by @dcramer with @sentry-junior in [#3312](https://github.com/getsentry/junior/pull/3312)
+- (annotations) Stop read-only tools from saving Annotations by @dcramer with @sentry-junior in [#3437](https://github.com/getsentry/junior/pull/3437)
+- (api) Read review item subject types from link objectTypes by @sentry-junior in [#3458](https://github.com/getsentry/junior/pull/3458)
+- (cache-warming) Replay answer tool endings and Automation pending work by @BYK with @sentry-junior in [#3426](https://github.com/getsentry/junior/pull/3426)
+- (cli) Use the deployment's Redis for snapshot create in Vercel builds by @thomasjiangcy with @sentry-junior in [#3425](https://github.com/getsentry/junior/pull/3425)
+- (deps) Pin Pi to 1.5.2 by @thomasjiangcy with @sentry-junior in [#3424](https://github.com/getsentry/junior/pull/3424)
+- (example) Build workspace packages before junior upgrade on Vercel by @joshuarli with @sentry-junior in [#3430](https://github.com/getsentry/junior/pull/3430)
+- (personal-tokens) Renew Preview records when the Sandbox resumes by @BYK with @sentry-junior in [#3459](https://github.com/getsentry/junior/pull/3459)
+- (sentry) Declare monitor link objectTypes by @BYK with @sentry-junior in [#3461](https://github.com/getsentry/junior/pull/3461)
+- (tests) Use index access in the objects API test by @BYK with @sentry-junior in [#3436](https://github.com/getsentry/junior/pull/3436)
+- (turns) Make noReply post nothing by @dcramer with @sentry-junior in [#3433](https://github.com/getsentry/junior/pull/3433)
+
+### Internal Changes 🔧
+
+#### Lint
+
+- Check ast-grep exceptions by @dcramer with @sentry-junior in [#3442](https://github.com/getsentry/junior/pull/3442)
+- Enforce preserve-caught-error by @dcramer with @sentry-junior in [#3440](https://github.com/getsentry/junior/pull/3440)
+
+#### Other
+
+- (api) Read open and archived review items at once by @sentry-junior in [#3450](https://github.com/getsentry/junior/pull/3450)
+- (cache-warming) Await tool wait warmup cost writes by @joshuarli with @sentry-junior in [#3432](https://github.com/getsentry/junior/pull/3432)
+- (telemetry) Check log event name shape by @dcramer with @sentry-junior in [#3443](https://github.com/getsentry/junior/pull/3443)
+- Modernize developer tooling (pnpm 12, type-aware Oxlint, strict TS, oxfmt, tsdown) by @joshuarli with @sentry-junior in [#3422](https://github.com/getsentry/junior/pull/3422)
+
 ## 0.302.0
 
 People get richer views and more dependable workflows, while private content access is stricter and plugin authors must adopt the new hook contract.
