@@ -68,12 +68,12 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
-const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
+const LOCAL_FAILURE_EVENT_NAMES = {
   agent_run_failed: "local.agent_run.failed",
   delivery_failed: "local.reply.delivery.failed",
   model_execution_failed: "local.model.execution.failed",
   persistence_failed: "local.turn.persistence.failed",
-};
+} as const satisfies Record<ConversationTurnFailureCode, string>;
 
 export interface LocalAgentTurnInput {
   conversationId: string;

@@ -61,6 +61,7 @@ describe("createSlackTurnRuntime", () => {
       const message = createTestMessage({ text: "hey bot" });
 
       await runtime.handleNewMention(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 
@@ -92,6 +93,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       await runtime.handleNewMention(thread, latest, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
         messageContext: {
           skipped: [skipped],
@@ -150,6 +152,7 @@ describe("createSlackTurnRuntime", () => {
         const message = createTestMessage({ id: "m-failed-turn" });
 
         await runtime.handleNewMention(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
           isFinalAttempt,
         });
@@ -187,6 +190,7 @@ describe("createSlackTurnRuntime", () => {
         });
 
         await runtime.handleSubscribedMessage(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
         });
 
@@ -228,6 +232,7 @@ describe("createSlackTurnRuntime", () => {
 
       await expect(
         runtime.handleSubscribedMessage(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
         }),
       ).resolves.toBeUndefined();
@@ -254,6 +259,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       await runtime.handleSubscribedMessage(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 
@@ -276,6 +282,7 @@ describe("createSlackTurnRuntime", () => {
       const message = createTestMessage({});
 
       await runtime.handleSubscribedMessage(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 

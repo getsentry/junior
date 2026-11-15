@@ -64,6 +64,13 @@ export const juniorCodeChanges = pgTable(
     index("junior_code_changes_opened_at_idx").on(table.openedAt),
     index("junior_code_changes_merged_at_idx").on(table.mergedAt),
     index("junior_code_changes_closed_at_idx").on(table.closedAt),
+    // Repository pages count changes by state and list one state newest
+    // first.
+    index("junior_code_changes_repository_state_idx").on(
+      table.repositoryId,
+      table.state,
+      table.updatedAt.desc(),
+    ),
     index("junior_code_changes_open_idx")
       .on(table.id)
       .where(sql`${table.state} = 'open'`),

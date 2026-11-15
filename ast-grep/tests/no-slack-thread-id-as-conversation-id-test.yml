@@ -1,0 +1,16 @@
+id: no-slack-thread-id-as-conversation-id
+valid:
+  - "await deps.cancelWatches({ conversationId: args.conversationId });"
+  - "const { conversationId } = hooks;"
+  - "logContext({ conversationId, threadId: getThreadId(thread, message) });"
+  - "const conversationId = await findOwner(thread.id);"
+  - "await store.get({ conversationId: lookup(args.threadId) });"
+  - "await store.get({ conversationId: threadId });"
+invalid:
+  - "await deps.cancelWatches({ conversationId: args.thread.id });"
+  - "await deps.cancelWatches({ conversationId: args.thread?.id });"
+  - "await recordSubscribedReplyRoute({ conversationId: args.context.threadId });"
+  - "const context = { conversationId: getThreadId(thread, message) };"
+  - "const conversationId = hooks.conversationId ?? thread.id;"
+  - "const conversationId = options.conversationId || args.threadId;"
+  - "const context = { conversationId: args.threadId ?? args.runId };"

@@ -2,12 +2,9 @@ import type { FileUpload } from "chat";
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/chat/pi/client", () => ({
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   completeText: vi.fn(),
-  getGatewayApiKey: vi.fn(
-    async () =>
-      process.env["AI_GATEWAY_API_KEY"] ?? process.env["VERCEL_OIDC_TOKEN"],
-  ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
 
@@ -32,7 +29,7 @@ function sandbox(files: Record<string, Buffer> = {}): SandboxWorkspace {
 
 const defaultImageOptions = {
   modelId: "openai/gpt-image-2",
-  promptCost: { owner: "none" } as const,
+  modelCost: { owner: "none" } as const,
   sandbox: sandbox(),
 };
 
@@ -158,7 +155,7 @@ describe("createImageGenerateTool", () => {
       { writeGeneratedArtifacts },
       {
         modelId: "google/gemini-3-pro-image",
-        promptCost: { owner: "none" },
+        modelCost: { owner: "none" },
         sandbox: sandbox(),
       },
       { fetch: fetchMock },

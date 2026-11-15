@@ -56,7 +56,11 @@ function toWebSocketError(error: unknown, failure: string): Error {
 
 // No query waits on the failed client, so this is a warning and not an
 // exception.
-function warnWebSocketFailure(name: string, error: unknown, failure: string) {
+function warnWebSocketFailure(
+  name: "db.pool.client.connect_failed" | "db.pool.client.failed",
+  error: unknown,
+  failure: string,
+) {
   const reported = toWebSocketError(error, failure);
   logWarn(name, {
     "app.db.driver": "neon",
