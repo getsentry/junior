@@ -2,7 +2,8 @@
  * Compile-time shape of a log event name.
  *
  * An event name is two or more dot-separated segments. A segment starts with
- * a-z and then has only a-z, 0-9, and `_`. The last segment is an observed
+ * a-z, then has only a-z, 0-9, and `_`, and does not end with `_`. This
+ * matches what `normalizeEventName` accepts. The last segment is an observed
  * outcome, not a base verb or a direction. Lowercase dotted names let one
  * telemetry query match every event under a prefix.
  *
@@ -59,11 +60,13 @@ type IsSegmentTail<S extends string> = S extends `${infer C}${infer Rest}`
     : false
   : true;
 
-type IsSegment<S extends string> = S extends `${infer C}${infer Rest}`
-  ? C extends LowerLetter
-    ? IsSegmentTail<Rest>
-    : false
-  : false;
+type IsSegment<S extends string> = S extends `${string}_`
+  ? false
+  : S extends `${infer C}${infer Rest}`
+    ? C extends LowerLetter
+      ? IsSegmentTail<Rest>
+      : false
+    : false;
 
 type IsSegmentList<S extends string> = S extends `${infer Head}.${infer Tail}`
   ? IsSegment<Head> extends true
@@ -107,6 +110,6 @@ export type LogEventName<N extends string> = N extends string
         ? LastSegment<N> extends ImperativeOutcome
           ? `log event name must end in an observed outcome (failed, skipped, retrying), not a base verb or direction: ${N}`
           : N
-        : `log event name must be lowercase dot-separated segments of a-z, 0-9, and _: ${N}`
+        : `log event name must be dot-separated segments that start with a-z, use only a-z, 0-9, and _, and do not end in _: ${N}`
       : `log event name must have at least two dot-separated segments: ${N}`
   : never;
