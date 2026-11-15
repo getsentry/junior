@@ -28,7 +28,6 @@ import {
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
 import { isNotNull } from "drizzle-orm";
-import { useRealClock } from "../../../fixtures/clock";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -431,8 +430,6 @@ describe("conversation auto-archive API", () => {
   });
 
   it("keeps a conversation that waits on a person to finish an authorization", async () => {
-    // The wait expires by Postgres `now()`, so the times must be real.
-    useRealClock();
     const nowMs = Date.now();
     const hour = 60 * 60 * 1000;
     const connectingId = "local:test:archive-auth-connecting";
