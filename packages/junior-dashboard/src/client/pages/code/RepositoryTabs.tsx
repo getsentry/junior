@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
+import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
-import { useCodeRepositoryConversationsData } from "../../api";
+import {
+  useCodeRepositoryConversationsData,
+  useCodeRepositoryData,
+} from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { FilterTabList } from "../../components/FilterBar";
 import {
@@ -87,17 +91,24 @@ export function RepositoryChangesTab(props: {
   const [state, setState] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const all = props.data.changes;
-  const needle = query.trim().toLowerCase();
-  const changes = all.filter(
-    (change) =>
-      (!state || change.state === state) &&
-      (!needle ||
-        change.title?.toLowerCase().includes(needle) ||
-        `#${change.number}`.includes(needle)),
+  // The report lists open changes first, up to its limit, so each state tab
+  // loads its own changes. The counts cover every change.
+  const selectedState = codeChangeStateSchema.safeParse(state).data;
+  const stateQuery = useCodeRepositoryData(
+    selectedState && props.data.repository.id,
+    selectedState,
   );
-  const count = (value: string) =>
-    all.filter((change) => change.state === value).length;
+  const listed = selectedState
+    ? (stateQuery.data?.changes ?? [])
+    : props.data.changes;
+  const needle = query.trim().toLowerCase();
+  const changes = listed.filter(
+    (change) =>
+      !needle ||
+      change.title?.toLowerCase().includes(needle) ||
+      `#${change.number}`.includes(needle),
+  );
+  const counts = props.data.changeCounts;
   useEffect(() => {
     setPage(1);
   }, [state, needle]);
@@ -113,10 +124,14 @@ export function RepositoryChangesTab(props: {
           <FilterTabList
             ariaLabel="Change state"
             items={[
-              { count: all.length, label: "All", value: "" },
-              { count: count("open"), label: "Open", value: "open" },
-              { count: count("merged"), label: "Merged", value: "merged" },
-              { count: count("closed"), label: "Closed", value: "closed" },
+              {
+                count: counts.open + counts.merged + counts.closed,
+                label: "All",
+                value: "",
+              },
+              { count: counts.open, label: "Open", value: "open" },
+              { count: counts.merged, label: "Merged", value: "merged" },
+              { count: counts.closed, label: "Closed", value: "closed" },
             ]}
             onChange={setState}
             value={state}
@@ -132,7 +147,13 @@ export function RepositoryChangesTab(props: {
         <Card>
           {changes.length === 0 ? (
             <div className="p-4">
-              <EmptyTelemetry>No changes match these filters.</EmptyTelemetry>
+              <EmptyTelemetry>
+                {selectedState && stateQuery.error
+                  ? "Changes are unavailable. Try refreshing the dashboard."
+                  : selectedState && !stateQuery.data
+                    ? "Loading changes…"
+                    : "No changes match these filters."}
+              </EmptyTelemetry>
             </div>
           ) : (
             pageItems(changes, page, PAGE_SIZE).map((change) => (
