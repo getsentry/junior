@@ -466,27 +466,3 @@ test("opens an old Settings page as its section and keeps the query", async ({
     page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
 });
-
-test(
-  "goes back to the current UI from the new one",
-  { tag: "@new" },
-  async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/settings`);
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toBeVisible();
-    await screenshot(page, "new-ui-placeholder", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    await page
-      .getByRole("button", { name: "Use the current dashboard" })
-      .click();
-
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toHaveCount(0);
-  },
-);

@@ -39,6 +39,7 @@ import {
 import type { DashboardCoreData } from "../../../types";
 import { AutoArchiveSettings } from "../../../pages/settings/AutoArchiveSettings";
 import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings";
+import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
@@ -143,6 +144,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <ExperimentalUiSetting identity={identity} />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <InboxTabIconSetting />
