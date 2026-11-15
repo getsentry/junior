@@ -125,6 +125,7 @@ describe("dashboard plugin routes", () => {
   it("protects plugin API route apps with dashboard auth", async () => {
     const pluginApp = memoryRoutes();
     const unauthenticated = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
@@ -138,6 +139,7 @@ describe("dashboard plugin routes", () => {
     });
 
     const authenticated = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
@@ -166,6 +168,7 @@ describe("dashboard plugin routes", () => {
       return c.body(null, 204);
     });
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
@@ -185,6 +188,7 @@ describe("dashboard plugin routes", () => {
   it("passes sanitized auth context to plugin API route apps", async () => {
     let pluginContext: unknown;
     const authenticated = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
@@ -245,6 +249,7 @@ describe("dashboard plugin routes", () => {
       c.json({ viewerEmail: c.get("viewer")?.email ?? null }),
     );
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
       pluginRoutes: [{ app: pluginApp, pluginName: "viewer" }],

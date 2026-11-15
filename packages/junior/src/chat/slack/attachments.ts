@@ -146,7 +146,7 @@ export const readSlackAttachmentSource: ReadAttachmentSource = async (
 ) => {
   const unavailable = (cause?: unknown) =>
     new AttachmentSourceUnavailableError(
-      "The Slack file was deleted, or Junior can no longer access it.",
+      "The Slack file was deleted, or this app can no longer access it.",
       { cause },
     );
   if (source.provider !== "slack") throw unavailable();

@@ -37,7 +37,7 @@ describe("junior admin CLI", () => {
       // Revoking an unknown email fails without creating a user.
       await expect(runAdmin(["revoke", "nobody@example.com"])).resolves.toBe(1);
       expect(error).toHaveBeenLastCalledWith(
-        'No Junior user has the email "nobody@example.com".',
+        'No User has the email "nobody@example.com".',
       );
       await expect(runAdmin(["grant"])).resolves.toBe(1);
       expect(error).toHaveBeenLastCalledWith(CLI_USAGE);

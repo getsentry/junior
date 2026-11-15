@@ -24,7 +24,7 @@ describe("plugin user pages", () => {
         ],
       }),
     ).toThrow(
-      'Junior plugin "memory" user page id "Memories" must be a lowercase identifier.',
+      'Plugin "memory" user page id "Memories" must be a lowercase identifier.',
     );
 
     expect(() =>
@@ -49,7 +49,7 @@ describe("plugin user pages", () => {
           },
         ],
       }),
-    ).toThrow('Junior plugin "memory" has duplicate user page id "memories".');
+    ).toThrow('Plugin "memory" has duplicate user page id "memories".');
 
     expect(() =>
       defineJuniorPlugin({
@@ -69,7 +69,7 @@ describe("plugin user pages", () => {
         ],
       }),
     ).toThrow(
-      'Junior plugin "memory" user page "memories" navigation must be "primary", "profile", or "admin".',
+      'Plugin "memory" user page "memories" navigation must be "primary", "profile", or "admin".',
     );
   });
 

@@ -470,7 +470,7 @@ describe("conversation attachment API", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error:
-        "standup.mp4 is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "standup.mp4 is no longer available: The Slack file was deleted, or this app can no longer access it.",
     });
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });

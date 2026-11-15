@@ -40,6 +40,7 @@ import {
   useStopConversationTurn,
 } from "./queries";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
@@ -428,7 +429,9 @@ function ReplyFooter(props: {
         draftId={props.conversationId}
         error={
           queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          (stopTurn.error
+            ? `Could not stop ${getDashboardAgentName()}. Try again.`
+            : undefined)
         }
         ref={composerRef}
         label="Continue this conversation"

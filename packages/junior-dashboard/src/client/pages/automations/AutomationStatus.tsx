@@ -15,6 +15,7 @@ import { buttonVariants } from "../../components/ui/button";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 import { formatRelativeTime, getDashboardTimeZone } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 /**
  * Name the lifecycle state. It is a live region, so Pause and Resume results
@@ -197,7 +198,7 @@ export function AutomationAttention({
           {automation.statusReason ??
             "Check the last run to see what needs fixing."}{" "}
           {!automation.ownedByViewer && automation.credentialMode === "creator"
-            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to Junior's credentials first.`
+            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to ${agentNamePossessive()} credentials first.`
             : null}
         </p>
       ) : null}

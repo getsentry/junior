@@ -277,13 +277,13 @@ describe("Slack webhook: dashboard conversation links", () => {
     ).toEqual([
       expect.objectContaining({
         user: "U123",
-        text: "This conversation moves here when Junior finishes.",
+        text: "This conversation moves here when the current reply finishes.",
       }),
       expect.objectContaining({
-        text: "This conversation moves here when Junior finishes.",
+        text: "This conversation moves here when the current reply finishes.",
       }),
       expect.objectContaining({
-        text: "This conversation moves to another thread when Junior finishes.",
+        text: "This conversation moves to another thread when the current reply finishes.",
       }),
     ]);
     expect(slackApiOutbox.messages()).toHaveLength(0);
@@ -352,7 +352,7 @@ describe("Slack webhook: dashboard conversation links", () => {
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(
       slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params["text"],
-    ).toBe("This thread already has a Junior conversation.");
+    ).toBe("This Slack thread already has a conversation.");
   });
 
   it("moves only one of two conversations that race for the same thread", async () => {
@@ -395,7 +395,7 @@ describe("Slack webhook: dashboard conversation links", () => {
     ).toBe(1);
     expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(1);
     expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params["text"]).toBe(
-      "This thread already has a Junior conversation.",
+      "This Slack thread already has a conversation.",
     );
   });
 

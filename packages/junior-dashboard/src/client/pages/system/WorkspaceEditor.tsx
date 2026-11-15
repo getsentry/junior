@@ -14,6 +14,7 @@ import {
   type RepoDraft,
   type WorkspaceDraft,
 } from "./workspaceDraft";
+import { getDashboardAgentName } from "../../agentName";
 
 type WorkspaceEditorProps = {
   busy: boolean;
@@ -83,7 +84,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
                 Each repository clones to a fixed{" "}
                 <code className="text-dashboard-text">repos/{"{name}"}</code>{" "}
-                path. Junior loads{" "}
+                path. {getDashboardAgentName()} loads{" "}
                 <code className="text-dashboard-text">AGENTS.md</code> from each
                 repository and labels those instructions with that directory.
               </p>
@@ -180,8 +181,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           />
           <FieldDescription id="workspace-setup-help">
             <>
-              Runs once while Junior builds the reusable snapshot. Current
-              working directory is{" "}
+              Runs once while {getDashboardAgentName()} builds the reusable
+              snapshot. Current working directory is{" "}
               <code className="text-dashboard-text">
                 $JUNIOR_WORKSPACE_ROOT
               </code>{" "}
