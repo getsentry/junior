@@ -21,7 +21,6 @@ import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import {
   formatConversationCostTotal,
-  formatRuntime,
   formatTime,
   formatUsageTotal,
 } from "../format";
@@ -37,6 +36,7 @@ import {
   DetailsRowLine,
 } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { formatRuntime } from "../time";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",

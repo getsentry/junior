@@ -21,11 +21,12 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
-import { formatRelativeTime, formatTime } from "../format";
+import { formatTime } from "../format";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
+import { formatRelativeTime } from "../time";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {

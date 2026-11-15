@@ -3,7 +3,6 @@ import {
   contributionLevel,
   contributionLevelClass,
 } from "../../components/charts/contributionLevel";
-import { formatDuration } from "../../components/Duration";
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +12,7 @@ import {
 import { getDashboardAgentName } from "../../agentName";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { cn } from "../../styles";
+import { formatDuration } from "../../time";
 
 type ContributionDay = {
   conversations: number;

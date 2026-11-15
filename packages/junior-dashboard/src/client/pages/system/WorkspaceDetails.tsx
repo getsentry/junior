@@ -17,14 +17,10 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart";
 import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-import {
-  formatMs,
-  formatRelativeTime,
-  formatTime,
-  workspacePath,
-} from "../../format";
+import { formatTime, workspacePath } from "../../format";
 import { formatSandboxSize } from "./sandboxSize";
 import { useWorkspaceData } from "./workspaceQueries";
+import { formatDuration, formatRelativeTime } from "../../time";
 
 // Workspace switch counters are daily-only (`junior_stats.date`).
 const USAGE_RANGE: TimeRangeDays = 30;
@@ -237,7 +233,7 @@ function WorkspaceSnapshot(props: {
         <span title={formatTime(snapshot.generatedAt)}>
           {formatRelativeTime(snapshot.generatedAt)}
         </span>{" "}
-        · built in {formatMs(snapshot.buildDurationMs)}
+        · built in {formatDuration(snapshot.buildDurationMs)}
       </span>
       <span className="block break-all font-mono text-xs text-dashboard-text-muted">
         {snapshot.id}

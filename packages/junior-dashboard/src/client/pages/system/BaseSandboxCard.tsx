@@ -3,8 +3,9 @@ import type { BaselineSnapshotReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
-import { formatMs, formatRelativeTime, formatTime } from "../../format";
+import { formatTime } from "../../format";
 import { formatSandboxSize } from "./sandboxSize";
+import { formatDuration, formatRelativeTime } from "../../time";
 
 /**
  * Show the base Sandbox: the default size and the baseline snapshot.
@@ -38,7 +39,7 @@ export function BaseSandboxCard(props: {
                 <Fact label="Dependencies">{snapshot.dependencyCount}</Fact>
               )}
               <Fact label="Build time">
-                {formatMs(snapshot.buildDurationMs)}
+                {formatDuration(snapshot.buildDurationMs)}
               </Fact>
               <Fact label="Generated">
                 <span title={formatTime(snapshot.generatedAt)}>

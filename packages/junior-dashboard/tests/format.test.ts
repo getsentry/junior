@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NOW_MS } from "../src/mock-reporting/fixtures";
 import type {
   ConversationReportEvent,
   ConversationReportEventData,
@@ -17,13 +16,9 @@ import {
   formatCompactNumber,
   formatConversationDuration,
   formatCostTotal,
-  formatElapsedDuration,
   formatPayloadSize,
-  formatRelativeMessageTimestamp,
-  formatRuntime,
   formatTime,
   formatTranscriptTimestampDetails,
-  formatTranscriptDuration,
   formatUsageTotal,
   peoplePath,
   slackLocationLabel,
@@ -33,7 +28,6 @@ import {
   summarizeTurns,
   transcriptMessageActor,
 } from "../src/client/format";
-import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
@@ -128,41 +122,12 @@ describe("dashboard conversation formatting", () => {
     });
   });
 
-  it("formats human-readable durations at increasing scales", () => {
-    expect(formatDuration(999)).toBe("999ms");
-    expect(formatDuration(3_500)).toBe("3.5s");
-    expect(formatDuration(2_700_000)).toBe("45m");
-    expect(formatDuration(839_497_000)).toBe("9d 17h");
-    expect(formatDuration(11_117_520_000)).toBe("4mo 8d");
-  });
-
   it("formats serialized payload sizes for transcript metadata", () => {
     expect(formatPayloadSize("hello")).toBe("5b");
     expect(formatPayloadSize({ ok: true })).toBe("11b");
     expect(formatPayloadSize("é")).toBe("2b");
     expect(formatPayloadSize("x".repeat(5_100))).toBe("5kb");
     expect(formatPayloadSize(undefined)).toBeUndefined();
-  });
-
-  it("formats cumulative conversation runtime", () => {
-    expect(formatRuntime(3_500)).toBe("3.5s");
-    expect(formatRuntime(0)).toBe("");
-    expect(formatTranscriptDuration({ cumulativeDurationMs: 7_000 })).toBe(
-      "7.0s",
-    );
-  });
-
-  it("formats elapsed transcript event durations", () => {
-    expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
-    expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
-    expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
-  });
-
-  it("formats old transcript timestamps relative to now", () => {
-    vi.useFakeTimers({ now: NOW_MS });
-    expect(formatRelativeMessageTimestamp(NOW_MS - 86_400_000)).toBe(
-      "yesterday",
-    );
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {

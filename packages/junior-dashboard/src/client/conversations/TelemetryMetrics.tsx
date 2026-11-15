@@ -6,7 +6,6 @@ import type {
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatRuntime,
   formatTime,
   formatTokenSummary,
   summarizeCost,
@@ -27,6 +26,7 @@ import {
   type UsageCardSection,
   type UsageCardSplit,
 } from "./UsageCard";
+import { formatRuntime } from "../time";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;

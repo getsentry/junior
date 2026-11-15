@@ -22,7 +22,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
   formatTime,
   slackLocationLabel,
   summarizeCost,
@@ -56,6 +55,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {

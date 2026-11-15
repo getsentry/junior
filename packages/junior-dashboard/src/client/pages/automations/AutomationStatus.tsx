@@ -10,10 +10,11 @@ import {
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { automationPath, formatRelativeTime } from "../../format";
+import { automationPath } from "../../format";
 import { buttonVariants } from "../../components/ui/button";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
+import { formatRelativeTime } from "../../time";
 
 /**
  * Name the lifecycle state. It is a live region, so Pause and Resume results

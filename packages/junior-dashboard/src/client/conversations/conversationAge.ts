@@ -1,5 +1,9 @@
 import { getDashboardTimeZone } from "../format";
+import { formatDuration } from "../time";
 import { calendarDay, calendarDaysAgo } from "./conversationSections";
+
+const MINUTE_MS = 60_000;
+const MONTH_MS = 30 * 86_400_000;
 
 /**
  * Format an activity time as a short age for dense lists: `now`, `12m`, `3h`,
@@ -9,14 +13,9 @@ export function formatCompactAge(value: string, nowMs = Date.now()): string {
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return "";
 
-  const minutes = Math.floor(Math.max(0, nowMs - time) / 60_000);
-  if (minutes < 1) return "now";
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  if (days < 30) return `${Math.floor(days / 7)}w`;
+  const elapsed = Math.max(0, nowMs - time);
+  if (elapsed < MINUTE_MS) return "now";
+  if (elapsed < MONTH_MS) return formatDuration(elapsed, 1);
   return new Date(time).toLocaleDateString("en-US", {
     day: "numeric",
     month: "short",

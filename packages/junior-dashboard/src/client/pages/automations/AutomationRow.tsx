@@ -3,7 +3,6 @@ import { CalendarClock, LockKeyhole, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
-import { formatRelativeTime } from "../../format";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 import { cn } from "../../styles";
 import {
@@ -12,6 +11,7 @@ import {
 } from "./automationFormat";
 import { AutomationRunStrip } from "./AutomationRunStrip";
 import { automationProblemSummary } from "./AutomationStatus";
+import { formatRelativeTime } from "../../time";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;

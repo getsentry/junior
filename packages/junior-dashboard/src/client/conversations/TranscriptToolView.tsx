@@ -3,7 +3,6 @@ import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
-  formatElapsedDuration,
   formatMessageTimestamp,
   formatPayloadSize,
   stringifyPartValue,
@@ -16,6 +15,7 @@ import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { formatElapsedDuration } from "../time";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {

@@ -7,9 +7,9 @@ import {
 } from "../components/ui/tooltip";
 import {
   formatMessageTimestamp,
-  formatRelativeMessageTimestamp,
   formatTranscriptTimestampDetails,
 } from "../format";
+import { formatRelativeTime } from "../time";
 
 const FULL_TIMESTAMP_AGE_MS = 12 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ export function TranscriptTimestamp(props: { value: number | undefined }) {
   const label = context?.full
     ? formatMessageTimestamp(props.value, true)
     : old
-      ? formatRelativeMessageTimestamp(props.value)
+      ? formatRelativeTime(props.value)
       : formatMessageTimestamp(props.value);
 
   const button = (
