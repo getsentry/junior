@@ -18,7 +18,7 @@ type ExecuteSlackTurn = (
   message: Message,
   options: {
     ack?: () => Promise<void>;
-    conversationId?: string;
+    conversationId: string;
     destination: DispatchRecord["destination"];
     execution: DispatchTurnContext;
     onTurnDeliveryAccepted?: (messageId?: string) => void;

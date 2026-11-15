@@ -34,6 +34,7 @@ export interface SubscribedDecisionInput {
   hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
+    conversationId: string;
     threadId?: string | undefined;
     actorId?: string | undefined;
     channelId?: string | undefined;

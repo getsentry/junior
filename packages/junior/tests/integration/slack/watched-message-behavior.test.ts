@@ -9,6 +9,7 @@ import {
   createTestMessage,
   createTestThread,
   createTestDestination,
+  type TestThread,
 } from "../../fixtures/slack-harness";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -53,6 +54,14 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
+/** Ingress gives a thread that no other Conversation owns its Slack thread id. */
+function opts(thread: TestThread) {
+  return {
+    conversationId: thread.id,
+    destination: createTestDestination(thread),
+  };
+}
+
 function routeDecision(route: SubscribedReplyRoute, probability = 1) {
   return {
     answers: {
@@ -94,9 +103,7 @@ describe("Slack behavior: subscribed messages", () => {
       author: { userId: "U0TESTER" },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalls).toHaveLength(1);
     expect(thread.posts).toHaveLength(0);
@@ -130,9 +137,7 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     await expect(
-      slackRuntime.handleSubscribedMessage(thread, message, {
-        destination: createTestDestination(thread),
-      }),
+      slackRuntime.handleSubscribedMessage(thread, message, opts(thread)),
     ).rejects.toBe(providerError);
     expect(thread.posts).toHaveLength(0);
   });
@@ -167,9 +172,7 @@ describe("Slack behavior: subscribed messages", () => {
       author: { userId: "U0TESTER" },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalls).toHaveLength(1);
     expect(replyCalls).toHaveLength(1);
@@ -207,9 +210,7 @@ describe("Slack behavior: subscribed messages", () => {
       author: { userId: "U0TESTER" },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
@@ -262,7 +263,7 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     await slackRuntime.handleSubscribedMessage(thread, latest, {
-      destination: createTestDestination(thread),
+      ...opts(thread),
       messageContext: {
         skipped: [
           queued,
@@ -291,7 +292,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("forces unsubscribe on !stop and only re-engages on a later direct mention", async () => {
+  it("forces unsubscribe on !stop, cancels the owning Conversation's Watches, and only re-engages on a later direct mention", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -315,6 +316,10 @@ describe("Slack behavior: subscribed messages", () => {
     const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700002002.500",
     });
+    // An Automation run owns this thread, so its Conversation id is not the
+    // Slack thread id.
+    const conversationId = "agent-dispatch:stop-thread-owner";
+    const turn = { ...opts(thread), conversationId };
 
     await slackRuntime.handleNewMention(
       thread,
@@ -325,7 +330,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      turn,
     );
 
     expect(thread.subscribed).toBe(true);
@@ -336,7 +341,7 @@ describe("Slack behavior: subscribed messages", () => {
     }
     const expiresAtMs = Date.now() + 60_000;
     await createWatch({
-      conversationId: thread.id,
+      conversationId,
       events: ["pull_request.checks.failed"],
       expiresAtMs,
       intent: "Watch CI for this thread.",
@@ -346,7 +351,7 @@ describe("Slack behavior: subscribed messages", () => {
       resourceType: "pull_request",
     });
     await createWatch({
-      conversationId: thread.id,
+      conversationId,
       events: ["issue.closed"],
       expiresAtMs,
       intent: "Watch the issue for this thread.",
@@ -365,15 +370,13 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      turn,
     );
 
     expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
     expect(thread.subscribed).toBe(false);
-    await expect(listWatches({ conversationId: thread.id })).resolves.toEqual(
-      [],
-    );
+    await expect(listWatches({ conversationId })).resolves.toEqual([]);
     expect(toPostedText(thread.posts[1])).toContain(
       "I'll stay out of this thread unless someone @mentions me again.",
     );
@@ -387,7 +390,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      turn,
     );
 
     expect(replyCalls).toHaveLength(2);
@@ -425,9 +428,7 @@ describe("Slack behavior: subscribed messages", () => {
       author: { userId: "U0TESTER" },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
@@ -465,9 +466,7 @@ describe("Slack behavior: subscribed messages", () => {
       ],
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalled).toBe(true);
     expect(thread.posts).toHaveLength(0);
@@ -505,9 +504,7 @@ describe("Slack behavior: subscribed messages", () => {
       ],
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalled).toBe(true);
     expect(thread.posts).toHaveLength(0);
@@ -552,9 +549,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
     expect(classifierCalled).toBe(true);
     expect(thread.posts).toHaveLength(0);
@@ -591,7 +586,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     await slackRuntime.handleSubscribedMessage(
@@ -603,7 +598,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     expect(classifierCalled).toBe(true);
@@ -642,7 +637,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     await slackRuntime.handleSubscribedMessage(
@@ -660,7 +655,7 @@ describe("Slack behavior: subscribed messages", () => {
           },
         ],
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     expect(classifierCalled).toBe(true);
@@ -698,9 +693,7 @@ describe("Slack behavior: subscribed messages", () => {
         author: { userId: "U0TESTER" },
       });
 
-      await slackRuntime.handleSubscribedMessage(thread, message, {
-        destination: createTestDestination(thread),
-      });
+      await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
 
       expect(classifierCalled).toBe(false);
       expect(thread.posts).toHaveLength(0);
@@ -760,7 +753,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     await slackRuntime.handleSubscribedMessage(
@@ -772,7 +765,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     expect(classifierCalled).toBe(false);
@@ -814,7 +807,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     await slackRuntime.handleSubscribedMessage(
@@ -826,7 +819,7 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread) },
+      opts(thread),
     );
 
     expect(classifierCalled).toBe(false);
@@ -855,7 +848,10 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread), ack },
+      {
+        ...opts(thread),
+        ack,
+      },
     );
 
     expect(ack).toHaveBeenCalledTimes(1);
@@ -886,7 +882,10 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread), ack },
+      {
+        ...opts(thread),
+        ack,
+      },
     );
 
     const state = (await thread.state) ?? {};
@@ -920,7 +919,10 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread), ack },
+      {
+        ...opts(thread),
+        ack,
+      },
     );
 
     expect(ack).toHaveBeenCalledTimes(1);
@@ -951,7 +953,10 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),
-      { destination: createTestDestination(thread), ack },
+      {
+        ...opts(thread),
+        ack,
+      },
     );
 
     expect(ack).toHaveBeenCalledTimes(1);
@@ -977,7 +982,10 @@ describe("Slack behavior: subscribed messages", () => {
           threadId: thread.id,
           author: { userId: "U0TESTER" },
         }),
-        { destination: createTestDestination(thread), ack },
+        {
+          ...opts(thread),
+          ack,
+        },
       ),
     ).rejects.toThrow(TurnInputCommitLostError);
   });

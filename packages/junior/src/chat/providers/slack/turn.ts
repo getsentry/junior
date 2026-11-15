@@ -259,7 +259,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
-      conversationId?: string;
+      conversationId: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
@@ -310,7 +310,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const destinationVisibility =
       conversationVisibilityFromSlackChannelType(slackChannelType);
     const assistantThreadContext = getAssistantThreadContext(message);
-    const threadTs = getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
+    const threadTs = getThreadTs(message) ?? assistantThreadContext?.threadTs;
     const messageTs = getMessageTs(message);
     const teamId = destination.teamId;
     const source =
@@ -329,10 +329,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const replyTarget = resolveSlackReplyTarget({ destination, source });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
-    const conversationId = options.conversationId ?? threadId ?? runId;
-    if (!conversationId) {
-      throw new Error("Slack reply execution requires a conversation id");
-    }
+    const { conversationId } = options;
 
     await withSpan(
       "chat.reply",

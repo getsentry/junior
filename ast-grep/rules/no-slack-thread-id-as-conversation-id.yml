@@ -1,0 +1,24 @@
+id: no-slack-thread-id-as-conversation-id
+language: TypeScript
+severity: error
+message: "Do not use a Slack thread id as a Conversation id. Thread.id and TurnContext.threadId are the Slack thread. A Conversation that owns a Slack thread, such as an Automation run, has another id. Pass the owning conversationId explicitly."
+files:
+  - packages/junior/src/**/*.ts
+rule:
+  any:
+    - kind: pair
+      has: { field: key, regex: "^conversationId$" }
+    - kind: variable_declarator
+      has: { field: name, regex: "^conversationId$" }
+  has:
+    field: value
+    any:
+      - matches: slack-thread-id
+      - has: { matches: slack-thread-id, stopBy: end }
+utils:
+  slack-thread-id:
+    any:
+      - pattern: thread.id
+      - pattern: $A.thread.id
+      - pattern: threadId
+      - pattern: $A.threadId

@@ -112,10 +112,13 @@ async function findThreadConversationIds(args: {
     providerTenantId: args.teamId,
     providerConversationId: args.threadTs,
   });
-  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  const unboundId = `slack:${args.channelId}:${args.threadTs}`;
   const ids = boundId ? [boundId] : [];
-  if (threadId !== boundId && (await store.get({ conversationId: threadId }))) {
-    ids.push(threadId);
+  if (
+    unboundId !== boundId &&
+    (await store.get({ conversationId: unboundId }))
+  ) {
+    ids.push(unboundId);
   }
   return ids;
 }
