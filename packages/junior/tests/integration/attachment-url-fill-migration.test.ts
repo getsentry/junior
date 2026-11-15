@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
@@ -16,6 +17,12 @@ const backfill = readMigrationFiles({
     statement.includes('INSERT INTO "junior_message_attachments"'),
   );
 
+// A link too long for a btree index entry. Hex digests do not compress, so
+// the index cannot fit it by compression.
+const longUrl = `https://long.example/${Array.from({ length: 50 }, (_, index) =>
+  createHash("sha256").update(String(index)).digest("hex"),
+).join("")}`;
+
 // Text that tests each rule of the URL pattern: Slack and Markdown wrappers,
 // quotes, every whitespace that JavaScript `\s` matches, and non-ASCII paths.
 const texts = [
@@ -23,7 +30,7 @@ const texts = [
   "No-break\u00a0https://d.example/a\u00a0tail, em\u2003https://e.example/b\u2028x, wide\u3000https://f.example/c\ufeffz",
   "Tab\thttps://g.example/\tnl\nhttp://h.example/x\rvt\u000bhttps://i.example/\u000cff",
   "Quotes \"https://j.example/q\" 'https://k.example/s' `https://l.example/t`",
-  "Paths https://m.example/путь/😀?q=é, not httpx://no or https:// alone",
+  `Paths https://m.example/путь/😀?q=é, not httpx://no or https:// alone, too long ${longUrl}`,
   "Upper HTTPS://upper.example/ pipes https://n.example/a|b https://o.example/a>b",
   "Zero-width https://p.example/a\u200bb narrow\u202fhttps://q.example/ next\u0085https://s.example/",
   "Glued https://t.example/https://u.example/ end",
@@ -148,6 +155,7 @@ ORDER BY m.conversation_id, m.seq, m.position
       expect(recentWritten).toContainEqual(
         expect.objectContaining({ url: "https://m.example/путь/😀?q=é" }),
       );
+      expect(recentWritten.map((row) => row.url)).not.toContain(longUrl);
       // A repeat in one message keeps its first position, and trailing
       // punctuation is not part of a link.
       expect(urlsOf(seqs[4])).toEqual([

@@ -13,6 +13,14 @@ import { createHash } from "node:crypto";
 const MESSAGE_URL_PATTERN = String.raw`https?://[^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff<>|"'\u0060]+`;
 const TRAILING_PUNCTUATION_PATTERN = String.raw`[.,;:!?)\]}*_~]+$`;
 
+/**
+ * Longest link, in UTF-8 bytes, that a message stores. The unique index on
+ * `(conversation_id, url)` holds the whole link, and a Postgres btree entry
+ * cannot pass about 2.7 kB. Migration `0112_attachment_url_fill` uses the
+ * same limit.
+ */
+const MAX_LINK_BYTES = 2048;
+
 const messageUrlPattern = new RegExp(MESSAGE_URL_PATTERN, "g");
 const trailingPunctuation = new RegExp(TRAILING_PUNCTUATION_PATTERN);
 
@@ -64,7 +72,7 @@ function messageLinks(event: LinkSourceRow): MessageLink[] {
     ...text.matchAll(messageUrlPattern),
   ].entries()) {
     const url = match[0].replace(trailingPunctuation, "");
-    if (links.has(url)) continue;
+    if (links.has(url) || Buffer.byteLength(url) > MAX_LINK_BYTES) continue;
     links.set(url, {
       conversationId: event.conversationId,
       createdAt: event.createdAt,

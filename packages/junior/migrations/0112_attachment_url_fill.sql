@@ -1,7 +1,8 @@
 -- Fill `url` Attachments and where messages use them, for Conversations
 -- active in the last 30 days, with the rules of `batchMessageLinks` in
 -- src/chat/conversations/message-links.ts: the text of the newest save of
--- each message, at the seq of its first save, first match of each link only.
+-- each message, at the seq of its first save, first match of each link only,
+-- and no link over 2048 bytes.
 -- Ids are `urlAttachmentId`. It runs apart from 0111, so it holds no lock
 -- from that migration's ALTER TABLE. It reads the event tables, and its
 -- inserts into `junior_attachments` take only a row-exclusive lock, so app
@@ -36,6 +37,7 @@ WITH "messages" AS (
     "links".*,
     encode(sha256(convert_to("links"."conversation_id" || ' ' || "links"."url", 'UTF8')), 'hex') AS "attachment_id"
   FROM "links"
+  WHERE octet_length("links"."url") <= 2048
 ), "attachments" AS (
   INSERT INTO "junior_attachments" ("id", "kind", "conversation_id", "url", "created_at")
   SELECT DISTINCT ON ("attachment_id") "attachment_id", 'url', "conversation_id", "url", "created_at"
