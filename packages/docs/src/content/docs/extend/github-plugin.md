@@ -171,13 +171,15 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. It does not watch approvals, merges, or closes, because GitHub already tells people about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
+This watch always includes `pull_request.merge_conflict`, even when `events` omits it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
+
+When a watch or event automation receives `pull_request.review.approved` or `pull_request.merged`, the event lists the people involved. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only lists people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
@@ -329,14 +331,20 @@ Once configured, Junior can:
 - Check githubstatus.com for open or recent incidents when GitHub requests or
   checks fail
 - Watch or automate matching events when webhooks are enabled
-- Link issue, pull request, and commit references and URLs in Slack replies
-  and in the dashboard, as GitHub does. Bare `#123` uses the one repository
-  that the reply names, or else the channel's `github.repo`
+- Link issue, pull request, and commit references and URLs in Slack replies,
+  and in replies and messages in the dashboard, as GitHub does. Bare `#123`
+  uses the one repository that the text names, or else the channel's
+  `github.repo`
 - Turn `@login` into a Slack mention in Slack when the login links to a known
   person. Other logins become GitHub profile links when the text names a
   repository, or when it came from GitHub or went to GitHub
 - Show a GitHub profile link in the dashboard as the person card of the known
   person who linked that login, or else as a GitHub account card
+- Show a GitHub issue or pull request link in the dashboard as its issue or
+  pull request card, to a viewer whose linked GitHub account can see the
+  repository. A pull request at its issue URL, such as a linked
+  `owner/repo#12`, shows the pull request card. Other viewers get the public
+  web page card
 - Rewrite Slack mentions in text that tools send to GitHub. A person becomes
   their linked GitHub `@login`, or their name
 
@@ -377,8 +385,7 @@ channel. See [Automations](/concepts/automations/).
 Junior watches each pull request that it creates. To change the events or
 the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
 `plugins.ts`, or set it to `false` to turn it off. That watch
-also always gets `pull_request.review.approved`, `pull_request.merged`, and
-`pull_request.merge_conflict`. To add short
+also always gets `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
 `pullRequestEvents.guidance`. The guidance applies within each watch or event
 automation instruction. It does not replace or expand that instruction.

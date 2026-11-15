@@ -63,7 +63,7 @@ describe("GitHub tool text", () => {
       workspace: {} as any,
     });
 
-    await tools.github_commentOnPullRequest!.execute!(
+    await tools["github_commentOnPullRequest"]!.execute!(
       {
         repo: "getsentry/junior",
         number: 1,

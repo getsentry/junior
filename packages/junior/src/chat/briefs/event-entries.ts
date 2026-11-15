@@ -28,7 +28,11 @@ function bestActorName(actor: MessageActor): string | undefined {
 function actorNames(events: ConversationReportEvent[]): Map<string, string> {
   const actors = new Map<
     string,
-    { email?: string; fullName?: string; slackUserName?: string }
+    {
+      email?: string | undefined;
+      fullName?: string | undefined;
+      slackUserName?: string | undefined;
+    }
   >();
   for (const event of events) {
     if (event.data.type !== "message") continue;

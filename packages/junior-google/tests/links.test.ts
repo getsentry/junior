@@ -121,8 +121,8 @@ function fakeGoogle(input: {
 }
 
 function linkType(objectType: string): PluginObjectLinkDefinition {
-  return googlePlugin().objectLinks!.find(
-    (link) => link.objectType === objectType,
+  return googlePlugin().objectLinks!.find((link) =>
+    link.objectTypes.includes(objectType),
   )!;
 }
 
@@ -642,7 +642,7 @@ describe("Google link cards", () => {
       expect(JSON.stringify(card)).not.toContain("@example.com");
       // The access check and the card share one read.
       expect(google.fetch).toHaveBeenCalledOnce();
-      expect(new URL(google.fetch.mock.calls[0]![0].request.url).pathname).toBe(
+      expect(new URL(google.fetch.mock.calls[0][0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );
     });

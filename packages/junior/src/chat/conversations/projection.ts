@@ -377,7 +377,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: ProviderConversationReference[];
+  providerConversationBindings?: ProviderConversationReference[] | undefined;
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -648,7 +648,7 @@ type AuthenticationAccountChangeArgs = {
 function authenticationEventIdempotencyKey(args: {
   action: "linked" | "unlinked";
   actorId: string;
-  authorizationId?: string;
+  authorizationId?: string | undefined;
   provider: string;
 }): string {
   if (args.authorizationId) {
@@ -714,7 +714,7 @@ export async function recordAuthenticationUnlinked(
 
 type AgentsInstructionsTransitionArgs = {
   conversationId: string;
-  instructions?: RepositoryInstructions;
+  instructions?: RepositoryInstructions | undefined;
   turnId: string;
 };
 
@@ -748,7 +748,7 @@ async function loadAgentsEvent(conversationId: string): Promise<
 function agentsInstructionsIdempotencyKey(args: {
   action: "loaded" | "replaced" | "cleared";
   fingerprint: string;
-  previousSeq?: number;
+  previousSeq?: number | undefined;
   turnId: string;
 }): string {
   const previous = args.previousSeq ?? "none";
@@ -933,7 +933,7 @@ export async function recordGuardianActionReviewed(args: {
   turnId: string;
   toolCallId: string;
   toolName: string;
-  costUsd?: number;
+  costUsd?: number | undefined;
   decision: "allow" | "ask" | "deny";
   riskLevel: "low" | "medium" | "high" | "critical";
   userAuthorization: "high" | "medium" | "low" | "unknown";

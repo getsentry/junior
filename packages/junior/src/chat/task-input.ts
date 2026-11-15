@@ -63,7 +63,7 @@ export interface EventDoneBy {
   /** Slack mention of the person. */
   mention: string;
   /** Provider handle that the Event text uses for the same person. */
-  handle?: string;
+  handle?: string | undefined;
 }
 
 /** A linked Event doer, merged across the Events of one task message. */
@@ -126,7 +126,7 @@ function peopleTags(
 
 /** Merge the doers of numbered Events, in first-Event order. */
 function batchDoers(
-  events: readonly { doneBy?: EventDoneBy; number: number }[],
+  events: readonly { doneBy?: EventDoneBy | undefined; number: number }[],
 ): Doer[] {
   const merged = new Map<string, { handles: string[]; numbers: number[] }>();
   for (const { doneBy, number } of events) {
@@ -190,13 +190,13 @@ function externalTextTag(
  */
 export function renderTaskInput(args: {
   /** Stored task instruction or skill context, or subscription intent. */
-  instructions?: string;
+  instructions?: string | undefined;
   /** Skill that an Automation in skill mode runs. The run loads it from the dispatch. */
   skill?: string;
   /** Stored automation outcomes. Watches omit this and reply in the Conversation. */
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
-  about?: string;
+  about?: string | undefined;
   /** Event type, when an Event started the task. */
   event?: string;
   /** Provider namespace of the Event text, when present. */
@@ -204,17 +204,17 @@ export function renderTaskInput(args: {
   /** Mention of the Automation creator. It replaces "the Automation creator" in the instructions. */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
-  people?: readonly string[];
+  people?: readonly string[] | undefined;
   /** Linked person who did what the Event describes. */
-  doneBy?: EventDoneBy;
+  doneBy?: EventDoneBy | undefined;
   /** Plugin guidance scoped under the instructions. */
-  guidance?: string;
+  guidance?: string | undefined;
   /** Trusted one-line summary, when available. */
-  trustedSummary?: string;
+  trustedSummary?: string | undefined;
   /** Structured verified fields, when available. */
-  verifiedDetails?: Record<string, unknown>;
+  verifiedDetails?: Record<string, unknown> | undefined;
   /** Untrusted provider text. */
-  externalText?: string;
+  externalText?: string | undefined;
   externalTextMaxLength?: number;
   trustedSummaryMaxLength?: number;
 }): string {
@@ -307,15 +307,15 @@ export function renderTaskInput(args: {
 export interface TaskBatchEvent {
   eventType: string;
   /** Guidance for this event type. Repeated text for one type shows once. */
-  guidance?: string;
+  guidance?: string | undefined;
   /** Provider namespace of the Event text. */
   source?: string;
-  trustedSummary?: string;
-  verifiedDetails?: Record<string, unknown>;
+  trustedSummary?: string | undefined;
+  verifiedDetails?: Record<string, unknown> | undefined;
   /** Untrusted provider text. */
-  externalText?: string;
+  externalText?: string | undefined;
   /** Linked person who did what the Event describes. */
-  doneBy?: EventDoneBy;
+  doneBy?: EventDoneBy | undefined;
 }
 
 /** Events from one Watch, which share one set of instructions. */

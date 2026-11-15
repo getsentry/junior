@@ -196,8 +196,8 @@ async function showAction(
       assigneeIdentityIds: [args.identityId],
       body:
         action === "merge"
-          ? `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`
-          : `GitHub asks you to review **${state.title}**: ${state.url}`,
+          ? `**${state.title}** (#${number}) is approved, and GitHub says that it can merge: ${state.url}`
+          : `GitHub asks you to review **${state.title}** (#${number}): ${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {
@@ -223,7 +223,9 @@ async function syncOne(
   args: {
     db: GitHubDb;
     env: GitHubInstallationEnv;
-    loadGitHubLogin?(identityId: string): Promise<string | undefined>;
+    loadGitHubLogin?:
+      | ((identityId: string) => Promise<string | undefined>)
+      | undefined;
     reviewItems: PluginConversationReviewItems;
   },
   target: GitHubPullRequestTarget,
@@ -317,8 +319,10 @@ export async function syncGitHubPullRequestActions(args: {
   db: GitHubDb;
   deliveryId: string;
   env: GitHubInstallationEnv;
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {

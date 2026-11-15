@@ -108,12 +108,26 @@ export default {
         path: "^src/chat/services/",
       },
     },
+    {
+      name: "no-dynamic-model-imports",
+      comment:
+        "Import model calls statically from @/chat/core-model, so each call names its operation and records its cost. oxlint checks the imported names, which a dynamic import() hides.",
+      severity: "error",
+      from: {
+        path: "^src/",
+        pathNot: "^src/chat/(pi/|core-model\\.ts$|plugins/model\\.ts$)",
+      },
+      to: {
+        path: "^src/chat/pi/(client|sdk)\\.ts$",
+        dependencyTypes: ["dynamic-import"],
+      },
+    },
   ],
   options: {
     doNotFollow: {
       path: "^node_modules",
     },
-    includeOnly: "^src/chat",
+    includeOnly: "^src/",
     moduleSystems: ["es6"],
     tsConfig: {
       fileName: "./tsconfig.json",

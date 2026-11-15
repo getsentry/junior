@@ -160,7 +160,7 @@ describe("continue a dashboard conversation in Slack", () => {
         "moved this conversation here from the dashboard",
       ),
     });
-    expect(slackApiOutbox.messages()[0]?.params.thread_ts).toBeUndefined();
+    expect(slackApiOutbox.messages()[0]?.params["thread_ts"]).toBeUndefined();
 
     const detail = await readDetail(app, conversationId);
     expect(detail.canContinueInSlack).toBeUndefined();

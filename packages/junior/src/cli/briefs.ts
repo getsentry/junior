@@ -34,7 +34,7 @@ type PullOptions = {
 type RunOptions = {
   model: string;
   out: string;
-  promptFile?: string;
+  promptFile?: string | undefined;
   snapshots: string[];
   turnByTurn: boolean;
 };
@@ -50,7 +50,7 @@ function optionValue(argv: string[], index: number, option: string): string {
 function parsePullOptions(argv: string[]): PullOptions {
   const conversationIds: string[] = [];
   let baseUrl: string | undefined;
-  let token = process.env.JUNIOR_API_TOKEN?.trim();
+  let token = process.env["JUNIOR_API_TOKEN"]?.trim();
   let out: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;

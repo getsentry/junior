@@ -171,7 +171,7 @@ function mark(marker: string, text: string): string {
 
 function fence(pre: Element, code: string): string {
   const language =
-    pre.closest<HTMLElement>("[data-code-language]")?.dataset.codeLanguage ??
+    pre.closest<HTMLElement>("[data-code-language]")?.dataset["codeLanguage"] ??
     "";
   return `\`\`\`${language}\n${code.replace(/\n$/, "")}\n\`\`\``;
 }

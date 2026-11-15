@@ -18,7 +18,9 @@ function leadingText(value: ESTree.JSXAttribute["value"]): string | undefined {
   if (node?.type === "Literal" && typeof node.value === "string") {
     return node.value;
   }
-  if (node?.type === "TemplateLiteral") return node.quasis[0]?.value.cooked;
+  if (node?.type === "TemplateLiteral") {
+    return node.quasis[0]?.value.cooked ?? undefined;
+  }
   return undefined;
 }
 

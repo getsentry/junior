@@ -73,7 +73,7 @@ export function appFetch(...apps: Hono[]): typeof globalThis.fetch {
     const app = apps[nextApp % apps.length];
     nextApp += 1;
     if (!app) throw new Error("ACP test fetch requires an app");
-    return await app.fetch(new Request(input, init as RequestInit));
+    return await app.fetch(new Request(input, init));
   };
 }
 

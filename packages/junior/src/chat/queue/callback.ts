@@ -101,7 +101,7 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     consumer,
     create: () => getQueueProvider().createCallback(consumer),
     registerDev: () => {
-      if (process.env.NODE_ENV !== "development") {
+      if (process.env["NODE_ENV"] !== "development") {
         return undefined;
       }
       return getQueueProvider().registerDevConsumer?.(consumer);

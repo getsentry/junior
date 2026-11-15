@@ -81,9 +81,9 @@ export type TaskCandidate =
     };
 
 function creatorLabel(creator: {
-  fullName?: string;
+  fullName?: string | undefined;
   slackUserId: string;
-  userName?: string;
+  userName?: string | undefined;
 }): string {
   return (
     creator.fullName?.trim() ||
@@ -785,7 +785,11 @@ function eventActionLabel(eventName: string): string {
  */
 async function readRunCredential(
   dispatchId: string | undefined,
-  creator: { fullName?: string; slackUserId: string; userName?: string },
+  creator: {
+    fullName?: string | undefined;
+    slackUserId: string;
+    userName?: string | undefined;
+  },
 ): Promise<Pick<ConversationSourceTask, "credentialMode" | "credentialUser">> {
   if (!dispatchId) return {};
   const dispatch = await getDispatchRecord(dispatchId);

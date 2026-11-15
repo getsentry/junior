@@ -95,7 +95,7 @@ async function loadSkillFromHost(
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
-    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+    onSkillLoaded?: ((skill: Skill) => void | Promise<void>) | undefined;
   },
 ) {
   return zodTool({

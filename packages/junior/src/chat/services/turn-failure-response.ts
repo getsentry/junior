@@ -9,9 +9,13 @@ import {
 } from "@/chat/services/provider-error";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
+type TurnFailureEventName =
+  | "agent.turn.provider_error"
+  | "agent.turn.execution.failed";
+
 type LogException = (
   error: unknown,
-  eventName: string,
+  eventName: TurnFailureEventName,
   attributes?: Record<string, unknown>,
 ) => string | undefined;
 
@@ -29,7 +33,7 @@ export function requireTurnFailureEventId(
 function getExecutionFailureReason(reply: {
   diagnostics: {
     assistantMessageCount: number;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
     toolErrorCount: number;
   };
 }): string {
@@ -74,7 +78,7 @@ function getFailureCapture(reply: AgentRunResult): {
   attributes: Record<string, unknown>;
   body: string;
   error: unknown;
-  eventName: string;
+  eventName: TurnFailureEventName;
 } {
   if (reply.diagnostics.outcome === "provider_error") {
     const providerError = findProviderError(reply.diagnostics.providerError);

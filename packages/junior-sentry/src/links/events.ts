@@ -31,11 +31,11 @@ const REFUSED = [400, 401, 403, 404];
 /** What an event card shows, read with the viewer's own token. */
 interface SentryEvent {
   title: string;
-  culprit?: string;
-  level?: string;
-  release?: string;
-  environment?: string;
-  occurredAt?: string;
+  culprit?: string | undefined;
+  level?: string | undefined;
+  release?: string | undefined;
+  environment?: string | undefined;
+  occurredAt?: string | undefined;
 }
 
 const eventSchema = z.object({
@@ -146,6 +146,6 @@ async function resolveSentryEventLink(
 export const sentryEventLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryEventLink,
   filters: SENTRY_EVENT_LINK_FILTERS,
-  objectType: "event",
+  objectTypes: ["event"],
   resolve: resolveSentryEventLink,
 };

@@ -16,10 +16,10 @@ import { cn } from "../../styles";
 
 type ContributionDay = {
   conversations: number;
-  costUsd?: number;
+  costUsd?: number | undefined;
   date: string;
   durationMs: number;
-  tokens?: number;
+  tokens?: number | undefined;
 };
 
 /** Render a calendar grid for daily conversation activity. */

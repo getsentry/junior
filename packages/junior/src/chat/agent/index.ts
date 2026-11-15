@@ -1193,7 +1193,7 @@ async function executeAgentRunInPrivacyContext(
         }
         if (decision === "wrap_up") {
           runResume.markTurnLimitWrappedUp();
-          logWarn("agent.turn.limit.wrap_up", {
+          logWarn("agent.turn.limit.wrapped_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
@@ -1356,17 +1356,17 @@ async function executeAgentRunInPrivacyContext(
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
           const contextMessage: PiMessage | undefined =
             shouldPromptAgent && promptContextContentParts.length > 0
-              ? ({
+              ? {
                   role: "user",
                   content: promptContextContentParts,
                   timestamp: promptTimestamp,
-                } as PiMessage)
+                }
               : undefined;
           const freshPromptMessage: PiMessage = {
             role: "user",
             content: promptUserContentParts,
             timestamp: promptTimestamp,
-          } as PiMessage;
+          };
           if (shouldPromptAgent) {
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint(

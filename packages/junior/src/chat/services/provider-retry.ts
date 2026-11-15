@@ -19,7 +19,7 @@ const MAX_PROVIDER_RETRY_DELAY_MS = 60_000;
 /** Apply Junior's retry budget to a retryable Pi assistant failure. */
 export function nextProviderRetry(args: {
   attempt: number;
-  failure?: AssistantMessage;
+  failure?: AssistantMessage | undefined;
   messages: PiMessage[];
 }):
   | {
@@ -69,8 +69,8 @@ export function nextProviderRetry(args: {
  * when the failure is not a provider refusal or no fallback model is set.
  */
 export function nextRefusalFallback(args: {
-  failure?: AssistantMessage;
-  fallbackModelId?: string;
+  failure?: AssistantMessage | undefined;
+  fallbackModelId?: string | undefined;
   messages: PiMessage[];
 }): { messages: PiMessage[]; modelId: string } | undefined {
   if (

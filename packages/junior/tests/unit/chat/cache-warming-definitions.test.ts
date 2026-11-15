@@ -115,7 +115,7 @@ async function endTurn(
     ...definitionsKey,
     mode,
   });
-  recorder.wrap((() => undefined) as never)(model, turnContext, {});
+  void recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }
 

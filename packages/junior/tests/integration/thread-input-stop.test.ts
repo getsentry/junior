@@ -133,7 +133,7 @@ describe("Thread input stop", () => {
       await finishInvocation(harness, threadId);
       harness.onPersonRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
-        await markConversationsStopped([run.conversationId!], {
+        await markConversationsStopped([run.conversationId], {
           cancelWatches: false,
         });
         // The agent loop checks for a stop at each step boundary.

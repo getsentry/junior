@@ -298,7 +298,7 @@ export function createTracedStreamFn(
   baseOrOptions:
     | AgentRequestStreamFn
     | {
-        conversationPrivacy?: ConversationPrivacy;
+        conversationPrivacy?: ConversationPrivacy | undefined;
         base?: AgentRequestStreamFn;
         endAttributes?: (
           message: AssistantMessage,

@@ -40,12 +40,14 @@ import {
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
-  now?: () => number;
+  now?: (() => number) | undefined;
   pausedTurns?: PausedTurns;
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  services?: JuniorRuntimeServiceOverrides;
+  sendPluginTask?:
+    | ScheduleSessionCompletedPluginTasksOptions["send"]
+    | undefined;
+  services?: JuniorRuntimeServiceOverrides | undefined;
   /** Keeps background work started by a turn alive. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
 }
 
 function clearSkippedTurnIfActive(
@@ -118,13 +120,9 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       preparedState.conversationContext,
     decideSubscribedReply: async (args) => {
       const decision = await services.subscribedReplyPolicy(args);
-      if (
-        decision.costUsd !== undefined &&
-        args.context.threadId &&
-        args.context.runId
-      ) {
+      if (decision.costUsd !== undefined && args.context.runId) {
         await recordSubscribedReplyRoute({
-          conversationId: args.context.threadId,
+          conversationId: args.context.conversationId,
           costUsd: decision.costUsd,
           reason: decision.reason,
           runId: args.context.runId,

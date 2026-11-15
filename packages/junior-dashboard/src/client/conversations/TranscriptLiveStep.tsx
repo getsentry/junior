@@ -15,7 +15,7 @@ import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
  */
 export function liveActivityStep(entries: readonly RenderedTranscriptEntry[]): {
   reasoning?: { key: string; text: string };
-  tool?: TranscriptViewToolCallPart;
+  tool?: TranscriptViewToolCallPart | undefined;
 } {
   let tool: TranscriptViewToolCallPart | undefined;
   for (let index = entries.length - 1; index >= 0; index -= 1) {

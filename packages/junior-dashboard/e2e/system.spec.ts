@@ -38,7 +38,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
       date: new Date(NOW_MS - (23 - index) * 3_600_000)
         .toISOString()
         .slice(0, 13),
-      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : undefined),
     }));
     await route.fulfill({
       json: { ...report, metricDays, metricHours, metricSixHours: undefined },

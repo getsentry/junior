@@ -70,7 +70,7 @@ export interface NotionPage {
   cover?: NotionCover;
   editedAt?: string;
   id: string;
-  summary?: string;
+  summary?: string | undefined;
   title: string;
   type: keyof typeof DISPLAY_TYPES;
 }
@@ -275,7 +275,7 @@ export const notionPageLinks: PluginObjectLinkDefinition = {
     { host: "*.notion.site" },
   ],
   canView: canViewNotionLink,
-  objectType: "document",
+  objectTypes: ["document"],
   resolve: resolveNotionLink,
   webPageFallback: true,
 };

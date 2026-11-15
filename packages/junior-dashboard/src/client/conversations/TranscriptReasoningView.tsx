@@ -20,7 +20,7 @@ export function TranscriptReasoningView(props: {
   /** Keeps the entry open while it unmounts outside the viewport. */
   openKey?: string;
   part: TranscriptViewReasoningPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const [open, setOpen] = useTranscriptRowOpen(props.openKey);

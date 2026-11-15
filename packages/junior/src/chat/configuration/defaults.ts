@@ -3,7 +3,7 @@ let installDefaults: Record<string, unknown> = {};
 function cloneDefaults(
   defaults: Record<string, unknown>,
 ): Record<string, unknown> {
-  return structuredClone(defaults) as Record<string, unknown>;
+  return structuredClone(defaults);
 }
 
 function isConfigDefaultsRecord(

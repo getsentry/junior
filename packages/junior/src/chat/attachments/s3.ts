@@ -28,7 +28,7 @@ export function readS3StorageConfig(env: NodeJS.ProcessEnv): S3StorageConfig {
     accessKeyId: readRequiredSetting(env, "JUNIOR_S3_ACCESS_KEY_ID"),
     bucket: readRequiredSetting(env, "JUNIOR_S3_BUCKET"),
     endpoint: readRequiredSetting(env, "JUNIOR_S3_ENDPOINT"),
-    region: toOptionalTrimmed(env.JUNIOR_S3_REGION) ?? "us-east-1",
+    region: toOptionalTrimmed(env["JUNIOR_S3_REGION"]) ?? "us-east-1",
     secretAccessKey: readRequiredSetting(env, "JUNIOR_S3_SECRET_ACCESS_KEY"),
   };
 }

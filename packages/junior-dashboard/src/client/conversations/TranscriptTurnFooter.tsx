@@ -14,7 +14,7 @@ import type { TranscriptTurnFooter } from "./transcriptListRows";
 export function TranscriptTurnFooterView(props: {
   footer: TranscriptTurnFooter;
   /** The history is redacted, so memories show only their titles. */
-  redacted?: boolean;
+  redacted?: boolean | undefined;
   tasks: ReactNode;
 }) {
   const memoryState = useConversationMemoryState();

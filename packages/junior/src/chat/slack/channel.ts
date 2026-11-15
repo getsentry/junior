@@ -24,12 +24,15 @@ export type SlackFileRef = NonNullable<SlackThreadReply["files"]>[number];
 export async function listChannelMessages(input: {
   channelId: SlackChannelId;
   limit: number;
-  cursor?: string;
-  oldest?: SlackMessageTs;
-  latest?: SlackMessageTs;
-  inclusive?: boolean;
-  maxPages?: number;
-}): Promise<{ messages: SlackChannelMessage[]; nextCursor?: string }> {
+  cursor?: string | undefined;
+  oldest?: SlackMessageTs | undefined;
+  latest?: SlackMessageTs | undefined;
+  inclusive?: boolean | undefined;
+  maxPages?: number | undefined;
+}): Promise<{
+  messages: SlackChannelMessage[];
+  nextCursor?: string | undefined;
+}> {
   const client = getSlackClient();
   const channelId = input.channelId;
   const targetLimit = Math.max(1, Math.min(input.limit, 1000));
@@ -75,7 +78,7 @@ export async function listThreadReplies(input: {
   channelId: SlackChannelId;
   threadTs: SlackMessageTs;
   limit?: number;
-  maxPages?: number;
+  maxPages?: number | undefined;
   targetMessageTs?: string[];
 }): Promise<SlackThreadReply[]> {
   const client = getSlackClient();
@@ -234,7 +237,7 @@ export async function isConversationMember(
 export async function getChannelMessage(input: {
   channelId: SlackChannelId;
   messageTs: SlackMessageTs;
-  threadTs?: SlackMessageTs;
+  threadTs?: SlackMessageTs | undefined;
 }): Promise<SlackThreadReply | undefined> {
   const client = getSlackClient();
   const response = await withSlackRetries(

@@ -215,7 +215,7 @@ async function search(
   tools: AgentTools,
   query: string,
   source: string | null,
-): Promise<{ names: string[]; note?: string }> {
+): Promise<{ names: string[]; note?: string | undefined }> {
   const searchTools = tools.find(({ name }) => name === "searchTools");
   if (!searchTools) {
     throw new Error("searchTools was not registered");

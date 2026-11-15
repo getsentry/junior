@@ -16,10 +16,10 @@ import { OutboundIcon } from "../components/OutboundLink";
 export function DetailsCard(props: {
   action?: ReactNode;
   children: ReactNode;
-  count?: number;
+  count?: number | undefined;
   flat?: boolean;
-  label?: string;
-  title?: string;
+  label?: string | undefined;
+  title?: string | undefined;
 }) {
   return (
     <section
@@ -122,7 +122,7 @@ export function DetailsRow(props: {
   meta?: ReactNode;
   onClick?(): void;
   title: ReactNode;
-  to?: string;
+  to?: string | undefined;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {

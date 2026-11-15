@@ -134,6 +134,7 @@ describe("people code API", () => {
         closed: 0,
         costUsd: 0,
         created: 2,
+        idle: 0,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
@@ -163,6 +164,15 @@ describe("people code API", () => {
         date: "2026-08-22",
         merged: 1,
       });
+
+      // A person with no User gets an empty report.
+      const unknown = await createJuniorApi().request(
+        "http://localhost/api/people/nobody@example.com/code",
+      );
+      expect(unknown.status).toBe(200);
+      expect(
+        codePersonReportSchema.parse(await unknown.json()).summary,
+      ).toEqual({ closed: 0, created: 0, idle: 0, merged: 0, open: 0 });
     } finally {
       vi.useRealTimers();
       await fixture.close();

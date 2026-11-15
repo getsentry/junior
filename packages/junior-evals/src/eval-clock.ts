@@ -8,7 +8,11 @@
  *
  * The clock replaces only `Date`. It moves forward in real time from the
  * start of each test, so waits and deadlines still work. Timers and
- * `performance.now()` stay real.
+ * `performance.now()` stay real, because time budgets use it. So Pi's
+ * `durationMs` on saved messages changes on each run, and so does the
+ * `payload_json_bytes` of a saved message that event search leaves out.
+ * The `pi-duration-ms` and `payload-json-bytes` values of the model rule
+ * in `roach.json` replace them in requests.
  *
  * The eval worker and the main process both install the clock. The worker
  * makes leases, tokens, and fixture credentials with its clock, and the main
@@ -54,6 +58,8 @@ function replaceDate(): EvalClock {
     construct: (target, args, newTarget) =>
       Reflect.construct(target, args.length === 0 ? [now()] : args, newTarget),
     get: (target, key, receiver) =>
+      // A Proxy trap forwards other keys with Reflect.
+      // oxlint-disable-next-line anti-slop/no-reflect-get
       key === "now" ? now : Reflect.get(target, key, receiver),
   });
   return {

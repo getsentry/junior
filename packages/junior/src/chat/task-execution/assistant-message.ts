@@ -38,8 +38,6 @@ export async function commitAssistantMessage(args: {
   conversation: ThreadConversationState;
   conversationId: string;
   deliveryResult?: DeliveryResult;
-  /** Stored as a Quiet message; the caller skipped Delivery. */
-  quiet?: true;
   sessionId: string;
   source?: "slack" | "web";
   text: string;
@@ -48,7 +46,6 @@ export async function commitAssistantMessage(args: {
   const conversationMessageId = recordDeliveredAssistantMessage({
     cards: args.cards,
     conversation: args.conversation,
-    ...(args.quiet ? { quiet: args.quiet } : undefined),
     sessionId: args.sessionId,
     source: args.source,
     text: args.text,

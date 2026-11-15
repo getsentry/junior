@@ -32,7 +32,7 @@ export type PluginRegistrationInput = {
   model?: PluginModelConfig;
   /** URLs that this plugin shows as object cards. */
   objectLinks?: PluginObjectLinkDefinition[];
-  packageName?: string;
+  packageName?: string | undefined;
   events?: PluginEvents;
   tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];
@@ -207,21 +207,25 @@ function validateObjectLinks(
   }
   for (const link of links) {
     if (
-      !objectTypeSchema.safeParse(link?.objectType).success ||
+      !Array.isArray(link?.objectTypes) ||
+      link.objectTypes.length === 0 ||
+      !link.objectTypes.every(
+        (type) => objectTypeSchema.safeParse(type).success,
+      ) ||
       typeof link.canView !== "function" ||
       typeof link.resolve !== "function" ||
       !Array.isArray(link.filters) ||
       link.filters.length === 0
     ) {
       throw new Error(
-        `Junior plugin "${name}" object links need an objectType, filters, a canView function, and a resolve function.`,
+        `Junior plugin "${name}" object links need objectTypes, filters, a canView function, and a resolve function.`,
       );
     }
     for (const filter of link.filters) {
       const parsed = objectLinkFilterSchema.safeParse(filter);
       if (!parsed.success) {
         throw new Error(
-          `Junior plugin "${name}" has an invalid ${link.objectType} link filter.`,
+          `Junior plugin "${name}" has an invalid ${link.objectTypes.join("/")} link filter.`,
           { cause: parsed.error },
         );
       }

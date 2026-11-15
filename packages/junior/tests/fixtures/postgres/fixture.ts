@@ -20,7 +20,7 @@ export interface JuniorPostgresDatabaseFixture extends JuniorPostgresFixture {
 
 /** Return whether the current Vitest run is configured for Postgres fixtures. */
 export function hasJuniorPostgresTestDatabase(): boolean {
-  return Boolean(process.env.DATABASE_URL);
+  return Boolean(process.env["DATABASE_URL"]);
 }
 
 function getHarnessConfig(): PostgresHarnessConfig {

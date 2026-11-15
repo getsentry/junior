@@ -7,7 +7,7 @@ import {
 
 interface InstalledJuniorContentPackage {
   dir: string;
-  nodeModulesDir?: string;
+  nodeModulesDir?: string | undefined;
   packageName: string;
   hasRootPluginManifest: boolean;
   hasMigrationsDir: boolean;
