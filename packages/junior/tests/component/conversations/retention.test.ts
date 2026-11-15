@@ -506,7 +506,7 @@ describe("retention purge job", () => {
     ).resolves.toEqual([]);
   });
 
-  it("selects a private tree when its only remaining content is a summary", async () => {
+  it("selects a private tree when its only remaining content is a summary or embedding", async () => {
     const destinationId = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {
       conversationId: "summary-root",
@@ -534,6 +534,30 @@ describe("retention purge job", () => {
       conversationId: "summary-child",
       summary: "Private retention summary",
     });
+    await seedConversation(fixture.sql, {
+      conversationId: "embedding-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS + 1,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ actor: null })
+      .where(eq(juniorConversations.conversationId, "embedding-root"));
+    await fixture.sql
+      .db()
+      .insert(juniorConversationEmbeddings)
+      .values({
+        conversationId: "embedding-root",
+        throughSeq: 0,
+        dimensions: 2,
+        embedding: [1, 0],
+        model: "test-embedding-model",
+        provider: "test-provider",
+      });
     const nowMs = BASE_MS + 30 * DAY_MS;
 
     await expect(
@@ -545,6 +569,7 @@ describe("retention purge job", () => {
       }),
     ).resolves.toEqual([
       expect.objectContaining({ conversationId: "summary-root" }),
+      expect.objectContaining({ conversationId: "embedding-root" }),
     ]);
   });
 

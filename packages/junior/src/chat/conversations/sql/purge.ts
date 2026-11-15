@@ -143,6 +143,10 @@ export async function selectExpiredRoots(
               and metadata.summary is not null
           )
           or exists (
+            select 1 from junior_conversation_embeddings embeddings
+            where embeddings.conversation_id = tree.conversation_id
+          )
+          or exists (
             select 1 from junior_review_items review_items
             where review_items.added_by_conversation_id = tree.conversation_id
               and review_items.visibility = 'private'
