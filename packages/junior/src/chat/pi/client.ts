@@ -105,6 +105,11 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     },
     compat: {
       forceAdaptiveThinking: true,
+      // The gateway keeps a later system message in place, so the cached
+      // prefix before it still hits (live probe, 2026-11-15). Tool changes
+      // stay off: Pi then sends the `inline-tools` beta on every request, and
+      // it is not known if the gateway's Bedrock fallback accepts it.
+      supportsMidConvoSystemMessages: true,
       supportsTemperature: false,
     },
   },
@@ -154,6 +159,12 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     thinkingLevelMap: {
       xhigh: "xhigh",
       max: "max",
+    },
+    compat: {
+      // The gateway keeps a later system message in place, so the cached
+      // prefix before it still hits (live probe, 2026-11-15). Tool changes
+      // stay off: the gateway accepts them, but the cache misses.
+      supportsMidConvoSystemMessages: true,
     },
   },
   "openai/gpt-6-astra": {
