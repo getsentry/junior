@@ -22,13 +22,16 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const TSC = path.join(REPO_ROOT, "node_modules/.bin/tsc");
-// A project fails only when a count grows by more than both limits. The
-// counts change by 0% from run to run, and by 0.04% when a new file moves
-// other files to other checkers. In 35 recent pull requests, only small
-// projects grew by more than 3%, by at most 90,000 instantiations. The
-// largest projects grew by at most 2%, in getsentry/junior#3477.
-const TOLERANCE = 0.03;
-const MIN_GROWTH = 100_000;
+// The counts change by 0% from run to run, and by 0.04% when a new file
+// moves other files to other checkers. A project fails when a count grows
+// by more than 3% and by more than 25,000. In 35 recent pull requests, two
+// failed: Sentry card features added about 90,000 instantiations (+17-19%)
+// to junior-sentry. The sum over all projects fails when it grows by more
+// than 2%, so a type that many projects use cannot pass in small parts. The
+// largest sum growth was 1.46%, in getsentry/junior#3477.
+const PROJECT_TOLERANCE = 0.03;
+const PROJECT_MIN_GROWTH = 25_000;
+const TOTAL_TOLERANCE = 0.02;
 const METRICS = { types: "Types", instantiations: "Instantiations" };
 const TSC_ARGS = [
   "--noEmit",
@@ -41,10 +44,10 @@ const TSC_ARGS = [
   "--checkers",
   "4",
 ];
-const ACCEPT_TRAILER = "Type-Cost-Accepted";
+const ACCEPT_LABEL = "Type-Cost-Accepted";
 const HOW_TO_FIX = [
   "Find the cause: run `node_modules/.bin/tsc --noEmit -p <project> --singleThreaded --generateTrace /tmp/trace` on this branch and on main, then compare the slowest checkSourceFile and checkExpression events in /tmp/trace/trace.json (open it in https://ui.perfetto.dev).",
-  `If the cost is worth it, add a \`${ACCEPT_TRAILER}: <reason>\` trailer to the last commit of the pull request, and ask a reviewer to confirm the trade.`,
+  `If the cost is worth it, explain why in the pull request, add the \`${ACCEPT_LABEL}\` label, and ask a reviewer to confirm the trade.`,
 ];
 
 /** Read the counted metrics from `tsc --diagnostics` output. */
@@ -63,21 +66,34 @@ function percent(value) {
 }
 
 /**
- * Report each project metric that grew past both limits since the base
- * counts. A project without base counts is new and is not compared.
+ * Report each project metric, and each metric summed over the projects, that
+ * grew past its budget since the base counts. A project without base counts
+ * is new and is not compared.
  */
 export function checkTypeCost(actual, base) {
   const errors = [];
+  const totals = {};
   for (const [project, metrics] of Object.entries(actual)) {
     for (const [metric, value] of Object.entries(metrics)) {
       const before = base[project]?.[metric];
       if (!before) continue;
+      totals[metric] ??= { value: 0, before: 0 };
+      totals[metric].value += value;
+      totals[metric].before += before;
       const delta = (value - before) / before;
-      if (delta > TOLERANCE && value - before > MIN_GROWTH) {
+      if (delta > PROJECT_TOLERANCE && value - before > PROJECT_MIN_GROWTH) {
         errors.push(
-          `${project}: ${metric}: ${value} found, base ${before} (${percent(delta)}, +${value - before}; budget ${percent(TOLERANCE)} or +${MIN_GROWTH}, whichever is larger).`,
+          `${project}: ${metric}: ${value} found, base ${before} (${percent(delta)}, +${value - before}; budget ${percent(PROJECT_TOLERANCE)} or +${PROJECT_MIN_GROWTH}, whichever is larger).`,
         );
       }
+    }
+  }
+  for (const [metric, { value, before }] of Object.entries(totals)) {
+    const delta = (value - before) / before;
+    if (delta > TOTAL_TOLERANCE) {
+      errors.push(
+        `all projects: ${metric}: ${value} found, base ${before} (${percent(delta)}, +${value - before}; budget ${percent(TOTAL_TOLERANCE)}).`,
+      );
     }
   }
   return errors;
@@ -107,19 +123,6 @@ async function typecheckAll(projects) {
 
 function git(...args) {
   return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
-}
-
-// CI checks out a merge commit, whose second parent is the pull request
-// head. Locally, HEAD is the last commit.
-function acceptedReason() {
-  const parents = git("log", "-1", "--format=%P", "HEAD").split(" ");
-  const commit = parents.length > 1 ? "HEAD^2" : "HEAD";
-  return git(
-    "log",
-    "-1",
-    `--format=%(trailers:key=${ACCEPT_TRAILER},valueonly,separator=%x2C )`,
-    commit,
-  );
 }
 
 async function main() {
@@ -181,28 +184,33 @@ async function main() {
     return;
   }
   const expected = process.env.TYPE_COST_BASE_SHA;
-  console.log(`Compared with the counts of main at ${base.commit}.`);
-  if (expected && expected !== base.commit) {
-    console.log(
-      `The base commit is ${expected}, so the deltas also include the main commits between them.`,
-    );
-  }
+  const fallback =
+    expected && expected !== base.commit
+      ? `These counts come from the newest main entry (${base.commit}), not from the base commit (${expected}), so the deltas also include the main commits between them. Re-run this job after the base commit's \`check / types\` job on main finishes.`
+      : undefined;
+  console.log(
+    fallback ?? `Compared with the counts of main at ${base.commit}.`,
+  );
   const errors = checkTypeCost(sorted, base.projects);
   if (errors.length === 0) {
     console.log("No project grew past the type-check cost budget.");
     return;
   }
-  const reason = acceptedReason();
-  if (reason) {
-    console.log(
-      [...errors, `Accepted by the ${ACCEPT_TRAILER} trailer: ${reason}`].join(
-        "\n",
-      ),
-    );
+  // CI sets this from the pull request labels. Adding or removing the label
+  // starts a new run.
+  if (process.env.TYPE_COST_ACCEPTED === "true") {
+    for (const error of errors) {
+      console.log(`::warning::Accepted by the ${ACCEPT_LABEL} label: ${error}`);
+    }
     return;
   }
   console.error(
-    ["Type-check cost check failed:", ...errors, ...HOW_TO_FIX].join("\n"),
+    [
+      "Type-check cost check failed:",
+      ...errors,
+      ...(fallback ? [fallback] : []),
+      ...HOW_TO_FIX,
+    ].join("\n"),
   );
   process.exitCode = 1;
 }
