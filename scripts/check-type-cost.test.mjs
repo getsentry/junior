@@ -3,7 +3,7 @@ import test from "node:test";
 import { checkTypeCost, parseMetrics } from "./check-type-cost.mjs";
 
 const PROJECT = "packages/junior";
-const BASE = { [PROJECT]: { types: 1000, instantiations: 2000 } };
+const BASE = { [PROJECT]: { types: 1_000_000, instantiations: 5_000_000 } };
 
 test("reads the counted metrics from tsc diagnostics", () => {
   const output = [
@@ -20,17 +20,23 @@ test("reads the counted metrics from tsc diagnostics", () => {
   assert.throws(() => parseMetrics("Files: 1"), /No "Types" line/);
 });
 
-test("allows growth within the tolerance, any drop, and a new project", () => {
+test("allows growth within either limit, any drop, and a new project", () => {
   const actual = {
-    [PROJECT]: { types: 1030, instantiations: 1500 },
+    // +3% exactly, and +90,000 in a small project.
+    [PROJECT]: { types: 1_030_000, instantiations: 4_000_000 },
+    "packages/small": { types: 100_000, instantiations: 590_000 },
     "packages/new": { types: 1, instantiations: 1 },
   };
-  assert.deepEqual(checkTypeCost(actual, BASE), []);
+  const base = {
+    ...BASE,
+    "packages/small": { types: 100_000, instantiations: 500_000 },
+  };
+  assert.deepEqual(checkTypeCost(actual, base), []);
 });
 
 test("names the project, metric, base, value, and delta over budget", () => {
-  const actual = { [PROJECT]: { types: 1000, instantiations: 2080 } };
+  const actual = { [PROJECT]: { types: 1_000_000, instantiations: 5_200_000 } };
   assert.deepEqual(checkTypeCost(actual, BASE), [
-    "packages/junior: instantiations: 2080 found, base 2000 (+4.00%, budget +3.00%).",
+    "packages/junior: instantiations: 5200000 found, base 5000000 (+4.00%, +200000; budget +3.00% or +100000, whichever is larger).",
   ]);
 });

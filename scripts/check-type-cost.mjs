@@ -12,8 +12,8 @@ import { typecheckProjects } from "./lib/typecheck-projects.mjs";
  * from run to run, so they are not compared.
  *
  * When TYPE_COST_FILE holds the counts of the base commit, a project whose
- * counts grow by more than the tolerance fails. The check then writes this
- * run's counts to TYPE_COST_FILE. CI keeps that file for each `main` commit,
+ * counts grow past the budget fails. The check then writes this run's
+ * counts to TYPE_COST_FILE. CI keeps that file for each `main` commit,
  * so a pull request compares only its own change.
  */
 
@@ -22,10 +22,13 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const TSC = path.join(REPO_ROOT, "node_modules/.bin/tsc");
-// The counts change by 0% from run to run. Adding a file moves other files
-// to other checkers, which changed them by 0.04% in a test. Most pull
-// requests change them by much less than this budget.
+// A project fails only when a count grows by more than both limits. The
+// counts change by 0% from run to run, and by 0.04% when a new file moves
+// other files to other checkers. In 35 recent pull requests, only small
+// projects grew by more than 3%, by at most 90,000 instantiations. The
+// largest projects grew by at most 2%, in getsentry/junior#3477.
 const TOLERANCE = 0.03;
+const MIN_GROWTH = 100_000;
 const METRICS = { types: "Types", instantiations: "Instantiations" };
 const TSC_ARGS = [
   "--noEmit",
@@ -60,8 +63,8 @@ function percent(value) {
 }
 
 /**
- * Report each project metric that grew by more than the tolerance since the
- * base counts. A project without base counts is new and is not compared.
+ * Report each project metric that grew past both limits since the base
+ * counts. A project without base counts is new and is not compared.
  */
 export function checkTypeCost(actual, base) {
   const errors = [];
@@ -70,9 +73,9 @@ export function checkTypeCost(actual, base) {
       const before = base[project]?.[metric];
       if (!before) continue;
       const delta = (value - before) / before;
-      if (delta > TOLERANCE) {
+      if (delta > TOLERANCE && value - before > MIN_GROWTH) {
         errors.push(
-          `${project}: ${metric}: ${value} found, base ${before} (${percent(delta)}, budget ${percent(TOLERANCE)}).`,
+          `${project}: ${metric}: ${value} found, base ${before} (${percent(delta)}, +${value - before}; budget ${percent(TOLERANCE)} or +${MIN_GROWTH}, whichever is larger).`,
         );
       }
     }
