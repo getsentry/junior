@@ -98,8 +98,9 @@ export function getChannelId(
 
 /**
  * Read the Slack thread timestamp from the raw Slack event of a message:
- * `thread_ts`, or `ts` for a thread root. Do not read `Thread.id` or
- * `Message.threadId`: a dispatched Turn sets them to its Conversation id.
+ * `thread_ts`, or `ts` for a thread root. Do not parse `Thread.id` or
+ * `Message.threadId`: a top-level dispatched post has a channel-level id with
+ * no timestamp, and the raw event is the Slack source of truth.
  */
 export function getThreadTs(message: Message): SlackMessageTs | undefined {
   const rawContext = readSlackRawMessageContext(message);
