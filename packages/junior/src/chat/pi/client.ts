@@ -431,11 +431,10 @@ function logContextFromMetadata(
   metadata: Record<string, unknown> | undefined,
 ): LogContext {
   const conversationId =
-    typeof metadata?.["conversationId"] === "string"
+    typeof metadata?.["conversationId"] === "string" &&
+    metadata["conversationId"]
       ? metadata["conversationId"]
-      : typeof metadata?.["threadId"] === "string"
-        ? metadata["threadId"]
-        : undefined;
+      : undefined;
   const messageConversationId =
     typeof metadata?.["threadId"] === "string"
       ? metadata["threadId"]
