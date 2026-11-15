@@ -18,7 +18,7 @@ export function useInboxTabIconCount() {
 }
 
 /**
- * Badge the top-right corner of the browser tab icon with the Inbox count,
+ * Badge the top-left corner of the browser tab icon with the Inbox count,
  * in the theme's accent. Above 9 it shows `9+`. At zero, or with the choice off,
  * the original icon comes back.
  */
@@ -89,24 +89,17 @@ async function drawBadgedIcon(src: string, label: string): Promise<string> {
   const tokens = getComputedStyle(document.documentElement);
   const fill = tokens.getPropertyValue("--color-dashboard-accent").trim();
   const ink = tokens.getPropertyValue("--color-dashboard-ink").trim();
-  // The badge sits in the top-right corner, above Junior's face.
-  const height = ICON_SIZE * 0.44;
-  const width = label.length > 1 ? ICON_SIZE * 0.62 : height;
-  const ring = ICON_SIZE * 0.06;
-  const x = ICON_SIZE - width - ring / 2;
-  const y = ring / 2;
+  // The badge sits in the empty top-left corner, clear of Junior's eye.
+  const height = ICON_SIZE * 0.38;
+  const width = label.length > 1 ? ICON_SIZE * 0.54 : height;
   context.beginPath();
-  context.roundRect(x, y, width, height, height / 2);
+  context.roundRect(0, 0, width, height, height / 2);
   context.fillStyle = fill;
   context.fill();
-  // An ink ring keeps the badge apart from the icon below it.
-  context.lineWidth = ring;
-  context.strokeStyle = ink;
-  context.stroke();
   context.fillStyle = ink;
   context.font = `700 ${Math.round(height * 0.7)}px ${getComputedStyle(document.body).fontFamily}`;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(label, x + width / 2, y + height / 2 + ICON_SIZE * 0.02);
+  context.fillText(label, width / 2, height / 2 + ICON_SIZE * 0.02);
   return canvas.toDataURL("image/png");
 }
