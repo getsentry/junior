@@ -366,16 +366,17 @@ export async function insertWatch(args: {
 }
 
 /**
- * Add the Watch that the GitHub plugin adds after Junior opens a draft pull
- * request, with the default intent and the draft guidance.
+ * Add the Watch that the GitHub plugin adds after Junior opens a pull
+ * request, with the default intent. A draft also gets the draft guidance.
  */
-export async function insertGitHubDraftWatch(args: {
+export async function insertGitHubPullRequestWatch(args: {
   conversation: { conversationId: string };
+  draft: boolean;
   pullRequest: string;
 }): Promise<{ id: string }> {
   const watch = gitHubPullRequestCreateWatch(
     gitHubPullRequestSubscription(undefined)!,
-    { draft: true },
+    { draft: args.draft },
   );
   return await insertWatch({
     conversation: args.conversation,
