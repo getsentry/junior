@@ -51,7 +51,6 @@ export function ConversationDetailsPanel(props: {
             />
           )
         }
-        brief={detail?.brief}
         conversationId={props.conversationId}
         highlightReview={props.highlightReview}
         identity={
@@ -62,6 +61,8 @@ export function ConversationDetailsPanel(props: {
         onClose={props.onClose}
         onOpenSubagent={props.onOpenSubagent}
         onSelectMemory={props.onSelectMemory}
+        summary={detail?.summary}
+        summaryMentions={detail?.summaryMentions}
         links={props.links}
         overview={
           hasConversationStats({

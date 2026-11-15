@@ -1,6 +1,6 @@
 /**
  * One embedding per Conversation: a derived index for semantic Conversation
- * search. Its text is the latest Brief, which summarizes the Conversation.
+ * search. Its text is the Conversation metadata: the title and summary.
  * Vectors are stored per model. A search compares only vectors of the same
  * provider, model, and size as its query.
  */
@@ -9,11 +9,9 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEmbeddings } from "@/db/schema";
 import { botConfig } from "@/chat/config";
 import { embedTexts, type ConversationModelCost } from "@/chat/core-model";
-import type { ConversationBriefVersion } from "@/chat/briefs/store";
+import type { ConversationMetadata } from "@/chat/conversations/metadata/store";
 
 // About 2,000 tokens, well inside the input limit of each supported model.
-// Brief search text starts with the title, summary, intent, and outcome, so
-// the cut drops only trailing facts and link labels.
 const MAX_EMBEDDED_CHARS = 8_000;
 
 /** One embedding vector and the model that made it. */
@@ -51,45 +49,47 @@ export function createConversationEmbedder(args: {
 }
 
 /**
- * Store the Conversation embedding of a stored Brief. Skip it when the
- * Conversation already has a vector for this or a newer Brief version, so a
+ * Store the Conversation embedding of stored Conversation metadata. Skip it
+ * when the Conversation already has a vector for this or newer metadata, so a
  * task retry embeds once and an older Turn never replaces a newer vector.
  */
 export async function storeConversationEmbedding(
   db: JuniorDatabase,
   embed: ConversationEmbedder,
-  brief: ConversationBriefVersion,
+  args: { conversationId: string; metadata: ConversationMetadata },
 ): Promise<void> {
-  if (!brief.searchText) {
+  const { summary, throughSeq, title } = args.metadata;
+  if (throughSeq === undefined || !summary) {
     return;
   }
   const table = juniorConversationEmbeddings;
   const [current] = await db
-    .select({ briefVersion: table.briefVersion })
+    .select({ throughSeq: table.throughSeq })
     .from(table)
-    .where(eq(table.conversationId, brief.conversationId))
+    .where(eq(table.conversationId, args.conversationId))
     .limit(1);
-  if (current && current.briefVersion >= brief.version) {
+  if (current?.throughSeq != null && current.throughSeq >= throughSeq) {
     return;
   }
   const embedding = await embed({
     inputType: "document",
-    text: brief.searchText,
+    text: title ? `${title}\n${summary}` : summary,
   });
   const row = {
-    briefVersion: brief.version,
     dimensions: embedding.vector.length,
     embedding: embedding.vector,
+    legacyBriefVersion: null,
     model: embedding.model,
     provider: embedding.provider,
+    throughSeq,
   };
   await db
     .insert(table)
-    .values({ conversationId: brief.conversationId, ...row })
+    .values({ conversationId: args.conversationId, ...row })
     .onConflictDoUpdate({
       target: table.conversationId,
       set: { ...row, createdAt: sql`now()` },
-      setWhere: sql`${table.briefVersion} < excluded.brief_version`,
+      setWhere: sql`${table.throughSeq} is null or ${table.throughSeq} < excluded.through_seq`,
     });
 }
 

@@ -8,21 +8,21 @@ import {
   it,
   vi,
 } from "vitest";
-import {
-  createLocalSource,
-  type CodeChangeInput,
-} from "@sentry/junior-plugin-api";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setBriefsConfig } from "@/chat/briefs/registration";
 import { botConfig } from "@/chat/config";
+import { writeConversationMetadata } from "@/chat/conversations/metadata/store";
+import {
+  CONVERSATION_METADATA_TASK,
+  setConversationMetadataEnabled,
+} from "@/chat/conversations/metadata/task";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationEmbeddings,
-  juniorConversationBriefs,
   juniorConversationEvents,
   juniorConversations,
 } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -37,7 +37,8 @@ const TEST = vi.hoisted(() => ({
 }));
 
 vi.hoisted(() => {
-  process.env["DATABASE_URL"] = "postgres://configured.example.test/briefs";
+  process.env["DATABASE_URL"] =
+    "postgres://configured.example.test/conversation-metadata";
 });
 
 vi.mock("@/db/executor", () => ({
@@ -63,22 +64,8 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
     return {
       costUsd: 0.0042,
       object: {
-        summary: `Brief summary ${TEST.calls.length}.`,
-        intent: "Record the completed implementation.",
-        outcome: { status: "done", text: "The implementation is complete." },
-        decisions: [
-          {
-            text: "Use durable Brief versions.",
-            by: "Local CLI",
-            kind: "stated",
-          },
-        ],
-        facts: ["The task stores one version per Turn."],
-        keywords: ["briefs", "storage"],
-        urls: [
-          { label: "Runbook", url: "https://docs.example.com/runbook" },
-          { label: "Invented", url: "https://invented.example.com" },
-        ],
+        summary: `Metadata summary ${TEST.calls.length}.`,
+        outcomeStatus: "done",
       },
     };
   }),
@@ -207,11 +194,11 @@ async function recordCompletedTurn(args: {
   return { piMessages: allPiMessages, throughSeq: appended.at(-1)!.seq };
 }
 
-describe("Conversation Brief task", () => {
+describe("Conversation metadata task", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
-    setBriefsConfig({ enabled: true });
+    setConversationMetadataEnabled(true);
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
@@ -222,7 +209,7 @@ describe("Conversation Brief task", () => {
   });
 
   afterEach(async () => {
-    setBriefsConfig(undefined);
+    setConversationMetadataEnabled(false);
     const { closeDb } = await import("@/chat/db");
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -239,262 +226,138 @@ describe("Conversation Brief task", () => {
     }
   });
 
-  it("stores idempotent versions with evidence, cost, and previous context, but skips children", async () => {
+  it("updates once per Turn with cost and an embedding, but skips Tasks and purged private transcripts", async () => {
     const idSuffix = randomUUID();
-    const conversationId = `local:briefs:${idSuffix}`;
+    const conversationId = `local:metadata:${idSuffix}`;
     const { getConversationStore, getDb } = await import("@/chat/db");
     await getConversationStore().recordActivity({
       conversationId,
       destination: { platform: "local", conversationId },
       nowMs: 1,
       source: "local",
-      title: "Brief storage task",
+      title: "Metadata task",
       visibility: "private",
     });
-    const { createPluginAnnotations } =
-      await import("@/chat/plugins/annotations");
-    await createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "test",
-    }).upsert({
-      kind: "resource_link",
-      key: "issue",
-      label: "Tracked issue",
-      url: "https://issues.example.com/123",
-      status: "open",
+    const task = (turnId: string, id = conversationId) => ({
+      ...CONVERSATION_METADATA_TASK,
+      params: { conversationId: id, sessionId: turnId },
     });
-    const { recordCodeChange } = await import("@/chat/code/store");
-    const now = new Date("2026-09-09T12:00:00.000Z");
-    await recordCodeChange(getDb(), "github", {
-      conversationIds: [conversationId],
-      number: 1805,
-      openedAt: now,
-      providerId: "briefs-pr",
-      repository: {
-        name: "getsentry/junior",
-        providerId: "junior-repo",
-        url: "https://github.com/getsentry/junior",
-      },
-      state: "open",
-      title: "Add Conversation Brief storage",
-      updatedAt: now,
-      url: "https://github.com/getsentry/junior/pull/1805",
-    } satisfies CodeChangeInput);
+    const readMetadata = async (id = conversationId) => {
+      const [row] = await getDb()
+        .select({
+          metadataThroughSeq: juniorConversations.metadataThroughSeq,
+          outcomeStatus: juniorConversations.outcomeStatus,
+          summary: juniorConversations.summary,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, id));
+      return row;
+    };
+    const readEmbeddings = () =>
+      getDb()
+        .select({
+          conversationId: juniorConversationEmbeddings.conversationId,
+          model: juniorConversationEmbeddings.model,
+          throughSeq: juniorConversationEmbeddings.throughSeq,
+        })
+        .from(juniorConversationEmbeddings);
 
     const firstTurn = await recordCompletedTurn({
       conversationId,
-      instruction: "Store a durable Brief for this work.",
+      instruction: "Summarize this work.",
       turnId: "turn-1",
     });
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const firstTask = {
-      plugin: "briefs",
-      name: "updateBrief",
-      params: { conversationId, sessionId: "turn-1" },
-    };
     const send = vi.fn();
-    await scheduleSessionCompletedPluginTasks(firstTask.params, { send });
-    expect(send).toHaveBeenCalledWith(firstTask);
-    await processPluginTask(firstTask);
+    await scheduleSessionCompletedPluginTasks(task("turn-1").params, { send });
+    expect(send).toHaveBeenCalledWith(task("turn-1"));
+    await processPluginTask(task("turn-1"));
 
-    let rows = await getDb()
-      .select()
-      .from(juniorConversationBriefs)
-      .orderBy(juniorConversationBriefs.version);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      conversationId,
-      version: 1,
-      turnId: "turn-1",
-      throughSeq: firstTurn.throughSeq,
-      modelId: TEST.calls[0]?.modelId,
-      costUsd: 0.0042,
+    await expect(readMetadata()).resolves.toEqual({
+      metadataThroughSeq: firstTurn.throughSeq,
+      outcomeStatus: "done",
+      summary: "Metadata summary 1.",
     });
     expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
-    expect(rows[0]?.searchText).not.toBe("");
-    // The search text of the Brief is embedded as a document.
+    // The embedded document is the title and the summary.
     expect(TEST.embedCalls).toEqual([
-      { inputType: "document", texts: [rows[0]!.searchText] },
+      { inputType: "document", texts: ["Metadata task\nMetadata summary 1."] },
     ]);
-    const readEmbeddings = () =>
-      getDb()
-        .select({
-          briefVersion: juniorConversationEmbeddings.briefVersion,
-          conversationId: juniorConversationEmbeddings.conversationId,
-          dimensions: juniorConversationEmbeddings.dimensions,
-          model: juniorConversationEmbeddings.model,
-          provider: juniorConversationEmbeddings.provider,
-        })
-        .from(juniorConversationEmbeddings);
     await expect(readEmbeddings()).resolves.toEqual([
       {
-        briefVersion: 1,
         conversationId,
-        dimensions: 2,
         model: botConfig.embeddingModelId,
-        provider: "test-provider",
+        throughSeq: firstTurn.throughSeq,
       },
     ]);
-    expect(rows[0]?.content.links).toEqual([
-      expect.objectContaining({
-        kind: "code_change",
-        url: "https://github.com/getsentry/junior/pull/1805",
-      }),
-      expect.objectContaining({
-        kind: "resource",
-        url: "https://issues.example.com/123",
-      }),
-      {
-        kind: "url",
-        label: "Runbook",
-        url: "https://docs.example.com/runbook",
-      },
-    ]);
-
-    const structuredEvents = await getDb()
-      .select()
+    // The model cost goes to the Conversation as a `junior` cost event.
+    const costEvents = await getDb()
+      .select({ payload: juniorConversationEvents.payload })
       .from(juniorConversationEvents)
       .where(eq(juniorConversationEvents.type, "structured_event"));
-    expect(structuredEvents).toHaveLength(1);
-    expect(structuredEvents[0]?.payload).toMatchObject({
-      namespace: "briefs",
-      name: "brief_updated",
-      content: {
-        version: 1,
-        modelId: TEST.calls[0]?.modelId,
-        costUsd: 0.0042,
-        decisions: 1,
-        links: 3,
-      },
-    });
-    const { readConversationAuxiliaryCostsFromSql } =
-      await import("@/api/conversations/auxiliary-costs");
-    await expect(
-      readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
-    ).resolves.toEqual(
-      new Map([
-        [
-          conversationId,
-          {
-            total: {
-              costUsd: 0.0042,
-              operations: [
-                {
-                  namespace: "briefs",
-                  name: "brief_updated",
-                  events: 1,
-                  costUsd: 0.0042,
-                },
-              ],
-            },
-          },
-        ],
-      ]),
-    );
+    expect(costEvents.map((row) => row.payload)).toEqual([
+      expect.objectContaining({
+        namespace: "junior",
+        name: "conversation_metadata",
+        turnId: "turn-1",
+        content: { costUsd: 0.0042 },
+      }),
+    ]);
 
-    await getDb()
-      .delete(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.type, "structured_event"),
-        ),
-      );
-    await processPluginTask(firstTask);
+    // A retry of a finished Turn calls no model.
+    await processPluginTask(task("turn-1"));
     expect(TEST.calls).toHaveLength(1);
     expect(TEST.embedCalls).toHaveLength(1);
-    expect(await getDb().select().from(juniorConversationBriefs)).toHaveLength(
-      1,
-    );
-    expect(
-      await getDb()
-        .select()
-        .from(juniorConversationEvents)
-        .where(
-          and(
-            eq(juniorConversationEvents.conversationId, conversationId),
-            eq(juniorConversationEvents.type, "structured_event"),
-          ),
-        ),
-    ).toHaveLength(1);
 
     const secondTurn = await recordCompletedTurn({
       conversationId,
-      instruction: "Update the Brief after a second Turn.",
+      instruction: "Continue the work.",
       previousPiMessages: firstTurn.piMessages,
       turnId: "turn-2",
     });
-    // An embedding failure fails the task but keeps the Brief. The retry
-    // embeds the stored Brief without generating it again.
-    const secondTask = {
-      plugin: "briefs",
-      name: "updateBrief",
-      params: { conversationId, sessionId: "turn-2" },
-    };
+    // An embedding failure fails the task but keeps the metadata. The retry
+    // embeds the stored metadata without generating it again.
     TEST.failNextEmbed = true;
-    await expect(processPluginTask(secondTask)).rejects.toThrow(
+    await expect(processPluginTask(task("turn-2"))).rejects.toThrow(
       "embedding provider unavailable",
     );
-    expect(
-      (await getDb().select().from(juniorConversationBriefs)).map(
-        (row) => row.version,
-      ),
-    ).toEqual([1, 2]);
+    await expect(readMetadata()).resolves.toMatchObject({
+      metadataThroughSeq: secondTurn.throughSeq,
+      summary: "Metadata summary 2.",
+    });
     await expect(readEmbeddings()).resolves.toMatchObject([
-      { briefVersion: 1 },
+      { throughSeq: firstTurn.throughSeq },
     ]);
-    await processPluginTask(secondTask);
+    await processPluginTask(task("turn-2"));
     expect(TEST.calls).toHaveLength(2);
     await expect(readEmbeddings()).resolves.toMatchObject([
-      { briefVersion: 2 },
+      { throughSeq: secondTurn.throughSeq },
     ]);
-    rows = await getDb()
-      .select()
-      .from(juniorConversationBriefs)
-      .orderBy(juniorConversationBriefs.version);
-    expect(rows.map((row) => row.version)).toEqual([1, 2]);
-    expect(TEST.calls[1]?.prompt).toContain('"summary":"Brief summary 1."');
+    expect(TEST.calls[1]?.prompt).toContain('"summary":"Metadata summary 1."');
 
+    // An older Turn that runs late never replaces newer metadata.
     const thirdTurn = await recordCompletedTurn({
       conversationId,
-      instruction: "Update the Brief after a third Turn.",
+      instruction: "Take a third step.",
       previousPiMessages: secondTurn.piMessages,
       turnId: "turn-3",
     });
-    await recordCompletedTurn({
+    const fourthTurn = await recordCompletedTurn({
       conversationId,
-      instruction: "Update the Brief after a fourth Turn.",
+      instruction: "Take a fourth step.",
       previousPiMessages: thirdTurn.piMessages,
       turnId: "turn-4",
     });
-    await processPluginTask({
-      plugin: "briefs",
-      name: "updateBrief",
-      params: { conversationId, sessionId: "turn-4" },
-    });
-    await processPluginTask({
-      plugin: "briefs",
-      name: "updateBrief",
-      params: { conversationId, sessionId: "turn-3" },
-    });
-    rows = await getDb()
-      .select()
-      .from(juniorConversationBriefs)
-      .orderBy(juniorConversationBriefs.version);
+    await processPluginTask(task("turn-4"));
+    await processPluginTask(task("turn-3"));
     expect(TEST.calls).toHaveLength(3);
-    // Only the latest Brief has a vector.
-    await expect(readEmbeddings()).resolves.toMatchObject([
-      { briefVersion: 3 },
-    ]);
-    expect(rows.map((row) => row.turnId)).toEqual([
-      "turn-1",
-      "turn-2",
-      "turn-4",
-    ]);
+    await expect(readMetadata()).resolves.toMatchObject({
+      metadataThroughSeq: fourthTurn.throughSeq,
+      summary: "Metadata summary 3.",
+    });
 
-    const purgedConversationId = `local:briefs-purged:${idSuffix}`;
+    const purgedConversationId = `local:metadata-purged:${idSuffix}`;
     await getConversationStore().recordActivity({
       conversationId: purgedConversationId,
       destination: {
@@ -503,41 +366,30 @@ describe("Conversation Brief task", () => {
       },
       nowMs: 20,
       source: "local",
-      title: "Purged private Brief",
+      title: "Purged private metadata",
       visibility: "private",
     });
     await recordCompletedTurn({
       conversationId: purgedConversationId,
-      instruction: "Do not generate after private transcript purge.",
+      instruction: "Do not summarize after private transcript purge.",
       turnId: "purged-turn",
     });
     await getDb()
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(30) })
       .where(eq(juniorConversations.conversationId, purgedConversationId));
-    await processPluginTask({
-      plugin: "briefs",
-      name: "updateBrief",
-      params: {
-        conversationId: purgedConversationId,
-        sessionId: "purged-turn",
-      },
-    });
+    await processPluginTask(task("purged-turn", purgedConversationId));
     expect(TEST.calls).toHaveLength(3);
-
-    const { appendConversationBrief } = await import("@/chat/briefs/store");
     await expect(
-      appendConversationBrief(getDb(), {
+      writeConversationMetadata(getDb(), {
         conversationId: purgedConversationId,
-        turnId: "late-turn",
+        outcomeStatus: "done",
+        summary: "Late summary.",
         throughSeq: 1,
-        content: rows[0]!.content,
-        searchText: rows[0]!.searchText,
-        modelId: "test-model",
       }),
     ).rejects.toThrow("purged non-public Conversation");
 
-    const childConversationId = `local:briefs-child:${idSuffix}`;
+    const childConversationId = `local:metadata-child:${idSuffix}`;
     await getConversationStore().createChild({
       kind: "task",
       childConversationId,
@@ -547,25 +399,21 @@ describe("Conversation Brief task", () => {
     });
     await recordCompletedTurn({
       conversationId: childConversationId,
-      instruction: "Do not create a Brief for this child.",
+      instruction: "Do not summarize this Task.",
       turnId: "child-turn",
     });
-    await processPluginTask({
-      plugin: "briefs",
-      name: "updateBrief",
-      params: {
-        conversationId: childConversationId,
-        sessionId: "child-turn",
-      },
-    });
+    await processPluginTask(task("child-turn", childConversationId));
     expect(TEST.calls).toHaveLength(3);
-    expect(
-      await getDb()
-        .select()
-        .from(juniorConversationBriefs)
-        .where(
-          eq(juniorConversationBriefs.conversationId, childConversationId),
-        ),
-    ).toEqual([]);
+    await expect(readMetadata(childConversationId)).resolves.toMatchObject({
+      summary: null,
+    });
+
+    // The disabled setting schedules and runs nothing.
+    setConversationMetadataEnabled(false);
+    const disabledSend = vi.fn();
+    await scheduleSessionCompletedPluginTasks(task("turn-4").params, {
+      send: disabledSend,
+    });
+    expect(disabledSend).not.toHaveBeenCalledWith(task("turn-4"));
   }, 30_000);
 });

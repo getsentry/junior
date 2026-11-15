@@ -1,7 +1,6 @@
 import {
   and,
   countDistinct,
-  desc,
   eq,
   gte,
   inArray,
@@ -13,11 +12,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorCodeChanges,
-  juniorConversationBriefs,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorCodeChanges, juniorConversations } from "@/db/schema";
 import { conversationUsageCostExpr } from "./aggregate";
 
 export interface OutcomeBucket {
@@ -43,7 +38,7 @@ const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.c
  * - a merged code change, at its merge time. Each root Conversation splits its
  *   tree cost evenly across all of its merged code changes, so a long
  *   Conversation that merges three changes makes each one cheaper.
- * - a root Conversation with no linked code change whose latest Brief is
+ * - a root Conversation with no linked code change whose outcome status is
  *   `done` or `answered`, at its last activity. Its whole tree cost counts.
  *
  * Roots with only open or closed code changes count nothing until a change
@@ -55,16 +50,16 @@ export async function readOutcomeBuckets(
   db: JuniorDatabase,
   options: { bucket: "day" | "hour"; start: Date; end: Date },
 ): Promise<OutcomeBucket[]> {
-  const [merges, briefRoots] = await Promise.all([
+  const [merges, outcomeRoots] = await Promise.all([
     readWindowMerges(db, options),
-    readBriefOutcomeRoots(db, options),
+    readOutcomeRoots(db, options),
   ]);
   const mergeRoots = [...new Set(merges.map((merge) => merge.rootId))];
   const [rootMerges, treeCosts] = await Promise.all([
     readRootMergeCounts(db, mergeRoots),
     readTreeCosts(db, [
       ...mergeRoots,
-      ...briefRoots.map((root) => root.rootId),
+      ...outcomeRoots.map((root) => root.rootId),
     ]),
   ]);
 
@@ -107,7 +102,7 @@ export async function readOutcomeBuckets(
     bucket.outcomes += 1;
     bucket.outcomeCostUsd += change.costUsd;
   }
-  for (const root of briefRoots) {
+  for (const root of outcomeRoots) {
     const bucket = bucketAt(root.lastActivityAt);
     bucket.outcomes += 1;
     bucket.outcomeCostUsd += treeCosts.get(root.rootId) ?? 0;
@@ -139,36 +134,23 @@ async function readWindowMerges(
   );
 }
 
-async function readBriefOutcomeRoots(
+async function readOutcomeRoots(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ) {
   const roots = juniorConversations;
-  const briefs = juniorConversationBriefs;
-  const latestBrief = db
-    .select({
-      status: sql<string | null>`${briefs.content}->'outcome'->>'status'`.as(
-        "status",
-      ),
-    })
-    .from(briefs)
-    .where(eq(briefs.conversationId, roots.conversationId))
-    .orderBy(desc(briefs.version))
-    .limit(1)
-    .as("latest_brief");
   return await db
     .select({
       lastActivityAt: roots.lastActivityAt,
       rootId: roots.conversationId,
     })
     .from(roots)
-    .innerJoinLateral(latestBrief, sql`true`)
     .where(
       and(
         isNull(roots.parentConversationId),
         gte(roots.lastActivityAt, options.start),
         lte(roots.lastActivityAt, options.end),
-        inArray(latestBrief.status, ["done", "answered"]),
+        inArray(roots.outcomeStatus, ["done", "answered"]),
         notExists(
           db
             .select({ id: changes.id })

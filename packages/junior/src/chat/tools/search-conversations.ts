@@ -1,9 +1,6 @@
 import * as z from "zod";
 import type { ConversationEmbedder } from "@/chat/conversations/embedding";
-import {
-  briefLinkSchema,
-  briefOutcomeStatusSchema,
-} from "@/chat/briefs/schema";
+import { conversationOutcomeStatusSchema } from "@/chat/conversations/metadata/schema";
 import {
   searchConversations,
   type ConversationSearchResult,
@@ -68,19 +65,30 @@ const conversationMatchSchema = z
         "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
       ),
     title: z.string().optional(),
-    summary: z.string().optional().describe("Summary from the latest Brief"),
-    outcome: briefOutcomeStatusSchema
+    summary: z
+      .string()
       .optional()
-      .describe("Outcome status from the latest Brief"),
+      .describe("What was asked and what happened, as of its last Turn"),
+    outcome: conversationOutcomeStatusSchema
+      .optional()
+      .describe("Where its work ended, as of its last Turn"),
     excerpt: z
       .string()
       .optional()
-      .describe("Brief text that matches the query"),
+      .describe("Summary text that matches the query"),
     links: z
-      .array(briefLinkSchema)
+      .array(
+        z
+          .object({
+            label: z.string(),
+            status: z.string().optional(),
+            url: z.string(),
+          })
+          .strict(),
+      )
       .max(5)
       .optional()
-      .describe("Top links from the latest Brief, such as pull requests"),
+      .describe("Top linked resources, such as pull requests"),
     channel_id: z.string().min(1).optional(),
     channel_name: z.string().min(1).optional(),
     permalink: z.string().url().optional(),
@@ -93,7 +101,7 @@ const conversationMatchSchema = z
       .literal(true)
       .optional()
       .describe(
-        "The transcript is purged. Only the title and the Brief remain.",
+        "The transcript is purged. Only the title and the summary remain.",
       ),
     updated_at: z.string().describe("Time of the latest activity"),
   })
@@ -153,9 +161,7 @@ function searchConversationsInputSchema(
         .max(200)
         .nullable()
         .optional()
-        .describe(
-          "Words or meaning to match in the latest Brief, or words in the title.",
-        ),
+        .describe("Words or meaning to match in the title or summary."),
       annotation: z
         .string()
         .trim()
@@ -173,10 +179,10 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe("Return only these conversation IDs."),
-      outcome: briefOutcomeStatusSchema
+      outcome: conversationOutcomeStatusSchema
         .nullable()
         .optional()
-        .describe("Outcome status of the latest Brief."),
+        .describe("Where its work ended, as of its last Turn."),
       after: z
         .string()
         .datetime()
@@ -202,7 +208,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Return only root conversations. Set false to also find child agents (Threads and Tasks) by their own Brief, title, or linked resources. Default true.",
+          "Return only root conversations. Set false to also find child agents (Threads and Tasks) by their own title, summary, or linked resources. Default true.",
         ),
       include_archived: z
         .boolean()
@@ -233,7 +239,7 @@ export function searchConversationsToolDefinition(
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
-      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds conversations in public channels and in the same private channel or DM. A root Brief covers the work of its child agents. Briefs remain after transcripts are purged.",
+      "Search other conversations for past or current work, with their summary, outcome, and links. Finds conversations in public channels and in the same private channel or DM. A root summary covers the work of its child agents. Summaries remain after public transcripts are purged.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -247,12 +253,12 @@ export function searchConversationsToolDefinition(
 
 /**
  * Create the read-only tool that searches the Conversations, outside this
- * Conversation's tree, that it may find, with their latest Brief.
+ * Conversation's tree, that it may find, with their summary.
  */
 export function createSearchConversationsTool(context: {
   channels?: ConversationSearchChannelPort;
   conversationId: string;
-  /** Embeds a query to also match Briefs by meaning. */
+  /** Embeds a query to also match summaries by meaning. */
   embedder?: ConversationEmbedder;
 }) {
   const { channels } = context;

@@ -28,7 +28,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setConversationMetadataEnabled } from "@/chat/conversations/metadata/task";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -186,10 +186,11 @@ export interface JuniorAppOptions extends BotModelConfig {
    */
   botName?: string;
   /**
-   * Generate a durable Brief after each completed Turn. This costs one
-   * default-model call per completed Turn. Disabled by default.
+   * Update the summary, outcome status, and Conversation embedding after
+   * each completed Turn. This costs one fast-model call and one embedding
+   * per completed Turn. Disabled by default.
    */
-  briefs?: { enabled?: boolean };
+  conversationMetadata?: { enabled?: boolean };
   /**
    * Domains that may use Junior. Slack checks the email domain of the
    * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
@@ -524,7 +525,9 @@ export async function createApp(
   const previousConfigDefaults = getConfigDefaults();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousConversationMetadataEnabled = setConversationMetadataEnabled(
+    options?.conversationMetadata?.enabled === true,
+  );
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   const restoreRuntimeConfig = (): void => {
@@ -534,7 +537,7 @@ export async function createApp(
     restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
+    setConversationMetadataEnabled(previousConversationMetadataEnabled);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

@@ -37,7 +37,7 @@ export const conversationMetricDaySchema = z
     outcomeCostUsd: z.number().optional(),
     /**
      * Merged code changes, plus root Conversations without code changes
-     * whose latest Brief is `done` or `answered`.
+     * whose outcome status is `done` or `answered`.
      */
     outcomes: z.number().optional(),
     tokens: z.number().optional(),

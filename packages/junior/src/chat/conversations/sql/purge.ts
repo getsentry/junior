@@ -6,6 +6,7 @@ import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
   juniorConversationBriefs,
+  juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -137,6 +138,11 @@ export async function selectExpiredRoots(
             where briefs.conversation_id = tree.conversation_id
           )
           or exists (
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and metadata.summary is not null
+          )
+          or exists (
             select 1 from junior_review_items review_items
             where review_items.added_by_conversation_id = tree.conversation_id
               and review_items.visibility = 'private'
@@ -192,8 +198,8 @@ export async function selectExpiredRoots(
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. Non-public content also loses its
- * Briefs and the Review items that it added. The metadata rows themselves
- * survive.
+ * summary, outcome status, Conversation embedding, legacy Briefs, and the
+ * Review items that it added. The metadata rows themselves survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -334,6 +340,10 @@ export async function purgeConversationTree(
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
+            await executor
+              .db()
+              .delete(juniorConversationEmbeddings)
+              .where(inArray(juniorConversationEmbeddings.conversationId, ids));
             // A private Review item holds content from its Conversation. A
             // public item stays, even when its destination later turned
             // private, because other Conversations can still link to it. An
@@ -359,7 +369,14 @@ export async function purgeConversationTree(
             .set({
               transcriptPurgedAt: new Date(args.nowMs),
               ...(scrubMetadata
-                ? { title: null, channelName: null, actor: null }
+                ? {
+                    title: null,
+                    channelName: null,
+                    actor: null,
+                    summary: null,
+                    outcomeStatus: null,
+                    metadataThroughSeq: null,
+                  }
                 : undefined),
             })
             .where(inArray(juniorConversations.conversationId, ids));

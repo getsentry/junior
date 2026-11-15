@@ -14,12 +14,9 @@ import { extractGenAiUsageSummary, runBestEffort } from "@/chat/logging";
 import * as gateway from "@/chat/pi/client";
 import { agentTurnCostUsd } from "@/chat/usage";
 
-// These operations store `costUsd` on their own event: `brief_updated`,
-// `guardian_action_reviewed`, and `passive_reply_routed`.
-type CallerRecordedOperation =
-  | "brief_update"
-  | "guardian_action_review"
-  | "passive_reply_route";
+// These operations store `costUsd` on their own event:
+// `guardian_action_reviewed` and `passive_reply_routed`.
+type CallerRecordedOperation = "guardian_action_review" | "passive_reply_route";
 
 // The name of the cost event in the `junior` namespace. Conversation cost
 // and the dashboard usage breakdown read these events.
@@ -27,6 +24,7 @@ type ConversationRecordedOperation =
   | "cache_warmup"
   | "conversation_catch_up"
   | "conversation_embedding"
+  | "conversation_metadata"
   | "conversation_search_embedding"
   | "conversation_title"
   | "image_generation"

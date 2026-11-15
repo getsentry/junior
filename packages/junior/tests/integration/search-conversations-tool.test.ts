@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -9,7 +8,7 @@ import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/con
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { juniorConversations } from "@/db/schema";
-import { conversationBriefFixture } from "../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import {
   chatGetPermalinkOk,
   slackError,
@@ -35,7 +34,7 @@ describe("searchConversations", () => {
     await closeDb();
   });
 
-  it("returns bounded Brief details with dashboard and best-effort Slack links", async () => {
+  it("returns bounded summary details with dashboard and best-effort Slack links", async () => {
     const conversationId = "slack:CARCHIVE:1700000000.100000";
     await getConversationStore().recordActivity({
       conversationId,
@@ -50,24 +49,22 @@ describe("searchConversations", () => {
       title: "Launch decision",
       visibility: "public",
     });
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "turn-1",
+      outcomeStatus: "done",
+      summary: "The launch decision uses a blue rollout.",
       throughSeq: 1,
-      content: conversationBriefFixture({
-        links: [
-          {
-            kind: "code_change",
-            label: "getsentry/junior#1805",
-            status: "open",
-            url: "https://github.com/getsentry/junior/pull/1805",
-          },
-        ],
-        status: "done",
-        summary: "The launch decision uses a blue rollout.",
-      }),
-      searchText: "launch decision blue rollout getsentry junior 1805",
-      modelId: "test-model",
+    });
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1805",
+      label: "getsentry/junior#1805",
+      status: "open",
+      url: "https://github.com/getsentry/junior/pull/1805",
     });
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -105,7 +102,6 @@ describe("searchConversations", () => {
           kind: "root",
           links: [
             {
-              kind: "code_change",
               label: "getsentry/junior#1805",
               status: "open",
               url: "https://github.com/getsentry/junior/pull/1805",
@@ -235,13 +231,10 @@ describe("searchConversations", () => {
         })
         .where(eq(juniorConversations.conversationId, conversationId));
       if (args.summary) {
-        await appendConversationBrief(db, {
+        await storeConversationMetadataFixture(db, {
           conversationId,
-          turnId: `${args.channelId}-turn`,
+          summary: args.summary,
           throughSeq: 1,
-          content: conversationBriefFixture({ summary: args.summary }),
-          searchText: args.summary,
-          modelId: "test-model",
         });
       }
       return conversationId;

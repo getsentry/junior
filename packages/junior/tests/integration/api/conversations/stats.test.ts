@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { recordCodeChange } from "@/chat/code/store";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -11,7 +10,7 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -274,20 +273,16 @@ describe("conversation stats API", () => {
           updatedAt: new Date(mergedAt),
         });
       }
-      // Only a root without code changes counts its finished Brief. An
-      // unfinished Brief counts nothing.
+      // Only a root without code changes counts its finished outcome status.
+      // An unfinished one counts nothing.
       for (const [conversationId, status] of [
         ["slack:C1:recent", "done"],
         ["slack:D1:failed", "answered"],
         ["local:test:current-hour", "in_progress"],
       ] as const) {
-        await appendConversationBrief(fixture.sql.db(), {
-          content: conversationBriefFixture({ status }),
+        await storeConversationMetadataFixture(fixture.sql.db(), {
           conversationId,
-          modelId: "test-model",
-          searchText: "test",
-          throughSeq: 1,
-          turnId: `brief-${conversationId}`,
+          outcomeStatus: status,
         });
       }
 

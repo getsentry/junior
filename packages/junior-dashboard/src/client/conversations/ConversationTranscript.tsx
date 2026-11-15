@@ -25,7 +25,7 @@ import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ObjectAttachProvider } from "./ObjectAttach";
-import { ConversationBrief } from "./ConversationBrief";
+import { ConversationSummary } from "./ConversationSummary";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -249,7 +249,7 @@ function SegmentEvents(
       {props.conversation.eventHistory.status === "expired" ? (
         <>
           <ExpiredTranscriptView
-            brief={props.conversation.brief}
+            conversation={props.conversation}
             expiredAt={props.conversation.eventHistory.expiredAt}
           />
           {props.responding ? <TranscriptThinkingRow /> : null}
@@ -301,17 +301,23 @@ function TranscriptThinkingRow() {
 }
 
 function ExpiredTranscriptView(props: {
-  brief: ConversationTranscript["brief"];
+  conversation: ConversationTranscript;
   expiredAt: string;
 }) {
+  const { outcomeStatus, summary, summaryMentions } = props.conversation;
   return (
     <>
-      {props.brief ? (
+      {summary ? (
         <Card as="section" padding="md" variant="section">
           <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
-            Brief
+            Summary
           </h3>
-          <ConversationBrief brief={props.brief} />
+          <ConversationSummary
+            mentions={summaryMentions}
+            outcomeStatus={outcomeStatus}
+            summary={summary}
+            variant="full"
+          />
         </Card>
       ) : null}
       <Empty className="flex items-start gap-3 border-dashed border-dashboard-border-emphasis bg-dashboard-fill-soft">
@@ -328,7 +334,7 @@ function ExpiredTranscriptView(props: {
                 timeStyle: "short",
               })}
             </time>
-            .{props.brief ? " The brief above is still available." : null}
+            .{summary ? " The summary above is still available." : null}
           </EmptyDescription>
         </div>
       </Empty>

@@ -267,7 +267,7 @@
         "packages/junior/tests/component/sandbox/snapshot/resolve.test.ts",
         "packages/junior/tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
         "packages/junior/tests/component/runtime/agent-run-sandbox.test.ts",
-        "packages/junior/tests/component/briefs/conversation-brief-task.test.ts",
+        "packages/junior/tests/component/conversations/metadata-task.test.ts",
         "packages/junior/tests/component/memory-plugin-storage.test.ts",
         "packages/junior/tests/component/plugins/plugin-registry.test.ts",
         "packages/junior/tests/component/task-execution/conversation-index-redis.test.ts",

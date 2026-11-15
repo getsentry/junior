@@ -10,7 +10,6 @@ import type {
 import type {
   ActorIdentity,
   ConversationReportMessageEvent,
-  ConversationFeedItem,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
@@ -166,8 +165,6 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
-  /** The latest Brief's status, summary, and intent, when visible. */
-  brief?: ConversationFeedItem["brief"] | undefined;
   annotations?: ConversationSummaryReport["annotations"] | undefined;
   sidebarAnnotations?:
     | ConversationSummaryReport["sidebarAnnotations"]

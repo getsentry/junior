@@ -17,6 +17,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
+import type { ConversationOutcomeStatus } from "@/chat/conversations/metadata/schema";
 import type {
   ConversationKind,
   ConversationSource,
@@ -55,6 +56,13 @@ export const juniorConversations = pgTable(
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
+    // Conversation metadata, refreshed in the background after each Turn.
+    // Search, lists, details, unfurls, and the Conversation embedding read it.
+    summary: text("summary"),
+    outcomeStatus: text("outcome_status").$type<ConversationOutcomeStatus>(),
+    // The last event that `summary` and `outcome_status` cover. A Turn whose
+    // terminal event is at or before it has nothing new to add.
+    metadataThroughSeq: integer("metadata_through_seq"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
     /**
@@ -165,5 +173,10 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
+    // Search reads this exact expression: `conversationSearchVector`.
+    index("junior_conversations_search_idx").using(
+      "gin",
+      sql`to_tsvector('english', coalesce(${table.title}, '') || ' ' || coalesce(${table.summary}, ''))`,
+    ),
   ],
 );

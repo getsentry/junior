@@ -1,6 +1,16 @@
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
-import type { BriefEntry } from "./schema";
+
+/** One transcript row, as model input for Conversation metadata and catch-up. */
+export type TranscriptEntry = {
+  /** The event seq of the row. */
+  index: number;
+  role: "user" | "assistant" | "tool" | "event";
+  author?: string;
+  text: string;
+  createdAtMs: number;
+  turnId?: string;
+};
 
 const TOOL_TEXT_LIMIT = 1_500;
 
@@ -74,10 +84,10 @@ function toolText(output: unknown): string | undefined {
     : `${text.slice(0, TOOL_TEXT_LIMIT - 1)}…`;
 }
 
-/** Map reporting events to the entries used by every Brief input adapter. */
-export function briefEntriesFromReportEvents(
+/** Map reporting events to transcript entries for model input. */
+export function transcriptEntriesFromReportEvents(
   events: ConversationReportEvent[],
-): BriefEntry[] {
+): TranscriptEntry[] {
   const resolvedActorNames = actorNames(events);
   const turnByMessageId = new Map<string, string>();
   for (const event of events) {
@@ -91,7 +101,7 @@ export function briefEntriesFromReportEvents(
     }
   }
 
-  const entries: BriefEntry[] = [];
+  const entries: TranscriptEntry[] = [];
   let activeTurnId: string | undefined;
   for (const event of events) {
     const data = event.data;

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { getDb } from "@/chat/db";
-import { conversationBriefFixture } from "../../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../../fixtures/conversation-metadata";
 import {
   connectMcpTools,
   MCP_TEST_OTHER_VIEWER,
@@ -18,7 +17,7 @@ mockMcpDashboardConfig();
 const CONVERSATION_ID = "slack:C123:1700000000.000300";
 
 describe("getConversation MCP tool", () => {
-  it("returns the metadata, the Brief, and only the last assistant reply", async () => {
+  it("returns the metadata, the summary, and only the last assistant reply", async () => {
     await seedMcpConversation({
       conversationId: CONVERSATION_ID,
       email: MCP_TEST_VIEWER,
@@ -30,13 +29,10 @@ describe("getConversation MCP tool", () => {
       { role: "user", text: "Roll it back." },
       { role: "assistant", text: "The rollback is done." },
     ]);
-    await appendConversationBrief(getDb(), {
-      content: conversationBriefFixture({ summary: "Relay was rolled back." }),
+    await storeConversationMetadataFixture(getDb(), {
       conversationId: CONVERSATION_ID,
-      modelId: "test-model",
-      searchText: "relay rollback",
-      throughSeq: 0,
-      turnId: "brief-turn",
+      outcomeStatus: "done",
+      summary: "Relay was rolled back.",
     });
     const call = await connectMcpTools();
 
@@ -47,11 +43,9 @@ describe("getConversation MCP tool", () => {
     expect(result.structuredContent).toEqual({
       conversation: expect.objectContaining({
         conversationId: CONVERSATION_ID,
-        title: "Viewer incident",
-      }),
-      brief: expect.objectContaining({
+        outcomeStatus: "done",
         summary: "Relay was rolled back.",
-        updatedAt: expect.any(String),
+        title: "Viewer incident",
       }),
       lastReply: expect.objectContaining({
         messageId: "message-3",
@@ -61,7 +55,6 @@ describe("getConversation MCP tool", () => {
       pendingMessages: [],
       cursor: expect.any(String),
     });
-    expect(result.structuredContent).not.toHaveProperty("brief.record");
   });
 
   it("returns the messages after a cursor and a cursor to continue from", async () => {

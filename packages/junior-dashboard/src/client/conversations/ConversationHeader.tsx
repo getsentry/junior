@@ -25,7 +25,7 @@ import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
- * Run facts and the Brief live in Conversation details.
+ * Run facts and the summary live in Conversation details.
  */
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */

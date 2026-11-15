@@ -104,7 +104,7 @@ import {
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { notificationTaskRegistrations } from "@/chat/notifications/task";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -1612,7 +1612,7 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
+  for (const plugin of [...notificationTaskRegistrations(), ...getPlugins()]) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {

@@ -23,8 +23,10 @@ Canonical words for Junior code and docs. One concept, one word.
   `task` type, the `spawnAgent` `task` field) keep their meaning.
 - **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
   bindings, Agent invocations). Not a UI word.
-- **Brief**: the versioned record of a Conversation's intent, outcome,
-  decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Conversation metadata**: the stored facts about a Conversation: its
+  title, summary, and outcome status. A core task updates the summary and
+  outcome status after each Turn. A public summary outlives the transcript.
+  Do not say "Brief"; it is the retired name.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,

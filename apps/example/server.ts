@@ -16,7 +16,7 @@ const [
 
 const app = await createApp({
   allowedDomains: ["sentry.io"],
-  briefs: { enabled: true },
+  conversationMetadata: { enabled: true },
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
     mockConversations: exampleDashboardMockConversations(),

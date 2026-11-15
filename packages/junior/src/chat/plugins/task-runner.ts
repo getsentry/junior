@@ -50,7 +50,12 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import {
+  CONVERSATION_METADATA_TASK,
+  isConversationMetadataEnabled,
+  updateConversationMetadata,
+} from "@/chat/conversations/metadata/task";
+import { notificationTaskRegistrations } from "@/chat/notifications/task";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
@@ -452,8 +457,17 @@ function taskPluginContext(
   };
 }
 
+function isConversationMetadataTask(message: PluginTaskQueueMessage): boolean {
+  return (
+    (message.plugin === CONVERSATION_METADATA_TASK.plugin &&
+      message.name === CONVERSATION_METADATA_TASK.name) ||
+    // TODO(dcramer): Remove after no queued Brief task remains.
+    (message.plugin === "briefs" && message.name === "updateBrief")
+  );
+}
+
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
+  const plugin = [...notificationTaskRegistrations(), ...getPlugins()].find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -463,19 +477,25 @@ function findPluginTask(message: PluginTaskQueueMessage) {
   return { plugin, task };
 }
 
-/** Schedule all plugin tasks interested in a completed agent-run session. */
+/**
+ * Schedule the Conversation metadata task and all plugin tasks interested in
+ * a completed agent-run session.
+ */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
   options: ScheduleSessionCompletedPluginTasksOptions = {},
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = [
-    ...getPlugins(),
-    ...coreTaskRegistrations(),
-  ].flatMap((plugin) =>
-    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
-  );
-  if (taskRegistrations.length === 0) {
+  const tasks = [
+    ...[...getPlugins(), ...notificationTaskRegistrations()].flatMap((plugin) =>
+      Object.keys(plugin.tasks ?? {}).map((name) => ({
+        name,
+        plugin: plugin.manifest.name,
+      })),
+    ),
+    ...(isConversationMetadataEnabled() ? [CONVERSATION_METADATA_TASK] : []),
+  ];
+  if (tasks.length === 0) {
     return;
   }
   const record = await getTurnRecord(
@@ -486,10 +506,10 @@ export async function scheduleSessionCompletedPluginTasks(
     throw new Error("Completed plugin task session record is not ready");
   }
   const send = options.send ?? sendVercelPluginTask;
-  const messages = taskRegistrations.map(({ name, plugin }) => ({
+  const messages = tasks.map(({ name, plugin }) => ({
     name,
     params: coreParams,
-    plugin: plugin.manifest.name,
+    plugin,
   }));
   await Promise.all(
     messages.map(async (message) => {
@@ -513,6 +533,15 @@ export async function processPluginTask(
     { conversationId: params.conversationId },
     () =>
       withPluginTaskLock(pluginTaskId(message), async () => {
+        if (isConversationMetadataTask(message)) {
+          if (isConversationMetadataEnabled()) {
+            await updateConversationMetadata({
+              conversationId: params.conversationId,
+              turnId: params.sessionId,
+            });
+          }
+          return;
+        }
         const resolved = findPluginTask(message);
         if (!resolved?.task) {
           throw new Error(

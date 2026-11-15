@@ -20,7 +20,6 @@ import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
-  juniorConversationBriefs,
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
@@ -67,7 +66,7 @@ import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
 } from "./activity-preview";
-import { readConversationFeedBriefs } from "./feed-brief";
+import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
@@ -146,7 +145,7 @@ async function conversationRows(
     cursor,
     filter,
     include = [],
-    includePrivateBriefs = false,
+    includePrivateSummaries = false,
     limit,
     pinnedForUserId,
     query,
@@ -160,7 +159,7 @@ async function conversationRows(
     filter: ConversationFeedMembership | undefined;
     /** Extra row content to read in the same statement. */
     include?: readonly ConversationFeedInclude[];
-    includePrivateBriefs?: boolean;
+    includePrivateSummaries?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
@@ -215,19 +214,12 @@ async function conversationRows(
         query
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
-              sql<boolean>`exists (
-                select 1
-                from ${juniorConversationBriefs}
-                where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  and ${includePrivateBriefs ? sql`true` : eq(juniorDestinations.visibility, "public")}
-                  and ${juniorConversationBriefs.version} = (
-                    select max(${juniorConversationBriefs.version})
-                    from ${juniorConversationBriefs}
-                    where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  )
-                  and to_tsvector('english', ${juniorConversationBriefs.searchText})
-                    @@ websearch_to_tsquery('english', ${query})
-              )`,
+              and(
+                includePrivateSummaries
+                  ? undefined
+                  : eq(juniorDestinations.visibility, "public"),
+                sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
+              ),
             )
           : undefined,
       ),
@@ -262,7 +254,7 @@ async function waitingRowsOutsidePage(
     conversationIds: missing,
     filter,
     include,
-    includePrivateBriefs: true,
+    includePrivateSummaries: true,
     limit: missing.length,
     status: "active",
   });
@@ -492,7 +484,7 @@ export async function readConversationFeedFromSql(
       : undefined),
     filter,
     include,
-    includePrivateBriefs: filter?.kind === "viewer",
+    includePrivateSummaries: filter?.kind === "viewer",
     query,
     status,
   };
@@ -536,7 +528,6 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
-    briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
   ] = await Promise.all([
@@ -569,7 +560,6 @@ export async function readConversationFeedFromSql(
       ),
     })),
     readConversationActivityPreviews(db, conversationIds),
-    readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
   ]);
@@ -656,10 +646,6 @@ export async function readConversationFeedFromSql(
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
-      // Like the preview, the Brief holds private content.
-      const brief = access?.canViewPrivateContent
-        ? briefByConversation.get(conversation.conversationId)
-        : undefined;
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
@@ -687,7 +673,6 @@ export async function readConversationFeedFromSql(
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
-        ...(brief ? { brief } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),

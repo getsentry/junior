@@ -5,7 +5,6 @@ import type { StateAdapter } from "chat";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { createSlackActor } from "@/chat/actor";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { getConversationIdByProviderConversation } from "@/chat/conversations/sql/bindings";
 import type { Conversation } from "@/chat/conversations/store";
 import { parseDashboardConversationLink } from "@/chat/dashboard-link";
@@ -86,11 +85,7 @@ async function previewBlocks(args: {
   url: string;
 }): Promise<KnownBlock[]> {
   const title = args.conversation.title ?? "Junior conversation";
-  const brief = await readLatestConversationBrief(
-    getDb(),
-    args.conversation.conversationId,
-  );
-  const summary = brief?.content.summary.trim();
+  const summary = args.conversation.summary?.trim();
   const shortSummary =
     summary && summary.length > MAX_SUMMARY_CHARS
       ? `${summary.slice(0, MAX_SUMMARY_CHARS - 1)}…`

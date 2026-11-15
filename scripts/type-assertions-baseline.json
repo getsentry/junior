@@ -93,7 +93,6 @@
   "packages/junior/src/chat/automations/execution-stats.ts": 3,
   "packages/junior/src/chat/automations/tools/create.ts": 1,
   "packages/junior/src/chat/automations/tools/update.ts": 3,
-  "packages/junior/src/chat/briefs/task.ts": 2,
   "packages/junior/src/chat/cache-warming/backfill.ts": 2,
   "packages/junior/src/chat/cache-warming/request.ts": 1,
   "packages/junior/src/chat/cache-warming/savings.ts": 2,

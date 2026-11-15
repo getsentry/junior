@@ -1685,7 +1685,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     const reportOnlyPluginHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins/briefs"]}>
+      <MemoryRouter initialEntries={["/system/plugins/report-only"]}>
         <SystemPage data={loading} />
       </MemoryRouter>,
     );

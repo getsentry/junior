@@ -799,6 +799,27 @@
       "when": 1794765736832,
       "tag": "0113_attachment_url_index",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1794776078291,
+      "tag": "0114_conversation_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1794776092571,
+      "tag": "0115_conversation_metadata_fill",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1794776093820,
+      "tag": "0116_conversation_search_index",
+      "breakpoints": true
     }
   ]
 }

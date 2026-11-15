@@ -19,7 +19,7 @@ const [
 
 const app = await createApp({
   allowedDomains: ["example.com"],
-  briefs: { enabled: true },
+  conversationMetadata: { enabled: true },
   plugins,
 });
 

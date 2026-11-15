@@ -1,4 +1,5 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { ConversationOutcomeStatus } from "@/chat/conversations/metadata/schema";
 import type { Location } from "@/chat/conversations/location";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -100,6 +101,9 @@ export interface Conversation {
   // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
   title?: string | undefined;
+  /** Conversation metadata. Only the metadata task writes these. */
+  summary?: string;
+  outcomeStatus?: ConversationOutcomeStatus;
   updatedAtMs: number;
   /**
    * When retention purged this conversation's content. Set means messages and

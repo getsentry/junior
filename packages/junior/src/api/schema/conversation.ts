@@ -12,7 +12,7 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { conversationOutcomeStatusSchema } from "@/chat/conversations/metadata/schema";
 import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
@@ -245,6 +245,12 @@ export const conversationActivityPreviewSchema = z
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
+    /**
+     * Conversation metadata, when the viewer may see private content. A new
+     * Conversation has none until its first Turn completes.
+     */
+    summary: z.string().optional(),
+    outcomeStatus: conversationOutcomeStatusSchema.optional(),
     activityPreview: conversationActivityPreviewSchema.optional(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
@@ -881,16 +887,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
     forks: z.array(z.string()).optional(),
-    brief: z
-      .object({
-        content: conversationBriefSchema,
-        /** People mentioned in the Brief text, resolved at read time. */
-        mentions: z.array(actorIdentitySchema).optional(),
-        updatedAt: z.string().datetime(),
-        version: z.number().int().positive(),
-      })
-      .strict()
-      .optional(),
+    /** People named in `summary`, resolved at read time. */
+    summaryMentions: z.array(actorIdentitySchema).optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     /**
      * Each person who wrote in the Conversation, by each of their Identity

@@ -1,23 +1,8 @@
 import * as z from "zod";
-import { briefOutcomeStatusSchema } from "@/chat/briefs/schema";
 import {
   conversationSummaryReportSchema,
   type ConversationSummaryReport,
 } from "./conversation";
-
-/**
- * The part of a Conversation's latest Brief that a feed row shows: what the
- * work is about and how it stands.
- */
-export const conversationFeedBriefSchema = z
-  .object({
-    intent: z.string(),
-    status: briefOutcomeStatusSchema,
-    summary: z.string(),
-  })
-  .strict();
-
-export type ConversationFeedBrief = z.infer<typeof conversationFeedBriefSchema>;
 
 const conversationFeedIncludeSchema = z.enum(["links", "media"]);
 
@@ -75,7 +60,6 @@ export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
-  brief?: ConversationFeedBrief | undefined;
   links?: string[] | undefined;
   media?: ConversationFeedMedia[] | undefined;
   threads?: ConversationFeedItem[] | undefined;
@@ -87,7 +71,6 @@ export type ConversationFeedItem = ConversationSummaryReport & {
  */
 const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
-    brief: conversationFeedBriefSchema.optional(),
     /**
      * Web links from the Conversation's recent messages, newest first, for
      * the row to resolve into cards. URLs only: never message text. Only
