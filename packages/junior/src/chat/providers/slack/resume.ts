@@ -216,7 +216,7 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
 
 async function handleResumeFailure(args: {
   error: unknown;
-  eventName: string;
+  eventName: "slack.resume.turn.failed" | "slack.resume.pause_handler.failed";
   failureCode: ConversationTurnFailureCode;
   resume: ResumeSlackTurnArgs;
 }): Promise<void> {

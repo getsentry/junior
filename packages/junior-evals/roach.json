@@ -44,7 +44,9 @@
         },
         "local-time": "(?<!(?:^|[^\\\\])[0-9A-Za-z])(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\\d{1,2}(?:, \\d{4}, \\d{1,2}:\\d{2}\\s?[AP]M| \\d{2}:\\d{2})\\b",
         "event-id": "(?<=event_id=)[0-9a-f]{32}(?![0-9A-Za-z])",
-        "root-section-key": "(?<=root_user_instructions key=\\\\?\")[0-9a-f]{24}(?![0-9A-Za-z])"
+        "root-section-key": "(?<=root_user_instructions key=\\\\?\")[0-9a-f]{24}(?![0-9A-Za-z])",
+        "pi-duration-ms": "(?<![0-9A-Za-z_])durationMs\\\\*\": ?\\d+(?:\\.\\d+)?",
+        "payload-json-bytes": "(?<![0-9A-Za-z_])payload_json_bytes\\\\*\": ?\\d+"
       }
     },
     {

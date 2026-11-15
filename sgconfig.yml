@@ -1,4 +1,2 @@
 ruleDirs:
   - ast-grep/rules
-utilDirs:
-  - ast-grep/utils

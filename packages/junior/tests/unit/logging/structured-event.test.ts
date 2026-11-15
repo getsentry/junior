@@ -100,6 +100,7 @@ describe("structured log events", () => {
   it("rejects non-namespaced application event names", async () => {
     const { logWarn } = await loadLoggingModule();
 
+    // @ts-expect-error LogEventName rejects it; this checks the runtime guard.
     expect(() => logWarn("agent_turn_failed")).toThrow(
       "use lowercase dot-delimited namespaces",
     );

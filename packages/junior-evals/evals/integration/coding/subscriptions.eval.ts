@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
-import { insertGitHubDraftWatch } from "@junior-evals/fixture/insert";
+import { insertGitHubPullRequestWatch } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -23,7 +23,11 @@ describe("Watches", () => {
     const conversation = await run(
       slackMention(`Thanks for opening ${pullRequest}. I'll review it later.`),
     );
-    await insertGitHubDraftWatch({ conversation, pullRequest });
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: true,
+      pullRequest,
+    });
 
     const head = `feat/cache-warmup-${draft.number}`;
     const delivery = await conversation.continue(
