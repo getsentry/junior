@@ -1,5 +1,5 @@
 {
-  "id": "9729a586-0265-49d3-ac4b-234f0224a1b3",
+  "id": "5a444536-4cd9-4f93-9afb-bd986c973f0a",
   "prevId": "1880d763-2db8-4b02-931d-e59c0840186a",
   "version": "7",
   "dialect": "postgresql",
@@ -1580,6 +1580,33 @@
           "method": "btree",
           "with": {}
         },
+        "junior_code_changes_repository_state_idx": {
+          "name": "junior_code_changes_repository_state_idx",
+          "columns": [
+            {
+              "expression": "repository_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_code_changes_open_idx": {
           "name": "junior_code_changes_open_idx",
           "columns": [
@@ -2465,52 +2492,6 @@
           "columns": [
             "conversation_id",
             "seq"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_conversation_links": {
-      "name": "junior_conversation_links",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "junior_conversation_links_pk": {
-          "name": "junior_conversation_links_pk",
-          "columns": [
-            "conversation_id",
-            "seq",
-            "position"
           ]
         }
       },

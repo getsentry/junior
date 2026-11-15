@@ -3,7 +3,7 @@
  * and Markdown as (url), so a match stops at those delimiters. Readers trim
  * and parse a match before they show it.
  *
- * Migration `0110_conversation_links` runs this pattern in Postgres to fill
+ * Migration `0111_conversation_links` runs this pattern in Postgres to fill
  * links for older messages, so it uses only syntax that JavaScript and
  * Postgres read the same way. The whitespace set is the one that JavaScript
  * `\s` matches, spelled out, because Postgres `\s` depends on the locale.
