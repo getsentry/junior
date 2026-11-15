@@ -5,7 +5,6 @@ import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
-  juniorConversationLinks,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
@@ -300,10 +299,6 @@ export async function purgeConversationTree(
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
-          await executor
-            .db()
-            .delete(juniorConversationLinks)
-            .where(inArray(juniorConversationLinks.conversationId, ids));
           await executor
             .db()
             .delete(juniorAgentInvocations)

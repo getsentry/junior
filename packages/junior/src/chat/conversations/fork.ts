@@ -22,11 +22,7 @@ import {
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { escapeXml } from "@/chat/xml";
-import {
-  juniorConversationEvents,
-  juniorConversationLinks,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 
 /** Event key of the agent note that follows the copied events in a fork. */
 const FORK_NOTE_KEY = "fork:note";
@@ -363,26 +359,6 @@ async function copyForkEvents(args: {
         and(
           eq(e.conversationId, args.sourceConversationId),
           inArray(e.seq, seqs),
-        ),
-      ),
-  );
-  // Copies keep their seq, so the feed links of copied messages copy as is.
-  const links = juniorConversationLinks;
-  await db.insert(links).select(
-    db
-      .select({
-        conversationId: sql<string>`${args.conversationId}`.as(
-          "conversation_id",
-        ),
-        seq: links.seq,
-        position: links.position,
-        url: links.url,
-      })
-      .from(links)
-      .where(
-        and(
-          eq(links.conversationId, args.sourceConversationId),
-          inArray(links.seq, seqs),
         ),
       ),
   );

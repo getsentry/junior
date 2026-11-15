@@ -34,8 +34,7 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents, juniorConversationLinks } from "@/db/schema";
-import { batchMessageLinks } from "../message-links";
+import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
@@ -131,40 +130,6 @@ function insertFromEvent(
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
-}
-
-/**
- * The stored seqs of the Messages that new `message_updated` rows edit, so
- * their links can be replaced. An edit of a Message that is not stored yet
- * finds no seq here.
- */
-async function readEditedMessageSeqs(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-  rows: readonly ConversationEventInsert[],
-): Promise<Map<string, number>> {
-  const messageIds = rows.flatMap(({ payload, type }) =>
-    type === "message_updated" && typeof payload["messageId"] === "string"
-      ? [payload["messageId"]]
-      : [],
-  );
-  if (messageIds.length === 0) return new Map();
-  const e = juniorConversationEvents;
-  const messageId = sql<string>`${e.payload}->>'messageId'`;
-  const stored = await executor
-    .db()
-    .select({ messageId, seq: e.seq })
-    .from(e)
-    .where(
-      and(
-        eq(e.conversationId, conversationId),
-        eq(e.type, "message"),
-        inArray(messageId, messageIds),
-      ),
-    )
-    .orderBy(desc(e.seq));
-  // Newest first, so the first save of a duplicate id wins.
-  return new Map(stored.map((row) => [row.messageId, row.seq]));
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
@@ -295,37 +260,8 @@ class SqlConversationEventStore implements ConversationEventStore {
           );
         }
         const db = this.executor.db();
-        const { replacedSeqs, rows: links } = batchMessageLinks(
-          rows,
-          await readEditedMessageSeqs(this.executor, conversationId, rows),
-        );
-        if (replacedSeqs.length > 0) {
-          await db
-            .delete(juniorConversationLinks)
-            .where(
-              and(
-                eq(juniorConversationLinks.conversationId, conversationId),
-                inArray(juniorConversationLinks.seq, replacedSeqs),
-              ),
-            );
-        }
-        // Links go in the same statement as their messages, so a message is
-        // never stored without its links.
-        const linkInsert =
-          links.length > 0
-            ? [
-                db
-                  .$with("message_links")
-                  .as(
-                    db
-                      .insert(juniorConversationLinks)
-                      .values(links)
-                      .returning({ seq: juniorConversationLinks.seq }),
-                  ),
-              ]
-            : [];
         await db
-          .with(conversationDetailTouch(db, [conversationId]), ...linkInsert)
+          .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
         if (

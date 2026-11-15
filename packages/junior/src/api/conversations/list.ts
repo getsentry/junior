@@ -46,7 +46,11 @@ import {
 } from "./record";
 import { readFeedThreads } from "./threads";
 import { conversationFeedSchema } from "../schema/conversation-feed";
-import type { ConversationFeed } from "../schema/conversation-feed";
+import type {
+  ConversationFeed,
+  ConversationFeedInclude,
+  ConversationFeedMedia,
+} from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
   readConversationTreeMetricsFromSql,
@@ -65,11 +69,7 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
-import {
-  annotationUrls,
-  readFeedMediaAndLinks,
-  type ConversationFeedInclude,
-} from "./feed-media-links";
+import { readFeedMedia } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -581,42 +581,33 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [
-    sidebarAnnotationsByConversation,
-    threadsByRoot,
-    { links: linksByConversation, media: mediaByConversation },
-  ] = await Promise.all([
-    listConversationSidebarAnnotations(
-      conversationIds,
-      visibleAnnotationsByConversation,
-    ),
-    // A Thread shows only while its root is not archived.
-    readFeedThreads(
-      db,
-      conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
-        .map(({ conversationId }) => ({
-          access: accessByConversation.get(conversationId),
-          conversationId,
-        })),
-    ),
-    // Files and links are private content.
-    readFeedMediaAndLinks(
-      db,
-      conversationIds
-        .filter(
-          (conversationId) =>
-            accessByConversation.get(conversationId)?.canViewPrivateContent,
-        )
-        .map((conversationId) => ({
-          conversationId,
-          shownUrls: annotationUrls(
-            visibleAnnotationsByConversation.get(conversationId),
-          ),
-        })),
-      new Set(options.include),
-    ),
-  ]);
+  const [sidebarAnnotationsByConversation, threadsByRoot, mediaByConversation] =
+    await Promise.all([
+      listConversationSidebarAnnotations(
+        conversationIds,
+        visibleAnnotationsByConversation,
+      ),
+      // A Thread shows only while its root is not archived.
+      readFeedThreads(
+        db,
+        conversations
+          .filter((conversation) => conversation.archivedAtMs === undefined)
+          .map(({ conversationId }) => ({
+            access: accessByConversation.get(conversationId),
+            conversationId,
+          })),
+      ),
+      // Files are private content.
+      options.include?.includes("media")
+        ? readFeedMedia(
+            db,
+            conversationIds.filter(
+              (conversationId) =>
+                accessByConversation.get(conversationId)?.canViewPrivateContent,
+            ),
+          )
+        : new Map<string, ConversationFeedMedia[]>(),
+    ]);
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
@@ -676,7 +667,6 @@ export async function readConversationFeedFromSql(
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
       const media = mediaByConversation.get(conversation.conversationId);
-      const links = linksByConversation.get(conversation.conversationId);
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -692,7 +682,6 @@ export async function readConversationFeedFromSql(
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
         ...(media ? { media } : undefined),
-        ...(links ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
