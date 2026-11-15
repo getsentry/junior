@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -145,7 +146,7 @@ async function conversationRows(
     cursor,
     filter,
     includeMedia = false,
-    includePrivateBriefs = false,
+    includePrivateMatches = false,
     limit,
     pinnedForUserId,
     query,
@@ -159,7 +160,7 @@ async function conversationRows(
     filter: ConversationFeedMembership | undefined;
     /** Read each row's newest files in the same statement. */
     includeMedia?: boolean;
-    includePrivateBriefs?: boolean;
+    includePrivateMatches?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
@@ -217,7 +218,7 @@ async function conversationRows(
                 select 1
                 from ${juniorConversationBriefs}
                 where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  and ${includePrivateBriefs ? sql`true` : eq(juniorDestinations.visibility, "public")}
+                  and ${includePrivateMatches ? sql`true` : eq(juniorDestinations.visibility, "public")}
                   and ${juniorConversationBriefs.version} = (
                     select max(${juniorConversationBriefs.version})
                     from ${juniorConversationBriefs}
@@ -226,6 +227,7 @@ async function conversationRows(
                   and to_tsvector('english', ${juniorConversationBriefs.searchText})
                     @@ websearch_to_tsquery('english', ${query})
               )`,
+              annotationMatch(db, query, includePrivateMatches),
             )
           : undefined,
       ),
@@ -239,6 +241,46 @@ async function conversationRows(
 }
 
 type FeedRow = Awaited<ReturnType<typeof conversationRows>>[number];
+
+const searchAnnotated = alias(juniorConversations, "search_annotated");
+
+/**
+ * Match a root whose tree has an Annotation with the text in its label or
+ * title, such as `getsentry/roach#12`. The feed shows the annotations of
+ * the whole tree, so search reads the same rows. Private annotations match
+ * only where the feed shows them.
+ */
+function annotationMatch(
+  db: JuniorDatabase,
+  query: string,
+  includePrivate: boolean,
+) {
+  const annotation = juniorConversationAnnotations.annotation;
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(juniorConversationAnnotations)
+      .innerJoin(
+        searchAnnotated,
+        eq(
+          searchAnnotated.conversationId,
+          juniorConversationAnnotations.conversationId,
+        ),
+      )
+      .where(
+        and(
+          eq(
+            searchAnnotated.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+          includePrivate
+            ? undefined
+            : eq(juniorDestinations.visibility, "public"),
+          sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
+        ),
+      ),
+  );
+}
 
 /**
  * Read the viewer's active conversations that wait on them but fall outside
@@ -260,7 +302,7 @@ async function waitingRowsOutsidePage(
     conversationIds: missing,
     filter,
     includeMedia,
-    includePrivateBriefs: true,
+    includePrivateMatches: true,
     limit: missing.length,
     status: "active",
   });
@@ -490,7 +532,7 @@ export async function readConversationFeedFromSql(
       : undefined),
     filter,
     includeMedia,
-    includePrivateBriefs: filter?.kind === "viewer",
+    includePrivateMatches: filter?.kind === "viewer",
     query,
     status,
   };
