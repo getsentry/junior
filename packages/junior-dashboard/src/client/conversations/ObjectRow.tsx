@@ -7,7 +7,6 @@ import { CircleAlert } from "lucide-react";
 
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
-import { OutboundLink } from "../components/OutboundLink";
 import { StatusChip } from "../components/StatusChip";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
@@ -15,10 +14,10 @@ import { ObjectImage } from "./ObjectImage";
 import { useSavedObject } from "./savedObjects";
 
 /**
- * Show an object inside a reply as one row, like a Thread card: icon, title,
- * reference, state, and up to two thumbnails. The whole row opens the
- * source. A reply with several objects stays short; the link preview of an
- * object chip still shows the full card.
+ * Show an object inside a reply as a compact row, like a Thread card: icon,
+ * title over its reference, state, and up to two thumbnails. The whole row
+ * opens the source. A reply with several objects stays short; the link
+ * preview of an object chip still shows the full card.
  */
 export function ObjectRow(props: {
   card: OwnedObjectAnnotation;
@@ -70,17 +69,20 @@ export function ObjectRow(props: {
       ) : (
         <ObjectIcon {...card} size={16} />
       )}
-      {/* The title truncates first, so a long title keeps the reference. */}
-      <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+      {/* The title, then its reference on a second, smaller line. */}
+      <div className="flex min-w-0 flex-1 flex-col">
         {card.url ? (
-          <OutboundLink
+          // No outbound icon: the row itself reads as a link to the source.
+          <a
             // The link covers the row, so the whole row opens the source.
             className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
             href={card.url}
+            rel="noreferrer"
+            target="_blank"
             title={card.title}
           >
             {card.title}
-          </OutboundLink>
+          </a>
         ) : (
           <span
             className="min-w-0 truncate font-medium text-dashboard-text"
@@ -89,7 +91,7 @@ export function ObjectRow(props: {
             {card.title}
           </span>
         )}
-        <span className="max-w-1/2 shrink-0 truncate text-xs text-dashboard-text-faint">
+        <span className="min-w-0 truncate text-xs text-dashboard-text-faint">
           {reference}
         </span>
       </div>
@@ -117,7 +119,7 @@ export function ObjectRow(props: {
         <ObjectImage
           key={image.src}
           alt={image.alt}
-          className="h-6 w-10 shrink-0 rounded"
+          className="h-8 w-14 shrink-0 rounded"
           src={image.src}
           srcSet={image.srcSet}
         />

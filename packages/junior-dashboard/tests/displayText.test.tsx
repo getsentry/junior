@@ -418,10 +418,10 @@ describe("display text object links", () => {
     }
   });
 
-  // The faint reference that follows the row title.
+  // The faint reference under the row title.
   function rowReference(html: string) {
     return html.match(
-      /<span class="max-w-1\/2 shrink-0 truncate [^"]*">([^<]*)<\/span>/,
+      /<span class="min-w-0 truncate text-xs [^"]*">([^<]*)<\/span>/,
     )?.[1];
   }
 
