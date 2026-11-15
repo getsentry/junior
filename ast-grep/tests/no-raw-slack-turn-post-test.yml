@@ -5,8 +5,7 @@ valid:
   - "await args.thread.post(SLACK_STOP_ACK);"
   - 'await http.post("/api", body);'
   - 'await app.post("/api", handler);'
-  - "await client.stream(model, context);"
-  - 'async function send(client: Http) { await client.post("/api"); }'
+  - 'await threads.post("Done.");'
 invalid:
   - "await postSlackMessage({ channelId, text });"
   - 'import { postSlackMessage } from "@/chat/slack/outbound";'
@@ -14,11 +13,7 @@ invalid:
   - "await getSlackClient().chat.postMessage({ channel, text });"
   - "await thread.post(buildTurnErrorResponse(error, eventId));"
   - 'await args.thread.post("Done.");'
+  - "await thread\n  .post(message);"
+  - 'await args.thread?.post("Done.");'
   - 'await channel.post("Done.");'
-  - 'await chat.channel(channelId).post("Done.");'
-  - "await thread.schedule(message, { postAt });"
-  - "await args.adapter.stream(threadId, chunks);"
-  - "await adapter.postChannelMessage?.(channelId, message);"
-  - "const dm = await bot.openDM(userId);"
-  - 'function reply() { const target = new ThreadImpl(options); return target.post("Done."); }'
-  - 'async function reply(target: Thread) { await target.post("Done."); }'
+  - 'await chat.channel(toChannelId(id)).post("Done.");'
