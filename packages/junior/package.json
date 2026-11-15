@@ -65,7 +65,7 @@
     "tool-descriptions:check": "node --test scripts/check-tool-descriptions.test.mjs && node scripts/check-tool-descriptions.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml",
-    "deps:check": "depcruise --config .dependency-cruiser.mjs src/chat"
+    "deps:check": "depcruise --config .dependency-cruiser.mjs src"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",

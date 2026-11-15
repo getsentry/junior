@@ -13,7 +13,10 @@ import {
   type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+import {
+  getGatewayApiKey,
+  resolveGatewayCredential,
+} from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
@@ -24,9 +27,13 @@ import {
   embedMany,
   experimental_decide,
   Experimental_DecisionRefusalError,
+  generateImage,
   generateObject,
+  generateText,
+  NoImageGeneratedError,
   NoObjectGeneratedError,
   rerank,
+  type GeneratedFile,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -871,5 +878,94 @@ export async function rerankTexts(params: {
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;
+  }
+}
+
+const WEB_SEARCH_TOOL_NAME = "parallelSearch";
+
+/** Run one AI Gateway parallel search inside a `gen_ai.chat` span. */
+export async function searchWeb(params: {
+  modelId: string;
+  query: string;
+  maxResults: number;
+  signal: AbortSignal;
+  promptName?: string;
+}) {
+  // Use Junior's shared resolver so OIDC wins over a leftover team API key.
+  // createGatewayProvider() alone prefers AI_GATEWAY_API_KEY and would keep
+  // project attribution as unknown while the key remains set.
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  return await withSpan(
+    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
+    "gen_ai.chat",
+    {},
+    async (setSpanAttributes) => {
+      const response = await generateText({
+        model: provider.chat(params.modelId),
+        prompt: params.query,
+        tools: {
+          [WEB_SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+            mode: "agentic",
+            maxResults: params.maxResults,
+          }),
+        },
+        toolChoice: { type: "tool", toolName: WEB_SEARCH_TOOL_NAME },
+        abortSignal: params.signal,
+      });
+      const costUsd = gatewayCostUsd(response.providerMetadata);
+      setSpanAttributes({
+        "gen_ai.response.finish_reasons": [response.finishReason],
+        ...extractGenAiUsageAttributes(
+          response.usage,
+          costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
+        ),
+      });
+      return {
+        ...(costUsd !== undefined ? { costUsd } : undefined),
+        outputs: response.toolResults
+          .filter((result) => result.toolName === WEB_SEARCH_TOOL_NAME)
+          .map((result): unknown => result.output),
+      };
+    },
+    {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+      "gen_ai.request.model": params.modelId,
+      ...(params.promptName
+        ? { "gen_ai.prompt.name": params.promptName }
+        : undefined),
+      "server.address": GEN_AI_SERVER_ADDRESS,
+      "server.port": GEN_AI_SERVER_PORT,
+      "gen_ai.provider.auth_mode": credential.mode,
+    },
+  );
+}
+
+/** Generate or edit images with an AI Gateway image model. */
+export async function generateImages(params: {
+  modelId: string;
+  /** Input images make this an edit of those images. */
+  prompt: string | { text: string; images: Buffer[] };
+  fetch?: typeof fetch | undefined;
+}): Promise<{ costUsd?: number; images: GeneratedFile[] }> {
+  const provider = createGatewayProvider({
+    apiKey: await getGatewayApiKey(),
+    ...(params.fetch ? { fetch: params.fetch } : undefined),
+  });
+  try {
+    const result = await generateImage({
+      model: provider.imageModel(params.modelId),
+      prompt: params.prompt,
+      n: 1,
+    });
+    const costUsd = gatewayCostUsd(result.providerMetadata);
+    return {
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+      images: result.images,
+    };
+  } catch (error) {
+    if (NoImageGeneratedError.isInstance(error)) return { images: [] };
+    throw error;
   }
 }
