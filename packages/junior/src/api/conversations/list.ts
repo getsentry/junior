@@ -49,7 +49,6 @@ import { conversationFeedSchema } from "../schema/conversation-feed";
 import type {
   ConversationFeed,
   ConversationFeedInclude,
-  ConversationFeedMedia,
 } from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
@@ -69,7 +68,7 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
-import { readFeedMedia } from "./feed-media";
+import { feedMediaSql } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -145,6 +144,7 @@ async function conversationRows(
     conversationIds,
     cursor,
     filter,
+    includeMedia = false,
     includePrivateBriefs = false,
     limit,
     pinnedForUserId,
@@ -157,6 +157,8 @@ async function conversationRows(
     /** Read only rows after this feed position. */
     cursor?: ConversationFeedCursor;
     filter: ConversationFeedMembership | undefined;
+    /** Read each row's newest files in the same statement. */
+    includeMedia?: boolean;
     includePrivateBriefs?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
@@ -180,6 +182,7 @@ async function conversationRows(
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
       ),
+      media: includeMedia ? feedMediaSql(db) : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -246,6 +249,7 @@ async function waitingRowsOutsidePage(
   db: JuniorDatabase,
   filter: ConversationFeedMembership & { kind: "viewer" },
   page: FeedRow[],
+  includeMedia: boolean,
 ): Promise<FeedRow[]> {
   const loaded = new Set(page.map((row) => row.conversation.conversationId));
   const missing = (await listWaitingConversations(db, filter.userId))
@@ -255,6 +259,7 @@ async function waitingRowsOutsidePage(
   return await conversationRows(db, {
     conversationIds: missing,
     filter,
+    includeMedia,
     includePrivateBriefs: true,
     limit: missing.length,
     status: "active",
@@ -471,6 +476,7 @@ export async function readConversationFeedFromSql(
   // pages by activity. Pins are not paged, so the cursor stays a plain
   // activity position.
   const pinsFirst = filter?.kind === "viewer" && status === "active";
+  const includeMedia = options.include?.includes("media") ?? false;
   const feedQuery = {
     ...(options.codeRepositoryId
       ? {
@@ -483,6 +489,7 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     filter,
+    includeMedia,
     includePrivateBriefs: filter?.kind === "viewer",
     query,
     status,
@@ -508,7 +515,9 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows)));
+    rows.push(
+      ...(await waitingRowsOutsidePage(db, filter, rows, includeMedia)),
+    );
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -581,33 +590,22 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [sidebarAnnotationsByConversation, threadsByRoot, mediaByConversation] =
-    await Promise.all([
-      listConversationSidebarAnnotations(
-        conversationIds,
-        visibleAnnotationsByConversation,
-      ),
-      // A Thread shows only while its root is not archived.
-      readFeedThreads(
-        db,
-        conversations
-          .filter((conversation) => conversation.archivedAtMs === undefined)
-          .map(({ conversationId }) => ({
-            access: accessByConversation.get(conversationId),
-            conversationId,
-          })),
-      ),
-      // Files are private content.
-      options.include?.includes("media")
-        ? readFeedMedia(
-            db,
-            conversationIds.filter(
-              (conversationId) =>
-                accessByConversation.get(conversationId)?.canViewPrivateContent,
-            ),
-          )
-        : new Map<string, ConversationFeedMedia[]>(),
-    ]);
+  const [sidebarAnnotationsByConversation, threadsByRoot] = await Promise.all([
+    listConversationSidebarAnnotations(
+      conversationIds,
+      visibleAnnotationsByConversation,
+    ),
+    // A Thread shows only while its root is not archived.
+    readFeedThreads(
+      db,
+      conversations
+        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .map(({ conversationId }) => ({
+          access: accessByConversation.get(conversationId),
+          conversationId,
+        })),
+    ),
+  ]);
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
@@ -666,7 +664,8 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
-      const media = mediaByConversation.get(conversation.conversationId);
+      // Files are private content.
+      const media = access?.canViewPrivateContent ? row.media : null;
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -681,7 +680,7 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
-        ...(media ? { media } : undefined),
+        ...(media?.length ? { media } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
