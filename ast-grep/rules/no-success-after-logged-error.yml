@@ -1,0 +1,91 @@
+id: no-success-after-logged-error
+language: TypeScript
+severity: error
+message: >-
+  This catch logs the error and then returns a success value, so the caller
+  thinks the work succeeded and will not retry. A 200 here once acked Slack
+  and dropped user messages (getsentry/junior#728). Rethrow the error, or
+  return a failure status (such as 503) so the caller retries. Do not hide
+  the success value behind a variable or helper to pass this rule. If the
+  failure truly must not reach the caller, put
+  `// ast-grep-ignore: no-success-after-logged-error -- <what the caller
+  loses and why that is acceptable>` on the line before the return.
+files:
+  - packages/*/src/**/*.ts
+  - packages/*/src/**/*.tsx
+rule:
+  kind: return_statement
+  has:
+    matches: success-value
+  # The nearest enclosing catch clause or rejection handler, with no function
+  # boundary between it and the return.
+  inside:
+    stopBy:
+      any:
+        - kind: catch_clause
+        - kind: arrow_function
+        - kind: function_expression
+        - kind: function_declaration
+        - kind: method_definition
+    any:
+      - kind: catch_clause
+      - matches: rejection-handler
+    has:
+      stopBy: end
+      matches: logged-error
+utils:
+  logged-error:
+    kind: call_expression
+    has:
+      field: function
+      regex: '(^|\.)(logException|logError|logWarn|logFailOpenFailure|captureException)$|(^|\.)(console|log|logger)\.(error|warn)$'
+  rejection-handler:
+    any:
+      - kind: arrow_function
+      - kind: function_expression
+    inside:
+      kind: arguments
+      inside:
+        kind: call_expression
+        has:
+          field: function
+          has: { field: property, regex: ^catch$ }
+  # A status field whose value is not a 2xx number literal.
+  non-success-status:
+    kind: pair
+    all:
+      - has: { field: key, regex: ^status$ }
+      - not:
+          has: { field: value, regex: ^2\d\d$ }
+  success-value:
+    any:
+      # new Response(body) and Response.json(body), with no status or a 2xx one
+      - all:
+          - any:
+              - pattern: new Response($$$)
+              - pattern: Response.json($$$)
+          - not:
+              has:
+                field: arguments
+                has: { kind: object, has: { matches: non-success-status } }
+      # Hono context responses: c.json(body), c.text(body, 200), c.body(null, 204)
+      - all:
+          - any:
+              - pattern: c.json($$$)
+              - pattern: c.text($$$)
+              - pattern: c.body($$$)
+              - pattern: c.html($$$)
+          - not:
+              has:
+                field: arguments
+                has:
+                  nthChild: 2
+                  not: { regex: ^2\d\d$ }
+      # { ok: true, ... }
+      - all:
+          - kind: object
+          - has:
+              kind: pair
+              all:
+                - has: { field: key, regex: ^ok$ }
+                - has: { field: value, kind: "true" }

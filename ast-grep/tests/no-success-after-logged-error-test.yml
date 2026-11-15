@@ -1,0 +1,82 @@
+id: no-success-after-logged-error
+valid:
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "slack_event_routing_failed");
+      return new Response("Slack event handling failed", { status: 503 });
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      throw error;
+    }
+  - |
+    try { await work(); } catch {
+      return new Response("ok");
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return c.json({ error: "failed" }, 500);
+    }
+  - |
+    try { await work(); } catch (error) {
+      logWarn("failed", {}, {});
+      return { ok: false, error: "failed" };
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return items.map((item) => { return { ok: true }; });
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return Response.json({ error: "failed" }, { status: 502 });
+    }
+  - |
+    try {
+      logException(error, "failed");
+      return new Response("ok");
+    } finally {}
+invalid:
+  - |
+    try { await eventTask; } catch (error) {
+      logException(error, "slack_event_enqueue_failed");
+      return new Response("ok", { status: 200 });
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return new Response("ok");
+    }
+  - |
+    try { await work(); } catch (error) {
+      if (shouldLog) { logWarn("failed", {}, {}); }
+      return Response.json({ received: true });
+    }
+  - |
+    try { await work(); } catch (error) {
+      console.error(error);
+      return c.json({ received: true });
+    }
+  - |
+    try { await work(); } catch (error) {
+      logException(error, "failed");
+      return c.body(null, 204);
+    }
+  - |
+    try { await work(); } catch (error) {
+      logError("failed", {}, {});
+      return { ok: true };
+    }
+  - |
+    await work().catch((error) => {
+      logException(error, "failed");
+      return { ok: true, skipped: true };
+    });
+  - |
+    try { await work(); } catch (error) {
+      ctx.log.warn("github.webhook.failed", { error: String(error) });
+      return new Response("ok", { status: 202 });
+    }

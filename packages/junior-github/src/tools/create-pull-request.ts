@@ -165,6 +165,7 @@ interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   stack?: GitHubPullRequestStack;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
+  unrequested_reviewers?: string[];
 }
 
 interface GitHubPullRequestStructuredResult
@@ -180,6 +181,7 @@ const gitHubPullRequestDataSchema = z.object({
     .optional(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),
+  unrequested_reviewers: z.array(z.string()).optional(),
 });
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
@@ -400,25 +402,25 @@ async function saveNamedDraftReviewers(
 
 /**
  * Ask the named reviewers, or else the requester, to review a new pull
- * request. A draft waits until it is ready for review. The request is
- * optional: provider failures must not fail PR creation.
+ * request. A draft waits until it is ready for review. Provider failures
+ * must not fail PR creation, so this returns the reviewers it could not ask.
  */
 async function requestPullRequestReviewers(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
   requester: GitHubRequester | undefined,
-): Promise<void> {
+): Promise<string[] | undefined> {
   const named = namedReviewers(input);
   const repo = parseRepo(input.repo);
+  const requesterLogin = linkedGitHubLogin(requester?.user);
+  const reviewers = named ?? (requesterLogin ? [requesterLogin] : []);
   try {
     if (input.draft) {
       await saveNamedDraftReviewers(ctx, input, result.number);
-      return;
+      return undefined;
     }
-    const requesterLogin = linkedGitHubLogin(requester?.user);
-    const reviewers = named ?? (requesterLogin ? [requesterLogin] : []);
-    if (reviewers.length === 0) return;
+    if (reviewers.length === 0) return undefined;
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.request_reviewers",
       method: "POST",
@@ -434,13 +436,17 @@ async function requestPullRequestReviewers(
           status: response.status,
         },
       );
+      return reviewers;
     }
+    return undefined;
   } catch (error) {
     ctx.log.warn("github.pull_request.request_reviewers_after_create.failed", {
       error: error instanceof Error ? error.message : String(error),
       number: result.number,
       repo: input.repo,
     });
+    // A failed draft save means the ready webhook asks the requester instead.
+    return input.draft ? named : reviewers;
   }
 }
 
@@ -678,7 +684,7 @@ export function createGitHubPullRequestTool(
             identityId,
           });
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
-          await requestPullRequestReviewers(
+          const unrequestedReviewers = await requestPullRequestReviewers(
             ctx,
             parsedInput,
             result,
@@ -687,13 +693,16 @@ export function createGitHubPullRequestTool(
           const stack = stackTarget
             ? await stackGitHubPullRequest(ctx, stackTarget)
             : undefined;
-          return await gitHubPullRequestStructuredResult(
+          const output = await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
             result,
             subscriptionConfig,
             stack,
           );
+          return unrequestedReviewers
+            ? { ...output, unrequested_reviewers: unrequestedReviewers }
+            : output;
         },
       );
     },

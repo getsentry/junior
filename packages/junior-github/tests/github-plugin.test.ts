@@ -1949,7 +1949,7 @@ Conversation: \`local:test:old-conversation\`
       ctx as any,
     );
 
-    await tool?.execute?.(
+    const result = await tool?.execute?.(
       {
         repo: "getsentry/junior",
         title: "Typed PR",
@@ -1974,6 +1974,45 @@ Conversation: \`local:test:old-conversation\`
     );
     await expect(reviewRequest.json()).resolves.toEqual({
       reviewers: ["octocat", "jane"],
+    });
+    expect(result).not.toHaveProperty("unrequested_reviewers");
+  });
+
+  it("returns the reviewers GitHub would not ask", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async ({ operation }) =>
+        operation === "github.pull.create"
+          ? Response.json(
+              {
+                number: 694,
+                html_url: "https://github.com/getsentry/junior/pull/694",
+              },
+              { status: 201 },
+            )
+          : Response.json(
+              { message: "Reviews may only be requested from collaborators." },
+              { status: 422 },
+            ),
+    });
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+      ctx as any,
+    );
+
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        reviewers: ["octocat"],
+      },
+      { toolCallId: "call-create-pull-request-reviewers-rejected" },
+    );
+
+    expect(result).toMatchObject({
+      number: 694,
+      unrequested_reviewers: ["octocat"],
     });
   });
 
