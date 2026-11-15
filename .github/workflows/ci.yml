@@ -13,9 +13,6 @@ on:
       - auto-release/**
   pull_request:
     branches: [main]
-    # labeled and unlabeled rerun the type-cost check when its
-    # Type-Cost-Accepted label changes.
-    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -168,6 +165,9 @@ jobs:
     name: check / types
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
+    permissions:
+      contents: read
+      pull-requests: read
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -188,7 +188,10 @@ jobs:
         env:
           TYPE_COST_FILE: ${{ runner.temp }}/type-cost.json
           TYPE_COST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          TYPE_COST_ACCEPTED: ${{ contains(github.event.pull_request.labels.*.name, 'Type-Cost-Accepted') }}
+          # Reads the Type-Cost-Accepted label when a project grows past
+          # its budget.
+          TYPE_COST_PR: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ github.token }}
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:

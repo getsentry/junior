@@ -47,7 +47,7 @@ const TSC_ARGS = [
 const ACCEPT_LABEL = "Type-Cost-Accepted";
 const HOW_TO_FIX = [
   "Find the cause: run `node_modules/.bin/tsc --noEmit -p <project> --singleThreaded --generateTrace /tmp/trace` on this branch and on main, then compare the slowest checkSourceFile and checkExpression events in /tmp/trace/trace.json (open it in https://ui.perfetto.dev).",
-  `If the cost is worth it, explain why in the pull request, add the \`${ACCEPT_LABEL}\` label, and ask a reviewer to confirm the trade.`,
+  `If the cost is worth it, explain why in the pull request, add the \`${ACCEPT_LABEL}\` label, then re-run this job.`,
 ];
 
 /** Read the counted metrics from `tsc --diagnostics` output. */
@@ -119,6 +119,29 @@ async function typecheckAll(projects) {
   });
   await Promise.all(workers);
   return results;
+}
+
+// CI passes the pull request number and a read-only token. The labels are
+// read at run time, so a re-run sees a label that was added after the run.
+async function acceptedByLabel() {
+  const pullRequest = process.env.TYPE_COST_PR;
+  if (!pullRequest) return false;
+  const response = await fetch(
+    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/pulls/${pullRequest}`,
+    {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Reading the labels of pull request ${pullRequest} failed: HTTP ${response.status}`,
+    );
+  }
+  const { labels } = await response.json();
+  return labels.some((label) => label.name === ACCEPT_LABEL);
 }
 
 function git(...args) {
@@ -196,9 +219,7 @@ async function main() {
     console.log("No project grew past the type-check cost budget.");
     return;
   }
-  // CI sets this from the pull request labels. Adding or removing the label
-  // starts a new run.
-  if (process.env.TYPE_COST_ACCEPTED === "true") {
+  if (await acceptedByLabel()) {
     for (const error of errors) {
       console.log(`::warning::Accepted by the ${ACCEPT_LABEL} label: ${error}`);
     }
