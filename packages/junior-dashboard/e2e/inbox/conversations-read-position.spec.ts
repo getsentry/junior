@@ -506,19 +506,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       releaseNewerPage = resolve;
     });
 
-    await page.route("**/api/conversations", async (route) => {
-      if (new URL(route.request().url()).pathname !== "/api/conversations") {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        json: {
-          conversations: [conversation],
-          generatedAt,
-          source: "conversation_index",
-        },
-      });
-    });
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        if (new URL(route.request().url()).pathname !== "/api/conversations") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          json: {
+            conversations: [conversation],
+            generatedAt,
+            source: "conversation_index",
+          },
+        });
+      },
+    );
     await page.route(
       `**/api/conversations/${conversationId}/events?*`,
       async (route) => {

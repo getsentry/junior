@@ -12,10 +12,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const feedPending = new Promise<void>((resolve) => {
       releaseFeed = resolve;
     });
-    await page.route("**/api/conversations", async (route) => {
-      await feedPending;
-      await route.fallback();
-    });
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        await feedPending;
+        await route.fallback();
+      },
+    );
     await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
     const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
     await expect(inbox.getByText("Loading", { exact: true })).toBeAttached();
@@ -270,19 +273,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     let requests = 0;
-    await page.route("**/api/conversations", async (route) => {
-      if (route.request().method() !== "GET") {
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname !== "/api/conversations") {
+          await route.fallback();
+          return;
+        }
+        requests += 1;
         await route.fallback();
-        return;
-      }
-      const pathname = new URL(route.request().url()).pathname;
-      if (pathname !== "/api/conversations") {
-        await route.fallback();
-        return;
-      }
-      requests += 1;
-      await route.fallback();
-    });
+      },
+    );
 
     await page.goto(dashboard.baseURL);
     await expect(
@@ -429,24 +435,27 @@ test.describe("new UI", { tag: "@new" }, () => {
       surface: "internal",
     }));
 
-    await page.route("**/api/conversations", async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      const pathname = new URL(route.request().url()).pathname;
-      if (pathname !== "/api/conversations") {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        json: {
-          conversations,
-          generatedAt,
-          source: "conversation_index",
-        },
-      });
-    });
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname !== "/api/conversations") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          json: {
+            conversations,
+            generatedAt,
+            source: "conversation_index",
+          },
+        });
+      },
+    );
     await page.route(
       "**/api/conversations/long-0/pending-messages",
       async (route) => {
