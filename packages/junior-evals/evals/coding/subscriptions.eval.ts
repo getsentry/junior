@@ -524,6 +524,12 @@ describe("Watches", () => {
 
     expect(delivery.turns).not.toHaveLength(0);
     expect(delivery.replies).toEqual([]);
+    const commands = completedToolCalls("bash", delivery).map((call) =>
+      String((call.input as { command?: unknown } | undefined)?.command),
+    );
+    expect(commands.filter((command) => /gh pr merge/.test(command))).toEqual(
+      [],
+    );
   });
 
   test("when the person who asked reviews the PR, address them once as you", async ({

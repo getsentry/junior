@@ -107,7 +107,7 @@ const DEFAULT_PULL_REQUEST_SUBSCRIPTION: GitHubPullRequestSubscriptionConfig = {
     "pull_request.review_comment.created",
   ],
   intent:
-    "Maintain pull requests Junior creates. For actionable review feedback, failed checks, or merge conflicts, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Reply on GitHub to review comments and questions, in the thread where they were asked. Post in the originating thread only when a person must decide or act, such as a blocker that you cannot fix. Do not post status updates: GitHub already shows reviews, approvals, fixes, and replies.",
+    "Maintain pull requests Junior creates. For actionable review feedback, failed checks, or merge conflicts, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Do not merge it: a person merges it, even when a review says to ship it. Reply on GitHub to review comments and questions, in the thread where they were asked. Post in the originating thread only when a person must decide or act, such as a blocker that you cannot fix. Do not post status updates: GitHub already shows reviews, approvals, fixes, and replies.",
 };
 
 /** Resolve the Watch to create after Junior creates a pull request, if any. */
