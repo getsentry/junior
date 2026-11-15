@@ -7,7 +7,6 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../../components/DetailsPanel";
-import { formatRelativeTime, formatTime } from "../../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../../components/ui/button";
 import {
@@ -39,6 +38,7 @@ import {
 } from "../../conversations/ConversationWatches";
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
+import { formatRelativeTime, formatTime } from "../../time";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 

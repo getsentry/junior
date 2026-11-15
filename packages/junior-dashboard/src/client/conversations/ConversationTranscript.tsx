@@ -22,7 +22,7 @@ import {
   EmptyTitle,
 } from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
-import { formatTime, unavailableTranscriptLabel } from "../format";
+import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ObjectAttachProvider } from "./ObjectAttach";
 import { ConversationBrief } from "./ConversationBrief";
@@ -98,6 +98,7 @@ import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 import { ComfortableDensityContext } from "../uiShell";
+import { formatTime } from "../time";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;

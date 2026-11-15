@@ -22,7 +22,6 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
-import { formatCompactAge } from "../conversations/conversationAge";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import { visualStatusForConversation } from "../format";
 import {
@@ -69,6 +68,7 @@ import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+import { formatCompactAge } from "../time";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 

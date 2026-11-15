@@ -4,7 +4,6 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatRelativeTime } from "../format";
 import { cn } from "../styles";
 import {
   INBOX_ROW_DETAIL_CLASS,
@@ -17,6 +16,7 @@ import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { answerLine } from "./reviewItemFormat";
+import { formatRelativeTime } from "../time";
 
 /** The answer, or the reason that the item closed. */
 function outcomeOf(item: ReviewItemPayload): string | undefined {

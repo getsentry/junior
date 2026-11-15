@@ -22,7 +22,6 @@ import {
   conversationDisplayTitle,
   visualStatusForConversation,
 } from "../format";
-import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
@@ -66,6 +65,7 @@ import {
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
 import type { WaitingConversation } from "../review-desk/queries";
+import { formatCompactAge } from "../time";
 
 type ConversationSidebarEntry =
   | {

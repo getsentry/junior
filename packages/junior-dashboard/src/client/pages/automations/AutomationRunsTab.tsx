@@ -19,11 +19,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import {
-  formatCompactNumber,
-  formatCostSummary,
-  formatRuntime,
-} from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import { useSearchParamEnum } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
@@ -38,6 +34,7 @@ import {
   automationRunTitle,
   formatAutomationRunTime,
 } from "./automationFormat";
+import { formatRuntime } from "../../time";
 
 /** Search param that filters the Runs tab by result. */
 export const AUTOMATION_RESULT_PARAM = "result";

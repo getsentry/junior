@@ -20,7 +20,6 @@ import {
   useCodeRepositoryConversationsData,
   useConversationsData,
 } from "../../api";
-import { formatCompactAge } from "../../conversations/conversationAge";
 import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
@@ -59,6 +58,7 @@ import {
   CommandList,
 } from "../../components/ui/command";
 import { Kbd } from "../../components/ui/kbd";
+import { formatCompactAge } from "../../time";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;

@@ -8,7 +8,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { formatMs } from "../format";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -20,6 +19,7 @@ import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 import { LiveActivityStep, useWorkingTime } from "./TranscriptLiveStep";
+import { formatDuration } from "../time";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -138,7 +138,7 @@ export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
   const count = countLabel(entries.length, "1 event", "events");
   const durationMs = activityGroupDurationMs(entries);
   if (typeof durationMs !== "number" || durationMs <= 0) return count;
-  return `${count} · ${formatMs(durationMs)}`;
+  return `${count} · ${formatDuration(durationMs)}`;
 }
 
 /** Build a breakdown of what one collapsed activity group contains. */

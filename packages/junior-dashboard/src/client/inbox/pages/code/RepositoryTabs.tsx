@@ -20,11 +20,12 @@ import {
 import { Card } from "../../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { pinnedFirst } from "../../../conversations/conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../../../format";
+import { buildConversations } from "../../../format";
 import { useWaitingConversations } from "../../../review-desk/queries";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
 import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
 import { repositoryActivity } from "../../../pages/code/RepositorySections";
+import { getDashboardTimeZone } from "../../../time";
 
 const PAGE_SIZE = 25;
 

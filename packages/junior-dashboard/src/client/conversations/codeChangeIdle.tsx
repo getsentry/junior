@@ -9,7 +9,9 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { cn } from "../styles";
+import { formatDuration } from "../time";
 
+const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
 
 /**
@@ -41,8 +43,11 @@ export function IdleText(props: {
   nowMs: number;
 }) {
   const days = idleDays(props.nowMs, props.change);
-  const idle = formatSince(props.nowMs, lastActivity(props.change));
-  const opened = formatSince(props.nowMs, props.change.openedAt);
+  // Ages start at `1m`, so a change from seconds ago reads `1m`, not `12s`.
+  const since = (at: string) =>
+    formatDuration(Math.max(MINUTE_MS, props.nowMs - Date.parse(at)), 1);
+  const idle = since(lastActivity(props.change));
+  const opened = since(props.change.openedAt);
   const touched =
     props.change.lastActivityAt !== undefined &&
     props.change.lastActivityAt > props.change.openedAt;
@@ -72,12 +77,4 @@ export function IdleText(props: {
       </TooltipContent>
     </Tooltip>
   );
-}
-
-function formatSince(nowMs: number, at: string): string {
-  const minutes = Math.max(1, Math.floor((nowMs - Date.parse(at)) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
-  const days = Math.floor(minutes / (24 * 60));
-  return days < 365 ? `${days}d` : `${Math.floor(days / 365)}y`;
 }

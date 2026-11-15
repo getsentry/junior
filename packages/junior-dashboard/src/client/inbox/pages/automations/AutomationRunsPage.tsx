@@ -22,11 +22,7 @@ import { SelectableRow } from "../../../components/SelectableRow";
 import { StatusDot } from "../../../components/StatusDot";
 import { Card } from "../../../components/layout/Card";
 import { PageHeader } from "../../../components/layout/PageHeader";
-import {
-  formatCompactNumber,
-  formatCostSummary,
-  formatRuntime,
-} from "../../../format";
+import { formatCompactNumber, formatCostSummary } from "../../../format";
 import { useSearchParamEnum } from "../../../searchParams";
 import { cn } from "../../../styles";
 import {
@@ -39,6 +35,7 @@ import {
   automationRunTitle,
   formatAutomationRunTime,
 } from "../../../pages/automations/automationFormat";
+import { formatRuntime } from "../../../time";
 
 const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;

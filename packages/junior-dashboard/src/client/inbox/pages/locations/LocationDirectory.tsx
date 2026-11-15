@@ -13,11 +13,8 @@ import {
 import { DirectoryMetric } from "../../../components/directory/DirectoryMetric";
 import { Card } from "../../../components/layout/Card";
 import { CardHeader } from "../../../components/layout/CardHeader";
-import {
-  formatCompactNumber,
-  formatRelativeTime,
-  locationPath,
-} from "../../../format";
+import { formatCompactNumber, locationPath } from "../../../format";
+import { formatRelativeTime } from "../../../time";
 
 export type LocationSort = "conversations" | "recent" | "runtime" | "tokens";
 

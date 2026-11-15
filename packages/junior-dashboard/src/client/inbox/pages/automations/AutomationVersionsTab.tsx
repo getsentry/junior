@@ -32,13 +32,13 @@ import { SkillLink } from "../../../components/SkillLink";
 import { StatusChip } from "../../../components/StatusChip";
 import { Card } from "../../../components/layout/Card";
 import { DisplayText } from "../../../display-text/DisplayText";
-import { formatRelativeTime } from "../../../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../../../http";
 import { cn } from "../../../styles";
 import { formatAutomationRunTime } from "../../../pages/automations/automationFormat";
 import { automationOutcomeLabel } from "../../../pages/automations/automationOutcomes";
 import { TriggerFilters } from "../../../pages/automations/TriggerFilters";
 import { invalidateAutomationReads } from "../../../review-desk/inboxQueries";
+import { formatRelativeTime } from "../../../time";
 
 /** Search param that selects the version to compare. */
 export const AUTOMATION_VERSION_PARAM = "version";

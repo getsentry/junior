@@ -2,7 +2,6 @@ import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { CalendarClock, LockKeyhole, TriangleAlert, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../../components/ActorAvatar";
-import { formatRelativeTime } from "../../../format";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 import {
   INBOX_ROW_META_CLASS,
@@ -16,6 +15,7 @@ import {
 } from "../../../pages/automations/automationFormat";
 import { AutomationRunStrip } from "../../../pages/automations/AutomationRunStrip";
 import { automationProblemSummary } from "../../../pages/automations/AutomationStatus";
+import { formatRelativeTime } from "../../../time";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;

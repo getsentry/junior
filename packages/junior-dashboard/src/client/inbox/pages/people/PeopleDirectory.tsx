@@ -1,4 +1,3 @@
-import { formatDuration } from "../../../components/Duration";
 import { UserRound } from "lucide-react";
 import type {
   ActorSummaryReport,
@@ -23,6 +22,7 @@ import {
   formatCostSummary,
   peoplePath,
 } from "../../../format";
+import { formatDuration } from "../../../time";
 
 export type PeopleSort =
   | "conversations"

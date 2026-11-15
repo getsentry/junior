@@ -6,7 +6,7 @@ import { FormNotice } from "../components/FormNotice";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { Button } from "../components/ui/button";
 import { conversationPath } from "../conversations/conversationRoutes";
-import { automationPath, formatRelativeTime } from "../format";
+import { automationPath } from "../format";
 import { DashboardApiError } from "../http";
 import { useAutomationLifecycle } from "../pages/automations/useAutomationLifecycle";
 import { cn } from "../styles";
@@ -19,6 +19,7 @@ import {
 import { automationAttentionGroup } from "./inboxModel";
 import type { SnoozeChoice } from "./inboxSnooze";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { formatRelativeTime } from "../time";
 
 const LAST_RUN_LABELS = {
   blocked: "blocked",

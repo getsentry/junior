@@ -8,11 +8,11 @@ import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
 import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
+import { formatRelativeTime } from "../time";
 
 function personLabel(person: {
   displayName?: string | undefined;

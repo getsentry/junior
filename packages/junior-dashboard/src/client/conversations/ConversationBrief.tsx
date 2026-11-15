@@ -26,10 +26,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
-import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { OutboundLink } from "../components/OutboundLink";
+import { formatTime } from "../time";
 
 /** A Conversation's current Brief. */
 export type ConversationBriefReport = NonNullable<
