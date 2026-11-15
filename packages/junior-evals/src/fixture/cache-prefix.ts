@@ -5,17 +5,13 @@
  * each message block. A request reads the cache only up to the first block
  * that differs from an earlier request, and writes the rest again. So each
  * agent request of a Conversation must start with every block of the one
- * before it. Cache markers may move. Two rewrites are expected:
- * - Context compaction replaces the history. Its summary requests branch off
- *   the prefix: they must extend it, but the next agent request does not
- *   extend them.
- * - A Turn in another prompt mode has another system prompt and tool list.
- *   This happens when a person replies after an Automation run, or when
- *   person Turns and agent Turns alternate in a Thread.
+ * before it. Cache markers may move. Only context compaction may rewrite
+ * the history, and only after the tools and system prompt. Its summary
+ * requests branch off the prefix: they must extend it, but the next agent
+ * request does not extend them.
  */
 import { isContextSummaryRequestText } from "@/chat/agent/context-summary";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
-import { PROMPT_MODE_JOB_TAGS } from "@/chat/system-prompt-rules";
 
 /** The cache-relevant parts of one Anthropic Messages request. */
 export interface AgentGatewayRequest {
@@ -55,9 +51,12 @@ function promptBlocks(request: AgentGatewayRequest): PromptBlock[] {
       ? content
       : [{ type: "text", text: content }];
     return blocks.map((block) => {
-      const unmarked: Record<string, unknown> = { role, ...block };
-      delete unmarked.cache_control;
-      return { role, text: block.text, json: JSON.stringify(unmarked) };
+      const { cache_control: _marker, ...unmarked } = block;
+      return {
+        role,
+        text: block["text"],
+        json: JSON.stringify({ role, ...unmarked }),
+      };
     });
   });
 }
@@ -120,14 +119,6 @@ function compactedBetween(before: SeenRequest, after: SeenRequest): boolean {
   );
 }
 
-/** The prompt mode whose job section the system prompt has. */
-function promptMode(request: AgentGatewayRequest): string | undefined {
-  const system = JSON.stringify(request.system);
-  return Object.entries(PROMPT_MODE_JOB_TAGS).find(([, tag]) =>
-    system.includes(`<${tag}>`),
-  )?.[0];
-}
-
 function prefixBreak(
   before: SeenRequest,
   after: SeenRequest,
@@ -135,7 +126,6 @@ function prefixBreak(
 ): Omit<CachePrefixBreak, "request" | "conversation"> | undefined {
   const previous = before.request;
   const next = after.request;
-  if (promptMode(previous) !== promptMode(next)) return undefined;
   if (previous.model !== next.model) {
     return { part: "model", detail: `${previous.model} became ${next.model}` };
   }

@@ -3,10 +3,6 @@ import { describe, expect, it } from "vitest";
 import { requestContextSummary } from "@/chat/agent/context-summary";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import {
-  PROMPT_MODE_JOB_TAGS,
-  type PromptMode,
-} from "@/chat/system-prompt-rules";
-import {
   findCachePrefixBreaks,
   type AgentGatewayRequest,
 } from "@junior-evals/fixture/cache-prefix";
@@ -91,32 +87,6 @@ describe("findCachePrefixBreaks", () => {
         request: 1,
         conversation: "conversation-1",
         part,
-        detail: expect.any(String),
-      },
-    ]);
-  });
-
-  it("accepts a Turn in another prompt mode, and only that change", () => {
-    const system = (mode: PromptMode, rules = "") => {
-      const tag = PROMPT_MODE_JOB_TAGS[mode];
-      return [{ type: "text", text: `<${tag}>\n${rules}</${tag}>` }];
-    };
-    const run = request(first.messages, {
-      system: system("automation"),
-      tools: [...tools, { name: "reply" }],
-    });
-    const personTurn = request(second.messages, {
-      system: system("conversation"),
-    });
-    const changed = request(second.messages, {
-      system: system("conversation", "Now.\n"),
-    });
-    expect(findCachePrefixBreaks([run, personTurn])).toEqual([]);
-    expect(findCachePrefixBreaks([personTurn, changed])).toEqual([
-      {
-        request: 1,
-        conversation: "conversation-1",
-        part: "system",
         detail: expect.any(String),
       },
     ]);
