@@ -1,4 +1,12 @@
-import { index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
@@ -57,6 +65,12 @@ export const juniorAttachments = pgTable(
       table.deleteRequestedAt,
       table.createdAt,
     ),
+    // One `url` row per link in a Conversation. Writers already derive the
+    // id from the pair; this keeps a writer that does not from adding a
+    // second row.
+    uniqueIndex("junior_attachments_conversation_url_idx")
+      .on(table.conversationId, table.url)
+      .where(sql`${table.url} IS NOT NULL`),
   ],
 );
 
