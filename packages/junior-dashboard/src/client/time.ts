@@ -24,10 +24,10 @@ const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ["minute", MINUTE_MS],
 ];
 
-// Compact labels such as `3h` are English in every locale, like the rest of
-// the dense dashboard metadata.
+// The dashboard UI is English only, so labels are English in every browser
+// locale. A Spanish browser must not get "hace 5 minutos" in an English UI.
 const durationFormat = new Intl.DurationFormat("en-US", { style: "narrow" });
-const relativeTimeFormat = new Intl.RelativeTimeFormat(undefined, {
+const relativeTimeFormat = new Intl.RelativeTimeFormat("en-US", {
   numeric: "auto",
 });
 
