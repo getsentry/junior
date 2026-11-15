@@ -10,18 +10,18 @@ export type McpProviderErrorPhase =
 export interface McpProviderErrorDetails {
   phase: McpProviderErrorPhase;
   provider: string;
-  missingSession?: boolean;
-  resourceHost?: string;
-  status?: number;
+  missingSession?: boolean | undefined;
+  resourceHost?: string | undefined;
+  status?: number | undefined;
 }
 
 /** Safe failure at an MCP network or OAuth boundary. */
 export class McpProviderError extends Error {
   readonly phase: McpProviderErrorPhase;
   readonly provider: string;
-  readonly missingSession?: boolean;
-  readonly resourceHost?: string;
-  readonly status?: number;
+  readonly missingSession?: boolean | undefined;
+  readonly resourceHost?: string | undefined;
+  readonly status?: number | undefined;
 
   constructor(details: McpProviderErrorDetails) {
     super(`MCP provider ${details.phase.replace("_", " ")} failed`);

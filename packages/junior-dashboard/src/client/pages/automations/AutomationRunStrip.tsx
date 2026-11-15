@@ -18,9 +18,9 @@ import {
 
 /** One bar in the strip. `to` makes the bar open that run in place. */
 export type AutomationRunStripRun = {
-  costUsd?: number;
-  durationMs?: number;
-  error?: string;
+  costUsd?: number | undefined;
+  durationMs?: number | undefined;
+  error?: string | undefined;
   executedAt: string;
   key: string;
   /** Tags the bar, so closing run details can return focus to it. */

@@ -215,7 +215,7 @@ describe("web page cards", () => {
           objectLinks: [
             {
               filters: [{ host: "tickets.example.com" }],
-              objectType: "task",
+              objectTypes: ["task"],
               canView: async () => true,
               resolve: async (_ctx, url) => ({
                 kind: "object",
@@ -348,7 +348,7 @@ describe("web page cards", () => {
   test("follows at most 2 redirects", async () => {
     mswServer.use(
       http.get("https://hops.example.com/:hops", ({ params }) => {
-        const hops = Number(params.hops);
+        const hops = Number(params["hops"]);
         return hops === 0
           ? HttpResponse.html(
               page('<meta property="og:title" content="Arrived">'),

@@ -584,7 +584,7 @@ describe("conversation detail API", () => {
       ],
     });
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["UNEW1234"]);
     // Other instances can now skip Slack for UNEW1234.
     expect(
@@ -636,6 +636,15 @@ describe("conversation detail API", () => {
       {
         createdAtMs: 3,
         data: {
+          messageId: "user-1",
+          role: "user",
+          text: "Is getsentry/junior#12 done?",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
           messageId: "reply-1",
           role: "assistant",
           text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
@@ -667,6 +676,8 @@ describe("conversation detail API", () => {
           text: "<task>@octocat asked a question.</task>",
           trustedSummary: `${octocat} commented on ${pr12}.`,
         }),
+        // A person's message links the same references as a reply.
+        expect.objectContaining({ text: `Is ${pr12} done?` }),
         // A reply that names a repository. Bare links stay for their cards,
         // and a bare Slack user ID is a Slack mention, not a GitHub login.
         expect.objectContaining({

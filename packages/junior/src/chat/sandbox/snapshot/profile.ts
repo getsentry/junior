@@ -69,7 +69,7 @@ function mergeDependencies(
 }
 
 function floatingMaxAgeMs(): number {
-  const raw = process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
+  const raw = process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
   if (!raw?.trim()) {
     return DEFAULT_FLOATING_MAX_AGE_MS;
   }
@@ -126,7 +126,8 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
     return null;
   }
 
-  const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
+  const rebuildEpoch =
+    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"]?.trim() ?? "";
   // Plugin postinstall commands may fetch mutable artifacts, so profiles
   // containing them expire on the same schedule as floating npm selectors.
   const floating =

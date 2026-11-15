@@ -465,6 +465,173 @@ test("a Sentry event link resolves to a titled link, an event row, and a hover c
   });
 });
 
+test("a Sentry release link resolves to a titled link, a release row, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url = "https://acme.sentry.io/releases/junior%404.2.0/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "junior@4.2.0 (4.2.0)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows a compact row.
+  const card = page.getByRole("region", {
+    name: "Sentry release: junior@4.2.0",
+  });
+  await expect(card).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-release-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  const preview = card.nth(1);
+  for (const text of [
+    "Projects",
+    "junior, junior-dashboard",
+    "New issues",
+    "3",
+    "Crash-free sessions",
+    "99.42%",
+    "Deploys",
+    "2, last to production",
+  ]) {
+    await expect(preview).toContainText(text);
+  }
+  // The header shows when the release happened, in the viewer's time.
+  await expect(preview).toContainText(
+    new Date(1770020700_000).toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  );
+  await screenshot(page, "conversation-sentry-release-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry dashboard link resolves to a titled link, a dashboard card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url = "https://acme.sentry.io/dashboard/42/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Checkout health (Sentry dashboard)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry dashboard: Checkout health",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "Widgets",
+    "9",
+    "Projects",
+    "junior, junior-dashboard",
+    "Environments",
+    "production",
+    "Time range",
+    "Last 24 hours",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  // Small charts of the first widgets that a card can draw, then the
+  // first widgets by title.
+  for (const title of [
+    "Checkout p95",
+    "Log volume by severity",
+    "Token usage",
+  ]) {
+    await expect(
+      card.locator("figcaption").filter({ hasText: title }),
+    ).toHaveCount(1);
+  }
+  const widgets = card.getByRole("list", { name: "Widgets" });
+  await expect(widgets.getByRole("listitem")).toHaveCount(8);
+  await expect(widgets).toContainText("Slowest endpointsTable");
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-dashboard-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(card.nth(1)).toContainText("Checkout p95");
+  await screenshot(page, "conversation-sentry-dashboard-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry monitor link resolves to a titled link, a monitor row, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Checkout p95 latency",
+  });
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://acme.sentry.io/monitors/4021/",
+  );
+  // The reply also links to it on its own line, which shows a compact row.
+  const card = page.getByRole("region", {
+    name: "Sentry monitor: Checkout p95 latency",
+  });
+  await expect(card).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-monitor-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  const preview = card.nth(1);
+  for (const text of [
+    "Alerting",
+    "Kind",
+    "Metric alert",
+    "Project",
+    "junior",
+    "Environment",
+    "production",
+    "Alerts on",
+    "p95(span.duration) per 5 min",
+    // The trend's label sits over its sparkline.
+    "p95(span.duration), last 4 h",
+  ]) {
+    await expect(preview).toContainText(text);
+  }
+  await screenshot(page, "conversation-sentry-monitor-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,
@@ -642,7 +809,7 @@ test("one request asks for the cards of every link in a message", async ({
       .some((link) => link === personUrl || link === conversationUrl),
   );
   expect(asked).toHaveLength(1);
-  expect(asked[0]!.searchParams.getAll("url")).toEqual(
+  expect(asked[0].searchParams.getAll("url")).toEqual(
     expect.arrayContaining([personUrl, conversationUrl]),
   );
 });

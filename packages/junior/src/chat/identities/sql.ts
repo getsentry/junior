@@ -24,7 +24,7 @@ function tenantId(value: string | undefined): string {
 async function upsertUser(
   executor: JuniorSqlDatabase,
   args: {
-    displayName?: string;
+    displayName?: string | undefined;
     email: string;
     emailNormalized: string;
     nowMs: number;
@@ -343,8 +343,8 @@ export async function deleteProviderIdentityForUser(
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
   account: {
-    avatarUrl?: string;
-    displayName?: string;
+    avatarUrl?: string | undefined;
+    displayName?: string | undefined;
     email: string;
     subject: string;
   },

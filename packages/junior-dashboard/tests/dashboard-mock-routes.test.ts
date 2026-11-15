@@ -88,6 +88,7 @@ describe("dashboard canonical-event mock routes", () => {
     await expect(me.json()).resolves.toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 

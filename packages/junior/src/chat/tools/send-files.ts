@@ -86,7 +86,7 @@ export function createSendFilesTool(
   materializeFile: MaterializeFile,
   output:
     | { attachments: FileAttachments; delivery?: FileDelivery }
-    | { attachments?: FileAttachments; delivery: FileDelivery },
+    | { attachments?: FileAttachments | undefined; delivery: FileDelivery },
 ) {
   const { attachments, delivery } = output;
   return zodTool({

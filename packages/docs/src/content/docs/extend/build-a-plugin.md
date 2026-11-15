@@ -493,18 +493,18 @@ the dispatch Conversation. When you omit it, Junior generates one from
 
 ## Add a link type
 
-A link type turns a URL in a reply into an object card in the dashboard. It
-works like an Android `<intent-filter>`. You declare static filters, and
-Junior matches each URL against them without your code. Then Junior calls
-`canView` of the most specific match, and calls its `resolve` only when
-`canView` returns true.
+A link type turns a URL in a reply or message into an object card in the
+dashboard. It works like an Android `<intent-filter>`. You declare static
+filters, and Junior matches each URL against them without your code. Then
+Junior calls `canView` of the most specific match, and calls its `resolve`
+only when `canView` returns true.
 
 ```ts title="index.ts"
 defineJuniorPlugin({
   manifest: { name: "my-provider", description: "My provider integration" },
   objectLinks: [
     {
-      objectType: "task",
+      objectTypes: ["task"],
       filters: [{ host: "tracker.example.com", pathPattern: "/issues/*" }],
       async canView(ctx, url) {
         return await viewerCanOpenIssue(ctx.viewer, url);
@@ -553,7 +553,11 @@ defineJuniorPlugin({
 - **People.** For a profile link of a provider account, return
   `await ctx.findPerson({ provider, handle })` when it finds a card. That is
   the Junior person card of the one known person who linked that account.
-- **Facts and icon.** Return the facts of `objectType`. Each object type has
+- **Object types.** `objectTypes` lists each type that `resolve` can
+  return. Most link types return one. List more when one URL can open
+  different objects, such as a GitHub issue URL that opens a pull request.
+  Junior rejects a card of a type that is not in the list.
+- **Facts and icon.** Return the facts of the card's `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
   icon to `scripts/generate-object-icons.mjs`.

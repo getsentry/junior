@@ -21,7 +21,7 @@ import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 export const TranscriptToolView = memo(function TranscriptToolView(props: {
   conversationId: string;
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(

@@ -56,7 +56,7 @@ export async function syncLocalOAuthCredential(
     provider,
     tokens,
   } satisfies LocalCredentialSyncPayload);
-  const port = process.env.PORT?.trim() || "3000";
+  const port = process.env["PORT"]?.trim() || "3000";
   const response = await fetch(
     `http://127.0.0.1:${port}/api/internal/local-oauth-credentials`,
     {
@@ -81,7 +81,7 @@ export async function receiveLocalOAuthCredential(
 ): Promise<Response> {
   const hostname = new URL(request.url).hostname;
   if (
-    process.env.NODE_ENV !== "development" ||
+    process.env["NODE_ENV"] !== "development" ||
     (hostname !== "127.0.0.1" && hostname !== "localhost")
   ) {
     return new Response(null, { status: 404 });

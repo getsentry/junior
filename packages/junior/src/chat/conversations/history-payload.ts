@@ -10,6 +10,7 @@ export function isEncodedHistoryType(type: string): boolean {
     type === "user_message" ||
     type === "assistant_message" ||
     type === "tool_result" ||
+    type === "system_message" ||
     type === "handoff" ||
     type === "compaction"
   );
@@ -43,10 +44,10 @@ export function encodeHistoryPayload(data: ConversationEventData): {
       message: JSON.stringify(message),
       provenance,
       // SQL reports read these fields. Replay reads only the message string.
-      model: message.model,
-      provider: message.provider,
-      usage: message.usage,
-      toolCallId: message.toolCallId,
+      model: message["model"],
+      provider: message["provider"],
+      usage: message["usage"],
+      toolCallId: message["toolCallId"],
     },
   };
 }
@@ -62,13 +63,17 @@ export function decodeHistoryPayload(
       ...fields,
       replacementHistory: z
         .array(replacementEntrySchema)
-        .parse(fields.replacementHistory)
-        .map(({ item, ...entry }) => ({ ...entry, item: JSON.parse(item) })),
+        .parse(fields["replacementHistory"])
+        .map(({ item, ...entry }) => {
+          const parsedItem: unknown = JSON.parse(item);
+          return { ...entry, item: parsedItem };
+        }),
     };
   }
   const message = messageFieldsSchema.parse(
-    JSON.parse(z.string().parse(fields.message)),
+    JSON.parse(z.string().parse(fields["message"])),
   );
-  if (fields.provenance !== undefined) message.provenance = fields.provenance;
+  if (fields["provenance"] !== undefined)
+    message["provenance"] = fields["provenance"];
   return message;
 }

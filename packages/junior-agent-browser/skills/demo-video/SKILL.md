@@ -37,6 +37,7 @@ For a raw interaction recording without an edited presentation, use `agent-brows
 ## 3. Prepare Narration And Music
 
 - Write spoken text separately from scene layout and delivery directions. Keep the opening about the work. Put credits and operational capabilities where they support the story.
+- End on what the subject is, in a line that a viewer who does not know it can follow. Add where to learn more, such as a link, only when there is one. Do not end on an internal call to action, such as "tag us in Slack", unless asked.
 - For requested speech, load the available TTS skill and use its credential, cost, and retry rules. Use the agreed voice preset. Do not silently replace a missing provider with another voice.
 - Generate one clip per scene to make revisions cheap. Reuse unchanged clips and generate changed text to fresh paths. A visual-only edit needs no new speech request.
 - Measure each clip. Align its words to get word times. Derive scene frames from the last spoken word plus explicit lead and tail time. Recompute later scene offsets after a clip changes.

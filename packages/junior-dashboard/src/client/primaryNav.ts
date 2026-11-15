@@ -37,7 +37,7 @@ export function buildPrimaryNavItems(input: {
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
   /** Open Review items assigned to the viewer. */
-  reviewCount?: number;
+  reviewCount?: number | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the Inbox
   // and Automations slots while core data catches up so the header does not jump.

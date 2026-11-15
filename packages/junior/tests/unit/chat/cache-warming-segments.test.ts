@@ -84,7 +84,7 @@ async function endTurn(
     ...definitionsKey,
     mode,
   });
-  recorder.wrap((() => undefined) as never)(model, turnContext, {});
+  void recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }
 
@@ -102,11 +102,11 @@ async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
     mode,
   });
   const stream = recorder.wrap((() => undefined) as never);
-  stream(model, context, {});
+  void stream(model, context, {});
   await recorder.record(toolCall("systemTime"));
   recorder.toolsReturned();
   vi.advanceTimersByTime(MINUTE);
-  stream(model, context, {});
+  void stream(model, context, {});
   await recorder.record(toolCall(toolName));
   recorder.answerToolEnded(toolName);
   await recorder.stop();
@@ -162,7 +162,7 @@ const segmentGaps = (segment: string) =>
 async function runIdleWarmups(sinceMs: number): Promise<number[]> {
   const refreshedAtIdleMs: number[] = [];
   let horizonRan = false;
-  for (let warmup = scheduledWarmup(); ; ) {
+  for (let warmup = scheduledWarmup(); ;) {
     vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
     if (!horizonRan && Date.now() - sinceMs >= IDLE_HORIZON_MS) {
       await runCacheWarmup(scheduledHorizon());
@@ -639,7 +639,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      reply.wrap((() => undefined) as never)(model, context, {});
+      void reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
           await state.get(
@@ -721,7 +721,7 @@ describe("cache warming gap segments", () => {
     };
     const requests: Array<Record<string, unknown>> = [];
     mockTitleModel("", {
-      onRequest: (request) => requests.push(request as Record<string, unknown>),
+      onRequest: (request) => requests.push(request),
     });
     try {
       // The Turn sends its request to the model service, like a run does.
@@ -738,7 +738,7 @@ describe("cache warming gap segments", () => {
       // The warmup sends the cached prefix of the Turn's request unchanged.
       expect(requests).toHaveLength(2);
       const [turnRequest, warmupRequest] = requests;
-      expect(JSON.stringify(warmupRequest!.messages)).toContain(data);
+      expect(JSON.stringify(warmupRequest!["messages"])).toContain(data);
       for (const field of ["system", "messages", "tools"]) {
         expect(JSON.stringify(warmupRequest![field])).toBe(
           JSON.stringify(turnRequest![field]),
@@ -808,7 +808,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      recorder.wrap((() => undefined) as never)(model, turnContext, {});
+      void recorder.wrap((() => undefined) as never)(model, turnContext, {});
       await recorder.record({
         ...finalReply,
         usage: {
@@ -886,7 +886,7 @@ describe("cache warming gap segments", () => {
         true,
         definitionsKey,
       );
-      recorder.wrap(base as never)(
+      void recorder.wrap(base as never)(
         resolveGatewayModel(modelId),
         context,
         cacheRetention ? { cacheRetention } : {},

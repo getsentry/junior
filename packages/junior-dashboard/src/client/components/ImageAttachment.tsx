@@ -39,7 +39,7 @@ export function shouldPreviewImageAttachment(
 
 /** One image that a preview can show. */
 export type PreviewImage = {
-  context?: string;
+  context?: string | undefined;
   filename: string;
   src: string;
 };
@@ -56,7 +56,7 @@ export function ImageAttachment(
   props: {
     context?: string;
     filename: string;
-    gallery?: readonly PreviewImage[];
+    gallery?: readonly PreviewImage[] | undefined;
     imageClassName?: string;
     src: string;
     triggerClassName?: string;

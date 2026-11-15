@@ -28,6 +28,7 @@ export function createSlackConversationSearchChannelPort(
     },
     async describeMatch(match) {
       // A child agent has no Slack thread of its own. It belongs to its root.
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
       const reference = parseSlackThreadId(match.rootConversationId);
       if (!reference || reference.channelId !== match.providerDestinationId) {
         return {};

@@ -40,7 +40,7 @@ type McpHttpHandlerOptions = {
   /** Attachment storage for messages that MCP clients send. */
   attachmentStorage: AttachmentStorage;
   /** Configured public origin. Unset allows only loopback request origins. */
-  baseURL?: string;
+  baseURL?: string | undefined;
   /** Conversation work queue. Stopping a Turn clears its queued work. */
   queue: ConversationWorkQueue;
   state: McpState;

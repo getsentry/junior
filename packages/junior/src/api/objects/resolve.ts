@@ -3,6 +3,7 @@ import {
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
+  type ObjectType,
   type OwnedObjectAnnotation,
   type PluginRegistration,
   type User,
@@ -27,6 +28,7 @@ import {
 import {
   assertNoObjectLinkConflicts,
   findObjectLinkType,
+  linkTypeName,
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonByAccount, resolvePersonLink } from "./person";
@@ -54,7 +56,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     // workspace, so it shares one Slack installation with the check.
     canView: async () => true,
     filters: [SLACK_MESSAGE_LINK_FILTER],
-    objectType: "message",
+    objectTypes: ["message"],
     owner: "junior",
     resolve: resolveSlackMessageLink,
   };
@@ -70,7 +72,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     {
       canView: canViewConversationLink,
       filters: [conversations],
-      objectType: "conversation",
+      objectTypes: ["conversation"],
       owner: "junior",
       resolve: resolveConversationLink,
     },
@@ -80,7 +82,7 @@ function coreLinkTypes(): ObjectLinkType[] {
       // Every signed-in viewer sees the People pages.
       canView: async () => true,
       filters: [people, { scheme: "mailto" }],
-      objectType: "person",
+      objectTypes: ["person"],
       owner: "junior",
       resolve: (_viewer, url) => resolvePersonLink(url),
     },
@@ -119,7 +121,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     canView: (viewer, url) =>
       link.canView(objectLinkContext(name, viewer), url),
     filters: link.filters,
-    objectType: link.objectType,
+    objectTypes: link.objectTypes,
     owner: name,
     readTool: link.readTool,
     resolve: (viewer, url) =>
@@ -138,6 +140,22 @@ export function readObjectLinkTypes(
   const linkTypes = [...coreLinkTypes(), ...plugins.flatMap(pluginLinkTypes)];
   assertNoObjectLinkConflicts(linkTypes);
   return linkTypes;
+}
+
+/**
+ * Return the object type of the link type that claims a URL, such as
+ * `code_change` for a pull request link from the GitHub plugin. The plugin
+ * that owns the link type decides; core only reads its filters. A link type
+ * that can open more than one type, such as a GitHub issue URL that can open
+ * a pull request, names no type from the URL alone.
+ */
+export function readLinkObjectType(
+  url: string,
+  linkTypes: readonly ObjectLinkType[] = readObjectLinkTypes(),
+): ObjectType | undefined {
+  if (!URL.canParse(url)) return undefined;
+  const objectTypes = findObjectLinkType(linkTypes, new URL(url))?.objectTypes;
+  return objectTypes?.length === 1 ? objectTypes[0] : undefined;
 }
 
 type ResolvedObjectLink = {
@@ -159,9 +177,9 @@ async function resolveWithLinkType(
   const resolved = await linkType.resolve(viewer, url);
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
-  if (object.objectType !== linkType.objectType) {
+  if (!linkType.objectTypes.includes(object.objectType)) {
     throw new Error(
-      `Link type "${linkType.owner}/${linkType.objectType}" returned a ${object.objectType} object.`,
+      `Link type "${linkTypeName(linkType)}" returned a ${object.objectType} object.`,
     );
   }
   return {

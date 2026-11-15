@@ -8,9 +8,10 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -84,10 +85,12 @@ export interface ActiveContextCompactionArgs {
   conversationId: string;
   modelId: string;
   onCompactionStart?: () => void | Promise<void>;
-  pendingMessages?: Array<{
-    message: PiMessage;
-    provenance: ConversationMessageProvenance;
-  }>;
+  pendingMessages?:
+    | Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }>
+    | undefined;
   piMessages: PiMessage[];
   /**
    * `blocking` runs before the first model request of a Turn. With a new
@@ -102,9 +105,9 @@ export interface ActiveContextCompactionArgs {
    */
   requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Index in the runtime context messages where the current Turn starts. */
-  turnStartMessageIndex?: number;
+  turnStartMessageIndex?: number | undefined;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
@@ -190,7 +193,7 @@ export function userMessage(text: string): PiMessage {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
-  } as PiMessage;
+  };
 }
 
 function userMessageContent(message: PiMessage): unknown[] {
@@ -283,7 +286,7 @@ function latestSessionContext(messages: PiMessage[]): PiMessage | undefined {
       return {
         ...message,
         content: [{ type: "text", text: withoutRequestContext(text) }],
-      } as PiMessage;
+      };
     }
   }
   return undefined;
@@ -616,6 +619,29 @@ function measuredInputTokens(message: PiMessage): number | undefined {
   return tokens > 0 ? tokens : undefined;
 }
 
+// Pi 1.0 removed `estimateContextTokens` from agent-core. pi-ai's version also
+// drops the usage of an assistant message that is stamped before any earlier
+// message, such as after clock skew, and then estimates all history by size.
+// Junior checks only the case that matters, a newer summary, below.
+function lastAssistantUsage(
+  messages: PiMessage[],
+): { tokens: number; index: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (
+      message.role !== "assistant" ||
+      message.stopReason === "aborted" ||
+      message.stopReason === "error" ||
+      !message.usage
+    ) {
+      continue;
+    }
+    const tokens = calculateContextTokens(message.usage);
+    if (tokens > 0) return { tokens, index };
+  }
+  return undefined;
+}
+
 /**
  * Measure provider-visible history without counting host-only message fields.
  *
@@ -629,24 +655,18 @@ export function estimateHistoryTokens(
   modelId: string,
   requestOverheadTokens = 0,
 ): number {
-  const estimate = estimateContextTokens(messages);
+  const usage = lastAssistantUsage(messages);
   const summaryAt = latestSummaryTimestamp(messages);
-  const usageAt =
-    estimate.lastUsageIndex === null
-      ? undefined
-      : timestampOf(messages[estimate.lastUsageIndex]!);
+  const usageAt = usage ? timestampOf(messages[usage.index]!) : undefined;
   if (
-    estimate.lastUsageIndex !== null &&
+    usage &&
     usageAt !== undefined &&
     (summaryAt === undefined || usageAt > summaryAt)
   ) {
     // The usage counts the request up to that call. Estimate the rest by size.
     return (
-      estimate.usageTokens +
-      estimateMessagesTokens(
-        messages.slice(estimate.lastUsageIndex + 1),
-        modelId,
-      )
+      usage.tokens +
+      estimateMessagesTokens(messages.slice(usage.index + 1), modelId)
     );
   }
   return estimateReplacementTokens(messages, modelId, requestOverheadTokens);
@@ -667,7 +687,9 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
   for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
-      if ((message as { role?: unknown }).role !== "user") return undefined;
+      // A replacement adds only user messages and folded system state.
+      const role = (message as { role?: unknown }).role;
+      if (role !== "user" && role !== "system") return undefined;
       continue;
     }
     const tokens = measuredInputTokens(message);
@@ -841,10 +863,17 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
+  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemEntries = systemMessage
+    ? [{ message: systemMessage, provenance: contextProvenance }]
+    : [];
   const keptTokens = estimateReplacementTokens(
-    [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
-      (entry) => entry.message,
-    ),
+    [
+      ...retainedUserMessages,
+      ...contextEntries,
+      ...instructionEntries,
+      ...systemEntries,
+    ].map((entry) => entry.message),
     args.modelId,
     args.requestOverheadTokens,
   );
@@ -888,6 +917,9 @@ async function compactActiveAboveThreshold(
     ),
     provenance: contextProvenance,
   };
+  // The current system state directly follows the summary of the history
+  // that held it. A system message must follow a user message; Pi sends it
+  // before the next assistant message.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
@@ -896,10 +928,16 @@ async function compactActiveAboveThreshold(
     ? [
         ...retainedUserMessages,
         summaryEntry,
+        ...systemEntries,
         ...contextEntries,
         ...instructionEntries,
       ]
-    : [...contextEntries, ...instructionEntries, summaryEntry];
+    : [
+        ...contextEntries,
+        ...instructionEntries,
+        summaryEntry,
+        ...systemEntries,
+      ];
   const retainedMessageCount =
     retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);

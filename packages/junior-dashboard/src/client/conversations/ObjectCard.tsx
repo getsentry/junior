@@ -21,24 +21,33 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { formatRelativeTime, formatTime } from "../format";
+import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
-// web page is its title. An event ends with when it happened, in the
-// viewer's time.
+// web page is its title. An event or a release ends with when it happened,
+// and a monitor with when it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
   if (card.objectType === "web_page") return webPageMeta(card) ?? type;
+  const time =
+    card.facts?.type === "event"
+      ? card.facts.occurredAt
+      : card.facts?.type === "release"
+        ? card.facts.releasedAt
+        : card.facts?.type === "monitor"
+          ? card.facts.lastCheckedAt
+          : undefined;
   return (
     [
       type,
       objectSource(card.plugin),
       // A label that repeats the title or the type says nothing new.
       [card.title, type].includes(card.label) ? "" : card.label,
-      card.facts?.type === "event" && card.facts.occurredAt
-        ? new Date(card.facts.occurredAt).toLocaleString(undefined, {
+      time
+        ? new Date(time).toLocaleString(undefined, {
             dateStyle: "medium",
             timeStyle: "short",
           })
@@ -80,8 +89,8 @@ export function ObjectCard({
 }: {
   card: OwnedObjectAnnotation;
   className?: string;
-  fill?: boolean;
-  live?: boolean;
+  fill?: boolean | undefined;
+  live?: boolean | undefined;
 }) {
   const saved = useSavedObject(card);
   const images = saved.previewImages;
@@ -176,12 +185,13 @@ export function ObjectCard({
             {displayPlainText(card.facts.summary)}
           </p>
         )}
-        {card.facts?.type === "task" && card.facts.trend && (
-          <Sparkline
-            label={card.facts.trend.label}
-            series={[card.facts.trend]}
-          />
-        )}
+        {(card.facts?.type === "task" || card.facts?.type === "monitor") &&
+          card.facts.trend && (
+            <Sparkline
+              label={card.facts.trend.label}
+              series={[card.facts.trend]}
+            />
+          )}
         {card.facts?.type === "chart" && (
           <Sparkline
             display={card.facts.display}
@@ -189,6 +199,9 @@ export function ObjectCard({
             series={card.facts.series}
             tall
           />
+        )}
+        {card.facts?.type === "dashboard" && (
+          <DashboardPreview facts={card.facts} />
         )}
         {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
           <TraceWaterfall

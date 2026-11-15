@@ -28,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
@@ -77,7 +78,7 @@ type DiscardReason =
 interface ReplacementEntry {
   message: PiMessage;
   provenance: ConversationMessageProvenance;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Compare a message across a durable commit, which drops undefined fields. */
@@ -307,6 +308,9 @@ async function applyPreparedSummary(
       : { message, provenance: contextProvenance };
   });
   const { entries: trimmedEntries, trimming } = trimToolResults(keptEntries);
+  // Kept system messages stay in place. The summarized ones fold into one
+  // that directly follows the summary, as in a full compaction.
+  const systemMessage = foldSystemMessages(summarized);
   const replacement: ReplacementEntry[] = [
     ...(contextMessage
       ? [{ message: contextMessage, provenance: contextProvenance }]
@@ -318,6 +322,9 @@ async function applyPreparedSummary(
       ),
       provenance: contextProvenance,
     },
+    ...(systemMessage
+      ? [{ message: systemMessage, provenance: contextProvenance }]
+      : []),
     ...trimmedEntries,
     ...pendingMessages,
   ];

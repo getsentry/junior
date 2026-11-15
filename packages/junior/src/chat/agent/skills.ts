@@ -38,7 +38,7 @@ export function loadableSkills(
 
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
 export async function discoverRunSkills(args: {
-  skillDirs?: string[];
+  skillDirs?: string[] | undefined;
 }): Promise<SkillMetadata[]> {
   const availableSkills = await discoverSkills({
     additionalRoots: args.skillDirs,

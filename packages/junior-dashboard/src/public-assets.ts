@@ -13,24 +13,26 @@ export const DASHBOARD_ASSETS_PATH = "/_junior/dashboard/assets";
 
 /** Path under the assets prefix of a content-hashed browser file. */
 export const DASHBOARD_PUBLIC_ASSET_NAME =
-  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|webp|woff2)$/;
+  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|png|webp|woff2)$/;
 
 /** File name of the content-hashed dashboard stylesheet. */
 export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
 
-/** File name of the content-hashed dashboard browser entry. */
-export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
+/** File name of a content-hashed UI shell entry. */
+export const DASHBOARD_CLIENT_ENTRY_NAME =
+  /^(?:classic|inbox)-[A-Za-z0-9]{8}\.js$/;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".png": "image/png",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
 };
 
 /** Return true when a public asset is binary, so builds embed it as base64. */
 export function isBinaryPublicAsset(file: string): boolean {
-  return file.endsWith(".webp") || file.endsWith(".woff2");
+  return /\.(?:png|webp|woff2)$/.test(file);
 }
 
 // Builds embed these files. Without them (tests and local development from
@@ -53,13 +55,28 @@ function publicDir(): string | undefined {
 export const DASHBOARD_CLIENT_MANIFEST_FILE = "client-manifest.json";
 
 /**
- * The client entry, every file it imports statically, the stylesheet, and
- * the fonts the first paint uses.
+ * UI shells: `classic` is the current dashboard, `inbox` the new one that a
+ * user turns on with `experimentalUi`.
  */
-export const dashboardClientManifestSchema = z.object({
+export type DashboardShell = "classic" | "inbox";
+
+const publicAssetFilesSchema = z.array(
+  z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME),
+);
+
+/** A UI shell's entry and every file that it imports statically. */
+const dashboardShellFilesSchema = z.object({
   entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
-  fonts: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
-  imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
+  imports: publicAssetFilesSchema,
+});
+
+/** The files of each UI shell, the stylesheet, and the first-paint fonts. */
+export const dashboardClientManifestSchema = z.object({
+  fonts: publicAssetFilesSchema,
+  shells: z.object({
+    classic: dashboardShellFilesSchema,
+    inbox: dashboardShellFilesSchema,
+  }),
   stylesheet: z.string().regex(DASHBOARD_STYLESHEET_NAME),
 });
 

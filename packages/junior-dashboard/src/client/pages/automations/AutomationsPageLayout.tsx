@@ -25,7 +25,7 @@ const taskNavigationItems = [
 /** Keep Automation navigation consistent across the list and runs. */
 function AutomationsNavigation(props: {
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <SecondaryNavigation

@@ -619,10 +619,10 @@ describe("Conversation mailbox Turn work", () => {
         ? [
             {
               role: event.data.role,
-              source: event.data.meta?.source,
-              eventType: event.data.meta?.eventType,
-              trustedSummary: event.data.meta?.trustedSummary,
-              quiet: event.data.meta?.quiet,
+              source: event.data.meta?.["source"],
+              eventType: event.data.meta?.["eventType"],
+              trustedSummary: event.data.meta?.["trustedSummary"],
+              quiet: event.data.meta?.["quiet"],
               text: event.data.text,
             },
           ]
@@ -637,15 +637,7 @@ describe("Conversation mailbox Turn work", () => {
         quiet: undefined,
         text: "Code change checks failed",
       },
-      {
-        role: "assistant",
-        source: undefined,
-        eventType: undefined,
-        trustedSummary: undefined,
-        // The noReply note, kept as a Quiet message.
-        quiet: true,
-        text: "Handled the event.",
-      },
+      // The noReply note stays in agent history only. It is not a Message.
     ]);
   }, 10_000);
 

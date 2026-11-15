@@ -13,12 +13,27 @@ const mocks = vi.hoisted(() => ({
     costUsd: 0.05,
     attributes: {},
   })),
+  // The warmup timer writes its cost, and nothing awaits that write.
+  warmupCostWrites: [] as Promise<void>[],
 }));
 
 vi.mock("@/chat/cache-warming/request", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/cache-warming/request")>()),
   sendWarmup: mocks.sendWarmup,
 }));
+
+vi.mock("@/chat/cache-warming/savings", async (importOriginal) => {
+  const savings =
+    await importOriginal<typeof import("@/chat/cache-warming/savings")>();
+  return {
+    ...savings,
+    recordWarmupCost: (modelId: string, costUsd: number) => {
+      const write = savings.recordWarmupCost(modelId, costUsd);
+      mocks.warmupCostWrites.push(write);
+      return write;
+    },
+  };
+});
 
 const { createToolWaitWarmer } = await import("@/chat/cache-warming/tool-wait");
 
@@ -82,6 +97,8 @@ describe("tool wait cache warming", () => {
   });
 
   afterEach(async () => {
+    // A write that lands later would count on the day of the next case.
+    await Promise.all(mocks.warmupCostWrites.splice(0));
     vi.useRealTimers();
     await getStateAdapter().delete(GAPS_KEY);
     await getStateAdapter().delete(OPEN_WAIT_KEY);
@@ -178,6 +195,7 @@ describe("tool wait cache warming", () => {
     await vi.advanceTimersByTimeAsync(7 * MINUTE);
     expect(mocks.sendWarmup).toHaveBeenCalledTimes(1);
     await warmer.record(request(), message("stop"));
+    await Promise.all(mocks.warmupCostWrites);
 
     const response = await createJuniorApi().request(
       "http://localhost/api/cache-warming/savings?days=1",
@@ -225,6 +243,25 @@ describe("tool wait cache warming", () => {
       hits: 1,
       savedUsd: expect.closeTo(write - read, 3),
     });
+  });
+
+  it("leaves a wait that an answer tool ended to the idle period", async () => {
+    vi.setSystemTime(new Date("2031-04-03T12:00:00.000Z"));
+    const answered = createToolWaitWarmer("local:test:tool-wait");
+    await answered.record(request(), message("toolUse"));
+    answered.toolsReturned();
+    await answered.end(true);
+    vi.advanceTimersByTime(7 * MINUTE);
+    const next = createToolWaitWarmer("local:test:tool-wait");
+    await next.record(request(), message("stop"));
+
+    const response = await createJuniorApi().request(
+      "http://localhost/api/cache-warming/savings?days=1",
+    );
+    const { totals } = cacheWarmingSavingsReportSchema.parse(
+      await response.json(),
+    );
+    expect(totals.idlePeriods).toBe(0);
   });
 
   it("records only tool waits that can change a decision", async () => {

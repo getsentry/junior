@@ -24,7 +24,7 @@ const RERANK_TIMEOUT_MS = 5_000;
 /** One word-match candidate that the model reads. */
 export interface RerankCandidate {
   name: string;
-  source?: string;
+  source?: string | undefined;
   /** Summarized one-line description. */
   description: string;
 }
@@ -76,7 +76,7 @@ export async function rerankSearchCandidates(args: {
   query: string;
   candidates: RerankCandidate[];
   cost: ConversationModelCost;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): Promise<string[] | undefined> {
   const startedAt = Date.now();
   const telemetry = (outcome: "picked" | "none" | "fallback") =>

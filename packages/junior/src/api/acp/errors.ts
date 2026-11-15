@@ -6,6 +6,9 @@ export type AcpErrorContext = {
 
 export type ReportAcpError = (
   error: unknown,
-  event: string,
+  event:
+    | "acp.transport.exception"
+    | "acp.sse.exception"
+    | "acp.sse.lock_cleanup.exception",
   context: AcpErrorContext,
 ) => void;

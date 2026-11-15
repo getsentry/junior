@@ -114,10 +114,12 @@ export type TurnProgress =
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
-  onProgress?: (
-    progress: TurnProgress,
-    actions: { send(input: Input): Promise<void> },
-  ) => void | Promise<void>;
+  onProgress?:
+    | ((
+        progress: TurnProgress,
+        actions: { send(input: Input): Promise<void> },
+      ) => void | Promise<void>)
+    | undefined;
 }
 
 /**
@@ -129,8 +131,6 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
-  /** Quiet messages: stored, but not delivered to the Slack thread. */
-  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -449,7 +449,9 @@ export async function createFixtureAgent(
         : record.idempotencyKey;
       const uploadIds = input.files?.length
         ? await uploadWebFiles(api, {
-            ...(started ? { conversationId: record.conversationId } : {}),
+            ...(started
+              ? { conversationId: record.conversationId }
+              : undefined),
             files: input.files,
             idempotencyKey,
             viewerEmail: record.viewerEmail,
@@ -765,7 +767,6 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
-      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -886,7 +887,6 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
-      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],

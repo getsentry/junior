@@ -189,6 +189,7 @@ const STATIC_TOOL_BINDERS = {
   webSearch: (run) =>
     createWebSearchTool(
       botConfig.webSearchModelId,
+      run.modelCost,
       run.hooks.toolOverrides?.webSearch,
     ),
   webFetch: (run) =>
@@ -215,11 +216,11 @@ const STATIC_TOOL_BINDERS = {
       createRunAutomationNowTool(run.automation, run.catalog),
       run.automationDisabledReason,
     ),
-  createWorkspace: (run) => run.workspaceTools().createWorkspace,
-  updateWorkspace: (run) => run.workspaceTools().updateWorkspace,
-  deleteWorkspace: (run) => run.workspaceTools().deleteWorkspace,
-  listWorkspaces: (run) => run.workspaceTools().listWorkspaces,
-  switchWorkspace: (run) => run.workspaceTools().switchWorkspace,
+  createWorkspace: (run) => run.workspaceTools()["createWorkspace"],
+  updateWorkspace: (run) => run.workspaceTools()["updateWorkspace"],
+  deleteWorkspace: (run) => run.workspaceTools()["deleteWorkspace"],
+  listWorkspaces: (run) => run.workspaceTools()["listWorkspaces"],
+  switchWorkspace: (run) => run.workspaceTools()["switchWorkspace"],
   runOperatorSql: (run) =>
     isPublic(run) ? undefined : createRunOperatorSqlTool(),
   updateUserCustomization: (run) =>
@@ -407,7 +408,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
             modelId: botConfig.imageGenerationModelId,
             canSendFilesToActiveConversation:
               run.canSendFilesToActiveConversation,
-            promptCost: run.modelCost,
+            modelCost: run.modelCost,
             sandbox: run.context.workspace,
           },
           run.hooks.toolOverrides?.imageGenerate,

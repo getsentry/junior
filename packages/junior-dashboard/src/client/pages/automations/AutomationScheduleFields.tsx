@@ -27,7 +27,7 @@ import {
 /** Edit calendar fields and preview the next run without saving. */
 export function AutomationScheduleFields(props: {
   automation: Extract<AutomationEdit, { kind: "scheduled" }>;
-  value?: AutomationScheduleDraft;
+  value?: AutomationScheduleDraft | undefined;
   onChange(value: AutomationScheduleDraft | undefined): void;
 }) {
   const value = props.value ?? scheduleDraft(props.automation);

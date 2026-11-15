@@ -7,7 +7,7 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
  */
 export function conversationPath(
   conversationId: string,
-  options?: { reviewItems?: boolean; turnId?: string },
+  options?: { reviewItems?: boolean; turnId?: string | undefined },
 ): string {
   const path = `/conversations/${encodeURIComponent(conversationId)}`;
   const params = new URLSearchParams();
@@ -26,9 +26,9 @@ export function conversationPath(
  * question to show and focus.
  */
 export type ReplyFocusState = {
-  draftFrom?: string;
+  draftFrom?: string | undefined;
   focusReply: true;
-  questionId?: string;
+  questionId?: string | undefined;
 };
 
 /** Ask the opened Conversation to focus its reply box. */

@@ -25,7 +25,7 @@ export function MessageCard({
 
 /** Head a card with a framed icon, a muted line, and the title. */
 export function MessageCardHeader(props: {
-  className?: string;
+  className?: string | undefined;
   icon: ReactNode;
   meta: ReactNode;
   title: ReactNode;

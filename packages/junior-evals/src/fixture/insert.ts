@@ -366,16 +366,17 @@ export async function insertWatch(args: {
 }
 
 /**
- * Add the Watch that the GitHub plugin adds after Junior opens a draft pull
- * request, with the default intent and the draft guidance.
+ * Add the Watch that the GitHub plugin adds after Junior opens a pull
+ * request, with the default intent. A draft also gets the draft guidance.
  */
-export async function insertGitHubDraftWatch(args: {
+export async function insertGitHubPullRequestWatch(args: {
   conversation: { conversationId: string };
+  draft: boolean;
   pullRequest: string;
 }): Promise<{ id: string }> {
   const watch = gitHubPullRequestCreateWatch(
     gitHubPullRequestSubscription(undefined)!,
-    { draft: true },
+    { draft: args.draft },
   );
   return await insertWatch({
     conversation: args.conversation,
@@ -405,6 +406,8 @@ export async function insertMemory(args: {
   const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
+    // Junior and the plugin type the same Drizzle client with separate schemas.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     getDb() as unknown as MemoryDb,
     {
       actor: {

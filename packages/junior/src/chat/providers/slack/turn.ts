@@ -191,7 +191,7 @@ interface LoadedPiMessagesForTurn {
  */
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
-  activeTurnId?: string;
+  activeTurnId?: string | undefined;
 }): Promise<LoadedPiMessagesForTurn> {
   if (!args.conversationId) {
     return {};
@@ -221,7 +221,7 @@ async function loadPiMessagesForTurn(args: {
 
 interface SlackTurnDeps {
   /** Keeps background work, such as title projection, alive after the turn. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
   executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
@@ -229,12 +229,12 @@ interface SlackTurnDeps {
     attachments: Message["attachments"] | undefined,
     context: {
       conversationId?: string;
-      threadId?: string;
-      actorId?: string;
-      channelId?: string;
-      runId?: string;
+      threadId?: string | undefined;
+      actorId?: string | undefined;
+      channelId?: string | undefined;
+      runId?: string | undefined;
       conversation?: PreparedTurnState["conversation"];
-      messageTs?: string;
+      messageTs?: string | undefined;
     },
   ) => Promise<
     Array<{
@@ -245,7 +245,9 @@ interface SlackTurnDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
+  sendPluginTask?:
+    | ScheduleSessionCompletedPluginTasksOptions["send"]
+    | undefined;
 }
 
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
@@ -257,7 +259,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
-      conversationId?: string;
+      conversationId: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
@@ -273,7 +275,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       stopSignal?: AbortSignal;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
-        context?: { conversationContext?: string },
+        context?: { conversationContext?: string | undefined },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
       checkIn?: () => Promise<boolean>;
@@ -308,7 +310,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const destinationVisibility =
       conversationVisibilityFromSlackChannelType(slackChannelType);
     const assistantThreadContext = getAssistantThreadContext(message);
-    const threadTs = getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
+    const threadTs = getThreadTs(message);
     const messageTs = getMessageTs(message);
     const teamId = destination.teamId;
     const source =
@@ -327,10 +329,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const replyTarget = resolveSlackReplyTarget({ destination, source });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
-    const conversationId = options.conversationId ?? threadId ?? runId;
-    if (!conversationId) {
-      throw new Error("Slack reply execution requires a conversation id");
-    }
+    const { conversationId } = options;
 
     await withSpan(
       "chat.reply",
@@ -1146,7 +1145,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 return;
               }
               if (event.type === "tool_started") {
-                await options.onToolInvocation?.({
+                options.onToolInvocation?.({
                   params: event.params,
                   toolName: event.toolName,
                 });

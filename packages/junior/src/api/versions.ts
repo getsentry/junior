@@ -16,7 +16,7 @@ import type { Versions } from "./schema/versions";
  */
 export async function readVersions(
   viewer: User,
-  options: { conversationId?: string } = {},
+  options: { conversationId?: string | undefined } = {},
 ): Promise<Versions> {
   const db = getDb();
   const [row] = await db

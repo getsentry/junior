@@ -223,4 +223,6 @@ test("explains when Junior did not make the Preview", async ({
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Token name")).toBeVisible();
+  // The page stays on the API Tokens section.
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#api-tokens`);
 });

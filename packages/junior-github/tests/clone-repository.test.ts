@@ -62,7 +62,7 @@ describe("cloneRepository", () => {
       context(run, findByRepository),
     );
 
-    const result = await tool.execute!(
+    const result = await tool.execute(
       { repo: "getsentry/junior", directory: "repos/junior" },
       { signal },
     );
@@ -104,10 +104,9 @@ describe("cloneRepository", () => {
       context(run, findByRepository),
     );
 
-    const error = await tool.execute!(
-      { repo: "getsentry/junior" },
-      {} as never,
-    ).catch((value) => value);
+    const error = await tool
+      .execute({ repo: "getsentry/junior" }, {})
+      .catch((value) => value);
     expect(error).toBeInstanceOf(PluginToolInputError);
     expect(error).toMatchObject({
       name: "PluginToolInputError",
@@ -130,7 +129,7 @@ describe("cloneRepository", () => {
     );
 
     await expect(
-      tool.execute!({ repo: "getsentry/junior" }, {} as never),
+      tool.execute({ repo: "getsentry/junior" }, {}),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
@@ -151,9 +150,9 @@ describe("cloneRepository", () => {
       context(run, findByRepository),
     );
 
-    const result = await tool.execute!(
+    const result = await tool.execute(
       { allow_ad_hoc: true, repo: "getsentry/junior" },
-      {} as never,
+      {},
     );
 
     expect(findByRepository).toHaveBeenCalledWith({
@@ -180,10 +179,7 @@ describe("cloneRepository", () => {
       context(run, findByRepository, active),
     );
 
-    const result = await tool.execute!(
-      { repo: "getsentry/sentry" },
-      {} as never,
-    );
+    const result = await tool.execute({ repo: "getsentry/sentry" }, {});
 
     expect(run).toHaveBeenCalledTimes(3);
     expect(result).toEqual({
@@ -209,10 +205,7 @@ describe("cloneRepository", () => {
       ),
     );
 
-    const result = await tool.execute!(
-      { repo: "getsentry/sentry" },
-      {} as never,
-    );
+    const result = await tool.execute({ repo: "getsentry/sentry" }, {});
 
     expect(result).toMatchObject({
       note: 'Cloned getsentry/sentry ad hoc to keep the current Workspace. Workspace "sentry" also includes getsentry/sentry. switchWorkspace replaces this Sandbox and drops its files.',
@@ -227,7 +220,7 @@ describe("cloneRepository", () => {
     const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
     await expect(
-      tool.execute!({ repo: "getsentry/junior" }, {} as never),
+      tool.execute({ repo: "getsentry/junior" }, {}),
     ).rejects.toThrow("destination already exists");
     expect(run).toHaveBeenCalledTimes(2);
   });
@@ -248,10 +241,7 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
-    const result = await tool.execute!(
-      { repo: "getsentry/skills" },
-      {} as never,
-    );
+    const result = await tool.execute({ repo: "getsentry/skills" }, {});
 
     expect(run).toHaveBeenNthCalledWith(
       3,
@@ -266,10 +256,7 @@ describe("cloneRepository", () => {
     const tool = bindPluginTool(gitHubCloneRepositoryTool, context(vi.fn()));
 
     await expect(
-      tool.execute!(
-        { repo: "getsentry/skills", directory: "skills" },
-        {} as never,
-      ),
+      tool.execute({ repo: "getsentry/skills", directory: "skills" }, {}),
     ).rejects.toThrow("Directory conflicts with a reserved sandbox path");
   });
 
@@ -283,9 +270,9 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
-    await expect(
-      tool.execute!({ repo: "getsentry/junior" }, {} as never),
-    ).rejects.toBe(pause);
+    await expect(tool.execute({ repo: "getsentry/junior" }, {})).rejects.toBe(
+      pause,
+    );
     expect(run).toHaveBeenNthCalledWith(4, {
       cmd: "rm",
       args: ["-rf", "--", "/vercel/sandbox/repos/junior"],
@@ -305,10 +292,7 @@ describe("cloneRepository", () => {
     const ctx = context(run, findByRepository);
     const tool = bindPluginTool(gitHubCloneRepositoryTool, ctx);
 
-    const result = await tool.execute!(
-      { repo: "getsentry/junior" },
-      {} as never,
-    );
+    const result = await tool.execute({ repo: "getsentry/junior" }, {});
 
     expect(result).toMatchObject({
       path: "/vercel/sandbox/repos/junior",

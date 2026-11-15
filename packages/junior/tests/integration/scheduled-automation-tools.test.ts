@@ -56,7 +56,7 @@ const rootTurnTools = turnBehavior({
   personInput: true,
 }).tools;
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
@@ -285,7 +285,7 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env.JUNIOR_TIMEZONE;
+    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -1016,7 +1016,7 @@ describe("Scheduled automation tools", () => {
       executeTool(tool, {
         automation_id: created.automation.id,
         nextRunAt: "2026-06-01T16:00:00.000Z",
-      } as Parameters<NonNullable<typeof tool.execute>>[0]),
+      }),
     ).rejects.toThrow("Unrecognized key");
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1043,7 +1043,7 @@ describe("Scheduled automation tools", () => {
             time: "09:00",
           },
         },
-      } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
+      }),
     ).rejects.toThrow("Invalid tool arguments: trigger.schedule");
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1694,7 +1694,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env.JUNIOR_TIMEZONE = "America/New_York";
+    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1720,7 +1720,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env.JUNIOR_TIMEZONE = "not/a-zone";
+    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
@@ -2316,7 +2316,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
         automation: { id: string };
-      }>(tools.createAutomation!, {
+      }>(tools["createAutomation"]!, {
         instruction: "Wiring test: post a weekly digest.",
         trigger: {
           type: "schedule",
@@ -2387,22 +2387,30 @@ describe("Scheduled automation tool wiring via createTools", () => {
       });
       // A dashboard Turn in a Conversation with a Slack Location delivers to
       // that channel. The creator is the person's linked Slack account there.
-      const located = createTools([], {}, {
-        turnTools: rootTurnTools,
-        ...webTurn("slack:DDM:1700000000.100000"),
-        location: {
-          id: `location:${TEAM_ID}:C123`,
-          provider: "slack",
-          teamId: TEAM_ID,
-          channelId: "C123",
-          threadTs: "1700000000.100000",
+      const located = createTools(
+        [],
+        {},
+        {
+          turnTools: rootTurnTools,
+          ...webTurn("slack:DDM:1700000000.100000"),
+          location: {
+            id: `location:${TEAM_ID}:C123`,
+            provider: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+            threadTs: "1700000000.100000",
+          },
+          destination: {
+            platform: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+          },
         },
-        destination: { platform: "slack", teamId: TEAM_ID, channelId: "C123" },
-      } as ToolRuntimeContext);
-      expect(located.createAutomation?.disabledReason).toBeUndefined();
+      );
+      expect(located["createAutomation"]?.disabledReason).toBeUndefined();
       const created = await executeRegisteredTool<{
         automation: { id: string; is_creator: boolean };
-      }>(located.createAutomation!, {
+      }>(located["createAutomation"]!, {
         instruction: "Post the weekly digest.",
         trigger: {
           type: "schedule",
@@ -2427,20 +2435,24 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // A dashboard Conversation with no Location can find and manage it, but
       // cannot create one.
       const conversationId = "test:schedule-cards";
-      const unlocated = createTools([], {}, {
-        turnTools: rootTurnTools,
-        ...webTurn(conversationId),
-        destination: { platform: "local", conversationId },
-      } as ToolRuntimeContext);
+      const unlocated = createTools(
+        [],
+        {},
+        {
+          turnTools: rootTurnTools,
+          ...webTurn(conversationId),
+          destination: { platform: "local", conversationId },
+        },
+      );
       await expect(
-        executeRegisteredTool(unlocated.searchAutomations!, {
+        executeRegisteredTool(unlocated["searchAutomations"]!, {
           scope: "mine",
         }),
       ).resolves.toMatchObject({
         automations: [{ id: created.automation.id, is_creator: true }],
       });
       await expect(
-        executeRegisteredTool(unlocated.updateAutomation!, {
+        executeRegisteredTool(unlocated["updateAutomation"]!, {
           automation_id: created.automation.id,
           title: "Weekly digest",
         }),
@@ -2448,7 +2460,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         automation: { title: "Weekly digest", credential_mode: "system" },
       });
       await expect(
-        executeRegisteredTool(unlocated.createAutomation!, {
+        executeRegisteredTool(unlocated["createAutomation"]!, {
           instruction: "Post another digest.",
           trigger: {
             type: "schedule",
@@ -2512,7 +2524,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       );
 
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Post a weekly digest.",
           trigger: {
             type: "schedule",
@@ -2527,12 +2539,12 @@ describe("Scheduled automation tool wiring via createTools", () => {
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.deleteAutomation!, {
+        executeRegisteredTool(tools["deleteAutomation"]!, {
           automation_id: "sched_missing",
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Summarize new channel messages.",
           trigger: {
             type: "event",
