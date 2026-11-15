@@ -3,29 +3,7 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import * as Sentry from "@/chat/sentry";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-// Filler that agents send instead of a real report, compared after
-// lowercasing and dropping everything but letters and digits.
-const PLACEHOLDER_MESSAGES = new Set([
-  "",
-  "na",
-  "none",
-  "noop",
-  "null",
-  "placeholder",
-  "tbd",
-  "test",
-  "todo",
-  "undefined",
-]);
-
-function isPlaceholder(text: string): boolean {
-  return PLACEHOLDER_MESSAGES.has(
-    text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""),
-  );
-}
 
 const submitFeedbackInputSchema = z.object({
   message: z
@@ -67,11 +45,6 @@ export function createSubmitFeedbackTool(
   return zodTool({
     ...submitFeedbackToolDefinition,
     execute: async (input) => {
-      if (isPlaceholder(input.message)) {
-        throw new ToolInputError(
-          "The message is a placeholder. Describe what you tried and what went wrong, or do not send feedback.",
-        );
-      }
       const feedbackId = Sentry.captureFeedback({
         message: input.message,
         name: "Junior agent",

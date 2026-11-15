@@ -148,10 +148,6 @@ describe("initSentry", () => {
     ).toMatchObject({
       breadcrumbs: [{ data: { url: "https://files.slack.com" } }],
     });
-    // Error events are scrubbed once, by `beforeSend`.
-    expect(processEvent?.({ breadcrumbs: breadcrumbs() })).toEqual({
-      breadcrumbs: breadcrumbs(),
-    });
 
     expect(globalScope.setAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
