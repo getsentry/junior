@@ -327,6 +327,8 @@ describe("dashboard client API", () => {
     if (typeof interval !== "function") {
       throw new Error("Expected a dynamic polling interval");
     }
+    // A partial TanStack Query object holds only the fields the interval reads.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     const query = {
       state: {
         data: {

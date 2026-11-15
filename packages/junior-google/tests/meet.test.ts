@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -20,7 +21,7 @@ function meetTools(...responses: Response[]) {
     run: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
     writeFile: vi.fn(),
   };
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     sandbox,
     users: {
@@ -31,7 +32,7 @@ function meetTools(...responses: Response[]) {
     },
   } as never);
   const run = (name: string, input: Record<string, unknown>) =>
-    tools[name]!.execute!(tools[name]!.prepareArguments!(input), {
+    tools[name].execute(tools[name].prepareArguments!(input), {
       toolCallId: "call-1",
     });
   return { fetch, run, sandbox };

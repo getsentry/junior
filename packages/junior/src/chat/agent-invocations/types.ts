@@ -110,6 +110,16 @@ export const createAgentInvocationSchema = z
   .strict();
 
 export type AgentBinding = z.output<typeof agentBindingSchema>;
+/**
+ * The child agent that sent one reply or message to its parent. A child that
+ * an Agent invocation names has its `invocationId` and `actor`. A child that
+ * none names has only its child Conversation.
+ */
+export type ChildAgentSender = Pick<
+  AgentInvocation,
+  "agentName" | "childConversationId" | "parentConversationId" | "title"
+> &
+  Partial<Pick<AgentInvocation, "actor" | "invocationId">>;
 export type AgentInvocation = z.output<typeof agentInvocationSchema>;
 export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type TerminalAgentInvocation = Extract<

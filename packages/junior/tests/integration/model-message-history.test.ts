@@ -4,9 +4,14 @@ import {
   mockAnthropicStream,
   withoutCacheMarkers,
 } from "../fixtures/anthropic-stream";
+import { connectedState } from "@/chat/cache-warming/request";
+import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import { botConfig } from "@/chat/config";
+import { commitMessages } from "@/chat/conversations/projection";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const originalBotConfig = { ...botConfig };
@@ -88,11 +93,114 @@ describe("model message history", () => {
     const after = requests[2]!;
     expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
     expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
+    // The first Turn sends the script tools. The same tools are not sent
+    // again.
+    const scriptToolsCount = (messages: unknown) =>
+      JSON.stringify(messages).split("<script-tools>\\n").length - 1;
+    expect(scriptToolsCount(requests[0]!.messages)).toBe(1);
+    expect(scriptToolsCount(after.messages)).toBe(1);
     // Do not sort in the assertion: the real provider bytes must already match.
     expect(
       JSON.stringify(
         withoutCacheMarkers(after.messages.slice(0, before.messages.length)),
       ),
     ).toBe(JSON.stringify(withoutCacheMarkers(before.messages)));
+  });
+
+  it("replays a saved system message in place on every request", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: ["First.", "Second.", "Third."],
+    });
+    await agent.run("first");
+    // No runtime path writes a later system message yet, so commit one as
+    // the next history item, where Pi would put it.
+    const saved = {
+      role: "system" as const,
+      content: "Prefer short replies.",
+      sections: { skills: "<available-skills>\nnone\n</available-skills>" },
+      timestamp: Date.now(),
+    };
+    const firstHistory = await agent.agentHistory();
+    await commitMessages({
+      conversationId: agent.conversationId(),
+      messages: [...firstHistory, saved],
+    });
+
+    await agent.run("second");
+    const second = agent.snapshot();
+    await agent.run("third");
+    const third = agent.snapshot();
+
+    expect((await agent.agentHistory())[firstHistory.length]).toEqual(saved);
+    expect(second.messages[firstHistory.length]).toEqual(saved);
+    expect(
+      JSON.stringify(third.messages.slice(0, second.messages.length)),
+    ).toBe(JSON.stringify(second.messages));
+    // Cache warming stores this request context and sends it again.
+    const state = await connectedState();
+    const key = `snapshot:${agent.conversationId()}`;
+    await saveSnapshot(state, agent.conversationId(), key, third, 60_000);
+    await expect(
+      loadSnapshot(state, agent.conversationId(), key),
+    ).resolves.toEqual(third);
+  });
+
+  it("sends a capability section again only when it changed", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: ["First.", "Second.", "Third.", "Fourth."],
+    });
+    const newText = (
+      before: { messages: unknown[] },
+      after: { messages: unknown[] },
+    ) => JSON.stringify(after.messages.slice(before.messages.length));
+    const count = (text: string, tag: string) =>
+      text.split(`<${tag}>\\n`).length - 1;
+
+    await agent.run("first");
+    const first = agent.snapshot();
+    expect(count(JSON.stringify(first.messages), "workspaces")).toBe(0);
+    // A deploy adds a skill, and someone creates a Workspace.
+    const removeSkills = await installTestSkills([
+      {
+        name: "release-notes",
+        description: "Write release notes.",
+        body: "Write them.",
+      },
+    ]);
+    const workspace = await createWorkspace({
+      name: "docs",
+      repos: [{ provider: "github", repo: "getsentry/docs" }],
+    });
+    let third: ReturnType<typeof agent.snapshot>;
+    try {
+      await agent.run("second");
+      const second = agent.snapshot();
+      await agent.run("third");
+      third = agent.snapshot();
+
+      // The changed sections go after the cached prefix, once.
+      expect(second.messages.slice(0, first.messages.length)).toEqual(
+        first.messages,
+      );
+      const changed = newText(first, second);
+      expect(changed).toContain("<name>release-notes</name>");
+      expect(changed).toContain("- docs: getsentry/docs");
+      expect(count(changed, "available-skills")).toBe(1);
+      expect(count(changed, "workspaces")).toBe(1);
+      expect(count(newText(second, third), "available-skills")).toBe(0);
+      expect(count(newText(second, third), "workspaces")).toBe(0);
+    } finally {
+      await removeSkills();
+      await deleteWorkspace(workspace.id);
+    }
+
+    // Both changes are undone. An empty section says so.
+    await agent.run("fourth");
+    const undone = newText(third, agent.snapshot());
+    expect(count(undone, "available-skills")).toBe(1);
+    expect(undone).not.toContain("release-notes");
+    expect(undone).toContain("<workspaces>\\nnone\\n</workspaces>");
   });
 });

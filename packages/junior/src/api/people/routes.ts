@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { readAvatarImage } from "@/chat/identities/avatar";
-import { getDb } from "@/chat/db";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { readImage } from "@/chat/images/read";
 import { jsonResponse, throwApiError } from "../http";
+import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
 import {
   actorDirectoryReportSchema,
@@ -11,7 +11,7 @@ import {
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
-import { codePersonReportSchema } from "../schema/code";
+import { codePersonReportSchema, personCodeQuerySchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -21,48 +21,25 @@ import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
 import { readPersonalSpendFromSql } from "./spend.query";
 
-// A versioned photo path never changes its bytes. `private` keeps photos out
-// of shared caches, because the route needs a signed-in viewer.
-const AVATAR_IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable";
-
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
-  // Serve profile photos from Junior, so browsers never load them from
-  // Slack or Google. A photo path has the version of its photo, so the
-  // browser keeps a current versioned photo and checks any other request.
+  // Profile photos keep this stable path. The shared image code fetches and
+  // scales them, so browsers never load them from Slack or Google.
   app.get(
     "/avatars/:identityId",
     requireViewer,
     validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
     async (context) => {
       const { identityId } = context.req.valid("param");
-      const avatar = await readAvatarImage(
-        getDb(),
-        getStateAdapter(),
-        identityId,
+      const served = await readImage(
+        context.get("viewer"),
+        { ref: identityId, source: "avatar" },
+        AVATAR_WIDTH,
       );
-      if (!avatar) throwApiError(404, "Avatar not found.");
-      const etag = `"${avatar.version}"`;
-      const headers = {
-        "cache-control":
-          context.req.query("v") === avatar.version
-            ? AVATAR_IMMUTABLE_CACHE_CONTROL
-            : "private, no-cache",
-        etag,
-      };
-      if (context.req.header("if-none-match") === etag) {
-        return new Response(null, { headers, status: 304 });
-      }
-      return new Response(Buffer.from(avatar.image.data, "base64"), {
-        headers: {
-          ...headers,
-          "content-security-policy": "default-src 'none'; sandbox",
-          "content-type": avatar.image.contentType,
-          "x-content-type-options": "nosniff",
-        },
-      });
+      if (!served) throwApiError(404, "Avatar not found.");
+      return imageResponse(served, context.req.query("v") !== undefined);
     },
   );
 
@@ -95,9 +72,14 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   app.get(
     "/:email/code",
     validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    validateRequest("query", personCodeQuerySchema, "Invalid code query."),
     async (context) => {
       const { email } = context.req.valid("param");
-      return jsonResponse(codePersonReportSchema, await readPeopleCode(email));
+      const { cursor } = context.req.valid("query");
+      return jsonResponse(
+        codePersonReportSchema,
+        await readPeopleCode(email, cursor),
+      );
     },
   );
 

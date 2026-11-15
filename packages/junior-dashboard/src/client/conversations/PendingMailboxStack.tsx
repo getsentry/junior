@@ -36,7 +36,8 @@ import { Spinner } from "../components/ui/spinner";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
   conversationAttachmentUrl,
-  inputImageSrc,
+  isImageFile,
+  useFileUrl,
 } from "./TranscriptAttachment";
 import {
   TranscriptHeadingMeta,
@@ -164,9 +165,9 @@ function PendingMetaIcons(props: {
   cancelPending: boolean;
   editPending: boolean;
   message: ConversationMailboxMessage;
-  onCancel?: () => void;
-  onEdit?: () => void;
-  onSteer?: () => void;
+  onCancel?: (() => void) | undefined;
+  onEdit?: (() => void) | undefined;
+  onSteer?: (() => void) | undefined;
   showSlack: boolean;
   steerPending: boolean;
 }) {
@@ -250,29 +251,51 @@ function PendingAuthorAvatar(props: {
   return <ParticipantAvatar participant={author} size="list" />;
 }
 
-/** Show small previews so the reader can tell which images a queued message has. */
+function PendingLocalImage(props: {
+  file: File;
+  imageClassName: string;
+  triggerClassName: string;
+}) {
+  const src = useFileUrl(props.file);
+  if (!src) return null;
+  return (
+    <ImageAttachment
+      filename={props.file.name}
+      imageClassName={props.imageClassName}
+      src={src}
+      triggerClassName={props.triggerClassName}
+    />
+  );
+}
+
+/** Show small previews so the reader can tell which files a queued message has. */
 function PendingAttachmentThumbnails(props: {
-  conversationId?: string;
+  conversationId?: string | undefined;
   message: ConversationMailboxMessage;
 }) {
   const thumbnailClassName = "size-6 rounded object-cover";
   const triggerClassName =
     "block size-6 flex-none overflow-hidden rounded border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-dashboard-focus";
-  const localImages = props.message.images ?? [];
+  const localFiles = props.message.files ?? [];
   const attachments = props.message.attachments ?? [];
-  if (localImages.length === 0 && attachments.length === 0) return null;
+  if (localFiles.length === 0 && attachments.length === 0) return null;
 
   return (
     <span className="flex flex-none items-center gap-1">
-      {localImages.map((image, index) => (
-        <ImageAttachment
-          filename={image.filename}
-          imageClassName={thumbnailClassName}
-          key={`local:${index}`}
-          src={inputImageSrc(image)}
-          triggerClassName={triggerClassName}
-        />
-      ))}
+      {localFiles.map((file, index) =>
+        isImageFile(file) ? (
+          <PendingLocalImage
+            file={file}
+            imageClassName={thumbnailClassName}
+            key={`local:${index}`}
+            triggerClassName={triggerClassName}
+          />
+        ) : (
+          <PendingMetaIcon key={`local:${index}`} label={file.name}>
+            <FileText aria-hidden="true" size={14} />
+          </PendingMetaIcon>
+        ),
+      )}
       {attachments.map((attachment) => {
         const isImage = INPUT_IMAGE_TYPES.some(
           (type) => type === attachment.contentType,
@@ -304,13 +327,13 @@ function PendingAttachmentThumbnails(props: {
 
 function PendingRow(props: {
   actionsDisabled: boolean;
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   cancelError: boolean;
   cancelPending: boolean;
   canEdit: boolean;
   canSteer: boolean;
   className: string;
-  conversationId?: string;
+  conversationId?: string | undefined;
   editPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
@@ -471,16 +494,16 @@ function sameEmail(left: string | undefined, right: string | undefined) {
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   /** Author of each row, by `actorIdentityId`. */
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   cancelError?: boolean;
   cancelPending?: boolean;
-  cancelTargetInboundMessageId?: string;
+  cancelTargetInboundMessageId?: string | undefined;
   /** Message ids already present in committed history. */
   committedMessageIds?: readonly string[];
   /** Conversation that owns stored attachment previews. */
   conversationId?: string;
   /** Inbound id of the row that an edit is taking out of the queue. */
-  editTargetInboundMessageId?: string;
+  editTargetInboundMessageId?: string | undefined;
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
   /** Take the viewer's own queued web message back into the composer. */
@@ -489,11 +512,11 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
   /** Ask Junior to read the viewer's own queued web message now. */
-  onSteerMessage?: (message: ConversationMailboxMessage) => void;
+  onSteerMessage?: ((message: ConversationMailboxMessage) => void) | undefined;
   /** Inbound id of the row that a steer is sending now. */
-  steerTargetInboundMessageId?: string;
+  steerTargetInboundMessageId?: string | undefined;
   /** Email of the signed-in reader. Only their own web rows can be edited. */
-  viewerEmail?: string;
+  viewerEmail?: string | undefined;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
   const rowsId = useId();

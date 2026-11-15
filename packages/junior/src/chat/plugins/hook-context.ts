@@ -27,6 +27,21 @@ export function basePluginContext(plugin: PluginRegistration) {
   };
 }
 
+/** Pick one plugin's string config values and drop the plugin name prefix. */
+export function pluginConfigValues(
+  pluginName: string,
+  configuration: Record<string, unknown>,
+): Record<string, string> {
+  const prefix = `${pluginName}.`;
+  return Object.fromEntries(
+    Object.entries(configuration).flatMap(([key, value]) =>
+      key.startsWith(prefix) && typeof value === "string"
+        ? [[key.slice(prefix.length), value]]
+        : [],
+    ),
+  );
+}
+
 /** Time one plugin hook call so slow plugins show up in turn traces. */
 export async function withPluginHookSpan<T>(
   pluginName: string,

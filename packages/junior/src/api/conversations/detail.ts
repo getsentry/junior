@@ -15,6 +15,7 @@ import {
   readConversationEventPageAround,
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import {
   conversationEventHistory,
@@ -38,6 +39,7 @@ import {
   conversationDetailReportSchema,
 } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
+import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
@@ -48,20 +50,22 @@ import { canPauseConversationDelivery } from "@/chat/conversations/delivery-paus
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   appendCursor?: string;
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
   pinnedAtMs?: number;
-  automationTitle?: string;
-  auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
+  automationTitle?: string | undefined;
+  auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"] | undefined;
   brief?: ConversationDetailReport["brief"];
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
-  sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
+  sidebarAnnotations?:
+    | ConversationDetailReport["sidebarAnnotations"]
+    | undefined;
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
@@ -143,11 +147,11 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
   options: {
-    after?: string;
+    after?: string | undefined;
     latestTurns?: number;
     limit: number;
     stored?: DetailStateRead;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
@@ -225,7 +229,12 @@ async function readConversationDetailFromSql(
       },
       readAccess,
     ),
-    listConversationAnnotations(getDb(), conversationId),
+    listConversationAnnotations(getDb(), conversationId).then((saved) =>
+      saved.map((annotation) => {
+        const previewImages = objectPreviewImages(annotation);
+        return previewImages ? { ...annotation, previewImages } : annotation;
+      }),
+    ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
@@ -263,7 +272,7 @@ async function readConversationDetailFromSql(
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
           ...(brief ? { brief } : undefined),
-          events: page.events,
+          events: page.events.map(formatConversationEventText),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The
@@ -383,12 +392,12 @@ export async function readConversationDetail(
   conversationId: string,
   options: {
     /** An `appendCursor`: return only newer events when it still applies. */
-    after?: string;
-    limit?: number;
+    after?: string | undefined;
+    limit?: number | undefined;
     /** The record and state that the route already read for the ETag. */
     stored?: DetailStateRead;
     /** Also read the page around the read position. */
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
     viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {

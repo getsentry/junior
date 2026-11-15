@@ -72,7 +72,7 @@ export function latestProgressStatus(
       partIndex >= 0;
       partIndex -= 1
     ) {
-      const part = message.content[partIndex];
+      const part: unknown = message.content[partIndex];
       if (!part || typeof part !== "object") {
         continue;
       }

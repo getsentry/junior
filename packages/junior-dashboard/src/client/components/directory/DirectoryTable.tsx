@@ -28,9 +28,9 @@ export function DirectoryToolbar(props: {
 export function DirectoryTable(props: {
   ariaLabel: string;
   children: ReactNode;
-  empty?: ReactNode;
+  empty?: ReactNode | undefined;
   headers: readonly string[];
-  loading?: boolean;
+  loading?: boolean | undefined;
 }) {
   if (props.loading) {
     return <DirectoryRowsSkeleton wideRuntime />;

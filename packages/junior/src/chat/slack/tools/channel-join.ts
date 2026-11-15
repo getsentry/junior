@@ -8,26 +8,30 @@ import {
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
+
+export const slackChannelJoinToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  description: "Join a public Slack channel.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  inputSchema: z.object({
+    channel_id: slackChannelRefParam,
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
 
 /** Create a tool that joins one public Slack channel. */
 export function createSlackChannelJoinTool(context: SlackToolContext) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    description: "Join a public Slack channel.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    inputSchema: z.object({
-      channel_id: slackChannelRefParam,
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackChannelJoinToolDefinition,
     execute: async ({ channel_id }) => {
       const target = await resolveSlackChannelRef({
         field: "channel_id",

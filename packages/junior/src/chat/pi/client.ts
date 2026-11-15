@@ -6,13 +6,17 @@ import {
   streamAnthropic,
   streamSimpleAnthropic,
   type CacheRetention,
+  type Api,
   type Message,
   type Model,
   type ThinkingLevel,
   type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+import {
+  getGatewayApiKey,
+  resolveGatewayCredential,
+} from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
@@ -23,9 +27,13 @@ import {
   embedMany,
   experimental_decide,
   Experimental_DecisionRefusalError,
+  generateImage,
   generateObject,
+  generateText,
+  NoImageGeneratedError,
   NoObjectGeneratedError,
   rerank,
+  type GeneratedFile,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -73,7 +81,7 @@ const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 // Pi's bundled catalog can lag behind the gateway. Keep missing models and
 // metadata corrections here until the catalog includes them. Remove these
 // overrides when Pi supplies the same metadata or Junior uses a live catalog.
-const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
   // Metadata from https://ai-gateway.vercel.sh/v1/models.
   "anthropic/claude-opus-5.5": {
     id: "anthropic/claude-opus-5.5",
@@ -97,6 +105,7 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     },
     compat: {
       forceAdaptiveThinking: true,
+      supportsMidConvoSystemMessages: true,
       supportsTemperature: false,
     },
   },
@@ -146,6 +155,9 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     thinkingLevelMap: {
       xhigh: "xhigh",
       max: "max",
+    },
+    compat: {
+      supportsMidConvoSystemMessages: true,
     },
   },
   "openai/gpt-6-astra": {
@@ -248,11 +260,11 @@ function extractText(message: {
 }
 
 /** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<any> {
+export function resolveGatewayModel(modelId: string): Model<Api> {
   const matched =
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
-      (model: Model<any>) => model.id === modelId,
+      (model: Model<Api>) => model.id === modelId,
     );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
@@ -268,7 +280,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
 export async function completeText(params: {
   modelId: string;
-  system?: string;
+  system?: string | undefined;
   messages: Message[];
   /** Tool definitions to send. They are part of the cached prompt prefix. */
   tools?: Tool[];
@@ -276,7 +288,7 @@ export async function completeText(params: {
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
   /** AI Gateway session ID. Pass the Conversation ID to share its session. */
@@ -359,6 +371,14 @@ export async function completeText(params: {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;
             },
+            // The edge request id lets Vercel trace how the gateway routed
+            // the call, for example when a cache warmup misses.
+            onResponse: (response) => {
+              const vercelId = response.headers["x-vercel-id"];
+              if (vercelId) {
+                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
+            },
           },
         );
       } catch (error) {
@@ -393,6 +413,9 @@ export async function completeText(params: {
         ...(message.model
           ? { "gen_ai.response.model": message.model }
           : undefined),
+        ...(message.responseId
+          ? { "gen_ai.response.id": message.responseId }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -419,17 +442,20 @@ function logContextFromMetadata(
   metadata: Record<string, unknown> | undefined,
 ): LogContext {
   const conversationId =
-    typeof metadata?.conversationId === "string"
-      ? metadata.conversationId
-      : typeof metadata?.threadId === "string"
-        ? metadata.threadId
-        : undefined;
+    typeof metadata?.["conversationId"] === "string" &&
+    metadata["conversationId"]
+      ? metadata["conversationId"]
+      : undefined;
   const messageConversationId =
-    typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+    typeof metadata?.["threadId"] === "string"
+      ? metadata["threadId"]
+      : undefined;
   const destinationName =
-    typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
+    typeof metadata?.["channelId"] === "string"
+      ? metadata["channelId"]
+      : undefined;
   const runId =
-    typeof metadata?.runId === "string" ? metadata.runId : undefined;
+    typeof metadata?.["runId"] === "string" ? metadata["runId"] : undefined;
 
   return {
     modelId,
@@ -495,6 +521,17 @@ function bestEffortObjectCompletionCost(
   }
 }
 
+/**
+ * Keep only the fixed message and stack of a failed structured output. The SDK
+ * error's `text` and its parse or validation cause hold the raw model output.
+ */
+function structuredOutputErrorCause(error: NoObjectGeneratedError): Error {
+  const cause = new Error(error.message);
+  cause.name = error.name;
+  cause.stack = error.stack;
+  return cause;
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -503,7 +540,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   prompt: string;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
@@ -556,13 +593,13 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       },
     );
   } catch (error) {
-    const providerError = createProviderError(error, {
-      ...(NoObjectGeneratedError.isInstance(error)
-        ? { kind: "invalid_response" }
-        : undefined),
-      modelId: params.modelId,
-    });
-    throw providerError;
+    if (NoObjectGeneratedError.isInstance(error)) {
+      throw createProviderError(structuredOutputErrorCause(error), {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
+    throw createProviderError(error, { modelId: params.modelId });
   }
   const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
   return {
@@ -578,7 +615,7 @@ export async function completeDecision<
   modelId: string;
   state: Experimental_DecisionState;
   questions: TQuestions;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{
@@ -659,7 +696,7 @@ export async function embedTexts(params: {
   inputType?: "document" | "query";
   modelId: string;
   texts: string[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
 }): Promise<{
   costUsd?: number;
@@ -844,5 +881,94 @@ export async function rerankTexts(params: {
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;
+  }
+}
+
+const WEB_SEARCH_TOOL_NAME = "parallelSearch";
+
+/** Run one AI Gateway parallel search inside a `gen_ai.chat` span. */
+export async function searchWeb(params: {
+  modelId: string;
+  query: string;
+  maxResults: number;
+  signal: AbortSignal;
+  promptName?: string;
+}) {
+  // Use Junior's shared resolver so OIDC wins over a leftover team API key.
+  // createGatewayProvider() alone prefers AI_GATEWAY_API_KEY and would keep
+  // project attribution as unknown while the key remains set.
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  return await withSpan(
+    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
+    "gen_ai.chat",
+    {},
+    async (setSpanAttributes) => {
+      const response = await generateText({
+        model: provider.chat(params.modelId),
+        prompt: params.query,
+        tools: {
+          [WEB_SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+            mode: "agentic",
+            maxResults: params.maxResults,
+          }),
+        },
+        toolChoice: { type: "tool", toolName: WEB_SEARCH_TOOL_NAME },
+        abortSignal: params.signal,
+      });
+      const costUsd = gatewayCostUsd(response.providerMetadata);
+      setSpanAttributes({
+        "gen_ai.response.finish_reasons": [response.finishReason],
+        ...extractGenAiUsageAttributes(
+          response.usage,
+          costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
+        ),
+      });
+      return {
+        ...(costUsd !== undefined ? { costUsd } : undefined),
+        outputs: response.toolResults
+          .filter((result) => result.toolName === WEB_SEARCH_TOOL_NAME)
+          .map((result): unknown => result.output),
+      };
+    },
+    {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+      "gen_ai.request.model": params.modelId,
+      ...(params.promptName
+        ? { "gen_ai.prompt.name": params.promptName }
+        : undefined),
+      "server.address": GEN_AI_SERVER_ADDRESS,
+      "server.port": GEN_AI_SERVER_PORT,
+      "gen_ai.provider.auth_mode": credential.mode,
+    },
+  );
+}
+
+/** Generate or edit images with an AI Gateway image model. */
+export async function generateImages(params: {
+  modelId: string;
+  /** Input images make this an edit of those images. */
+  prompt: string | { text: string; images: Buffer[] };
+  fetch?: typeof fetch | undefined;
+}): Promise<{ costUsd?: number; images: GeneratedFile[] }> {
+  const provider = createGatewayProvider({
+    apiKey: await getGatewayApiKey(),
+    ...(params.fetch ? { fetch: params.fetch } : undefined),
+  });
+  try {
+    const result = await generateImage({
+      model: provider.imageModel(params.modelId),
+      prompt: params.prompt,
+      n: 1,
+    });
+    const costUsd = gatewayCostUsd(result.providerMetadata);
+    return {
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+      images: result.images,
+    };
+  } catch (error) {
+    if (NoImageGeneratedError.isInstance(error)) return { images: [] };
+    throw error;
   }
 }

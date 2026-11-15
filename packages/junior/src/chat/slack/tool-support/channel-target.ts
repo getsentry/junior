@@ -65,7 +65,7 @@ export async function resolveSlackChannelRef(input: {
   }
 
   throw new ToolInputError(
-    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name you already saw in this workspace. Public search can discover channels; plain names are not scanned from Slack.`,
+    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name you already saw in this workspace. Plain names are not scanned from Slack.`,
   );
 }
 
@@ -74,7 +74,7 @@ export async function resolveSlackChannelRef(input: {
  */
 export async function resolveOptionalSlackChannelRef(input: {
   field?: string;
-  value?: string;
+  value?: string | undefined;
   defaultChannelId?: SlackChannelId;
   teamId: SlackTeamId;
 }): Promise<ResolvedSlackChannelTarget> {

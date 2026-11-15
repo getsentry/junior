@@ -29,6 +29,7 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { isParentMessageMeta } from "./parent-message";
 import { AGENT_INVOCATION_STATUSES } from "./statuses";
 import { listAgentInvocationsForConversation } from "./store";
 
@@ -61,10 +62,14 @@ function messageAuthor(
   root: Conversation,
   data: MessageData,
 ): Actor | undefined {
-  const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
+  const author = isRecord(data.meta?.["author"])
+    ? data.meta["author"]
+    : undefined;
   const userId =
-    typeof author?.userId === "string" ? author.userId.trim() : undefined;
-  if (!userId || author?.isBot === true) {
+    typeof author?.["userId"] === "string"
+      ? author["userId"].trim()
+      : undefined;
+  if (!userId || author?.["isBot"] === true) {
     return undefined;
   }
   const session = root.sessionSource;
@@ -97,8 +102,9 @@ async function actorIdentityIds(actor: Actor): Promise<Set<string>> {
 
 /**
  * Ids of the agent invocations that a parent agent's spawnAgent or
- * messageAgent call started in this Conversation. Their input is the
- * instruction of a Run that an agent started.
+ * messageAgent call started in this Conversation. Their input, and each
+ * parent message that no Agent invocation names, is the instruction of a Run
+ * that an agent started.
  */
 async function parentTaskInvocationIds(
   conversationId: string,
@@ -120,7 +126,7 @@ function messageLabel(
   data: MessageData,
   actor: Actor | undefined,
   personIdentityIds: ReadonlySet<string>,
-  parentTaskIds: ReadonlySet<string>,
+  parentTaskIds: ReadonlySet<string> | undefined,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -128,12 +134,17 @@ function messageLabel(
   if (data.role !== "user") {
     return "system";
   }
+  // A parent message that no Agent invocation names is saved as an Event
+  // input, but it is the parent's task, as on an Agent invocation.
+  if (parentTaskIds && isParentMessageMeta(data.meta)) {
+    return "user";
+  }
   // An Event Turn input, such as a child agent result, is not a person.
-  if (data.meta?.eventType !== undefined) {
+  if (data.meta?.["eventType"] !== undefined) {
     return "event";
   }
-  const invocationId = data.meta?.agentInvocationId;
-  if (typeof invocationId === "string" && parentTaskIds.has(invocationId)) {
+  const invocationId = data.meta?.["agentInvocationId"];
+  if (typeof invocationId === "string" && parentTaskIds?.has(invocationId)) {
     return "user";
   }
   if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
@@ -258,7 +269,7 @@ export async function readRootConversation(args: {
     ? await actorIdentityIds(args.actor)
     : new Set<string>();
   const parentTaskIds = args.actor
-    ? new Set<string>()
+    ? undefined
     : await parentTaskInvocationIds(root.conversationId);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {

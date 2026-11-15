@@ -20,7 +20,7 @@ async function selectReplyText(
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {
@@ -50,7 +50,7 @@ async function selectWholeReply(page: Page) {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     reply.scrollIntoView({ block: "start" });
     // A scroll hides the button. Select after the scroll settles.
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -86,7 +86,7 @@ async function serveQuickQuestionFork(
       const detail = await response.json();
       const reply = detail.events.findIndex(
         (event: { data: { messageId?: string } }) =>
-          event.data.messageId === forks[0]!.messageId,
+          event.data.messageId === forks[0].messageId,
       );
       detail.events = detail.events.slice(0, reply + 1);
       const last = detail.events.at(-1);
@@ -132,9 +132,17 @@ test("asks a quick question about selected reply text", async ({
     },
   );
   const messages: Array<{ role: "assistant" | "user"; text: string }> = [];
+  // Hold the first ask, to check the panel while it is sent.
+  let acceptFirstAsk!: () => void;
+  const firstAskAccepted = new Promise<void>((resolve) => {
+    acceptFirstAsk = resolve;
+  });
+  let asks = 0;
   await page.route(
     `**/api/conversations/${encodeURIComponent(forkId)}/messages`,
     async (route) => {
+      asks += 1;
+      if (asks === 1) await firstAskAccepted;
       const { message } = route.request().postDataJSON();
       messages.push(
         { role: "user", text: message },
@@ -181,6 +189,11 @@ test("asks a quick question about selected reply text", async ({
   const composer = panel.getByRole("textbox", { name: "Quick question" });
   await composer.fill("Why?");
   await composer.press("Enter");
+  // The held question stays in the composer. Thinking waits for it.
+  await expect.poll(() => asks).toBe(1);
+  await expect(composer).toHaveValue("Why?");
+  await expect(panel.getByText("Thinking…")).toBeHidden();
+  acceptFirstAsk();
   await expect(panel.getByText("Answer 1.")).toBeVisible();
   await expect(composer).toHaveAttribute("placeholder", "Ask a follow-up…");
   await composer.fill("And then?");
@@ -189,8 +202,8 @@ test("asks a quick question about selected reply text", async ({
   // The retry finds the same fork. Follow-ups go to that fork.
   expect(forks).toEqual([
     {
-      idempotencyKey: forks[0]!.idempotencyKey,
-      messageId: forks[0]!.messageId,
+      idempotencyKey: forks[0].idempotencyKey,
+      messageId: forks[0].messageId,
       quickQuestion: { quote },
     },
     forks[0],

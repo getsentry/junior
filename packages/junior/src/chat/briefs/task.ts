@@ -11,6 +11,10 @@ import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
 import { completeObject } from "@/chat/core-model";
+import {
+  createConversationEmbedder,
+  storeConversationEmbedding,
+} from "@/chat/conversations/embedding";
 import { briefUpdatedEvent, briefUpdatedEventV1 } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
@@ -123,6 +127,10 @@ export async function updateConversationBrief(
     BRIEF_LOCK_TTL_MS,
     async () => {
       const db = context.db as JuniorDatabase;
+      const embed = createConversationEmbedder({
+        cost: { conversationId: run.conversationId, turnId: run.runId },
+        operation: "conversation_embedding",
+      });
       const existing = await readConversationBriefForTurn(
         db,
         run.conversationId,
@@ -132,6 +140,7 @@ export async function updateConversationBrief(
         // The event writer uses the stable task operation id, so this repairs a
         // failed first emission without adding a second event on normal retries.
         await emitBriefUpdated(context, existing);
+        await storeConversationEmbedding(db, embed, existing);
         logSkip(context, run.conversationId, "turn_already_stored");
         return;
       }
@@ -183,6 +192,10 @@ export async function updateConversationBrief(
           : undefined),
       });
       await emitBriefUpdated(context, stored.value);
+      // The Brief is stored first, so an embedding failure cannot lose it.
+      // The failure fails the task, and its retry takes the
+      // `turn_already_stored` path above and embeds again.
+      await storeConversationEmbedding(db, embed, stored.value);
       if (!stored.inserted) {
         logSkip(context, run.conversationId, "turn_already_stored");
       }

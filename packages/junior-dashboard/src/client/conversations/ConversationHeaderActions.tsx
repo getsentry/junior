@@ -39,7 +39,7 @@ import {
  */
 export function ConversationHeaderActions(props: {
   /** Turn every row off, such as before the Conversation exists. */
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   menu: ConversationMenu;
   onDetailsClick(): void;
   onSearchClick(): void;
@@ -91,7 +91,7 @@ export function ConversationHeaderActions(props: {
 }
 
 function ConversationMenuRow(props: {
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   item: ConversationMenuItem;
 }) {
   const { item } = props;
@@ -190,12 +190,12 @@ export function HeaderIconButton({
   controls?: string;
   expanded?: boolean;
   /** `aria-keyshortcuts` value for the shortcut. */
-  keyShortcuts?: string;
+  keyShortcuts?: string | undefined;
   label: string;
   pressed?: boolean;
   ref?: Ref<HTMLButtonElement>;
   /** Shortcut text shown in the tooltip, such as `⌘F`. */
-  shortcut?: string;
+  shortcut?: string | undefined;
   /** Hide the tooltip, such as while the menu this button opens covers it. */
   tooltipDisabled?: boolean;
 }) {

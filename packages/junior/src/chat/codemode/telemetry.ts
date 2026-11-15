@@ -44,6 +44,8 @@ export interface CodeModeTelemetry {
   outputBytes: number;
   /** Absent when the script returned a result. */
   errorKind?: CodeModeErrorKind;
+  /** Close script tool names for a `missing_tool` error. Absent for other results. */
+  missingToolSuggestionCount?: number;
 }
 
 /** Project Code Mode measurements to `app.codemode.*` attributes for the `codemode` tool span. */
@@ -67,6 +69,13 @@ export function codeModeSpanAttributes(
     "app.codemode.output.bytes": telemetry.outputBytes,
     ...(telemetry.errorKind
       ? { "app.codemode.error.kind": telemetry.errorKind }
+      : undefined),
+    // Same key as an `executeTool` miss, so one query finds both.
+    ...(telemetry.missingToolSuggestionCount !== undefined
+      ? {
+          "app.tool_name_miss.suggestion_count":
+            telemetry.missingToolSuggestionCount,
+        }
       : undefined),
   };
 }

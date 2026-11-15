@@ -69,7 +69,7 @@ export function WorkspaceFormPage() {
       return editing
         ? put(
             workspaceSchema,
-            `/api/workspaces/${encodeURIComponent(workspaceId!)}`,
+            `/api/workspaces/${encodeURIComponent(workspaceId)}`,
             body,
           )
         : post(workspaceSchema, "/api/workspaces", body);
@@ -91,7 +91,7 @@ export function WorkspaceFormPage() {
       await queryClient.invalidateQueries({
         queryKey: workspaceQueryKey(workspace.id),
       });
-      navigate(workspacePath(workspace.id));
+      void navigate(workspacePath(workspace.id));
     },
   });
 

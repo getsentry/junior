@@ -77,21 +77,10 @@ describe("getAssistantThreadContext", () => {
     ).toBeUndefined();
   });
 
-  it("falls back to the live non-DM thread id when raw event fields are absent", () => {
+  it("does not read Message.threadId, which can be a Conversation id", () => {
     expect(
       getAssistantThreadContext({
         threadId: "slack:C12345:1700000000.300",
-      } as any),
-    ).toEqual({
-      channelId: "C12345",
-      threadTs: "1700000000.300",
-    });
-  });
-
-  it("does not fall back to a DM thread id without an explicit raw thread_ts", () => {
-    expect(
-      getAssistantThreadContext({
-        threadId: "slack:D12345:1700000000.300",
       } as any),
     ).toBeUndefined();
   });

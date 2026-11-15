@@ -57,7 +57,7 @@ function deferred<T = void>() {
  */
 function fakeGuardian() {
   return vi.fn<ToolActionReviewer["review"]>(async (proposal) =>
-    proposal.input.channel === "#public"
+    proposal.input["channel"] === "#public"
       ? {
           decision: "deny",
           reason: "Private data would go to a public channel.",
@@ -236,19 +236,23 @@ describe("Code Mode bridge", () => {
 
   it("refuses model-only tools inside the script", async () => {
     const spawnAgent = vi.fn();
-    const registry = createTools([], {}, {
-      conversationId: CONVERSATION_ID,
-      destination: DESTINATION,
-      egress: {
-        async fetch() {
-          return new Response("ok");
+    const registry = createTools(
+      [],
+      {},
+      {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
         },
+        source: SOURCE,
+        spawnAgent,
+        turnTools: ROOT_TURN_TOOLS,
+        workspace: {} as never,
       },
-      source: SOURCE,
-      spawnAgent,
-      turnTools: ROOT_TURN_TOOLS,
-      workspace: {} as never,
-    } as never);
+    );
     const { directTools, scriptTools } = planToolExposure(registry);
     const modelOnlyTools = Object.keys(directTools).filter(
       (name) => !Object.hasOwn(scriptTools, name),
@@ -287,6 +291,21 @@ describe("Code Mode bridge", () => {
     });
 
     expect(uncaught.error?.kind).toBe("missing_tool");
+
+    // pi names close tools by substring only. A typo gets Junior's hint.
+    const typo = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      modelOnlyTools,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `await tools.systemTiem({});`,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: scriptTools,
+    });
+
+    expect(typo.error?.kind).toBe("missing_tool");
+    expect(typo.error?.message).toMatch(
+      /^TypeError: tools\.systemTiem does not exist\..*\nDid you mean `tools\.systemTime`\?$/s,
+    );
     expect(spawnAgent).not.toHaveBeenCalled();
   });
 
@@ -390,19 +409,23 @@ describe("Code Mode bridge", () => {
     ]);
     try {
       expect(await manager.activateProvider("ci")).toBe(true);
-      const registry = createTools([], {}, {
-        conversationId: CONVERSATION_ID,
-        destination: DESTINATION,
-        egress: {
-          async fetch() {
-            return new Response("ok");
+      const registry = createTools(
+        [],
+        {},
+        {
+          conversationId: CONVERSATION_ID,
+          destination: DESTINATION,
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
           },
+          mcpToolManager: manager,
+          source: SOURCE,
+          turnTools: ROOT_TURN_TOOLS,
+          workspace: {} as never,
         },
-        mcpToolManager: manager,
-        source: SOURCE,
-        turnTools: ROOT_TURN_TOOLS,
-        workspace: {} as never,
-      } as never);
+      );
       const { scriptTools } = planToolExposure(registry);
 
       const result = await runCodeModeScript({

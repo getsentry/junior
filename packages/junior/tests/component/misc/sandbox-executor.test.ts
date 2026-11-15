@@ -173,7 +173,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   return {
     ...actual,
     logWarn: vi.fn(actual.logWarn),
-    withSpan: (async (name, op, context, callback, attributes = {}) => {
+    withSpan: (async (name, op, context, callback, attributes) => {
       const span = { name, attributes: { ...attributes } };
       recordedSpans.push(span);
       return await actual.withSpan(
@@ -569,22 +569,22 @@ describe("createTestSandbox", () => {
     });
     hashMock.mockReset();
     hashMock.mockReturnValue(undefined);
-    delete process.env.VERCEL_TOKEN;
-    delete process.env.VERCEL_TEAM_ID;
-    delete process.env.VERCEL_PROJECT_ID;
-    delete process.env.VERCEL_OIDC_TOKEN;
-    delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
-    delete process.env.SANDBOX_VCPUS;
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "test-secret";
+    delete process.env["VERCEL_TOKEN"];
+    delete process.env["VERCEL_TEAM_ID"];
+    delete process.env["VERCEL_PROJECT_ID"];
+    delete process.env["VERCEL_OIDC_TOKEN"];
+    delete process.env["VERCEL_SANDBOX_KEEPALIVE_MS"];
+    delete process.env["SANDBOX_VCPUS"];
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "test-secret";
   });
 
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
   });
 
   it("preserves an unopened sandbox reference without rewriting its profile", () => {
@@ -680,6 +680,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_stopped",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -815,6 +816,26 @@ describe("createTestSandbox", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.vercel.test/sandboxes",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("sends sandbox API requests through the process fetch without a tool signal", async () => {
+    const fetchMock = vi.fn(async () => new Response());
+    vi.stubGlobal("fetch", fetchMock);
+    sandboxCreateMock.mockImplementationOnce(
+      async (params: { fetch?: typeof globalThis.fetch }) => {
+        await params.fetch!("https://api.vercel.test/sandboxes");
+        return makeSandbox("sbx_process_fetch");
+      },
+    );
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+
+    await executor.execute({ toolName: "bash", input: { command: "pwd" } });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.vercel.test/sandboxes",
+      undefined,
     );
   });
 
@@ -1165,9 +1186,9 @@ describe("createTestSandbox", () => {
   });
 
   it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {
-    process.env.VERCEL_TOKEN = "sandbox-token";
-    process.env.VERCEL_TEAM_ID = "team_123";
-    process.env.VERCEL_PROJECT_ID = "prj_123";
+    process.env["VERCEL_TOKEN"] = "sandbox-token";
+    process.env["VERCEL_TEAM_ID"] = "team_123";
+    process.env["VERCEL_PROJECT_ID"] = "prj_123";
 
     const freshSandbox = makeSandbox("sbx_created");
 
@@ -1185,6 +1206,7 @@ describe("createTestSandbox", () => {
       token: "sandbox-token",
       teamId: "team_123",
       projectId: "prj_123",
+      fetch: expect.any(Function),
     });
   });
 
@@ -1205,6 +1227,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_old",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
@@ -1402,6 +1425,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_missing_recipe",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
     expect(runtime.sandboxRef()).toEqual({
@@ -1439,6 +1463,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_recipe_changed",
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
     expect(getReadyWorkspaceMock).not.toHaveBeenCalled();
@@ -1489,7 +1514,7 @@ describe("createTestSandbox", () => {
   });
 
   it("loads a ready Workspace snapshot without starting a build", async () => {
-    process.env.SANDBOX_VCPUS = "4";
+    process.env["SANDBOX_VCPUS"] = "4";
     const controller = new AbortController();
     getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
@@ -1775,9 +1800,9 @@ describe("createTestSandbox", () => {
   });
 
   it("defers to SDK OIDC resolution when VERCEL_OIDC_TOKEN is set without explicit credentials", async () => {
-    process.env.VERCEL_OIDC_TOKEN = "oidc-jwt-token";
-    process.env.VERCEL_TEAM_ID = "team_123";
-    process.env.VERCEL_PROJECT_ID = "prj_123";
+    process.env["VERCEL_OIDC_TOKEN"] = "oidc-jwt-token";
+    process.env["VERCEL_TEAM_ID"] = "team_123";
+    process.env["VERCEL_PROJECT_ID"] = "prj_123";
 
     const freshSandbox = makeSandbox("sbx_oidc");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
@@ -1790,11 +1815,12 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       runtime: "node24",
+      fetch: expect.any(Function),
     });
   });
 
   it("configures resources for fresh sandboxes", async () => {
-    process.env.SANDBOX_VCPUS = "4";
+    process.env["SANDBOX_VCPUS"] = "4";
     const freshSandbox = makeSandbox("sbx_resources");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
@@ -1807,6 +1833,7 @@ describe("createTestSandbox", () => {
       timeout: 1000 * 60 * 30,
       runtime: "node24",
       resources: { vcpus: 4 },
+      fetch: expect.any(Function),
     });
   });
 
@@ -2119,9 +2146,9 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(response.result.details.exit_code).toBe(1);
-    expect(response.result.details.auth_required).toBeUndefined();
-    expect(response.result.details.permission_denied).toBeUndefined();
+    expect(response.result.details["exit_code"]).toBe(1);
+    expect(response.result.details["auth_required"]).toBeUndefined();
+    expect(response.result.details["permission_denied"]).toBeUndefined();
   });
 
   it("logs a Vercel firewall challenge page in bash output", async () => {
@@ -2186,8 +2213,8 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(response.result.details.exit_code).toBe(1);
-    expect(response.result.details.auth_required).toMatchObject({
+    expect(response.result.details["exit_code"]).toBe(1);
+    expect(response.result.details["auth_required"]).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -2249,12 +2276,12 @@ describe("createTestSandbox", () => {
     releaseFirst();
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
-    expect(firstResult.result.details.auth_required).toMatchObject({
+    expect(firstResult.result.details["auth_required"]).toMatchObject({
       provider: "github",
       grant: { name: "user-write", access: "write" },
     });
-    expect(secondResult.result.details.exit_code).toBe(0);
-    expect(secondResult.result.details.auth_required).toBeUndefined();
+    expect(secondResult.result.details["exit_code"]).toBe(0);
+    expect(secondResult.result.details["auth_required"]).toBeUndefined();
   });
 
   it("runs a queued bash command on the sandbox that replaced the one it saw", async () => {
@@ -2381,9 +2408,9 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(response.result.details.exit_code).toBe(0);
+    expect(response.result.details["exit_code"]).toBe(0);
     // Auth signal must be attached even though exit_code is 0
-    expect(response.result.details.auth_required).toMatchObject({
+    expect(response.result.details["auth_required"]).toMatchObject({
       provider: "sentry",
       grant: {
         name: "default",
@@ -2437,8 +2464,8 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(response.result.details.exit_code).toBe(1);
-    expect(response.result.details.permission_denied).toMatchObject({
+    expect(response.result.details["exit_code"]).toBe(1);
+    expect(response.result.details["permission_denied"]).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -2498,8 +2525,8 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(response.result.details.exit_code).toBe(1);
-    expect(response.result.details.auth_required).toMatchObject({
+    expect(response.result.details["exit_code"]).toBe(1);
+    expect(response.result.details["auth_required"]).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -2679,6 +2706,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: closedSandbox.name,
       resume: true,
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -2889,7 +2917,7 @@ describe("createTestSandbox", () => {
 
   it("extends sandbox keepalive while the turn is active", async () => {
     vi.useFakeTimers();
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
     const sandbox = makeSandbox("sbx_active_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -2908,7 +2936,7 @@ describe("createTestSandbox", () => {
 
   it("does not reschedule keepalive when closed during an extension", async () => {
     vi.useFakeTimers();
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
     const sandbox = makeSandbox("sbx_close_during_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -2934,7 +2962,7 @@ describe("createTestSandbox", () => {
   });
 
   it("extends sandbox keepalive for each tool execution", async () => {
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
     const sandbox = makeSandbox("sbx_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -2960,7 +2988,7 @@ describe("createTestSandbox", () => {
   });
 
   it("fails the current tool when keepalive finds an unavailable session", async () => {
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
     const unavailable = createClosedStreamError();
     const firstSandbox = makeSandbox("sbx_keepalive_recovery");
     firstSandbox.extendTimeout.mockRejectedValueOnce(unavailable);
@@ -3114,6 +3142,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_cached_first",
       resume: true,
+      fetch: expect.any(Function),
     });
   });
 
@@ -3301,11 +3330,12 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_existing",
       resume: true,
+      fetch: expect.any(Function),
     });
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {
-    process.env.SANDBOX_VCPUS = "4";
+    process.env["SANDBOX_VCPUS"] = "4";
     const snapshotSandbox = makeSandbox("sbx_snapshot");
     resolveMock.mockResolvedValue({
       snapshotId: "snap_123",
@@ -3329,6 +3359,7 @@ describe("createTestSandbox", () => {
         snapshotId: "snap_123",
       },
       resources: { vcpus: 4 },
+      fetch: expect.any(Function),
     });
   });
 
@@ -3376,6 +3407,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_rebuilt",
       },
+      fetch: expect.any(Function),
     });
   });
 
@@ -3561,6 +3593,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_retry",
       },
+      fetch: expect.any(Function),
     });
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
       timeout: 1000 * 60 * 30,
@@ -3568,6 +3601,7 @@ describe("createTestSandbox", () => {
         type: "snapshot",
         snapshotId: "snap_retry",
       },
+      fetch: expect.any(Function),
     });
   });
 

@@ -87,13 +87,24 @@ for (const view of [desktop, mobile]) {
     });
     await expect(record).toContainText("Waiting on you");
     // An earlier answer shows on its record.
-    await expect(
-      page.getByRole("region", { name: "Asked Pick the canary region" }),
-    ).toContainText("us-east-1, it has the least traffic right now.");
+    const answered = page.getByRole("region", {
+      name: "Asked Pick the canary region",
+    });
+    await expect(answered).toContainText(
+      "us-east-1, it has the least traffic right now.",
+    );
     await screenshot(page, "conversation-question", {
       lightTheme: true,
       view: view.name,
     });
+    // The record shows only the title, so its hover card shows the question.
+    const askedQuestion = page.getByText("Which region should run the canary?");
+    await answered
+      .getByRole("link", { name: "Pick the canary region" })
+      .hover();
+    await expect(askedQuestion).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(askedQuestion).toBeHidden();
 
     await question.getByRole("button", { name: /Roll out/ }).click();
     await expect(question).toHaveCount(0);
@@ -366,7 +377,7 @@ test("a question open on load does not mark its record while later pages load", 
   releasePage();
   await expect(record).toBeInViewport();
   const marks = await page.evaluate(
-    () => (window as unknown as { askMarks: { count: number } }).askMarks.count,
+    () => (window as Window & { askMarks: { count: number } }).askMarks.count,
   );
   expect(marks).toBe(0);
 });
@@ -438,8 +449,7 @@ for (const failingPage of ["first", "second"] as const) {
       }),
     ).toBeInViewport();
     const marks = await page.evaluate(
-      () =>
-        (window as unknown as { askMarks: { count: number } }).askMarks.count,
+      () => (window as Window & { askMarks: { count: number } }).askMarks.count,
     );
     expect(marks).toBe(0);
   });
@@ -486,7 +496,7 @@ test("Respond quotes into the message box under a question", async ({
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {

@@ -61,7 +61,7 @@ const CONVERSATION_BLEND_PSEUDOCOUNT = 100;
  * chance for each Conversation of the segment, such as at launch or after the
  * gap lists expire.
  */
-export const MIN_GAP_SAMPLES = 20;
+const MIN_GAP_SAMPLES = 20;
 
 /** Below this prefix size, one cache miss costs too little to warm for. */
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
@@ -237,51 +237,6 @@ export function gapSegment(input: GapSegmentInput): string {
   return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
 }
 
-/** Each segment that `gapSegment` returns, in display order. */
-export const GAP_SEGMENTS: readonly string[] = [
-  ...[true, false].flatMap((userActor) =>
-    [0, 1, 3].flatMap((endedTurns) =>
-      (["open", "done", "none"] as const).map((workState) =>
-        gapSegment({ userActor, endedTurns, workState, archived: false }),
-      ),
-    ),
-  ),
-  ...(["open", "done", "none"] as const).map((workState) =>
-    gapSegment({ userActor: false, endedTurns: 0, workState, archived: true }),
-  ),
-];
-
-/**
- * Count gaps in the bins that `decideWarmup` uses, for reports. A gap at or
- * after `IDLE_HORIZON_MS` is a no-reply gap, as the recorder stores it. The
- * bins after the horizon never get a gap, so they are left out.
- */
-export function gapHistogramReport(gapsMs: readonly number[]): {
-  /** Gaps from `startMs` to before `endMs`. */
-  bins: Array<{ startMs: number; endMs: number; count: number }>;
-  noReply: number;
-  total: number;
-} {
-  const { counts } = histogramOf(
-    gapsMs.filter((gapMs) => gapMs < IDLE_HORIZON_MS),
-  );
-  const bins: Array<{ startMs: number; endMs: number; count: number }> = [];
-  for (const [index, endMs] of GAP_BIN_EDGES_MS.entries()) {
-    const startMs = index > 0 ? GAP_BIN_EDGES_MS[index - 1]! : 0;
-    if (startMs >= IDLE_HORIZON_MS) break;
-    bins.push({
-      startMs,
-      endMs: Math.min(endMs, IDLE_HORIZON_MS),
-      count: counts[index]!,
-    });
-  }
-  return {
-    bins,
-    noReply: gapsMs.filter((gapMs) => gapMs >= IDLE_HORIZON_MS).length,
-    total: gapsMs.length,
-  };
-}
-
 /**
  * Segment whose gaps a thin segment leans on: the `none` segment with the
  * same Actor and Turn depth. The backfill and most traffic keep the `none`
@@ -295,17 +250,25 @@ export function parentGapSegment(input: GapSegmentInput): string | undefined {
 /**
  * What else an idle period waits for when it starts. `child`: a child agent
  * still runs, and its result starts a Turn. `review`: the Turn asked a
- * Review item.
+ * Review item. `watch`: an Automation run has an active Watch, such as a
+ * timer or a pull request Watch, and no child agent.
  */
-export type WaitingOn = "child" | "review";
+export type WaitingOn = "child" | "review" | "watch";
+
+// Only an Automation run waits on a Watch, so its child is named for it.
+const WAITING_SEGMENT_SUFFIXES: Record<WaitingOn, string> = {
+  child: "child",
+  review: "review",
+  watch: "automation",
+};
 
 /**
- * Child of a segment for an idle period that waits on a child agent or a
- * Review item. Its parent is the segment, so a thin child leans on the
- * segment, and a thin segment on its own parent.
+ * Child of a segment for an idle period that waits on a child agent, a
+ * Review item, or a Watch (`:automation`). Its parent is the segment, so a
+ * thin child leans on the segment, and a thin segment on its own parent.
  */
 export function waitingGapSegment(segment: string, waitingOn: WaitingOn) {
-  return `${segment}:${waitingOn}`;
+  return `${segment}:${WAITING_SEGMENT_SUFFIXES[waitingOn]}`;
 }
 
 /** Whether a segment has too few gaps to stand without its parent. */

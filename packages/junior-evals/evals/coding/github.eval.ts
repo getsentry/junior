@@ -169,4 +169,26 @@ describe("GitHub Skill Workflows", () => {
       }),
     );
   });
+
+  test("when a reply names pull requests from several repos, qualify each reference", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "In one line, tell me that PR 3313 in getsentry/junior and PR 812 in getsentry/sentry-docs are both ready for review. Don't look anything up.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply writes each pull request with its repository, such as getsentry/junior#3313 and getsentry/sentry-docs#812, or links each one to its GitHub URL.",
+        ],
+        fail: [
+          "Do not write a bare #3313 or #812 without its repository.",
+          "Do not put the pull request references in code formatting.",
+        ],
+      }),
+    );
+  });
 });

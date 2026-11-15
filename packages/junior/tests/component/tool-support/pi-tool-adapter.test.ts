@@ -73,13 +73,12 @@ describe("Pi tool adapter", () => {
         updatePlan: createUpdatePlanTool(),
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      onStatus,
+      { spanContext: {}, searchToolsCost: { owner: "none" }, onStatus },
     );
 
     await updatePlanTool!.execute("tool-plan", {
@@ -102,8 +101,7 @@ describe("Pi tool adapter", () => {
         reportProgress: createReportProgressTool(),
       },
       sandbox,
-      {},
-      onStatus,
+      { spanContext: {}, searchToolsCost: { owner: "none" }, onStatus },
     );
     const executeTool = tools.find(
       (candidate) => candidate.name === "executeTool",
@@ -131,7 +129,7 @@ describe("Pi tool adapter", () => {
       supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
         ok: true,
-        command: (input as Record<string, unknown>).command,
+        command: (input as Record<string, unknown>)["command"],
         cwd: "/vercel/sandbox",
         exit_code: 0,
         signal: null,
@@ -147,14 +145,16 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      sandboxExecutor,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        sandboxTools: sandboxExecutor,
+      },
     );
 
     const result = await bashTool!.execute("tool-1", {
@@ -196,14 +196,16 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      sandboxExecutor,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        sandboxTools: sandboxExecutor,
+      },
     );
 
     await bashTool!.execute(
@@ -234,18 +236,16 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "public",
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "public",
+      },
     );
 
     await demoTool!.execute(
@@ -281,18 +281,16 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "public",
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "public",
+      },
     );
 
     await expect(
@@ -320,18 +318,16 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "public",
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "public",
+      },
     );
 
     await expect(
@@ -353,16 +349,12 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      onToolCall,
+      { spanContext: {}, searchToolsCost: { owner: "none" }, onToolCall },
     );
 
     await bashTool!.execute("tool-bash", { command: "which gh" });
@@ -386,20 +378,17 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-      undefined,
-      actionReview({ review }, "Create the report."),
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "private",
+        actionReview: actionReview({ review }, "Create the report."),
+      },
     );
 
     await demoTool!.execute("tool-demo", { reportId: "weekly" });
@@ -445,19 +434,12 @@ describe("Pi tool adapter", () => {
     const callMcpTool = createCallMcpToolTool({
       getResolvedActiveTools: () => activeTools,
     });
-    const tools = createPiAgentTools(
-      { callMcpTool },
-      sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-      undefined,
-      actionReview({ review }, "Delete preview-42."),
-    );
+    const tools = createPiAgentTools({ callMcpTool }, sandbox, {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      conversationPrivacy: "private",
+      actionReview: actionReview({ review }, "Delete preview-42."),
+    });
     const piCallMcpTool = tools.find(
       (candidate) => candidate.name === "callMcpTool",
     );
@@ -523,20 +505,18 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginHooks,
-      "private",
-      undefined,
-      actionReview({ review }, "Create the monthly report."),
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        agentHooks: pluginHooks,
+        conversationPrivacy: "private",
+        actionReview: actionReview({ review }, "Create the monthly report."),
+      },
     );
 
     await demoTool!.execute("tool-demo", { reportId: "weekly" });
@@ -581,20 +561,18 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the recurring report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-      onToolResult,
-      reviewState,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "private",
+        onToolResult,
+        actionReview: reviewState,
+      },
     );
 
     await expect(
@@ -689,20 +667,17 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: vi.fn(),
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-      undefined,
-      reviewState,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "private",
+        actionReview: reviewState,
+      },
     );
 
     await expect(
@@ -720,21 +695,19 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => {
             throw new Error("Thing not found.");
           },
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-      onToolResult,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "private",
+        onToolResult,
+      },
     );
 
     await expect(
@@ -757,20 +730,18 @@ describe("Pi tool adapter", () => {
       {
         editFile: {
           description: "edit",
-          inputSchema: {} as any,
+          inputSchema: {},
           prepareArguments,
           executionMode: "sequential",
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "public",
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        conversationPrivacy: "public",
+      },
     );
 
     expect(editTool?.prepareArguments).toBe(prepareArguments);
@@ -784,20 +755,20 @@ describe("Pi tool adapter", () => {
         automaticReview: {
           approvalMode: "auto",
           description: "automatic review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
         requiredReview: {
           approvalMode: "review",
           description: "required review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
+      { spanContext: {}, searchToolsCost: { owner: "none" } },
     );
 
     expect(automaticReviewTool?.executionMode).toBe("sequential");
@@ -811,7 +782,7 @@ describe("Pi tool adapter", () => {
         bash: createBashTool(),
       },
       sandbox,
-      {},
+      { spanContext: {}, searchToolsCost: { owner: "none" } },
     );
 
     expect(bashTool?.executionMode).toBe("sequential");
@@ -863,16 +834,17 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      sandboxExecutor,
-      pluginAuthOrchestration,
-      undefined,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        sandboxTools: sandboxExecutor,
+        pluginAuthOrchestration,
+      },
     );
 
     await expect(
@@ -914,16 +886,17 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
       sandbox,
-      {},
-      undefined,
-      sandboxExecutor,
-      pluginAuthOrchestration,
-      undefined,
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        sandboxTools: sandboxExecutor,
+        pluginAuthOrchestration,
+      },
     );
 
     await expect(

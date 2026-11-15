@@ -6,10 +6,14 @@ import { DetailsPanel } from "../components/DetailsPanel";
 import { StatusChip } from "../components/StatusChip";
 import { DetailsCard } from "../conversations/DetailsList";
 import { conversationPath } from "../conversations/conversationRoutes";
-import { DisplayText } from "../display-text/DisplayText";
+import {
+  DisplayText,
+  useTextShowsObjectCard,
+} from "../display-text/DisplayText";
 import { automationPath, formatRelativeTime } from "../format";
 import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
   assigneeLabel,
   reviewItemStatusLabel,
@@ -29,6 +33,32 @@ function Fact(props: { children: ReactNode; label: string }) {
 }
 
 /**
+ * Link the subject of an item. When the body already shows the subject's full
+ * card, this card would repeat it, so it hides.
+ */
+function SubjectCard(props: {
+  body: string;
+  subject: NonNullable<ReviewItemPayload["subject"]>;
+}) {
+  const { subject } = props;
+  const href = subject.url ? reviewItemSubjectHref(subject.url) : undefined;
+  if (useTextShowsObjectCard(props.body, href)) return null;
+  return (
+    <DetailsCard title="Subject">
+      <span className="text-sm">
+        {href ? (
+          <OutboundLink className={dashboardInlineLinkClass} href={href}>
+            {subject.title ?? href}
+          </OutboundLink>
+        ) : (
+          (subject.title ?? subject.id)
+        )}
+      </span>
+    </DetailsCard>
+  );
+}
+
+/**
  * Show the facts of one Review item beside it: its text, assignees, where
  * it came from, and the Conversations linked to it.
  */
@@ -38,9 +68,6 @@ export function ReviewItemDetails(props: {
 }) {
   const { item } = props;
   const subject = item.subject;
-  const subjectHref = subject?.url
-    ? reviewItemSubjectHref(subject.url)
-    : undefined;
   const [addedByTitle, ...linkedTitles] = useLinkedConversationTitles([
     item.addedByConversationId,
     ...item.conversationIds,
@@ -58,7 +85,9 @@ export function ReviewItemDetails(props: {
     >
       <div className="grid min-w-0 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          <DisplayText text={item.body} />
+          <ReviewItemObjects conversationId={item.addedByConversationId}>
+            <DisplayText text={item.body} />
+          </ReviewItemObjects>
         </div>
         <DetailsCard title="Assignees">
           {assigned ? (
@@ -103,20 +132,9 @@ export function ReviewItemDetails(props: {
           </dl>
         </DetailsCard>
         {subject ? (
-          <DetailsCard title="Subject">
-            <span className="text-sm">
-              {subjectHref ? (
-                <OutboundLink
-                  className={dashboardInlineLinkClass}
-                  href={subjectHref}
-                >
-                  {subject.title ?? subjectHref}
-                </OutboundLink>
-              ) : (
-                (subject.title ?? subject.id)
-              )}
-            </span>
-          </DetailsCard>
+          <ReviewItemObjects conversationId={item.addedByConversationId}>
+            <SubjectCard body={item.body} subject={subject} />
+          </ReviewItemObjects>
         ) : null}
         {item.conversationIds.length > 0 ? (
           <DetailsCard

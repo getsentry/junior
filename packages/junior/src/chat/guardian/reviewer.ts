@@ -35,7 +35,8 @@ type GuardianAssessment = z.infer<typeof guardianAssessmentSchema>;
 
 type CompleteObject = typeof completeObject;
 const GUARDIAN_REVIEW_TIMEOUT_MS = 60_000;
-const GUARDIAN_REVIEW_MAX_TOKENS = 2_000;
+// Reasoning tokens share this budget with the assessment.
+const GUARDIAN_REVIEW_MAX_TOKENS = 8_000;
 const MAX_PROPOSAL_CHARS = 192_000;
 
 // Rules for an action of a Run. The section is the Run's own visible

@@ -32,8 +32,8 @@ const MIN_SCAN_SIZE = 64;
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
-    afterSeq?: number | SQL;
-    beforeSeq?: number;
+    afterSeq?: number | SQL | undefined;
+    beforeSeq?: number | undefined;
     conversationId: string;
     direction: "backward" | "forward";
     limit: number;
@@ -291,7 +291,7 @@ async function scanConversationEventPage(
   executor: JuniorSqlDatabase,
   args: {
     afterSeq?: number | SQL;
-    beforeSeq?: number;
+    beforeSeq?: number | undefined;
     canExposePayload: boolean;
     conversationId: string;
     direction: "backward" | "forward";
@@ -357,10 +357,10 @@ async function scanConversationEventPage(
 export async function readConversationEventPage(
   executor: JuniorSqlDatabase,
   args: {
-    beforeSeq?: number;
+    beforeSeq?: number | undefined;
     canExposePayload: boolean;
     conversationId: string;
-    latestTurns?: number;
+    latestTurns?: number | undefined;
     limit: number;
   },
 ): Promise<{

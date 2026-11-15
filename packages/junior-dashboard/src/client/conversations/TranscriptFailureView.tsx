@@ -14,11 +14,11 @@ import { TranscriptTimestamp } from "./TranscriptTimestamp";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
-  eventId?: string;
+  eventId?: string | undefined;
   failureCode: ConversationTurnFailureCode;
-  failureReason?: ConversationTurnFailureReason;
-  sentryEventUrl?: string;
-  timestamp?: number;
+  failureReason?: ConversationTurnFailureReason | undefined;
+  sentryEventUrl?: string | undefined;
+  timestamp?: number | undefined;
 }) {
   const eventLabel = props.eventId ? `event_id=${props.eventId}` : undefined;
   // A narrow screen truncates the id, so the outbound icon stays on its line.

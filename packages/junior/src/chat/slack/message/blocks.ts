@@ -25,7 +25,7 @@ function toText(value: unknown): string | undefined {
 function readText(value: unknown): string | undefined {
   if (typeof value === "string") return toText(value);
   if (!value || typeof value !== "object") return undefined;
-  return toText((value as Record<string, unknown>).text);
+  return toText((value as Record<string, unknown>)["text"]);
 }
 
 function parseChildren(
@@ -57,58 +57,58 @@ function parseElement(
   budget.remainingNodes -= 1;
 
   const element = value as Record<string, unknown>;
-  const type = toText(element.type);
-  const text = readText(element.text);
+  const type = toText(element["type"]);
+  const text = readText(element["text"]);
 
   if (type === "link") {
-    const url = toText(element.url);
+    const url = toText(element["url"]);
     return [
       text && url && text !== url ? `${text} (${url})` : text || url,
     ].filter((part): part is string => Boolean(part));
   }
 
   if (type === "button") {
-    const url = toText(element.url);
+    const url = toText(element["url"]);
     return [text && url ? `${text} (${url})` : text].filter(
       (part): part is string => Boolean(part),
     );
   }
 
   if (type === "emoji") {
-    const name = toText(element.name);
+    const name = toText(element["name"]);
     return name ? [`:${name}:`] : [];
   }
 
   if (type === "user") {
-    const userId = toText(element.user_id);
+    const userId = toText(element["user_id"]);
     return userId ? [`<@${userId}>`] : [];
   }
 
   if (type === "channel") {
-    const channelId = toText(element.channel_id);
+    const channelId = toText(element["channel_id"]);
     return channelId ? [`<#${channelId}>`] : [];
   }
 
   if (type === "usergroup") {
-    const usergroupId = toText(element.usergroup_id);
+    const usergroupId = toText(element["usergroup_id"]);
     return usergroupId ? [`<!subteam^${usergroupId}>`] : [];
   }
 
   if (type === "broadcast") {
-    const range = toText(element.range);
+    const range = toText(element["range"]);
     return range ? [`<!${range}>`] : [];
   }
 
   const parts = [
     text,
-    readText(element.title),
-    readText(element.description),
-    readText(element.label),
-    readText(element.hint),
-    readText(element.placeholder),
-    toText(element.alt_text),
-    toText(element.provider_name),
-    toText(element.fallback),
+    readText(element["title"]),
+    readText(element["description"]),
+    readText(element["label"]),
+    readText(element["hint"]),
+    readText(element["placeholder"]),
+    toText(element["alt_text"]),
+    toText(element["provider_name"]),
+    toText(element["fallback"]),
   ].filter((part): part is string => Boolean(part));
 
   for (const key of CHILD_KEYS) {
@@ -117,7 +117,7 @@ function parseElement(
   // Checkbox and radio labels are always visible. Select and overflow options
   // stay hidden until interaction, and their values may contain private data.
   if (type === "checkboxes" || type === "radio_buttons") {
-    parts.push(...parseChildren(element.options, budget, depth + 1));
+    parts.push(...parseChildren(element["options"], budget, depth + 1));
   }
 
   return parts;

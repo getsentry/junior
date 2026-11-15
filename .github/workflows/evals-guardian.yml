@@ -95,6 +95,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Evals load the built output of some workspace packages.
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
       - name: Run Guardian evals
         id: run
         continue-on-error: true

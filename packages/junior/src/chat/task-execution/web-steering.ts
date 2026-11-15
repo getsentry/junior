@@ -2,6 +2,7 @@ import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
   buildSteeringPiMessage,
+  instructionActorFor,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
@@ -29,10 +30,7 @@ async function steeringMessageFromWeb(
     message.input.reviewItemChange,
   );
   return {
-    actor: {
-      authorId: actor.userId,
-      ...(actor.fullName ? { authorName: actor.fullName } : undefined),
-    },
+    actor: instructionActorFor(actor),
     ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
     text: reviewItemInput ?? message.input.text.trim(),

@@ -129,7 +129,7 @@ test.describe("checks less often while the reader is away", () => {
     await page.clock.fastForward(5_000);
     await page.clock.fastForward(5_000);
     await answered(4);
-    expect(checks[3]! - checks[2]!).toBeGreaterThanOrEqual(10_000);
+    expect(checks[3] - checks[2]).toBeGreaterThanOrEqual(10_000);
 
     // Input checks at once and goes back to every 5s.
     await page.mouse.move(10, 10);

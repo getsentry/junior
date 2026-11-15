@@ -4,11 +4,13 @@
  * `run()` starts a new Conversation on the test's agent. `agent(options)`
  * creates that agent with `createApp()` options; without it, the agent uses
  * the default options. All Conversations of a test use the same agent.
+ * `redeploy(options)` replaces its app with new options, as a deploy does,
+ * and the Conversations of the test continue on the new app.
  *
  * A suite is a Vitest project for one directory. It provides
  * `agentOptionsModule`, a module whose default export is the suite's default
- * `createApp()` options. Options passed to `agent()` replace those defaults
- * key by key.
+ * `createApp()` options. Options passed to `agent()` or `redeploy()` replace
+ * those defaults key by key.
  */
 import { test as baseTest } from "vitest";
 // Register the `toSatisfyJudge()` matcher for call results.
@@ -32,9 +34,16 @@ declare module "vitest" {
   }
 }
 
+/** The test's agent. */
+interface TestAgent {
+  run: RunAgent;
+  /** Replace the agent's app with one that has these `createApp()` options. */
+  redeploy: (options?: JuniorAppOptions) => Promise<void>;
+}
+
 interface AgentFixtures {
   /** Create the test's agent with `createApp()` options. */
-  agent: (options?: JuniorAppOptions) => Promise<{ run: RunAgent }>;
+  agent: (options?: JuniorAppOptions) => Promise<TestAgent>;
   /** Path of the module with the suite's default `createApp()` options. */
   agentOptionsModule: string | undefined;
   /** Start a new Conversation on the test's agent. */
@@ -59,6 +68,8 @@ export const test = baseTest.extend<AgentFixtures>({
       return {
         run: (input, callOptions) =>
           runEvalWork(() => agent.run(input, callOptions)),
+        redeploy: (next = {}) =>
+          runEvalWork(() => agent.redeploy({ ...defaults, ...next })),
       };
     });
     await created?.close();

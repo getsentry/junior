@@ -2,9 +2,13 @@ import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
   createSearchToolsTool,
+  searchCatalogTools,
   summarizeModelVisibleDescription,
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
+
+// These cases never reach the rerank model, so no cost is recorded.
+const NO_COST = { owner: "none" } as const;
 
 function catalog() {
   return {
@@ -250,7 +254,7 @@ function mixedCatalog() {
 
 describe("searchTools", () => {
   it("discovers deferred catalog tools from metadata and returns their schemas", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     expect(searchTools.description).toContain(
       "Deferred tools are grouped by source",
@@ -261,12 +265,12 @@ describe("searchTools", () => {
     expect(searchTools.description).not.toContain("memory_createMemory");
 
     const result = await searchTools.execute!(
-      { query: "renewal risk", max_results: 1 },
+      { query: "lookup customer", max_results: 1 },
       {},
     );
 
     expect(result).toMatchObject({
-      query: "renewal risk",
+      query: "lookup customer",
       source: null,
       sources: [
         {
@@ -318,10 +322,10 @@ describe("searchTools", () => {
   });
 
   it("filters by source and omits per-tool source in filtered results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
-      { source: "memory", query: "long-term" },
+      { source: "memory", query: "create a memory" },
       {},
     );
 
@@ -365,8 +369,9 @@ describe("searchTools", () => {
     });
   });
 
-  it("ranks production search variations by relevant catalog metadata", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  // Unclear word matches go to the model, which these tests do not run. They
+  // check the word match itself.
+  it("ranks production search variations by relevant catalog metadata", () => {
     const cases = [
       ["clone repository", "github_cloneRepository", "github"],
       ["repository clone", "github_cloneRepository", "github"],
@@ -399,20 +404,17 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 1 },
-        {},
+      const { matches } = searchCatalogTools(
+        mixedCatalog(),
+        query,
+        source ?? null,
       );
 
-      expect({
-        query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: [expectedTool] });
+      expect({ query, top: matches[0] }).toEqual({ query, top: expectedTool });
     }
   });
 
-  it("returns related candidates for broad production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  it("returns related candidates for broad production queries", () => {
     const cases = [
       [
         "pull request checks details diff comments",
@@ -428,27 +430,22 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 20 },
-        {},
-      );
+      const { matches } = searchCatalogTools(mixedCatalog(), query, source);
 
-      expect({
+      expect({ query, matches }).toEqual({
         query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: expect.arrayContaining([expectedTool]) });
+        matches: expect.arrayContaining([expectedTool]),
+      });
     }
   });
 
-  it("drops weak matches that share only common words", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
-
-    const result = await searchTools.execute!(
-      { query: "create pull request", source: "github", max_results: 20 },
-      {},
+  it("drops weak matches that share only common words", () => {
+    const { matches: names } = searchCatalogTools(
+      mixedCatalog(),
+      "create pull request",
+      "github",
     );
 
-    const names = result.tools.map(({ tool_name }) => tool_name);
     expect(names[0]).toBe("github_createPullRequest");
     // Every GitHub tool shares the source; only pull request tools fit.
     for (const unrelated of [
@@ -461,7 +458,7 @@ describe("searchTools", () => {
   });
 
   it("does not match partial words or unrelated production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     for (const [query, source] of [
       ["version", undefined],
@@ -484,7 +481,7 @@ describe("searchTools", () => {
   });
 
   it("lists provider tools when a production search omits its query", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "notion", max_results: 20 },
@@ -505,7 +502,7 @@ describe("searchTools", () => {
   });
 
   it("returns known sources without throwing for an unknown source", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "missing", query: "memory" },
@@ -523,7 +520,7 @@ describe("searchTools", () => {
   });
 
   it("bounds empty all-source search while listing known sources", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 1 },
@@ -552,7 +549,7 @@ describe("searchTools", () => {
   });
 
   it("returns compact source ids for mixed-source results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 3 },

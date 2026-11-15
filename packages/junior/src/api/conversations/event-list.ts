@@ -8,6 +8,7 @@ import {
   readConversationEventPageAfter,
   readConversationEventPageAround,
 } from "./event-page";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./record";
 import { conversationEventHistory } from "./projection";
@@ -153,7 +154,7 @@ export async function conversationEventPageReport(
   return {
     events: (
       await attachConversationMentions(executor, conversationId, {
-        events: page.events,
+        events: page.events.map(formatConversationEventText),
       })
     ).events,
     eventHistory: args.eventHistory,

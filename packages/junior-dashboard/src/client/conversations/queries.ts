@@ -12,7 +12,6 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationPendingMessagesReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
@@ -29,6 +28,7 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
+import { postWebMessage } from "./attachmentUploads";
 import {
   conversationFeedCacheRows,
   mapConversationFeedCache,
@@ -142,14 +142,14 @@ export function conversationDetailQueryOptions(
   options?: {
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
-    fastPollUntilMs?: number;
+    fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
     /**
      * The versions poll refreshes this Conversation while it is idle, so
      * the detail does not poll then.
      */
-    versionsPoll?: boolean;
+    versionsPoll?: boolean | undefined;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -227,9 +227,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -317,12 +317,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -834,7 +834,7 @@ export async function readConversationData(
   options?: {
     /** Also read the mailbox, before history, in the same request. */
     mailbox?: boolean;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
   },
 ): Promise<ConversationSnapshot> {
   const query = new URLSearchParams();
@@ -919,7 +919,10 @@ function withCachedEvents(
 function withDetailEtag<T extends ConversationDetailReport>(
   report: T,
   response: Response,
-): T & { conversationVersion?: string; detailEtag?: string } {
+): T & {
+  conversationVersion?: string | undefined;
+  detailEtag?: string | undefined;
+} {
   return {
     ...report,
     conversationVersion:

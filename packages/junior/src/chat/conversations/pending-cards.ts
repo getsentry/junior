@@ -2,12 +2,10 @@ import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
-  getAgentInvocationTurnId,
-  parseAgentInvocationResultMessageId,
-  parseAgentReplyMessageId,
-  parseTurnReplyMessageId,
-} from "@/chat/agent-invocations/ids";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
+  isAgentInvocationResult,
+  listChildMessages,
+} from "@/chat/agent-invocations/child-message";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   readMessageCardRefs,
   removedCardSchema,
@@ -46,20 +44,20 @@ async function selectTurnCards(
       if (data.type === "message" && data.role === "assistant") return [];
       if (
         data.type !== "tool_result" ||
-        data.isError ||
-        typeof data.toolName !== "string" ||
-        !isRecord(data.details)
+        data["isError"] ||
+        typeof data["toolName"] !== "string" ||
+        !isRecord(data["details"])
       )
         continue;
-      if (data.details.timed_out === true) continue;
-      if (Array.isArray(data.details.removedCards)) {
+      if (data["details"]["timed_out"] === true) continue;
+      if (Array.isArray(data["details"]["removedCards"])) {
         for (const ref of removedCardSchema
           .array()
-          .parse(data.details.removedCards)) {
+          .parse(data["details"]["removedCards"])) {
           selection.deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      for (const card of readMessageCardRefs(data.details)) {
+      for (const card of readMessageCardRefs(data["details"])) {
         const key = JSON.stringify([card.plugin, card.key]);
         if (!selection.deleted.has(key) && !selection.cards.has(key)) {
           selection.cards.set(key, card);
@@ -76,35 +74,29 @@ async function selectTurnCards(
  * A child cannot reply to people, so its parent's reply delivers its cards.
  */
 async function selectChildResultCards(
+  conversationId: string,
   inputMessageIds: readonly string[],
   selection: CardSelection,
 ): Promise<void> {
+  if (inputMessageIds.length === 0) return;
   const events = getConversationEventStore();
-  for (const messageId of [...inputMessageIds].reverse()) {
-    const replyInvocationId = parseAgentReplyMessageId(messageId);
-    const invocationId =
-      replyInvocationId ?? parseAgentInvocationResultMessageId(messageId);
-    const invocation = invocationId
-      ? await getAgentInvocation(invocationId)
-      : undefined;
-    if (!invocation) continue;
-    // A Turn on the child's Conversation loop names its own Turn.
-    const turnId =
-      parseTurnReplyMessageId(messageId) ??
-      getAgentInvocationTurnId(invocation.invocationId);
+  const execution = (await getConversationWorkState({ conversationId }))
+    ?.execution;
+  const messages = await listChildMessages(
+    inputMessageIds,
+    execution?.messageSenders ?? {},
+  );
+  for (const message of messages.reverse()) {
+    const { conversationId: childConversationId, turnId } = message.sender;
     // The child records its terminal Turn event before it reports the result.
     const terminal = await events.loadByIdempotencyKey(
-      invocation.childConversationId,
+      childConversationId,
       `turn:${turnId}:terminal`,
     );
     // A `reply` ends the child's Turn, but it can reach the parent before the
     // child records that end. Then its cards are the newest ones.
-    if (!terminal && !replyInvocationId) continue;
-    await selectTurnCards(
-      invocation.childConversationId,
-      selection,
-      terminal?.seq,
-    );
+    if (!terminal && isAgentInvocationResult(message)) continue;
+    await selectTurnCards(childConversationId, selection, terminal?.seq);
   }
 }
 
@@ -114,7 +106,7 @@ export async function loadPendingMessageCards(
 ): Promise<MessageCard[]> {
   const selection: CardSelection = { cards: new Map(), deleted: new Set() };
   const inputMessageIds = await selectTurnCards(conversationId, selection);
-  await selectChildResultCards(inputMessageIds, selection);
+  await selectChildResultCards(conversationId, inputMessageIds, selection);
   if (selection.cards.size === 0) return [];
   return resolveMessageCards(
     [...selection.cards.values()].reverse(),

@@ -115,7 +115,7 @@ export function isAssistantMessage(value: unknown): value is AssistantMessage {
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
-): value is ToolResultMessage<any> {
+): value is ToolResultMessage {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -157,7 +157,13 @@ export function getPiMessageRole(value: unknown): string | undefined {
 export function isContinuablePiBoundary(
   messages: readonly PiMessage[],
 ): boolean {
-  const lastRole = getPiMessageRole(messages.at(-1));
+  // A saved system message applies to the next model call, so the message
+  // before it decides.
+  let end = messages.length;
+  while (end > 0 && getPiMessageRole(messages[end - 1]) === "system") {
+    end -= 1;
+  }
+  const lastRole = getPiMessageRole(messages[end - 1]);
   return lastRole === "user" || lastRole === "toolResult";
 }
 
@@ -222,6 +228,32 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
       ? [{ ...message, content: runtimeContent } as PiMessage]
       : [];
   });
+}
+
+/**
+ * Find the latest copy of one `<runtime-turn-context>` section in history,
+ * such as `<script-tools>`, with its tags.
+ */
+export function latestTurnContextSection(
+  messages: PiMessage[],
+  tag: string,
+): string | undefined {
+  const section = new RegExp(`\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g");
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const texts = (userMessageContent(messages[index]!) ?? []).flatMap(
+      (part) => {
+        const text = textPartValue(part);
+        return text?.startsWith(RUNTIME_TURN_CONTEXT_START) ? [text] : [];
+      },
+    );
+    for (const text of texts.reverse()) {
+      const match = [...text.matchAll(section)].at(-1);
+      if (match) {
+        return match[0].slice(1);
+      }
+    }
+  }
+  return undefined;
 }
 
 /**

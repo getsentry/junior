@@ -11,6 +11,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import { reviewItemStatusLabel } from "./reviewItemFormat";
 
 /** Space above the card when the view starts at its top. */
@@ -27,10 +28,10 @@ export function ReviewItemView(props: {
   backTo: string;
   detailsOpen: boolean;
   item: ReviewItemPayload;
-  next?: { title: string; to: string };
+  next?: { title: string; to: string } | undefined;
   onDetailsClick(): void;
   /** The title of the Conversation that added the item, when it is known. */
-  sourceTitle?: string;
+  sourceTitle?: string | undefined;
 }) {
   const { item } = props;
   const open = item.status === "open";
@@ -69,6 +70,11 @@ export function ReviewItemView(props: {
   const source = item.automationId ? "Automation" : props.sourceTitle;
   // A notice has no question, so its text is what the card shows.
   const bodyInCard = item.kind === "notice" || !item.request;
+  const body = (
+    <ReviewItemObjects conversationId={item.addedByConversationId}>
+      <DisplayText text={item.body} />
+    </ReviewItemObjects>
+  );
   const conversationLink = (
     <Link
       className={textLinkClass}
@@ -131,7 +137,7 @@ export function ReviewItemView(props: {
           <ReviewItemContext
             fallback={
               <div className="grid gap-3 font-sans text-sm leading-relaxed">
-                {bodyInCard ? null : <DisplayText text={item.body} />}
+                {bodyInCard ? null : body}
                 <div>{conversationLink}</div>
               </div>
             }
@@ -142,7 +148,7 @@ export function ReviewItemView(props: {
             ref={cardRef}
             className="grid min-w-0 gap-4 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel p-4 font-sans text-sm md:p-5"
           >
-            {bodyInCard ? <DisplayText text={item.body} /> : null}
+            {bodyInCard ? body : null}
             <ReviewItemActions item={item} />
           </section>
           {props.next ? (

@@ -44,6 +44,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -107,6 +108,7 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   const isMobile = useIsMobileViewport();
+  const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
   const details = annotations.map((annotation) =>
@@ -123,12 +125,18 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip>
+    <Tooltip
+      onOpenChange={(open, details) => {
+        if (open && details.trigger) setSide(sideWithMoreRoom(details.trigger));
+      }}
+    >
       <TooltipTrigger
         render={
           <span
             aria-label={`Linked work, newest first: ${details.join(", ")}`}
-            className="inline-flex min-w-0 max-w-full items-center"
+            // Rows that are one stretched link turn off pointer events.
+            // The trigger takes them back, so hover opens the tooltip.
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center"
           >
             {useMobileFacepile ? (
               <SidebarAnnotationIconFacepile
@@ -154,9 +162,11 @@ export function ConversationSidebarAnnotations(props: {
           </span>
         }
       />
-      <TooltipContent align="start">
+      <TooltipContent align="start" side={side}>
         <TooltipTitle>Linked work</TooltipTitle>
-        <ul className="m-0 list-none space-y-1 p-0">
+        {/* A row can link many items. Scroll the list so the tooltip stays on
+            screen; Base UI keeps the popup open while the pointer is on it. */}
+        <ul className="thin-scrollbar m-0 max-h-80 list-none space-y-1 overflow-y-auto overscroll-contain p-0 pr-1">
           {annotations.map((annotation, index) => (
             <li
               className="flex min-w-0 items-center gap-1.5"
@@ -307,6 +317,8 @@ function SidebarAnnotationGroupChip(props: {
               {...annotation}
               objectType={annotation.objectType}
               key={annotation.key}
+              // Match the h-3.5 row in rem. A px icon is cut at a small root font size.
+              className="size-3.5"
               decorative
               size={14}
             />
@@ -381,6 +393,12 @@ function SidebarAnnotationStatusChip(props: {
   );
 }
 
+/** Open toward the taller free space, so a long list covers fewer rows. */
+function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
+  const rect = trigger.getBoundingClientRect();
+  return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
+}
+
 function useIsMobileViewport(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -399,8 +417,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -505,7 +523,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]
@@ -525,7 +543,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -575,7 +596,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 

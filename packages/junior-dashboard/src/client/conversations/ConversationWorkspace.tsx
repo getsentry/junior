@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -103,7 +102,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params.conversationId;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
@@ -131,7 +130,7 @@ export function ConversationWorkspace(props: {
     if (selectedId) {
       // The reader asked to type, so home takes focus even on a touch screen.
       createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
+      void navigate(NEW_CONVERSATION_PATH);
     } else createComposer.current?.focus();
   };
 
@@ -199,7 +198,7 @@ export function ConversationWorkspace(props: {
           ? "Message failed to send. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility, images) => {
+      onSubmit={async (message, idempotencyKey, visibility, files) => {
         const visit = homeVisit.current;
         const pendingDraftId = newConversationDraftId(idempotencyKey);
         // Show the Conversation at once. The create view stays mounted but
@@ -207,7 +206,7 @@ export function ConversationWorkspace(props: {
         setPendingCreate({
           createdAt: new Date().toISOString(),
           idempotencyKey,
-          images,
+          files,
           message,
           visibility,
         });
@@ -216,7 +215,7 @@ export function ConversationWorkspace(props: {
           accepted = await createConversation.mutateAsync({
             idempotencyKey,
             message,
-            images,
+            files,
             visibility,
           });
         } catch (error) {
@@ -269,7 +268,7 @@ export function ConversationWorkspace(props: {
     </HeaderIconButton>
   );
 
-  // One tree for every width, so the create draft and its images survive a
+  // One tree for every width, so the create draft and its files survive a
   // resize across the breakpoint: the create view is always the child of the
   // second div.
   const homePane = (
@@ -358,8 +357,8 @@ export function ConversationWorkspace(props: {
             defaultSize={sidebarOpen ? readSidebarWidth() : 0}
             groupResizeBehavior="preserve-pixel-size"
             id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
+            maxSize={`${SIDEBAR_WIDTH.max}rem`}
+            minSize={`${SIDEBAR_WIDTH.min}rem`}
             onResize={(size) => {
               // Dragging past the minimum width collapses the list too, so the
               // panel size is the one source for the open state.
@@ -444,12 +443,12 @@ function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
   /** Docked at the bottom of the narrow home, where the list is above it. */
   docked: boolean;
-  error?: string;
+  error?: string | undefined;
   onSubmit(
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
-    images?: InputImage[],
+    files?: File[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -493,8 +492,8 @@ function NewConversationView(props: {
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey, images) =>
-          props.onSubmit(message, idempotencyKey, visibility, images)
+        onSubmit={(message, idempotencyKey, files) =>
+          props.onSubmit(message, idempotencyKey, visibility, files)
         }
       />
       {props.docked ? null : (

@@ -20,6 +20,17 @@ import {
   SENTRY_METRIC_ALERT_MATCH_FIELDS,
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
+import { sentryChartLinks } from "./links/charts.js";
+import {
+  sentryDashboardLinks,
+  sentryDashboardWidgetLinks,
+} from "./links/dashboards.js";
+import { sentryEventLinks } from "./links/events.js";
+import { sentryIssueLinks } from "./links/issues.js";
+import { sentryReleaseLinks } from "./links/releases.js";
+import { sentryMonitorLinks } from "./links/monitors.js";
+import { sentryTraceLinks } from "./links/traces.js";
+import { linkifySentryShortIds } from "./links/short-ids.js";
 import {
   SENTRY_API_DOMAINS,
   issueSentryCredential,
@@ -75,6 +86,16 @@ export function sentryPlugin(): PluginRegistration {
       isEnabled: () => Boolean(sentryWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
+    objectLinks: [
+      sentryIssueLinks,
+      sentryChartLinks,
+      sentryTraceLinks,
+      sentryEventLinks,
+      sentryReleaseLinks,
+      sentryDashboardLinks,
+      sentryDashboardWidgetLinks,
+      sentryMonitorLinks,
+    ],
     manifest: {
       commandEnv: {
         SENTRY_AUTH_TOKEN: "host_managed_credential",
@@ -113,6 +134,7 @@ export function sentryPlugin(): PluginRegistration {
       ],
     },
     hooks: {
+      formatMarkdown: ({ config, text }) => linkifySentryShortIds(text, config),
       grantForEgress: sentryGrantForEgress,
       issueCredential: issueSentryCredential,
       resolveOAuthAccount: resolveSentryOAuthAccount,

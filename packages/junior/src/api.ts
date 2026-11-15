@@ -5,11 +5,14 @@ import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
 import { createNotificationRoutes } from "./api/notifications/routes";
+import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
+import { createImageRoutes } from "./api/images/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
+import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
@@ -26,8 +29,6 @@ import {
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
-import { readReplyTimeSegments } from "./api/reply-times";
-import { replyTimeSegmentsReportSchema } from "./api/schema/reply-times";
 import { readStatsReport } from "./api/stats";
 import { validateRequest } from "./api/validation";
 import { readVersions } from "./api/versions";
@@ -50,11 +51,11 @@ import {
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
-  DEFAULT_AUTO_ARCHIVE_SETTINGS,
-  readUserAutoArchiveSettings,
-  updateUserAutoArchiveSettings,
-  type AutoArchiveSettings,
-} from "./api/conversations/auto-archive";
+  DEFAULT_USER_SETTINGS,
+  readUserSettings,
+  updateUserSettings,
+  type UserSettings,
+} from "./api/user-settings";
 export {
   readViewerAvatarUrl,
   resolveViewerUser,
@@ -66,7 +67,7 @@ export { jsonResponse };
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
@@ -100,9 +101,6 @@ export function createJuniorApi(
   );
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
-  );
-  app.get("/api/reply-times", async () =>
-    jsonResponse(replyTimeSegmentsReportSchema, await readReplyTimeSegments()),
   );
   app.get(
     "/api/versions",
@@ -139,6 +137,9 @@ export function createJuniorApi(
   app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
+  app.route("/api/cache-warming", createCacheWarmingRoutes());
+  app.route("/api/images", createImageRoutes());
+  app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());

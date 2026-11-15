@@ -9,8 +9,8 @@ import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createVercelDeploymentTool } from "./tools/deployment.js";
-import { createVercelActionTools } from "./tools/actions.js";
+import { vercelDeploymentTool } from "./tools/deployment.js";
+import { vercelActionTools } from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_MATCH_FIELDS,
@@ -77,11 +77,8 @@ export function vercelPlugin(): PluginRegistration {
           }),
         ];
       },
-      tools(ctx) {
-        return {
-          deployment: createVercelDeploymentTool(ctx),
-          ...createVercelActionTools(ctx),
-        };
+      tools() {
+        return { deployment: vercelDeploymentTool, ...vercelActionTools };
       },
     },
   });

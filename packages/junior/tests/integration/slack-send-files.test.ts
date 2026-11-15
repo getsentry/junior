@@ -516,7 +516,7 @@ describe("Slack sendFiles", () => {
       .db()
       .update(juniorAttachments)
       .set({ deleteRequestedAt: now })
-      .where(eq(juniorAttachments.id, attachmentId!));
+      .where(eq(juniorAttachments.id, attachmentId));
 
     const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),

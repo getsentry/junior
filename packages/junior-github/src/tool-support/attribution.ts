@@ -19,18 +19,24 @@ const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 // User logins add an `_shortcode` suffix, so underscores must stay valid.
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
 
+/** Return a GitHub login without a leading `@`, when it is a valid login. */
+export function parseGitHubLogin(
+  value: string | undefined,
+): string | undefined {
+  const login = value?.trim().replace(/^@/, "");
+  return login && GITHUB_LOGIN_PATTERN.test(login) ? login : undefined;
+}
+
 /**
  * Return the GitHub login linked to a user, when it is a valid login.
  *
- * Attribution mentions and PR assignment use this login so the requester gets
- * GitHub notifications for the issue or pull request.
+ * Attribution mentions, PR assignment, and review requests use this login so
+ * the requester gets GitHub notifications for the issue or pull request.
  */
 export function linkedGitHubLogin(user: User | undefined): string | undefined {
-  const login = user?.identities
-    .find((identity) => identity.provider === "github")
-    ?.handle?.trim()
-    .replace(/^@/, "");
-  return login && GITHUB_LOGIN_PATTERN.test(login) ? login : undefined;
+  return parseGitHubLogin(
+    user?.identities.find((identity) => identity.provider === "github")?.handle,
+  );
 }
 
 /**
@@ -89,10 +95,10 @@ function automationLabel(
  */
 function requesterLabel(args: {
   actor: Actor | undefined;
-  automationUrl?: string;
-  identity?: Identity;
-  source?: Source;
-  user?: User;
+  automationUrl?: string | undefined;
+  identity?: Identity | undefined;
+  source?: Source | undefined;
+  user?: User | undefined;
 }): string | undefined {
   const { actor, identity, user } = args;
   const automation = automationLabel(args.source, args.automationUrl);
@@ -218,7 +224,7 @@ export interface GitHubRequester {
  * logged and gives no requester, so it never blocks the write.
  */
 export async function resolveGitHubRequester(ctx: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   log: PluginLogger;
   users: {
     resolveActor(): Promise<GitHubRequester | undefined>;
@@ -245,9 +251,9 @@ export async function resolveGitHubRequester(ctx: {
 export function appendGitHubRequesterAttribution(
   body: string,
   ctx: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     automationLink?: { url: string };
-    source?: Source;
+    source?: Source | undefined;
   },
   requester: GitHubRequester | undefined,
   currentBody?: string,

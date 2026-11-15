@@ -1,18 +1,19 @@
 /**
  * Credential issuing and egress policy for Google APIs.
  *
- * Only this plugin's own tools may use Junior's Google account. The tools
- * enforce disclosure and invite rules in code, so the sandbox and other
- * callers get no Google credential at all.
+ * Only this plugin's own tools and link cards may use Junior's Google
+ * account. They enforce disclosure and invite rules in code, so the sandbox
+ * and other callers get no Google credential at all.
  */
 import {
   EgressPolicyDenied,
   type EgressHookContext,
   type IssueCredentialHookContext,
+  type PluginContext,
   type PluginCredentialResult,
   type PluginGrant,
 } from "@sentry/junior-plugin-api";
-import { readGoogleConfig } from "./config";
+import { readGoogleConfig, type GoogleConfig } from "./config";
 import { refreshGoogleAccessToken } from "./oauth";
 import {
   deleteRejectedGoogleAccount,
@@ -22,11 +23,13 @@ import {
 
 /** Calendar and Drive API host. */
 export const GOOGLE_API_DOMAIN = "www.googleapis.com";
+const GOOGLE_DOCS_API_DOMAIN = "docs.googleapis.com";
 const GOOGLE_SHEETS_API_DOMAIN = "sheets.googleapis.com";
 const GOOGLE_SLIDES_API_DOMAIN = "slides.googleapis.com";
 /** Every host that receives Junior's Google access token. */
 export const GOOGLE_API_DOMAINS = [
   GOOGLE_API_DOMAIN,
+  GOOGLE_DOCS_API_DOMAIN,
   GOOGLE_SHEETS_API_DOMAIN,
   GOOGLE_SLIDES_API_DOMAIN,
 ];
@@ -72,6 +75,30 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
+  "google.docs.document.batchUpdate": {
+    access: "write",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/documents\/[A-Za-z0-9_-]+:batchUpdate$/,
+  },
+  "google.docs.document.create": {
+    access: "write",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/documents$/,
+  },
+  "google.docs.document.get": {
+    access: "read",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/documents\/[A-Za-z0-9_-]+$/,
+  },
+  "google.drive.about.get": {
+    access: "read",
+    host: GOOGLE_API_DOMAIN,
+    method: "GET",
+    path: /^\/drive\/v3\/about$/,
+  },
   "google.drive.comments.list": {
     access: "read",
     host: GOOGLE_API_DOMAIN,
@@ -95,6 +122,32 @@ export const GOOGLE_OPERATIONS = {
     host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files$/,
+  },
+  // `drive.file` limits the two permission writes to files that Junior's
+  // OAuth client created.
+  "google.drive.permission.create": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "POST",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+  },
+  "google.drive.file.delete": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "DELETE",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
+  },
+  "google.drive.permission.delete": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "DELETE",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions\/[A-Za-z0-9_-]+$/,
+  },
+  "google.drive.permissions.list": {
+    access: "read",
+    host: GOOGLE_API_DOMAIN,
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
   },
   "google.sheets.spreadsheet.get": {
     access: "read",
@@ -155,6 +208,46 @@ function unavailable(message: string): PluginCredentialResult {
 
 const NOT_CONNECTED_MESSAGE = `Your own Google account is not connected. It is not the requester's account, and the requester cannot connect it. An admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
 
+type AccountToken =
+  | { accessToken: string; expiresAtMs: number }
+  | { unavailable: string };
+
+// Refresh the access token of Junior's Google account. A token that Google
+// rejects disconnects the account.
+async function refreshAccountToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<AccountToken> {
+  const db = ctx.db as GoogleDb;
+  const record = await getGoogleAccount(db, config.accountEmail);
+  if (!record) return { unavailable: NOT_CONNECTED_MESSAGE };
+  const token = await refreshGoogleAccessToken({
+    config,
+    refreshToken: record.refreshToken,
+  });
+  if (!token) {
+    await deleteRejectedGoogleAccount(db, record);
+    ctx.log.warn("google.account.token_rejected", {
+      "app.google.account": config.accountEmail,
+    });
+    return { unavailable: `Google revoked access. ${NOT_CONNECTED_MESSAGE}` };
+  }
+  return token;
+}
+
+/**
+ * Return a fresh access token for Junior's Google account, for a request
+ * that cannot go through egress, such as a Drive thumbnail that the image
+ * proxy fetches. Return nothing when the account is not connected.
+ */
+export async function readGoogleAccessToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<string | undefined> {
+  const token = await refreshAccountToken(ctx, config);
+  return "accessToken" in token ? token.accessToken : undefined;
+}
+
 /** Mint a short-lived access token for Junior's Google account. */
 export async function issueGoogleCredential(
   ctx: IssueCredentialHookContext,
@@ -170,22 +263,8 @@ export async function issueGoogleCredential(
       "The Google plugin is not configured on this deployment.",
     );
   }
-  const db = ctx.db as GoogleDb;
-  const record = await getGoogleAccount(db, config.accountEmail);
-  if (!record) {
-    return unavailable(NOT_CONNECTED_MESSAGE);
-  }
-  const token = await refreshGoogleAccessToken({
-    config,
-    refreshToken: record.refreshToken,
-  });
-  if (!token) {
-    await deleteRejectedGoogleAccount(db, record);
-    ctx.log.warn("google.account.token_rejected", {
-      "app.google.account": config.accountEmail,
-    });
-    return unavailable(`Google revoked access. ${NOT_CONNECTED_MESSAGE}`);
-  }
+  const token = await refreshAccountToken(ctx, config);
+  if ("unavailable" in token) return unavailable(token.unavailable);
   return {
     type: "lease",
     lease: {

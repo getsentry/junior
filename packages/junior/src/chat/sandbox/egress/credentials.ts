@@ -56,13 +56,13 @@ export type SandboxEgressCredentialErrorKind = "auth_required" | "unavailable";
  * request authorization without exposing provider-specific lease internals.
  */
 export class SandboxEgressCredentialError extends Error {
-  readonly authorization?: PluginAuthorization;
+  readonly authorization?: PluginAuthorization | undefined;
   readonly grant: PluginGrant;
   readonly kind: SandboxEgressCredentialErrorKind;
   readonly provider: string;
 
   constructor(input: {
-    authorization?: PluginAuthorization;
+    authorization?: PluginAuthorization | undefined;
     grant: PluginGrant;
     kind: SandboxEgressCredentialErrorKind;
     message: string;
@@ -144,14 +144,31 @@ function assertLeaseTransformsOwnedByProvider(
  * use that default for one request.
  */
 export async function selectSandboxEgressGrant(input: {
-  bodyText?: string;
+  bodyText?: string | undefined;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
   method: string;
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  /**
+   * Use only the credential subject's own stored OAuth token. Plugin grants
+   * are skipped, because they can issue an install or app credential.
+   */
+  userOAuthOnly?: boolean;
 }): Promise<SandboxEgressGrantSelection> {
+  if (input.userOAuthOnly) {
+    const manifest = pluginCatalogRuntime.getDefinition(
+      input.provider,
+    )?.manifest;
+    // Without OAuth the broker falls back to an environment token.
+    if (!manifest?.credentials || !manifest.oauth) {
+      throw new Error(
+        `Plugin "${input.provider}" has no user OAuth for user-only egress`,
+      );
+    }
+    return defaultGrantForProvider(input);
+  }
   if (!hasEgressCredentialHooks(input.provider)) {
     return defaultGrantForProvider(input);
   }

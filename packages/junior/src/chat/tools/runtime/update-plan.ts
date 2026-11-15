@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 
 const planItemSchema = z
   .object({
@@ -20,21 +20,25 @@ const updatePlanInputSchema = z
   })
   .strict();
 
+export const updatePlanToolDefinition = zodToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description: [
+    "Updates the task plan.",
+    "Provide an optional explanation and a list of plan items, each with a step and status.",
+    "At most one step can be in_progress at a time. Mark finished steps completed and mark all steps completed when the work is done.",
+  ].join("\n"),
+  inputSchema: updatePlanInputSchema,
+});
+
 /** Create the internal tool the model uses to replace its task plan. */
 export function createUpdatePlanTool() {
   return zodTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    description: [
-      "Updates the task plan.",
-      "Provide an optional explanation and a list of plan items, each with a step and status.",
-      "At most one step can be in_progress at a time. Mark finished steps completed and mark all steps completed when the work is done.",
-    ].join("\n"),
-    inputSchema: updatePlanInputSchema,
+    ...updatePlanToolDefinition,
     execute: async () => ({
       content: [{ type: "text" as const, text: "Plan updated" }],
     }),

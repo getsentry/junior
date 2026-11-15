@@ -17,9 +17,12 @@ const BUDGET_ECHO = "mcp__eval-auth__budget-echo";
 
 /** Commands that the provider answered with the connected account. */
 function identityChecks(...conversations: Conversation[]) {
-  return completedToolCalls("bash", ...conversations).filter((call) =>
-    JSON.stringify(toolOutput(call)).includes("eval-oauth-user"),
-  );
+  return completedToolCalls("bash", ...conversations).filter((call) => {
+    // A redacted tool call has no output.
+    const output = toolOutput(call);
+    expect(output, `output of bash call ${call.toolCallId}`).toBeDefined();
+    return JSON.stringify(output).includes("eval-oauth-user");
+  });
 }
 
 function skillLoads(skillName: string, ...conversations: Conversation[]) {

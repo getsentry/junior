@@ -44,7 +44,6 @@ interface Result extends PluginToolOutput {
  * App bot posted. Comments by other users are refused before the write.
  */
 export function createGitHubUpdateIssueCommentTool(
-  egress: PluginEgress,
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -58,7 +57,11 @@ export function createGitHubUpdateIssueCommentTool(
       "Replace the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      { egress }: { egress: PluginEgress },
+    ): Promise<Result> {
       const repo = parseRepo(input.repo);
       const botUserId = botUserIdFromEmail(botEmail);
       if (botUserId === undefined) {

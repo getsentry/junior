@@ -1,9 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import {
-  createLocalPgliteFixture,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
+  createPostgresTestFixture,
+  type PostgresTestFixture,
+} from "@sentry/junior-testing/postgres/fixture";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { vi } from "vitest";
 import * as googleSqlSchema from "../src/db/schema";
 import type { GoogleDb } from "../src/store";
@@ -21,16 +20,11 @@ export function stubGoogleEnv(): void {
   vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
 }
 
-/** Create an in-memory database with the packaged migrations applied. */
-export async function createGoogleDb(): Promise<LocalPgliteFixture<GoogleDb>> {
-  const fixture = await createLocalPgliteFixture<GoogleDb>(googleSqlSchema);
-  const dir = resolve(__dirname, "../migrations");
-  for (const file of (await readdir(dir))
-    .filter((name) => name.endsWith(".sql"))
-    .sort()) {
-    await fixture.execute(await readFile(resolve(dir, file), "utf8"));
-  }
-  return fixture;
+/** Connect to this worker's migrated Google plugin database. */
+export async function createGoogleDb(): Promise<PostgresTestFixture<GoogleDb>> {
+  return await createPostgresTestFixture((pool) =>
+    drizzle(pool, { schema: googleSqlSchema }),
+  );
 }
 
 /** Build an unsigned identity token with the given claims. */
@@ -42,4 +36,4 @@ export function idToken(claims: Record<string, unknown>): string {
 
 /** Every API scope the tools need, as Google lists them in a grant. */
 export const API_SCOPES =
-  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/drive.readonly";
+  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";

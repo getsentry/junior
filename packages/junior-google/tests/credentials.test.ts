@@ -111,6 +111,7 @@ describe("Google credential issuing", () => {
         account: { id: ACCOUNT_EMAIL },
         headerTransforms: [
           "www.googleapis.com",
+          "docs.googleapis.com",
           "sheets.googleapis.com",
           "slides.googleapis.com",
         ].map((domain) => ({
@@ -119,7 +120,7 @@ describe("Google credential issuing", () => {
         })),
       },
     });
-    const body = new URLSearchParams(String(fetch.mock.calls[0]![1]!.body));
+    const body = new URLSearchParams(String(fetch.mock.calls[0][1]!.body));
     expect(body.get("grant_type")).toBe("refresh_token");
     expect(body.get("refresh_token")).toBe("refresh-token");
   });

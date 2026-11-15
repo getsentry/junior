@@ -112,7 +112,7 @@ type EnqueueOptions = {
   eventMeta?: Parameters<typeof recordSubagentStarted>[1];
   nowMs?: number;
   queue: ConversationWorkQueue;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 };
 
 /** Map a durable invocation's model settings and depth to the child Run policy. */
@@ -376,14 +376,12 @@ function createAgentMessageSteeringDrain(
             ?.piMessages ?? [];
         const messages = withoutSavedSteeringMessages(
           saved,
-          joining.map(
-            (candidate): AgentSteeringMessage => ({
-              kind: "runtime",
-              provenance: agentInvocationProvenance(candidate),
-              text: agentInvocationInputText(candidate),
-              timestampMs: candidate.createdAtMs,
-            }),
-          ),
+          joining.map((candidate): AgentSteeringMessage => ({
+            kind: "runtime",
+            provenance: agentInvocationProvenance(candidate),
+            text: agentInvocationInputText(candidate),
+            timestampMs: candidate.createdAtMs,
+          })),
           buildSteeringPiMessage,
         );
         // The Turn saves the messages before they are marked.
@@ -499,7 +497,9 @@ async function projectTerminalTurn(
 export async function endActiveAgentInvocations(
   conversationId: string,
   options: {
-    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    enqueueResult?:
+      | ((invocation: TerminalAgentInvocation) => Promise<void>)
+      | undefined;
     errorMessage: string;
     exceptInvocationId?: string;
   },
@@ -587,8 +587,8 @@ function isInvocationInputCommitLost(error: unknown): boolean {
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
-  sandboxRef?: SandboxRef;
-  sendReply?: SendReply;
+  sandboxRef?: SandboxRef | undefined;
+  sendReply?: SendReply | undefined;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";

@@ -96,15 +96,16 @@ Canonical words for Junior code and docs. One concept, one word.
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
-  tool calls), or `tool_result` event. Not `model_item` or `model_message`.
+  tool calls), `tool_result`, or `system_message` (a Pi system message after
+  the leading one) event. Not `model_item` or `model_message`.
 - **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
-- **Quiet message**: the `noReply` note of an Event Turn, for a routine
-  outcome. Junior stores it but does not deliver it to the Location.
+- **Quiet message**: a Message in older history that Junior stored but did
+  not deliver. A `noReply` note is not a Message.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.
@@ -122,8 +123,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
-- **Annotation**: saved facts or a link on one Conversation. An update sends
-  no message.
+- **Annotation**: saved facts or a link on one Conversation, for an object
+  that it created or changed. A read saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
   Annotation types for provider work items, meetings, and other objects.
 - **Message card**: a Message's reference to an Annotation, shown with the

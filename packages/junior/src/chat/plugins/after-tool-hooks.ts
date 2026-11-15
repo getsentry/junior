@@ -3,7 +3,7 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import {
   basePluginContext,
   createSandboxCapability,
@@ -13,6 +13,7 @@ import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { isToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { escapeXml } from "@/chat/xml";
@@ -136,10 +137,24 @@ export async function runAfterToolExecuteHooks(args: {
       if (signal?.aborted) break;
       // The tool already ran. A broken check must not turn its result into a
       // failure that the agent retries.
-      logException(error, "agent.plugin.after_tool_execute.failed", {
+      const attributes = {
         "app.plugin.name": pluginName,
         "gen_ai.tool.name": args.tool.name,
-      });
+      };
+      // Expected input failures, such as an unavailable sandbox, are not
+      // Sentry exceptions.
+      if (isToolInputError(error)) {
+        logWarn("agent.plugin.after_tool_execute.failed", {
+          ...attributes,
+          "error.type": "tool_input_error",
+        });
+      } else {
+        logException(
+          error,
+          "agent.plugin.after_tool_execute.failed",
+          attributes,
+        );
+      }
       continue;
     }
     if (denial !== undefined) {

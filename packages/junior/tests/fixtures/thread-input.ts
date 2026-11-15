@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -40,7 +41,7 @@ export async function createHarness() {
   // starts lands here.
   const otherOpenTurns: string[] = [];
   let onInvocationRun: (() => Promise<never>) | undefined;
-  let onPersonRun: ((run: AgentRun) => Promise<never>) | undefined;
+  let onPersonRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -62,7 +63,7 @@ export async function createHarness() {
         await onInvocationRun();
       }
       if (!run.agentInvocationId && onPersonRun) {
-        await onPersonRun(run);
+        return await onPersonRun(run);
       }
       throw new Error("stop after reading the run");
     },
@@ -103,8 +104,11 @@ export async function createHarness() {
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
     },
-    /** Run `fn` in each later run on the Conversation loop. */
-    onPersonRun: (fn: (run: AgentRun) => Promise<never>) => {
+    /**
+     * Run `fn` in each later run on the Conversation loop. The run ends as
+     * `fn` returns or throws.
+     */
+    onPersonRun: (fn: (run: AgentRun) => Promise<AgentRunOutcome>) => {
       onPersonRun = fn;
     },
     otherOpenTurns,
@@ -116,6 +120,55 @@ export async function createHarness() {
 }
 
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
+
+// The checkpoint fields of a run's input: its history, then its instruction.
+function runInputCheckpoint(run: AgentRun) {
+  const history = run.history ?? [];
+  return {
+    actor: run.actor!,
+    conversationId: run.conversationId,
+    messages: [
+      ...history,
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: run.instruction.text }],
+        timestamp: Date.now(),
+      },
+    ],
+    sliceId: 1,
+    source: run.source!,
+    surface: run.surface,
+    turnId: run.turnId,
+    turnStartMessageIndex: history.length,
+  };
+}
+
+/**
+ * Take a run's input as the agent does before its first model call: save it
+ * as the Turn's first checkpoint, then commit it. The Turn then has a stored
+ * record, as a real run's Turn does.
+ */
+export async function commitRunInput(run: AgentRun): Promise<void> {
+  await saveTurnCheckpoint({ ...runInputCheckpoint(run), mode: "running" });
+  await run.durability?.onInputCommitted?.();
+}
+
+/** Pause a run's Turn at a yield, as the agent does between slices. */
+export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
+  const record = await saveTurnCheckpoint({
+    ...runInputCheckpoint(run),
+    mode: "paused",
+    reason: "yield",
+  });
+  if (!record) {
+    throw new Error(`Turn ${run.turnId} saved no yield checkpoint`);
+  }
+  return {
+    reason: "yield",
+    resumeVersion: record.version,
+    status: "suspended",
+  };
+}
 
 /** Finish the open Agent invocation of a child, then report its result. */
 export async function finishInvocation(

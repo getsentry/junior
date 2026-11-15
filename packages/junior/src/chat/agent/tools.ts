@@ -52,6 +52,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
+import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb } from "@/chat/db";
@@ -92,12 +93,13 @@ import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
 interface RunSandboxArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live projection of the run's committed instruction-authority actors so far. */
   currentActors?: () => Actor[];
   durability: Pick<AgentDurability, "onSandboxRefChanged">;
@@ -148,7 +150,16 @@ export async function createRunSandbox(
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
-    prepareSandbox: pluginHooks.prepareSandbox,
+    prepareSandbox: async (sandbox) => {
+      const actor = args.currentActor;
+      if (actor) {
+        await renewPreviewOrigins(
+          sandbox,
+          async () => (await readActorIdentity(actor))?.user,
+        );
+      }
+      await pluginHooks.prepareSandbox(sandbox);
+    },
     prepareWorkspace: async (sandbox, recipe, signal) =>
       await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
@@ -159,7 +170,7 @@ export async function createRunSandbox(
 
 /** Build the context that plugin prompt hooks read, before tool wiring exists. */
 export function createPromptHookContext(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: AgentRun;
   userInput: string;
 }): PromptHookContext {
@@ -179,7 +190,7 @@ interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
   behavior: TurnBehavior;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
@@ -189,12 +200,12 @@ interface ToolWiringArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy?: ConversationPrivacy | undefined;
   durability: AgentDurability;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
@@ -213,7 +224,7 @@ interface ToolWiringArgs {
 
 /** Record optional reporting without changing the loadSkill outcome. */
 async function tryRecordSkillLoadStat(skill: Skill) {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: skill.pluginProvider ?? "junior",
@@ -244,7 +255,7 @@ type ToolRuntimeRoute =
       "actor" | "destination" | "source"
     >
   | {
-      actor?: Actor;
+      actor?: Actor | undefined;
       destination: Destination;
       source:
         | AgentInvocationSource
@@ -256,7 +267,7 @@ type ToolRuntimeRoute =
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: Pick<
     AgentRun,
     "destination" | "source" | "slackActionToken" | "toolChannelId"
@@ -325,6 +336,8 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, for `<script-tools>`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -562,9 +575,7 @@ export async function wireAgentTools(
     },
   );
 
-  const plannedToolExposure = planToolExposure(
-    tools as Record<string, AnyToolDefinition>,
-  );
+  const plannedToolExposure = planToolExposure(tools);
   const disabledTools = Object.entries(
     tools as Record<string, AnyToolDefinition>,
   ).flatMap(([name, definition]) =>
@@ -657,23 +668,25 @@ export async function wireAgentTools(
         await emitEvent({ type: "tool_finished", report });
       }
     : undefined;
-  const agentTools = createPiAgentTools(
-    tools,
-    args.skillSandbox,
-    args.spanContext,
+  const agentTools = createPiAgentTools(tools, args.skillSandbox, {
+    spanContext: args.spanContext,
+    searchToolsCost: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+    },
     onStatus,
-    agentSandbox.tools,
-    pluginAuth,
+    sandboxTools: agentSandbox.tools,
+    pluginAuthOrchestration: pluginAuth,
     onToolCall,
-    pluginHooks,
-    args.conversationPrivacy,
+    agentHooks: pluginHooks,
+    conversationPrivacy: args.conversationPrivacy,
     onToolResult,
     actionReview,
-    {
+    codeMode: {
       countToolCall: args.resume.countToolCall,
       workspace: agentSandbox.workspace,
     },
-  );
+  });
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
@@ -707,6 +720,7 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
   };

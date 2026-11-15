@@ -5,6 +5,7 @@ import {
   slackMention,
 } from "@junior-evals/fixture/inputs";
 import {
+  insertGitHubPullRequestWatch,
   insertLinkedGitHubIdentity,
   insertScheduledAutomation,
   insertWatch,
@@ -12,7 +13,11 @@ import {
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
@@ -31,8 +36,8 @@ const repositoryRef = {
 };
 
 /**
- * Start a child Thread that maintains the PR, and add the Watch that Junior
- * adds after it opens a pull request. The Thread then gets the PR events.
+ * Start a child Thread that maintains the PR, and add a Watch that tells it
+ * about reviews. The Thread then gets the PR events.
  */
 async function startPullRequestThread(run: RunAgent, events: string[]) {
   const conversation = await run(
@@ -78,6 +83,69 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
     },
     repository,
   });
+}
+
+// The shared GitHub HTTP fixture serves these drafts: #692 with every
+// required check passing, #693 with an open decision in its body, #694
+// with another required check failing, #696 with code owners for its
+// changed file, and #697 whose base branch AGENTS.md asks for draft pull
+// requests. The integration suite covers #695.
+const draftHeadShas = {
+  692: "6920000000000000000000000000000000000692",
+  693: "6930000000000000000000000000000000000693",
+  694: "6940000000000000000000000000000000000694",
+  696: "6960000000000000000000000000000000000696",
+  697: "6970000000000000000000000000000000000697",
+};
+type DraftNumber = keyof typeof draftHeadShas;
+
+/** A passing check suite on one of the drafts. */
+function draftChecksPassedWebhook(number: DraftNumber) {
+  const sha = draftHeadShas[number];
+  const ref = `feat/cache-warmup-${number}`;
+  return githubWebhook("check_suite", {
+    action: "completed",
+    check_suite: {
+      app: { name: "GitHub Actions" },
+      conclusion: "success",
+      head_branch: ref,
+      head_sha: sha,
+      id: number,
+      pull_requests: [
+        {
+          base: { ref: "main", repo: repositoryRef },
+          head: { ref, repo: repositoryRef, sha },
+          number,
+        },
+      ],
+    },
+    repository,
+  });
+}
+
+/** Add the Watch that Junior adds after it opens a draft to a thread. */
+async function startDraftThread(run: RunAgent, number: DraftNumber) {
+  const draft = `getsentry/junior#${number}`;
+  const conversation = await run(slackMention(`What does ${draft} change?`));
+  await insertGitHubPullRequestWatch({
+    conversation,
+    draft: true,
+    pullRequest: draft,
+  });
+  return conversation;
+}
+
+/** Completed calls that mark a pull request ready, direct or deferred. */
+function markReadyCalls(result: { toolCalls: ToolCall[] }) {
+  return [
+    ...completedToolCalls("github_updatePullRequest", result).map(
+      (call) => call.input,
+    ),
+    ...completedToolCalls("executeTool", result)
+      .map((call) => call.input as { arguments?: unknown; tool_name?: string })
+      .filter((input) => input.tool_name === "github_updatePullRequest")
+      .map((input) => input.arguments),
+  ].filter((input) => (input as { draft?: unknown })?.draft === false);
 }
 
 function mergedWebhook() {
@@ -260,7 +328,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and end with no reply", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -275,11 +343,9 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    // A routine fix that worked needs nobody, so it posts nothing to Slack.
-    // The quiet reply stays in the Conversation.
+    // A routine fix that worked needs nobody, so it posts nothing.
     expect(delivery.replies).toEqual([]);
-    expect(delivery.quietReplies).toHaveLength(1);
-    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
+    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -290,6 +356,88 @@ describe("Watches", () => {
         ),
       ),
     ).not.toHaveLength(0);
+  });
+
+  test("when the checks of a Junior draft pass, mark it ready without posting", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 692);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(692));
+
+    // GitHub sends the review request, so a reply would only be a status
+    // update.
+    expect(markReadyCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when the checks of a Junior draft with code owners pass, keep it a draft and tell the requester", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 696);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(696));
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says the required checks of getsentry/junior#696 pass and the draft waits for the requester's review.",
+          "The reply names @getsentry/cache-owners as the code owners that marking it ready asks to review.",
+        ],
+        fail: [
+          "Do not say that getsentry/junior#696 is ready for review or was marked ready.",
+        ],
+      }),
+    );
+
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when the AGENTS.md of a Junior draft asks for drafts, keep it a draft and tell the requester", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 697);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(697));
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says the required checks of getsentry/junior#697 pass and the draft waits for the requester's review.",
+          "The reply says the repository's AGENTS.md asks for draft pull requests.",
+        ],
+        fail: [
+          "Do not say that getsentry/junior#697 is ready for review or was marked ready.",
+        ],
+      }),
+    );
+
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a Junior draft names an open decision, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 693);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(693));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when another required check of a Junior draft fails, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 694);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(694));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
   });
 
   test("when a watched PR is merged, report completion without extra work", async ({
@@ -351,38 +499,42 @@ describe("Watches", () => {
     expect(merged.replies).toHaveLength(1);
   });
 
-  test("when the merge guidance says to tell the person who asked, post it", async ({
+  test("when a reviewer approves a Junior PR with a comment, post nothing", async ({
     run,
   }) => {
     const conversation = await run(
       slackMention(`What does ${pullRequest} change?`),
     );
-    // The Watch that Junior adds after it opens a pull request. The GitHub
-    // plugin guidance for the merge says to mention the person who asked.
-    await insertWatch({
+    await insertGitHubPullRequestWatch({
       conversation,
-      events: ["pull_request.merged"],
-      identifier: pullRequest,
-      intent:
-        "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. Report completed work or blockers in the originating Slack thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
-      label: `GitHub PR ${pullRequest}`,
-      resourceType: "pull_request",
+      draft: false,
+      pullRequest,
     });
 
-    const delivery = await conversation.continue(mergedWebhook());
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          `The reply says GitHub PR ${pullRequest} was merged.`,
-          "The reply mentions the person who asked in the thread.",
-        ],
+    // The approval's comment reaches the Watch as a comment-only review.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "LGTM, ship it.",
+          id: 9_002,
+          state: "approved",
+          user: { login: "octo-reviewer" },
+        },
       }),
     );
 
-    // The person must hear about the merge, so the reply is not quiet.
-    expect(delivery.quietReplies).toEqual([]);
-    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(delivery.replies).toEqual([]);
+    // Count merge attempts that Guardian blocked too.
+    const commands = toolCallsOf("bash", delivery).map((call) =>
+      String((call.input as { command?: unknown } | undefined)?.command),
+    );
+    expect(commands.filter((command) => /gh pr merge/.test(command))).toEqual(
+      [],
+    );
   });
 
   test("when the person who asked reviews the PR, address them once as you", async ({

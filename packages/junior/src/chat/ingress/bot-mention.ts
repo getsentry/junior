@@ -1,3 +1,5 @@
+import type { SlackInboundEvent } from "@/chat/ingress/slack-payload";
+
 /**
  * Detect Slack bot @mentions that should activate Junior.
  *
@@ -96,4 +98,25 @@ export function textMentionsBot(text: string, botUserId: string): boolean {
   const outside = textOutsideCode(text);
   const id = escapeRegExp(botUserId);
   return new RegExp(`<@${id}(?:\\|[^>]+)?>`).test(outside);
+}
+
+/**
+ * Return true when a Slack message mentions the bot in its text or in a
+ * section block, outside code.
+ */
+export function eventMentionsBot(
+  event: Pick<SlackInboundEvent, "blocks" | "text">,
+  botUserId: string | undefined,
+): boolean {
+  return Boolean(
+    botUserId &&
+    (textMentionsBot(event.text ?? "", botUserId) ||
+      event.blocks?.some(
+        (block) =>
+          block.type === "section" &&
+          typeof block.text === "object" &&
+          block.text.type === "mrkdwn" &&
+          textMentionsBot(block.text.text, botUserId),
+      )),
+  );
 }

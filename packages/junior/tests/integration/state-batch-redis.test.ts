@@ -10,10 +10,10 @@ import {
 // Chat config reads the state adapter when it loads, so set it first. CI
 // runs Redis at REDIS_URL. Locally, compose.yaml runs it on port 6382.
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "redis";
-  process.env.REDIS_URL =
-    process.env.REDIS_URL?.trim() || "redis://localhost:6382";
-  process.env.JUNIOR_STATE_KEY_PREFIX = `junior_test_${crypto.randomUUID()}`;
+  process.env["JUNIOR_STATE_ADAPTER"] = "redis";
+  process.env["REDIS_URL"] =
+    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382";
+  process.env["JUNIOR_STATE_KEY_PREFIX"] = `junior_test_${crypto.randomUUID()}`;
 });
 
 afterAll(async () => {

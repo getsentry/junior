@@ -3,12 +3,16 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
+  lt,
+  ne,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
+import * as z from "zod";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import {
@@ -17,9 +21,11 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { conversationUsageCostExpr } from "../conversations/aggregate";
+import { decodePageCursor, encodePageCursor } from "../page-cursor";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
+  IDLE_CHANGE_DAYS,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -27,8 +33,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
 const ACTIVITY_DAYS = 90;
 /**
- * Code changes listed on one People profile. Open changes sort first so a
- * stale open change is not cut off by newer completed changes.
+ * Code changes on one page of a person's code overview. Open changes sort
+ * first, so the first page has the open changes before completed ones, and
+ * `nextCursor` reads the rest.
  */
 const PERSON_CHANGE_LIMIT = 100;
 
@@ -139,15 +146,22 @@ async function readTreeCosts(conversationIds: readonly string[]) {
   };
 }
 
-/** True when any linked conversation actor belongs to the subject user. */
-function ownedByUserSql(conversationIds: SQL, userId: string): SQL {
-  return sql`EXISTS (
-    SELECT 1
-    FROM unnest(${conversationIds}) AS linked(conversation_id)
+/**
+ * True when any linked conversation actor belongs to the subject user. The
+ * subquery starts from the user's Conversations, so Postgres hash-joins them
+ * with the linked ids instead of one lookup per code change.
+ */
+function ownedByUserSql(userId: string): SQL {
+  return sql`${juniorCodeChanges.id} IN (
+    SELECT linked.id
+    FROM junior_identities AS identities
     INNER JOIN junior_conversations AS conversations
-      ON conversations.conversation_id = linked.conversation_id
-    INNER JOIN junior_identities AS identities
-      ON identities.id = conversations.actor_identity_id
+      ON conversations.actor_identity_id = identities.id
+    INNER JOIN (
+      SELECT id, unnest(conversation_ids) AS conversation_id
+      FROM junior_code_changes
+    ) AS linked
+      ON linked.conversation_id = conversations.conversation_id
     WHERE identities.user_id = ${userId}
   )`;
 }
@@ -158,9 +172,7 @@ function changeScopeFilter(args: {
   userId?: string;
 }): SQL | undefined {
   return and(
-    args.userId
-      ? ownedByUserSql(sql`${juniorCodeChanges.conversationIds}`, args.userId)
-      : undefined,
+    args.userId ? ownedByUserSql(args.userId) : undefined,
     args.repositoryId
       ? eq(juniorCodeChanges.repositoryId, args.repositoryId)
       : undefined,
@@ -191,6 +203,7 @@ export async function readCodeWindows(args: {
     .select({
       closedAt: changes.closedAt,
       conversationIds: changes.conversationIds,
+      lastActivityAt: changes.lastActivityAt,
       mergedAt: changes.mergedAt,
       openedAt: changes.openedAt,
       state: changes.state,
@@ -226,6 +239,16 @@ export async function readCodeWindows(args: {
     closed: closed.length,
     costUsd: treeCost(createdConversationIds),
     created: created.length,
+    // Same rule as the dashboard's idle marker: whole days since the last
+    // activity, or since opening when no activity is recorded.
+    idle: rows.filter(
+      (row) =>
+        row.state === "open" &&
+        Math.floor(
+          (args.nowMs - (row.lastActivityAt ?? row.openedAt).getTime()) /
+            DAY_MS,
+        ) > IDLE_CHANGE_DAYS,
+    ).length,
     medianCostUsd: median(changeCosts.filter((cost) => cost > 0)),
     medianMergeTimeMs: median(
       merged.flatMap((row) =>
@@ -262,6 +285,7 @@ export async function readCodeWindows(args: {
 /** Columns read for one code change report row. */
 export const codeChangeReportColumns = {
   closedAt: juniorCodeChanges.closedAt,
+  draft: juniorCodeChanges.draft,
   id: juniorCodeChanges.id,
   lastActivityAt: juniorCodeChanges.lastActivityAt,
   mergedAt: juniorCodeChanges.mergedAt,
@@ -277,6 +301,7 @@ export const codeChangeReportColumns = {
 /** Convert one code change row to its report shape. */
 export function codeChangeReport(change: {
   closedAt: Date | null;
+  draft: boolean;
   id: string;
   lastActivityAt: Date | null;
   mergedAt: Date | null;
@@ -398,37 +423,113 @@ export async function readCodeOverview(nowMs = Date.now()) {
 }
 
 /**
+ * Position after the last change of a page of a person's code overview.
+ * `idleSince` is set only when that change was open. Code change times are
+ * written from JavaScript dates, so milliseconds keep the order exact.
+ */
+const personCodeCursorSchema = z
+  .object({
+    // Any value Postgres reads as a uuid, so a bad id answers 400.
+    id: z.guid(),
+    idleSince: z.iso.datetime().optional(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const idleSince = sql`coalesce(${juniorCodeChanges.lastActivityAt}, ${juniorCodeChanges.openedAt})`;
+
+// The changes after a cursor, in the order of `readPersonCodeOverview`.
+function afterPersonCodeCursor(
+  cursor: z.output<typeof personCodeCursorSchema>,
+): SQL {
+  const updatedAt = new Date(cursor.updatedAt);
+  const laterInGroup = or(
+    lt(juniorCodeChanges.updatedAt, updatedAt),
+    and(
+      eq(juniorCodeChanges.updatedAt, updatedAt),
+      gt(juniorCodeChanges.id, cursor.id),
+    ),
+  )!;
+  const completed = ne(juniorCodeChanges.state, "open");
+  if (cursor.idleSince === undefined) return and(completed, laterInGroup)!;
+  const since = sql`${cursor.idleSince}::timestamptz`;
+  return or(
+    completed,
+    sql`${idleSince} > ${since}`,
+    and(sql`${idleSince} = ${since}`, laterInGroup),
+  )!;
+}
+
+/**
  * Read person-scoped code activity and recent code changes linked through
  * conversation actors on Junior-owned code changes.
  */
 export async function readPersonCodeOverview(args: {
+  /** `nextCursor` of the previous page. */
+  cursor?: string | undefined;
   nowMs?: number;
   userId: string;
 }) {
   const nowMs = args.nowMs ?? Date.now();
+  const after = args.cursor
+    ? decodePageCursor(
+        personCodeCursorSchema,
+        args.cursor,
+        "Invalid code change cursor.",
+      )
+    : undefined;
   const db = getDb();
   const [windows, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
     db
-      .select(codeChangeReportColumns)
+      .select({
+        change: codeChangeReportColumns,
+        updatedAt: juniorCodeChanges.updatedAt,
+      })
       .from(juniorCodeChanges)
       .innerJoin(
         juniorCodeRepositories,
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
-      .where(changeScopeFilter({ userId: args.userId }))
+      .where(
+        and(
+          changeScopeFilter({ userId: args.userId }),
+          after ? afterPersonCodeCursor(after) : undefined,
+        ),
+      )
+      // Open changes first, longest idle first, then the latest completed
+      // changes. The id keeps the order stable from one page to the next.
       .orderBy(
         desc(sql`${juniorCodeChanges.state} = 'open'`),
+        asc(
+          sql`CASE WHEN ${juniorCodeChanges.state} = 'open' THEN ${idleSince} END`,
+        ),
         desc(juniorCodeChanges.updatedAt),
+        asc(juniorCodeChanges.id),
       )
       .limit(PERSON_CHANGE_LIMIT),
   ]);
+  const last = changes.at(-1);
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
-    changes: changes.map(codeChangeReport),
+    changes: changes.map((row) => codeChangeReport(row.change)),
     generatedAt: windows.windowEnd.toISOString(),
+    nextCursor:
+      last && changes.length === PERSON_CHANGE_LIMIT
+        ? encodePageCursor(personCodeCursorSchema, {
+            id: last.change.id,
+            ...(last.change.state === "open"
+              ? {
+                  idleSince: (
+                    last.change.lastActivityAt ?? last.change.openedAt
+                  ).toISOString(),
+                }
+              : undefined),
+            updatedAt: last.updatedAt.toISOString(),
+          })
+        : undefined,
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),

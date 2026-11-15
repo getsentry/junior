@@ -46,10 +46,10 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
   conversations: Conversation[];
-  emptyLabel?: string;
+  emptyLabel?: string | undefined;
   loading?: boolean;
   /** Leave unset when the list shows only some pins. */
-  onReorderPins?: ReorderPins;
+  onReorderPins?: ReorderPins | undefined;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
@@ -220,7 +220,7 @@ function ConversationCardSection(props: {
 type ConversationCardProps = {
   conversation: Conversation;
   /** Set on pinned cards, which drag to reorder. */
-  drag?: PinnedRowDrag;
+  drag?: PinnedRowDrag | undefined;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   /** Lets the list show the result of a row action at once. */

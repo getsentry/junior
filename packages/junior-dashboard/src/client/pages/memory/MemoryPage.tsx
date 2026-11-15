@@ -165,12 +165,12 @@ function MemoryLibrary(props: {
           `button[data-memory-id="${CSS.escape(memoryId)}"]`,
         )
       : undefined;
-    navigate(memoryPath(props.libraryPath));
+    void navigate(memoryPath(props.libraryPath));
     (trigger ?? listRef.current)?.focus();
   };
   const forget = (recordAction: PluginUserPageRecordAction) => {
     // The forgotten row leaves the list, so focus the list instead.
-    navigate(memoryPath(props.libraryPath));
+    void navigate(memoryPath(props.libraryPath));
     listRef.current?.focus();
     runAction(recordAction);
   };
@@ -194,7 +194,7 @@ function MemoryLibrary(props: {
       return;
     }
     if (memoryQuery.isError || memoryQuery.isFetched) {
-      navigate(pathWithSearch(props.libraryPath, location.search), {
+      void navigate(pathWithSearch(props.libraryPath, location.search), {
         replace: true,
       });
     }

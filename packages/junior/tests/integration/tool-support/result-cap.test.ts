@@ -72,20 +72,13 @@ function agentTools(
   writeFiles: (files: SavedFile[]) => Promise<void>,
   toolDefinitions: Record<string, AnyToolDefinition> = definitions,
 ) {
-  const tools = createPiAgentTools(
-    toolDefinitions,
-    new SkillSandbox([], []),
-    {},
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    "private",
-    undefined,
-    allowAll,
-    { countToolCall: () => 1, workspace: { writeFiles } },
-  );
+  const tools = createPiAgentTools(toolDefinitions, new SkillSandbox([], []), {
+    spanContext: {},
+    searchToolsCost: { owner: "none" },
+    conversationPrivacy: "private",
+    actionReview: allowAll,
+    codeMode: { countToolCall: () => 1, workspace: { writeFiles } },
+  });
   return (name: string) => {
     const found = tools.find((candidate) => candidate.name === name);
     if (!found) throw new Error(`Missing agent tool: ${name}`);
@@ -133,7 +126,7 @@ async function bigMcpTool(): Promise<{
   ]);
   expect(await manager.activateProvider("docs")).toBe(true);
   return {
-    callMcpTool: createCallMcpToolTool(manager) as AnyToolDefinition,
+    callMcpTool: createCallMcpToolTool(manager),
     close: () => manager.close(),
   };
 }

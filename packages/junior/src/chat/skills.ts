@@ -226,8 +226,8 @@ export interface SkillMetadata {
   name: string;
   description: string;
   skillPath: string;
-  pluginProvider?: string;
-  allowedTools?: string[];
+  pluginProvider?: string | undefined;
+  allowedTools?: string[] | undefined;
   disableModelInvocation?: boolean;
 }
 
@@ -240,7 +240,7 @@ export interface SkillInvocation {
 }
 
 export interface DiscoverSkillsOptions {
-  additionalRoots?: string[];
+  additionalRoots?: string[] | undefined;
 }
 
 let skillCache: {
@@ -257,7 +257,7 @@ export function resetSkillDiscoveryCache(): void {
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots =
-    process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
+    process.env["SKILL_DIRS"]?.split(path.delimiter).filter(Boolean) ?? [];
   const defaults = skillRoots();
   const pluginRoots = pluginCatalogRuntime.getSkillRoots();
 

@@ -1,0 +1,6 @@
+{
+  "name": "@sentry/junior-eval-pantry",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Eval-only plugin package that ships one skill"
+}

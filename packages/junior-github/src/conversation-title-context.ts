@@ -1,4 +1,8 @@
 import type { PluginLogger } from "@sentry/junior-plugin-api";
+import {
+  configuredRepository,
+  type Repository,
+} from "./configured-repository.js";
 import { isRecord } from "./credential-support.js";
 
 // Name a Conversation from its main objects, not from every reference it has.
@@ -20,16 +24,11 @@ export interface GitHubReference {
   owner: string;
 }
 
-interface Repository {
-  name: string;
-  owner: string;
-}
-
 interface ReferenceMatch {
   end: number;
   id: string;
   kind: GitHubReference["kind"];
-  repository?: Repository;
+  repository?: Repository | undefined;
   start: number;
 }
 
@@ -107,17 +106,6 @@ const REFERENCE_PATTERNS: ReferencePattern[] = [
   },
 ];
 
-/** Read `repo` as `owner/name`, or as `name` with the `org` config value. */
-function configuredRepository(
-  config: Record<string, string>,
-): Repository | undefined {
-  const [first, second, ...extra] = (config.repo ?? "").trim().split("/");
-  if (extra.length > 0) return undefined;
-  return second
-    ? repository(first, second)
-    : repository(config.org?.trim(), first);
-}
-
 /**
  * Find distinct GitHub references in message text, in message order.
  * A reference without a repository uses the one repository that the message
@@ -183,11 +171,12 @@ function objectTitle(
   if (!isRecord(object)) return undefined;
   const raw =
     kind === "commit"
-      ? isRecord(object.commit) && typeof object.commit.message === "string"
-        ? object.commit.message.split("\n")[0]
+      ? isRecord(object["commit"]) &&
+        typeof object["commit"]["message"] === "string"
+        ? object["commit"]["message"].split("\n")[0]
         : undefined
-      : typeof object.title === "string"
-        ? object.title
+      : typeof object["title"] === "string"
+        ? object["title"]
         : undefined;
   return raw?.replace(/\s+/g, " ").trim() || undefined;
 }

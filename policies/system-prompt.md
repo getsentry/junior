@@ -57,6 +57,8 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - `prompt-markers.md` owns tags, untrusted text, and escaping.
 - Context message, each in its own content part: `<runtime-turn-context>`, a
   loaded `<skill>`, `AGENTS.md` at Turn start, and `<thread-context>`.
+- A Turn adds `AGENTS.md` only when it differs from the latest copy in
+  history. Otherwise the copy in history applies.
 - `AGENTS.md` that the Turn finds or changes later: a new user-role message at
   the end of history, because earlier messages do not change.
 - Tool results, files, fetched pages: tool result messages.
@@ -72,6 +74,12 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - Do not change earlier transcript messages. Only context compaction can.
 - Put one-request facts in a request-scoped tag. See
   `REQUEST_CONTEXT_SECTION_TAG` in `packages/junior/src/chat/turn-context-tag.ts`.
+- Put the tools that a Code Mode script can call in `<script-tools>`, not in
+  the `codemode` description.
+- A Turn adds `<script-tools>` or a capability section
+  (`CAPABILITY_SECTION_TAG`) only when it differs from the latest copy in
+  history. An empty section that had a copy says "none". Context compaction
+  keeps the latest copy of each.
 
 ### Changes
 

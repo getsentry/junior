@@ -12,6 +12,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -20,7 +21,6 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -34,7 +34,10 @@ import {
   skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
-import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
+import {
+  pluginUserPageLinksSchema,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 
 import {
   dashboardBootstrapSchema,
@@ -150,15 +153,23 @@ export function useCodeOverviewData() {
   });
 }
 
-/** Fetch code activity, recent changes, and Workspaces for one repository. */
-export function useCodeRepositoryData(repositoryId: string | undefined) {
+/**
+ * Fetch code activity, recent changes, and Workspaces for one repository.
+ * `state` lists only the changes in that state.
+ */
+export function useCodeRepositoryData(
+  repositoryId: string | undefined,
+  state?: CodeChangeState,
+) {
   return useQuery({
     enabled: Boolean(repositoryId),
-    queryKey: ["dashboard", "code", "repositories", repositoryId],
+    queryKey: ["dashboard", "code", "repositories", repositoryId, state],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         codeRepositoryReportSchema,
-        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}${
+          state ? `?state=${state}` : ""
+        }`,
         signal,
       ),
     retry: false,
@@ -427,6 +438,21 @@ export function useStatsData() {
   });
 }
 
+/** Fetch what cache warming saved over the trailing UTC days of a range. */
+export function useCacheWarmingSavings(days: number) {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "savings", days],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheWarmingSavingsReportSchema,
+        `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -436,16 +462,6 @@ export function useSystemData(coreData: DashboardCoreData) {
       fetchDashboardJson(
         conversationStatsReportSchema,
         "/api/conversations/stats",
-        signal,
-      ),
-    retry: false,
-  });
-  const replyTimesQuery = useQuery({
-    queryKey: ["dashboard", "reply-times"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        replyTimeSegmentsReportSchema,
-        "/api/reply-times",
         signal,
       ),
     retry: false,
@@ -468,10 +484,6 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
-          ...(replyTimesQuery.data
-            ? { replyTimes: replyTimesQuery.data }
-            : undefined),
-          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

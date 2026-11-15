@@ -192,7 +192,7 @@ function payload(seed: MockItemSeed): ReviewItemPayload {
 /** List the mock items, open first and oldest first, like the API. */
 export function readMockReviewItems(
   nowMs: number,
-  filters: { conversationId?: string; q?: string },
+  filters: { conversationId?: string | undefined; q?: string | undefined },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
   return seeds(nowMs)
@@ -274,7 +274,6 @@ export function readMockWaitingConversations(nowMs: number) {
           createdAt < oldest ? createdAt : oldest,
         ),
     })),
-    needsViewer: open.length,
   };
 }
 

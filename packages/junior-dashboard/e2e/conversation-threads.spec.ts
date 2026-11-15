@@ -319,7 +319,7 @@ test("hides the composer on a Task page", async ({ page, dashboard }) => {
   await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
 });
 
-test("links Threads and collapses Tasks in the parent transcript", async ({
+test("links Threads and shows Tasks as chips in the parent transcript", async ({
   page,
   dashboard,
 }) => {
@@ -349,13 +349,12 @@ test("links Threads and collapses Tasks in the parent transcript", async ({
   );
   await expect(archivedCard).not.toContainText(/Idle|Running|Waiting/);
 
-  // A run of Tasks is one line. It expands to rows that open the drawer.
-  const tasksLine = transcript.getByRole("button", { name: /^2 Tasks/ });
-  await expect(tasksLine).toHaveAttribute("aria-expanded", "false");
-  await tasksLine.click();
+  // Each Task is a chip under the reply. A chip opens the drawer.
   await screenshot(page, "conversation-task-line");
   await transcript
-    .getByRole("button", { name: "Open Review the dashboard plan transcript" })
+    .getByRole("button", {
+      name: /^Open Review the dashboard plan transcript/,
+    })
     .click();
   await expect(
     page.getByRole("dialog", { name: "Review the dashboard plan" }),

@@ -22,6 +22,8 @@ const LIST_LIMIT = 200;
  */
 export async function readMemories(): Promise<MemoryRecord[]> {
   // All memory is public, so the reader's Source does not change the list.
+  // Junior and the plugin type the same Drizzle client with separate schemas.
+  // oxlint-disable-next-line anti-slop/no-chained-type-assertions
   const store = createMemoryStore(getDb() as unknown as MemoryDb, {
     actor: {
       platform: "slack",

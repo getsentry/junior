@@ -7,7 +7,7 @@ const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
 /** The install timezone, used when Junior does not know a person's timezone. */
 export function defaultTimezone(): string {
-  return process.env.JUNIOR_TIMEZONE?.trim() || DEFAULT_TIMEZONE;
+  return process.env["JUNIOR_TIMEZONE"]?.trim() || DEFAULT_TIMEZONE;
 }
 
 /**

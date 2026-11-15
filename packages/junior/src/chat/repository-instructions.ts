@@ -587,7 +587,7 @@ export async function readRepositoryInstructions(args: {
 
 /** Render repository instructions with Codex's exact model-visible wrapper. */
 export function renderAgentsInstructions(args: {
-  directory?: string;
+  directory?: string | undefined;
   text: string;
 }): string {
   const directory = args.directory ? ` for ${args.directory}` : "";
@@ -596,7 +596,7 @@ export function renderAgentsInstructions(args: {
 
 /** Build one user-role repository-instructions context message. */
 export function buildAgentsInstructionsMessage(args: {
-  directory?: string;
+  directory?: string | undefined;
   text: string;
   timestamp?: number;
 }): PiMessage {
@@ -604,7 +604,7 @@ export function buildAgentsInstructionsMessage(args: {
     role: "user",
     content: [{ type: "text", text: renderAgentsInstructions(args) }],
     timestamp: args.timestamp ?? Date.now(),
-  } as PiMessage;
+  };
 }
 
 /** Read the latest effective AGENTS.md state from model-visible history. */
@@ -660,6 +660,40 @@ export function findVisibleAgentsInstructions(
     }
   }
   return undefined;
+}
+
+/** Whether the visible AGENTS.md state already shows these instructions. */
+export function showsAgentsInstructions(
+  visible: VisibleAgentsInstructions | undefined,
+  instructions: RepositoryInstructions,
+): boolean {
+  return (
+    visible?.active === true &&
+    visible.directory === instructions.directory &&
+    visible.text === instructions.text
+  );
+}
+
+/**
+ * Render the AGENTS.md block that a new prompt adds. Return nothing when the
+ * latest copy in history already shows these instructions, so a Turn does
+ * not repeat an unchanged block.
+ */
+export function renderAgentsInstructionsForPrompt(
+  history: PiMessage[],
+  instructions: RepositoryInstructions,
+): string | undefined {
+  const visible = findVisibleAgentsInstructions(history);
+  if (showsAgentsInstructions(visible, instructions)) {
+    return undefined;
+  }
+  return renderAgentsInstructions({
+    directory: instructions.directory,
+    text:
+      visible?.active === true
+        ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
+        : instructions.text,
+  });
 }
 
 /** Whether one message is a generated AGENTS.md context update. */

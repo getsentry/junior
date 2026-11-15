@@ -182,7 +182,9 @@ describe("Linear MCP create annotations", () => {
           cards: createResult.cards,
         });
         expect(
-          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params[
+            "metadata"
+          ],
         ).toMatchObject({
           entities: [
             {

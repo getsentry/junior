@@ -98,8 +98,20 @@ describe("people code API", () => {
         updatedAt: new Date("2026-05-01T12:00:00.000Z"),
         url: "https://github.com/getsentry/junior/pull/10",
       } satisfies CodeChangeInput;
+      // Updated last, but opened after the stale change's latest activity.
+      const aliceFreshChange = {
+        ...aliceStaleChange,
+        draft: true,
+        number: 13,
+        openedAt: new Date("2026-08-24T08:00:00.000Z"),
+        providerId: "change-alice-fresh",
+        title: "Alice fresh change",
+        updatedAt: new Date("2026-08-24T08:00:00.000Z"),
+        url: "https://github.com/getsentry/junior/pull/13",
+      } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
+      await recordCodeChange(fixture.sql.db(), "github", aliceFreshChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
       const codeChanges = createCodeChangePublisher("github");
       const activity = { number: 10, repositoryProviderId: "repository-1" };
@@ -121,18 +133,22 @@ describe("people code API", () => {
       expect(report.summary).toEqual({
         closed: 0,
         costUsd: 0,
-        created: 1,
+        created: 2,
+        idle: 0,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
-        open: 1,
+        open: 2,
       });
+      // Open changes come first, longest idle first, by activity or opening.
       expect(report.changes).toEqual([
         expect.objectContaining({
+          draft: false,
           lastActivityAt: "2026-08-23T09:00:00.000Z",
           number: 10,
           state: "open",
         }),
+        expect.objectContaining({ draft: true, number: 13, state: "open" }),
         expect.objectContaining({
           number: 11,
           repository: "getsentry/junior",
@@ -148,6 +164,15 @@ describe("people code API", () => {
         date: "2026-08-22",
         merged: 1,
       });
+
+      // A person with no User gets an empty report.
+      const unknown = await createJuniorApi().request(
+        "http://localhost/api/people/nobody@example.com/code",
+      );
+      expect(unknown.status).toBe(200);
+      expect(
+        codePersonReportSchema.parse(await unknown.json()).summary,
+      ).toEqual({ closed: 0, created: 0, idle: 0, merged: 0, open: 0 });
     } finally {
       vi.useRealTimers();
       await fixture.close();

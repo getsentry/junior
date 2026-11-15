@@ -8,18 +8,27 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   conversationAttachmentParamsSchema,
+  conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import { conversationFeedSchema } from "../schema/conversation-feed";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  attachmentUploadParamsSchema,
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "../schema/conversation-attachment-upload";
+import {
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -62,6 +71,11 @@ import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+} from "../schema/object-link";
+import { attachObjectLink } from "../objects/attach";
+import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
@@ -85,6 +99,10 @@ import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
 import {
+  createAttachmentUploadForViewer,
+  writeAttachmentUploadForViewer,
+} from "./attachment-uploads";
+import {
   appendConversationMessageForViewer,
   createConversationForViewer,
   type WebInputServices,
@@ -107,12 +125,9 @@ export function createConversationRoutes(
   options: WebInputServices,
 ): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const messageBodyLimit = bodyLimit({
-    maxSize: 4_450_000,
-    onError: () => {
-      throwApiError(413, "Images must total 3 MB or less.");
-    },
-  });
+  // Files go to attachment storage first, so a Message body holds only text
+  // and upload ids.
+  const messageBodyLimit = bodyLimit({ maxSize: 262_144 });
 
   app.get(
     "/",
@@ -122,7 +137,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, cursor, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -131,6 +146,7 @@ export function createConversationRoutes(
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
           ...(cursor ? { cursor } : undefined),
+          include,
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -159,6 +175,54 @@ export function createConversationRoutes(
         acceptedConversationMessageSchema,
         await createConversationForViewer(viewer, body, options),
       );
+    },
+  );
+
+  app.post(
+    "/attachment-uploads",
+    requireViewer,
+    bodyLimit({ maxSize: 8_192 }),
+    validateRequest(
+      "json",
+      createAttachmentUploadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachmentUploadSchema,
+        await createAttachmentUploadForViewer(
+          context.get("viewer"),
+          context.req.valid("json"),
+          options.attachmentStorage,
+        ),
+      ),
+  );
+
+  app.put(
+    "/attachment-uploads/:uploadId",
+    requireViewer,
+    bodyLimit({
+      maxSize: MAX_ATTACHMENT_BYTES,
+      onError: () => {
+        throwApiError(
+          413,
+          `Files must be ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB or less.`,
+        );
+      },
+    }),
+    validateRequest(
+      "param",
+      attachmentUploadParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      await writeAttachmentUploadForViewer({
+        readBody: () => context.req.arrayBuffer(),
+        storage: options.attachmentStorage,
+        uploadId: context.req.valid("param").uploadId,
+        viewer: context.get("viewer"),
+      });
+      return context.body(null, 204);
     },
   );
 
@@ -390,6 +454,30 @@ export function createConversationRoutes(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
+    "/:conversationId/annotations",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      attachObjectLinkBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachObjectLinkResponseSchema,
+        await attachObjectLink(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json").url,
         ),
       ),
   );
@@ -651,12 +739,21 @@ export function createConversationRoutes(
       conversationAttachmentParamsSchema,
       "Invalid route parameters.",
     ),
+    validateRequest(
+      "query",
+      conversationAttachmentQuerySchema,
+      "Invalid query parameters.",
+    ),
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
+      const { download } = context.req.valid("query");
       const viewer = context.get("viewer");
       return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        download: download === true,
+        // Hono answers HEAD with the GET route and drops the body.
+        headOnly: context.req.method === "HEAD",
         range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),

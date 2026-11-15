@@ -116,15 +116,24 @@ describe("completeText", () => {
       mode: "oidc",
       token: "oidc-token",
     });
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "hello world" }],
-      stopReason: "stop",
-      usage: {
-        input: 12,
-        output: 4,
-        totalTokens: 16,
+    mocks.completeSimple.mockImplementation(
+      async (_model, _context, options) => {
+        await options.onResponse?.({
+          status: 200,
+          headers: { "x-vercel-id": "iad1::iad1::abc-123" },
+        });
+        return {
+          content: [{ type: "text", text: "hello world" }],
+          stopReason: "stop",
+          responseId: "gen_123",
+          usage: {
+            input: 12,
+            output: 4,
+            totalTokens: 16,
+          },
+        };
       },
-    });
+    );
 
     const { completeText, GEN_AI_PROVIDER_NAME } =
       await import("@/chat/pi/client");
@@ -182,8 +191,12 @@ describe("completeText", () => {
       expect.objectContaining({
         "gen_ai.output.messages": expect.any(String),
         "gen_ai.response.finish_reasons": ["stop"],
+        "gen_ai.response.id": "gen_123",
       }),
     );
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.ai.gateway.vercel_id": "iad1::iad1::abc-123",
+    });
   });
 
   it("omits opt-in semantic content for non-public conversation traces", async () => {
@@ -377,8 +390,13 @@ describe("completeText", () => {
     expect(mocks.logException).not.toHaveBeenCalled();
   });
 
-  it("classifies invalid structured output without capturing it", async () => {
-    const sdkError = new Error("No object generated.");
+  it("classifies invalid structured output without capturing it or its text", async () => {
+    const sdkError = Object.assign(
+      new Error("No object generated: could not parse the response.", {
+        cause: new Error("JSON parsing failed: Text: model output"),
+      }),
+      { name: "AI_NoObjectGeneratedError", text: "model output" },
+    );
     mocks.generateObject.mockRejectedValue(sdkError);
     mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
 
@@ -390,11 +408,20 @@ describe("completeText", () => {
         schema: z.object({ ok: z.boolean() }),
         prompt: "return json",
       }),
-    ).rejects.toMatchObject({
-      cause: sdkError,
-      kind: "invalid_response",
-      message: "AI provider error: invalid_response",
-      retryable: false,
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({
+        kind: "invalid_response",
+        message: "AI provider error: invalid_response",
+        retryable: false,
+      });
+      expect(error.cause).toMatchObject({
+        name: "AI_NoObjectGeneratedError",
+        message: "No object generated: could not parse the response.",
+      });
+      expect(
+        JSON.stringify(error.cause, Object.getOwnPropertyNames(error.cause)),
+      ).not.toContain("model output");
+      return true;
     });
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();

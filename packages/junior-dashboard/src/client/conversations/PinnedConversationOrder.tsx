@@ -58,7 +58,7 @@ export function PinnedConversationOrder(props: {
    * Leave unset when the list shows only some pins, such as during a search,
    * because a drop could not place the rest.
    */
-  reorder?: ReorderPins;
+  reorder?: ReorderPins | undefined;
 }) {
   const { conversations, onError, reorder } = props;
   const ids = useMemo(

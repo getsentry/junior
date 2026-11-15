@@ -1,12 +1,12 @@
 /**
- * What an idle period waits for besides a person: a timer, a child agent, or
- * a Review item. Junior reads it once, when an idle period that it can warm
+ * What an idle period waits for besides a person: a timer, a child agent, a
+ * Review item, or another Watch. Junior reads it once, when an idle period
  * starts, not on each warmup.
  */
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { NON_TERMINAL_AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/store";
-import { listWatches } from "@/chat/events/store";
+import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
 
 /**
@@ -14,17 +14,13 @@ import type { WaitingOn } from "./model";
  * when it is due by `maxDueIdleMs` (`timerFloorMaxDueIdleMs`). A later timer
  * changes nothing, so the idle period warms as without a timer.
  */
-export async function readTimerDueIdleMs(
-  conversationId: string,
+export function earliestTimerDueIdleMs(
+  watches: Watch[],
   sinceMs: number,
   maxDueIdleMs: number,
-): Promise<number | undefined> {
+): number | undefined {
   const dueIdleMs =
-    Math.min(
-      ...(await listWatches({ conversationId })).map(
-        (watch) => watch.firesAtMs ?? Infinity,
-      ),
-    ) - sinceMs;
+    Math.min(...watches.map((watch) => watch.firesAtMs ?? Infinity)) - sinceMs;
   return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
 
@@ -50,16 +46,22 @@ function askedReviewItem(
 }
 
 /**
- * Whether the idle period also waits on a child agent that still runs, or
- * on a Review item that the Turn asked. A running child agent comes first:
- * its result starts a Turn without a person.
+ * The active Watches of the Conversation, and what else its idle period
+ * waits on. Watches include timers and the event Watches that tools such as
+ * `createPullRequest` add. A child agent that still runs comes first: its
+ * result starts a Turn without a person. In an Automation run, only a child
+ * agent or a Watch can start a later Turn, so a Review item does not count.
  */
-export async function readWaitingOn(
+export async function readPendingWork(
   conversationId: string,
   messages: Context["messages"],
   final: AssistantMessage,
-): Promise<WaitingOn | undefined> {
-  const children = await listChildAgents(conversationId);
+  automation: boolean,
+): Promise<{ watches: Watch[]; waitingOn?: WaitingOn }> {
+  const [watches, children] = await Promise.all([
+    listWatches({ conversationId }),
+    listChildAgents(conversationId),
+  ]);
   if (
     children.some((child) =>
       (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
@@ -67,7 +69,12 @@ export async function readWaitingOn(
       ),
     )
   ) {
-    return "child";
+    return { watches, waitingOn: "child" };
   }
-  return askedReviewItem(messages, final) ? "review" : undefined;
+  if (automation) {
+    return watches.length > 0 ? { watches, waitingOn: "watch" } : { watches };
+  }
+  return askedReviewItem(messages, final)
+    ? { watches, waitingOn: "review" }
+    : { watches };
 }

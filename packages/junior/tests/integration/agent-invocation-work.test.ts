@@ -163,6 +163,12 @@ describe("agent invocation conversation work", () => {
                 identifier: created.invocationId,
                 namespace: "junior",
               }),
+              // The reply stores who sent it, so no reader parses its id.
+              sender: {
+                agentInvocationId: created.invocationId,
+                conversationId: created.childConversationId,
+                turnId: getAgentInvocationTurnId(created.invocationId),
+              },
             },
             text: expect.stringMatching(
               /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,

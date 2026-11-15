@@ -1,5 +1,8 @@
 import { http, HttpResponse } from "msw";
-import { interceptTestGitHubChecksHttp } from "@sentry/junior-testing/http";
+import {
+  interceptTestGitHubChecksHttp,
+  interceptTestGitHubDraftsHttp,
+} from "@sentry/junior-testing/http";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 
@@ -32,10 +35,12 @@ export const githubApiHandlers = [
       }),
   ),
   http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
-    const response = await interceptTestGitHubChecksHttp(
-      request,
-      new URL(request.url),
-    );
+    const url = new URL(request.url);
+    // Plugin tools call GitHub in process, so they reach these fixtures here
+    // and not through sandbox egress.
+    const response =
+      (await interceptTestGitHubChecksHttp(request, url)) ??
+      (await interceptTestGitHubDraftsHttp(request, url));
     if (response) return response;
     // A matched MSW handler that returns undefined bypasses the network guard.
     throw new Error(

@@ -76,13 +76,17 @@ type FileDelivery = {
   send: (files: SandboxFileUpload[]) => Promise<void>;
 };
 
-/** Store files in the active Conversation and optionally deliver them to its Location. */
+/**
+ * Store files in the active Conversation and optionally deliver them to its Location.
+ *
+ * @runBuilt sendFiles
+ */
 export function createSendFilesTool(
   state: ToolState,
   materializeFile: MaterializeFile,
   output:
     | { attachments: FileAttachments; delivery?: FileDelivery }
-    | { attachments?: FileAttachments; delivery: FileDelivery },
+    | { attachments?: FileAttachments | undefined; delivery: FileDelivery },
 ) {
   const { attachments, delivery } = output;
   return zodTool({

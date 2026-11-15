@@ -9,6 +9,7 @@ import {
   findDashboardUtilityAssertions,
   findNeutralSurfaceLiterals,
   findNonstandardNeutralTextColors,
+  findPxBreakpoints,
   findUndersizedHardcodedFontSizes,
   findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
@@ -153,6 +154,32 @@ test("reports classic 100vh and allows dvh", () => {
       },
     ]),
     ['src/shell.tsx:1: const bad = "min-h-[calc(100vh-5rem)]";'],
+  );
+});
+
+test("reports px breakpoints and allows rem", () => {
+  assert.deepEqual(
+    findPxBreakpoints([
+      {
+        path: "src/media.ts",
+        contents: [
+          'const a = "(min-width: 1280px)";',
+          'const b = "(width >= 768px) and (hover: hover)";',
+          'const c = "(900px <= width)";',
+          'const d = "hidden min-[900px]:block @max-[448px]/chat:hidden";',
+          'const ok = "(min-width: 80rem) and (width >= 48rem)";',
+          'const okClass = "min-w-[320px] max-h-[8px] h-[8px] @min-[62rem]/chat:flex";',
+          'const okStyle = "width: 24px; max-width: 720px";',
+          "// (min-width: 1280px) in a comment",
+        ].join("\n"),
+      },
+    ]),
+    [
+      'src/media.ts:1: const a = "(min-width: 1280px)";',
+      'src/media.ts:2: const b = "(width >= 768px) and (hover: hover)";',
+      'src/media.ts:3: const c = "(900px <= width)";',
+      'src/media.ts:4: const d = "hidden min-[900px]:block @max-[448px]/chat:hidden";',
+    ],
   );
 });
 

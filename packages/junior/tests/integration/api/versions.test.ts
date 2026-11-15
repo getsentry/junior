@@ -1,6 +1,6 @@
 import { and, eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -93,10 +93,16 @@ function feedMoved(before: Versions, after: Versions) {
 
 describe("versions API", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
   it("moves only the token whose read changed", async () => {
+    // Fixture writes such as `replaceHistory` stamp the clock. The test starts
+    // on a whole minute, so its run does not reach the next minute and its
+    // Turns stay newer than those stamps.
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+    vi.setSystemTime(Date.parse("2026-10-01T12:05:00.000Z"));
     const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
     await recordRoot(OTHER, "private");

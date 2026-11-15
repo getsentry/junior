@@ -36,7 +36,7 @@ export function ConversationFeedLoadMore(
       ) : props.failed ? (
         <p className="m-0 flex items-center gap-2 text-xs text-dashboard-text-muted">
           Could not load more.
-          <Button onClick={props.onLoadMore} variant="quiet">
+          <Button onClick={props.onLoadMore} variant="ghost">
             Retry
           </Button>
         </p>

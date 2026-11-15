@@ -257,9 +257,9 @@ async function registerGitHubPlugin(
 }
 
 function configureGitHubAppEnv() {
-  process.env.GITHUB_APP_ID = "123";
-  process.env.GITHUB_INSTALLATION_ID = "456";
-  process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
+  process.env["GITHUB_APP_ID"] = "123";
+  process.env["GITHUB_INSTALLATION_ID"] = "456";
+  process.env["GITHUB_APP_PRIVATE_KEY"] = generateKeyPairSync("rsa", {
     modulusLength: 2048,
   })
     .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -385,7 +385,7 @@ describe("sandbox egress proxy integration", () => {
     // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
     // for the missing-env-token case. This should be normalized to an egress credential error
     // before reaching the proxy, and the proxy should return the canonical auth-required 401.
-    delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
+    delete process.env["SANDBOX_EGRESS_TEST_TOKEN"]; // remove env token so broker has no credential
     const records: EmittedLogRecord[] = [];
     const unregister = modules.logging.registerLogRecordSink((record) => {
       records.push(record);
@@ -434,7 +434,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("records OAuth authorization metadata for broker credential gaps", async () => {
-    delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
+    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
     await registerOAuthBrokerPlugin();
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
@@ -476,7 +476,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("uses OAuth broker credentials when a credential hook returns no grant", async () => {
-    delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
+    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
     await registerOAuthBrokerPlugin({
       grantForEgress: (ctx) =>
         ctx.request.method === "GET"
@@ -841,7 +841,7 @@ describe("sandbox egress proxy integration", () => {
     await registerManagedEgressPlugin({
       grantForEgress,
       issueCredential,
-      tools(ctx) {
+      tools() {
         return {
           managedEgressRead: definePluginTool({
             approvalMode: "approve",
@@ -854,7 +854,7 @@ describe("sandbox egress proxy integration", () => {
             description: "Read managed provider data through host egress",
             inputSchema: z.object({}),
             outputSchema: managedEgressReadResultSchema,
-            async execute() {
+            async execute(_input, _options, ctx) {
               const response = await ctx.egress.fetch({
                 provider: "managed-egress",
                 operation: "managed.issues.read",
@@ -921,7 +921,10 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {});
+    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTools.find(
       (candidate) => candidate.name === "executeTool",
     );
@@ -986,7 +989,7 @@ describe("sandbox egress proxy integration", () => {
         upstreamPath: "/v1/issues",
       }),
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );
@@ -1406,7 +1409,7 @@ describe("sandbox egress proxy integration", () => {
     const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       request,
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );
@@ -2015,9 +2018,9 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("returns a controlled egress auth response when GitHub App setup is unavailable", async () => {
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-    delete process.env.GITHUB_INSTALLATION_ID;
+    delete process.env["GITHUB_APP_ID"];
+    delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    delete process.env["GITHUB_INSTALLATION_ID"];
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },

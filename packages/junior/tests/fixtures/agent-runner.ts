@@ -2,7 +2,6 @@ import {
   createAgentRunner,
   type AgentRunner,
 } from "@/chat/runtime/agent-runner";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
@@ -10,6 +9,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRun } from "@/chat/agent/types";
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 function assistantMessage(text: string): AssistantMessage {
   return fauxAssistantMessage(text);
@@ -34,13 +34,15 @@ export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
 }
 
 /** Run the real agent while replacing only model output. */
-export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
+export function createModelAgentRunner(
+  streamFn: AgentRequestStreamFn,
+): AgentRunner {
   return createModelAgentRunnerForRun(() => streamFn);
 }
 
 /** Run the real agent while choosing a fixed model stream for each run. */
 export function createModelAgentRunnerForRun(
-  streamForRun: (run: AgentRun) => StreamFn,
+  streamForRun: (run: AgentRun) => AgentRequestStreamFn,
 ): AgentRunner {
   return createAgentRunner(async (run) => {
     const { executeAgentRun } = await import("@/chat/agent");

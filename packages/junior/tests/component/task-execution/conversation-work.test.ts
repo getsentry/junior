@@ -104,7 +104,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
 }
 
 describe("conversation work execution", () => {
-  const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -114,9 +114,9 @@ describe("conversation work execution", () => {
     await closeDb();
     await disconnectStateAdapter();
     if (originalJuniorSecret === undefined) {
-      delete process.env.JUNIOR_SECRET;
+      delete process.env["JUNIOR_SECRET"];
     } else {
-      process.env.JUNIOR_SECRET = originalJuniorSecret;
+      process.env["JUNIOR_SECRET"] = originalJuniorSecret;
     }
     vi.useRealTimers();
   });
@@ -220,7 +220,7 @@ describe("conversation work execution", () => {
     const legacyMessage = {
       ...(inboundMessage("legacy") as Record<string, unknown>),
     };
-    delete legacyMessage.destination;
+    delete legacyMessage["destination"];
     const legacyWork = {
       schemaVersion: 2,
       conversationId: CONVERSATION_ID,
@@ -258,7 +258,7 @@ describe("conversation work execution", () => {
     const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
       execution: { pendingMessages: Array<Record<string, unknown>> };
     };
-    raw.execution.pendingMessages[0]!.delivery = "future-mode";
+    raw.execution.pendingMessages[0]!["delivery"] = "future-mode";
     await state.set(CONVERSATION_WORK_STATE_KEY, raw);
 
     await expect(
@@ -1519,12 +1519,14 @@ describe("conversation work execution", () => {
   it("stops conversation work after repeated lost-lease retries", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
+    const beforeWorkStops = vi.fn(async () => {});
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       currentNowMs = attempt * 1_000;
       await expect(
         processConversationWork(conversationQueueMessage(), {
+          beforeWorkStops,
           nowMs: () => currentNowMs,
           queue,
           run: async () => ({ status: "lost_lease" }),
@@ -1541,6 +1543,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(false);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
     expect(queue.sentRecords()).toHaveLength(4);
+    // The owner of the work ends what it owns, such as a dispatch.
+    expect(beforeWorkStops).toHaveBeenCalledOnce();
+    expect(beforeWorkStops).toHaveBeenCalledWith(CONVERSATION_ID, ["m1"]);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
@@ -2798,7 +2803,7 @@ describe("conversation work execution", () => {
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
@@ -2836,7 +2841,7 @@ describe("conversation work execution", () => {
   });
 
   it("keeps queue signatures valid across default visibility redelivery", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
       conversationQueueMessage(),

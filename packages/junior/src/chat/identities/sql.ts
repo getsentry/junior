@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
+import { clearCachedUser } from "./user-cache";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -23,7 +24,7 @@ function tenantId(value: string | undefined): string {
 async function upsertUser(
   executor: JuniorSqlDatabase,
   args: {
-    displayName?: string;
+    displayName?: string | undefined;
     email: string;
     emailNormalized: string;
     nowMs: number;
@@ -185,6 +186,9 @@ async function upsertIdentityRecord(
     }
     throw new Error("Identity upsert returned no row");
   }
+  for (const changedUserId of new Set([existing?.userId, row.userId])) {
+    if (changedUserId) await clearCachedUser(changedUserId);
+  }
   // Check every write that may have set the User, not only a known existing
   // row: a concurrent first write can create the Identity and its roots
   // between the read above and this upsert.
@@ -328,6 +332,7 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+  await clearCachedUser(userId);
 }
 
 /**
@@ -338,8 +343,8 @@ export async function deleteProviderIdentityForUser(
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
   account: {
-    avatarUrl?: string;
-    displayName?: string;
+    avatarUrl?: string | undefined;
+    displayName?: string | undefined;
     email: string;
     subject: string;
   },
