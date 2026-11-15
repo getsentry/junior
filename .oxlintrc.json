@@ -127,14 +127,12 @@
         "no-restricted-imports": [
           "error",
           {
-            "paths": [
+            "patterns": [
               {
-                "name": "ai",
+                "regex": "^ai(/|$)",
                 "allowTypeImports": true,
                 "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
-              }
-            ],
-            "patterns": [
+              },
               {
                 "group": ["@ai-sdk/*"],
                 "allowTypeImports": true,
@@ -211,14 +209,12 @@
         "no-restricted-imports": [
           "error",
           {
-            "paths": [
+            "patterns": [
               {
-                "name": "ai",
+                "regex": "^ai(/|$)",
                 "allowTypeImports": true,
                 "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
-              }
-            ],
-            "patterns": [
+              },
               {
                 "group": ["@ai-sdk/*"],
                 "allowTypeImports": true,

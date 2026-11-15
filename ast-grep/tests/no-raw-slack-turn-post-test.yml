@@ -6,6 +6,7 @@ valid:
   - 'await http.post("/api", body);'
   - 'await app.post("/api", handler);'
   - 'await threads.post("Done.");'
+  - 'await (getThread(thread)).post("Done.");'
 invalid:
   - "await postSlackMessage({ channelId, text });"
   - 'import { postSlackMessage } from "@/chat/slack/outbound";'
@@ -17,3 +18,8 @@ invalid:
   - 'await args.thread?.post("Done.");'
   - 'await channel.post("Done.");'
   - 'await chat.channel(toChannelId(id)).post("Done.");'
+  - 'await args.thread!.post("Done.");'
+  - 'await (thread).post("Done.");'
+  - 'await (thread as Thread).post("Done.");'
+  - "await adapter.postChannelMessage(channelId, message);"
+  - "await adapter.postChannelMessage?.(channelId, message);"
