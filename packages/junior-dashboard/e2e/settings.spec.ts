@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import {
   DASHBOARD_SERVICE_WORKER_PATH,
@@ -384,10 +386,9 @@ test("links to a settings section", async ({ page, dashboard }) => {
   ).toBeInViewport();
 });
 
-test("keeps a linked section in view while the sections above load", async ({
-  page,
-  dashboard,
-}) => {
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
   let release!: () => void;
   const loaded = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/api/personal-tokens", async (route) => {
@@ -405,6 +406,39 @@ test("keeps a linked section in view while the sections above load", async ({
       },
     });
   });
+  return release;
+}
+
+test("lets the reader scroll away from a linked section while it loads", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "MCP" }),
+  ).toBeInViewport();
+
+  // Scroll to the top over a few frames with no input event, as a
+  // scrollbar drag does.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "General" }),
+  ).toBeInViewport();
+});
+
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
   await page.goto(`${dashboard.baseURL}/settings/mcp`);
   const heading = page.getByRole("heading", { exact: true, name: "MCP" });
   await expect(heading).toBeInViewport();
