@@ -186,14 +186,10 @@ export type DeliverToParent = (args: {
   turnId: string;
 }) => Promise<void>;
 
-/** What the child worker allows a child agent's Turn on this loop. */
-export type ChildTurnPolicy = { canSpawn: boolean };
-
 /**
  * Create the shared mailbox worker for web and event Turns of every
  * Conversation kind. `deliverMessage` posts to a Location, and
- * `deliverToParent` sends a child agent's results to its parent. A child
- * Conversation's work passes `child`.
+ * `deliverToParent` sends a child agent's results to its parent.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
@@ -203,7 +199,6 @@ export function createConversationTurnWorker(
   return async (
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
-    child: ChildTurnPolicy = { canSpawn: false },
   ): Promise<ConversationWorkerResult> => {
     // Wait out the event debounce window without sleeping in process. The
     // worker re-enqueues this wake with the remaining delay.
@@ -391,9 +386,6 @@ export function createConversationTurnWorker(
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
-    if (behavior.promptMode === "child_agent" && !child.canSpawn) {
-      disabledFeatures.push("subagents");
-    }
     const deliverToProvider =
       postsToProvider && behavior.delivery === "location";
     const sendToParent = async (result: ParentResult): Promise<void> => {

@@ -42,7 +42,11 @@ import type {
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
-import { buildRuleBlocks, type PromptMode } from "@/chat/system-prompt-rules";
+import {
+  buildRuleBlocks,
+  SLACK_MENTION_FORMAT_RULE,
+  type PromptMode,
+} from "@/chat/system-prompt-rules";
 
 const DEFAULT_SOUL = "You are a practical and concise assistant.";
 
@@ -320,7 +324,7 @@ function buildIdentitySection(platform: PromptPlatform): string {
   return [
     "# Identity",
     `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
-    "Slack text shows people as `<@U…>` and channels as `<#C…>`. A mention of your own user ID means you.",
+    `${SLACK_MENTION_FORMAT_RULE} A mention of your own user ID means you.`,
   ].join("\n");
 }
 

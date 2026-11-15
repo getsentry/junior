@@ -25,7 +25,6 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import type {
-  ChildTurnPolicy,
   DeliverToParent,
   ParentResult,
 } from "@/chat/task-execution/conversation-turn";
@@ -93,7 +92,6 @@ import type {
   TerminalAgentInvocation,
 } from "./types";
 import {
-  childCanSpawn,
   createAgentInvocationWorker,
   endActiveAgentInvocations,
   endAgentInvocationsOfStoppedWork,
@@ -769,12 +767,10 @@ export function createChildConversationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
-    maxAgentDepth?: number;
     queue: ConversationWorkQueue;
     runTurn: (
       context: ConversationWorkerContext,
       work: MailboxTurnWork,
-      child: ChildTurnPolicy,
     ) => Promise<ConversationWorkerResult>;
     state?: StateAdapter | undefined;
   },
@@ -826,10 +822,7 @@ export function createChildConversationWorker(
       await context.attempt.ack();
       return { status: "completed" };
     }
-    // A child Turn gets the same tools here as on its agent invocation.
-    const result = await options.runTurn(context, kept, {
-      canSpawn: childCanSpawn(options.maxAgentDepth),
-    });
+    const result = await options.runTurn(context, kept);
     if (result.status === "completed") {
       await reportParentWithoutOpenWork(context.conversationId, options);
     }
