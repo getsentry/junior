@@ -13,7 +13,11 @@ import {
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
@@ -524,7 +528,8 @@ describe("Watches", () => {
 
     expect(delivery.turns).not.toHaveLength(0);
     expect(delivery.replies).toEqual([]);
-    const commands = completedToolCalls("bash", delivery).map((call) =>
+    // Count merge attempts that Guardian blocked too.
+    const commands = toolCallsOf("bash", delivery).map((call) =>
       String((call.input as { command?: unknown } | undefined)?.command),
     );
     expect(commands.filter((command) => /gh pr merge/.test(command))).toEqual(
