@@ -1,7 +1,15 @@
 import { AwsClient } from "aws4fetch";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { readAttachmentStorageConfig } from "@/chat/attachments/config";
@@ -19,6 +27,7 @@ import {
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
+import { useRealClock } from "../fixtures/clock";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
 // The `s3` service in compose.yaml and in CI runs versitygw on this port.
@@ -78,8 +87,14 @@ async function recordPublicConversation(conversationId: string) {
 }
 
 describe("S3 attachment storage", () => {
+  // The S3 server rejects signed requests with a time far from its own.
   beforeAll(async () => {
+    useRealClock();
     await sendBucketRequest("PUT");
+  });
+
+  beforeEach(() => {
+    useRealClock();
   });
 
   afterEach(async () => {
