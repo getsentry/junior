@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
 import { conversationFeedSchema } from "@/api/schema";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -10,6 +11,9 @@ import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 describe("conversation list API links", () => {
   test("lists the newest distinct links only where private content is visible", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
+    const previousDashboard = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
     try {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
@@ -39,7 +43,7 @@ describe("conversation list API links", () => {
           [
             publicId,
             "assistant",
-            `Mail mailto:dev@example.com, read <https://example.com/b|the notes>, go back to https://junior.example.com/conversations/${encodeURIComponent(publicId)}, and see https://example.com/a again.`,
+            `Mail mailto:dev@example.com, read <https://example.com/b|the notes>, go back to https://junior.example.com/conversations/${encodeURIComponent(publicId)}, compare https://other.example.com/conversations/${encodeURIComponent(publicId)}, and see https://example.com/a again.`,
           ],
           [privateId, "assistant", "Secret plan: https://private.example/plan"],
         ];
@@ -82,11 +86,12 @@ describe("conversation list API links", () => {
           .conversations.map((item) => [item.conversationId, item]),
       );
 
-      // Newest message first, in text order within a message.
+      // Newest message first, in text order within a message. Only a link
+      // to this Conversation on this dashboard drops out.
       expect(conversations.get(publicId)?.links).toEqual([
         "https://example.com/b",
+        `https://other.example.com/conversations/${encodeURIComponent(publicId)}`,
         "https://example.com/a",
-        "https://github.com/getsentry/junior/pull/7",
       ]);
       expect(conversations.get(privateId)).toBeDefined();
       expect(conversations.get(privateId)?.links).toBeUndefined();
@@ -108,6 +113,7 @@ describe("conversation list API links", () => {
         ),
       ).toEqual([]);
     } finally {
+      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });

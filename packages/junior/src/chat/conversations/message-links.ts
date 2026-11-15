@@ -68,15 +68,15 @@ function messageLinks(event: LinkSourceRow): MessageLink[] {
       : undefined;
   if (mention === false || mention === "false") return [];
   const links = new Map<string, MessageLink>();
-  for (const [index, match] of [
-    ...text.matchAll(messageUrlPattern),
-  ].entries()) {
+  let position = 0;
+  for (const match of text.matchAll(messageUrlPattern)) {
+    position += 1;
     const url = match[0].replace(trailingPunctuation, "");
     if (links.has(url) || Buffer.byteLength(url) > MAX_LINK_BYTES) continue;
     links.set(url, {
       conversationId: event.conversationId,
       createdAt: event.createdAt,
-      position: index + 1,
+      position,
       seq: event.seq,
       url,
     });

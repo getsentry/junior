@@ -9,12 +9,14 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { CONVERSATION_FEED_LINK_LIMIT } from "@/api/schema/conversation-feed";
+import { parseDashboardConversationLink } from "@/chat/dashboard-link";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAttachments,
   juniorConversations,
   juniorMessageAttachments,
 } from "@/db/schema";
+import { safeLinkUrl } from "@/net/link-url";
 
 // A row reads the newest uses of links in its Conversation, keeps each link
 // once, and looks up only the newest few. The row drops links it already
@@ -23,32 +25,13 @@ import {
 const RECENT_USE_LIMIT = 20;
 const CANDIDATE_LINK_LIMIT = CONVERSATION_FEED_LINK_LIMIT + 3;
 
-function cleanUrl(link: string): string | undefined {
-  if (!URL.canParse(link)) return undefined;
-  const url = new URL(link);
-  return url.protocol === "http:" || url.protocol === "https:"
-    ? url.href
-    : undefined;
-}
-
-// A dashboard link back to the same Conversation names nothing new.
-function linksToConversation(href: string, conversationId: string): boolean {
-  const match = /^\/conversations\/([^/]+)\/?$/.exec(new URL(href).pathname);
-  if (!match) return false;
-  try {
-    return decodeURIComponent(match[1]!) === conversationId;
-  } catch {
-    return false;
-  }
-}
-
 /** The URLs that a row's Annotations already show, as links compare them. */
 export function annotationUrls(
   annotations: ReadonlyArray<{ url?: string | null }> | undefined,
 ): Set<string> {
   return new Set(
     (annotations ?? []).flatMap(({ url }) => {
-      const href = url ? cleanUrl(url) : undefined;
+      const href = safeLinkUrl(url);
       return href ? [href] : [];
     }),
   );
@@ -62,12 +45,13 @@ export function pickFeedLinks(
 ): string[] {
   const links: string[] = [];
   for (const link of urls) {
-    const href = cleanUrl(link);
+    const href = safeLinkUrl(link);
     if (
       !href ||
       links.includes(href) ||
       shown.has(href) ||
-      linksToConversation(href, conversationId)
+      // A dashboard link back to the same Conversation names nothing new.
+      parseDashboardConversationLink(href) === conversationId
     ) {
       continue;
     }
