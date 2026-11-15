@@ -241,8 +241,9 @@ describe("Event author trust", () => {
     ] as const) {
       expect(message!.input.authorIdentityId).toBe(await identityOf(userId));
       const text = taskText(message);
+      // The fake Slack member's real name, as on their Slack messages.
       expect(text).toContain(
-        `<external-text source="demo" author_id="${userId}"`,
+        `<external-text source="demo" author_id="${userId}" author_name="Test User">`,
       );
       expect(text).not.toContain("not verify");
       expect(count(text, REQUEST)).toBe(1);

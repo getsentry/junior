@@ -135,9 +135,19 @@ async function linkedMemberDecision(args: {
   if (!isSlackProfileDomainAllowed(member)) {
     return { trusted: false, reason: "domain_not_allowed" };
   }
+  // The same names as on this person's Slack messages, so their Event
+  // text shows the same author.
+  const fullName = member.real_name?.trim() || undefined;
+  const userName = member.name?.trim() || undefined;
   return {
     trusted: true,
-    actor: { platform: "slack", teamId: args.teamId, userId },
+    actor: {
+      platform: "slack",
+      teamId: args.teamId,
+      userId,
+      ...(fullName ? { fullName } : undefined),
+      ...(userName ? { userName } : undefined),
+    },
     user: args.linked.user,
   };
 }
@@ -336,13 +346,14 @@ export function eventAuthorText(
 ): EventAuthorText | undefined {
   if (author.status === "system" || !author.text) return undefined;
   const actor = author.status === "trusted" ? author.actor : undefined;
-  const name = actor
-    ? (actor.fullName ?? actor.userName)
-    : `${safeId(author.handle)} on ${safeId(author.provider)}${author.bot ? " (a bot)" : ""}`;
+  const name =
+    actor?.fullName ??
+    actor?.userName ??
+    `${safeId(author.handle)} on ${safeId(author.provider)}${author.bot ? " (a bot)" : ""}`;
   return {
     text: author.text,
     ...(actor ? { authorId: actor.userId } : undefined),
-    ...(name ? { authorName: name } : undefined),
+    authorName: name,
     verified: author.status === "trusted",
   };
 }
