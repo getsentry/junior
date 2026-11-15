@@ -486,6 +486,6 @@ async function resolveSentryMonitorLink(
 export const sentryMonitorLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryMonitorLink,
   filters: SENTRY_MONITOR_LINK_FILTERS,
-  objectType: "monitor",
+  objectTypes: ["monitor"],
   resolve: resolveSentryMonitorLink,
 };
