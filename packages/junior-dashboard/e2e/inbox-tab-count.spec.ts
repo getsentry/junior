@@ -87,7 +87,8 @@ test("the tab icon count sits in the top-left corner", async ({
       bottomRight: [size - inset, size - inset],
       // Junior's eye.
       eye: [Math.round(size * 0.6), Math.round(size * 0.4)],
-      topLeft: [inset, inset],
+      // The badge's fill left of the count, clear of the glyph.
+      topLeft: [Math.round(size * 0.05), Math.round(size * 0.19)],
       topRight: [size - inset, inset],
     };
     return Object.entries(spots)
