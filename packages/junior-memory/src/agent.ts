@@ -384,6 +384,8 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "- For actor memories, omit the subject and write the content as a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'.",
     "- Remove actor names, display names, actor/user labels, first- or second-person wording, thread labels, channel labels, and source labels from stored content.",
     "- Reject third-party personal profile facts, even if they mention a name.",
+    "- Public memory is visible only inside this workspace. Internal company knowledge is safe to store: business and KPI definitions, metric logic, data sources, schemas, and query traps.",
+    "- Literal point-in-time values are not durable: counts, dollar amounts, rates, and per-customer figures. When a candidate mixes them with durable logic, store the logic without the values. Do not reject the candidate for them.",
     "- Reject vague content such as 'remember this' unless the candidate or current-user-message contains the concrete fact.",
     "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
     "- When storing, set reason to null. When rejecting, set kind, canonicalFact, and expiresAtMs to null.",
