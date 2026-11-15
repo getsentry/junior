@@ -264,6 +264,8 @@ describe("Event author trust", () => {
     expect(canJoinTurn(systemTurn, byBot!)).toBe(false);
     expect(canJoinTurn(systemTurn, system!)).toBe(true);
     expect(canShareTurn(byBot!, system!)).toBe(false);
+    // A listed bot has no email and is still trusted.
+    expect(taskText(byBot)).not.toContain("not verify");
     expect(taskText(byBot)).toContain(
       [
         lead("cursor[bot] on demo (a bot)"),

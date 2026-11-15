@@ -14,6 +14,7 @@
  * that the Event matched gives the job.
  */
 import type { StateAdapter } from "chat";
+import * as z from "zod";
 import type { Event, SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import type { TagAuthor } from "@/chat/input-tags";
@@ -54,13 +55,30 @@ export function setTrustConfig(next: TrustConfig): TrustConfig {
   return previous;
 }
 
+const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
+
 /**
- * Return whether an email, or a bare domain such as Google's `hd` claim, is
- * on the allowed domains. `ifNoDomains` says what an empty list means: Slack
- * authors allow every domain, and sign-ins allow none.
+ * Parse a value that must be an email, such as a sign-in or a verified email
+ * from a plugin. Return the normalized email and its domain, or undefined
+ * when the value is not a valid email.
  */
-export function isAllowedEmail(
-  emailOrDomain: string | undefined,
+export function parseEmail(
+  value: unknown,
+): { email: string; domain: string } | undefined {
+  const parsed = emailSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const email = parsed.data;
+  return { email, domain: email.slice(email.lastIndexOf("@") + 1) };
+}
+
+/**
+ * Return whether a domain, such as the domain of a parsed email or Google's
+ * `hd` claim, is on the allowed domains. It only compares domains.
+ * `ifNoDomains` says what an empty list means: Slack authors allow every
+ * domain, and sign-ins allow none.
+ */
+export function isAllowedDomain(
+  domain: string | undefined,
   options: {
     allowedDomains: readonly string[];
     ifNoDomains: "allow" | "deny";
@@ -69,9 +87,8 @@ export function isAllowedEmail(
   if (options.allowedDomains.length === 0) {
     return options.ifNoDomains === "allow";
   }
-  const normalized = emailOrDomain?.trim().toLowerCase() ?? "";
-  const domain = normalized.slice(normalized.lastIndexOf("@") + 1);
-  return Boolean(domain) && options.allowedDomains.includes(domain);
+  const normalized = domain?.trim().toLowerCase();
+  return normalized ? options.allowedDomains.includes(normalized) : false;
 }
 
 /** Why core does not trust an author. */
@@ -81,6 +98,7 @@ type UntrustedReason =
   | "domain_not_allowed"
   | "email_changed"
   | "inactive_member"
+  | "invalid_email"
   | "no_single_link"
   | "no_workspace"
   | "unknown_author";
@@ -97,12 +115,15 @@ function isCoreIdentityProvider(provider: string): boolean {
 }
 
 function isSlackProfileDomainAllowed(profile: SlackUserProfile): boolean {
+  // Slack verifies the profile email, so only its domain is read. A person
+  // with no email has no domain and is not allowed. Listed bots have no
+  // email and are trusted before this check.
   const email = profile.email?.trim();
-  // A bare domain is not an email, so it never passes here.
-  const allowed = isAllowedEmail(email?.includes("@") ? email : undefined, {
-    allowedDomains: trustConfig.allowedDomains,
-    ifNoDomains: "allow",
-  });
+  const separator = email?.lastIndexOf("@") ?? -1;
+  const allowed = isAllowedDomain(
+    separator > 0 ? email?.slice(separator + 1) : undefined,
+    { allowedDomains: trustConfig.allowedDomains, ifNoDomains: "allow" },
+  );
   if (!allowed) {
     // A Slack app without `users:read.email` sees no email and blocks all.
     logWarn("slack.allowed_domain.rejected", {
@@ -217,6 +238,22 @@ export async function isTrustedSlackAuthor(args: {
   );
 }
 
+// A verified email must still be a valid email before any lookup.
+async function verifiedEmailDecision(value: string): Promise<Decision> {
+  const email = parseEmail(value)?.email;
+  if (!email) return { trusted: false, reason: "invalid_email" };
+  const teamId = await resolveBotSlackTeamId();
+  if (!teamId) return { trusted: false, reason: "no_workspace" };
+  return await linkedMemberDecision({
+    email,
+    linked: await findSlackUserByPrimaryEmail(getSqlExecutor(), {
+      normalizedEmail: email,
+      slackTeamId: teamId,
+    }),
+    teamId,
+  });
+}
+
 /**
  * Find the trusted person behind an account of a plugin's provider or behind
  * a verified email, for work that runs as that person. A verified email is
@@ -234,18 +271,7 @@ export async function findTrustedUser(
   if ("subjectId" in author) {
     decision = await accountDecision({ ...author, listed: false });
   } else {
-    const teamId = await resolveBotSlackTeamId();
-    const email = author.verifiedEmail.trim().toLowerCase();
-    decision = teamId
-      ? await linkedMemberDecision({
-          email,
-          linked: await findSlackUserByPrimaryEmail(getSqlExecutor(), {
-            normalizedEmail: email,
-            slackTeamId: teamId,
-          }),
-          teamId,
-        })
-      : { trusted: false, reason: "no_workspace" };
+    decision = await verifiedEmailDecision(author.verifiedEmail);
   }
   if (!decision.trusted)
     return { status: "untrusted", reason: decision.reason };

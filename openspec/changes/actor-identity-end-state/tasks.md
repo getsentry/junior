@@ -190,8 +190,9 @@ Finish #2482.
 - **Trust part, built with #2217 and #2260:**
   - one owner, `chat/identities/trust.ts`, for every trust decision: Slack
     ingress (`isTrustedSlackAuthor`), Identity dispatch (`findTrustedUser`),
-    allowed emails (`isAllowedEmail`, with `ifNoDomains` for what an empty
-    list means), and Event authors (`resolveEventAuthor`). It reads its own
+    allowed domains (`isAllowedDomain`, with `ifNoDomains` for what an
+    empty list means, after `parseEmail` at sign-in and dispatch), and Event
+    authors (`resolveEventAuthor`). It reads its own
     config and keeps the Slack member cache.
   - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
     `trusted`, and `text`. Its provider is always the Event namespace. The

@@ -22,7 +22,7 @@ import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { readSignInSecret } from "@/chat/secrets";
-import { isAllowedEmail } from "@/chat/identities/trust";
+import { isAllowedDomain } from "@/chat/identities/trust";
 import { readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -197,7 +197,10 @@ function createBetterAuth(config: SignInAuthConfig) {
           const claims = readGoogleClaims(token.idToken);
           if (!claims) return null;
           if (
-            !isAllowedEmail(claims.hd, { allowedDomains, ifNoDomains: "allow" })
+            !isAllowedDomain(claims.hd, {
+              allowedDomains,
+              ifNoDomains: "allow",
+            })
           ) {
             return null;
           }
