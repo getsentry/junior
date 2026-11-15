@@ -339,8 +339,8 @@ export async function mockViewerCodeChanges(
     title: string;
   }[],
 ) {
-  // Like the server: 100 changes a page, in the given order, and the offset
-  // of the next page while one is left.
+  // Like the server: 100 changes a page, in the given order, and the cursor
+  // of the next page while one is left. Here the cursor is the offset.
   await page.route(/\/api\/people\/[^/]+\/code(\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const report = await response.json();
@@ -348,13 +348,14 @@ export async function mockViewerCodeChanges(
     const daysAgo = (days: number) =>
       new Date(nowMs - days * 86_400_000).toISOString();
     const offset = Number(
-      new URL(route.request().url()).searchParams.get("offset") ?? 0,
+      new URL(route.request().url()).searchParams.get("cursor") ?? 0,
     );
     await route.fulfill({
       response,
       json: {
         ...report,
-        nextOffset: offset + 100 < changes.length ? offset + 100 : undefined,
+        nextCursor:
+          offset + 100 < changes.length ? String(offset + 100) : undefined,
         changes: changes.slice(offset, offset + 100).map((change) => ({
           draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,

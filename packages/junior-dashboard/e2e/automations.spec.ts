@@ -100,41 +100,34 @@ test("opens scheduled and event automations in the native Automations view", asy
   );
 
   await page.goto(dashboard.baseURL);
-  await page
-    .getByRole("navigation", { name: "Primary" })
-    .getByRole("link", { name: "Automations" })
-    .click();
+  await page.getByRole("link", { name: "Automations" }).click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
-  // The header bar holds the title, Runs, and Filters, as the Inbox's does.
+  await expect(
+    page.getByRole("navigation", { name: "Automations navigation" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Automations", exact: true }),
   ).toBeVisible();
+  // Problems lead the page, each with the link that fixes it.
+  const attention = page.getByRole("region", { name: "Needs attention" });
+  await expect(attention.getByRole("listitem")).toHaveCount(1);
+  await expect(attention).toContainText("Incident change alerts");
   await expect(
-    page.getByRole("main").getByRole("link", { exact: true, name: "Runs" }),
-  ).toHaveAttribute("href", "/automations/runs");
-  // To do holds only the viewer's own; someone else's problem stays with
-  // the active Automations, with the link that fixes it.
-  await expect(
-    page.getByRole("region", { exact: true, name: "To do" }),
-  ).toHaveCount(0);
-  const active = page.getByRole("main").getByRole("region", { name: "Active" });
-  await expect(active.getByRole("listitem")).toHaveCount(3);
-  await expect(active).toContainText("Incident change alerts");
-  await expect(
-    active.getByRole("link", { name: "Change trigger", exact: true }),
+    attention.getByRole("link", { name: "Change trigger", exact: true }),
   ).toHaveAttribute("href", "/automations/event-2/edit");
+  const active = page.getByRole("region", { name: "Active" });
+  await expect(active.getByRole("listitem")).toHaveCount(2);
   await screenshot(page, "automations");
-  const weeklySummary = page
-    .getByRole("main")
-    .getByText("Weekly project summary", {
-      exact: true,
-    });
-  const issueSummary = page
-    .getByRole("main")
-    .getByText("Closed issue summary", { exact: true });
-  await expect(weeklySummary).toBeVisible();
+  const weeklySummary = page.getByText("Weekly project summary", {
+    exact: true,
+  });
+  const issueSummary = page.getByText("Closed issue summary", { exact: true });
+  await page.getByLabel("Search automations").fill("closed issue");
+  await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
+  await page.getByLabel("Search automations").fill("");
+  await expect(weeklySummary).toBeVisible();
   await expect(page.getByLabel("Scheduled automation")).toBeVisible();
   await expect(page.getByLabel("github event automation")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
@@ -298,9 +291,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page).toHaveURL(/[?&]type=event(?:&|$)/);
   await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
-  await expect(
-    page.getByRole("main").getByText("Incident change alerts"),
-  ).toBeVisible();
+  await expect(page.getByText("Incident change alerts")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Actions: Incident change alerts" }),
   ).toHaveCount(0);
@@ -329,9 +320,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     "href",
     "/people/avery%40sentry.io",
   );
-  await expect(
-    page.getByRole("main").getByText("Memory system"),
-  ).not.toBeVisible();
+  await expect(page.getByText("Memory system")).not.toBeVisible();
   await creatorLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
@@ -349,16 +338,14 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     name: "Recent runs",
     exact: true,
   });
-  const weeklySummary = page
-    .getByRole("main")
-    .getByText("Weekly project summary", {
-      exact: true,
-    });
+  const weeklySummary = page.getByText("Weekly project summary", {
+    exact: true,
+  });
   const openWeekly = page.getByRole("link", {
     name: "Open automation: Weekly project summary",
   });
   const backToList = page.getByRole("link", { name: "Back to automations" });
-  const active = page.getByRole("main").getByRole("region", { name: "Active" });
+  const active = page.getByRole("region", { name: "Active" });
   const deleteButton = page
     .getByRole("group", { name: "Automation actions" })
     .getByRole("button", { name: "Delete automation", exact: true });
@@ -418,7 +405,9 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.goto(
     `${dashboard.baseURL}/automations?scope=mine&sort=title&page=2`,
   );
-  await expect(active).toContainText("Incident change alerts");
+  await expect(
+    page.getByRole("region", { name: "Needs attention" }),
+  ).toContainText("Incident change alerts");
   const pendingDetail = Promise.withResolvers<void>();
   let detailRequests = 0;
   await page.route("**/api/automations/scheduled-1", async (route) => {
@@ -489,13 +478,8 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     "true",
   );
   await page.getByRole("button", { name: "Close filters" }).click();
-  const setState = async (state: string) => {
-    await page.getByRole("button", { name: /^Filters/ }).click();
-    await filterOption(page, "state", state).click();
-    await page.getByRole("button", { name: "Close filters" }).click();
-  };
   delayList = true;
-  await setState("Blocked");
+  await page.getByLabel("Search automations").fill("no match");
   await expect(page.getByText("Updating results…")).toBeVisible();
   await expect(weeklySummary).toBeVisible();
   delayList = false;
@@ -504,15 +488,12 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     page.getByText("No automations matched these filters."),
   ).toBeVisible();
   failList = true;
-  // A filter not read yet, so the list cannot come from the cache.
-  await setState("Paused");
+  await page.getByLabel("Search automations").fill("weekly");
   await expect(
     page.getByText("Automations could not be loaded."),
   ).toBeVisible();
   failList = false;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByText("Automations could not be loaded.")).toBeHidden();
-  await setState("Active");
   await expect(weeklySummary).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });
@@ -600,6 +581,7 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/automations/runs`);
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
+  await expect(page.getByLabel("Search runs")).toBeVisible();
   await screenshot(page, "automations-runs");
   await expect(page.getByRole("button", { name: /^Filters/ })).toBeVisible();
   await expect(page.getByText("Weekly project summary").first()).toBeVisible();
@@ -835,14 +817,16 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     return route.fulfill({ json: editor.value });
   });
   await page.goto(`${dashboard.baseURL}/automations`);
-  const todo = page.getByRole("region", { exact: true, name: "To do" });
-  // A failed last run puts the viewer's Automation in To do, as the Inbox
-  // lists it.
-  await expect(todo).toContainText("Weekly project summary");
+  const attention = page.getByRole("region", { name: "Needs attention" });
+  // A failed last run moves the Automation into the attention group.
+  await expect(attention).toContainText("Weekly project summary");
+  await expect(
+    attention.getByRole("link", { name: "Open last run", exact: true }),
+  ).toBeVisible();
   await screenshot(page, "automation-attention");
-  await todo.getByRole("button", { name: /Weekly project summary/ }).click();
-  await page.getByRole("link", { name: "Open editor" }).click();
-  await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
+  await page
+    .getByRole("link", { name: "Open automation: Weekly project summary" })
+    .click();
   // A failed last run leads the page with one notice.
   await expect(
     page.getByText("Last run failed", { exact: true }),
@@ -920,14 +904,14 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
 });
 
-test("groups automations into To do, then by state, on the landing page", async ({
+test("groups automations by what needs attention on the landing page", async ({
   page,
   dashboard,
 }) => {
   await mockLandingAutomationApis(page);
   await page.goto(`${dashboard.baseURL}/automations`);
   await expect(
-    page.getByRole("link", { name: /^Open automation: / }).first(),
+    page.getByRole("region", { name: "Needs attention" }),
   ).toBeVisible();
   await screenshot(page, "automations-landing", { lightTheme: true });
 

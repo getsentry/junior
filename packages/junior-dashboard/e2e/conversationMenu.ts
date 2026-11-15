@@ -20,10 +20,7 @@ export async function viewAsParticipant(page: Page) {
     (url) => /^\/api\/conversations(?:\/[^/]+)?$/.test(url.pathname),
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      // The page cancels a feed read that a row action replaces. Its
-      // connection can close before the fetch here ends.
-      const response = await route.fetch().catch(() => undefined);
-      if (!response) return route.abort().catch(() => {});
+      const response = await route.fetch();
       if (response.status() !== 200) return route.fulfill({ response });
       const body = await response.json();
       const json = Array.isArray(body.conversations)

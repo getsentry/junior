@@ -1,21 +1,12 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
-import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 import {
   mockReadPositionConversation,
   recordPageRequests,
 } from "./read-position-fixture";
 import { desktop, mobile, screenshot } from "./screenshot";
-
-/** Open the Conversations bundle from the Inbox entries. */
-async function openConversations(page: Page) {
-  await page
-    .getByRole("navigation", { name: "Primary" })
-    .getByRole("link", { exact: true, name: "Conversations" })
-    .click();
-}
 
 /** Scroll to the end of the transcript until `row` renders. */
 async function scrollDownTo(transcript: Locator, row: Locator) {
@@ -141,9 +132,6 @@ test("catches the reader up on several unread Turns", async ({
   await expect(
     transcript.getByText("Review the Safari fix on PR #12."),
   ).toBeVisible();
-  await expect(
-    transcript.getByRole("group", { name: "Catch-up" }),
-  ).not.toContainText("Needs you");
   // The range is the one from when the Conversation opened.
   expect(requested).toEqual([{ afterSeq: 20, throughSeq: 59 }]);
   await screenshot(page, "conversation-catch-up", { view: "mobile" });
@@ -182,10 +170,7 @@ test.describe("opens at new messages after a cached reopen", () => {
     // cached copy first. The fetch then brings the read position's cursor,
     // although the cached copy has none. The cached copy stays until the page
     // after the read position loads, and the transcript opens there.
-    // A phone returns to the Inbox entries. The Conversations bundle lists
-    // the row.
-    await page.getByRole("link", { name: /^Back to / }).click();
-    await openConversations(page);
+    await page.getByRole("link", { name: "Back to conversations" }).click();
     mock.eventCount = 120;
     mock.pagedDetail = true;
     let releaseDetail = () => {};
@@ -200,7 +185,10 @@ test.describe("opens at new messages after a cached reopen", () => {
       request.url().includes("/events?around="),
     );
     const detailRequestCount = mock.detailRequests.length;
-    await openRow(page.getByRole("link", { name: /Read position/ }).first());
+    await page
+      .getByRole("link", { name: /Read position/ })
+      .first()
+      .click();
     await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
     await expect(marker).toHaveCount(0);
     releaseDetail();
@@ -230,7 +218,7 @@ test.describe("opens at new messages after a cached reopen", () => {
     await transcript
       .getByText("Transcript message 52 ")
       .scrollIntoViewIfNeeded();
-    await page.getByRole("link", { name: /^Back to / }).click();
+    await page.getByRole("link", { name: "Back to conversations" }).click();
     await expect
       .poll(() => mock.reported.slice(reportCount).at(-1) ?? 0)
       .toBeGreaterThanOrEqual(52);
@@ -242,7 +230,10 @@ test.describe("opens at new messages after a cached reopen", () => {
     mock.detailGate = new Promise((resolve) => {
       releaseDetail = resolve;
     });
-    await openRow(page.getByRole("link", { name: /Read position/ }).first());
+    await page
+      .getByRole("link", { name: /Read position/ })
+      .first()
+      .click();
     await expect(
       transcript.getByText("Transcript message 119 "),
     ).toBeInViewport();
@@ -296,7 +287,7 @@ test.describe("opens from a hover prefetch", () => {
     // The open uses the prefetch as its first fetch. It opens at the marker
     // with no read of the page around the read position. It only checks for
     // newer events.
-    await openRow(row);
+    await row.click();
     const transcript = page.getByLabel("Conversation transcript");
     const marker = transcript.getByRole("separator", { name: "New messages" });
     await expect(marker).toBeInViewport();
@@ -336,15 +327,17 @@ test("opens at new messages after earlier pages were cached", async ({
 
   // The earlier page stays cached. It is not the latest page, so the
   // transcript still needs the newer pages after the read position.
-  await page.getByRole("link", { name: /^Back to / }).click();
-  await openConversations(page);
+  await page.getByRole("link", { name: "Back to conversations" }).click();
   mock.eventCount = 200;
   mock.newerGateAfter = 80;
   let releaseNewer = () => {};
   mock.newerGate = new Promise((resolve) => {
     releaseNewer = resolve;
   });
-  await openRow(page.getByRole("link", { name: /Read position/ }).first());
+  await page
+    .getByRole("link", { name: /Read position/ })
+    .first()
+    .click();
   const marker = transcript.getByRole("separator", { name: "New messages" });
   await expect(marker).toBeInViewport();
   await expect(

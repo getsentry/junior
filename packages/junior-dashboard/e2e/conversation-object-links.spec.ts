@@ -275,13 +275,12 @@ test("a Sentry issue link resolves to a titled link and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare issue URL in a sentence is a plain link with the issue title and
-  // short id. Its state shows in the hover card.
-  const issue = page.getByRole("link", {
-    exact: true,
+  // A bare issue URL in a sentence is a link titled with the issue and its
+  // short id. The state shows only in the hover card.
+  const link = page.getByRole("link", {
     name: "TypeError: cart.total is undefined (JUNIOR-3ZK)",
   });
-  await expect(issue).toHaveAttribute(
+  await expect(link).toHaveAttribute(
     "href",
     "https://acme.sentry.io/issues/JUNIOR-3ZK/",
   );
@@ -290,11 +289,12 @@ test("a Sentry issue link resolves to a titled link and a hover card", async ({
   ).toHaveCount(0);
 
   await waitForResolvedLinks(page);
-  await issue.hover();
+  await link.hover();
   const card = page.getByRole("region", {
     name: "Sentry issue: TypeError: cart.total is undefined",
   });
   for (const text of [
+    "unresolved",
     "app/checkout.ts in submitOrder",
     "Morgan Lee",
     "High",

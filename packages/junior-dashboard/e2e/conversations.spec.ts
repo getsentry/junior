@@ -15,19 +15,16 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
-  await expect(inbox.getByText("Loading", { exact: true })).toBeAttached();
+  await expect(page.getByText("Loading your conversations")).toBeAttached();
+  await expect(page.getByText("No conversations match this view.")).toHaveCount(
+    0,
+  );
   releaseFeed?.();
-  await expect(
-    inbox.getByRole("link", { name: /Checkout latency triage/ }).first(),
-  ).toBeVisible();
-  await screenshot(page, "conversations");
-
-  // "+" opens the composer, which takes focus.
-  await page.getByRole("button", { name: "New conversation" }).click();
   await expect(
     page.getByRole("heading", { name: "What do you need?", exact: true }),
   ).toBeVisible();
+  await screenshot(page, "conversations");
+
   const composer = page.getByLabel("Start a conversation");
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
@@ -42,13 +39,15 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
-  const conversationList = page.getByRole("navigation", { name: "Primary" });
-  const hideList = page.getByRole("button", { name: "Hide sidebar" });
+  const conversationList = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const hideList = page.getByRole("button", { name: "Hide conversation list" });
   await expect(conversationList).toBeVisible();
   await expect(hideList).toHaveAttribute("aria-expanded", "true");
   await hideList.click();
   await expect(conversationList).toBeHidden();
-  const showList = page.getByRole("button", { name: "Show sidebar" });
+  const showList = page.getByRole("button", { name: "Show conversation list" });
   await expect(showList).toHaveAttribute("aria-expanded", "false");
   await expect(showList).toBeFocused();
 
@@ -64,7 +63,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(conversationList).toBeVisible();
 
   const resizeList = page.getByRole("separator", {
-    name: "Resize sidebar",
+    name: "Resize conversation list",
   });
   const listSize = async () =>
     Number(await resizeList.getAttribute("aria-valuenow"));
@@ -280,10 +279,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page
-      .getByRole("region", { exact: true, name: "Inbox" })
-      .getByRole("link", { name: /Checkout latency triage/ })
-      .first(),
+    page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -305,6 +301,39 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   expect(await extraFeedFetch).toBe(false);
   expect(requests).toBe(1);
+});
+
+test("loads more conversations as the list scrolls and retries a failed page", async ({
+  page,
+  dashboard,
+}) => {
+  let failNextPage = true;
+  await page.route("**/api/conversations?*cursor=*", async (route) => {
+    if (failNextPage) {
+      failNextPage = false;
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(dashboard.baseURL);
+  const list = page.getByRole("navigation", { name: "Your conversations" });
+  const firstRow = list
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .first();
+  const lastRow = list.getByRole("link", { name: /SDK changelog summary 64/ });
+  await expect(firstRow).toBeVisible();
+  await expect(lastRow).toHaveCount(0);
+
+  // A failed page keeps the loaded rows and waits for Retry.
+  await list.getByRole("link").last().scrollIntoViewIfNeeded();
+  await expect(page.getByText("Could not load more.")).toBeVisible();
+  await expect(firstRow).toBeAttached();
+
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(lastRow.first()).toBeAttached();
+  await expect(page.getByText("Could not load more.")).toHaveCount(0);
 });
 
 test("keeps cached conversation and draft available through reconnect", async ({
@@ -345,10 +374,10 @@ test("shows the repo name on linked work tags on mobile", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await page.goto(dashboard.baseURL);
 
   const conversation = page.getByRole("listitem").filter({
-    has: page.getByRole("link", { name: /Checkout latency triage/ }),
+    has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
   // Mobile shows the first linked work tag.
@@ -478,6 +507,11 @@ test("scrolls long conversation and transcript panes independently", async ({
     page.getByRole("heading", { name: "Long transcript" }),
   ).toBeVisible();
 
+  const conversationList = page
+    .locator('[data-slot="scroll-area-viewport"]')
+    .filter({
+      has: page.getByRole("navigation", { name: "Your conversations" }),
+    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
@@ -486,39 +520,37 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.viewportHeight);
   await expect
     .poll(() =>
+      conversationList.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
       transcript.evaluate(
         (element) => element.scrollHeight > element.clientHeight,
       ),
     )
     .toBe(true);
+
+  await conversationList.evaluate((element) => {
+    element.scrollTop = 240;
+  });
+  expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
+    240,
+  );
   expect(
     await transcript.evaluate(
       (element) =>
         element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
     ),
   ).toBe(true);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
   await transcript.evaluate((element) => {
     element.scrollTop = 320;
   });
   expect(await transcript.evaluate((element) => element.scrollTop)).toBe(320);
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
-
-  // The list scrolls in its own pane too.
-  await page.getByRole("link", { name: /^Back to/ }).click();
-  const conversationList = page
-    .getByRole("region", { exact: true, name: "Inbox" })
-    .locator(".overflow-y-auto")
-    .first();
-  await expect
-    .poll(() =>
-      conversationList.evaluate(
-        (element) => element.scrollHeight > element.clientHeight,
-      ),
-    )
-    .toBe(true);
-  await conversationList.evaluate((element) => {
-    element.scrollTop = 240;
-  });
   expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
     240,
   );
@@ -529,12 +561,25 @@ test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 1150 });
   await page.goto(dashboard.baseURL);
 
-  const primary = page.getByRole("navigation", { name: "Primary" });
-  const trigger = page.getByRole("button", {
-    name: /^Open profile menu for Dashboard User\./,
+  const topBarTrigger = page.getByRole("button", {
+    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(topBarTrigger).toBeVisible();
+  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const rail = page.locator('[data-slot="sidebar"]').filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
+  });
+  const trigger = rail.getByRole("button", {
+    name: "Open profile menu for Dashboard User",
+    exact: true,
   });
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -558,7 +603,9 @@ test("shows personal spend and groups profile and session actions", async ({
     popover.getByRole("menuitem", { name: "System", exact: true }),
   ).toHaveAttribute("href", "/system");
   await expect(
-    primary.getByRole("link", { name: /^(Code|System)$/ }),
+    rail
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^(Code|System)$/ }),
   ).toHaveCount(0);
   await expect(
     popover.getByRole("menuitem", { name: "Log out" }),
@@ -574,15 +621,11 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
-  // Sign-out reloads the page. Wait for the reload, so the test does not end
-  // while the document request is in flight.
-  const reloaded = page.waitForEvent("load");
   await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
   );
-  await reloaded;
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {
@@ -843,7 +886,10 @@ test("rates a Junior Reply once, with time to change it", async ({
   await open();
   await good.hover();
   await good.click();
-  await page.getByRole("link", { name: /^Back to/ }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
   await expect.poll(() => feedback.length).toBe(2);
   await open();
 
