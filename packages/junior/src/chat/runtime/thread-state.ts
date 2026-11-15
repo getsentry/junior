@@ -106,23 +106,23 @@ export async function getPersistedThreadState(
   );
 }
 
-/** Persist a thread-state patch by Conversation id without constructing a Chat thread. */
+/** Persist a thread-state patch by thread id without constructing a Chat thread. */
 export async function persistThreadStateById(
-  conversationId: string,
+  threadId: string,
   patch: ThreadStatePatch,
 ): Promise<void> {
-  // The visible transcript is durable in SQL, keyed by the conversation id;
-  // keep it in sync at this id-based persist boundary so scratch and
-  // transcript never diverge.
+  // The visible transcript is durable in SQL, keyed by the conversation id
+  // (which is the thread id here); keep it in sync at this id-based persist
+  // boundary so scratch and transcript never diverge.
   if (patch.conversation) {
     await persistConversationMessages({
       conversation: patch.conversation,
-      conversationId,
+      conversationId: threadId,
     });
   }
 
   await mergePersistedState(
-    threadStateKey(conversationId),
+    threadStateKey(threadId),
     buildThreadStatePayload(patch),
   );
 }

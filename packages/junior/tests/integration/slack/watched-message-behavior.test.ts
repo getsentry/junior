@@ -14,6 +14,7 @@ import {
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { createWatch, listWatches } from "@/chat/events/store";
+import { getConversationEventStore } from "@/chat/db";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
@@ -54,10 +55,10 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
-/** Ingress gives a thread that no other Conversation owns its Slack thread id. */
-function opts(thread: TestThread) {
+/** Turn options; an unowned Slack thread's Conversation id is its thread id. */
+function opts(thread: TestThread, conversationId = thread.id) {
   return {
-    conversationId: thread.id,
+    conversationId,
     destination: createTestDestination(thread),
   };
 }
@@ -85,7 +86,7 @@ describe("Slack behavior: subscribed messages", () => {
         subscribedReplyPolicy: {
           completeDecision: async (params: { state: string }) => {
             classifierCalls.push(params.state);
-            return routeDecision("stay_quiet");
+            return { ...routeDecision("stay_quiet"), costUsd: 0.002 };
           },
         },
         agentRunner: neverRunAgentRunner(),
@@ -94,7 +95,9 @@ describe("Slack behavior: subscribed messages", () => {
 
     const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700002000.000",
+      runId: "run-subscribed-skip",
     });
+    const turn = opts(thread, "agent-dispatch:skip-thread-owner");
     const message = createTestMessage({
       id: "m-subscribed-skip",
       text: "sounds good thanks everyone",
@@ -103,10 +106,16 @@ describe("Slack behavior: subscribed messages", () => {
       author: { userId: "U0TESTER" },
     });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, opts(thread));
+    await slackRuntime.handleSubscribedMessage(thread, message, turn);
 
     expect(classifierCalls).toHaveLength(1);
     expect(thread.posts).toHaveLength(0);
+    const events = await getConversationEventStore().loadHistory(
+      turn.conversationId,
+    );
+    expect(events.map((event) => event.data)).toContainEqual(
+      expect.objectContaining({ name: "passive_reply_routed" }),
+    );
   });
 
   it("rethrows retryable classifier provider errors for durable retry", async () => {
@@ -316,10 +325,9 @@ describe("Slack behavior: subscribed messages", () => {
     const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700002002.500",
     });
-    // An Automation run owns this thread, so its Conversation id is not the
-    // Slack thread id.
+    // An Automation run owns this thread; its Conversation id differs.
     const conversationId = "agent-dispatch:stop-thread-owner";
-    const turn = { ...opts(thread), conversationId };
+    const turn = opts(thread, conversationId);
 
     await slackRuntime.handleNewMention(
       thread,

@@ -310,7 +310,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const destinationVisibility =
       conversationVisibilityFromSlackChannelType(slackChannelType);
     const assistantThreadContext = getAssistantThreadContext(message);
-    const threadTs = getThreadTs(message) ?? assistantThreadContext?.threadTs;
+    const threadTs = getThreadTs(message);
     const messageTs = getMessageTs(message);
     const teamId = destination.teamId;
     const source =
