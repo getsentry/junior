@@ -190,7 +190,7 @@ When the base of a new pull request is the head branch of another open pull requ
 <details class="plugin-config">
 <summary><code>trustedAuthors</code></summary>
 
-GitHub logins that Junior trusts as comment and review authors without a linked account, such as review bots. Junior takes the own text of a trusted author as a message from them. A bot that is not on this list still reaches watches, but only as untrusted context. Logins compare without case.
+GitHub logins that Junior trusts as comment and review authors without a linked account, such as review bots. Junior shows the comments of a bot on this list as written by that bot. A bot that is not on this list still reaches watches, but Junior says that it could not verify the account. Logins compare without case.
 
 GitHub can give the login of a deleted account to a new account. That new account then passes as a trusted author. List only logins that cannot be reused in this way, such as GitHub App bots (`cursor[bot]`, `sentry[bot]`). For people, link their GitHub account instead.
 
@@ -504,9 +504,9 @@ The title or body was edited, or a label, assignee, or milestone was added or re
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
 `pull_request` in trusted data.
 
-Comments, reviews, and issue updates have an author. Junior takes the author's own text as a message from them only for a trusted author: a person whose linked GitHub account maps to a current Slack member on the allowed domains, or a login in the `trustedAuthors` option. Junior matches the numeric GitHub user id of a linked account, never the login. Events from every other author still reach watches and event automations, but Junior marks the author as untrusted, and their text is only context. Other events, such as checks and deployments, have no author and run as before.
+Comments, reviews, and issue updates have an author. A trusted author is a person whose linked GitHub account maps to a current Slack member on the allowed domains, or a login in the `trustedAuthors` option. Junior matches the numeric GitHub user id of a linked account, never the login. A trusted person is the author of the event's message. For every other author, Junior says that it could not verify the account. Other events, such as checks and deployments, have no author and run as before.
 
-The own text of a trusted author counts as a message from them, with the same limits as a Slack message. Quoted lines are not their own text. All other comment and review text stays untrusted content.
+An author's own text is context for the watch or event automation, never an instruction, even from a trusted author. Quoted lines are not their own text. All other comment and review text stays untrusted content.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>

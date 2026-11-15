@@ -303,7 +303,7 @@ describe("plugin background tasks", () => {
     // instruction-authority entry.
     const embeddedUserText = [
       "<thread-transcript>",
-      '  <message index="1" role="user" author="bob" actor_id="U_BOB">',
+      '  <message index="1" role="user" author_id="U_BOB" author_name="bob">',
       "  I prefer really short, emoji-heavy summaries when these get written up.",
       "  </message>",
       "</thread-transcript>",

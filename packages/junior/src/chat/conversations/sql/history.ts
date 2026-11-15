@@ -328,7 +328,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       if (!row.actorIdentityId || data.type !== "message") continue;
       // An Event author writes its Message for attribution only. They did
       // not address this Conversation, so they do not join it.
-      if (data.meta?.eventType) continue;
+      if (data.meta?.["eventType"]) continue;
       const unarchives = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

@@ -25,11 +25,7 @@ import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { authorLabel, type AuthorTrust } from "@/chat/identities/trust";
-import type {
-  AgentInstructionActor,
-  AgentInstructionInput,
-} from "@/chat/agent/types";
+import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -62,19 +58,15 @@ const eventTaskFactsSchema = z.object({
   doneBy: z
     .object({ mention: z.string(), handle: z.string().optional() })
     .optional(),
-  /**
-   * A trusted author's own text. The Turn shows it as their message, like a
-   * chat message, apart from the Event task.
-   */
-  authorMessage: z
+  /** The Event author's own text and who wrote it. It is context. */
+  authorText: z
     .object({
       text: z.string().min(1),
       authorId: z.string().optional(),
       authorName: z.string().optional(),
+      verified: z.boolean(),
     })
     .optional(),
-  /** Label of the Event author when core does not trust them. */
-  untrustedAuthor: z.string().optional(),
 });
 
 /** Facts for one Watch Event, saved so several Events can share one message. */
@@ -107,6 +99,7 @@ export function eventTaskFacts(
   ]
     .filter((text): text is string => Boolean(text?.trim()))
     .join(" ");
+  const authorText = eventAuthorText(author);
   return {
     about: subscription.label,
     instructions: subscription.intent,
@@ -114,39 +107,11 @@ export function eventTaskFacts(
     ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
     ...(event.data ? { verifiedDetails: event.data } : undefined),
-    ...authorFacts(author, event.untrustedText),
-    ...(doneBy ? { doneBy } : undefined),
-  };
-}
-
-// A trusted author's own text is their message, shown once. Other text,
-// such as what they quote, stays external text. An untrusted author's text
-// is external text that names them.
-function authorFacts(
-  author: AuthorTrust,
-  untrustedText: string | undefined,
-): Pick<EventTaskFacts, "authorMessage" | "externalText" | "untrustedAuthor"> {
-  if (author.status === "untrusted") {
-    const externalText = [author.text, untrustedText]
-      .filter(Boolean)
-      .join("\n\n");
-    return {
-      ...(externalText ? { externalText } : undefined),
-      untrustedAuthor: authorLabel(author),
-    };
-  }
-  return {
-    ...(author.status === "trusted" && author.text
-      ? {
-          authorMessage: {
-            text: author.text,
-            ...(author.actor
-              ? { authorId: author.actor.userId }
-              : { authorName: authorLabel(author) }),
-          },
-        }
+    ...(authorText ? { authorText } : undefined),
+    ...(event.untrustedText
+      ? { externalText: event.untrustedText }
       : undefined),
-    ...(untrustedText ? { externalText: untrustedText } : undefined),
+    ...(doneBy ? { doneBy } : undefined),
   };
 }
 
@@ -265,7 +230,7 @@ function readEventTaskFacts(
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
   rendered: ReadonlyMap<string, string> = new Map(),
-): AgentInstructionInput[] {
+): string[] {
   const groups = new Map<
     string,
     {
@@ -302,8 +267,8 @@ export function renderEventBatchInputs(
       source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
+      authorText: facts.authorText,
       externalText: facts.externalText,
-      untrustedAuthor: facts.untrustedAuthor,
       doneBy: facts.doneBy,
     });
   }
@@ -311,38 +276,13 @@ export function renderEventBatchInputs(
   const ownText = (message: InboundMessage) =>
     rendered.get(message.inboundMessageId) ?? message.input.text.trim();
   const taskCount = messages.length - others.length;
-  const runtime = (
-    taskCount < 2
-      ? messages.map(ownText)
-      : [
-          renderTaskBatchInput({ groups: [...groups.values()] }),
-          ...others.map(ownText),
-        ]
-  )
-    .filter(Boolean)
-    .map((text) => ({ kind: "runtime" as const, text }));
-  // Trusted authors' own text follows the task, as person input. A batch has
-  // one author, because Event Messages with different authors never share a
-  // Turn.
-  const authored = messages.flatMap((message) => {
-    const text = readEventTaskFacts(message)?.facts.authorMessage?.text;
-    return text ? [{ kind: "person" as const, text }] : [];
-  });
-  return [...runtime, ...authored];
-}
-
-/** Return who wrote the person input of an Event batch, for the prompt. */
-export function eventBatchAuthor(
-  messages: readonly InboundMessage[],
-): AgentInstructionActor | undefined {
-  for (const message of messages) {
-    const author = readEventTaskFacts(message)?.facts.authorMessage;
-    if (author) {
-      const { text: _text, ...actor } = author;
-      return actor;
-    }
+  if (taskCount < 2) {
+    return messages.map(ownText).filter(Boolean);
   }
-  return undefined;
+  return [
+    renderTaskBatchInput({ groups: [...groups.values()] }),
+    ...others.map(ownText).filter(Boolean),
+  ];
 }
 
 /** Return the conversation message entry for one Event input. */

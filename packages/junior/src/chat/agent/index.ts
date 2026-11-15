@@ -151,7 +151,6 @@ import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
-  eventTurnUserIntent,
   loadPromptTurnContext,
 } from "@/chat/agent/prompt";
 import {
@@ -570,11 +569,7 @@ async function executeAgentRunInPrivacyContext(
         if (!isRequesterInstruction(currentTurnProvenance[index])) {
           return [];
         }
-        // A resumed Event Turn keeps the trusted author's tag, as a fresh
-        // one does in `eventTurnUserIntent`.
-        const text = getUserMessageInstructionText(message, {
-          keepInstructionTag: runSource.kind === "event",
-        });
+        const text = getUserMessageInstructionText(message);
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
@@ -584,9 +579,7 @@ async function executeAgentRunInPrivacyContext(
       // An input that is not an instruction, such as a nested result, is
       // evidence only.
       const text = isRequesterInstruction(turnStartProvenance)
-        ? runSource.kind === "event"
-          ? eventTurnUserIntent(run.instruction)
-          : userInput.trim()
+        ? userInput.trim()
         : "";
       guardianIntentParts.push(
         readParentAgentTask(text) ?? (text || "[empty]"),

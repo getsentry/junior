@@ -638,8 +638,7 @@ export const eventAuthorSchema = z
     trusted: z.boolean().optional(),
     /**
      * The author's own text, without what they quote. Leave it out of
-     * `untrustedText`: core shows it once, as a message from the author when
-     * it trusts them, else as text from an Untrusted author.
+     * `untrustedText`: core shows it once, as context that names the author.
      */
     text: z
       .string()
@@ -681,7 +680,8 @@ export const eventInputSchema = z
     people: z.array(eventPersonSchema).max(20).optional(),
     /**
      * The account that wrote the content. Core decides whether to trust it.
-     * Only a trusted author's `text` counts as their message.
+     * A trusted person writes the Event's Message. `text` is never an
+     * instruction.
      */
     author: eventAuthorSchema.optional(),
   })

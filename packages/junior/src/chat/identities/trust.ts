@@ -1,5 +1,5 @@
 /**
- * Trust: whether Junior accepts an author's words as their instruction.
+ * Trust: whether Junior accepts an author as the person they say they are.
  *
  * This module is the one owner of that decision, for every ingress. Slack
  * ingress, Identity dispatch, and Event ingest report what they know about an
@@ -10,10 +10,13 @@
  *
  * An Event author resolves like a Slack author: a trusted person becomes
  * the author of the Event's Message, and nothing downstream decides again.
+ * An Event author's text is never an instruction. The Watch or Automation
+ * that the Event matched gives the job.
  */
 import type { StateAdapter } from "chat";
 import type { Event, SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
+import type { TagAuthor } from "@/chat/input-tags";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
@@ -24,7 +27,6 @@ import {
 } from "@/chat/identities/sql";
 import { logException, logWarn } from "@/chat/logging";
 import { parseSlackUserId } from "@/chat/slack/ids";
-import { slackMention } from "@/chat/slack/mrkdwn";
 import {
   lookupActiveSlackWorkspaceMember,
   lookupSlackUserProfile,
@@ -255,9 +257,9 @@ interface EventAuthorFacts {
 
 /**
  * Core's decision for the author of one Event. A `system` Event has no
- * author. A `trusted` author's own text is their message: a linked person
- * has the Slack Actor and Identity that write it, and a listed bot has
- * neither. An `untrusted` author's text is context.
+ * author. A `trusted` linked person has the Slack Actor and Identity that
+ * write the Event's Message, and a listed bot has neither. An `untrusted`
+ * author is shown by handle and marked as not verified.
  */
 export type AuthorTrust =
   | { status: "system" }
@@ -311,21 +313,36 @@ export async function resolveEventAuthor(event: Event): Promise<AuthorTrust> {
   }
 }
 
-// Handles come from a plugin. Keep a label to one line of ID characters, so
-// it cannot open a tag or start another labeled line.
+// Handles come from a plugin. Keep a name to one line of ID characters, so
+// it cannot open a tag or start another line.
 function safeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._:@/#+[\]-]/g, "_");
 }
 
+/** An Event author's own text and who wrote it, for the task input. */
+export interface EventAuthorText extends TagAuthor {
+  text: string;
+  /** False when core could not verify who the author is. */
+  verified: boolean;
+}
+
 /**
- * The one label for an Event author: a Slack mention for a linked person,
- * else the handle and provider.
+ * Return an Event author's own text and who wrote it. A linked person has
+ * the same author ID and name as on their Slack messages. Other authors
+ * show their handle on the provider.
  */
-export function authorLabel(
-  author: Exclude<AuthorTrust, { status: "system" }>,
-): string {
-  if (author.status === "trusted" && author.actor) {
-    return slackMention(author.actor.userId);
-  }
-  return `${safeId(author.handle)} on ${safeId(author.provider)}${author.bot ? " (a bot)" : ""}`;
+export function eventAuthorText(
+  author: AuthorTrust,
+): EventAuthorText | undefined {
+  if (author.status === "system" || !author.text) return undefined;
+  const actor = author.status === "trusted" ? author.actor : undefined;
+  const name = actor
+    ? (actor.fullName ?? actor.userName)
+    : `${safeId(author.handle)} on ${safeId(author.provider)}${author.bot ? " (a bot)" : ""}`;
+  return {
+    text: author.text,
+    ...(actor ? { authorId: actor.userId } : undefined),
+    ...(name ? { authorName: name } : undefined),
+    verified: author.status === "trusted",
+  };
 }

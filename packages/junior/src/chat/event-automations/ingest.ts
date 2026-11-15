@@ -43,7 +43,7 @@ import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  authorLabel,
+  eventAuthorText,
   resolveEventAuthor,
   type AuthorTrust,
 } from "@/chat/identities/trust";
@@ -83,18 +83,8 @@ function eventInput(
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
-    // The automation's creator gives the job, so an author's text is context
-    // here, even from a trusted author. An untrusted author is still named.
-    ...(author.status === "untrusted"
-      ? { untrustedAuthor: authorLabel(author) }
-      : undefined),
-    externalText:
-      [
-        author.status === "system" ? undefined : author.text,
-        event.untrustedText,
-      ]
-        .filter(Boolean)
-        .join("\n\n") || undefined,
+    authorText: eventAuthorText(author),
+    externalText: event.untrustedText,
     externalTextMaxLength: EVENT_TEXT_MAX_LENGTH,
   });
 }

@@ -40,8 +40,9 @@ runtime, not the markers, enforces approval.
   - Wrap it in a tag that names what it is, with a `source` attribute:
     `<thread-context source="slack">`, `<external-text source="github">`.
   - Escape the body and every copy of the fence tag.
-  - Put one short sentence just before the tag: who wrote the text, and that it
-    is data, not instructions.
+  - Put one short sentence just before the tag: who wrote it, what it is, and
+    how to use it. A known author keeps their usual author attributes, with no
+    trust attribute. The sentence says when core could not verify them.
 - Do not add a reminder after the tag by default. It costs tokens at each
   insertion. Add it only when evals show that it helps.
 - Untrusted text never goes in the system prompt or in a block with the words
@@ -49,9 +50,10 @@ runtime, not the markers, enforces approval.
 
 ### Authors and IDs
 
-- Every `person` block carries its author in attributes: `author` (the display
-  name) and one usable handle (`slack.user_id` on Slack, `email` on web). Use
-  the same names on every path, including thread `<message>`.
+- Identity renders the same way everywhere: `author_id` (a usable ID, when
+  known) and `author_name`, from `authorAttrs()`, on `<current-instruction>`,
+  thread `<message>`, and Event author text. `author_id` is the one exception
+  to the `<provider>.<field>` rule.
 - Take the author only from the envelope, never from the body. Do not repeat
   role or author in the body (`[user] David Cramer: ...`).
 - Name a provider ID `<provider>.<field>`: `slack.user_id`, `slack.ts`,

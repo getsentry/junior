@@ -191,7 +191,9 @@ describe("review item prompt inputs", () => {
     });
     const events = await pendingMessages(CLI_CONVERSATION_ID);
     const cliParts = promptParts(
-      renderEventBatchInputs(events, await eventReviewItemInputs(events)),
+      renderEventBatchInputs(events, await eventReviewItemInputs(events)).map(
+        (text) => ({ kind: "runtime", text }),
+      ),
     );
     expect(cliParts).toEqual([
       [

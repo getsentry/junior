@@ -190,9 +190,8 @@ This matches the current rules on `main`:
   for its own Watch, and all of them are the same User. Otherwise the Turn
   gets no user grant.
 
-The trust rule does not change this. A trusted author's text counts like a
-chat message from that author, but the Turn still runs as the system Actor
-with the Watch or Automation grant.
+The trust rule does not change this. The Turn runs as the system Actor with
+the Watch or Automation grant, and an author's text is context for that task.
 
 ### Trust
 
@@ -205,23 +204,27 @@ with the Watch or Automation grant.
     that is its `trustedAuthors` config. Logins compare without case.
 - Every other author is untrusted. An unknown sender is never trusted. A
   deactivated employee with a linked account is not trusted.
-- Text from a trusted author counts exactly like a chat message from that
-  author.
-- An event from an untrusted or unknown author runs, but only as context.
-  The task input says that the author is untrusted, and their text is never
-  an instruction. David changed this from the first decision,
-  "does not start a run", when the trust layer was built (#2217, #2260).
-- Only the author's own text counts. Lines that the author only quotes do
-  not.
+- An event author's text is never an instruction, even from a trusted
+  author. The Watch or Automation gives the job, and Guardian judges the
+  Turn against it. Trust decides who the author is. David set this in the
+  #3404 review; it replaces "text from a trusted author counts exactly like a
+  chat message".
+- An event from an untrusted or unknown author runs, as system context. The
+  task input says that Junior could not verify the account. David changed
+  this from the first decision, "does not start a run".
+- Identity renders the same way everywhere: the author's text carries the
+  same `author_id` and `author_name` as their messages
+  (`policies/prompt-markers.md`).
+- Only the author's own text carries the author. Lines that the author only
+  quotes stay provider text.
 - Core gets only a provider-neutral trusted result. Core does not read
   provider logins.
 - Junior resolves the author once at ingest, like a Slack author. A linked
-  trusted author writes the event's Message, and their own text is a person
-  input of the Turn. An untrusted author's entry is system context, batched
-  like any other system entry. A failed trust check gives an untrusted
-  author, not a dropped event.
-- Batch Message author: one author per Message. Entries with different
-  authors never share a Turn, so the batch has its one author.
+  trusted author writes the event's Message. A failed trust check gives an
+  untrusted author, not a dropped event.
+- Batching is by Identity: one author per Message, and Messages with
+  different authors never share a Turn. Event Messages are their own input
+  class, apart from Slack and web Messages.
 - A system event can carry untrusted external text, such as check output.
   The current handling covers it, and this plan adds no rule. The event's
   `untrustedText` becomes external text in the task input, which says to use

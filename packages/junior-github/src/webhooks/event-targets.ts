@@ -21,9 +21,9 @@ export const gitHubSenderSchema = z.object({
 /** What the plugin needs to describe the author of a webhook. */
 export interface GitHubAuthorOptions {
   /** Junior's committer email. It names Junior's own bot login. */
-  botEmail?: string;
+  botEmail?: string | undefined;
   /** Logins that the app config lists as trusted, such as review bots. */
-  trustedAuthors?: readonly string[];
+  trustedAuthors?: readonly string[] | undefined;
 }
 
 /**
@@ -49,7 +49,11 @@ export function gitHubEventAuthor(
   options: GitHubAuthorOptions,
 ): {
   author?: EventAuthor;
-  data: { mentionsBot?: boolean; senderId?: number; senderLogin?: string };
+  data: {
+    mentionsBot?: boolean;
+    senderId?: number | undefined;
+    senderLogin?: string | undefined;
+  };
   isSelf: boolean;
   untrustedText?: string;
 } {
@@ -100,8 +104,8 @@ export function nonBlank(value: string | null | undefined): string | undefined {
 
 /** The title and body of an issue or pull request, as untrusted text. */
 export function titleAndBodyText(item: {
-  body?: string | null;
-  title?: string;
+  body?: string | null | undefined;
+  title?: string | undefined;
 }): string | undefined {
   const parts = [
     item.title ? `Title: ${item.title}` : undefined,

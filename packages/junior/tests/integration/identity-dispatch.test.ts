@@ -82,7 +82,7 @@ describe("plugin Identity dispatch", () => {
   }
 
   beforeEach(async () => {
-    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
     await startApp();
   });
 
@@ -188,7 +188,7 @@ describe("plugin Identity dispatch", () => {
     }
 
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["U456"]);
     expect(queue.sentRecords()).toEqual([]);
   });

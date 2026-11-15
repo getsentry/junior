@@ -299,10 +299,10 @@ describe("subscribed reply decision", () => {
           text: "can you check on this?",
           conversationContext: [
             '<thread-context authority="evidence-only">',
-            '  <message role="user" author="David">',
+            '  <message role="user" author_name="David">',
             "[user] David: investigate the passive router",
             "  </message>",
-            '  <message role="assistant" author="junior">',
+            '  <message role="assistant" author_name="junior">',
             "[assistant] junior: the confidence gate looks too strict",
             "  </message>",
             "[tool] grep result: must-not-reach-router",

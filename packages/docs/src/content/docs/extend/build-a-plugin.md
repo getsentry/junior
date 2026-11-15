@@ -601,12 +601,12 @@ Your plugin reports facts, and Junior decides trust:
   shows each part once.
 
 Junior trusts the author with the same check as `dispatchForIdentity`, or when
-`trusted` is set. In a watch, a trusted author's `text` is a message from them
-in the Turn, like a Slack message, and a linked person is the author of the
-Event's message. An Event from any other author still reaches watches and
-event automations, but Junior marks the author as untrusted, so their text is
-only context. In event automations, an author's text is always context. Leave
-`author` out when no person wrote the Event, such as a check result.
+`trusted` is set. A trusted person is the author of the Event's message in a
+watch. The author's `text` is never an instruction: the watch or event
+automation gives the job, and the text is context for it, shown with the same
+author name and ID as that author's messages. For any other author, Junior
+says that it could not verify the account. Leave `author` out when no person
+wrote the Event, such as a check result.
 
 ## Validate
 

@@ -80,10 +80,10 @@ Canonical words for Junior code and docs. One concept, one word.
   ingest. `chat/identities/trust.ts` owns it and every other trust check
   (Slack ingress, Identity dispatch, allowed emails).
 - **Trusted author**: an Event author with `trusted` Author trust. Like a
-  Slack author, a linked person writes the Event's Message, and their own
-  text is a person input of the Turn. Any other author is an Untrusted
-  author: the Event still runs as system context, and the external text
-  names them as untrusted.
+  Slack author, a linked person writes the Event's Message. Any other author
+  is an Untrusted author: the Event runs as system context, and the task
+  input says the account is not verified. Either way, the author's own text
+  is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops

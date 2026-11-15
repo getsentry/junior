@@ -15,6 +15,7 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
+import { authorAttrs, openingTag } from "@/chat/input-tags";
 import { escapeXml } from "@/chat/xml";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
@@ -223,16 +224,18 @@ function renderThreadContextMessage(
   conversation: ThreadConversationState,
   index: number,
 ): string {
-  const author = escapeXml(conversationAuthorDisplayName(message));
-  const actorIdAttr = message.author?.userId
-    ? ` actor_id="${escapeXml(message.author.userId)}"`
-    : "";
-  const ts = new Date(message.createdAtMs).toISOString();
-  const slackTsAttr = message.meta?.slackTs
-    ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
-    : "";
+  const opening = openingTag("message", {
+    index,
+    ts: new Date(message.createdAtMs).toISOString(),
+    role: message.role,
+    ...authorAttrs({
+      authorId: message.author?.userId,
+      authorName: conversationAuthorDisplayName(message),
+    }),
+    slack_ts: message.meta?.slackTs,
+  });
   return [
-    `  <message index="${index}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
+    `  ${opening}`,
     renderConversationMessageLine(message, conversation),
     "  </message>",
   ].join("\n");

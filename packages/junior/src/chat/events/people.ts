@@ -136,9 +136,9 @@ export async function resolveHandleMentions(
  */
 export async function resolveEventMentions(
   event: {
-    author?: EventAuthor;
+    author?: EventAuthor | undefined;
     namespace: string;
-    people?: readonly EventPerson[];
+    people?: readonly EventPerson[] | undefined;
   },
   slackTeamId: string,
 ): Promise<EventMentions> {

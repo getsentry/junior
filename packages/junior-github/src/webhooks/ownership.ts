@@ -13,8 +13,8 @@ function parseGitHubBotIdentity(
   value: string | undefined,
 ): GitHubBotIdentity | undefined {
   const match = GITHUB_BOT_NOREPLY_EMAIL.exec(value?.trim() ?? "");
-  const login = match?.groups?.login;
-  const userId = match?.groups?.userId;
+  const login = match?.groups?.["login"];
+  const userId = match?.groups?.["userId"];
   if (!login || !userId) return undefined;
   return {
     login,
@@ -48,14 +48,19 @@ export function botUserIdFromEmail(
 // An HTML quote tag. Its content is a quote, like a Markdown quote.
 const HTML_QUOTE_OPEN = /<\s*blockquote\b/i;
 
+// `Token` includes a generic token, so `type` alone does not narrow it.
+function isList(token: Token): token is Tokens.List {
+  return token.type === "list";
+}
+
+function isTable(token: Token): token is Tokens.Table {
+  return token.type === "table";
+}
+
 function childTokens(token: Token): readonly Token[] {
-  // `Token` includes a generic token, so `type` does not narrow it.
-  if (token.type === "list") {
-    return (token as Tokens.List).items.flatMap((item) => item.tokens);
-  }
-  if (token.type === "table") {
-    const table = token as Tokens.Table;
-    return [table.header, ...table.rows].flat().flatMap((cell) => cell.tokens);
+  if (isList(token)) return token.items.flatMap((item) => item.tokens);
+  if (isTable(token)) {
+    return [token.header, ...token.rows].flat().flatMap((cell) => cell.tokens);
   }
   return "tokens" in token && token.tokens ? token.tokens : [];
 }
@@ -113,16 +118,15 @@ export function splitCommentText(
           return token.type === "codespan" ? " " : "\n";
         }
         if (!hasRemoved(token)) return token.raw;
-        if (token.type === "list") {
-          return (token as Tokens.List).items
+        if (isList(token)) {
+          return token.items
             .map((item) => tokenText(item.tokens, "\n").trim())
             .filter(Boolean)
             .map((item) => `- ${item}`)
             .join("\n");
         }
-        if (token.type === "table") {
-          const table = token as Tokens.Table;
-          return [table.header, ...table.rows]
+        if (isTable(token)) {
+          return [token.header, ...token.rows]
             .map((row) => row.map((cell) => tokenText(cell.tokens)).join(" | "))
             .join("\n");
         }
