@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFeedMediaAndLinks } from "@/api/conversations/feed-media-links";
+import { createJuniorApi } from "@/api";
+import { conversationFeedSchema } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import {
   collectAttachmentGarbage,
@@ -8,7 +9,7 @@ import {
   storeAttachment,
 } from "@/chat/attachments/store";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
-import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { urlAttachmentId } from "@/chat/conversations/message-links";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -84,16 +85,21 @@ describe("url Attachments", () => {
           providerIds: ["F1"],
         }),
       ).toEqual([]);
-      const feed = await readFeedMediaAndLinks(
-        getDb(),
-        [{ conversationId, shownUrls: new Set() }],
-        new Set(["links", "media"]),
+      const feed = conversationFeedSchema.parse(
+        await (
+          await createJuniorApi().request(
+            "http://localhost/api/conversations?include=links,media",
+          )
+        ).json(),
       );
-      expect(feed.media.get(conversationId)).toEqual([
-        { contentType: "image/png", filename: "chart.png", id: file.id },
-      ]);
-      expect(feed.links.get(conversationId)).toEqual([
-        "https://example.com/plan",
+      expect(feed.conversations).toMatchObject([
+        {
+          conversationId,
+          links: ["https://example.com/plan"],
+          media: [
+            { contentType: "image/png", filename: "chart.png", id: file.id },
+          ],
+        },
       ]);
 
       // Files expire after 30 days. A link has no bytes, so it stays with
