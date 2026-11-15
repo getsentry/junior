@@ -1,35 +1,29 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { CONVERSATION_FEED_LINK_LIMIT } from "@/api/schema/conversation-feed";
+import { parseDashboardConversationLink } from "@/chat/dashboard-link";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  juniorAttachments,
+  juniorConversations,
+  juniorMessageAttachments,
+} from "@/db/schema";
+import { safeLinkUrl } from "@/net/link-url";
 
-// Links come from each Conversation's newest messages only, so a page reads
-// a bounded number of rows through the (conversation, type, seq) index.
-const RECENT_MESSAGE_LIMIT = 50;
-// Slack wraps links as <url|label>, and Markdown as (url), so the match
-// stops at those delimiters. Trailing punctuation is trimmed after.
-const URL_PATTERN = String.raw`https?://[^\s<>|"'\x60]+`;
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}*_~]+$/;
-
-function cleanUrl(match: string): string | undefined {
-  const trimmed = match.replace(TRAILING_PUNCTUATION, "");
-  if (!URL.canParse(trimmed)) return undefined;
-  const url = new URL(trimmed);
-  return url.protocol === "http:" || url.protocol === "https:"
-    ? url.href
-    : undefined;
-}
-
-// A dashboard link back to the same Conversation names nothing new.
-function linksToConversation(href: string, conversationId: string): boolean {
-  const match = /^\/conversations\/([^/]+)\/?$/.exec(new URL(href).pathname);
-  if (!match) return false;
-  try {
-    return decodeURIComponent(match[1]!) === conversationId;
-  } catch {
-    return false;
-  }
-}
+// A row reads the newest uses of links in its Conversation, keeps each link
+// once, and looks up only the newest few. The row drops links it already
+// shows (its Annotations and a link back to itself) after, so it reads a
+// few more than it shows.
+const RECENT_USE_LIMIT = 20;
+const CANDIDATE_LINK_LIMIT = CONVERSATION_FEED_LINK_LIMIT + 3;
 
 /** The URLs that a row's Annotations already show, as links compare them. */
 export function annotationUrls(
@@ -37,94 +31,88 @@ export function annotationUrls(
 ): Set<string> {
   return new Set(
     (annotations ?? []).flatMap(({ url }) => {
-      const href = url ? cleanUrl(url) : undefined;
+      const href = safeLinkUrl(url);
       return href ? [href] : [];
     }),
   );
 }
 
-/**
- * Read up to three distinct web links from each Conversation's newest
- * messages, newest first, in one query. Pass only the Conversations whose
- * private content the viewer can see, each with the URLs its row already
- * shows, such as its Annotations. Only URLs leave the database.
- */
-export async function readFeedLinks(
-  db: JuniorDatabase,
-  conversations: ReadonlyArray<{
-    conversationId: string;
-    shownUrls: ReadonlySet<string>;
-  }>,
-): Promise<Map<string, string[]>> {
-  const links = new Map<string, string[]>();
-  if (conversations.length === 0) return links;
-  const text = sql`${juniorConversationEvents.payload}->>'text'`;
-  const recent = db
-    .select({
-      seq: juniorConversationEvents.seq,
-      urls: sql<
-        string[]
-      >`array(select match[1] from regexp_matches(${text}, ${URL_PATTERN}, 'g') as match)`.as(
-        "urls",
-      ),
-    })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(
-          juniorConversationEvents.conversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationEvents.type, "message"),
-        // Channel messages that did not mention Junior stay out, as in the
-        // transcript.
-        sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'explicitMention', 'true') <> 'false'`,
-      ),
-    )
-    .orderBy(desc(juniorConversationEvents.seq))
-    .limit(RECENT_MESSAGE_LIMIT)
-    .as("recent");
-  const rows = await db
-    .select({
-      conversationId: juniorConversations.conversationId,
-      urls: recent.urls,
-    })
-    .from(juniorConversations)
-    .innerJoinLateral(recent, sql`true`)
-    .where(
-      and(
-        inArray(
-          juniorConversations.conversationId,
-          conversations.map(({ conversationId }) => conversationId),
-        ),
-        sql`cardinality(${recent.urls}) > 0`,
-      ),
-    )
-    .orderBy(juniorConversations.conversationId, desc(recent.seq));
-  const shownById = new Map(
-    conversations.map(({ conversationId, shownUrls }) => [
-      conversationId,
-      shownUrls,
-    ]),
-  );
-  for (const { conversationId, urls } of rows) {
-    const list = links.get(conversationId) ?? [];
-    if (list.length >= CONVERSATION_FEED_LINK_LIMIT) continue;
-    const shown = shownById.get(conversationId);
-    for (const match of urls) {
-      const href = cleanUrl(match);
-      if (
-        !href ||
-        list.includes(href) ||
-        shown?.has(href) ||
-        linksToConversation(href, conversationId)
-      ) {
-        continue;
-      }
-      list.push(href);
-      if (list.length >= CONVERSATION_FEED_LINK_LIMIT) break;
+/** The links a feed row shows, from its `feedLinksSql` candidates. */
+export function pickFeedLinks(
+  conversationId: string,
+  urls: readonly string[],
+  shown: ReadonlySet<string>,
+): string[] {
+  const links: string[] = [];
+  for (const link of urls) {
+    const href = safeLinkUrl(link);
+    if (
+      !href ||
+      links.includes(href) ||
+      shown.has(href) ||
+      // A dashboard link back to the same Conversation names nothing new.
+      parseDashboardConversationLink(href) === conversationId
+    ) {
+      continue;
     }
-    if (list.length > 0) links.set(conversationId, list);
+    links.push(href);
+    if (links.length >= CONVERSATION_FEED_LINK_LIMIT) break;
   }
   return links;
+}
+
+/**
+ * A feed row column with the newest distinct links of its Conversation,
+ * newest message first and in text order within a message, or null. It is
+ * a scalar subquery on the row read, so links cost no round trip of their
+ * own. Links are private content: show them only where the viewer sees
+ * private content. Only URLs leave the database, never message text.
+ */
+export function feedLinksSql(db: JuniorDatabase): SQL<string[] | null> {
+  const m = juniorMessageAttachments;
+  const recentUses = db
+    .select({ attachmentId: m.attachmentId, position: m.position, seq: m.seq })
+    .from(m)
+    .where(eq(m.conversationId, juniorConversations.conversationId))
+    .orderBy(desc(m.seq), asc(m.position))
+    .limit(RECENT_USE_LIMIT)
+    .as("recent_uses");
+  // The newest use of each link.
+  const distinctUses = db
+    .selectDistinctOn([recentUses.attachmentId], {
+      attachmentId: recentUses.attachmentId,
+      position: recentUses.position,
+      seq: recentUses.seq,
+    })
+    .from(recentUses)
+    .orderBy(
+      recentUses.attachmentId,
+      desc(recentUses.seq),
+      asc(recentUses.position),
+    )
+    .as("distinct_uses");
+  const candidates = db
+    .select({
+      attachmentId: distinctUses.attachmentId,
+      position: distinctUses.position,
+      seq: distinctUses.seq,
+    })
+    .from(distinctUses)
+    .orderBy(desc(distinctUses.seq), asc(distinctUses.position))
+    .limit(CANDIDATE_LINK_LIMIT)
+    .as("candidate_uses");
+  const urls = db
+    .select({
+      urls: sql`array_agg(${juniorAttachments.url} order by ${candidates.seq} desc, ${candidates.position})`,
+    })
+    .from(candidates)
+    .innerJoin(
+      juniorAttachments,
+      and(
+        eq(juniorAttachments.id, candidates.attachmentId),
+        isNotNull(juniorAttachments.url),
+        isNull(juniorAttachments.deleteRequestedAt),
+      ),
+    );
+  return sql<string[] | null>`(${urls})`;
 }

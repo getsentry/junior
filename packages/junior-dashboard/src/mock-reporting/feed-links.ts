@@ -1,7 +1,7 @@
-import {
-  CONVERSATION_FEED_LINK_LIMIT,
-  type ConversationDetailReport,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+
+/** The API's `CONVERSATION_FEED_LINK_LIMIT`, which its barrel doesn't export. */
+const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 const URL_PATTERN = /https?:\/\/[^\s<>|"'`]+/g;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}*_~]+$/;

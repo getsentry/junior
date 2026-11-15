@@ -103,7 +103,7 @@
   "packages/junior/src/chat/codemode/tool.ts": 1,
   "packages/junior/src/chat/config.ts": 2,
   "packages/junior/src/chat/configuration/validation.ts": 1,
-  "packages/junior/src/chat/conversation-privacy.ts": 3,
+  "packages/junior/src/chat/conversation-privacy.ts": 2,
   "packages/junior/src/chat/conversations/event-access.ts": 2,
   "packages/junior/src/chat/conversations/history-payload.ts": 1,
   "packages/junior/src/chat/conversations/message-projection.ts": 1,

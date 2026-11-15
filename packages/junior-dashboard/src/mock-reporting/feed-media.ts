@@ -1,8 +1,12 @@
-import {
-  CONVERSATION_FEED_MEDIA_LIMIT,
-  type ConversationDetailReport,
-  type ConversationFeedMedia,
+import type {
+  ConversationDetailReport,
+  ConversationFeedItem,
 } from "@sentry/junior/api/schema";
+
+type ConversationFeedMedia = NonNullable<ConversationFeedItem["media"]>[number];
+
+/** The API's `CONVERSATION_FEED_MEDIA_LIMIT`, which its barrel doesn't export. */
+const CONVERSATION_FEED_MEDIA_LIMIT = 3;
 
 /**
  * Match the API feed: a Conversation's newest stored files. Files sent

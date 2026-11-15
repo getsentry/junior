@@ -49,6 +49,7 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
+import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemData } from "./types";
 
 declare global {
@@ -121,14 +122,18 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
+  // Only the new UI's rows show files and link cards, which cost the server
+  // a query, so only it asks for them.
+  const include = useInboxUi() && !search ? "links,media" : "";
   return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
-    queryKey: ["dashboard", "conversations", "viewer", { search }],
+    queryKey: ["dashboard", "conversations", "viewer", { include, search }],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
+      if (include) params.set("include", include);
       if (pageParam) params.set("cursor", pageParam);
       const query = params.toString();
       return fetchDashboardJson(

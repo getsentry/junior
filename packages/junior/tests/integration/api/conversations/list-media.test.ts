@@ -67,8 +67,17 @@ describe("conversation list API media", () => {
         storage,
       });
 
+      // The current dashboard does not ask, so it gets none and pays no
+      // query for them.
+      const plain = conversationFeedSchema.parse(
+        await (
+          await createJuniorApi().request("http://localhost/api/conversations")
+        ).json(),
+      );
+      expect(plain.conversations.some((item) => item.media)).toBe(false);
+
       const response = await createJuniorApi().request(
-        "http://localhost/api/conversations",
+        "http://localhost/api/conversations?include=media",
       );
       expect(response.status).toBe(200);
       const conversations = new Map(

@@ -75,6 +75,7 @@ import {
   conversationCatchUpSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
   type ConversationFeed,
+  type ConversationFeedItem,
   notificationScheduleSchema,
   notificationSettingsSchema,
   type NotificationSchedule,
@@ -143,6 +144,22 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+
+/** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
+function withMockFeedIncludes(
+  feed: ConversationFeed,
+  include: readonly ("links" | "media")[],
+): ConversationFeed {
+  const strip = (item: ConversationFeedItem): ConversationFeedItem => {
+    const { links, media, threads, ...row }: ConversationFeedItem = item;
+    const kept: ConversationFeedItem = row;
+    if (links && include.includes("links")) kept.links = links;
+    if (media && include.includes("media")) kept.media = media;
+    if (threads) kept.threads = threads.map(strip);
+    return kept;
+  };
+  return { ...feed, conversations: feed.conversations.map(strip) };
+}
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -343,7 +360,10 @@ export function createMockReportingApi(): Hono<{
       return page
         ? jsonResponse(
             conversationFeedSchema,
-            withMockImageOrigin(page, new URL(c.req.url).origin),
+            withMockImageOrigin(
+              withMockFeedIncludes(page, query.data.include),
+              new URL(c.req.url).origin,
+            ),
           )
         : errorResponse("Invalid conversation feed cursor.", 400);
     };

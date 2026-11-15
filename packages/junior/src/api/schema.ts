@@ -85,7 +85,6 @@ export {
   conversationEventPageSchema,
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -117,14 +116,12 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
-  CONVERSATION_FEED_LINK_LIMIT,
-  CONVERSATION_FEED_MEDIA_LIMIT,
+  conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
-  ConversationFeedMedia,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,

@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
+import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
 
@@ -299,6 +300,7 @@ export async function purgeConversationTree(
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
+          await deleteMessageLinks(executor, ids);
           await executor
             .db()
             .delete(juniorAgentInvocations)

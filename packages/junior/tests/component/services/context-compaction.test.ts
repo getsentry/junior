@@ -104,6 +104,12 @@ describe("context compaction projection reset", () => {
     } as const;
     const history = [
       user("Please remember the deploy blocker.", 1),
+      {
+        role: "system",
+        content: "Track blockers.",
+        sections: { plan: "<plan>a</plan>", repo: "<repo>x</repo>" },
+        timestamp: 1,
+      } as PiMessage,
       assistant("The blocker is missing migration approval.", 2),
       // A Turn's context is its own message, paired with the instruction.
       user("<thread-context>Earlier thread.</thread-context>", 3),
@@ -117,6 +123,12 @@ describe("context compaction projection reset", () => {
         toolName: "oversized",
         content: [{ type: "text", text: "x".repeat(1_600_000) }],
         isError: false,
+        timestamp: 4,
+      } as PiMessage,
+      {
+        role: "system",
+        content: "",
+        sections: { plan: "<plan>b</plan>", repo: null },
         timestamp: 4,
       } as PiMessage,
       assistant("Tracking both.", 5),
@@ -133,7 +145,7 @@ describe("context compaction projection reset", () => {
       newMessageProvenance: { authority: "instruction", actor: alice },
     });
     const askProvenance = (await loadConversationProjection({ conversationId }))
-      .provenance[3];
+      .provenance[4];
 
     const result = await compactActiveContextIfNeeded(
       {
@@ -153,12 +165,19 @@ describe("context compaction projection reset", () => {
     );
 
     expect(result.compacted).toBe(true);
-    const texts = result.piMessages!.map(textOf);
+    const texts = result.piMessages!.slice(0, 3).map(textOf);
     expect(texts.slice(0, 2)).toEqual([
       "Please remember the deploy blocker.",
       "<current-instruction>Also track the rollback plan.</current-instruction>",
     ]);
     expect(texts[2]).toContain("Open: migration approval and rollback plan.");
+    // The latest system state follows the summary.
+    expect(result.piMessages![3]).toEqual({
+      role: "system",
+      content: "Track blockers.",
+      sections: { plan: "<plan>b</plan>" },
+      timestamp: 1,
+    });
     expect(result.piMessages!.at(-1)).toEqual(prompt);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.messages).toEqual(result.piMessages);

@@ -778,6 +778,27 @@
       "when": 1794695127545,
       "tag": "0110_code_change_repository_state_index",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1794763565188,
+      "tag": "0111_attachment_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1794763804002,
+      "tag": "0112_attachment_url_fill",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1794765736832,
+      "tag": "0113_attachment_url_index",
+      "breakpoints": true
     }
   ]
 }

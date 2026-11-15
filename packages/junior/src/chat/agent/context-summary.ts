@@ -19,6 +19,8 @@ import {
   type Message,
   type Model,
   type SimpleStreamOptions,
+  getInitialSystemMessage,
+  getSystemMessageText,
   mergeClientIdentity,
 } from "@earendil-works/pi-ai";
 import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
@@ -115,7 +117,11 @@ export async function buildAgentModelRequest(
   messages: PiMessage[],
   signal?: AbortSignal,
 ): Promise<AgentModelRequest> {
-  const { model, systemPrompt, thinkingLevel, tools } = agent.state;
+  const { model, thinkingLevel, tools } = agent.state;
+  // `agent.state.systemPrompt` folds later system messages into the prompt.
+  // They stay in place in the messages, as in the agent request.
+  const leading = getInitialSystemMessage(agent.state.messages);
+  const systemPrompt = leading ? getSystemMessageText(leading) : "";
   const transformed = agent.transformContext
     ? await agent.transformContext(messages, signal)
     : messages;
