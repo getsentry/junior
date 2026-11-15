@@ -164,7 +164,7 @@ describe("bot handlers (integration)", () => {
         text: "please keep working",
         isMention: true,
       }),
-      { destination },
+      { conversationId: thread.id, destination },
     );
 
     expect(queue.sentRecords()).toEqual([
@@ -212,7 +212,10 @@ describe("bot handlers (integration)", () => {
       text: "what happened?",
       isMention: true,
     });
-    await slackRuntime.handleNewMention(thread, followUp, { destination });
+    await slackRuntime.handleNewMention(thread, followUp, {
+      conversationId: thread.id,
+      destination,
+    });
 
     expect(queue.queuedMessages()).toEqual([]);
     await expect(

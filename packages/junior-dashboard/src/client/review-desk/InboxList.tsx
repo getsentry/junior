@@ -58,8 +58,8 @@ import {
   useReviewItemAction,
   useReviewItemData,
   useReviewItemsData,
-  scrollPages,
 } from "./queries";
+import { scrollPages } from "./inboxQueries";
 import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
@@ -867,21 +867,23 @@ export function InboxList(props: {
 }
 
 /**
- * Old Inbox links open the list: `?bundle=` picks the matching entry, and
- * `?item=` expands that item's row.
+ * Old Inbox links and the current UI's review desk links open the list:
+ * `?bundle=` picks the matching entry, and `?item=` expands that item's
+ * row, on Done when the item has closed.
  */
 export function InboxRedirect() {
   const [params] = useSearchParams();
   const bundle = params.get("bundle");
+  const itemId = params.get("item") ?? undefined;
+  // Only a link with no entry needs the item's status.
+  const item = useReviewItemData(bundle ? undefined : itemId);
   if (bundle === "automations") return <Navigate replace to="/automations" />;
+  if (!bundle && itemId && item.isPending) return null;
   const view =
     bundle === "prs" || bundle === "decisions" || bundle === "done"
       ? bundle
-      : "inbox";
-  return (
-    <Navigate
-      replace
-      to={inboxViewPath(view, { itemId: params.get("item") ?? undefined })}
-    />
-  );
+      : item.data && item.data.status !== "open"
+        ? "done"
+        : "inbox";
+  return <Navigate replace to={inboxViewPath(view, { itemId })} />;
 }

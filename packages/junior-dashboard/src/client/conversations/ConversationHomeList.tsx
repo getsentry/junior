@@ -72,6 +72,7 @@ export function ConversationHomeList(props: {
       onReorderError={handleReorderError}
       onReorderPins={props.onReorderPins}
       timeZone={props.timeZone}
+      waitingConversations={props.waitingConversations}
     >
       {({ releaseHold, sections }) =>
         props.loading && props.conversations.length === 0 ? (
@@ -108,7 +109,7 @@ export function ConversationHomeList(props: {
 }
 
 /** Match the grouped card list while its first feed request is pending. */
-function ConversationHomeListLoading(props: { label?: string }) {
+export function ConversationHomeListLoading(props: { label?: string }) {
   return (
     <div
       aria-busy={props.label ? "true" : undefined}

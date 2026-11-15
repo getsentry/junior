@@ -18,7 +18,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { getDashboardAgentName } from "../../agentName";
 import { HeaderIconButton } from "../../conversations/ConversationHeaderActions";
 import {
-  readSidebarWidth,
+  readPaneWidth,
   saveSidebarWidth,
   SIDEBAR_WIDTH,
   useSidebarFits,
@@ -27,16 +27,17 @@ import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
 import {
   FOCUS_REPLY_STATE,
-  NEW_CONVERSATION_PATH,
+  COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
-} from "../CommandPalette";
+} from "../../inbox/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
-import type { DashboardHeaderNavItem } from "./DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
 import {
   isInboxView,
   isOldAutomationsPath,
@@ -157,7 +158,7 @@ export function PaneNavProvider(props: {
   if (row && rowPaths[row] !== here && !isOldAutomationsPath(location))
     setRowPaths({ ...rowPaths, [row]: here });
   if (row && row !== lastRow) setLastRow(row);
-  const [width, setWidth] = useState(readSidebarWidth);
+  const [width, setWidth] = useState(readPaneWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
   const { onOpenChange } = props;
   const open = props.open && !zenActive;
@@ -234,12 +235,18 @@ export function PaneNavProvider(props: {
   const paneStyle: CSSProperties & Record<"--pane-width", string> = {
     "--pane-width": `${width}rem`,
   };
+  const paneLinks = useMemo(
+    () => ({ paneOpen: open, zen: zen.active }),
+    [open, zen.active],
+  );
   return (
     <PaneNavContext.Provider value={value}>
       <PaneWidthContext.Provider value={widthValue}>
-        <div className="flex min-h-svh w-full" style={paneStyle}>
-          {props.children}
-        </div>
+        <PaneLinksContext value={paneLinks}>
+          <div className="flex min-h-svh w-full" style={paneStyle}>
+            {props.children}
+          </div>
+        </PaneLinksContext>
       </PaneWidthContext.Provider>
     </PaneNavContext.Provider>
   );
@@ -402,7 +409,7 @@ function runNewAction(
 /** New where a page names nothing else, such as the Inbox and areas. */
 const NEW_CONVERSATION_ACTION: PaneNewAction = {
   label: "New conversation",
-  to: NEW_CONVERSATION_PATH,
+  to: COMPOSER_PATH,
 };
 
 /** A square "+" in the pane header. Its name says what the page creates. */

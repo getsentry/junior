@@ -15,7 +15,7 @@ function makeInput(
     text: "hello",
     hasAttachments: false,
     isExplicitMention: false,
-    context: {},
+    context: { conversationId: "slack:C123:1700000000.000" },
     ...overrides,
   };
 }

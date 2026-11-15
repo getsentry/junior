@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { useInboxUi } from "../uiShell";
 import {
   DropdownMenuItem,
   DropdownMenuLinkItem,
@@ -58,11 +59,14 @@ export function ConversationHeaderActions(props: {
   const groups = useConversationMenuItems(props.menu);
   const { zen } = props;
   const mobile = props.placement === "mobile";
+  // The new UI has no search button in the desktop header, so its menu
+  // holds search on every screen.
+  const inbox = useInboxUi();
   // Search, details, and the app menu need the page, so the sidebar row menu
   // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
     <>
-      {!props.menu.eventLogOpen ? (
+      {(mobile || inbox) && !props.menu.eventLogOpen ? (
         <DropdownMenuItem
           disabled={props.disabled}
           onClick={props.onSearchClick}

@@ -1,14 +1,21 @@
 import * as z from "zod";
 import {
   normalizeUserInputAnswer,
+  type ConversationReportEvent,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+/** Return the review desk route that selects one item. */
+export function reviewItemPath(id: string): string {
+  return `/review?item=${encodeURIComponent(id)}`;
+}
+
 /**
- * Return the Inbox route that expands one item's row: Done for a closed
- * item. The route names the entry, because phones show the entries at `/`.
+ * Return the new UI's Inbox route that expands one item's row: Done for a
+ * closed item. The route names the entry, because phones show the entries
+ * at `/`.
  */
-export function reviewItemPath(
+export function inboxItemPath(
   item: Pick<ReviewItemPayload, "id" | "status">,
 ): string {
   const view = item.status === "open" ? "inbox" : "done";
@@ -84,6 +91,22 @@ export function reviewItemIdFromToolCall(call: {
   return addedItemId(call.output);
 }
 
+/**
+ * Return a message for another item's excerpt, without the Review item
+ * changes that it records: those show on their own items. Returns undefined
+ * when nothing else remains.
+ */
+export function excerptMessage(
+  event: ConversationReportEvent,
+): ConversationReportEvent | undefined {
+  const { data } = event;
+  if (data.type !== "message" || !data.reviewItemChanges) return event;
+  // A message with changes lists its own Events. With none, it only
+  // records changes.
+  if (!data.events) return undefined;
+  return { ...event, data: { ...data, reviewItemChanges: undefined } };
+}
+
 /** True when an open item asks a question that the viewer can answer. */
 export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
   return (
@@ -125,6 +148,12 @@ export function answerLine(
     .map((row) => row.value)
     .join(" · ");
 }
+
+/** The open Review items of the inbox, in the groups and order it shows. */
+export type InboxGroups = {
+  fyi: ReviewItemPayload[];
+  needsYou: ReviewItemPayload[];
+};
 
 /**
  * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
@@ -220,5 +249,30 @@ export function inboxBundles(
       Number(b.needsYou) - Number(a.needsYou) ||
       Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
       a.conversationId.localeCompare(b.conversationId),
+  );
+}
+
+/**
+ * Split open items into inbox groups, oldest first, so the item that waited
+ * longest is at the top. Archived items are in no group.
+ */
+export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
+  const open = items.filter((item) => item.status === "open");
+  return {
+    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
+    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
+  };
+}
+
+/**
+ * The open item that follows `current` in inbox order. `current` can be an
+ * item that closed and left the open groups.
+ */
+export function nextInboxItem(
+  groups: InboxGroups,
+  current: ReviewItemPayload,
+): ReviewItemPayload | undefined {
+  return [...groups.needsYou, ...groups.fyi].find(
+    (item) => inboxOrder(current, item) < 0,
   );
 }

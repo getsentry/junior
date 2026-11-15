@@ -111,7 +111,10 @@ function ChangeRow(props: {
                 type="button"
               />
             ) : (
-              <Link className={QUOTE_TITLE_CLASS} to={reviewItemPath(item)} />
+              <Link
+                className={QUOTE_TITLE_CLASS}
+                to={reviewItemPath(item.id)}
+              />
             )
           }
         >
@@ -150,7 +153,7 @@ function ReviewItemTitle(props: { item: ReviewItemPayload }) {
       trigger={
         <Link
           className="break-words text-base font-semibold text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-          to={reviewItemPath(props.item)}
+          to={reviewItemPath(props.item.id)}
         />
       }
     >

@@ -1,15 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import {
+  Component,
+  type ComponentType,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter } from "react-router";
 // The DOM provider lets a navigation ask for `flushSync`.
 import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
-import { InboxSweepProvider } from "./client/review-desk/useInboxSweep";
 import { TooltipProvider } from "./client/components/ui/tooltip";
-import { DashboardShell } from "./client/App";
-import { EventLogShownProvider } from "./client/components/paletteEventLog";
+import { DocumentTitleProvider } from "./client/documentTitle";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
@@ -79,11 +82,6 @@ function DashboardErrorPanel(props: { error: Error }) {
 
 initDashboardSentry();
 
-const root = document.getElementById("dashboard-root");
-if (!root) {
-  throw new Error("Junior dashboard root element was not found");
-}
-
 // Keep the worker current for devices that already allow notifications.
 // Other devices register it on the Settings page.
 if (
@@ -129,30 +127,30 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createBrowserRouter(
-  [
-    {
-      path: "*",
-      element: (
-        <EventLogShownProvider>
-          <DashboardShell />
-        </EventLogShownProvider>
-      ),
-    },
-  ],
-  { basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/" },
-);
+/**
+ * Render the dashboard with one UI shell. Each shell has its own entry that
+ * calls this, so the page loads only the code of the viewer's shell.
+ */
+export function startDashboard(Shell: ComponentType): void {
+  const root = document.getElementById("dashboard-root");
+  if (!root) {
+    throw new Error("Junior dashboard root element was not found");
+  }
+  const router = createBrowserRouter([{ path: "*", element: <Shell /> }], {
+    basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/",
+  });
 
-createRoot(root).render(
-  <DashboardErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <Toaster>
-        <InboxSweepProvider>
+  createRoot(root).render(
+    <DashboardErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Toaster>
           <TooltipProvider>
-            <RouterProvider router={router} />
+            <DocumentTitleProvider>
+              <RouterProvider router={router} />
+            </DocumentTitleProvider>
           </TooltipProvider>
-        </InboxSweepProvider>
-      </Toaster>
-    </QueryClientProvider>
-  </DashboardErrorBoundary>,
-);
+        </Toaster>
+      </QueryClientProvider>
+    </DashboardErrorBoundary>,
+  );
+}

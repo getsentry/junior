@@ -97,7 +97,7 @@ import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
-import { useConversationDensity } from "./conversationDensity";
+import { ComfortableDensityContext } from "../uiShell";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -515,7 +515,7 @@ function TranscriptEntryList(
     },
 ) {
   const search = useTranscriptSearch();
-  const comfortable = useConversationDensity()[0] === "comfortable";
+  const comfortable = use(ComfortableDensityContext);
   const activityKeys = useRef(new Map<string, string>());
   const [openRows] = useState(() => new Map<string, boolean>());
   const replyRatings = useTranscriptReplyRatings();

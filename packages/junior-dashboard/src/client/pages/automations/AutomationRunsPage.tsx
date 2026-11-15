@@ -27,7 +27,10 @@ import {
   formatCostSummary,
   formatRuntime,
 } from "../../format";
-import { useSearchParamEnum } from "../../searchParams";
+import {
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import { cn } from "../../styles";
 import {
   AutomationRunDetails,
@@ -65,16 +68,30 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
   const query = useAutomationRunsData(props.enabled);
   const [kind, setKind] = useSearchParamEnum("type", "all", RUN_KINDS);
   const [status, setStatus] = useSearchParamEnum("status", "all", RUN_STATUSES);
+  const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
   const [, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
+  const search = searchQuery.toLowerCase();
   const runs = query.data?.runs ?? EMPTY_RUNS;
   const visibleRuns = useMemo(
     () =>
       runs.filter((run) => {
         if (kind !== "all" && run.kind !== kind) return false;
-        return status === "all" || run.status === status;
+        if (status !== "all" && run.status !== status) return false;
+        if (!search) return true;
+        const haystack = [
+          run.kind,
+          run.status,
+          run.automationTitle,
+          run.title,
+          run.conversationId,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(search);
       }),
-    [kind, runs, status],
+    [kind, runs, search, status],
   );
   const totalPages = pageCount(visibleRuns.length, RUN_PAGE_SIZE);
   const pagedRuns = useMemo(
@@ -84,7 +101,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
 
   useEffect(() => {
     setPage(1);
-  }, [kind, status]);
+  }, [kind, searchQuery, status]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -148,6 +165,12 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
                   onToggle: () => setFiltersOpen((open) => !open),
                   open: filtersOpen,
                 }}
+                search={{
+                  label: "Search runs",
+                  onChange: setSearchText,
+                  placeholder: "Automation, conversation, or status",
+                  value: searchText,
+                }}
               />
             }
             filters={
@@ -208,7 +231,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
             ) : visibleRuns.length === 0 ? (
               <Card padding="md">
                 <p className="m-0 text-sm text-dashboard-text-muted">
-                  {emptyRunsText({ kind, status })}
+                  {emptyRunsText({ kind, search, status })}
                 </p>
               </Card>
             ) : (
@@ -263,9 +286,10 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
 
 function emptyRunsText(input: {
   kind: RunKindFilter;
+  search: string;
   status: RunStatusFilter;
 }): string {
-  if (input.kind !== "all" || input.status !== "all") {
+  if (input.search || input.kind !== "all" || input.status !== "all") {
     return "No runs matched these filters.";
   }
   return "No visible automations have run yet.";

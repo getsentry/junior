@@ -7,6 +7,10 @@ import { cn } from "../../styles";
 // Space between the sticky chrome and the heading. It also clears the card
 // padding above a card heading, which is in rem, so this is in rem too.
 const SCROLL_GAP_REM = 2.5;
+const SCROLL_GAP = `${SCROLL_GAP_REM}rem`;
+
+// Input that means the reader moves the page themselves.
+const READER_INPUT = ["keydown", "pointerdown", "touchstart", "wheel"] as const;
 
 function scrollGapPx(): number {
   const rootFontSize = getComputedStyle(document.documentElement).fontSize;
@@ -133,9 +137,44 @@ export function AnchorHeading(props: {
     if (hash !== `#${props.anchor}`) return;
     const heading = document.getElementById(props.anchor);
     if (!heading) return;
-    // The sticky chrome covers the top of the page.
-    heading.style.scrollMarginTop = `${anchorScrollMargin()}px`;
-    heading.scrollIntoView();
+    // Where the heading sat after the last scroll, and the page height then.
+    let settled = { height: 0, top: 0 };
+    const scroll = () => {
+      // The sticky chrome covers the top of the page. Its height changes with
+      // the header, page links, and banner, so measure it.
+      const chrome = document.querySelector("[data-dashboard-chrome]");
+      const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
+      heading.style.scrollMarginTop = `calc(${chromeHeight}px + ${SCROLL_GAP})`;
+      heading.scrollIntoView();
+      settled = {
+        height: document.body.offsetHeight,
+        top: heading.getBoundingClientRect().top,
+      };
+    };
+    scroll();
+    // Sections above can still load and grow, which pushes the heading down.
+    // Keep it in view until the reader takes over.
+    const observer = new ResizeObserver(scroll);
+    observer.observe(document.body);
+    const stop = () => observer.disconnect();
+    // A scroll at the same page height moved the heading, so the reader
+    // scrolled, for example with the scrollbar. After growth, the observer
+    // scrolls back.
+    const onScroll = () => {
+      if (document.body.offsetHeight !== settled.height) return;
+      if (Math.abs(heading.getBoundingClientRect().top - settled.top) > 1) {
+        stop();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    for (const type of READER_INPUT) {
+      window.addEventListener(type, stop, { passive: true });
+    }
+    return () => {
+      stop();
+      window.removeEventListener("scroll", onScroll);
+      for (const type of READER_INPUT) window.removeEventListener(type, stop);
+    };
     // `key` changes when someone follows the same anchor again.
   }, [hash, key, props.anchor]);
 

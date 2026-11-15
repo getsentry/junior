@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { displayPlainText } from "../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
@@ -13,29 +12,16 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
+  TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
 import type { ConversationMenu } from "./conversationMenuItems";
 import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
-import {
-  BriefOutcomeChip,
-  briefOutcomeLabel,
-  type ConversationBriefReport,
-} from "./ConversationBrief";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import {
-  useTranscriptFindShortcut,
-  type TranscriptSearchMatch,
-} from "./transcriptSearch";
+import type { TranscriptSearchMatch } from "./transcriptSearch";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
-import { isPlatformShortcut, platformShortcut } from "../keyboard";
-import { useZenMode, ZEN_MODE_SHORTCUT } from "../components/layout/PaneNav";
-
-const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
-
-const NO_ANCHOR = { current: null };
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -44,8 +30,6 @@ const NO_ANCHOR = { current: null };
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
-  /** The current Brief. Its outcome and intent show under the title. */
-  brief?: ConversationBriefReport | undefined;
   contextTags?: ReactNode;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode | undefined;
@@ -77,36 +61,12 @@ export function ConversationHeader(props: {
   const detailsOpen = props.detailsOpen;
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchOpenVisible =
     props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
-  const zen = useZenMode();
-  const { onDetailsClick } = props;
-  // In Zen mode, showing details leaves it first.
-  const openDetails = () => {
-    if (zen.active) zen.toggle();
-    if (!detailsOpen) onDetailsClick();
-  };
-
-  // Option/Alt+Cmd/Ctrl+B shows or hides details, like VS Code's secondary
-  // side bar. In Zen mode it leaves Zen mode, back to details as they were.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!isPlatformShortcut(event, "b", { alt: true }) || event.repeat) {
-        return;
-      }
-      if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
-      event.preventDefault();
-      if (zen.active) zen.toggle();
-      else onDetailsClick();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onDetailsClick, zen]);
 
   useEffect(() => {
     if (
@@ -140,15 +100,6 @@ export function ConversationHeader(props: {
     setSearchOpen(true);
   };
 
-  // Search lives in the `⋯` menu; ⌘F / Ctrl+F still opens it. The Event log
-  // has its own search, so the shortcut stays with the browser there.
-  useTranscriptFindShortcut({
-    anchorRef: props.view === "raw" ? NO_ANCHOR : headerRef,
-    inputRef: searchInputRef,
-    onOpen: toggleSearch,
-    open: searchOpenVisible,
-  });
-
   const menuActions = (placement: "desktop" | "mobile") => (
     <ConversationHeaderActions
       // Desktop makes the whole control inert until the Conversation exists.
@@ -159,15 +110,6 @@ export function ConversationHeader(props: {
       onSearchClick={toggleSearch}
       placement={placement}
       searchOpen={searchOpenVisible}
-      zen={
-        placement === "desktop" && zen.available
-          ? {
-              active: zen.active,
-              onToggle: zen.toggle,
-              shortcut: ZEN_MODE_SHORTCUT,
-            }
-          : undefined
-      }
     />
   );
 
@@ -211,18 +153,7 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.errors.length > 0 ||
     Boolean(props.forks) ||
-    Boolean(props.agentTree) ||
-    Boolean(props.brief);
-
-  // One line from the Brief: where the work stands and what it is for. It
-  // opens the Brief, which leads Conversation details.
-  const brief =
-    props.brief && props.view === "rich"
-      ? {
-          brief: props.brief,
-          onOpen: openDetails,
-        }
-      : undefined;
+    Boolean(props.agentTree);
 
   return (
     <>
@@ -251,48 +182,35 @@ export function ConversationHeader(props: {
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
           covers it. Mobile: below the app header, which holds the menu. */}
       <header
-        ref={headerRef}
         className={cn(
           "relative z-10 border-b md:z-30 border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
-        {/* The title starts 24px in, the inset of the pane's icons. The last
-            button's icon ends 24px from the edge, like the details close.
-            The Brief line shares the header row, so the row keeps the
-            height of the pane and details headers. */}
-        <div className="hidden h-header min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
-          <div className="grid min-w-0 gap-0.5">
-            <div className="flex min-w-0 items-center gap-2">
-              {props.sidebarToggle ? (
-                <div className="shrink-0 empty:hidden">
-                  {props.sidebarToggle}
-                </div>
-              ) : null}
-              {props.agentTree ? (
-                <ConversationBreadcrumb
-                  current={title}
-                  nodes={props.agentTree}
-                />
-              ) : (
-                title
-              )}
-              {props.status}
-              {childAgentTags}
-              {props.privacy ? (
-                <span className="shrink-0">{props.privacy}</span>
-              ) : null}
-              {/* A child has no Location of its own. */}
-              {!props.agentTree && props.contextTags ? (
-                <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
-                  {props.contextTags}
-                </div>
-              ) : null}
-            </div>
-            {brief ? <BriefLine {...brief} /> : null}
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {props.sidebarToggle ? (
+              <div className="shrink-0">{props.sidebarToggle}</div>
+            ) : null}
+            {props.agentTree ? (
+              <ConversationBreadcrumb current={title} nodes={props.agentTree} />
+            ) : (
+              title
+            )}
+            {props.status}
+            {childAgentTags}
+            {props.privacy ? (
+              <span className="shrink-0">{props.privacy}</span>
+            ) : null}
+            {/* A child has no Location of its own. */}
+            {!props.agentTree && props.contextTags ? (
+              <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
+                {props.contextTags}
+              </div>
+            ) : null}
           </div>
           <div
-            className="flex shrink-0 items-center gap-1"
+            className="flex shrink-0 items-center gap-0.5"
             inert={props.pending}
           >
             {props.cost ? (
@@ -300,6 +218,13 @@ export function ConversationHeader(props: {
                 {props.cost}
               </span>
             ) : null}
+            {props.view === "raw" ? null : (
+              <TranscriptSearchToggle
+                inputRef={searchInputRef}
+                onClick={toggleSearch}
+                open={searchOpenVisible}
+              />
+            )}
             <ConversationOverflowMenu>
               {menuActions("desktop")}
             </ConversationOverflowMenu>
@@ -307,21 +232,14 @@ export function ConversationHeader(props: {
               <HeaderIconButton
                 ref={detailsButtonRef}
                 expanded={false}
-                keyShortcuts="Meta+Alt+B Control+Alt+B"
                 label="Conversation details"
-                onClick={openDetails}
-                shortcut={DETAILS_TOGGLE_SHORTCUT}
+                onClick={props.onDetailsClick}
               >
-                <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />
+                <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
               </HeaderIconButton>
             )}
           </div>
         </div>
-        {brief ? (
-          <div className="px-4 pb-2.5 pt-2 md:hidden">
-            <BriefLine {...brief} />
-          </div>
-        ) : null}
         {props.forks ? (
           <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
         ) : null}
@@ -354,26 +272,5 @@ export function ConversationHeader(props: {
         ))}
       </header>
     </>
-  );
-}
-
-function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
-  const status = props.brief.content.outcome.status;
-  const intent = displayPlainText(
-    props.brief.content.intent,
-    props.brief.mentions,
-  );
-  return (
-    <button
-      aria-label={`Brief: ${briefOutcomeLabel(status)}. ${intent} Open the Brief.`}
-      className="group flex w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-sans focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={props.onOpen}
-      type="button"
-    >
-      <BriefOutcomeChip className="shrink-0" status={status} />
-      <span className="min-w-0 truncate text-xs text-dashboard-text-muted group-hover:text-dashboard-text">
-        {intent}
-      </span>
-    </button>
   );
 }

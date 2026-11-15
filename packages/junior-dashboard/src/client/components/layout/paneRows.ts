@@ -4,7 +4,7 @@ import {
   parseInboxView,
   type InboxView,
 } from "../../review-desk/inboxModel";
-import type { DashboardHeaderNavItem } from "./DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,

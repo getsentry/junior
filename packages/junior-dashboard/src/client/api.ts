@@ -360,12 +360,13 @@ export function useActorOpenCodeChanges(email: string | undefined) {
     queryFn: ({ pageParam, signal }) =>
       fetchDashboardJson(
         codePersonReportSchema,
-        `/api/people/${encodeURIComponent(email!)}/code${pageParam ? `?offset=${pageParam}` : ""}`,
+        `/api/people/${encodeURIComponent(email!)}/code${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ""}`,
         signal,
       ),
-    initialPageParam: 0,
+    // An empty cursor reads the first page.
+    initialPageParam: "",
     getNextPageParam: (page: CodePersonReport) =>
-      page.changes.at(-1)?.state === "open" ? page.nextOffset : undefined,
+      page.changes.at(-1)?.state === "open" ? page.nextCursor : undefined,
     retry: false,
   });
 }

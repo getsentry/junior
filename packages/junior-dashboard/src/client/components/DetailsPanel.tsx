@@ -1,6 +1,8 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
+import { cn } from "../styles";
+import { useInboxUi } from "../uiShell";
 import { Button } from "./ui/button";
 import { BottomSheet } from "./BottomSheet";
 import { Drawer } from "./Drawer";
@@ -39,6 +41,7 @@ export function DetailsPanel(props: {
   overlay?: boolean | undefined;
 }) {
   const { onClose, overlay } = props;
+  const inbox = useInboxUi();
   const closeLabel = `Close ${props.label.toLowerCase()}`;
   const panel = useDetailsPanel();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -112,14 +115,24 @@ export function DetailsPanel(props: {
       data-escape-owner=""
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
     >
-      {/* Same height and centre line as the conversation header beside it:
-          the header row above a 1px border. The title starts on the body's
-          text edge, and the close icon ends 24px in, like the header's last
-          icon. */}
-      <header className="box-content flex h-header items-center justify-between gap-3 border-b border-dashboard-border pl-5 pr-4">
+      {/* In the new UI: the same height and centre line as the conversation
+          header beside it, the header row above a 1px border. The title
+          starts on the body's text edge, and the close icon ends 24px in,
+          like the header's last icon. */}
+      <header
+        className={cn(
+          "flex items-center justify-between gap-3 border-b border-dashboard-border pl-5",
+          inbox ? "box-content h-header pr-4" : "py-2 pr-3",
+        )}
+      >
         <div className="min-w-0 flex-1">{props.title}</div>
         {/* Keep actions beside close, so they do not move with the title width. */}
-        <div className="flex shrink-0 items-center gap-1">
+        <div
+          className={cn(
+            "flex shrink-0 items-center",
+            inbox ? "gap-1" : "gap-0.5",
+          )}
+        >
           {props.actions}
           <Button
             variant="ghost"
@@ -129,7 +142,11 @@ export function DetailsPanel(props: {
             onClick={onClose}
             size="icon"
           >
-            <X aria-hidden="true" size={16} strokeWidth={1.9} />
+            {inbox ? (
+              <X aria-hidden="true" size={16} strokeWidth={1.9} />
+            ) : (
+              <X aria-hidden="true" size={15} />
+            )}
           </Button>
         </div>
       </header>

@@ -7,22 +7,26 @@ import {
   usePersonalSpendData,
   usePluginUserPagesData,
   useSystemData,
-} from "./api";
-import { ConnectionBanner } from "./components/ConnectionBanner";
-import { LoadingView } from "./components/LoadingView";
-import { VersionDriftBanner } from "./components/VersionDriftBanner";
-import { PageContentSkeleton } from "./components/PageContentSkeleton";
+} from "../api";
+import { ConnectionBanner } from "../components/ConnectionBanner";
+import { LoadingView } from "../components/LoadingView";
+import { VersionDriftBanner } from "../components/VersionDriftBanner";
+import { PageContentSkeleton } from "../components/PageContentSkeleton";
 import { ProfileMenu, SpendSummary } from "./components/ProfileMenu";
 import {
-  DashboardChrome,
+  InboxDashboardChrome,
   DashboardChromeProvider,
-} from "./components/layout/DashboardChrome";
+} from "../components/layout/DashboardChrome";
 import { Maximize2 } from "lucide-react";
 import {
   CommandPalette,
   paletteGroupForPath,
 } from "./components/CommandPalette";
-import { useEventLogShown } from "./components/paletteEventLog";
+import {
+  EventLogShownProvider,
+  useEventLogShown,
+} from "../components/paletteEventLog";
+import { InboxSweepProvider } from "../review-desk/useInboxSweep";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import {
   ListPane,
@@ -30,43 +34,46 @@ import {
   PaneNavProvider,
   useZenMode,
   ZEN_MODE_SHORTCUT,
-} from "./components/layout/PaneNav";
-import { useDensityRoot } from "./conversations/conversationDensity";
-import { useArea } from "./areas";
-import { useSidebarFits } from "./conversations/conversationSidebarLayout";
+} from "../components/layout/PaneNav";
+import {
+  useConversationDensity,
+  useDensityRoot,
+} from "../conversations/conversationDensity";
+import { useArea } from "../areas";
+import { useSidebarFits } from "../conversations/conversationSidebarLayout";
 import {
   AREA_PAGE_PARAM,
   AreaSidebar,
   areaListsPages,
-} from "./components/layout/AreaSidebar";
-import { paneRowForPath } from "./components/layout/paneRows";
-import { useNewAutomationAction } from "./pages/automations/newAutomation";
-import { InboxDataProvider } from "./review-desk/inboxData";
-import { InboxNav } from "./review-desk/InboxNav";
-import { VisualViewportShell } from "./components/layout/VisualViewportShell";
+} from "../components/layout/AreaSidebar";
+import { paneRowForPath } from "../components/layout/paneRows";
+import { useNewAutomationAction } from "../pages/automations/newAutomation";
+import { InboxDataProvider } from "../review-desk/inboxData";
+import { InboxNav } from "../review-desk/InboxNav";
+import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
   automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
-} from "./format";
+} from "../format";
 import {
   isNewConversationPath,
-  NEW_CONVERSATION_PATH,
-} from "./conversations/conversationRoutes";
-import { useDashboardServerVersion } from "./dashboard-version";
+  COMPOSER_PATH,
+} from "../conversations/conversationRoutes";
+import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
-import { useConversationData } from "./conversations/queries";
-import { useConversationSidebarOpen } from "./conversations/conversationSidebarLayout";
-import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
-import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
+import { useConversationData } from "../conversations/queries";
+import { useConversationSidebarOpen } from "../conversations/conversationSidebarLayout";
+import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
+import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
 import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
 import {
   SystemPageLayout,
   SystemRouteLoading,
-} from "./pages/system/SystemPageLayout";
-import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
+} from "../pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -77,23 +84,24 @@ import {
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
-import { TracedRoutes } from "./TracedRoutes";
-import { InboxRedirect } from "./review-desk/InboxList";
+import { TracedRoutes } from "../TracedRoutes";
+import { InboxRedirect } from "../review-desk/InboxList";
 import {
   InboxListProvider,
   useInboxReturnPath,
-} from "./review-desk/inboxListState";
+} from "../review-desk/inboxListState";
 import {
   INBOX_VIEW_LABELS,
   inboxViewOfPath,
   parseInboxView,
-} from "./review-desk/inboxModel";
-import { useInboxTodoCount } from "./review-desk/queries";
-import { useInboxTabIcon } from "./review-desk/inboxTabIcon";
-import { DocumentTitleProvider, useDocumentTitleCount } from "./documentTitle";
-import { cn } from "./styles";
-import { useVersionsPoll } from "./versions";
-import type { DashboardCoreData } from "./types";
+} from "../review-desk/inboxModel";
+import { useInboxTodoCount } from "../review-desk/inboxQueries";
+import { useInboxTabIcon } from "../review-desk/inboxTabIcon";
+import { useDocumentTitleCount } from "../documentTitle";
+import { cn } from "../styles";
+import { ComfortableDensityContext, UiShellContext } from "../uiShell";
+import { useVersionsPoll } from "../versions";
+import type { DashboardCoreData } from "../types";
 
 // Pages outside the conversation workspace load on first visit, so the
 // workspace's first paint skips their code and the chart library.
@@ -103,12 +111,12 @@ const RepositoryPage = lazy(() =>
   })),
 );
 const CodePage = lazy(() =>
-  import("./pages/code/CodePage").then((module) => ({
+  import("../pages/code/CodePage").then((module) => ({
     default: module.CodePage,
   })),
 );
 const LocationDetailPage = lazy(() =>
-  import("./pages/locations/LocationDetailPage").then((module) => ({
+  import("../pages/locations/LocationDetailPage").then((module) => ({
     default: module.LocationDetailPage,
   })),
 );
@@ -123,7 +131,7 @@ const PeoplePage = lazy(() =>
   })),
 );
 const PersonProfilePage = lazy(() =>
-  import("./pages/people/PersonProfilePage").then((module) => ({
+  import("../pages/people/PersonProfilePage").then((module) => ({
     default: module.PersonProfilePage,
   })),
 );
@@ -133,17 +141,17 @@ const SettingsPage = lazy(() =>
   })),
 );
 const SystemPage = lazy(() =>
-  import("./pages/system/SystemPage").then((module) => ({
+  import("../pages/system/SystemPage").then((module) => ({
     default: module.SystemPage,
   })),
 );
 const WorkspaceFormPage = lazy(() =>
-  import("./pages/system/WorkspaceFormPage").then((module) => ({
+  import("../pages/system/WorkspaceFormPage").then((module) => ({
     default: module.WorkspaceFormPage,
   })),
 );
 const WorkspacesPage = lazy(() =>
-  import("./pages/system/WorkspacesPage").then((module) => ({
+  import("../pages/system/WorkspacesPage").then((module) => ({
     default: module.WorkspacesPage,
   })),
 );
@@ -173,7 +181,7 @@ const PluginUserPageRoute = lazy(() =>
   })),
 );
 const AdminPage = lazy(() =>
-  import("./pages/admin/AdminPage").then((module) => ({
+  import("../pages/admin/AdminPage").then((module) => ({
     default: module.AdminPage,
   })),
 );
@@ -197,16 +205,14 @@ const legacySettingsPaths = [
 ] as const;
 
 /** Render the dashboard SPA shell and route-level loading states. */
-export function DashboardShell() {
+function InboxRoutes() {
   // The Inbox list keeps its place while a Conversation replaces it, and
   // the phone header's Back returns to it.
   return (
     <InboxListProvider>
-      <DocumentTitleProvider>
-        <ShellInboxData>
-          <Shell />
-        </ShellInboxData>
-      </DocumentTitleProvider>
+      <ShellInboxData>
+        <Shell />
+      </ShellInboxData>
     </InboxListProvider>
   );
 }
@@ -236,7 +242,7 @@ function inboxMobileHeader(
     backLabel: `Back to ${INBOX_VIEW_LABELS[inboxViewOfPath(to)]}`,
     backTo: to,
   });
-  if (pathname === NEW_CONVERSATION_PATH)
+  if (pathname === COMPOSER_PATH)
     return { ...back(returnPath), title: "New conversation" };
   if (conversationIdFromPath(pathname)) return back(returnPath);
   const view = new URLSearchParams(search).get("view");
@@ -426,7 +432,7 @@ function Shell() {
             isMemoryLibraryPath(location.pathname)
           }
         >
-          <DashboardChrome
+          <InboxDashboardChrome
             // Conversation pages and the Automations list put these in
             // their own header.
             desktopControls={
@@ -964,5 +970,24 @@ function SystemRoute(props: { coreData: DashboardCoreData }) {
     <SystemPageLayout>
       <LoadingView label={query.error?.message ?? "System unavailable"} />
     </SystemPageLayout>
+  );
+}
+
+/**
+ * Render the new dashboard UI for users who turned on `experimentalUi`.
+ * Its providers live here, so the current UI does not load them.
+ */
+export function InboxShell() {
+  const [density] = useConversationDensity();
+  return (
+    <UiShellContext value="inbox">
+      <ComfortableDensityContext value={density === "comfortable"}>
+        <InboxSweepProvider>
+          <EventLogShownProvider>
+            <InboxRoutes />
+          </EventLogShownProvider>
+        </InboxSweepProvider>
+      </ComfortableDensityContext>
+    </UiShellContext>
   );
 }

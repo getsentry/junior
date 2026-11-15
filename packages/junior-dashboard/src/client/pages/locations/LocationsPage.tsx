@@ -18,7 +18,10 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { useSearchParamEnum } from "../../searchParams";
+import {
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import {
   SystemPageLayout,
   SystemRouteLoading,
@@ -52,6 +55,7 @@ export function LocationsPageContent(props: {
     LOCATION_SORTS,
   );
   const deferredSort = useDeferredValue(sort);
+  const [searchText, setSearchText, search] = useDebouncedSearchParam();
   if (!props.data && !props.error) {
     return (
       <SystemRouteLoading
@@ -63,7 +67,11 @@ export function LocationsPageContent(props: {
     );
   }
 
-  const locations = sortLocations(props.data?.locations ?? [], deferredSort);
+  const locations = filterLocations(
+    props.data?.locations ?? [],
+    search,
+    deferredSort,
+  );
   const visibleActivity = props.data
     ? selectTimeSeries({
         days: props.data.activityDays,
@@ -147,8 +155,11 @@ export function LocationsPageContent(props: {
           <LocationDirectory
             loading={sort !== deferredSort}
             locations={locations}
+            onQueryChange={setSearchText}
             onSortChange={setSort}
+            query={searchText}
             sort={sort}
+            totalLocations={props.data.locations.length}
           />
           {props.data.privateActivity.conversations > 0 ? (
             <PrivateActivityCard item={props.data.privateActivity} />
@@ -159,11 +170,18 @@ export function LocationsPageContent(props: {
   );
 }
 
-function sortLocations(
+function filterLocations(
   locations: LocationSummaryReport[],
+  query: string,
   sort: LocationSort,
 ): LocationSummaryReport[] {
-  return [...locations].sort((left, right) => {
+  const normalized = query.trim().toLowerCase();
+  const filtered = normalized
+    ? locations.filter((location) =>
+        location.label.toLowerCase().includes(normalized),
+      )
+    : locations;
+  return [...filtered].sort((left, right) => {
     if (sort === "conversations") {
       return right.conversations - left.conversations;
     }

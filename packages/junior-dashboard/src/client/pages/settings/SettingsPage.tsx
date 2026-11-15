@@ -25,8 +25,10 @@ import {
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
-import { useInboxTabIconCount } from "../../review-desk/inboxTabIcon";
+import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
+import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
+import { useInboxTabIconCount } from "../../review-desk/inboxTabIcon";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
 import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
@@ -46,10 +48,7 @@ type SettingsPageProps = {
   identity: DashboardIdentity;
 };
 
-/**
- * Show every Settings section on one page. The pane lists the sections and
- * links to each with its `#anchor`.
- */
+/** Show every Settings section on one page. */
 export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
@@ -138,6 +137,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <InboxTabIconSetting />
@@ -145,6 +145,47 @@ function GeneralSettings({ identity }: SettingsPageProps) {
       <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsSection>
+  );
+}
+
+/** Let the user choose desktop navigation on this browser. Phones skip it. */
+function NavLayoutSetting() {
+  const [choice, setChoice] = useNavLayoutChoice();
+  return (
+    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
+      <AnchorHeading
+        anchor="navigation"
+        className="m-0 text-lg font-bold"
+        title="Navigation"
+      />
+      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+        This choice applies to this browser.
+      </p>
+      <RadioGroup<NavLayoutChoice>
+        aria-label="Navigation"
+        className="grid gap-3"
+        onValueChange={setChoice}
+        value={choice}
+      >
+        {navLayoutChoices.map((option) => (
+          <Field key={option.value} orientation="horizontal">
+            <RadioGroupItem
+              aria-describedby={`nav-layout-${option.value}-help`}
+              id={`nav-layout-${option.value}`}
+              value={option.value}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor={`nav-layout-${option.value}`}>
+                {option.label}
+              </FieldLabel>
+              <FieldDescription id={`nav-layout-${option.value}-help`}>
+                {option.description}
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+        ))}
+      </RadioGroup>
+    </Card>
   );
 }
 

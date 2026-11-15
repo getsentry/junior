@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import {
   SegmentedNav,
@@ -11,9 +11,17 @@ import {
   dashboardInteractiveTextClass,
 } from "../../styles";
 import { SecondaryNavigationPortal } from "./DashboardChrome";
-import { usePaneShows, useZenMode } from "./PaneNav";
 
 export type SecondaryNavigationItem = SegmentedNavItem;
+
+/**
+ * The new UI's pane state: whether the desktop pane shows, and Zen mode.
+ * `PaneNav` provides it. The current UI has none.
+ */
+export const PaneLinksContext = createContext<{
+  paneOpen: boolean;
+  zen: boolean;
+} | null>(null);
 
 /**
  * Render page navigation above the page, in the desktop chrome, and in the
@@ -27,9 +35,9 @@ export function SecondaryNavigation(props: {
   children: ReactNode;
   items: SecondaryNavigationItem[];
   /**
-   * The pane lists these pages (see `AreaSidebar`), so the desktop links
-   * show only while the reader has closed the pane, not in Zen mode, and
-   * phones open on the list instead.
+   * In the new UI, the pane lists these pages (see `AreaSidebar`), so the
+   * desktop links show only while the reader has closed the pane, not in
+   * Zen mode, and phones open on the list instead.
    */
   listedInPane?: boolean;
   /**
@@ -38,10 +46,10 @@ export function SecondaryNavigation(props: {
    */
   opensOnPhone?: boolean;
 }) {
-  const paneOpen = usePaneShows();
-  const zen = useZenMode();
+  const pane = useContext(PaneLinksContext);
+  const listed = pane !== null && props.listedInPane === true;
   // Zen mode hides the pane too, but it hides the page links with it.
-  const desktopLinks = !props.listedInPane || (!paneOpen && !zen.active);
+  const desktopLinks = !listed || (!pane?.paneOpen && !pane?.zen);
   const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",
@@ -61,7 +69,7 @@ export function SecondaryNavigation(props: {
               <SegmentedNav
                 ariaLabel={props.ariaLabel}
                 items={props.items}
-                toolbar
+                toolbar={pane !== null}
               />
             </div>
           ) : null
@@ -81,7 +89,7 @@ export function SecondaryNavigation(props: {
           </nav>
         }
       />
-      {props.listedInPane && !props.opensOnPhone ? null : (
+      {listed && !props.opensOnPhone ? null : (
         <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
           <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
         </div>

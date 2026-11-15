@@ -7,6 +7,7 @@ import {
   DASHBOARD_CLIENT_MANIFEST_FILE,
   DASHBOARD_STYLESHEET_NAME,
   type DashboardClientManifest,
+  type DashboardShell,
 } from "./src/public-assets";
 
 const publicDir = "dist/public";
@@ -40,40 +41,44 @@ function imageAssetPlugin(): Rolldown.Plugin {
 }
 
 /**
- * Write the client manifest: the entry, every file it imports statically,
- * the stylesheet, and the first-paint fonts. The page shell preloads those
- * files, so the browser fetches them beside the entry instead of after it.
+ * Write the client manifest: each UI shell's entry and every file it imports
+ * statically, the stylesheet, and the first-paint fonts. The page shell
+ * preloads the files of the viewer's shell, so the browser fetches them
+ * beside the entry instead of after it.
  */
 function clientManifestPlugin(): Rolldown.Plugin {
   return {
     name: "junior-dashboard-client-manifest",
     writeBundle(_options, bundle) {
-      const entry = Object.values(bundle).find(
-        (output) =>
-          output.type === "chunk" && output.isEntry && output.name === "client",
-      )?.fileName;
+      const shellFiles = (shell: DashboardShell) => {
+        const entry = Object.values(bundle).find(
+          (output) =>
+            output.type === "chunk" && output.isEntry && output.name === shell,
+        )?.fileName;
+        if (!entry) throw new Error(`Dashboard ${shell} entry was not built`);
+        const imports = new Set<string>();
+        const pending = [entry];
+        for (let file = pending.pop(); file; file = pending.pop()) {
+          const output = bundle[file];
+          for (const item of output?.type === "chunk" ? output.imports : []) {
+            if (imports.has(item)) continue;
+            imports.add(item);
+            pending.push(item);
+          }
+        }
+        return { entry, imports: [...imports].sort() };
+      };
       // tsup.styles.config.ts writes the stylesheet and fonts first.
       const files = readdirSync(publicDir);
       const stylesheet = files.find((file) =>
         DASHBOARD_STYLESHEET_NAME.test(file),
       );
-      if (!entry || !stylesheet) {
-        throw new Error("Dashboard client entry or stylesheet was not built");
-      }
-      const imports = new Set<string>();
-      const pending = [entry];
-      for (let file = pending.pop(); file; file = pending.pop()) {
-        const output = bundle[file];
-        for (const item of output?.type === "chunk" ? output.imports : []) {
-          if (imports.has(item)) continue;
-          imports.add(item);
-          pending.push(item);
-        }
+      if (!stylesheet) {
+        throw new Error("Dashboard stylesheet was not built");
       }
       const manifest: DashboardClientManifest = {
-        entry,
         fonts: files.filter((file) => FIRST_PAINT_FONT.test(file)).sort(),
-        imports: [...imports].sort(),
+        shells: { classic: shellFiles("classic"), inbox: shellFiles("inbox") },
         stylesheet,
       };
       mkdirSync("dist", { recursive: true });
@@ -95,9 +100,14 @@ const WORKSPACE_PACKAGE = /[\\/]@sentry[\\/]junior[\\/]/;
 // Rolldown, not esbuild: esbuild puts shared code in one chunk per set of
 // importing routes, so the first load had about 58 files, many under 1 KB.
 // Rolldown keeps code that the entry already loads in the entry.
+//
+// Each UI shell is its own entry, and the page loads only the viewer's. A
+// shell imports the shared startup from src/client.tsx, so the two entries
+// share its chunks. `$initial` below covers what either entry imports.
 export default defineConfig({
   entry: {
-    client: "src/client.tsx",
+    classic: "src/classic.ts",
+    inbox: "src/inbox.ts",
   },
   format: "esm",
   platform: "browser",
@@ -130,9 +140,9 @@ export default defineConfig({
   },
   outputOptions: {
     // Deploys change app code far more often than dependencies. Keep the
-    // third-party code that the first load needs out of the entry, so its
+    // third-party code that the first load needs out of the entries, so its
     // files keep their hashes and stay cached across deploys. `$initial`
-    // limits each group to code that the entry imports statically, so lazy
+    // limits each group to code that an entry imports statically, so lazy
     // pages, grammars, and wasm stay lazy.
     //
     // App code imports single icons and Base UI components by name, so a

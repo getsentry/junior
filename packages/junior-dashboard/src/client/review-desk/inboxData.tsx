@@ -15,14 +15,16 @@ import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
-  useAutomationAttentionData,
   useLinkedConversationTitles,
-  useInboxTodoCount,
-  useReviewItemCountData,
   useReviewItemData,
   useReviewItemsData,
-  scrollPages,
 } from "./queries";
+import {
+  useAutomationAttentionData,
+  useInboxTodoCount,
+  useInboxCountData,
+  scrollPages,
+} from "./inboxQueries";
 import {
   inboxBundles,
   itemUpForGrabs,
@@ -113,7 +115,7 @@ function useBuildInboxData(input: {
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
   // stop it.
-  const serverCounts = useReviewItemCountData(signedIn).data;
+  const serverCounts = useInboxCountData(signedIn).data;
   const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();

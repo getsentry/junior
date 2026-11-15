@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { listWorkspacesByRepository } from "@/chat/workspaces/store";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
@@ -13,17 +13,23 @@ import {
   readCodeWindows,
 } from "./overview";
 
-/**
- * Code changes listed on one repository page. Open changes sort first so a
- * stale open change is not cut off by newer completed changes.
- */
+/** Most recent code changes listed on one repository page. */
 const REPOSITORY_CHANGE_LIMIT = 100;
+
+// A repository without changes joins one row with a null state, which
+// counts in no state. Counting rows, not ids, lets Postgres read the counts
+// from the repository and state index alone.
+function countState(state: CodeChangeState) {
+  return sql<number>`count(*) filter (where ${juniorCodeChanges.state} = ${state})`.mapWith(
+    Number,
+  );
+}
 
 /**
  * Read code activity for one repository: windowed summary, activity buckets,
- * recent code changes with every change counted by state, and the
- * Workspaces that include it. `state` limits the listed changes, so each
- * state tab lists its own rows past the limit; the counts stay whole.
+ * recent code changes, change counts by state, and the Workspaces that
+ * include it. `state` limits the listed changes; the counts cover every
+ * change.
  */
 export async function readCodeRepository(
   repositoryId: string,
@@ -31,18 +37,28 @@ export async function readCodeRepository(
 ): Promise<CodeRepositoryReport | undefined> {
   const nowMs = options.nowMs ?? Date.now();
   const db = getDb();
-  const [repository] = await db
+  // The state counts ride on the repository lookup, so they add no round
+  // trip.
+  const [row] = await db
     .select({
+      closed: countState("closed"),
       id: juniorCodeRepositories.id,
+      merged: countState("merged"),
       name: juniorCodeRepositories.name,
+      open: countState("open"),
       provider: juniorCodeRepositories.provider,
       url: juniorCodeRepositories.url,
     })
     .from(juniorCodeRepositories)
+    .leftJoin(
+      juniorCodeChanges,
+      eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
+    )
     .where(eq(juniorCodeRepositories.id, repositoryId))
-    .limit(1);
-  if (!repository) return undefined;
-  const [windows, changes, stateCounts, workspaces] = await Promise.all([
+    .groupBy(juniorCodeRepositories.id);
+  if (!row) return undefined;
+  const { closed, merged, open, ...repository } = row;
+  const [windows, changes, workspaces] = await Promise.all([
     readCodeWindows({ nowMs, repositoryId }),
     db
       .select(codeChangeReportColumns)
@@ -59,32 +75,18 @@ export async function readCodeRepository(
             : undefined,
         ),
       )
-      .orderBy(
-        desc(sql`${juniorCodeChanges.state} = 'open'`),
-        desc(juniorCodeChanges.updatedAt),
-      )
+      .orderBy(desc(juniorCodeChanges.updatedAt))
       .limit(REPOSITORY_CHANGE_LIMIT),
-    db
-      .select({ count: count(), state: juniorCodeChanges.state })
-      .from(juniorCodeChanges)
-      .where(eq(juniorCodeChanges.repositoryId, repositoryId))
-      .groupBy(juniorCodeChanges.state),
     listWorkspacesByRepository(db, {
       provider: repository.provider,
       repo: repository.name,
     }),
   ]);
-  const countOf = (state: string) =>
-    stateCounts.find((row) => row.state === state)?.count ?? 0;
   return codeRepositoryReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
-    changeCounts: {
-      closed: countOf("closed"),
-      merged: countOf("merged"),
-      open: countOf("open"),
-    },
+    changeCounts: { closed, merged, open },
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),
     repository: {

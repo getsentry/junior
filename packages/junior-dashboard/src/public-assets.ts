@@ -18,8 +18,9 @@ export const DASHBOARD_PUBLIC_ASSET_NAME =
 /** File name of the content-hashed dashboard stylesheet. */
 export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
 
-/** File name of the content-hashed dashboard browser entry. */
-export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
+/** File name of a content-hashed UI shell entry. */
+export const DASHBOARD_CLIENT_ENTRY_NAME =
+  /^(?:classic|inbox)-[A-Za-z0-9]{8}\.js$/;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
@@ -54,13 +55,28 @@ function publicDir(): string | undefined {
 export const DASHBOARD_CLIENT_MANIFEST_FILE = "client-manifest.json";
 
 /**
- * The client entry, every file it imports statically, the stylesheet, and
- * the fonts the first paint uses.
+ * UI shells: `classic` is the current dashboard, `inbox` the new one that a
+ * user turns on with `experimentalUi`.
  */
-export const dashboardClientManifestSchema = z.object({
+export type DashboardShell = "classic" | "inbox";
+
+const publicAssetFilesSchema = z.array(
+  z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME),
+);
+
+/** A UI shell's entry and every file that it imports statically. */
+const dashboardShellFilesSchema = z.object({
   entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
-  fonts: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
-  imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
+  imports: publicAssetFilesSchema,
+});
+
+/** The files of each UI shell, the stylesheet, and the first-paint fonts. */
+export const dashboardClientManifestSchema = z.object({
+  fonts: publicAssetFilesSchema,
+  shells: z.object({
+    classic: dashboardShellFilesSchema,
+    inbox: dashboardShellFilesSchema,
+  }),
   stylesheet: z.string().regex(DASHBOARD_STYLESHEET_NAME),
 });
 

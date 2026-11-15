@@ -67,7 +67,12 @@ export function useConversationDensity(): [
 export function useDensityRoot(): void {
   const [density] = useConversationDensity();
   useEffect(() => {
-    document.documentElement.dataset["density"] = density;
+    const root = document.documentElement;
+    root.dataset["density"] = density;
+    // The current UI has no density, so leaving the new UI clears it.
+    return () => {
+      delete root.dataset["density"];
+    };
   }, [density]);
 }
 

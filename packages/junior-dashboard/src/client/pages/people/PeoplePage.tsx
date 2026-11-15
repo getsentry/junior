@@ -18,14 +18,17 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
-import { useSearchParamEnum } from "../../searchParams";
+import {
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
-  sortPeople,
+  filterPeople,
   formatSpendDelta,
   PeopleDirectory,
   type PeopleSort,
@@ -56,6 +59,8 @@ export function PeoplePageContent(props: {
   data: ActorDirectoryReport | undefined;
   error: unknown;
 }) {
+  const [peopleSearch, setPeopleSearch, peopleQuery] =
+    useDebouncedSearchParam();
   const [range, setRange] = useState<TimeRangeDays>(7);
   const [sort, setSort] = useSearchParamEnum("sort", "spend", PEOPLE_SORTS);
   const deferredSort = useDeferredValue(sort);
@@ -81,7 +86,9 @@ export function PeoplePageContent(props: {
       })
     : [];
   const bucketUnit = timeRangeBucketUnit(range);
-  const people = data ? sortPeople(data.people, deferredSort, range) : [];
+  const people = data
+    ? filterPeople(data.people, peopleQuery, deferredSort, range)
+    : [];
   // Count activity from the same per-range windows as spend/directory stats.
   // Chart buckets (especially 6h on 7d) can start mid-day and would drift.
   const activePeople =
@@ -181,8 +188,10 @@ export function PeoplePageContent(props: {
           <PeopleActivityChart bucketUnit={bucketUnit} days={visibleActivity} />
           <PeopleDirectory
             loading={sort !== deferredSort}
+            onQueryChange={setPeopleSearch}
             onSortChange={setSort}
             people={people}
+            query={peopleSearch}
             range={range}
             sort={sort}
             totalPeople={data.people.length}

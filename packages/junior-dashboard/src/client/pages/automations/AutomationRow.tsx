@@ -1,14 +1,10 @@
 import type { AutomationSummary } from "@sentry/junior/api/schema";
-import { CalendarClock, LockKeyhole, TriangleAlert, Zap } from "lucide-react";
+import { CalendarClock, LockKeyhole, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
+import { SelectableRow } from "../../components/SelectableRow";
 import { formatRelativeTime } from "../../format";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
-import {
-  INBOX_ROW_META_CLASS,
-  inboxCardClass,
-  inboxHeadGridClass,
-} from "../../review-desk/inboxRowStyles";
 import { cn } from "../../styles";
 import {
   automationScheduleLabel,
@@ -20,18 +16,14 @@ import { automationProblemSummary } from "./AutomationStatus";
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;
 
-/** Problem text, readable on both themes. */
-const PROBLEM_TONE_CLASS = {
-  danger: "text-rose-300 light:text-rose-700",
-  warning: "text-amber-300 light:text-amber-700",
-} as const;
+/** Columns line up across groups so strips and times compare at a glance. */
+const automationRowColumns =
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 md:grid-cols-[minmax(0,1fr)_9rem_6rem_8.5rem]";
 
 /**
- * Show one Automation as an Inbox card: its kind's icon where a
- * Conversation's dot goes, what it does and where it posts, then who owns
- * it, how its recent runs went, and when it runs next. A problem adds what
- * is wrong and the link that fixes it. A click anywhere off a link opens
- * the Automation.
+ * Show one Automation as a row: what it does, where it posts, who owns it,
+ * how its recent runs went, and when it runs next. A problem replaces the
+ * owner line with what is wrong and the link that fixes it.
  */
 export function AutomationRow(props: {
   automation: AutomationSummary;
@@ -42,46 +34,21 @@ export function AutomationRow(props: {
   const problem = automationProblemSummary(automation);
   const inactive =
     automation.status === "paused" || automation.status === "completed";
-  const Icon = automation.kind === "scheduled" ? CalendarClock : Zap;
   return (
-    <li
-      className={cn(inboxCardClass(false), "cursor-pointer")}
+    <div
+      className="border-t border-dashboard-border-subtle first:border-t-0"
       data-automation-id={automation.id}
-      data-dock-key={`automation:${automation.id}`}
-      onClick={(event) => {
-        if (
-          event.target instanceof Element &&
-          event.target.closest("a, button")
-        )
-          return;
-        props.onSelect();
-      }}
+      role="listitem"
     >
-      <div className={cn(inboxHeadGridClass(false), "pb-2.5")}>
-        {problem ? (
-          <TriangleAlert
-            aria-hidden="true"
-            className={cn(
-              "col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center",
-              PROBLEM_TONE_CLASS[problem.tone],
-            )}
-          />
-        ) : (
-          <Icon
-            aria-hidden="true"
-            className="col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center text-dashboard-text-muted"
-            strokeWidth={1.9}
-          />
-        )}
-        <div
-          className={cn(
-            "col-start-2 row-start-1 grid min-w-0 gap-1",
-            inactive && "opacity-60",
-          )}
-        >
+      <SelectableRow
+        className={cn(automationRowColumns, "px-4 py-3")}
+        onSelect={props.onSelect}
+        selected={false}
+      >
+        <div className={cn("min-w-0", inactive && "opacity-60")}>
           <Link
             aria-label={`Open automation: ${automation.title}`}
-            className="min-w-0 truncate rounded-md text-sm leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="block min-w-0 truncate rounded-md font-display text-base font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             title={automation.title}
             to={props.to}
           >
@@ -91,8 +58,8 @@ export function AutomationRow(props: {
           {problem ? (
             <p
               className={cn(
-                "m-0 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs md:flex-nowrap",
-                PROBLEM_TONE_CLASS[problem.tone],
+                "m-0 mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs md:flex-nowrap",
+                problem.tone === "danger" ? "text-rose-300" : "text-amber-300",
               )}
             >
               <span className="min-w-0 md:truncate" title={problem.message}>
@@ -109,35 +76,33 @@ export function AutomationRow(props: {
             </p>
           ) : null}
         </div>
-        <div className={cn(INBOX_ROW_META_CLASS, "items-start gap-5")}>
-          <span
-            className="hidden min-w-0 items-center gap-2 text-dashboard-text-muted md:flex"
-            title={automation.createdBy}
-          >
-            <ActorAvatar
-              imageUrl={automation.createdByAvatarUrl}
-              name={automation.createdBy}
-              size="list"
-            />
-            <span className="max-w-28 truncate">
-              {automation.ownedByViewer ? "You" : automation.createdBy}
-            </span>
+        <span
+          className="hidden min-w-0 items-center gap-2 text-xs text-dashboard-text-muted md:flex"
+          title={automation.createdBy}
+        >
+          <ActorAvatar
+            imageUrl={automation.createdByAvatarUrl}
+            name={automation.createdBy}
+            size="list"
+          />
+          <span className="truncate">
+            {automation.ownedByViewer ? "You" : automation.createdBy}
           </span>
-          <span className="hidden lg:block">
-            <AutomationRunStrip
-              label={`Recent runs of ${automation.title}`}
-              // Runs can share a completion time, so the order breaks ties.
-              runs={(automation.recentRuns ?? []).map((run, index) => ({
-                ...run,
-                key: `${run.executedAt}:${index}`,
-              }))}
-              slots={AUTOMATION_ROW_RUN_SLOTS}
-            />
-          </span>
-          <AutomationTiming automation={automation} />
+        </span>
+        <div className="hidden md:block">
+          <AutomationRunStrip
+            label={`Recent runs of ${automation.title}`}
+            // Runs can share a completion time, so the order breaks ties.
+            runs={(automation.recentRuns ?? []).map((run, index) => ({
+              ...run,
+              key: `${run.executedAt}:${index}`,
+            }))}
+            slots={AUTOMATION_ROW_RUN_SLOTS}
+          />
         </div>
-      </div>
-    </li>
+        <AutomationTiming automation={automation} />
+      </SelectableRow>
+    </div>
   );
 }
 
@@ -154,7 +119,7 @@ function AutomationTriggerLine({
       ? automation.schedule
       : eventTriggerText(automation.resource, automation.trigger);
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
+    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
       <Icon
         aria-label={
           scheduled
@@ -219,7 +184,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
               ? { label: "Not listening" }
               : { label: "Listening" };
   return (
-    <div className="grid w-32 min-w-0 justify-items-end gap-1 text-right text-xs whitespace-nowrap">
+    <div className="grid min-w-0 justify-items-end gap-1 text-right text-xs">
       <span className="text-dashboard-text" title={next.title}>
         {next.label}
       </span>

@@ -1,12 +1,12 @@
 import { useCodeOverviewData } from "./api";
 import type { Area } from "./components/layout/AreaSidebar";
-import type { DashboardHeaderNavItem } from "./components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "./inbox/components/layout/DashboardHeader";
 import { codeRepositoryPath } from "./pages/code/codeRepositoryRoutes";
 import {
   memoryNavigationItems,
   memoryOverviewSections,
-} from "./pages/memory/MemoryPageLayout";
-import { settingsSections } from "./pages/settings/SettingsPageLayout";
+} from "./inbox/pages/memory/MemoryPageLayout";
+import { settingsSections } from "./inbox/pages/settings/SettingsPageLayout";
 import { systemNavigationItems } from "./pages/system/SystemNavigation";
 
 function under(pathname: string, root: string): boolean {

@@ -13,6 +13,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
+import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
 import {
   selectTimeSeries,
@@ -36,6 +37,7 @@ import {
 } from "./memoryDashboard";
 import { MemoryDetails } from "./MemoryDetails";
 import { MemoryPageLayout } from "./MemoryPageLayout";
+import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
@@ -138,9 +140,16 @@ function MemoryLibrary(props: {
   libraryPath: string;
   page: PluginUserPageLink;
 }) {
-  const { action, content, query, records, runAction } = usePluginUserPageData(
-    props.page,
-  );
+  const {
+    action,
+    content,
+    query,
+    records,
+    runAction,
+    searchQuery,
+    searchText,
+    setSearchText,
+  } = usePluginUserPageData(props.page);
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -232,9 +241,19 @@ function MemoryLibrary(props: {
                   className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
                   id="memory-library-title"
                 >
-                  What Junior remembers
+                  {searchQuery ? "Search results" : "What Junior remembers"}
                 </h2>
               </div>
+              {content?.searchPlaceholder ? (
+                <SearchInput
+                  className="w-full max-w-md sm:w-auto"
+                  label={content.searchPlaceholder}
+                  onChange={setSearchText}
+                  placeholder={content.searchPlaceholder}
+                  size="default"
+                  value={searchText}
+                />
+              ) : null}
             </div>
 
             {loading ? (
@@ -275,6 +294,7 @@ function MemoryLibrary(props: {
                         )
                       }
                       record={record}
+                      searchQuery={searchQuery}
                       selected={record.id === memoryId}
                     />
                   ))}
@@ -469,6 +489,7 @@ function MemoryRow(props: {
   first: boolean;
   onSelect(): void;
   record: PluginUserPageRecord;
+  searchQuery: string;
   selected: boolean;
 }) {
   const kind = metadataValue(props.record, "Type");
@@ -497,7 +518,10 @@ function MemoryRow(props: {
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
-              {props.record.title}
+              <MemorySearchHighlight
+                query={props.searchQuery}
+                text={props.record.title}
+              />
             </h3>
           </div>
           <div className="mt-1.5 truncate font-sans text-xs leading-relaxed text-dashboard-text-muted">

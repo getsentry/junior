@@ -17,10 +17,9 @@
  * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
-import {
-  streamSimple,
-  type AssistantMessage,
-} from "@earendil-works/pi-ai/compat";
+import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
+// oxlint-disable-next-line no-restricted-imports -- The agent loop stream. Its Turn records the cost.
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";

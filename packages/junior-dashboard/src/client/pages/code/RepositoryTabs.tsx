@@ -13,14 +13,16 @@ import {
   pageCount,
   pageItems,
 } from "../../components/Pagination";
+import { SearchInput } from "../../components/SearchInput";
 import {
   timeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
-import { pinnedFirst } from "../../conversations/conversationSections";
+import { pinnedAndWaitingFirst } from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
+import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversations } from "../../review-desk/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
@@ -30,20 +32,40 @@ const PAGE_SIZE = 25;
 
 /** Conversations linked to the repository, in the home list layout. */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
+  const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const feed = useCodeRepositoryConversationsData(props.repositoryId);
+  const search = useDebouncedValue(query.trim());
+  const feed = useCodeRepositoryConversationsData(props.repositoryId, search);
   const conversations = buildConversations(feed.data?.conversations ?? []);
   const waitingConversations = useWaitingConversations();
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
   return (
     <section aria-label="Conversations" className="grid gap-3">
+      <SearchInput
+        className="w-full sm:ml-auto sm:w-72"
+        label="Search conversations in this repository"
+        onChange={setQuery}
+        placeholder="Search conversations…"
+        value={query}
+      />
       {feed.error ? (
         <EmptyTelemetry>
           Conversations are unavailable. Try refreshing the dashboard.
         </EmptyTelemetry>
       ) : (
         <ConversationHomeList
-          conversations={pageItems(pinnedFirst(conversations), page, PAGE_SIZE)}
-          emptyLabel="No conversations are linked to this repository yet."
+          conversations={pageItems(
+            pinnedAndWaitingFirst(conversations, waitingConversations),
+            page,
+            PAGE_SIZE,
+          )}
+          emptyLabel={
+            search
+              ? "No conversations match this search."
+              : "No conversations are linked to this repository yet."
+          }
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
           waitingConversations={waitingConversations}
@@ -61,15 +83,13 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   );
 }
 
-/**
- * Recent code changes in the repository, filtered by state. The command
- * palette finds a change.
- */
+/** Recent code changes in the repository, filtered by state and search. */
 export function RepositoryChangesTab(props: {
   data: CodeRepositoryReport;
   range: TimeRangeDays;
 }) {
   const [state, setState] = useState("");
+  const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   // The report lists open changes first, up to its limit, so each state tab
   // loads its own changes. The counts cover every change.
@@ -78,13 +98,20 @@ export function RepositoryChangesTab(props: {
     selectedState && props.data.repository.id,
     selectedState,
   );
-  const changes = selectedState
+  const listed = selectedState
     ? (stateQuery.data?.changes ?? [])
     : props.data.changes;
+  const needle = query.trim().toLowerCase();
+  const changes = listed.filter(
+    (change) =>
+      !needle ||
+      change.title?.toLowerCase().includes(needle) ||
+      `#${change.number}`.includes(needle),
+  );
   const counts = props.data.changeCounts;
   useEffect(() => {
     setPage(1);
-  }, [state]);
+  }, [state, needle]);
   return (
     <>
       <CodeActivityChart
@@ -109,6 +136,13 @@ export function RepositoryChangesTab(props: {
             onChange={setState}
             value={state}
           />
+          <SearchInput
+            className="w-full max-w-md sm:w-auto"
+            label="Search changes"
+            onChange={setQuery}
+            placeholder="Title or number"
+            value={query}
+          />
         </div>
         <Card>
           {changes.length === 0 ? (
@@ -118,7 +152,7 @@ export function RepositoryChangesTab(props: {
                   ? "Changes are unavailable. Try refreshing the dashboard."
                   : selectedState && !stateQuery.data
                     ? "Loading changes…"
-                    : "No changes match this state."}
+                    : "No changes match these filters."}
               </EmptyTelemetry>
             </div>
           ) : (

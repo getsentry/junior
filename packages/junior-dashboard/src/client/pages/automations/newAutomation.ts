@@ -8,7 +8,7 @@ import {
 } from "../../conversations/ConversationComposer";
 import {
   FOCUS_REPLY_STATE,
-  NEW_CONVERSATION_PATH,
+  COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
 import { automationPath } from "../../format";
 
@@ -34,7 +34,7 @@ export function useNewAutomationAction(): PaneNewAction {
           ? draft
           : `${NEW_AUTOMATION_PROMPT}${draft}`,
       );
-      void navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
+      void navigate(COMPOSER_PATH, { state: FOCUS_REPLY_STATE });
     },
   };
 }

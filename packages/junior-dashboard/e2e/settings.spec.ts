@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import {
   DASHBOARD_SERVICE_WORKER_PATH,
@@ -14,9 +16,7 @@ test("updates the signed-in user's display name", async ({
   await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-  await expect(
-    page.getByRole("main").getByRole("heading", { name: "Settings" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.locator("#profile-popover")).toHaveCount(0);
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
@@ -143,7 +143,7 @@ test("turns on push notifications from a one-time tip", async ({
     });
   });
   async function startConversation(message: string) {
-    await page.goto(`${dashboard.baseURL}/conversations/new`);
+    await page.goto(dashboard.baseURL);
     await page.getByPlaceholder("Message Junior…").fill(message);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
@@ -313,7 +313,7 @@ test("turns on composer autocorrect for this browser", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  await page.goto(dashboard.baseURL);
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
@@ -324,7 +324,7 @@ test("turns on composer autocorrect for this browser", async ({
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await page.getByText("Autocorrect", { exact: true }).click();
 
-  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  await page.goto(dashboard.baseURL);
   await expect(composer).toHaveAttribute("autocorrect", "on");
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
@@ -386,62 +386,107 @@ test("links to a settings section", async ({ page, dashboard }) => {
   ).toBeInViewport();
 });
 
-test("marks the section in view in the pane on pages of sections", async ({
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  return release;
+}
+
+test("lets the reader scroll away from a linked section while it loads", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${dashboard.baseURL}/settings`);
-  const sections = page.getByRole("navigation", { name: "Settings" });
-  const section = (name: string) =>
-    sections.getByRole("link", { exact: true, name });
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "MCP" }),
+  ).toBeInViewport();
 
-  await expect(section("General")).toHaveAttribute("aria-current", "location");
-
-  await section("Identities").click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
-  await expect(section("Identities")).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
-  await expect(section("General")).not.toHaveAttribute("aria-current");
-
-  // Scrolling back up moves the mark to the section in view.
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(section("General")).toHaveAttribute("aria-current", "location");
-  await expect(section("Identities")).not.toHaveAttribute("aria-current");
-  await page
-    .getByRole("heading", { exact: true, name: "API Tokens" })
-    .evaluate((heading) => heading.scrollIntoView());
-  await expect(section("API Tokens")).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
-  // The Memories Overview lists its sections under its own row.
-  await page.goto(`${dashboard.baseURL}/memories`);
-  const memories = page.getByRole("navigation", {
-    exact: true,
-    name: "Memories",
+  // Scroll to the top over a few frames with no input event, as a
+  // scrollbar drag does.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
   });
-  const memorySection = (name: string) =>
-    memories.getByRole("link", { exact: true, name });
-  await expect(memorySection("Overview")).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(memorySection("Activity")).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
-  await memorySection("How they got here").click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/memories#memory-sources`);
-  await expect(memorySection("How they got here")).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(memorySection("Activity")).toHaveAttribute(
-    "aria-current",
-    "location",
-  );
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "General" }),
+  ).toBeInViewport();
 });
+
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+  await expect(heading).toBeInViewport();
+
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(heading).toBeInViewport();
+});
+
+test("opens an old Settings page as its section and keeps the query", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens?name=Review`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings?name=Review#api-tokens`,
+  );
+  await expect(
+    page.getByRole("heading", { exact: true, name: "API Tokens" }),
+  ).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings/connections`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Identities" }),
+  ).toBeInViewport();
+});
+
+test(
+  "goes back to the current UI from the new one",
+  { tag: "@new" },
+  async ({ page, dashboard }) => {
+    await page.goto(`${dashboard.baseURL}/settings`);
+    await expect(
+      page.getByText("The new dashboard is coming soon"),
+    ).toBeVisible();
+    await screenshot(page, "new-ui-placeholder", {
+      lightTheme: true,
+      view: "desktop",
+    });
+
+    await page
+      .getByRole("button", { name: "Use the current dashboard" })
+      .click();
+
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(
+      page.getByText("The new dashboard is coming soon"),
+    ).toHaveCount(0);
+  },
+);

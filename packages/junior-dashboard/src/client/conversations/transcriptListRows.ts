@@ -347,7 +347,7 @@ const COMFORTABLE_ROW_EXTRA_PX = 8;
  */
 export function defaultTranscriptRowSize(
   sizeClass: string,
-  comfortable: boolean,
+  comfortable = false,
 ): number {
   return (
     baseTranscriptRowSize(sizeClass) +

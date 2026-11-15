@@ -28,7 +28,6 @@ import {
   scheduleDraft,
   type AutomationDraft,
 } from "./automationDraft";
-import { invalidateAutomationReads } from "../../review-desk/queries";
 
 /** Keep edits until the user saves or discards them. */
 export function AutomationEditor(props: {
@@ -83,7 +82,9 @@ export function AutomationEditor(props: {
     mutationFn: () => patch(automationEditSchema, url, update),
     onSuccess: async () => {
       allowLeave.current = true;
-      await invalidateAutomationReads(queryClient);
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "automations"],
+      });
       toast.add({
         title: "Automation saved",
         description: "Changes apply to future work.",

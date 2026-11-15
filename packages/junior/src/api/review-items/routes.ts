@@ -1,7 +1,8 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import * as z from "zod";
-import { jsonResponse } from "@/api/http";
+import { jsonResponse, throwApiError } from "@/api/http";
+import { decodePageCursor, encodePageCursor } from "@/api/page-cursor";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
@@ -79,6 +80,8 @@ const cursorSchema = z
   })
   .strict();
 
+const INVALID_CURSOR = "Invalid review item cursor.";
+
 /**
  * Encode the last item of a page as the cursor of the next page. The
  * cursor names its list, so it cannot page through a different list.
@@ -88,61 +91,47 @@ function encodeCursor(
   filters: ListFilters,
   viewer: User,
 ): string {
-  return Buffer.from(
-    JSON.stringify({
-      ...filters,
-      ...(filters.status && item.closedAt
-        ? { closedAtMs: item.closedAt.getTime() }
-        : undefined),
-      ...(filters.sort
-        ? { needsUser: itemNeedsUser(item, viewer.id) }
-        : undefined),
-      createdAtMs: item.createdAt.getTime(),
-      id: item.id,
-      version: 2,
-    }),
-    "utf8",
-  ).toString("base64url");
+  return encodePageCursor(cursorSchema, {
+    ...filters,
+    ...(filters.status && item.closedAt
+      ? { closedAtMs: item.closedAt.getTime() }
+      : undefined),
+    ...(filters.sort
+      ? { needsUser: itemNeedsUser(item, viewer.id) }
+      : undefined),
+    createdAtMs: item.createdAt.getTime(),
+    id: item.id,
+    version: 2,
+  });
 }
 
-/** Decode a cursor of the same list, or return undefined. */
+/** Decode a cursor of the same list, or stop the request with a 400. */
 function decodeCursor(
   cursor: string,
   filters: ListFilters,
-):
-  | (ReviewItemPosition & {
-      closedAt?: Date;
-      needsUser?: boolean;
-    })
-  | undefined {
-  try {
-    const parsed = cursorSchema.parse(
-      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
-    );
-    if (
-      parsed.conversationId !== filters.conversationId ||
-      parsed.forUserId !== filters.forUserId ||
-      parsed.query !== filters.query ||
-      parsed.sort !== filters.sort ||
-      parsed.status !== filters.status ||
-      (filters.status !== undefined && parsed.closedAtMs === undefined) ||
-      (filters.sort !== undefined && parsed.needsUser === undefined)
-    ) {
-      return undefined;
-    }
-    return {
-      ...(parsed.closedAtMs !== undefined
-        ? { closedAt: new Date(parsed.closedAtMs) }
-        : undefined),
-      createdAt: new Date(parsed.createdAtMs),
-      id: parsed.id,
-      ...(parsed.needsUser !== undefined
-        ? { needsUser: parsed.needsUser }
-        : undefined),
-    };
-  } catch {
-    return undefined;
+): ReviewItemPosition & { closedAt?: Date; needsUser?: boolean } {
+  const parsed = decodePageCursor(cursorSchema, cursor, INVALID_CURSOR);
+  if (
+    parsed.conversationId !== filters.conversationId ||
+    parsed.forUserId !== filters.forUserId ||
+    parsed.query !== filters.query ||
+    parsed.sort !== filters.sort ||
+    parsed.status !== filters.status ||
+    (filters.status !== undefined && parsed.closedAtMs === undefined) ||
+    (filters.sort !== undefined && parsed.needsUser === undefined)
+  ) {
+    throwApiError(400, INVALID_CURSOR);
   }
+  return {
+    ...(parsed.closedAtMs !== undefined
+      ? { closedAt: new Date(parsed.closedAtMs) }
+      : undefined),
+    createdAt: new Date(parsed.createdAtMs),
+    id: parsed.id,
+    ...(parsed.needsUser !== undefined
+      ? { needsUser: parsed.needsUser }
+      : undefined),
+  };
 }
 
 const ERROR_STATUS = {
@@ -232,13 +221,6 @@ export function createReviewItemRoutes(services: {
       const after = query.cursor
         ? decodeCursor(query.cursor, filters)
         : undefined;
-      if (query.cursor && !after) {
-        return jsonResponse(
-          apiErrorSchema,
-          { error: "Invalid review item cursor." },
-          { status: 400 },
-        );
-      }
       const db = getDb();
       // A person in the Conversation sees every item linked to it.
       const reader = filters.conversationId
@@ -267,36 +249,38 @@ export function createReviewItemRoutes(services: {
             : undefined),
         });
       }
-      const open = await searchReviewItems(db, reader, {
-        ...filters,
-        limit: query.limit + 1,
-        statuses: ["open"],
-        ...(filters.sort
-          ? {
-              order: { needsUserId: viewer.id },
-              ...(after
-                ? {
-                    afterWaiting: {
-                      createdAt: after.createdAt,
-                      id: after.id,
-                      needsUser: after.needsUser === true,
-                    },
-                  }
-                : undefined),
-            }
-          : { order: "oldest", ...(after ? { after } : undefined) }),
-      });
-      const page = open.slice(0, query.limit);
-      const last = page.at(-1);
-      // The archived matches come once, with the first page.
-      const archived =
+      // The archived matches come once, with the first page. They do not
+      // depend on the open page, so both reads run at once.
+      const [open, archived] = await Promise.all([
+        searchReviewItems(db, reader, {
+          ...filters,
+          limit: query.limit + 1,
+          statuses: ["open"],
+          ...(filters.sort
+            ? {
+                order: { needsUserId: viewer.id },
+                ...(after
+                  ? {
+                      afterWaiting: {
+                        createdAt: after.createdAt,
+                        id: after.id,
+                        needsUser: after.needsUser === true,
+                      },
+                    }
+                  : undefined),
+              }
+            : { order: "oldest", ...(after ? { after } : undefined) }),
+        }),
         (filters.query || query.include === "archived") && !after
-          ? await searchReviewItems(db, reader, {
+          ? searchReviewItems(db, reader, {
               ...filters,
               limit: ARCHIVED_LIMIT + 1,
               statuses: ["done", "dismissed"],
             })
-          : [];
+          : [],
+      ]);
+      const page = open.slice(0, query.limit);
+      const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
         items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
           reviewItemPayload(item, viewer),

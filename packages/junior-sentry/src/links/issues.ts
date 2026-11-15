@@ -214,6 +214,6 @@ async function resolveSentryIssueLink(
 export const sentryIssueLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryIssueLink,
   filters: SENTRY_ISSUE_LINK_FILTERS,
-  objectType: "task",
+  objectTypes: ["task"],
   resolve: resolveSentryIssueLink,
 };
