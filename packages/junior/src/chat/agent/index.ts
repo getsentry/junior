@@ -865,8 +865,10 @@ async function executeAgentRunInPrivacyContext(
           pendingMessages,
           mode,
           piMessages: messages,
+          // Not `agent.state.systemPrompt`: it also folds in saved system
+          // messages, which the history estimate counts.
           requestOverheadTokens: estimateRequestOverheadTokens(
-            agent!.state.systemPrompt,
+            baseInstructions,
             agent!.state.tools,
             activeModelId,
           ),

@@ -1,4 +1,9 @@
-import type { ImageContent, TextContent, Tool } from "@earendil-works/pi-ai";
+import {
+  renderSystemMessageUpdate,
+  type ImageContent,
+  type TextContent,
+  type Tool,
+} from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readImageDimensions } from "@/chat/services/image-dimensions";
 
@@ -64,10 +69,12 @@ function tokensForChars(chars: number, profile: TokenEstimateProfile): number {
   return Math.ceil(chars / profile.charsPerToken);
 }
 
-// Junior stores only user, assistant, and tool result messages. Images are
-// counted by `estimateImageTokens`.
+// Images are counted by `estimateImageTokens`. A saved system message is
+// sent as Pi renders it after the leading one.
 function messageChars(message: PiMessage): number {
   switch (message.role) {
+    case "system":
+      return renderSystemMessageUpdate(message).length;
     case "user":
     case "toolResult":
       return contentChars(message.content);

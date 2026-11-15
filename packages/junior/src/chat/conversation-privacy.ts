@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  AssistantMessage,
-  ImageContent,
-  Message,
-  TextContent,
-  ThinkingContent,
-  ToolCall,
+import {
+  renderSystemMessageUpdate,
+  type AssistantMessage,
+  type ImageContent,
+  type Message,
+  type TextContent,
+  type ThinkingContent,
+  type ToolCall,
 } from "@earendil-works/pi-ai";
 import { logWarn } from "@/chat/logging";
 
@@ -209,12 +210,18 @@ export function toCanonicalOutputMessage(
 }
 
 /**
- * Map a pi-ai Message (user/assistant/toolResult) to the canonical
+ * Map a pi-ai Message (system/user/assistant/toolResult) to the canonical
  * gen_ai.input.messages shape: `{ role, parts: [...] }`.
  */
 export function toCanonicalInputMessage(
   message: Message,
 ): Record<string, unknown> {
+  if (message.role === "system") {
+    return {
+      role: "system",
+      parts: [{ type: "text", content: renderSystemMessageUpdate(message) }],
+    };
+  }
   if (message.role === "user") {
     const parts =
       typeof message.content === "string"
@@ -235,7 +242,7 @@ export function toCanonicalInputMessage(
     };
   }
   // AssistantMessage appearing as a prior turn in input context
-  return toCanonicalOutputMessage(message as AssistantMessage);
+  return toCanonicalOutputMessage(message);
 }
 
 /** Summarize a message list without exposing raw message content. */
