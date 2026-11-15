@@ -31,6 +31,7 @@ import {
   answerRows,
   assigneeLabel,
   reviewItemPath,
+  reviewItemWaitsForAnswer,
 } from "./reviewItemFormat";
 
 // The verb stays muted. The title is the link, so it reads apart from it.
@@ -306,9 +307,11 @@ export function ReviewItemAskRow(props: {
   const verb = item.kind === "action" ? "Asked" : "Added";
   const status = askStatus(item, answerShown);
   const Icon = status.icon;
-  // Only a question from this Conversation docks above its message box.
+  // Only a question from this Conversation docks above its message box. A
+  // plugin ask without a question waits on the viewer but does not dock.
   const docked =
-    status.waitingOnYou && item.addedByConversationId === props.conversationId;
+    reviewItemWaitsForAnswer(item) &&
+    item.addedByConversationId === props.conversationId;
   return (
     // The transcript marks the row for a moment when its question docks.
     <section
