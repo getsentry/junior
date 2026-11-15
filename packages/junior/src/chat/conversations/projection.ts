@@ -96,6 +96,10 @@ function durableMessageIdentity(message: PiMessage): unknown {
     toolName?: unknown;
     isError?: unknown;
   };
+  // A system message is never changed after it is sent, so all of it counts.
+  if (record.role === "system") {
+    return message;
+  }
   if (record.role === "toolResult") {
     return {
       role: "toolResult",
@@ -322,10 +326,11 @@ function messageTimestamp(message: PiMessage): number {
  * Append newly stable native history items.
  *
  * Checkpoints are append-only against the durable identity of the committed
- * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction may
- * intentionally replace active model history. In-place Pi mutations of already
- * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * prefix (role, timestamp, content; tool results also match call id; system
+ * messages match in full). A shorter history or a true content branch is
+ * rejected — only compaction may intentionally replace active model history.
+ * In-place Pi mutations of already committed assistant envelopes
+ * (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;

@@ -122,14 +122,53 @@
       }
     },
     {
-      "files": ["packages/junior-github/src/**/*.ts"],
+      "files": ["packages/*/src/**"],
       "rules": {
-        "junior/github-graphql-schema": "error",
-        "junior/use-github-api": "error",
         "no-restricted-imports": [
           "error",
           {
             "patterns": [
+              {
+                "regex": "^ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["@ai-sdk/*"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "regex": "^@earendil-works/pi-ai(/|$)",
+                "allowTypeImports": true,
+                "allowImportNames": [
+                  "calculateContextTokens",
+                  "getInitialSystemMessage",
+                  "getSystemMessageText",
+                  "isRetryableAssistantError",
+                  "mergeClientIdentity",
+                  "renderSystemMessageUpdate"
+                ],
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts. Add a Pi helper to allowImportNames only if it does not call a model."
+              },
+              {
+                "group": ["**/pi/sdk", "**/pi/sdk.js"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["**/pi/client", "**/pi/client.js"],
+                "importNames": [
+                  "completeDecision",
+                  "completeObject",
+                  "completeText",
+                  "embedTexts",
+                  "generateImages",
+                  "rerankTexts",
+                  "searchWeb"
+                ],
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
               {
                 "group": ["**/credential-support.js"],
                 "importNames": ["githubRequest", "issueInstallationToken"],
@@ -137,7 +176,14 @@
               }
             ]
           }
-        ],
+        ]
+      }
+    },
+    {
+      "files": ["packages/junior-github/src/**/*.ts"],
+      "rules": {
+        "junior/github-graphql-schema": "error",
+        "junior/use-github-api": "error",
         "no-restricted-globals": [
           "error",
           {
@@ -163,7 +209,28 @@
         "packages/junior-github/src/github-status.ts"
       ],
       "rules": {
-        "no-restricted-imports": "off",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["@ai-sdk/*"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "regex": "^@earendil-works/pi-ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              }
+            ]
+          }
+        ],
         "no-restricted-globals": "off",
         "no-restricted-properties": "off"
       }
@@ -176,9 +243,9 @@
     },
     {
       "files": [
-        "packages/junior/src/chat/pi/client.ts",
-        "packages/junior/src/chat/pi/gateway-auth.ts",
-        "packages/junior/src/chat/pi/sdk.ts"
+        "packages/junior/src/chat/pi/**",
+        "packages/junior/src/chat/core-model.ts",
+        "packages/junior/src/chat/plugins/model.ts"
       ],
       "rules": {
         "no-restricted-imports": "off"

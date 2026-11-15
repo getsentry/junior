@@ -9,7 +9,7 @@ export interface TurnContext {
    * Durable Conversation that owns the Turn. It differs from `threadId` when
    * a Slack thread belongs to another Conversation, such as a task post.
    */
-  conversationId?: string | undefined;
+  conversationId: string;
   threadId?: string | undefined;
   runId?: string | undefined;
 }
