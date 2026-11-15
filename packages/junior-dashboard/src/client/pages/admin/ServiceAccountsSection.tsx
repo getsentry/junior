@@ -18,8 +18,8 @@ import { InlineError } from "../../components/InlineError";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
-import { formatRelativeTime } from "../../format";
 import { del, fetchDashboardJson, post } from "../../http";
+import { formatRelativeTime } from "../../time";
 
 type ServiceAccount = z.infer<typeof serviceAccountSchema>;
 

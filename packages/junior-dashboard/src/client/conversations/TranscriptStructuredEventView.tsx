@@ -1,9 +1,9 @@
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
-import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
 import { DisplayText } from "../display-text/DisplayText";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { formatMessageTimestamp } from "../time";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 

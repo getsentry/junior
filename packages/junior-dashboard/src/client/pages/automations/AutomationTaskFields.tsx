@@ -91,7 +91,7 @@ export function AutomationTaskFields(props: {
             className="resize-y text-base leading-relaxed sm:text-sm"
           />
           <p className="m-0 text-right text-xs text-dashboard-text-muted">
-            {task.instruction.length.toLocaleString()} / 4,000
+            {task.instruction.length.toLocaleString("en-US")} / 4,000
           </p>
           <FieldError id="task.instruction-error">
             {props.fieldError("task.instruction")}
@@ -175,7 +175,7 @@ function SkillFields(props: {
               Junior gets this with the skill on every run.
             </FieldDescription>
             <p className="m-0 shrink-0 text-xs text-dashboard-text-muted">
-              {task.context.length.toLocaleString()} / 4,000
+              {task.context.length.toLocaleString("en-US")} / 4,000
             </p>
           </div>
           <FieldError id="task.context-error">

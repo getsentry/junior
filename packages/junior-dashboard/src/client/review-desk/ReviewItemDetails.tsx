@@ -10,7 +10,7 @@ import {
   DisplayText,
   useTextShowsObjectCard,
 } from "../display-text/DisplayText";
-import { automationPath, formatRelativeTime } from "../format";
+import { automationPath } from "../format";
 import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { ReviewItemObjects } from "./ReviewItemObjects";
@@ -20,6 +20,7 @@ import {
   reviewItemSubjectHref,
 } from "./reviewItemFormat";
 import { OutboundLink } from "../components/OutboundLink";
+import { formatRelativeTime } from "../time";
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (

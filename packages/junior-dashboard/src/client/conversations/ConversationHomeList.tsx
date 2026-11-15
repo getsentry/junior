@@ -9,7 +9,6 @@ import { Link } from "react-router";
 
 import {
   conversationDisplayTitle,
-  formatTime,
   visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -23,7 +22,6 @@ import { cn } from "../styles";
 import type { WaitingConversation } from "../review-desk/queries";
 import type { Conversation } from "../types";
 import { useConversationActionToasts } from "./conversationActionToasts";
-import { formatActivityDay } from "./conversationAge";
 import { conversationCardTags } from "./ConversationContextTags";
 import {
   ConversationListStatusIcon,
@@ -42,6 +40,7 @@ import {
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
+import { formatActivityDay, formatTime } from "../time";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
