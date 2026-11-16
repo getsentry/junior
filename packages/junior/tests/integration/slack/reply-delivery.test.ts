@@ -11,7 +11,10 @@ import {
 } from "../../msw/handlers/slack-api";
 
 function markdownBody(call: CapturedSlackApiCall): string {
-  const [block] = call.params.blocks as Array<{ type: string; text: string }>;
+  const [block] = call.params["blocks"] as Array<{
+    type: string;
+    text: string;
+  }>;
   expect(block?.type).toBe("markdown");
   return block?.text ?? "";
 }
