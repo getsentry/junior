@@ -130,9 +130,16 @@ async function mockLongConversation(
     async (route) => {
       await route.fulfill({
         json: {
-          items: events(0, lastSeq).flatMap(({ data, seq }) =>
+          items: events(0, lastSeq).flatMap(({ createdAt, data, seq }) =>
             data.type === "message" && data.role === "user"
-              ? [{ seq, text: data.text }]
+              ? [
+                  {
+                    createdAt,
+                    seq,
+                    text: data.text,
+                    reply: `Transcript message ${seq + 1} with enough content to occupy a visible row.`,
+                  },
+                ]
               : [],
           ),
         },
@@ -355,8 +362,8 @@ test("keeps a Reply rating while its row unmounts", async ({
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
-  // The outline shows only beside a transcript with room to its left.
-  await page.setViewportSize({ height: 900, width: 1920 });
+  // The outline shows beside a transcript that fills its column too.
+  await page.setViewportSize(desktop);
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
     paged: true,
@@ -376,6 +383,14 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   const item = outline.getByRole("button", {
     name: "Transcript message 1234 with",
   });
+  // The preview of a message that has not loaded shows its reply too.
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-description"]'),
+  ).toHaveText(/^Transcript message 1235 /);
+  await expect(
+    page.locator('[data-slot="message-outline-preview-time"]'),
+  ).toBeVisible();
   await item.click();
   // The message starts at the top of the viewport.
   await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });

@@ -45,7 +45,7 @@ describe("conversation outline API", () => {
     await closeDb();
   });
 
-  it("lists the person messages of the whole Conversation", async () => {
+  it("lists the person messages of the whole Conversation with their replies", async () => {
     const conversationId = "local:test:outline";
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
@@ -68,19 +68,22 @@ describe("conversation outline API", () => {
       message("context", "user", "thread chatter", { explicitMention: false }),
       message("empty", "user", "   "),
       message("mention", "user", "hi <@U1>", { explicitMention: true }),
+      message("answer", "assistant", "  done  "),
       message("long", "user", long),
       message("link", "user", `<${link}>`),
     ]);
 
     const outline = await readOutline(conversationId);
 
-    expect(outline.items.map((item) => item.text)).toEqual([
-      "first question",
-      "hi <@U1>",
-      "a".repeat(195),
-      link.slice(0, 199),
+    expect(outline.items.map((item) => [item.text, item.reply])).toEqual([
+      // The last reply before the next item.
+      ["first question", "reply 199"],
+      ["hi <@U1>", "done"],
+      ["a".repeat(195), undefined],
+      [link.slice(0, 199), undefined],
     ]);
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
+    expect(outline.items[0]?.createdAt).toBe(new Date(1).toISOString());
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {

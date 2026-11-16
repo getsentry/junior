@@ -20,7 +20,7 @@ describe("conversation outline", () => {
   it("lists person messages with the last Junior reply to each", () => {
     const items = conversationOutlineItems([
       message(1, "assistant", "before any person message"),
-      message(2, "user", "**url** local para   verlo?"),
+      message(2, "user", "**url** local para   verlo?", { timestamp: 20 }),
       message(3, "assistant", "Checking."),
       message(4, "assistant", "Es la misma URL."),
       message(5, "user", "a Slack message", { context: true }),
@@ -30,7 +30,12 @@ describe("conversation outline", () => {
     ]);
 
     expect(items).toEqual([
-      { seq: 2, title: "url local para verlo?", reply: "Es la misma URL." },
+      {
+        seq: 2,
+        timestamp: 20,
+        title: "url local para verlo?",
+        reply: "Es la misma URL.",
+      },
       { seq: 7, title: "second question" },
     ]);
   });
@@ -38,8 +43,17 @@ describe("conversation outline", () => {
   it("joins the whole outline with the loaded items", () => {
     const outline = {
       items: [
-        { seq: 2, text: "**old** question" },
-        { seq: 7, text: "loaded question cut" },
+        {
+          createdAt: "2026-01-01T00:00:00.000Z",
+          seq: 2,
+          text: "**old** question",
+          reply: "_old_ answer",
+        },
+        {
+          createdAt: "2026-01-01T00:01:00.000Z",
+          seq: 7,
+          text: "loaded question cut",
+        },
       ],
     };
 
@@ -50,7 +64,12 @@ describe("conversation outline", () => {
         { seq: 12, title: "new question" },
       ]),
     ).toEqual([
-      { seq: 2, title: "old question" },
+      {
+        seq: 2,
+        timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
+        title: "old question",
+        reply: "old answer",
+      },
       { seq: 7, title: "loaded question in full", reply: "Done." },
       { seq: 12, title: "new question" },
     ]);

@@ -6,6 +6,8 @@ import type { TranscriptViewMessage } from "../types";
 export type ConversationOutlineItem = {
   /** Event seq of the message. Its transcript row carries the same seq. */
   seq: number;
+  /** When the person sent the message, in epoch ms. */
+  timestamp?: number;
   title: string;
   /** The last Junior text before the next outline item. */
   reply?: string;
@@ -25,7 +27,13 @@ export function conversationOutlineItems(
     const text = displayPlainText(messageText(message), message.mentions);
     if (!text) continue;
     if (message.role === "user" && !message.eventType && !message.context) {
-      items.push({ seq: message.sourceSeq, title: text });
+      items.push({
+        seq: message.sourceSeq,
+        title: text,
+        ...(message.timestamp === undefined
+          ? undefined
+          : { timestamp: message.timestamp }),
+      });
     } else if (message.role === "assistant" && items.length > 0) {
       items.at(-1)!.reply = text;
     }
@@ -47,7 +55,14 @@ export function mergeConversationOutlineItems(
   const bySeq = new Map<number, ConversationOutlineItem>();
   for (const item of outline.items) {
     const title = displayPlainText(item.text, item.mentions);
-    if (title) bySeq.set(item.seq, { seq: item.seq, title });
+    if (!title) continue;
+    const reply = item.reply && displayPlainText(item.reply, item.mentions);
+    bySeq.set(item.seq, {
+      seq: item.seq,
+      timestamp: Date.parse(item.createdAt),
+      title,
+      ...(reply ? { reply } : undefined),
+    });
   }
   for (const item of loaded) bySeq.set(item.seq, item);
   return [...bySeq.values()].sort((left, right) => left.seq - right.seq);

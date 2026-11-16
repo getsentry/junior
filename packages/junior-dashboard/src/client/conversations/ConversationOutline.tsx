@@ -18,10 +18,12 @@ import {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
+  MessageOutlinePreviewTime,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 } from "../components/ui/message-outline";
 import { fetchDashboardJson } from "../http";
+import { formatTranscriptMessageTime } from "../time";
 import {
   conversationOutlineItems,
   mergeConversationOutlineItems,
@@ -90,10 +92,13 @@ export function ConversationOutline(props: {
     <MessageOutline
       activeIndex={items.findIndex((item) => item.seq === activeSeq)}
       aria-label="Conversation outline"
-      className="absolute inset-y-8 left-3 z-20 hidden @min-[62rem]/chat:flex"
+      // From `md`, the transcript has side padding that holds the rail, so
+      // it shows beside narrow transcripts too.
+      className="absolute inset-y-8 left-1 z-20 hidden md:flex @min-[62rem]/chat:left-3"
       itemCount={items.length}
     >
-      <MessageOutlineList>
+      {/* The list's right padding would cover text in a narrow transcript. */}
+      <MessageOutlineList className="@max-[62rem]/chat:pr-0">
         {items.map((item, index) => (
           <MessageOutlineItem
             aria-label={item.title}
@@ -132,7 +137,7 @@ function useConversationOutline(conversationId: string) {
   });
 }
 
-/** Preview the pointed message with the last Junior reply to it. */
+/** Preview the pointed message, when it was sent, and Junior's reply. */
 function ConversationOutlinePreview(props: {
   items: readonly ConversationOutlineItem[];
 }) {
@@ -142,6 +147,11 @@ function ConversationOutlinePreview(props: {
   if (!item) return null;
   return (
     <MessageOutlinePreview>
+      {item.timestamp === undefined ? null : (
+        <MessageOutlinePreviewTime>
+          {formatTranscriptMessageTime(item.timestamp)}
+        </MessageOutlinePreviewTime>
+      )}
       <MessageOutlinePreviewTitle>{item.title}</MessageOutlinePreviewTitle>
       {item.reply ? (
         <MessageOutlinePreviewDescription>

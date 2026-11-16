@@ -248,7 +248,7 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
       data-slot="message-outline-preview"
       // It glides between items, and grows in from the rail when it opens.
       className={cn(
-        "pointer-events-none absolute top-0 left-full ml-2 grid w-72 origin-left gap-1.5 rounded-xl border border-input bg-secondary px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
+        "pointer-events-none absolute top-0 left-full ml-2 grid w-96 origin-left gap-1.5 rounded-xl border border-input bg-secondary px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
         className,
       )}
       style={{ translate: `0 ${translate}` }}
@@ -258,9 +258,9 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
 }
 
 /**
- * Name the previewed message in one line. With no description, it shows as
- * much of the message as a title and a description hold, so the preview
- * keeps its height as it glides between items.
+ * Show the previewed message in two lines. With no description after it, it
+ * shows as much of the message as a title and a description hold, so the
+ * preview keeps its height as it glides between items.
  */
 function MessageOutlinePreviewTitle({
   className,
@@ -270,11 +270,25 @@ function MessageOutlinePreviewTitle({
     <p
       data-slot="message-outline-preview-title"
       className={cn(
-        "m-0 truncate text-sm font-medium text-foreground",
-        // One title line, the gap, and three description lines.
-        "only:min-h-[calc(var(--text-sm)*(var(--text-sm--line-height)+3*var(--leading-relaxed))+--spacing(1.5))] only:line-clamp-4 only:leading-relaxed only:whitespace-normal",
+        "m-0 line-clamp-2 text-sm font-medium text-foreground",
+        // Two title lines, the gap, and three description lines.
+        "last:min-h-[calc(var(--text-sm)*(2*var(--text-sm--line-height)+3*var(--leading-relaxed))+--spacing(1.5))] last:line-clamp-5 last:leading-relaxed",
         className,
       )}
+      {...props}
+    />
+  );
+}
+
+/** Show when the previewed message was sent, above its title. */
+function MessageOutlinePreviewTime({
+  className,
+  ...props
+}: ComponentProps<"p">) {
+  return (
+    <p
+      data-slot="message-outline-preview-time"
+      className={cn("m-0 text-xs text-dashboard-text-faint", className)}
       {...props}
     />
   );
@@ -322,6 +336,7 @@ export {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
+  MessageOutlinePreviewTime,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 };
