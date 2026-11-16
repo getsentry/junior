@@ -57,7 +57,7 @@ test("the tab title and icon count the Inbox until it is zero", async ({
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
 });
 
-test("the tab icon count sits in the top-left corner", async ({
+test("the tab icon count fills the top-left corner, clear of the eye", async ({
   dashboard,
   page,
 }) => {
@@ -84,6 +84,8 @@ test("the tab icon count sits in the top-left corner", async ({
     const size = image.width;
     const inset = Math.round(size * 0.16);
     const spots = {
+      // The badge's fill right of the count, so the badge stays readable.
+      badgeRight: [Math.round(size * 0.42), Math.round(size * 0.24)],
       bottomRight: [size - inset, size - inset],
       // Junior's eye.
       eye: [Math.round(size * 0.6), Math.round(size * 0.4)],
@@ -98,7 +100,7 @@ test("the tab icon count sits in the top-left corner", async ({
       })
       .map(([name]) => name);
   }, href);
-  expect(accentSpots).toEqual(["topLeft"]);
+  expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
 });
 
 test("turning off the tab icon count keeps the title count", async ({
