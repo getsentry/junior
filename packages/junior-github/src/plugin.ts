@@ -4,6 +4,7 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
+import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
@@ -26,6 +27,7 @@ import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
@@ -67,6 +69,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import { githubImageSource } from "./images.js";
 import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
@@ -82,6 +85,7 @@ import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
+import { gitHooksPathOverrideRedirect } from "./hooks-path-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
@@ -175,7 +179,8 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
-    objectLinks: [githubAccountLinks],
+    images: githubImageSource,
+    objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     events: {
       resourceTypes: [
         {
@@ -344,8 +349,11 @@ export function githubPlugin(
         await runGitHubConflictChecks({
           db,
           events: ctx.events,
+          loadHistory: async (ref) =>
+            await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          reviewItems: ctx.reviewItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -370,6 +378,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
+          reviewItems: ctx.reviewItems,
           state: ctx.state,
         });
       },
@@ -426,6 +435,11 @@ export function githubPlugin(
               ),
             loadPullRequest: async (pullRequest) =>
               await loadPullRequest(installationEnv, pullRequest),
+            loadPullRequestConflictHistory: async (pullRequest) =>
+              await loadPullRequestConflictHistory(
+                installationEnv,
+                pullRequest,
+              ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
@@ -439,9 +453,8 @@ export function githubPlugin(
           }),
         ];
       },
-      tools(ctx) {
+      tools() {
         return createGitHubTools(
-          ctx,
           readEnv(botEmailEnv),
           gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
@@ -455,12 +468,14 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const cloneRedirect =
-          typeof ctx.tool.input.command === "string"
-            ? githubCloneCommandRedirect(ctx.tool.input.command)
+        const command = ctx.tool.input["command"];
+        const commandRedirect =
+          typeof command === "string"
+            ? githubCloneCommandRedirect(command) ||
+              gitHooksPathOverrideRedirect(command)
             : undefined;
-        if (cloneRedirect) {
-          ctx.decision.redirect(cloneRedirect);
+        if (commandRedirect) {
+          ctx.decision.redirect(commandRedirect);
           return;
         }
         const botName = requireEnv(botNameEnv);

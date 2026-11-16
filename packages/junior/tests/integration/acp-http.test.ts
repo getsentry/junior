@@ -212,9 +212,11 @@ describe("remote ACP HTTP", () => {
       streamReplies("First ACP reply."),
     );
     const app = await createApp({
+      botName: "Marky",
       conversationWork: harness.conversationWork,
     });
     const secondApp = await createApp({
+      botName: "Marky",
       conversationWork: createIndependentConversationWork(harness),
     });
     const expectedFirstPromptText =
@@ -238,7 +240,7 @@ describe("remote ACP HTTP", () => {
           authMethods: [
             expect.objectContaining({
               id: "junior",
-              name: "Sign in to Junior",
+              name: "Sign in to Marky",
             }),
           ],
         });
@@ -642,7 +644,7 @@ describe("remote ACP HTTP", () => {
     let connectionId: string | undefined;
     let cookie: string | undefined;
     const fetch: typeof globalThis.fetch = async (input, init) => {
-      const request = new Request(input, init as RequestInit);
+      const request = new Request(input, init);
       cookie ??= request.headers.get("cookie") ?? undefined;
       const isSessionStream =
         request.method === "GET" && request.headers.has("Acp-Session-Id");

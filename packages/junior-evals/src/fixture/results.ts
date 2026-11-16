@@ -6,6 +6,7 @@ import type * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
+  conversationWatchesReportSchema,
 } from "@/api/schema";
 import {
   CODE_MODE_CALL_STATUS_TEXT,
@@ -178,8 +179,6 @@ export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
   lastSeq: number;
-  /** Quiet messages: stored, but not delivered, so people did not see them. */
-  quietReplies: Reply[];
   replies: Reply[];
   toolCalls: ToolCall[];
   turns: Turn[];
@@ -258,6 +257,30 @@ export async function readFailedCallRun(args: {
   };
 }
 
+/**
+ * Ids of the active Watches of one Conversation, read through
+ * `GET /api/conversations/:id/watches` as the dashboard does.
+ */
+export async function readWatchIds(
+  api: RequestApp,
+  conversationId: string,
+  viewerEmail: string,
+): Promise<string[]> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Watches returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { watches } = conversationWatchesReportSchema.parse(
+    await response.json(),
+  );
+  return watches.map((watch) => watch.id);
+}
+
 /** The connect prompt that the dashboard shows to a person. */
 export interface AuthorizationPrompt {
   label: string;
@@ -310,7 +333,6 @@ export function readCallEvents(args: {
   conversationId: string;
   detail: ConversationDetail;
 }): CallEvents {
-  const quietReplies: Reply[] = [];
   const replies: Reply[] = [];
   const visibleMessages: VisibleMessage[] = [];
   const turns = new Map<string, Turn>();
@@ -348,10 +370,6 @@ export function readCallEvents(args: {
           messageId: data.messageId,
           text: data.text,
         };
-        if (data.quiet) {
-          quietReplies.push(reply);
-          continue;
-        }
         replies.push(reply);
         currentTurn?.replies.push(reply);
         visibleMessages.push({ content: data.text, role: "assistant" });
@@ -397,7 +415,6 @@ export function readCallEvents(args: {
   return {
     compactions,
     lastSeq,
-    quietReplies,
     replies,
     toolCalls: [...toolCalls.values()],
     turns: [...turns.values()],
@@ -437,19 +454,21 @@ export function slackThreadEffects(
     ...new Set(
       slackCalls.flatMap((captured) =>
         captured.method === "reactions.add" &&
-        captured.params.channel === thread?.channelId &&
-        typeof captured.params.name === "string"
-          ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+        captured.params["channel"] === thread?.channelId &&
+        typeof captured.params["name"] === "string"
+          ? [
+              `${String(captured.params["timestamp"])}:${captured.params["name"]}`,
+            ]
           : [],
       ),
     ),
   ].map((key) => key.slice(key.indexOf(":") + 1));
   const files = slackCalls.flatMap((captured) =>
     captured.method === "files.completeUploadExternal" &&
-    captured.params.channel_id === thread?.channelId &&
-    captured.params.thread_ts === thread?.threadTs &&
-    Array.isArray(captured.params.files)
-      ? captured.params.files.map((file: { title?: unknown }) =>
+    captured.params["channel_id"] === thread?.channelId &&
+    captured.params["thread_ts"] === thread?.threadTs &&
+    Array.isArray(captured.params["files"])
+      ? captured.params["files"].map((file: { title?: unknown }) =>
           String(file.title),
         )
       : [],
@@ -458,14 +477,14 @@ export function slackThreadEffects(
     slackCalls.filter(
       (captured) =>
         captured.method === method &&
-        captured.params.channel_id === thread?.channelId &&
-        captured.params.thread_ts === thread?.threadTs,
+        captured.params["channel_id"] === thread?.channelId &&
+        captured.params["thread_ts"] === thread?.threadTs,
     );
   const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
-    String(captured.params.status),
+    String(captured.params["status"]),
   );
   const threadTitles = threadCalls("assistant.threads.setTitle").map(
-    (captured) => String(captured.params.title),
+    (captured) => String(captured.params["title"]),
   );
   return { files, reactions, statuses, threadTitles };
 }
@@ -497,7 +516,7 @@ export function slackCallReplies(args: {
   };
   const extra: VisibleMessage[] = [];
   const replies: Reply[] = [];
-  for (let start = 0; start < args.posts.length; ) {
+  for (let start = 0; start < args.posts.length;) {
     let count = 0;
     const index = unmatched.findIndex((reply) => {
       count = postCount(start, reply);
@@ -527,16 +546,14 @@ function toTranscriptEvents(
   toolCalls: ToolCall[],
 ): TranscriptEvent[] {
   return [
-    ...messages.map(
-      (message): TranscriptEvent => ({
-        type: "message",
-        role: message.role,
-        content: message.content,
-        ...(message.author
-          ? { metadata: { author_name: message.author } }
-          : undefined),
-      }),
-    ),
+    ...messages.map((message): TranscriptEvent => ({
+      type: "message",
+      role: message.role,
+      content: message.content,
+      ...(message.author
+        ? { metadata: { author_name: message.author } }
+        : undefined),
+    })),
     ...toolCalls.flatMap((toolCall): TranscriptEvent[] => {
       const input = toJsonValue(toolCall.input);
       const output = toJsonValue(toolCall.output) ?? null;

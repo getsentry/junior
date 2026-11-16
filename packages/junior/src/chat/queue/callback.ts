@@ -5,7 +5,10 @@ import {
   type QueueMessageMetadata,
   type QueueRetryDirective,
 } from "@/chat/queue/provider";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import {
+  runWithNewTurnRequestDeadline,
+  runWithTurnRequestDeadline,
+} from "@/chat/runtime/request-deadline";
 import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
 export interface QueueCallbackOptions<Message> {
@@ -66,7 +69,12 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    await consume(checked.message, metadata);
+    // Each provider delivery is its own host request. The Vercel local-dev
+    // consumer runs inside the sender's async context, so without a new
+    // deadline every delivery inherits the sender's spent deadline.
+    await runWithNewTurnRequestDeadline(() =>
+      consume(checked.message, metadata),
+    );
   };
 
   const retry = (
@@ -101,7 +109,7 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     consumer,
     create: () => getQueueProvider().createCallback(consumer),
     registerDev: () => {
-      if (process.env.NODE_ENV !== "development") {
+      if (process.env["NODE_ENV"] !== "development") {
         return undefined;
       }
       return getQueueProvider().registerDevConsumer?.(consumer);

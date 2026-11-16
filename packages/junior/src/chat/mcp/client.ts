@@ -17,6 +17,7 @@ import {
   toMcpProviderError,
 } from "./errors";
 import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
+import { type McpLoginOwner, serializeMcpTokenRefresh } from "./token-refresh";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -61,15 +62,17 @@ export class McpAuthorizationRequiredError extends Error {
   }
 }
 
-export interface PluginMcpClientOptions {
-  authProvider?: OAuthClientProvider;
-  fetch?: typeof fetch;
-}
-
 type HostManagedSessionProvider = OAuthClientProvider & {
   getMcpServerSessionId?: () => Promise<string | undefined>;
+  /** The stored person login, so its refreshes share one lock. */
+  mcpLoginOwner?: () => Promise<McpLoginOwner>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
 };
+
+export interface PluginMcpClientOptions {
+  authProvider?: HostManagedSessionProvider;
+  fetch?: typeof fetch;
+}
 
 function isMissingSessionError(error: unknown): boolean {
   return (
@@ -79,15 +82,15 @@ function isMissingSessionError(error: unknown): boolean {
 }
 
 export class PluginMcpClient {
-  private client?: Client;
-  private clientPromise?: Promise<Client>;
-  private lastAttemptedTransportSessionId?: string;
+  private client?: Client | undefined;
+  private clientPromise?: Promise<Client> | undefined;
+  private lastAttemptedTransportSessionId?: string | undefined;
   private readonly providerStatusStore = new AsyncLocalStorage<{
     status?: number;
   }>();
-  private transport?: StreamableHTTPClientTransport;
-  private listedTools?: ListedTool[];
-  private readonly resourceHost?: string;
+  private transport?: StreamableHTTPClientTransport | undefined;
+  private listedTools?: ListedTool[] | undefined;
+  private readonly resourceHost?: string | undefined;
 
   private readonly plugin: PluginDefinition;
   private readonly options: PluginMcpClientOptions;
@@ -230,9 +233,14 @@ export class PluginMcpClient {
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
+    const loginProvider = this.options.authProvider;
+    const mcpLoginOwner = loginProvider?.mcpLoginOwner?.bind(loginProvider);
+    const providerFetch = mcpLoginOwner
+      ? serializeMcpTokenRefresh(mcpLoginOwner, this.options.fetch)
+      : this.options.fetch;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
       ...(headers ? { requestInit: { headers } } : undefined),
-      fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch, (status) => {
+      fetch: fetchWithBoundedOAuthErrorBodies(providerFetch, (status) => {
         const store = this.providerStatusStore.getStore();
         if (store) {
           store.status = status;
@@ -343,24 +351,18 @@ export class PluginMcpClient {
   }
 
   private async getStoredTransportSessionId(): Promise<string | undefined> {
-    const provider = this.options.authProvider as
-      | HostManagedSessionProvider
-      | undefined;
+    const provider = this.options.authProvider;
     return await provider?.getMcpServerSessionId?.();
   }
 
   private async clearStoredTransportSessionId(): Promise<void> {
-    const provider = this.options.authProvider as
-      | HostManagedSessionProvider
-      | undefined;
+    const provider = this.options.authProvider;
     this.lastAttemptedTransportSessionId = undefined;
     await provider?.saveMcpServerSessionId?.(undefined);
   }
 
   private async syncTransportSessionId(): Promise<void> {
-    const provider = this.options.authProvider as
-      | HostManagedSessionProvider
-      | undefined;
+    const provider = this.options.authProvider;
     const sessionId = this.transport?.sessionId;
     if (!provider?.saveMcpServerSessionId || !sessionId) {
       return;

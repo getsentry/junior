@@ -42,10 +42,14 @@ const payload = z.strictObject({
   custom_fields: z.array(customField).optional(),
   display_order: z.array(z.string()).optional(),
 });
-/** Limit IDs to Junior's safe subset; Slack silently rejects JSON punctuation. */
+/**
+ * Limit IDs to Junior's safe subset. Slack drops all message metadata when an
+ * ID has JSON punctuation or is longer than 128 characters.
+ */
 export const slackExternalRefIdSchema = z
   .string()
   .min(1)
+  .max(128)
   .regex(/^[A-Za-z0-9_-]+$/, "Unsupported Slack external reference ID");
 
 const entity = z.strictObject({

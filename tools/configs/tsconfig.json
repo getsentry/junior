@@ -1,0 +1,24 @@
+{
+  // Type checks the build, test, and database config files of the plugin
+  // and dashboard packages. packages/junior and packages/junior-evals check
+  // their own config files.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Exception to the strict base: the .d.ts files of tsup, tsdown, and
+    // the libraries they import (typescript, rolldown, @volar/typescript)
+    // fail type checks. Remove this line when
+    // `tsc --noEmit -p tools/configs --skipLibCheck false` passes.
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["../../packages/junior-*/*.config.ts"],
+  "exclude": [
+    "../../packages/junior-dashboard/playwright.config.ts",
+    "../../packages/junior-evals/*.config.ts"
+  ]
+}

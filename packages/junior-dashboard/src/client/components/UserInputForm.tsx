@@ -66,7 +66,7 @@ function SuggestedLabel(props: { className?: string }) {
 
 // Names the number key of a docked choice. The button already says it to
 // screen readers in `aria-keyshortcuts`.
-function ShortcutHint(props: { value?: string }) {
+function ShortcutHint(props: { value?: string | undefined }) {
   if (!props.value) return null;
   return (
     <Kbd aria-hidden="true" className="max-md:hidden">
@@ -79,7 +79,11 @@ function ShortcutHint(props: { value?: string }) {
 // at a glance. The control inside keeps its own focus ring.
 function ChoiceOption(props: {
   control: ReactNode;
-  option: { description?: string; label: string; recommended?: boolean };
+  option: {
+    description?: string | undefined;
+    label: string;
+    recommended?: boolean | undefined;
+  };
 }) {
   const { option } = props;
   return (
@@ -178,7 +182,7 @@ function ChoiceField(props: {
 
 function TextField(props: {
   className?: string;
-  description?: string;
+  description?: string | undefined;
   disabled: boolean;
   label: string;
   onChange(value: string): void;

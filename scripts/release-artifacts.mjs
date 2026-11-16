@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -35,6 +37,65 @@ function readReleasePackages(root) {
       return pkg.private === true ? [] : [pkg];
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Packing skips lifecycle scripts and reuses the root build. A lifecycle
+// script that did more than build would be skipped without notice.
+const lifecycleScripts = [
+  "preinstall",
+  "install",
+  "postinstall",
+  "prepare",
+  "prepack",
+  "postpack",
+  "prepublishOnly",
+  "prepublish",
+  "publish",
+  "postpublish",
+];
+const buildOnlyLifecycle = { prepack: "pnpm run build" };
+
+/**
+ * Build every workspace package in dependency order, then pack the release
+ * set from those outputs. Release CI and its PR check both use this.
+ */
+export function packReleaseArtifacts(root, directory, commit) {
+  const releasePackages = readReleasePackages(root);
+  for (const pkg of releasePackages) {
+    for (const script of lifecycleScripts) {
+      const command = pkg.scripts?.[script];
+      if (command === undefined) continue;
+      assert.equal(
+        command,
+        buildOnlyLifecycle[script],
+        `${pkg.name} has a ${script} script that packing would skip`,
+      );
+    }
+  }
+  // A package packed before its dependencies are built emits `any` types.
+  execFileSync("pnpm", ["build"], { cwd: root, stdio: "inherit" });
+  const destination = resolve(directory);
+  mkdirSync(destination, { recursive: true });
+  for (const pkg of releasePackages) {
+    execFileSync(
+      "pnpm",
+      [
+        "--filter",
+        pkg.name,
+        "--config.ignore-scripts=true",
+        "pack",
+        "--pack-destination",
+        destination,
+      ],
+      { cwd: root, stdio: "inherit" },
+    );
+  }
+  const manifest = createReleaseManifest(root, destination, commit);
+  writeFileSync(
+    join(destination, RELEASE_MANIFEST),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return manifest;
 }
 
 /** Check packed names, versions, and dependencies before writing a release manifest. */
@@ -127,24 +188,29 @@ export function verifyReleaseArtifacts(root, directory, commit) {
   return manifest;
 }
 
+/** Write a consumer project that depends on every packed release tarball. */
+function writeReleaseConsumer(consumer, directory, manifest) {
+  const dependencies = Object.fromEntries(
+    manifest.packages.map((pkg) => [
+      pkg.name,
+      `file:${resolve(directory, pkg.file)}`,
+    ]),
+  );
+  writeFileSync(
+    join(consumer, "package.json"),
+    JSON.stringify({ private: true, type: "module", dependencies }),
+  );
+  writeFileSync(
+    join(consumer, "pnpm-workspace.yaml"),
+    `overrides: ${JSON.stringify(dependencies)}\nautoInstallPeers: false\n`,
+  );
+}
+
 /** Install the complete package set outside the workspace with no Junior registry fallback. */
 export function verifyReleaseInstall(directory, manifest) {
   const consumer = mkdtempSync(join(tmpdir(), "junior-release-install-"));
   try {
-    const dependencies = Object.fromEntries(
-      manifest.packages.map((pkg) => [
-        pkg.name,
-        `file:${resolve(directory, pkg.file)}`,
-      ]),
-    );
-    writeFileSync(
-      join(consumer, "package.json"),
-      JSON.stringify({ private: true, dependencies }),
-    );
-    writeFileSync(
-      join(consumer, "pnpm-workspace.yaml"),
-      `overrides: ${JSON.stringify(dependencies)}\nautoInstallPeers: false\n`,
-    );
+    writeReleaseConsumer(consumer, directory, manifest);
     // A separate store proves this install does not depend on workspace links or cached Junior packages.
     execFileSync(
       "pnpm",
@@ -191,25 +257,59 @@ export function verifyReleaseInstall(directory, manifest) {
   }
 }
 
+/** Compile a consumer against the packed public types, so lost types fail. */
+export function verifyReleaseTypes(root, directory, manifest) {
+  const consumer = mkdtempSync(join(tmpdir(), "junior-release-types-"));
+  try {
+    writeReleaseConsumer(consumer, directory, manifest);
+    execFileSync("pnpm", ["install", "--ignore-scripts"], {
+      cwd: consumer,
+      stdio: "inherit",
+    });
+    copyFileSync(
+      join(root, "scripts/release-consumer/types.ts"),
+      join(consumer, "types.ts"),
+    );
+    writeFileSync(
+      join(consumer, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          module: "nodenext",
+          target: "es2024",
+          strict: true,
+          noEmit: true,
+          // Dependency declarations are not the subject of this check.
+          skipLibCheck: true,
+          types: [],
+        },
+        files: ["types.ts"],
+      }),
+    );
+    execFileSync(join(root, "node_modules/.bin/tsc"), ["-p", consumer], {
+      stdio: "inherit",
+    });
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
+  }
+}
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   const [mode, directory] = process.argv.slice(2);
   assert.ok(
-    directory && ["create", "verify"].includes(mode),
-    "Usage: node scripts/release-artifacts.mjs <create|verify> <directory>",
+    directory && ["pack", "verify"].includes(mode),
+    "Usage: node scripts/release-artifacts.mjs <pack|verify> <directory>",
   );
+  const root = process.cwd();
   const commit = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
-  if (mode === "create") {
-    const manifest = createReleaseManifest(process.cwd(), directory, commit);
-    writeFileSync(
-      join(directory, RELEASE_MANIFEST),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    );
+  if (mode === "pack") {
+    const manifest = packReleaseArtifacts(root, directory, commit);
+    verifyReleaseTypes(root, directory, manifest);
   } else {
-    verifyReleaseArtifacts(process.cwd(), directory, commit);
+    verifyReleaseArtifacts(root, directory, commit);
   }
 }

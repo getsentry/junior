@@ -1,11 +1,8 @@
 import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRegistry } from "@/chat/tools/definition";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Deferred tool catalog source for operator tools. */
 export const OPERATOR_TOOL_SOURCE = {
@@ -32,76 +29,76 @@ function findSqlState(
   return undefined;
 }
 
+export const runOperatorSqlToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: OPERATOR_TOOL_SOURCE,
+  executionMode: "sequential",
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Run one SQL statement against this deployment's Postgres database and return its rows. Reads and writes are allowed. Add RETURNING to see rows changed by INSERT, UPDATE, or DELETE. Use $1, $2 placeholders with params for values.",
+  inputSchema: z
+    .object({
+      statement: z.string().trim().min(1).max(20_000),
+      params: z
+        .array(paramSchema)
+        .max(100)
+        .nullable()
+        .optional()
+        .describe("Values for $1, $2, ... placeholders."),
+      row_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_ROW_LIMIT)
+        .nullable()
+        .optional()
+        .describe(`Maximum rows to return. Default ${DEFAULT_ROW_LIMIT}.`),
+    })
+    .strict(),
+  outputSchema: juniorToolOutputSchema.extend({
+    row_count: z.number().int(),
+    rows: z.array(z.unknown()),
+    truncated: z.boolean(),
+  }),
+});
+
 /**
- * Build the operator tools when the app enables `operator-tools`.
+ * Build the operator SQL tool. The registry offers it when the app enables
+ * `operator-tools`.
  *
- * These tools bypass every Conversation privacy gate, so they only exist in
- * non-public Conversations. Their results never reach a public transcript or a
+ * It bypasses every Conversation privacy gate, so `createTools` leaves it out
+ * of public Conversations. Its results never reach a public transcript or a
  * public Brief.
  */
-export function createOperatorTools(context: ToolRuntimeContext): ToolRegistry {
-  if (!isExperimentalFeatureEnabled("operator-tools")) return {};
-  if (context.conversationPrivacy === "public") return {};
-
-  return {
-    runOperatorSql: zodTool({
-      exposure: "deferred",
-      source: OPERATOR_TOOL_SOURCE,
-      executionMode: "sequential",
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false,
-        readOnlyHint: false,
-      },
-      description:
-        "Run one SQL statement against this deployment's Postgres database and return its rows. Reads and writes are allowed. Add RETURNING to see rows changed by INSERT, UPDATE, or DELETE. Use $1, $2 placeholders with params for values.",
-      inputSchema: z
-        .object({
-          statement: z.string().trim().min(1).max(20_000),
-          params: z
-            .array(paramSchema)
-            .max(100)
-            .nullable()
-            .optional()
-            .describe("Values for $1, $2, ... placeholders."),
-          row_limit: z
-            .number()
-            .int()
-            .min(1)
-            .max(MAX_ROW_LIMIT)
-            .nullable()
-            .optional()
-            .describe(`Maximum rows to return. Default ${DEFAULT_ROW_LIMIT}.`),
-        })
-        .strict(),
-      outputSchema: juniorToolOutputSchema.extend({
-        row_count: z.number().int(),
-        rows: z.array(z.unknown()),
-        truncated: z.boolean(),
-      }),
-      async execute(input) {
-        let rows: unknown[];
-        try {
-          rows = await getSqlExecutor().queryIsolated(
-            input.statement,
-            input.params ?? [],
-          );
-        } catch (error) {
-          const sqlState = findSqlState(error);
-          if (!sqlState) throw error;
-          throw new ToolInputError(
-            `SQL error ${sqlState.code}: ${sqlState.message}`,
-            { cause: error },
-          );
-        }
-        const returned = rows.slice(0, input.row_limit ?? DEFAULT_ROW_LIMIT);
-        return {
-          row_count: rows.length,
-          rows: returned,
-          truncated: returned.length < rows.length,
-        };
-      },
-    }),
-  };
+export function createRunOperatorSqlTool() {
+  return zodTool({
+    ...runOperatorSqlToolDefinition,
+    async execute(input) {
+      let rows: unknown[];
+      try {
+        rows = await getSqlExecutor().queryIsolated(
+          input.statement,
+          input.params ?? [],
+        );
+      } catch (error) {
+        const sqlState = findSqlState(error);
+        if (!sqlState) throw error;
+        throw new ToolInputError(
+          `SQL error ${sqlState.code}: ${sqlState.message}`,
+          { cause: error },
+        );
+      }
+      const returned = rows.slice(0, input.row_limit ?? DEFAULT_ROW_LIMIT);
+      return {
+        row_count: rows.length,
+        rows: returned,
+        truncated: returned.length < rows.length,
+      };
+    },
+  });
 }

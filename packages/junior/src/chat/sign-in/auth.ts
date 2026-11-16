@@ -87,7 +87,7 @@ export interface SignInAuthConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   secret?: string;
-  sessionMaxAgeSeconds?: number;
+  sessionMaxAgeSeconds?: number | undefined;
   trustedOrigins: string[];
 }
 
@@ -142,7 +142,7 @@ export function resolveSignInAuthConfig(
 
 function required(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new Error(`${name} is required for Junior sign-in`);
+    throw new Error(`${name} is required for sign-in`);
   }
   return value.trim();
 }
@@ -173,11 +173,11 @@ function createBetterAuth(config: SignInAuthConfig) {
     socialProviders: {
       google: {
         clientId: required(
-          config.googleClientId ?? process.env.GOOGLE_CLIENT_ID,
+          config.googleClientId ?? process.env["GOOGLE_CLIENT_ID"],
           "GOOGLE_CLIENT_ID",
         ),
         clientSecret: required(
-          config.googleClientSecret ?? process.env.GOOGLE_CLIENT_SECRET,
+          config.googleClientSecret ?? process.env["GOOGLE_CLIENT_SECRET"],
           "GOOGLE_CLIENT_SECRET",
         ),
         hd: hostedDomain,
@@ -199,7 +199,7 @@ function createBetterAuth(config: SignInAuthConfig) {
           return {
             user: {
               email: claims.email,
-              emailVerified: claims.email_verified === true,
+              emailVerified: claims.email_verified,
               // `null` clears a photo that the person removed.
               image: claims.picture ?? null,
               name: claims.name,

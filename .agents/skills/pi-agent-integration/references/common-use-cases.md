@@ -8,6 +8,8 @@ Pass a `streamFn` explicitly. A bound `Models.streamSimple` is the default direc
 
 Keep model, tools, prompt, thinking level, and transcript in `initialState`. Keep request policy in `AgentOptions` or the matching public runtime properties.
 
+To change the prompt later, append a system message. `agent.state.systemPrompt` is read-only.
+
 ## Stream assistant text
 
 Use `agent.subscribe()` and forward only:
@@ -26,7 +28,6 @@ Use `streamFn` when model calls must pass through a backend, trace layer, gatewa
 - Preserve the `StreamFn` contract. Return a stream and encode expected provider failures.
 - Use `streamProxy` when an untrusted client needs server-owned auth.
 - Use `onPayload` and `onResponse` for observation or patching without replacing the stream function.
-- Do not rely on finalized tool-call metadata through published `0.84.1` `streamProxy`; read the troubleshooting reference.
 
 ## Resolve short-lived credentials
 
@@ -34,7 +35,7 @@ Use `getApiKey(provider)` for each provider call. Return `undefined` for an expe
 
 ## Keep custom messages
 
-Extend `CustomAgentMessages` and retain useful custom entries in `agent.state.messages`. Use `convertToLlm` to filter UI-only messages or map custom messages to `user`, `assistant`, or `toolResult`.
+Extend `CustomAgentMessages` and retain useful custom entries in `agent.state.messages`. Use `convertToLlm` to filter UI-only messages or map custom messages to `system`, `user`, `assistant`, or `toolResult`.
 
 ## Prune or augment context
 
@@ -68,19 +69,17 @@ Call `reset()` only after `waitForIdle()`. It rejects while a run is active.
 
 - Use `toolExecution` and per-tool `executionMode` for ordering.
 - Use `beforeToolCall` to block a validated call. Set `terminate` on a blocked result when it should join batch termination.
-- Use `afterToolCall` to replace content, details, error state, usage, or termination.
-- Throw from `execute()` on failure.
+- Use `afterToolCall` to replace content, details, structured content, error state, usage, or termination.
+- Throw from `execute()` or return `isError: true` on failure.
 - Use `onUpdate` for progress. Late updates after settlement are ignored.
-- Use `addedToolNames` when a result introduces tools from that transcript point onward.
+- Assign `agent.state.tools` to change the executable tools. Pi announces the change to the model before the next request.
 
 ## Stop or prepare the next turn
 
-Use `shouldStopAfterTurn` on `Agent` or `AgentLoopConfig` to stop after a complete turn and before queues are polled.
+Use `finishTurn` on `Agent` or `AgentLoopConfig` and return `{ action: "end" }` to stop after a complete turn. It leaves the queues untouched.
 
-Use `Agent.prepareNextTurnWithContext` when the next provider request needs a replacement context, model, or thinking level. Use low-level `prepareNextTurn` for the same turn-context contract in `AgentLoopConfig`.
+Use `Agent.prepareNextTurnWithContext` when the next provider request needs a replacement context, model, or thinking level. Use low-level `prepareNextTurn` for the same turn-context contract in `AgentLoopConfig`. Both run only when another turn starts. Put end-of-run work in `finishTurn` or `agent_end` handling.
 
 ## Add durable sessions
 
-Use `Session` and a `SessionRepo` directly when the app needs a durable tree but can keep orchestration in bare `Agent`. Use `InMemorySessionRepo`, `JsonlSessionRepo`, or a backend that passes the `/session/testing` conformance suite.
-
-Do not use published `0.84.1` `AgentHarness` operation methods as a production orchestration layer. They are scaffold paths and most reject with `HarnessNotImplemented`.
+Pi `1.0.0` removed sessions from this package. Use `@earendil-works/pi-durable`.

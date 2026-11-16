@@ -49,14 +49,15 @@ function askedReviewItem(
  * The active Watches of the Conversation, and what else its idle period
  * waits on. Watches include timers and the event Watches that tools such as
  * `createPullRequest` add. A child agent that still runs comes first: its
- * result starts a Turn without a person. In an Automation run, only a child
- * agent or a Watch can start a later Turn, so a Review item does not count.
+ * result starts a Turn without a person. When `idleNeedsPendingWork`, as in
+ * an Automation run, only a child agent or a Watch can start a later Turn, so
+ * a Review item does not count.
  */
 export async function readPendingWork(
   conversationId: string,
   messages: Context["messages"],
   final: AssistantMessage,
-  automation: boolean,
+  idleNeedsPendingWork: boolean,
 ): Promise<{ watches: Watch[]; waitingOn?: WaitingOn }> {
   const [watches, children] = await Promise.all([
     listWatches({ conversationId }),
@@ -71,7 +72,7 @@ export async function readPendingWork(
   ) {
     return { watches, waitingOn: "child" };
   }
-  if (automation) {
+  if (idleNeedsPendingWork) {
     return watches.length > 0 ? { watches, waitingOn: "watch" } : { watches };
   }
   return askedReviewItem(messages, final)

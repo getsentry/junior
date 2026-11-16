@@ -134,7 +134,7 @@ function captureConversationTurnFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
   turnId: string;
 }): string | undefined {
   const eventId = logException(
@@ -379,10 +379,7 @@ export function createConversationTurnWorker(
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A child agent's Turn cannot wait for a person to sign in, even when it
-    // runs as the web user who started it; missing auth blocks it instead.
-    const signInActor =
-      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const signInActor = behavior.waitsForSignIn ? webActor : undefined;
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
@@ -538,7 +535,7 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
-          options?: { quiet?: true; reply?: true },
+          options?: { reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
@@ -548,16 +545,11 @@ export function createConversationTurnWorker(
           }
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
-          // Only Event Turns may be quiet: a person who asked always gets the
-          // reply. A card means someone must look, so it always delivers.
-          const quiet =
-            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.
           if (
             (options?.reply ? postsToProvider : deliverToProvider) &&
-            !quiet &&
             !(await isConversationDeliveryPaused(context.conversationId))
           ) {
             if (!conversationLocation || !deliverMessage) {
@@ -578,7 +570,6 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
             ...(deliveryResult ? { deliveryResult } : undefined),
-            ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             ...(deliveryResult
               ? { source: "slack" as const }
@@ -732,7 +723,6 @@ export function createConversationTurnWorker(
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: result,
-                logException,
               });
               const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;
@@ -763,11 +753,6 @@ export function createConversationTurnWorker(
                 });
               } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
-              } else if (reply.noReply?.note && isEventTurn) {
-                // The note of a no-reply Event Turn is its Quiet message.
-                await deliverAssistantMessage(reply.noReply.note, {
-                  quiet: true,
-                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({

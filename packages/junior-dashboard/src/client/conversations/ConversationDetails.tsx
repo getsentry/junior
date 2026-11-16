@@ -7,7 +7,6 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../components/ui/button";
 import { ConversationBrief } from "./ConversationBrief";
@@ -30,12 +29,14 @@ import {
   useConversationMemoryState,
   type ConversationMemoryEntry,
 } from "./conversationMemory";
+import { ConversationPlan } from "./ConversationPlan";
 import {
   ConversationWatches,
   useConversationWatches,
 } from "./ConversationWatches";
 import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { formatRelativeTime, formatTime } from "../time";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -44,10 +45,12 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
-  agentTree?: readonly ConversationAgentTreeNode[];
+  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
-  brief?: Brief;
+  brief?: Brief | undefined;
+  /** True when the viewer can close or reopen Plan items. */
+  canEditPlan: boolean;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
@@ -180,6 +183,10 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
+        <ConversationPlan
+          canEdit={props.canEditPlan}
+          conversationId={props.conversationId}
+        />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the

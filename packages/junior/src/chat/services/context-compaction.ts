@@ -8,9 +8,10 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -31,7 +32,6 @@ import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
-  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -48,7 +48,6 @@ import {
 import {
   CAPABILITY_SECTION_TAG,
   REQUEST_CONTEXT_SECTION_TAG,
-  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -56,7 +55,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -84,10 +84,12 @@ export interface ActiveContextCompactionArgs {
   conversationId: string;
   modelId: string;
   onCompactionStart?: () => void | Promise<void>;
-  pendingMessages?: Array<{
-    message: PiMessage;
-    provenance: ConversationMessageProvenance;
-  }>;
+  pendingMessages?:
+    | Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }>
+    | undefined;
   piMessages: PiMessage[];
   /**
    * `blocking` runs before the first model request of a Turn. With a new
@@ -102,9 +104,9 @@ export interface ActiveContextCompactionArgs {
    */
   requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Index in the runtime context messages where the current Turn starts. */
-  turnStartMessageIndex?: number;
+  turnStartMessageIndex?: number | undefined;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
@@ -190,7 +192,7 @@ export function userMessage(text: string): PiMessage {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
-  } as PiMessage;
+  };
 }
 
 function userMessageContent(message: PiMessage): unknown[] {
@@ -222,54 +224,32 @@ function withoutSections(text: string, tags: string[]): string {
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
+/**
+ * Remove the sections that only the Turn that received them can use, and
+ * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ */
 function withoutRequestContext(text: string): string {
-  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+  return withoutSections(text, [
+    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
+    PLAN_DELTA_TAG,
+  ]);
 }
 
 /**
- * Turn context sections that a Turn sends only when they differ from the
- * latest copy in history. Compaction keeps exactly that copy, byte for byte.
+ * Remove the copies of capability sections that the Turn context of older
+ * Turns held. Later system messages hold them now, and compaction folds
+ * those.
  */
-const LATEST_COPY_SECTION_TAGS: string[] = [
-  ...Object.values(CAPABILITY_SECTION_TAG),
-  SCRIPT_TOOLS_SECTION_TAG,
-];
-
-function latestSections(
-  messages: PiMessage[],
-  tags = LATEST_COPY_SECTION_TAGS,
-): string[] {
-  return tags.flatMap((tag) => latestTurnContextSection(messages, tag) ?? []);
-}
-
-/**
- * Remove every copy of the latest-copy sections, then put the given copies in
- * the first Turn context part. Callers leave out a section that kept history
- * already has.
- */
-function withLatestSections(content: unknown[], sections: string[]): unknown[] {
-  const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
-  const added = sections.map((section) => `\n\n${section}`).join("");
-  let pending = sections.length > 0;
-  const result = content.map((part) => {
+function withoutCapabilitySections(content: unknown[]): unknown[] {
+  return content.map((part) => {
     const text = textPart(part);
-    if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
-      return part;
-    }
-    let stripped = withoutSections(text, LATEST_COPY_SECTION_TAGS);
-    if (pending && stripped.endsWith(closingTag)) {
-      stripped = `${stripped.slice(0, -closingTag.length)}${added}${closingTag}`;
-      pending = false;
-    }
-    return { ...(part as object), text: stripped };
+    return text?.startsWith(`<${TURN_CONTEXT_TAG}>`)
+      ? {
+          ...(part as object),
+          text: withoutSections(text, Object.values(CAPABILITY_SECTION_TAG)),
+        }
+      : part;
   });
-  return pending
-    ? [
-        { type: "text", text: `<${TURN_CONTEXT_TAG}>${added}${closingTag}` },
-        ...result,
-      ]
-    : result;
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -283,7 +263,7 @@ function latestSessionContext(messages: PiMessage[]): PiMessage | undefined {
       return {
         ...message,
         content: [{ type: "text", text: withoutRequestContext(text) }],
-      } as PiMessage;
+      };
     }
   }
   return undefined;
@@ -302,17 +282,12 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  return runtimeContextContent(
-    effectiveMessages,
-    effectiveMessages,
-    latestSections(messages),
-  );
+  return runtimeContextContent(effectiveMessages, effectiveMessages);
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
-  latest: string[],
 ): {
   content: unknown[];
   timestamp: number;
@@ -321,11 +296,10 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = withLatestSections(
+  const content = withoutCapabilitySections(
     allContent.filter(
       (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
     ),
-    latest,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -378,8 +352,7 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context, the latest copy of each capability section and `<script-tools>`,
- * and AGENTS.md instructions.
+ * context and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -404,7 +377,6 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
-      latestSections([...earlierContext, ...turnContext]),
     ),
     timestamp,
   );
@@ -412,8 +384,7 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context, the latest copy of each
- * capability section and `<script-tools>`, and the AGENTS.md instructions.
+ * does not carry: the latest session context and the AGENTS.md instructions.
  * Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
@@ -431,12 +402,6 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
-      latestSections(
-        earlierContext,
-        LATEST_COPY_SECTION_TAGS.filter(
-          (tag) => !latestTurnContextSection(keptContext, tag),
-        ),
-      ),
     ),
   );
 }
@@ -558,13 +523,21 @@ async function loadRetainedUserMessages(
   });
 }
 
-/** Keep generated text inside the existing evidence-only prompt boundary. */
+const COMPACTION_READ_BACK_NOTE =
+  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+
+/**
+ * Keep generated text inside the existing evidence-only prompt boundary. The
+ * last line says where replaced detail stays readable: without it, the model
+ * often decides an exact value from a compacted tool result is gone.
+ */
 export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
     '<thread-context authority="evidence-only">',
     escapeXml(summary),
     "</thread-context>",
+    COMPACTION_READ_BACK_NOTE,
   ].join("\n");
 }
 
@@ -616,6 +589,29 @@ function measuredInputTokens(message: PiMessage): number | undefined {
   return tokens > 0 ? tokens : undefined;
 }
 
+// Pi 1.0 removed `estimateContextTokens` from agent-core. pi-ai's version also
+// drops the usage of an assistant message that is stamped before any earlier
+// message, such as after clock skew, and then estimates all history by size.
+// Junior checks only the case that matters, a newer summary, below.
+function lastAssistantUsage(
+  messages: PiMessage[],
+): { tokens: number; index: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (
+      message.role !== "assistant" ||
+      message.stopReason === "aborted" ||
+      message.stopReason === "error" ||
+      !message.usage
+    ) {
+      continue;
+    }
+    const tokens = calculateContextTokens(message.usage);
+    if (tokens > 0) return { tokens, index };
+  }
+  return undefined;
+}
+
 /**
  * Measure provider-visible history without counting host-only message fields.
  *
@@ -629,24 +625,18 @@ export function estimateHistoryTokens(
   modelId: string,
   requestOverheadTokens = 0,
 ): number {
-  const estimate = estimateContextTokens(messages);
+  const usage = lastAssistantUsage(messages);
   const summaryAt = latestSummaryTimestamp(messages);
-  const usageAt =
-    estimate.lastUsageIndex === null
-      ? undefined
-      : timestampOf(messages[estimate.lastUsageIndex]!);
+  const usageAt = usage ? timestampOf(messages[usage.index]!) : undefined;
   if (
-    estimate.lastUsageIndex !== null &&
+    usage &&
     usageAt !== undefined &&
     (summaryAt === undefined || usageAt > summaryAt)
   ) {
     // The usage counts the request up to that call. Estimate the rest by size.
     return (
-      estimate.usageTokens +
-      estimateMessagesTokens(
-        messages.slice(estimate.lastUsageIndex + 1),
-        modelId,
-      )
+      usage.tokens +
+      estimateMessagesTokens(messages.slice(usage.index + 1), modelId)
     );
   }
   return estimateReplacementTokens(messages, modelId, requestOverheadTokens);
@@ -667,7 +657,9 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
   for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
-      if ((message as { role?: unknown }).role !== "user") return undefined;
+      // A replacement adds only user messages and folded system state.
+      const role = (message as { role?: unknown }).role;
+      if (role !== "user" && role !== "system") return undefined;
       continue;
     }
     const tokens = measuredInputTokens(message);
@@ -841,10 +833,17 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
+  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemEntries = systemMessage
+    ? [{ message: systemMessage, provenance: contextProvenance }]
+    : [];
   const keptTokens = estimateReplacementTokens(
-    [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
-      (entry) => entry.message,
-    ),
+    [
+      ...retainedUserMessages,
+      ...contextEntries,
+      ...instructionEntries,
+      ...systemEntries,
+    ].map((entry) => entry.message),
     args.modelId,
     args.requestOverheadTokens,
   );
@@ -884,10 +883,17 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      appendOpenPlan(renderCompactionSummary(summary), source.messages),
+      await appendPlanSnapshot(
+        renderCompactionSummary(summary),
+        args.conversationId,
+      ),
     ),
     provenance: contextProvenance,
   };
+  // The current system state directly follows the summary of the history
+  // that held it. A system message must follow a user message. With no
+  // assistant message before it, the request folds it into the system
+  // prompt.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
@@ -896,10 +902,16 @@ async function compactActiveAboveThreshold(
     ? [
         ...retainedUserMessages,
         summaryEntry,
+        ...systemEntries,
         ...contextEntries,
         ...instructionEntries,
       ]
-    : [...contextEntries, ...instructionEntries, summaryEntry];
+    : [
+        ...contextEntries,
+        ...instructionEntries,
+        summaryEntry,
+        ...systemEntries,
+      ];
   const retainedMessageCount =
     retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);

@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
+import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 
 function toolContext(
   response?: Response,
@@ -24,7 +25,10 @@ function toolContext(
       )
     );
   });
-  return { fetch, tool: createGitHubCommentOnPullRequestTool({ fetch }) };
+  return {
+    fetch,
+    tool: bindPluginTool(gitHubCommentOnPullRequestTool, { egress: { fetch } }),
+  };
 }
 
 describe("commentOnPullRequest", () => {

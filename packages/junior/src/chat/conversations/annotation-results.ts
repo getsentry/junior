@@ -24,27 +24,37 @@ export async function saveObjectAnnotations(
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }
 
-/** Save annotations from a successful plugin tool result and attach their cards. */
+/**
+ * Save annotations from a successful plugin tool result and attach their cards.
+ * An Annotation marks work that the Conversation did, so a read-only tool must
+ * not return one: looking up an object does not link it.
+ */
 export async function annotateToolResult(
   conversationId: string,
   plugin: string,
   result: unknown,
+  options: { readOnly: boolean },
 ): Promise<unknown> {
-  if (!isRecord(result) || result.isError === true) return result;
-  const details = isRecord(result.details) ? result.details : result;
+  if (!isRecord(result) || result["isError"] === true) return result;
+  const details = isRecord(result["details"]) ? result["details"] : result;
   if (
-    details.timed_out === true ||
-    details.isError === true ||
-    !Array.isArray(details.objectAnnotations)
+    details["timed_out"] === true ||
+    details["isError"] === true ||
+    !Array.isArray(details["objectAnnotations"])
   )
     return result;
+  if (options.readOnly) {
+    throw new Error(
+      `Read-only ${plugin} tool returned objectAnnotations. Return them only from tools that change the object.`,
+    );
+  }
   const cards = await saveObjectAnnotations(
     conversationId,
     plugin,
-    details.objectAnnotations,
+    details["objectAnnotations"],
   );
   const { objectAnnotations: _annotations, ...rest } = details;
   const annotated = { ...rest, objectCards: cards };
-  if (isRecord(result.details)) return { ...result, details: annotated };
+  if (isRecord(result["details"])) return { ...result, details: annotated };
   return annotated;
 }

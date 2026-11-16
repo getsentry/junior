@@ -17,11 +17,11 @@ import {
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
   conversationDisplayTitle,
-  formatRelativeTime,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../../format";
 import type { Conversation } from "../../types";
+import { formatRelativeTime } from "../../time";
 
 /** Titled repository card with an optional "View all" link to its tab. */
 export function RepositorySection(props: {

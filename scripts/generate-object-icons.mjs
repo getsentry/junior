@@ -19,7 +19,13 @@ const names = [
   "file",
   "comment",
   "globe",
+  "graph",
+  "pulse",
+  "bell",
+  "rows",
+  "tag",
   "package",
+  "apps",
 ];
 const paths = Object.fromEntries(
   names.map((name) => [

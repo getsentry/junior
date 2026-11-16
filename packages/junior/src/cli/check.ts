@@ -73,11 +73,11 @@ const ANSI = {
 };
 
 function supportsColor(stream: NodeJS.WriteStream | undefined): boolean {
-  if (process.env.NO_COLOR !== undefined) {
+  if (process.env["NO_COLOR"] !== undefined) {
     return false;
   }
 
-  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0") {
+  if (process.env["FORCE_COLOR"] && process.env["FORCE_COLOR"] !== "0") {
     return true;
   }
 
@@ -424,7 +424,7 @@ function isPluginFactoryExport(
 function isPluginRegistrationLike(
   value: unknown,
 ): value is { manifest: PluginManifest } {
-  return isRecord(value) && isRecord(value.manifest);
+  return isRecord(value) && isRecord(value["manifest"]);
 }
 
 async function collectPackageJsPluginSources(
@@ -799,7 +799,7 @@ async function validateDeploymentConfig(
     checked = true;
     if (!/\bjuniorNitro\s*\(/.test(nitroConfig)) {
       errors.push(
-        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron into the deployed build output.`,
+        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits the Vercel queue trigger and heartbeat cron into the deployed build output.`,
       );
     }
   }
@@ -833,7 +833,7 @@ async function validateDeploymentConfig(
   ) {
     checked = true;
     errors.push(
-      `${vercelConfigPath}: framework must be "nitro" for Junior's Vercel deployment wiring.`,
+      `${vercelConfigPath}: framework must be "nitro" for the Vercel deployment wiring.`,
     );
   }
 
@@ -850,7 +850,7 @@ async function validateDeploymentConfig(
 
   if (hasJuniorMarkers && Array.isArray(vercelConfig.crons)) {
     const hasHeartbeatCron = vercelConfig.crons.some(
-      (cron) => isRecord(cron) && cron.path === JUNIOR_HEARTBEAT_ROUTE,
+      (cron) => isRecord(cron) && cron["path"] === JUNIOR_HEARTBEAT_ROUTE,
     );
     if (hasHeartbeatCron) {
       checked = true;
@@ -1192,6 +1192,9 @@ export async function runCheck(
   }
 
   io.info(
-    `${formatHeading("ok", `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`)}`,
+    formatHeading(
+      "ok",
+      `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`,
+    ),
   );
 }

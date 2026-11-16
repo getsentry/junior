@@ -44,16 +44,20 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
-  replyTimeSegmentsReportSchema,
+  cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemActionSchema,
   reviewItemCountSchema,
@@ -81,7 +85,11 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import { attachMockObjectLink, readMockObjectLinks } from "./objects";
+import {
+  attachMockObjectLink,
+  MOCK_AVATAR_SVG,
+  readMockObjectLinks,
+} from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -134,8 +142,9 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import { readMockReplyTimeSegments } from "./reply-times";
+import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -202,7 +211,14 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockCodeRepository(params.data.repositoryId);
+    const query = codeRepositoryQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    const report = readMockCodeRepository(
+      params.data.repositoryId,
+      query.data.state,
+    );
     return report
       ? jsonResponse(codeRepositoryReportSchema, report)
       : errorResponse("Repository not found.", 404);
@@ -232,6 +248,16 @@ export function createMockReportingApi(): Hono<{
         },
       }),
   );
+  app.get(
+    "/people/avatars/:id",
+    () =>
+      new Response(MOCK_AVATAR_SVG, {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-type": "image/svg+xml",
+        },
+      }),
+  );
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
@@ -252,9 +278,16 @@ export function createMockReportingApi(): Hono<{
       readMockPeoplePluginReports(params.data.email),
     );
   });
-  app.get("/reply-times", () =>
-    jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
-  );
+  app.get("/cache-warming/savings", (c) => {
+    const days = Number(c.req.query("days") ?? 30);
+    if (![1, 7, 30, 90].includes(days)) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    return jsonResponse(
+      cacheWarmingSavingsReportSchema,
+      readMockCacheWarmingSavings(days),
+    );
+  });
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -489,6 +522,37 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
+  app.get("/conversations/:conversationId/plan", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationPlan(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationPlanReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/plan/:itemId", async (c) => {
+    const params = conversationParamsSchema.safeParse({
+      conversationId: c.req.param("conversationId"),
+    });
+    const itemId = Number(c.req.param("itemId"));
+    if (!params.success || !Number.isInteger(itemId)) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = planItemStatusBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const item = setMockPlanItemStatus(
+      params.data.conversationId,
+      itemId,
+      body.data,
+    );
+    return item
+      ? jsonResponse(conversationPlanItemSchema, item)
+      : errorResponse("Plan item not found.", 404);
+  });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -556,7 +620,7 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(conversationCatchUpSchema, {
       needsYou: "Review the Safari fix on PR #12.",
       summary:
-        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+        "CI failed on Safari after you left. A fix was pushed to PR #12, and the checks pass now.",
     });
   });
   app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
@@ -712,6 +776,17 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
+  // Every mock description image is the same chart.
+  app.get(
+    "/images/:id",
+    () =>
+      new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-type": "image/png",
+        },
+      }),
+  );
   // Fixed bodies so dashboard mock can exercise image, video, file, and text
   // preview attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
@@ -726,7 +801,7 @@ export function createMockReportingApi(): Hono<{
     // A large Slack file that was deleted in Slack after Junior saw it.
     if (attachmentId === "qa-deleted-pending") {
       return errorResponse(
-        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or this app can no longer access it.",
         409,
       );
     }
@@ -798,11 +873,16 @@ export function createMockReportingApi(): Hono<{
       items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
     });
   });
-  app.get("/review-items/count", () =>
-    jsonResponse(reviewItemCountSchema, {
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
-    }),
-  );
+  app.get("/review-items/count", () => {
+    const open = readMockReviewItems(NOW_MS, {});
+    return jsonResponse(reviewItemCountSchema, {
+      // Mock items have no subjects, so none is a code change.
+      codeChanges: 0,
+      decisions: open.filter((item) => item.request).length,
+      needsViewer: open.length,
+      snoozed: 0,
+    });
+  });
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,

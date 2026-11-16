@@ -14,6 +14,7 @@ import {
 import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
+  PULL_REQUEST_CONFLICT_HISTORY,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
@@ -155,7 +156,11 @@ export async function loadPullRequestLifecycles(
  */
 export async function searchOpenPullRequestMergeability(
   env: GitHubInstallationEnv,
-  input: { after?: string; author: string; repositoryFullName: string },
+  input: {
+    after?: string | undefined;
+    author: string;
+    repositoryFullName: string;
+  },
 ): Promise<unknown> {
   const { name } = splitRepository(
     input.repositoryFullName,
@@ -173,6 +178,30 @@ export async function searchOpenPullRequestMergeability(
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/** Read the merge conflict history of one pull request, with a read-only token. */
+export async function loadPullRequestConflictHistory(
+  env: GitHubInstallationEnv,
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request conflict history",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...PULL_REQUEST_CONFLICT_HISTORY,
+      variables: { name, number: pullRequest.number, owner },
     },
     method: "POST",
     token: token.token,
@@ -323,6 +352,10 @@ const pullRequestSchema = z.object({
   html_url: z.string().url(),
   mergeable_state: z.string().nullable().optional(),
   merged: z.boolean(),
+  // The people whose review is still requested. Teams are listed apart.
+  requested_reviewers: z
+    .array(z.object({ login: z.string().min(1) }))
+    .optional(),
   state: z.enum(["open", "closed"]),
   title: z.string(),
 });
@@ -334,7 +367,7 @@ const reviewsSchema = z.array(
   }),
 );
 
-/** The pull request facts that decide whether it is ready to merge. */
+/** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
    * At least one approval, and no reviewer still requests changes. Read
@@ -350,6 +383,8 @@ export interface GitHubPullRequestMergeState {
    * are no conflicts. Undefined when GitHub has not computed it yet.
    */
   mergeableState?: string;
+  /** Logins of the people whose review GitHub still requests. */
+  requestedReviewers: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -392,6 +427,9 @@ export async function loadPullRequestMergeState(
       autoMerge: Boolean(pull.auto_merge),
       draft: pull.draft === true,
       ...(mergeableState ? { mergeableState } : undefined),
+      requestedReviewers: (pull.requested_reviewers ?? []).map(
+        (reviewer) => reviewer.login,
+      ),
       state: pull.merged ? ("merged" as const) : pull.state,
       title: pull.title,
       url: pull.html_url,

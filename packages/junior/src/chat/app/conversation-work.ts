@@ -24,7 +24,6 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -54,8 +53,10 @@ interface ConversationWorkOptions {
    * Optional plugin-task send path for completed Turns.
    * Production omits this and uses the default Vercel queue sender.
    */
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  services?: JuniorRuntimeServiceOverrides;
+  sendPluginTask?:
+    | ScheduleSessionCompletedPluginTasksOptions["send"]
+    | undefined;
+  services?: JuniorRuntimeServiceOverrides | undefined;
   state?: StateAdapter;
   /** Keeps background work started by turns, such as titles, alive. */
   waitUntil?: (task: Promise<unknown>) => void;
@@ -162,7 +163,6 @@ export function createConversationWork(
   );
   const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     runTurn: conversationTurnWorker,
     state: options.state,

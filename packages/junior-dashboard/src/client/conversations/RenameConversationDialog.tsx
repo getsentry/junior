@@ -42,7 +42,7 @@ export function RenameConversationDialog(props: {
             event.preventDefault();
             if (changed) props.onSave(next);
             savedRef.current = true;
-            sheet.rootProps.onOpenChange(false, { cancel() {} });
+            sheet.close();
           }}
         >
           <DialogTitle>Rename conversation</DialogTitle>

@@ -33,7 +33,7 @@ async function findSlackMentionedUserId(
       : undefined;
   if (!user) {
     throw new ToolInputError(
-      `<@${slackUserId}> has no Junior user yet. Assign them by email.`,
+      `<@${slackUserId}> has no User yet. Assign them by email.`,
     );
   }
   return user.id;

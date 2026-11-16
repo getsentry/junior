@@ -41,6 +41,7 @@ import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
+import { getDashboardAgentName } from "../../agentName";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
@@ -165,12 +166,12 @@ function MemoryLibrary(props: {
           `button[data-memory-id="${CSS.escape(memoryId)}"]`,
         )
       : undefined;
-    navigate(memoryPath(props.libraryPath));
+    void navigate(memoryPath(props.libraryPath));
     (trigger ?? listRef.current)?.focus();
   };
   const forget = (recordAction: PluginUserPageRecordAction) => {
     // The forgotten row leaves the list, so focus the list instead.
-    navigate(memoryPath(props.libraryPath));
+    void navigate(memoryPath(props.libraryPath));
     listRef.current?.focus();
     runAction(recordAction);
   };
@@ -194,7 +195,7 @@ function MemoryLibrary(props: {
       return;
     }
     if (memoryQuery.isError || memoryQuery.isFetched) {
-      navigate(pathWithSearch(props.libraryPath, location.search), {
+      void navigate(pathWithSearch(props.libraryPath, location.search), {
         replace: true,
       });
     }
@@ -241,7 +242,9 @@ function MemoryLibrary(props: {
                   className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
                   id="memory-library-title"
                 >
-                  {searchQuery ? "Search results" : "What Junior remembers"}
+                  {searchQuery
+                    ? "Search results"
+                    : `What ${getDashboardAgentName()} remembers`}
                 </h2>
               </div>
               {content?.searchPlaceholder ? (
@@ -395,7 +398,7 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
       <AnchorHeading
         anchor="memory-types"
         className="m-0 font-display text-xl font-medium text-dashboard-text"
-        title="What Junior remembers"
+        title={`What ${getDashboardAgentName()} remembers`}
       />
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
@@ -438,7 +441,7 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
         <OverviewBreakdownRow
           detail="Passive extraction after runs"
           icon={Sparkles}
-          label="Learned by Junior"
+          label={`Learned by ${getDashboardAgentName()}`}
           value={stats.automatic}
         />
         <OverviewBreakdownRow

@@ -40,12 +40,15 @@ import {
   useStopConversationTurn,
 } from "./queries";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
   /** Draft id of the composer the reader typed in before. Its text moves here. */
   draftFrom?: string;
   key: string;
+  /** The docked question to show and focus. */
+  questionId?: string;
 };
 
 /**
@@ -58,11 +61,11 @@ export type ReplyFocusRequest = {
 export const ConversationReplyFooter = memo(ReplyFooter);
 
 function ReplyFooter(props: {
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   committedMessageIds: readonly string[];
   conversationId: string;
   /** A request to focus the message box. */
-  focusRequest?: ReplyFocusRequest;
+  focusRequest?: ReplyFocusRequest | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   /**
@@ -70,7 +73,9 @@ function ReplyFooter(props: {
    * by itself, not by a step or an answer of the reader.
    */
   onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
-  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingAuthorization?:
+    | ConversationPendingMessagesReport["authorization"]
+    | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
   /** Lets the page add a quote of selected text to the draft. */
@@ -255,10 +260,15 @@ function ReplyFooter(props: {
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
+  const focusQuestionId = props.focusRequest?.questionId;
   const questionShown = questions.length > 0;
+  // A request for one question waits until a later page brings it in.
+  const questionReady = focusQuestionId
+    ? questions.some((question) => question.id === focusQuestionId)
+    : questionShown;
   useEffect(() => {
     // A docked question takes the focus at once, before the reader types.
-    if (!focusKey || (questionsPending && !questionShown)) return;
+    if (!focusKey || (questionsPending && !questionReady)) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
@@ -267,13 +277,16 @@ function ReplyFooter(props: {
     if (text) composerRef.current?.restoreMessage({ text });
     else if (draftFrom) composerRef.current?.focus();
     else if (!touchKeyboardMatches()) {
+      if (focusQuestionId) questionAnswersRef.current?.show(focusQuestionId);
       if (questionShown) questionRef.current?.focus();
       else composerRef.current?.focus();
     }
   }, [
     draftFrom,
     focusKey,
+    focusQuestionId,
     onFocusRequestDone,
+    questionReady,
     questionShown,
     questionsPending,
   ]);
@@ -426,7 +439,9 @@ function ReplyFooter(props: {
         draftId={props.conversationId}
         error={
           queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          (stopTurn.error
+            ? `Could not stop ${getDashboardAgentName()}. Try again.`
+            : undefined)
         }
         ref={composerRef}
         label="Continue this conversation"

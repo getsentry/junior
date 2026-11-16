@@ -28,6 +28,7 @@ import {
   scheduleDraft,
   type AutomationDraft,
 } from "./automationDraft";
+import { getDashboardAgentName } from "../../agentName";
 
 /** Keep edits until the user saves or discards them. */
 export function AutomationEditor(props: {
@@ -90,7 +91,7 @@ export function AutomationEditor(props: {
         description: "Changes apply to future work.",
         type: "success",
       });
-      navigate(props.returnPath);
+      void navigate(props.returnPath);
     },
     onError: (error) => {
       setFields(error instanceof DashboardApiError ? (error.fields ?? {}) : {});
@@ -294,8 +295,8 @@ export function AutomationEditor(props: {
             title="What to do"
             detail={
               draft.task.kind === "instruction"
-                ? "Give Junior a clear instruction and a name you can find later."
-                : "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does."
+                ? `Give ${getDashboardAgentName()} a clear instruction and a name you can find later.`
+                : `Pick a skill for ${getDashboardAgentName()} to run. Add context only when this automation needs more than the skill does.`
             }
           >
             <Field>
@@ -376,7 +377,7 @@ export function AutomationEditor(props: {
           <AutomationFormSection
             changed={changes.credentialMode !== undefined}
             title="Credentials"
-            detail="Choose which connected accounts Junior can use."
+            detail={`Choose which connected accounts ${getDashboardAgentName()} can use.`}
           >
             <RadioGroup
               aria-label="Credential mode"

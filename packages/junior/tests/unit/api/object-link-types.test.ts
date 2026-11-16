@@ -11,7 +11,12 @@ function plugin(name: string, filters: ObjectLinkFilter[]) {
   return defineJuniorPlugin({
     manifest: { name, displayName: name, description: `${name} links` },
     objectLinks: [
-      { filters, objectType: "item", resolve: async () => undefined },
+      {
+        canView: async () => true,
+        filters,
+        objectTypes: ["item"],
+        resolve: async () => undefined,
+      },
     ],
   });
 }
@@ -71,8 +76,14 @@ describe("object link types", () => {
         "https://junior.example.com/people/alice%40example.com",
         "mailto:alice@example.com",
         "https://other.example.com/conversations/a",
-      ].map((url) => findObjectLinkType(types, new URL(url))?.objectType),
-    ).toEqual(["conversation", "web_page", "person", "person", "web_page"]);
+      ].map((url) => findObjectLinkType(types, new URL(url))?.objectTypes),
+    ).toEqual([
+      ["conversation"],
+      ["web_page"],
+      ["person"],
+      ["person"],
+      ["web_page"],
+    ]);
   });
 
   it("rejects two link types that claim the same URLs", () => {

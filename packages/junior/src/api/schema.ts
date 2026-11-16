@@ -60,8 +60,10 @@ export {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
+  IDLE_CHANGE_DAYS,
 } from "./schema/code";
 export type {
   CodeActivityDay,
@@ -83,7 +85,6 @@ export {
   conversationEventPageSchema,
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -114,7 +115,10 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
-export { conversationFeedSchema } from "./schema/conversation-feed";
+export {
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
@@ -246,6 +250,16 @@ export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
 } from "./schema/watch";
+export {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
+} from "./schema/plan";
+export type {
+  ConversationPlanItem,
+  ConversationPlanReport,
+  PlanItemStatusBody,
+} from "./schema/plan";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -302,6 +316,16 @@ export type {
   NotificationSchedule,
   NotificationSettings,
 } from "./schema/notification";
+export {
+  cacheWarmingBreakerListSchema,
+  cacheWarmingSavingsRefillResponseSchema,
+  cacheWarmingSavingsReportSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
+export type {
+  CacheWarmingSavingsRefill,
+  CacheWarmingSavingsReport,
+} from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -377,11 +401,6 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
-export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
-export type {
-  ReplyTimeHistogram,
-  ReplyTimeSegmentsReport,
-} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

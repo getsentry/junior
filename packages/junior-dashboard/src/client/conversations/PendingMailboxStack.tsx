@@ -48,6 +48,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { getDashboardAgentName } from "../agentName";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -79,20 +80,20 @@ function pendingDeliveryMeta(
     return {
       icon: SkipForward,
       label: "Next step",
-      tooltip: "Junior reads it at its next step",
+      tooltip: `${getDashboardAgentName()} reads it at its next step`,
     };
   }
   if (message.delivery === "interrupt") {
     return {
       icon: STEER_ICON,
       label: "Steered",
-      tooltip: "Steered: Junior reads it at its next step",
+      tooltip: `Steered: ${getDashboardAgentName()} reads it at its next step`,
     };
   }
   return {
     icon: Clock3,
     label: "Queued",
-    tooltip: "Queued: Junior reads it after the current reply",
+    tooltip: `Queued: ${getDashboardAgentName()} reads it after the current reply`,
   };
 }
 
@@ -165,9 +166,9 @@ function PendingMetaIcons(props: {
   cancelPending: boolean;
   editPending: boolean;
   message: ConversationMailboxMessage;
-  onCancel?: () => void;
-  onEdit?: () => void;
-  onSteer?: () => void;
+  onCancel?: (() => void) | undefined;
+  onEdit?: (() => void) | undefined;
+  onSteer?: (() => void) | undefined;
   showSlack: boolean;
   steerPending: boolean;
 }) {
@@ -202,7 +203,7 @@ function PendingMetaIcons(props: {
           label="Steer queued message"
           onClick={props.onSteer}
           pending={props.steerPending}
-          tooltip="Steer: Junior reads it at its next step"
+          tooltip={`Steer: ${getDashboardAgentName()} reads it at its next step`}
         />
       ) : null}
       {props.onEdit ? (
@@ -270,7 +271,7 @@ function PendingLocalImage(props: {
 
 /** Show small previews so the reader can tell which files a queued message has. */
 function PendingAttachmentThumbnails(props: {
-  conversationId?: string;
+  conversationId?: string | undefined;
   message: ConversationMailboxMessage;
 }) {
   const thumbnailClassName = "size-6 rounded object-cover";
@@ -327,13 +328,13 @@ function PendingAttachmentThumbnails(props: {
 
 function PendingRow(props: {
   actionsDisabled: boolean;
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   cancelError: boolean;
   cancelPending: boolean;
   canEdit: boolean;
   canSteer: boolean;
   className: string;
-  conversationId?: string;
+  conversationId?: string | undefined;
   editPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
@@ -494,16 +495,16 @@ function sameEmail(left: string | undefined, right: string | undefined) {
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   /** Author of each row, by `actorIdentityId`. */
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   cancelError?: boolean;
   cancelPending?: boolean;
-  cancelTargetInboundMessageId?: string;
+  cancelTargetInboundMessageId?: string | undefined;
   /** Message ids already present in committed history. */
   committedMessageIds?: readonly string[];
   /** Conversation that owns stored attachment previews. */
   conversationId?: string;
   /** Inbound id of the row that an edit is taking out of the queue. */
-  editTargetInboundMessageId?: string;
+  editTargetInboundMessageId?: string | undefined;
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
   /** Take the viewer's own queued web message back into the composer. */
@@ -512,11 +513,11 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
   /** Ask Junior to read the viewer's own queued web message now. */
-  onSteerMessage?: (message: ConversationMailboxMessage) => void;
+  onSteerMessage?: ((message: ConversationMailboxMessage) => void) | undefined;
   /** Inbound id of the row that a steer is sending now. */
-  steerTargetInboundMessageId?: string;
+  steerTargetInboundMessageId?: string | undefined;
   /** Email of the signed-in reader. Only their own web rows can be edited. */
-  viewerEmail?: string;
+  viewerEmail?: string | undefined;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
   const rowsId = useId();

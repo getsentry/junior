@@ -8,16 +8,26 @@
  * `tool_choice`, thinking, or effort change, so the request keeps the tools
  * and the instruction forbids tool calls instead.
  */
-import type { Agent, StreamFn } from "@earendil-works/pi-agent-core";
-import type {
-  Api,
-  AssistantMessage,
-  Context,
-  Message,
-  Model,
-  SimpleStreamOptions,
+import {
+  type Agent,
+  DEFAULT_AGENT_IDENTITY,
+} from "@earendil-works/pi-agent-core";
+import {
+  type Api,
+  type AssistantMessage,
+  type Context,
+  type Message,
+  type Model,
+  type SimpleStreamOptions,
+  getInitialSystemMessage,
+  getSystemMessageText,
+  mergeClientIdentity,
 } from "@earendil-works/pi-ai";
 import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
+import {
+  type AgentRequestStreamFn,
+  foldLeadingSystemMessages,
+} from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import { agentTurnCostUsd } from "@/chat/usage";
@@ -55,7 +65,7 @@ Rules:
 const SUMMARY_NUDGE =
   "Do not call tools. Keep the summary short. Return only the summary inside <summary></summary> tags.";
 
-/** Arguments of one agent model request, in `StreamFn` order. */
+/** Arguments of one agent model request, in `AgentRequestStreamFn` order. */
 export interface AgentModelRequest {
   model: Model<Api>;
   context: Context;
@@ -110,15 +120,23 @@ export async function buildAgentModelRequest(
   messages: PiMessage[],
   signal?: AbortSignal,
 ): Promise<AgentModelRequest> {
-  const { model, systemPrompt, thinkingLevel, tools } = agent.state;
+  const { model, thinkingLevel, tools } = agent.state;
+  // Fold like `withAgentRequest`, so the summary request keeps the agent
+  // call's cached prefix. `agent.state.systemPrompt` folds every system
+  // message, so start from Junior's leading prompt.
+  const leading = getInitialSystemMessage(agent.state.messages);
   const transformed = agent.transformContext
     ? await agent.transformContext(messages, signal)
     : messages;
   return {
+    // pi-agent-core types `Agent.state.model` as `Model<any>`.
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
     model,
     context: {
-      systemPrompt,
-      messages: await agent.convertToLlm(transformed),
+      ...foldLeadingSystemMessages(
+        leading ? getSystemMessageText(leading) : "",
+        await agent.convertToLlm(transformed),
+      ),
       tools,
     },
     options: {
@@ -130,6 +148,7 @@ export async function buildAgentModelRequest(
       thinkingBudgets: agent.thinkingBudgets,
       maxRetryDelayMs: agent.maxRetryDelayMs,
       apiKey: (await agent.getApiKey?.(model.provider)) || undefined,
+      identity: mergeClientIdentity(DEFAULT_AGENT_IDENTITY, agent.identity),
       signal,
     },
   };
@@ -145,7 +164,7 @@ function userText(text: string): Message {
 
 async function complete(
   request: AgentModelRequest,
-  streamFn: StreamFn,
+  streamFn: AgentRequestStreamFn,
   appended: Message[],
 ): Promise<AssistantMessage> {
   const stream = await streamFn(
@@ -197,7 +216,7 @@ function readSummary(
  */
 export async function requestContextSummary(
   request: AgentModelRequest,
-  streamFn: StreamFn,
+  streamFn: AgentRequestStreamFn,
 ): Promise<ContextSummary> {
   const instruction = userText(SUMMARY_INSTRUCTION);
   const firstMessage = await complete(request, streamFn, [instruction]);

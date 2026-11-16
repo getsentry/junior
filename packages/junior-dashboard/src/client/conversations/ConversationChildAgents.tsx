@@ -19,12 +19,7 @@ import {
 import type { StatusChipTone } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
-import {
-  formatConversationCostTotal,
-  formatRuntime,
-  formatTime,
-  formatUsageTotal,
-} from "../format";
+import { formatConversationCostTotal, formatUsageTotal } from "../format";
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
@@ -37,6 +32,7 @@ import {
   DetailsRowLine,
 } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { formatRuntime, formatTime } from "../time";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
@@ -231,7 +227,7 @@ function ChildAgentRow(props: {
   agent: ConversationChildAgent;
   onOpen?(): void;
   /** The Conversation's own title, when known. It wins over the report title. */
-  title?: string;
+  title?: string | undefined;
   to?: string;
 }) {
   const { agent } = props;

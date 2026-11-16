@@ -7,7 +7,11 @@ import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conver
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { storeAttachment } from "@/chat/attachments/store";
+import {
+  readLiveAttachment,
+  storeAttachment,
+  storeDeferredAttachment,
+} from "@/chat/attachments/store";
 import {
   closeDb,
   getConversationStore,
@@ -46,7 +50,7 @@ function apiWithViewer(
   return app;
 }
 
-/** Record a Slack conversation with one large file that Junior never stores. */
+/** Record a Slack conversation with one large file that is not stored yet. */
 async function recordPendingSlackFile(
   slackFileId: string,
   visibility: "private" | "public" = "public",
@@ -369,7 +373,7 @@ describe("conversation attachment API", () => {
     expect(storage.objects.size).toBe(0);
   });
 
-  it("shows a large Slack file as pending in the transcript", async () => {
+  it("shows a large Slack file as pending in the transcript until it is stored", async () => {
     const { conversationId, storage, stored } =
       await recordPendingSlackFile("FDEFERRED");
     await getConversationEventStore().append(conversationId, [
@@ -401,6 +405,37 @@ describe("conversation attachment API", () => {
       },
     ]);
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
+
+    // A tool stores the file. A poll from the earlier read gets the latest
+    // page again, now without the pending flag.
+    const attachment = await readLiveAttachment({
+      attachmentId: stored.id,
+      conversationId,
+      db: getSqlExecutor(),
+    });
+    await storeDeferredAttachment({
+      attachment: {
+        ...attachment!,
+        source: { provider: "slack", id: "FDEFERRED" },
+      },
+      db: getSqlExecutor(),
+      file: { bytes: 5, open: async () => new Blob(["bytes"]).stream() },
+      storage,
+    });
+    const polled = await (
+      await api.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}?after=${encodeURIComponent(detail.appendCursor)}`,
+      )
+    ).json();
+    expect(polled.appended).toBeUndefined();
+    expect(polled.events[0].data.attachments).toEqual([
+      {
+        id: stored.id,
+        filename: "standup.mp4",
+        contentType: "video/mp4",
+        bytes: 5,
+      },
+    ]);
   });
 
   it("streams a large Slack file from Slack on every download and never stores it", async () => {
@@ -470,7 +505,7 @@ describe("conversation attachment API", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error:
-        "standup.mp4 is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "standup.mp4 is no longer available: The Slack file was deleted, or this app can no longer access it.",
     });
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });

@@ -1,27 +1,31 @@
 import { createTodoList } from "@/chat/slack/tool-support/list/api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
+export const slackListCreateToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description: "Create a Slack todo list.",
+  inputSchema: z.object({
+    name: z.string().min(1).max(160).describe("Name for the new Slack list."),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that provisions a new Slack todo list. */
 export function createSlackListCreateTool(state: ToolState) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description: "Create a Slack todo list.",
-    inputSchema: z.object({
-      name: z.string().min(1).max(160).describe("Name for the new Slack list."),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackListCreateToolDefinition,
     execute: async ({ name }) => {
       const operationKey = createOperationKey("slackListCreate", { name });
       const cached = state.getOperationResult<{

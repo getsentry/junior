@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router";
 
 import { conversationPath } from "../conversations/conversationRoutes";
-import { formatTime, visualStatusForConversation } from "../format";
+import { visualStatusForConversation } from "../format";
 import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
+import { formatTime } from "../time";
 
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {
@@ -48,7 +49,7 @@ export function ConversationList(props: {
 
 function ConversationTableRow(props: {
   conversation: Conversation;
-  search?: string;
+  search?: string | undefined;
   selected?: boolean;
 }) {
   const visualStatus = visualStatusForConversation(props.conversation);
@@ -57,7 +58,7 @@ function ConversationTableRow(props: {
     pathname: conversationPath(props.conversation.id),
     search: props.search ?? "",
   };
-  const openConversation = () => navigate(href);
+  const openConversation = () => void navigate(href);
   return (
     <div
       className={conversationRecordClass(visualStatus, props.selected)}

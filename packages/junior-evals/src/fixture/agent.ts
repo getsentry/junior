@@ -62,6 +62,7 @@ import {
   readCallEvents,
   readFailedCallRun,
   readConversationDetail,
+  readWatchIds,
   participantSlackUserIds,
   slackCallReplies,
   slackThreadEffects,
@@ -114,10 +115,12 @@ export type TurnProgress =
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
-  onProgress?: (
-    progress: TurnProgress,
-    actions: { send(input: Input): Promise<void> },
-  ) => void | Promise<void>;
+  onProgress?:
+    | ((
+        progress: TurnProgress,
+        actions: { send(input: Input): Promise<void> },
+      ) => void | Promise<void>)
+    | undefined;
 }
 
 /**
@@ -129,8 +132,6 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
-  /** Quiet messages: stored, but not delivered to the Slack thread. */
-  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -157,6 +158,8 @@ export interface Conversation extends HarnessRun {
   authorizationPrompt?: string;
   /** Times Junior replaced agent history with a summary, as the dashboard shows. */
   compactions: number;
+  /** Ids of the active Watches that the dashboard lists after the call. */
+  watchIds: string[];
   turns: Turn[];
   continue(
     input: Input | Input[],
@@ -449,7 +452,9 @@ export async function createFixtureAgent(
         : record.idempotencyKey;
       const uploadIds = input.files?.length
         ? await uploadWebFiles(api, {
-            ...(started ? { conversationId: record.conversationId } : {}),
+            ...(started
+              ? { conversationId: record.conversationId }
+              : undefined),
             files: input.files,
             idempotencyKey,
             viewerEmail: record.viewerEmail,
@@ -765,7 +770,6 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
-      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -775,6 +779,11 @@ export async function createFixtureAgent(
       archived: Boolean(detail.archivedAt),
       toolCalls: events.toolCalls,
       turns: events.turns,
+      watchIds: await readWatchIds(
+        api,
+        record.conversationId,
+        record.viewerEmail,
+      ),
     });
     // A person can reply in the thread of the automation's first post.
     const [firstPost] = record.surface === "automation" ? callPosts : [];
@@ -886,7 +895,6 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
-      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],
@@ -896,6 +904,7 @@ export async function createFixtureAgent(
       archived: Boolean(detail.archivedAt),
       toolCalls: [],
       turns: [],
+      watchIds: await readWatchIds(api, conversationId, viewerEmail),
     });
   };
 

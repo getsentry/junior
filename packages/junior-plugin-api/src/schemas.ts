@@ -185,13 +185,15 @@ function normalizeStoredSource(value: unknown): unknown {
       scheduled_task: "scheduled_automation",
     };
     const kind =
-      typeof source.kind === "string" ? legacyKinds[source.kind] : undefined;
+      typeof source["kind"] === "string"
+        ? legacyKinds[source["kind"]]
+        : undefined;
     return kind ? { ...source, kind } : value;
   }
   if (
-    source.platform !== "slack" &&
-    source.platform !== "local" &&
-    source.platform !== "web"
+    source["platform"] !== "slack" &&
+    source["platform"] !== "local" &&
+    source["platform"] !== "web"
   ) {
     return value;
   }

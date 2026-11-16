@@ -22,6 +22,7 @@ import {
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { escapeXml } from "@/chat/xml";
+import { copyMessageLinks } from "./sql/message-links";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 
 /** Event key of the agent note that follows the copied events in a fork. */
@@ -102,7 +103,7 @@ export async function forkConversation(input: {
   viewer: User;
   idempotencyKey: string;
   /** Start a hidden, read-only Quick question about this selected text. */
-  quickQuestion?: { quote: string };
+  quickQuestion?: { quote: string } | undefined;
 }): Promise<{ conversationId: string }> {
   const conversationId = createConversationId({
     actorEmail: input.viewer.email,
@@ -362,6 +363,11 @@ async function copyForkEvents(args: {
         ),
       ),
   );
+  await copyMessageLinks(getSqlExecutor(), {
+    conversationId: args.conversationId,
+    seqs,
+    sourceConversationId: args.sourceConversationId,
+  });
 }
 
 function hasUnfinishedToolCalls(messages: readonly PiMessage[]): boolean {

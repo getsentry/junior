@@ -106,7 +106,7 @@ describe("paused turn Slack integration", () => {
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_SECRET: "resume-secret",
-      SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token",
+      SLACK_BOT_TOKEN: process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token",
     };
 
     vi.resetModules();
@@ -288,7 +288,7 @@ describe("paused turn Slack integration", () => {
     const persisted =
       await threadStateModule.getPersistedThreadState(conversationId);
     const processing = (
-      (persisted.conversation ?? {}) as {
+      (persisted["conversation"] ?? {}) as {
         processing?: { activeTurnId?: string };
       }
     ).processing;
@@ -568,7 +568,7 @@ describe("paused turn Slack integration", () => {
     const activeStatuses = slackApiOutbox
       .calls("assistant.threads.setStatus")
       .map((call) => call.params)
-      .filter((params) => params.status !== "");
+      .filter((params) => params["status"] !== "");
     expect(activeStatuses[0]).toEqual(
       expect.objectContaining({
         loading_messages: ["Reviewing results"],

@@ -26,8 +26,12 @@ export type FetchedImage =
  * image format.
  */
 export async function fetchImage(image: ImageRequest): Promise<FetchedImage> {
+  const { location, ...request } = image;
+  // A location, such as a signed URL, gets no headers: they belong to `url`.
+  const url = location ? await location() : request.url;
+  if (!url) return { failure: "not_found" };
   const fetched = await guardedFetch({
-    ...image,
+    ...(location ? { hosts: request.hosts, url } : request),
     accept: "image/*",
     maxBytes: MAX_IMAGE_BYTES,
     timeoutMs: FETCH_TIMEOUT_MS,

@@ -20,7 +20,7 @@ const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const EVAL_TEST_TIMEOUT_MS = 120_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
-  process.env.VITEST_EVALS_OUTPUT_FILE ?? "behavioral-results.json",
+  process.env["VITEST_EVALS_OUTPUT_FILE"] ?? "behavioral-results.json",
 );
 
 loadJuniorTestEnvFiles({
@@ -28,26 +28,27 @@ loadJuniorTestEnvFiles({
   packageRoots: [juniorPackageRoot, evalsPackageRoot],
 });
 
-process.env.JUNIOR_SECRET = "junior-test-secret";
+process.env["JUNIOR_SECRET"] = "junior-test-secret";
 // Run agent Turns on Luna at high reasoning to keep eval cost down. Prod
 // defaults to Opus; set AI_MODEL to eval another model. `||=` because
 // apps/example/.env.example sets both to an empty string.
-process.env.AI_MODEL ||= "openai/gpt-6-luna";
-process.env.AI_REASONING_LEVEL ||= "high";
-process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
+process.env["AI_MODEL"] ||= "openai/gpt-6-luna";
+process.env["AI_REASONING_LEVEL"] ||= "high";
+process.env["JUNIOR_BASE_URL"] ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
-process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
+process.env["JUNIOR_SCHEDULER_SECRET"] ??= "junior-test-scheduler-secret";
 // The agent test fixture mocks Vercel Blob, which stores attachments. Pin the
 // provider so the S3 defaults in apps/example/.env.example do not apply.
-process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "vercel-blob";
-process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_evalstore_secret";
-process.env.JUNIOR_STATE_ADAPTER = "redis";
+process.env["JUNIOR_ATTACHMENT_STORAGE_PROVIDER"] = "vercel-blob";
+process.env["BLOB_READ_WRITE_TOKEN"] = "vercel_blob_rw_evalstore_secret";
+process.env["JUNIOR_STATE_ADAPTER"] = "redis";
 // The agent test fixture signs GitHub webhooks with this secret.
-process.env.GITHUB_WEBHOOK_SECRET ??= "junior-test-github-webhook-secret";
-process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-behavioral:${randomUUID()}`;
-process.env.REDIS_URL =
-  process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
-const evalRedisHostname = new URL(process.env.REDIS_URL).hostname;
+process.env["GITHUB_WEBHOOK_SECRET"] ??= "junior-test-github-webhook-secret";
+process.env["JUNIOR_STATE_KEY_PREFIX"] ??=
+  `junior:eval-behavioral:${randomUUID()}`;
+process.env["REDIS_URL"] =
+  process.env["JUNIOR_EVAL_REDIS_URL"]?.trim() || "redis://127.0.0.1:6382";
+const evalRedisHostname = new URL(process.env["REDIS_URL"]).hostname;
 if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
   throw new Error(
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,

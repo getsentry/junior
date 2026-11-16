@@ -16,7 +16,7 @@ export const MAX_MODEL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /** Tell the model how to read a stored file that the prompt does not carry. */
 export function buildStoredAttachmentPromptText(args: {
   attachmentId: string;
-  filename?: string;
+  filename?: string | undefined;
   mediaType: string;
 }): string {
   return [
@@ -39,6 +39,7 @@ async function readStoredBytes(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
+  // Only web uploads reach here, and a web upload is always stored.
   if (
     !record ||
     record.storageProvider !== args.storage.provider ||

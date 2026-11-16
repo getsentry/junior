@@ -7,6 +7,7 @@ import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import * as z from "zod";
 
 import { createDashboardApp } from "../src/app";
 import { auth, embeddedBootstrap } from "./dashboard-test-helpers";
@@ -15,7 +16,10 @@ import {
   resetMockConversationViewerState,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
-import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardVersionDrift,
+} from "../src/client/dashboard-version";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
@@ -29,6 +33,7 @@ import {
   useConversationReviewItemData,
 } from "../src/client/review-desk/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
+import { fetchDashboardJson } from "../src/client/http";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -62,6 +67,7 @@ describe("dashboard client API", () => {
 
   it("seeds core data from the page shell once, then reads the API", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: auth({ user: { email: "dev@example.com", emailVerified: true } }),
@@ -237,6 +243,7 @@ describe("dashboard client API", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {
@@ -327,6 +334,8 @@ describe("dashboard client API", () => {
     if (typeof interval !== "function") {
       throw new Error("Expected a dynamic polling interval");
     }
+    // A partial TanStack Query object holds only the fields the interval reads.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     const query = {
       state: {
         data: {
@@ -377,6 +386,33 @@ describe("dashboard client API", () => {
       detail: "999.0.0",
       type: "junior:dashboard-version",
     });
+  });
+
+  it("names version drift when a newer server sends unknown fields", async () => {
+    const schema = z.object({ label: z.string() }).strict();
+    const respond = (version: string) =>
+      Response.json(
+        { label: "PR", title: "New field" },
+        { headers: { [DASHBOARD_VERSION_HEADER]: version } },
+      );
+    vi.stubGlobal("window", { dispatchEvent: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond("999.0.0")),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      DASHBOARD_VERSION_DRIFT_MESSAGE,
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond(JUNIOR_VERSION)),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      "Unrecognized key",
+    );
   });
 
   it("does not redirect for non-auth product API failures", async () => {

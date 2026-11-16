@@ -86,14 +86,29 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expect(record).toContainText("Waiting on you");
+    // The record's Answer moves focus to the docked question.
+    await composer.focus();
+    await record.getByRole("button", { name: "Answer" }).click();
+    await expect(question).toBeFocused();
     // An earlier answer shows on its record.
-    await expect(
-      page.getByRole("region", { name: "Asked Pick the canary region" }),
-    ).toContainText("us-east-1, it has the least traffic right now.");
+    const answered = page.getByRole("region", {
+      name: "Asked Pick the canary region",
+    });
+    await expect(answered).toContainText(
+      "us-east-1, it has the least traffic right now.",
+    );
     await screenshot(page, "conversation-question", {
       lightTheme: true,
       view: view.name,
     });
+    // The record shows only the title, so its hover card shows the question.
+    const askedQuestion = page.getByText("Which region should run the canary?");
+    await answered
+      .getByRole("link", { name: "Pick the canary region" })
+      .hover();
+    await expect(askedQuestion).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(askedQuestion).toBeHidden();
 
     await question.getByRole("button", { name: /Roll out/ }).click();
     await expect(question).toHaveCount(0);
@@ -104,6 +119,74 @@ for (const view of [desktop, mobile]) {
     });
   });
 }
+
+test("a record's Answer shows its own question in the dock", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(question).toContainText("1 of 3", { useInnerText: true });
+  await page
+    .getByRole("region", { name: "Asked Choose the first migration batch" })
+    .getByRole("button", { name: "Answer" })
+    .click();
+  await expect(
+    question.getByRole("heading", { name: "Choose the first migration batch" }),
+  ).toBeVisible();
+  await expect(question).toContainText("2 of 3", { useInnerText: true });
+  await expect(question).toBeFocused();
+});
+
+test("a record's Answer waits for its question to load", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The last question sits on a second page that loads after the click.
+  let releasePage = () => {};
+  const pageHeld = new Promise<void>((resolve) => {
+    releasePage = resolve;
+  });
+  let held: { title: string }[] = [];
+  await page.route(
+    (url) =>
+      url.pathname === "/api/review-items" &&
+      url.searchParams.get("conversationId") === THREE_QUESTIONS_ID,
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.has("cursor")) {
+        await pageHeld;
+        return route.fulfill({ json: { items: held } });
+      }
+      const response = await route.fetch();
+      const body = (await response.json()) as { items: { title: string }[] };
+      held = body.items.slice(2);
+      await route.fulfill({
+        json: { ...body, items: body.items.slice(0, 2), nextCursor: "page-2" },
+      });
+    },
+  );
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(question).toContainText("1 of 2", { useInnerText: true });
+  const title = held[0]!.title;
+  await page
+    .getByRole("region", { name: `Asked ${title}` })
+    .getByRole("button", { name: "Answer" })
+    .click();
+  // Let the focus request run before the page lands.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  releasePage();
+  await expect(question.getByRole("heading", { name: title })).toBeVisible();
+  await expect(question).toBeFocused();
+});
 
 test("steps through several questions with the keyboard", async ({
   dashboard,
@@ -366,7 +449,7 @@ test("a question open on load does not mark its record while later pages load", 
   releasePage();
   await expect(record).toBeInViewport();
   const marks = await page.evaluate(
-    () => (window as unknown as { askMarks: { count: number } }).askMarks.count,
+    () => (window as Window & { askMarks: { count: number } }).askMarks.count,
   );
   expect(marks).toBe(0);
 });
@@ -432,14 +515,15 @@ for (const failingPage of ["first", "second"] as const) {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(question).toBeFocused();
     await expect(loadError).toHaveCount(0);
+    // A question that docks after the transcript loads does not scroll it,
+    // so the record can sit under the dock. It only must not be marked.
     await expect(
       page.getByRole("region", {
         name: "Asked Approve the payments-v42 rollout",
       }),
-    ).toBeInViewport();
+    ).toBeVisible();
     const marks = await page.evaluate(
-      () =>
-        (window as unknown as { askMarks: { count: number } }).askMarks.count,
+      () => (window as Window & { askMarks: { count: number } }).askMarks.count,
     );
     expect(marks).toBe(0);
   });
@@ -486,7 +570,7 @@ test("Respond quotes into the message box under a question", async ({
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {

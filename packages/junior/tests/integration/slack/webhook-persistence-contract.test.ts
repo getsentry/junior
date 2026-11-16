@@ -57,7 +57,7 @@ function failIsSubscribed(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 describe("Slack webhook persistence contract", () => {

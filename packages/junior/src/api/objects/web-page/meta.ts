@@ -10,12 +10,13 @@ type Element = DefaultTreeAdapterMap["element"];
 
 /** What the meta tags of one page say about it. */
 export interface PageMeta {
-  author?: string;
-  description?: string;
+  author?: string | undefined;
+  description?: string | undefined;
   /** Image candidates, best first. A page can list one Junior cannot use. */
   images: string[];
-  siteName?: string;
-  title?: string;
+  media?: "video" | undefined;
+  siteName?: string | undefined;
+  title?: string | undefined;
 }
 
 function isElement(node: Node, tagName: string): node is Element {
@@ -69,6 +70,12 @@ export function parsePageMeta(html: string): PageMeta {
       "twitter:image",
       "twitter:image:src",
     ].flatMap((name) => tags.get(name) ?? []),
+    // Open Graph marks a video page with `og:type` `video.*` or `og:video`.
+    media:
+      tags.get("og:type")?.startsWith("video") ||
+      first("og:video", "og:video:url")
+        ? "video"
+        : undefined,
     siteName: first("og:site_name", "application-name"),
     title: first("og:title", "twitter:title") ?? title,
   };

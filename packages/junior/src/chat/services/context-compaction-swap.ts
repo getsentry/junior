@@ -28,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
@@ -35,6 +36,7 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -47,7 +49,6 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -77,7 +78,7 @@ type DiscardReason =
 interface ReplacementEntry {
   message: PiMessage;
   provenance: ConversationMessageProvenance;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Compare a message across a durable commit, which drops undefined fields. */
@@ -307,6 +308,9 @@ async function applyPreparedSummary(
       : { message, provenance: contextProvenance };
   });
   const { entries: trimmedEntries, trimming } = trimToolResults(keptEntries);
+  // Kept system messages stay in place. The summarized ones fold into one
+  // that directly follows the summary, as in a full compaction.
+  const systemMessage = foldSystemMessages(summarized);
   const replacement: ReplacementEntry[] = [
     ...(contextMessage
       ? [{ message: contextMessage, provenance: contextProvenance }]
@@ -314,10 +318,16 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        appendOpenPlan(renderCompactionSummary(prepared.summary), summarized),
+        await appendPlanSnapshot(
+          renderCompactionSummary(prepared.summary),
+          args.conversationId,
+        ),
       ),
       provenance: contextProvenance,
     },
+    ...(systemMessage
+      ? [{ message: systemMessage, provenance: contextProvenance }]
+      : []),
     ...trimmedEntries,
     ...pendingMessages,
   ];

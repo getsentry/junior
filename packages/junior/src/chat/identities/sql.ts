@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
@@ -24,7 +24,7 @@ function tenantId(value: string | undefined): string {
 async function upsertUser(
   executor: JuniorSqlDatabase,
   args: {
-    displayName?: string;
+    displayName?: string | undefined;
     email: string;
     emailNormalized: string;
     nowMs: number;
@@ -235,6 +235,32 @@ export async function saveUserTimezone(
     );
 }
 
+/** Return the Slack user most recently linked to a Junior user. */
+export async function linkedSlackUser(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<{ teamId: string; userId: string } | undefined> {
+  const rows = await db
+    .select({
+      teamId: juniorIdentities.providerTenantId,
+      slackUserId: juniorIdentities.providerSubjectId,
+    })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+      ),
+    )
+    .orderBy(desc(juniorIdentities.updatedAt))
+    .limit(1);
+  const row = rows[0];
+  return row?.teamId
+    ? { teamId: row.teamId, userId: row.slackUserId }
+    : undefined;
+}
+
 /** Persist one provider identity observation and link verified emails to users. */
 export async function upsertIdentity(
   executor: JuniorSqlDatabase,
@@ -343,8 +369,8 @@ export async function deleteProviderIdentityForUser(
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
   account: {
-    avatarUrl?: string;
-    displayName?: string;
+    avatarUrl?: string | undefined;
+    displayName?: string | undefined;
     email: string;
     subject: string;
   },

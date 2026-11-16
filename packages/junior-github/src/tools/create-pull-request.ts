@@ -8,7 +8,6 @@ import {
   PluginToolInputError,
   type WatchResult,
   type SubscribableResource,
-  type PluginDecider,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
@@ -62,7 +61,7 @@ class GitHubPullRequestCreateRejectedError extends Error {
 }
 
 const REVIEWERS_DESCRIPTION =
-  "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, Junior asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
+  "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, the tool asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
 
 const createPullRequestInputSchema = Type.Object(
   {
@@ -155,9 +154,9 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
-  facts?: ObjectAnnotation["facts"];
-  sourceUpdatedAt?: string;
-  description?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  sourceUpdatedAt?: string | undefined;
+  description?: string | undefined;
   number: number;
   url: string;
 }
@@ -538,10 +537,9 @@ async function gitHubPullRequestStructuredResult(
 
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(
-  ctx: ToolRegistrationHookContext,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
   /** Set when the description check experiment is on. */
-  descriptionDecider?: PluginDecider,
+  descriptionChecks = false,
 ) {
   return definePluginTool({
     annotations: {
@@ -556,8 +554,9 @@ export function createGitHubPullRequestTool(
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
-      input: CreateGitHubPullRequestInput,
+      input: z.output<typeof createPullRequestToolInputSchema>,
       options: PluginToolExecuteOptions,
+      ctx: ToolRegistrationHookContext,
     ) {
       const parsedInput = parseCreatePullRequestInput(input);
       // Reject a bad login before GitHub opens the pull request.
@@ -605,9 +604,9 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          if (descriptionDecider) {
+          if (descriptionChecks) {
             await checkPullRequestDescription(
-              descriptionDecider,
+              ctx.decider,
               parsedInput.body ?? "",
             );
           }
@@ -652,7 +651,15 @@ export function createGitHubPullRequestTool(
           > = {
             ...pendingState,
             status: "completed",
-            ...result,
+            number: result.number,
+            url: result.url,
+            facts: result.facts,
+            ...(result.sourceUpdatedAt === undefined
+              ? undefined
+              : { sourceUpdatedAt: result.sourceUpdatedAt }),
+            ...(result.description === undefined
+              ? undefined
+              : { description: result.description }),
           };
           try {
             await ctx.state.set(

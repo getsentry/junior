@@ -123,7 +123,8 @@ export function buildAutomatedTurnLimitResponse(args: {
   maxTurns: number;
 }): string {
   return (
-    `I stopped automatic updates after ${args.maxTurns} replies without a new message from you. ` +
+    `I stopped automatic updates after ${args.maxTurns} automated turns without a new message from you. ` +
+    `Turns with no reply also count. ` +
     `Send a message or @mention me in this thread to continue.`
   );
 }
@@ -152,7 +153,7 @@ export async function admitAutomatedTurn(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AutomatedTurnLimitDecision> {
   if (args.maxTurns < 1) {
     throw new Error("Automated turn limit must be at least 1");
@@ -199,7 +200,7 @@ export async function countAutomatedTurn(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AutomatedTurnLimitUpdate> {
   if (args.maxTurns < 1) {
     throw new Error("Automated turn limit must be at least 1");
@@ -240,7 +241,7 @@ export async function countAutomatedTurn(args: {
  */
 export async function clearAutomatedTurnLimitNoticeClaim(args: {
   conversationId: string;
-  nowMs?: number;
+  nowMs?: number | undefined;
   state?: StateAdapter;
 }): Promise<void> {
   const state = args.state ?? getStateAdapter();
@@ -268,7 +269,7 @@ export async function clearAutomatedTurnLimitNoticeClaim(args: {
 export async function resetAutomatedTurnLimit(args: {
   conversationId: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const state = args.state ?? getStateAdapter();
   await state.connect();

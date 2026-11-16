@@ -9,7 +9,11 @@ import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
-/** Create a tool that provisions a new Slack canvas in the active channel. */
+/**
+ * Create a tool that provisions a new Slack canvas in the active channel.
+ *
+ * @runBuilt slackCanvasCreate
+ */
 export function createSlackCanvasCreateTool(
   context: SlackToolContext,
   state: ToolState,

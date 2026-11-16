@@ -4,6 +4,7 @@ import type { ConversationModelCost } from "@/chat/core-model";
 import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import { rerankSearchCandidates } from "@/chat/tools/search-tools-rerank";
+import { summarizeInputSchema } from "@/chat/tool-support/schema-summary";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -119,9 +120,11 @@ const searchToolsToolSchema = z
     tool_name: z.string(),
     description: z.string(),
     source: z.string().optional(),
-    input_schema: z.unknown(),
-    call_notes: z.array(z.string()),
-    annotations: z.record(z.string(), z.unknown()),
+    // The best match of a query has its full schema. Other results have
+    // `params` only, so one search does not pay for every schema.
+    input_schema: z.unknown().optional(),
+    params: z.string().optional(),
+    call_notes: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -286,10 +289,10 @@ function parameterText(schema: unknown): string[] {
   }
   const record = schema as Record<string, unknown>;
   const text: string[] = [];
-  if (typeof record.description === "string") {
-    text.push(record.description);
+  if (typeof record["description"] === "string") {
+    text.push(record["description"]);
   }
-  const properties = record.properties;
+  const properties = record["properties"];
   if (properties && typeof properties === "object") {
     for (const [name, property] of Object.entries(properties)) {
       text.push(name, ...parameterText(property));
@@ -627,7 +630,7 @@ function selectedSourceSummaries(
 
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
   const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name.";
+    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. The best match has its full input_schema. Other results have params, a preview for choosing a tool: before you call one, search its exact name to get its input_schema.";
   if (knownSources.length === 0) {
     return intro;
   }
@@ -643,22 +646,27 @@ function toolMetadata(
   name: string,
   definition: AnyToolDefinition,
   includeSource: boolean,
+  includeSchema: boolean,
 ) {
+  const notes = callNotes(definition);
   return {
     tool_name: name,
     description: summarizeModelVisibleDescription(definition.description),
     ...(includeSource && definition.source
       ? { source: definition.source.id }
       : undefined),
-    input_schema: definition.inputSchema,
-    call_notes: callNotes(definition),
-    annotations: definition.annotations ?? {},
+    ...(includeSchema
+      ? { input_schema: definition.inputSchema }
+      : { params: summarizeInputSchema(definition.inputSchema) }),
+    ...(notes.length > 0 ? { call_notes: notes } : undefined),
   };
 }
 
 /**
  * Create the model-visible search tool for the executable tool catalog.
  * Direct tools stay out of results: the model already has their schemas.
+ *
+ * @runBuilt searchTools
  */
 export function createSearchToolsTool(
   allCatalogTools: Record<string, AnyToolDefinition>,
@@ -708,11 +716,14 @@ export function createSearchToolsTool(
       .strict(),
     outputSchema: searchToolsOutputSchema,
     privateTraceResult: (result) => ({
-      tools: result.tools.map(({ tool_name, description, input_schema }) => ({
-        tool_name,
-        description,
-        input_schema,
-      })),
+      tools: result.tools.map(
+        ({ tool_name, description, input_schema, params }) => ({
+          tool_name,
+          description,
+          input_schema,
+          params,
+        }),
+      ),
     }),
     execute: async ({ query, source, max_results }, { signal }) => {
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;
@@ -766,8 +777,14 @@ export function createSearchToolsTool(
         ? listCatalogTools(catalogTools, requestedSource).length
         : 0;
       const includePerToolSource = requestedSource === null;
-      const renderedTools = matches.map((name) =>
-        toolMetadata(name, catalogTools[name]!, includePerToolSource),
+      // A source listing has no best match, so it shows no full schema.
+      const renderedTools = matches.map((name, index) =>
+        toolMetadata(
+          name,
+          catalogTools[name]!,
+          includePerToolSource,
+          hasQuery && index === 0,
+        ),
       );
       const result: z.infer<typeof searchToolsOutputSchema> = {
         query: query ?? null,

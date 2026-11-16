@@ -16,6 +16,7 @@ import {
   slackUserInputText,
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/tools/runtime/user-input-request";
+import { safeLinkUrl } from "@/net/link-url";
 
 /** Callback id of the modal form that answers a Review item. */
 export const SLACK_REVIEW_ITEM_VIEW_ID = "junior_review_item";
@@ -60,16 +61,6 @@ function titleText(item: ReviewItem): string {
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
 }
 
-// Agents and plugins supply the subject URL, and URL parsing also accepts
-// `javascript:` and `data:` URLs.
-function safeLinkUrl(url: string | undefined): string | undefined {
-  if (!url || !URL.canParse(url)) return undefined;
-  const href = new URL(url);
-  return href.protocol === "https:" || href.protocol === "http:"
-    ? href.href
-    : undefined;
-}
-
 /** The title, body, and question of an item, in Slack markdown. */
 function itemText(item: ReviewItem): string {
   return normalizeSlackReplyMarkdown(
@@ -105,18 +96,16 @@ function controls(item: ReviewItem): Button[] {
     ];
   }
   return [
-    ...buttonField.options.map(
-      (option, index): Button => ({
-        type: "button",
-        // Slack requires a unique action_id for each element in one message.
-        action_id: `${CHOICE_ACTION_ID_PREFIX}${index}`,
-        ...(option.recommended ? { style: "primary" as const } : undefined),
-        text: plainText(option.label),
-        // The label goes with the click, so a click on a stale card cannot
-        // pick another option after the request changes.
-        value: JSON.stringify({ itemId: item.id, label: option.label }),
-      }),
-    ),
+    ...buttonField.options.map((option, index): Button => ({
+      type: "button",
+      // Slack requires a unique action_id for each element in one message.
+      action_id: `${CHOICE_ACTION_ID_PREFIX}${index}`,
+      ...(option.recommended ? { style: "primary" as const } : undefined),
+      text: plainText(option.label),
+      // The label goes with the click, so a click on a stale card cannot
+      // pick another option after the request changes.
+      value: JSON.stringify({ itemId: item.id, label: option.label }),
+    })),
     {
       type: "button",
       action_id: ANSWER_ACTION_ID,
@@ -223,8 +212,8 @@ function parseChoiceValue(
 
 /** Read a click on a Review item card, if the action is ours. */
 export function parseSlackReviewItemClick(action: {
-  action_id?: string;
-  value?: string;
+  action_id?: string | undefined;
+  value?: string | undefined;
 }): SlackReviewItemClick | undefined {
   const value = action.value?.trim();
   if (!value || !action.action_id?.startsWith(ACTION_ID_PREFIX)) {

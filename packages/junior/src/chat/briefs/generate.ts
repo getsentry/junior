@@ -91,9 +91,11 @@ export type GeneratedBrief = {
 };
 
 export type GenerateBriefArgs = {
+  /** The configured bot name. Decisions the assistant made store it in `by`. */
+  assistantName: string;
   completeObject: BriefCompleteObject;
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   prompt: string;
   throughIndex: number;
 };
@@ -135,7 +137,12 @@ function hasRuntimeMarker(value: string): boolean {
   return RUNTIME_MARKER_PATTERN.test(value);
 }
 
+// The prompt asks for this key, not the configured name, so the prompt stays
+// the same for every install.
+const ASSISTANT_ATTRIBUTION = "assistant";
+
 function normalizeModelBrief(args: {
+  assistantName: string;
   caps: BriefSizeCaps;
   links: BriefLink[];
   model: ModelBrief;
@@ -155,7 +162,9 @@ function normalizeModelBrief(args: {
       participant.name,
     ]),
   );
-  participantNames.set("junior", "Junior");
+  // A previous Brief stores the configured name, and the model can copy it.
+  participantNames.set(args.assistantName.toLowerCase(), args.assistantName);
+  participantNames.set(ASSISTANT_ATTRIBUTION, args.assistantName);
   const attribution = (
     value: string | null | undefined,
   ): string | undefined => {
@@ -171,11 +180,11 @@ function normalizeModelBrief(args: {
     }
     let by = attribution(decision.by);
     let kind = decision.kind;
-    if (by === "Junior" && kind !== "assumed") {
-      // Junior cannot state or confirm a decision for a human.
+    if (by === args.assistantName && kind !== "assumed") {
+      // The assistant cannot state or confirm a decision for a human.
       kind = "assumed";
       coercedDecisionKinds += 1;
-    } else if (by && by !== "Junior" && kind === "assumed") {
+    } else if (by && by !== args.assistantName && kind === "assumed") {
       // A human named on an assumed decision is not evidence of acceptance.
       by = undefined;
       coercedDecisionKinds += 1;
@@ -287,7 +296,7 @@ function promptInput(args: {
   caps: BriefSizeCaps;
   entries: BriefEntry[];
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   record: ConversationBrief["record"];
   sizeClass: BriefSizeClass;
 }): string {
@@ -429,7 +438,7 @@ function buildEvidenceLinks(args: {
   entries: BriefEntry[];
   input: BriefInput;
   model: ModelBrief;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
 }): {
   droppedUrls: BriefEvidenceCheck["droppedUrls"];
   keptUrlCount: number;
@@ -560,7 +569,13 @@ export async function generateBrief(
     model,
     previous: args.previous,
   });
-  const normalized = normalizeModelBrief({ caps, links, model, record });
+  const normalized = normalizeModelBrief({
+    assistantName: args.assistantName,
+    caps,
+    links,
+    model,
+    record,
+  });
   const mergedClaim = /\bmerged\b/i.test(
     `${normalized.brief.summary}\n${normalized.brief.outcome.text}`,
   );

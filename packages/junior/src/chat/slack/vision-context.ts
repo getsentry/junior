@@ -35,10 +35,10 @@ import {
 } from "@/chat/services/conversation-memory";
 
 export interface UserInputAttachment {
-  attachmentId?: string;
+  attachmentId?: string | undefined;
   data?: Buffer;
   mediaType: string;
-  filename?: string;
+  filename?: string | undefined;
   promptText?: string;
 }
 
@@ -60,9 +60,10 @@ interface VisionThreadReply {
 
 /**
  * Largest non-image Slack file that Junior stores when the message arrives.
- * A larger one gets a row and a loadAttachment pointer but is never stored:
- * each load or dashboard download streams it from Slack, so it costs no
- * storage, and an unused recording costs no download.
+ * A larger one gets a row and a loadAttachment pointer but no stored copy.
+ * The first tool that needs its bytes stores it, so an unused recording
+ * costs no download or storage. Until then, a dashboard download streams it
+ * from Slack.
  */
 export const MAX_EAGER_SLACK_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
@@ -150,8 +151,8 @@ class ImageAttachmentProcessingError extends Error {
 }
 
 function buildImageAttachmentPromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
   summary: string;
 }): string {
@@ -173,8 +174,8 @@ function buildImageAttachmentPromptText(args: {
 }
 
 function buildImageAttachmentFailurePromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
   message: string;
 }): string {
@@ -196,7 +197,7 @@ function buildImageAttachmentFailurePromptText(args: {
 }
 
 function buildAttachmentResolutionFailurePromptText(args: {
-  filename?: string;
+  filename?: string | undefined;
   mediaType: string;
   problem: string;
 }): string {
@@ -214,8 +215,8 @@ function buildAttachmentResolutionFailurePromptText(args: {
 
 /** Point the model at a stored file, or say that the file could not be stored. */
 function buildFileReferencePromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
 }): string {
   return args.attachmentId
@@ -287,8 +288,8 @@ function truncateVisionSummary(summary: string): string {
 }
 
 function getCachedImageSummaries(args: {
-  conversation?: ThreadConversationState;
-  messageTs?: string;
+  conversation?: ThreadConversationState | undefined;
+  messageTs?: string | undefined;
 }): Array<string | undefined> {
   if (!args.conversation || !args.messageTs) {
     return [];
@@ -307,7 +308,7 @@ function getCachedImageSummaries(args: {
 }
 
 function createImageAttachmentProcessingError(attachment: {
-  filename?: string;
+  filename?: string | undefined;
 }): ImageAttachmentProcessingError {
   const label = attachment.filename ? `"${attachment.filename}"` : "this image";
   return new ImageAttachmentProcessingError(
@@ -390,7 +391,7 @@ async function resolveUserAttachmentsWithDeps(
     const url = attachment.url;
     // Only an image that may go to the model inline needs its bytes in
     // memory. Stream every other Slack file into storage, or record a large
-    // one without storing it; each read downloads it from Slack.
+    // one without storing it; its first use stores it.
     if (
       context.conversationId &&
       deps.attachmentStorage &&
@@ -565,6 +566,7 @@ async function resolveUserAttachmentsWithDeps(
             "Return plain text only.",
           ].join(" "),
           metadata: {
+            conversationId: context.conversationId ?? "",
             threadId: context.threadId ?? "",
             channelId: context.channelId ?? "",
             actorId: context.actorId ?? "",
@@ -665,6 +667,7 @@ async function summarizeConversationImage(
         "Return plain text only.",
       ].join(" "),
       metadata: {
+        conversationId: args.context.conversationId ?? "",
         threadId: args.context.threadId ?? "",
         channelId: args.context.channelId ?? "",
         actorId: args.context.actorId ?? "",

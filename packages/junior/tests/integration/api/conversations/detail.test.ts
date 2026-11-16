@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
 import { githubPlugin } from "@sentry/junior-github";
+import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { decodeImageId } from "@/chat/images/ids";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
@@ -455,6 +457,45 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("names the description images of a saved pull request by Junior image paths", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const conversationId = "local:test:preview-images";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Pull request with screenshots",
+      visibility: "public",
+    });
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      objectType: "code_change",
+      key: "getsentry/secret#7",
+      label: "getsentry/secret#7",
+      title: "Show screenshots on cards",
+      url: "https://github.com/getsentry/secret/pull/7",
+      facts: { type: "code_change", previewImageUrls: [attachment] },
+    });
+
+    const detail = await readConversationDetail(conversationId);
+    const [image] = detail?.annotations?.[0]?.previewImages ?? [];
+    const id = image?.src.match(/^\/api\/images\/([^?]+)\?w=320$/)?.[1];
+    expect(image?.srcSet).toBe(`${image?.src} 1x, /api/images/${id}?w=640 2x`);
+    // The browser gets a signed id, never the address of the image.
+    expect(JSON.stringify(image)).not.toContain("user-attachments");
+    expect(id && decodeImageId(id)).toEqual({
+      ref: encodeObjectImageRef({ key: "getsentry/secret#7", url: attachment }),
+      source: "github",
+    });
+  });
+
   it("resolves mentioned Slack users with current names", async () => {
     const conversationId = "slack:C123:mentions-detail";
     await getConversationStore().recordActivity({
@@ -543,7 +584,7 @@ describe("conversation detail API", () => {
       ],
     });
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["UNEW1234"]);
     // Other instances can now skip Slack for UNEW1234.
     expect(
@@ -595,6 +636,15 @@ describe("conversation detail API", () => {
       {
         createdAtMs: 3,
         data: {
+          messageId: "user-1",
+          role: "user",
+          text: "Is getsentry/junior#12 done?",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
           messageId: "reply-1",
           role: "assistant",
           text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
@@ -626,6 +676,8 @@ describe("conversation detail API", () => {
           text: "<task>@octocat asked a question.</task>",
           trustedSummary: `${octocat} commented on ${pr12}.`,
         }),
+        // A person's message links the same references as a reply.
+        expect.objectContaining({ text: `Is ${pr12} done?` }),
         // A reply that names a repository. Bare links stay for their cards,
         // and a bare Slack user ID is a Slack mention, not a GitHub login.
         expect.objectContaining({

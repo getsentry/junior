@@ -32,6 +32,8 @@ import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 export type ComposerQuestionAnswers = {
   /** Send every question that has picks. Resolves false when one fails. */
   send(): Promise<boolean>;
+  /** Show the open question with this id, as the reader's move. */
+  show(id: string): void;
 };
 
 /**
@@ -157,7 +159,18 @@ export function ComposerQuestion(props: {
   // A step, or an answer to the shown question, moves the reader to the
   // next question. A question that docks by itself is not their move.
   const readerMovedRef = useRef(false);
+  // A closed question leaves the list, so the oldest open one shows next.
+  const index = Math.max(
+    0,
+    props.questions.findIndex((item) => item.id === selectedId),
+  );
+  const item = props.questions[index];
   useImperativeHandle(props.answersRef, () => ({
+    show: (id) => {
+      if (id === item?.id || !props.questions.some((q) => q.id === id)) return;
+      readerMovedRef.current = true;
+      setSelectedId(id);
+    },
     send: async () => {
       sendingFromMessageBoxRef.current = true;
       const sends = props.questions.flatMap((question) => {
@@ -178,12 +191,6 @@ export function ComposerQuestion(props: {
       }
     },
   }));
-  // A closed question leaves the list, so the oldest open one shows next.
-  const index = Math.max(
-    0,
-    props.questions.findIndex((item) => item.id === selectedId),
-  );
-  const item = props.questions[index];
   const shownIdRef = useRef<string>(undefined);
   const { onShow } = props;
   useEffect(() => {

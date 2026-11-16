@@ -12,11 +12,33 @@ import { readConversationParticipants } from "../conversations/participants";
 import { conversationSummaryFromStoredConversation } from "../conversations/projection";
 import { conversationObjectCard } from "./cards";
 
+async function readViewerAccess(viewer: User, conversationId: string) {
+  return (
+    await readConversationAccessFromSql(getDb(), [conversationId], viewer)
+  ).get(conversationId);
+}
+
 /**
- * Resolve a dashboard Conversation link for the viewer. The viewer sees the
- * card only where they see the Conversation's private content: a public
- * Conversation, or a private one that they take part in. Any other link
- * returns nothing, the same as a link to no Conversation.
+ * Return whether the viewer sees the private content of the linked
+ * Conversation: a public Conversation, or a private one that they take part
+ * in. A link to no Conversation returns false.
+ */
+export async function canViewConversationLink(
+  viewer: User,
+  url: URL,
+): Promise<boolean> {
+  const conversationId = parseDashboardConversationLink(url.href);
+  if (!conversationId) return false;
+  return (
+    (await readViewerAccess(viewer, conversationId))?.canViewPrivateContent ??
+    false
+  );
+}
+
+/**
+ * Resolve a dashboard Conversation link for a viewer that
+ * `canViewConversationLink` allows. A link to no Conversation returns
+ * nothing.
  */
 export async function resolveConversationLink(
   viewer: User,
@@ -30,9 +52,8 @@ export async function resolveConversationLink(
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) return undefined;
   const db = getDb();
-  const access = (
-    await readConversationAccessFromSql(db, [conversationId], viewer)
-  ).get(conversationId);
+  // The card shows what this access allows, so it is read again here.
+  const access = await readViewerAccess(viewer, conversationId);
   if (!access?.canViewPrivateContent) return undefined;
 
   const [firstTexts, automationTitles, brief, participants] = await Promise.all(

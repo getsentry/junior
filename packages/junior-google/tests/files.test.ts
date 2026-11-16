@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -23,7 +24,7 @@ const SEARCH_DOC = {
 function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),
@@ -49,8 +50,8 @@ function run(
   name: string,
   input: Record<string, unknown>,
 ) {
-  const tool = tools[name]!;
-  return tool.execute!(tool.prepareArguments!(input), { toolCallId: name });
+  const tool = tools[name];
+  return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
 }
 
 describe("Google Docs, Sheets, and Slides tools", () => {
@@ -102,15 +103,15 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       types: ["document"],
     });
     const [named, findable] = [0, 1].map(
-      (call) => new URL(fetch.mock.calls[call]![0].request.url),
+      (call) => new URL(fetch.mock.calls[call][0].request.url),
     );
-    expect(named!.pathname).toBe("/drive/v3/files");
+    expect(named.pathname).toBe("/drive/v3/files");
     const terms =
       "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'";
-    expect(named!.searchParams.get("q")).toBe(
+    expect(named.searchParams.get("q")).toBe(
       `${terms} and ('alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)`,
     );
-    expect(findable!.searchParams.get("q")).toBe(
+    expect(findable.searchParams.get("q")).toBe(
       `${terms} and (visibility = 'domainCanFind' or visibility = 'anyoneCanFind')`,
     );
     expect(search).toMatchObject({
@@ -121,7 +122,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleFile", { file: link });
     const [get, revision, exported] = [2, 3, 4].map(
-      (index) => fetch.mock.calls[index]![0],
+      (index) => fetch.mock.calls[index][0],
     );
     expect(get.operation).toBe("google.drive.file.get");
     // The edit tools check this revision before they change the Doc.
@@ -385,7 +386,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const sheet = await run(tools, "readGoogleFile", {
       file: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
     });
-    const batchGet = new URL(fetch.mock.calls[2]![0].request.url);
+    const batchGet = new URL(fetch.mock.calls[2][0].request.url);
     expect(batchGet.host).toBe("sheets.googleapis.com");
     expect(batchGet.searchParams.getAll("ranges")).toEqual([
       "'Q4'",
@@ -414,7 +415,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const slides = await run(tools, "readGoogleFile", {
       file: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
     });
-    expect(new URL(fetch.mock.calls[4]![0].request.url).host).toBe(
+    expect(new URL(fetch.mock.calls[4][0].request.url).host).toBe(
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({
@@ -456,9 +457,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       range: "Q4!A1:A1",
     });
     expect(
-      new URL(fetch.mock.calls[2]![0].request.url).searchParams.getAll(
-        "ranges",
-      ),
+      new URL(fetch.mock.calls[2][0].request.url).searchParams.getAll("ranges"),
     ).toEqual(["Q4!A1:A1"]);
     expect(sheet).toMatchObject({
       file_id: SHEET_ID,

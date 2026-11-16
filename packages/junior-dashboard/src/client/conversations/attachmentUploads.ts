@@ -19,7 +19,7 @@ function uploadContentType(file: File): string {
  */
 async function uploadMessageFiles(
   files: readonly File[] | undefined,
-  message: { conversationId?: string; idempotencyKey: string },
+  message: { conversationId?: string | undefined; idempotencyKey: string },
 ): Promise<string[] | undefined> {
   if (!files?.length) return undefined;
   return await Promise.all(

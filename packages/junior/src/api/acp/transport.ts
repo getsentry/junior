@@ -640,7 +640,7 @@ async function streamPrompt(args: {
           args.output.requestId,
           acp.RequestError.internalError(
             { failureCode: page.terminal.failureCode },
-            "Junior Turn failed",
+            "Turn failed",
           ),
         ),
       );
@@ -661,7 +661,7 @@ function serializeSseKeepAlive(): Uint8Array {
 export async function openAcpSse(args: {
   conversations: AcpConversations;
   maintain?: () => Promise<void>;
-  onError?: ReportAcpError;
+  onError?: ReportAcpError | undefined;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
   state: AcpState;
@@ -690,7 +690,7 @@ function createSseBody(args: {
   conversations: AcpConversations;
   lock: AcpLock;
   maintain?: () => Promise<void>;
-  onError?: ReportAcpError;
+  onError?: ReportAcpError | undefined;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
   state: AcpState;
@@ -886,6 +886,7 @@ function createSseBody(args: {
         .catch((error: unknown) => {
           if (!cleaned && !args.requestSignal.aborted) fail(error);
         })
+        // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
         .finally(cleanup);
     },
     async cancel() {

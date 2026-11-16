@@ -18,8 +18,10 @@ export function runEvalWork<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 /** Join aborted case work before any shared fixtures are reset. */
+// Vitest passes its own test context type, which has no pending-work key.
+// oxlint-disable-next-line anti-slop/no-object-parameters
 export async function drainEvalWork(context: object): Promise<void> {
   const pending = (context as WorkOwner)[pendingWork];
   if (!pending?.size) return;
-  while (pending.size) await Promise.allSettled([...pending]);
+  while (pending.size) await Promise.allSettled(pending);
 }

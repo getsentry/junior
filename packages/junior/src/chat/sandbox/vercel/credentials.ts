@@ -13,9 +13,9 @@ interface VercelSandboxCredentials {
 export function getVercelSandboxCredentials():
   | VercelSandboxCredentials
   | undefined {
-  const token = toOptionalTrimmed(process.env.VERCEL_TOKEN);
-  const teamId = toOptionalTrimmed(process.env.VERCEL_TEAM_ID);
-  const projectId = toOptionalTrimmed(process.env.VERCEL_PROJECT_ID);
+  const token = toOptionalTrimmed(process.env["VERCEL_TOKEN"]);
+  const teamId = toOptionalTrimmed(process.env["VERCEL_TEAM_ID"]);
+  const projectId = toOptionalTrimmed(process.env["VERCEL_PROJECT_ID"]);
 
   if (token && teamId && projectId) {
     return { token, teamId, projectId };

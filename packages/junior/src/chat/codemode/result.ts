@@ -44,7 +44,7 @@ export interface CodeModeCall {
    * The gate's marker for a call that action review rejected (`ask` or
    * `deny`). `guardian/history.ts` restores it at the start of a Run.
    */
-  guardianActionRejection?: ToolActionRejectionMarker;
+  guardianActionRejection?: ToolActionRejectionMarker | undefined;
   /** Guidance from `afterToolExecute` hooks about this call. */
   nudges?: ToolResultNudge[];
 }

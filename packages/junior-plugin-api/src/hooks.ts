@@ -194,7 +194,16 @@ export interface PluginHooks {
   ): SlackConversationLink | undefined;
   /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
-  tools?(
-    ctx: ToolRegistrationHookContext,
-  ): Record<string, PluginToolDefinition>;
+  /**
+   * Tools by plugin-local camelCase name. Read only deployment configuration
+   * here, never Turn context: the host reads them with no Turn, and passes
+   * the Turn context to each `execute` call.
+   */
+  tools?(): Record<string, PluginToolDefinition>;
+  /**
+   * Tools from `tools()` that this Turn cannot run, with the reason. The host
+   * keeps them in the tool list, so the cached prompt stays the same, and
+   * rejects their calls.
+   */
+  disabledTools?(ctx: ToolRegistrationHookContext): Record<string, string>;
 }

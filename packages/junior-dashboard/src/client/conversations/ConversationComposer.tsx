@@ -30,6 +30,7 @@ import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
+import { getDashboardAgentName } from "../agentName";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -60,7 +61,7 @@ type ConversationDraft = {
 };
 
 type ConversationAttempt = {
-  files?: File[];
+  files?: File[] | undefined;
   idempotencyKey: string;
   lastSubmittedText: string;
 };
@@ -95,7 +96,7 @@ export type ConversationComposerHandle = {
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
-  error?: string;
+  error?: string | undefined;
   /**
    * Optional chrome to the left of the send row (create-mode visibility,
    * tools, etc). Presence also forces a stacked form so accessories are not
@@ -105,7 +106,7 @@ type ConversationComposerProps = {
   /** Text only, for a narrow panel: no files, no key hint, icon-only send. */
   compact?: boolean;
   label: string;
-  placeholder?: string;
+  placeholder?: string | undefined;
   /**
    * Keep the draft in place and locked until `onSubmit` resolves, then clear
    * it. Use it when no mailbox outbox shows the send (new Conversation, Quick
@@ -141,7 +142,7 @@ type ConversationComposerProps = {
    * Stop the active Turn. Present only while a Turn can be stopped. Resolves
    * with queued text that the stop removed, which returns to the draft.
    */
-  onStop?: () => Promise<string | undefined>;
+  onStop?: (() => Promise<string | undefined>) | undefined;
   stopPending?: boolean;
 };
 
@@ -572,7 +573,9 @@ export const ConversationComposer = memo(function ConversationComposer(
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
-          placeholder={props.placeholder ?? "Message Junior…"}
+          placeholder={
+            props.placeholder ?? `Message ${getDashboardAgentName()}…`
+          }
           ref={textareaRef}
           rows={1}
           spellCheck={autocorrect}

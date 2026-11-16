@@ -4,6 +4,7 @@ import type { ActorIdentity } from "@sentry/junior/api/schema";
 import { HighlightedCode } from "../code";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
+import { standaloneUrlKeys } from "./knownObjects";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
@@ -36,7 +37,7 @@ export const DisplayText = memo(function DisplayText(props: {
    */
   links?: boolean;
   /** People that the API resolved for this text. */
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
   text: string;
 }) {
   return (
@@ -63,19 +64,24 @@ export const DisplayText = memo(function DisplayText(props: {
 });
 
 function DisplayTextBlocks(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  compact?: boolean | undefined;
   text: string;
 }) {
+  // A URL repeated in one message shows one card, in its first block.
+  const shownCardUrls: string[] = [];
   return (
     <div className="grid min-w-0 gap-2">
       {parseMarkdownBlocks(props.text).map((block, index) => {
         if (block.language === "markdown" && !block.fenced) {
+          const shown = [...shownCardUrls];
+          shownCardUrls.push(...standaloneUrlKeys(block.code));
           return (
             <MarkdownText
               chat={props.chat}
               compact={props.compact}
               key={index}
+              shownCardUrls={shown}
               text={block.code}
             />
           );

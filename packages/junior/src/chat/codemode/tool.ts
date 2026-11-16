@@ -67,7 +67,7 @@ function scriptOutputSchema(
     additionalProperties?: unknown;
   };
   if (!properties) {
-    return schema as CodemodeJsonSchema | undefined;
+    return schema;
   }
   const own = Object.entries(properties).filter(
     ([field]) => !ENVELOPE_FIELDS.has(field),
@@ -82,7 +82,7 @@ function scriptOutputSchema(
     ...(required
       ? { required: required.filter((field) => !ENVELOPE_FIELDS.has(field)) }
       : undefined),
-  } as CodemodeJsonSchema;
+  };
 }
 
 /** One member of `declare const tools`, with its description as a doc comment. */
@@ -93,15 +93,15 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
   const outputSchema = scriptOutputSchema(tool.outputSchema);
   const signature = renderToolSignature({
     name,
-    inputSchema: tool.inputSchema as CodemodeJsonSchema,
+    inputSchema: tool.inputSchema,
     ...(outputSchema ? { outputSchema } : undefined),
   }).trim();
   return `  /** ${description} */\n  ${signature.replace(/\n/g, "\n  ")}`;
 }
 
 /**
- * Tell the script which tools it may call, for the `<script-tools>` Turn
- * context section. Direct tools are only named: the model already has their
+ * Tell the script which tools it may call, for the `<script-tools>` system
+ * prompt section. Direct tools are only named: the model already has their
  * input schemas. The other tools are declared within the token budget,
  * cheapest first, so that the most tools fit. The others stay callable. The
  * model finds their input with `searchTools`. Script-only tools come first,
@@ -155,7 +155,7 @@ export function renderScriptTools(
     // The catalog tools are `modelOnly`. Models still call them from scripts.
     ...(omitted > 0
       ? [
-          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
+          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. A result with only params is a preview: search its exact name to get its input_schema before you call it. A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
         ]
       : []),
     // MCP tools are not script tools. Only `callMcpTool` reaches them.
@@ -167,7 +167,7 @@ export function renderScriptTools(
   ].join("\n");
 }
 
-// The tool list is in the `<script-tools>` Turn context section, so this text
+// The tool list is in the `<script-tools>` system prompt section, so this text
 // stays the same when the tools change. A changed tool definition would
 // invalidate the provider prompt cache. When to pick a script over direct
 // calls is a `<tool-policy>` rule in `system-prompt-rules.ts`.
@@ -181,7 +181,7 @@ const DESCRIPTION = [
   `- The script has ${CODE_MODE_SCRIPT_TIMEOUT_MS / 1000} seconds, including its tool calls.`,
   `- Start at most ${MAX_TOOL_ACTION_BATCH} calls before the script awaits. A larger batch fails, and none of its calls run.`,
   "- The result lists each tool call and its status. When action review rejects a call, do what its instructions say, such as ask the user, before you try it again.",
-  "- `<script-tools>` in the runtime context lists the tools that a script can call. Only the latest `<script-tools>` is current.",
+  "- `<script-tools>` in the system prompt lists the tools that a script can call.",
 ].join("\n");
 
 function renderCall(call: CodeModeCall, index: number): string {
@@ -230,7 +230,11 @@ function renderResult(result: CodeModeResult): string {
   ].join("\n");
 }
 
-/** Create the `codemode` tool for one Run's script tools and pipeline. */
+/**
+ * Create the `codemode` tool for one Run's script tools and pipeline.
+ *
+ * @runBuilt codemode
+ */
 export function createCodeModeTool(options: CodeModeToolOptions) {
   const { countToolCall, modelOnlyTools, pipeline, scriptTools } = options;
   return zodTool({

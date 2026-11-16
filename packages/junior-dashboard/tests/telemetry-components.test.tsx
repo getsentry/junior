@@ -172,7 +172,6 @@ function systemData(): SystemData {
     },
     conversationStatsError: false,
     conversationStatsLoading: false,
-    replyTimesError: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -450,12 +449,12 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain("Junior is thinking…");
+    expect(liveHtml).toContain("Assistant is thinking…");
     expect(liveHtml).toMatch(shimmerClass);
     expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
-    expect(quietHtml).not.toContain("Junior is thinking…");
-    expect(completedHtml).not.toContain("Junior is thinking…");
+    expect(quietHtml).not.toContain("Assistant is thinking…");
+    expect(completedHtml).not.toContain("Assistant is thinking…");
 
     // Once the Turn has activity, its latest step replaces the thinking row.
     const working = conversation(
@@ -497,7 +496,7 @@ describe("dashboard canonical-event components", () => {
     )?.[0];
     expect(step).toContain("Running");
     expect(workingHtml).toContain("Working for");
-    expect(workingHtml).not.toContain("Junior is thinking…");
+    expect(workingHtml).not.toContain("Assistant is thinking…");
 
     // A running Task line shows that Junior waits on it.
     const waiting = conversation(
@@ -522,7 +521,7 @@ describe("dashboard canonical-event components", () => {
       </QueryClientProvider>,
     );
     expect(waitingHtml).toContain("Review the spans");
-    expect(waitingHtml).not.toContain("Junior is thinking…");
+    expect(waitingHtml).not.toContain("Assistant is thinking…");
     const pausedHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <Transcript live responding={false} transcript={working} />
@@ -784,7 +783,7 @@ describe("dashboard canonical-event components", () => {
     const failedHtml = renderConversationPageWithClient(failedClient);
 
     expect(activeHtml).not.toContain(">active</span>");
-    expect(activeHtml).toContain("Junior is thinking…");
+    expect(activeHtml).toContain("Assistant is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
   });
 
@@ -891,7 +890,7 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
-    expect(staleHtml).not.toContain("Junior is thinking…");
+    expect(staleHtml).not.toContain("Assistant is thinking…");
   });
 
   it("renders redacted visible events without exposing text", () => {
@@ -920,7 +919,7 @@ describe("dashboard canonical-event components", () => {
         },
       ),
     );
-    expect(html.match(/&lt;redacted&gt;/g)).toHaveLength(2);
+    expect(html.match(/>Redacted</g)).toHaveLength(2);
     expect(html).toContain("pull_request.merged");
   });
 
@@ -1005,7 +1004,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain(
       'data-transcript-rail-event="attachments_delivered"',
     );
-    expect(html).toContain("Junior");
+    expect(html).toContain("Assistant");
     expect(html).not.toContain("files delivered");
     expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
@@ -1076,7 +1075,7 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
     expect(html).toContain("Message delivery failed");
-    expect(html).toContain("Junior could not deliver this message.");
+    expect(html).toContain("Assistant could not deliver this message.");
     expect(html).not.toContain("Model connection failed");
     expect(html).not.toContain("Internal error");
   });
@@ -1528,13 +1527,13 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("$0.42");
     expect(html).toContain("30d");
     expect(html).not.toContain("Incident triage");
-    expect(html).toContain("Daily Junior conversation activity");
+    expect(html).toContain("Daily Assistant conversation activity");
     expect(html).toContain("52 weeks");
     expect(html).toContain(">Jan<");
     expect(html).toContain(">Less<");
     expect(html).toContain(">More<");
     const activityStart = html.indexOf(
-      'aria-label="Daily Junior conversation activity"',
+      'aria-label="Daily Assistant conversation activity"',
     );
     expect(
       html
@@ -1718,9 +1717,11 @@ describe("dashboard canonical-event components", () => {
     );
 
     const overviewHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={stale} />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/system"]}>
+          <SystemPage data={stale} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(overviewHtml).not.toContain("Plugin stats failed to load.");
 
@@ -1731,7 +1732,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(inventoryHtml).toContain("Plugin stats failed to load.");
     expect(inventoryHtml).toContain(
-      "Showing the last operational reports Junior received.",
+      "Showing the last operational reports Assistant received.",
     );
   });
 
@@ -1747,9 +1748,11 @@ describe("dashboard canonical-event components", () => {
     ];
 
     const systemHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/system"]}>
+          <SystemPage data={data} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");

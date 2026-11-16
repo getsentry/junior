@@ -22,8 +22,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
-  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -44,6 +42,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -55,6 +54,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -416,8 +416,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -522,7 +522,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]
@@ -542,7 +542,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -592,7 +595,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 

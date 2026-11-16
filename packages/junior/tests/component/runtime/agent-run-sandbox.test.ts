@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,
@@ -62,7 +58,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
@@ -80,7 +78,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,

@@ -136,13 +136,12 @@ export function upsertConversationMessage(
 
 /** Record one assistant message after its destination accepts it. */
 export function recordDeliveredAssistantMessage(args: {
-  cards?: MessageCard[];
+  cards?: MessageCard[] | undefined;
   conversation: ThreadConversationState;
-  quiet?: true;
   sessionId: string;
-  source?: "slack" | "web";
+  source?: "slack" | "web" | undefined;
   text: string;
-  userMessageId?: string;
+  userMessageId?: string | undefined;
 }): string {
   const prefix = `${args.sessionId}:assistant:`;
   const ordinal =
@@ -166,7 +165,6 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       ...(objectCards?.length ? { objectCards } : undefined),
-      ...(args.quiet ? { quiet: args.quiet } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },
@@ -289,7 +287,7 @@ export function buildConversationContext(
      * Set when agent history exists. `afterSeq` is the cursor of the previous
      * Turn. A Conversation from before cursors has none.
      */
-    history?: { afterSeq?: number };
+    history?: { afterSeq?: number | undefined };
   } = {},
 ): ThreadContextBlock {
   const { history } = options;

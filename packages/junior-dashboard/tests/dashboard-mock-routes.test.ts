@@ -79,6 +79,7 @@ describe("dashboard canonical-event mock routes", () => {
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
       mockConversations: true,
@@ -88,6 +89,7 @@ describe("dashboard canonical-event mock routes", () => {
     await expect(me.json()).resolves.toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 
@@ -277,6 +279,7 @@ describe("dashboard canonical-event mock routes", () => {
 
   it("serves direct canonical event fixtures for every dashboard state", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
       mockConversations: true,
@@ -429,6 +432,7 @@ describe("dashboard canonical-event mock routes", () => {
 
   it("nests shown Threads under their root and archives children for everyone", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
       mockConversations: true,
@@ -549,6 +553,7 @@ describe("dashboard canonical-event mock routes", () => {
 
   it("loads canonical child conversations through the ordinary detail route", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
       mockConversations: true,
@@ -607,6 +612,7 @@ describe("dashboard mock sends", () => {
   });
 
   const app = createDashboardApp({
+    agentName: "Junior",
     authRequired: false,
     allowedDomains: [],
     mockConversations: true,

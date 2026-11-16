@@ -89,7 +89,7 @@ function readSelection(
   const message = element?.closest<HTMLElement>(
     "[data-quick-question-message-id]",
   );
-  const messageId = message?.dataset.quickQuestionMessageId;
+  const messageId = message?.dataset["quickQuestionMessageId"];
   if (!message || !messageId || !root.contains(message)) return undefined;
   return { messageId, quote, range: range.cloneRange() };
 }
@@ -277,7 +277,7 @@ function useAskQuickQuestion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      forkId?: string;
+      forkId?: string | undefined;
       /** The composer key of this ask, so a retry cannot add the question twice. */
       idempotencyKey: string;
       messageId: string;
@@ -600,7 +600,10 @@ export function QuickQuestionPanel(props: {
 }
 
 /** Keep the hidden fork: it shows in lists and is no longer read-only. */
-function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
+function KeepAsForkButton(props: {
+  disabled: boolean;
+  forkId?: string | undefined;
+}) {
   const navigate = useNavigate();
   const keep = useKeepQuickQuestion();
   const forkId = props.forkId;
@@ -611,7 +614,7 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
       onClick={() =>
         forkId &&
         keep.mutate(forkId, {
-          onSuccess: () => navigate(conversationPath(forkId)),
+          onSuccess: () => void navigate(conversationPath(forkId)),
         })
       }
       variant="ghost"

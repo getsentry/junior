@@ -178,6 +178,7 @@ describe("Slack behavior: mixed attachment media", () => {
     });
 
     await slackRuntime.handleNewMention(thread, message, {
+      conversationId: thread.id,
       destination: createTestDestination(thread),
     });
 
@@ -254,6 +255,7 @@ describe("Slack behavior: mixed attachment media", () => {
     });
 
     await slackRuntime.handleNewMention(thread, message, {
+      conversationId: thread.id,
       destination: createTestDestination(thread),
     });
 

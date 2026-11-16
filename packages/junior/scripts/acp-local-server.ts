@@ -21,7 +21,7 @@ const DEFAULT_REPLY = "Local Junior ACP completed this Turn.";
 const JUNIOR_PACKAGE_ROOT = path.resolve(import.meta.dirname, "..");
 
 function localPort(): number {
-  const raw = process.env.JUNIOR_ACP_LOCAL_PORT?.trim();
+  const raw = process.env["JUNIOR_ACP_LOCAL_PORT"]?.trim();
   if (!raw) return DEFAULT_PORT;
   const port = Number.parseInt(raw, 10);
   if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
@@ -32,12 +32,12 @@ function localPort(): number {
 
 await migrateSchema(getSqlExecutor());
 const harness = await createConversationWebHarness(
-  streamScript(process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY),
+  streamScript(process.env["JUNIOR_ACP_LOCAL_REPLY"]?.trim() || DEFAULT_REPLY),
 );
 // Use the loopback request origin, not deployed callback origins from env files.
-delete process.env.JUNIOR_BASE_URL;
-delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
-delete process.env.VERCEL_URL;
+delete process.env["JUNIOR_BASE_URL"];
+delete process.env["VERCEL_PROJECT_PRODUCTION_URL"];
+delete process.env["VERCEL_URL"];
 const app = await createApp({
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
@@ -114,13 +114,16 @@ try {
     env: {
       ...process.env,
       JUNIOR_ACP_FOLLOW_UP:
-        process.env.JUNIOR_ACP_FOLLOW_UP?.trim() || "Send a follow-up.",
+        process.env["JUNIOR_ACP_FOLLOW_UP"]?.trim() || "Send a follow-up.",
       JUNIOR_ACP_AUTO_AUTHORIZE: "true",
       JUNIOR_ACP_URL: url,
     },
     stdio: "inherit",
   });
-  const [code, signal] = await once(smoke, "exit");
+  const [code, signal] = (await once(smoke, "exit")) as [
+    number | null,
+    NodeJS.Signals | null,
+  ];
   if (signal) {
     throw new Error(`Local ACP smoke client stopped with ${signal}`);
   }

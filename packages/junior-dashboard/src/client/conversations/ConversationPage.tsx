@@ -47,7 +47,10 @@ import {
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
-import { ConversationPageDock } from "./ConversationPageDock";
+import {
+  ConversationPageDock,
+  ConversationReadOnlyDock,
+} from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import {
   saveDetailsOpen,
@@ -145,13 +148,13 @@ export { liveModelId } from "./ConversationMeta";
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
-  data?: { conversations: ConversationFeed };
+  data?: { conversations: ConversationFeed } | undefined;
   /**
    * This Conversation's data. The shell fetches it, so a direct load does
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  pendingArchiveUpdate?: PendingArchiveConversationUpdate | undefined;
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
@@ -308,7 +311,7 @@ export function ConversationPage(props: {
     // Archiving hides this conversation, so go home at once. The mutation
     // keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      void navigate("/", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,
@@ -419,7 +422,11 @@ export function ConversationPage(props: {
   const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
     replyFocus && location.key !== replyFocusDoneKey
-      ? { draftFrom: replyFocus.draftFrom, key: location.key }
+      ? {
+          draftFrom: replyFocus.draftFrom,
+          key: location.key,
+          questionId: replyFocus.questionId,
+        }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
@@ -896,6 +903,10 @@ export function ConversationPage(props: {
                   ref={replyRef}
                 />
               </div>
+            ) : view === "rich" &&
+              detail.data &&
+              detail.data.kind !== "task" ? (
+              <ConversationReadOnlyDock />
             ) : undefined
           }
         />

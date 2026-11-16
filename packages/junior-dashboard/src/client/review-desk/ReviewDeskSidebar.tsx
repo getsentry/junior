@@ -10,10 +10,11 @@ import { SearchInput } from "../components/SearchInput";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Skeleton } from "../components/ui/skeleton";
 import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
-import { automationPath, formatRelativeTime } from "../format";
+import { automationPath } from "../format";
 import { pathWithSearch } from "../searchParams";
 import { cn } from "../styles";
 import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
+import { formatRelativeTime } from "../time";
 
 /** A sidebar group key. The page owns which groups are collapsed. */
 export type InboxGroupKey = "blocked" | "fyi" | "needs-you";
@@ -33,7 +34,7 @@ const rowClass =
 function InboxRow(props: {
   dot: Dot;
   meta: ReactNode;
-  selected?: "always" | "wide";
+  selected?: "always" | "wide" | undefined;
   title: string;
   to: string;
 }) {

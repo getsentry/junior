@@ -112,18 +112,15 @@ type EnqueueOptions = {
   eventMeta?: Parameters<typeof recordSubagentStarted>[1];
   nowMs?: number;
   queue: ConversationWorkQueue;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 };
 
-/** Map a durable invocation's model settings and depth to the child Run policy. */
+/** Map a durable invocation's model settings to the child Run policy. */
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
-  canSpawn: boolean,
 ): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
-    disabledFeatures: canSpawn
-      ? ["interactive-auth"]
-      : ["interactive-auth", "subagents"],
+    disabledFeatures: ["interactive-auth"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),
@@ -376,14 +373,12 @@ function createAgentMessageSteeringDrain(
             ?.piMessages ?? [];
         const messages = withoutSavedSteeringMessages(
           saved,
-          joining.map(
-            (candidate): AgentSteeringMessage => ({
-              kind: "runtime",
-              provenance: agentInvocationProvenance(candidate),
-              text: agentInvocationInputText(candidate),
-              timestampMs: candidate.createdAtMs,
-            }),
-          ),
+          joining.map((candidate): AgentSteeringMessage => ({
+            kind: "runtime",
+            provenance: agentInvocationProvenance(candidate),
+            text: agentInvocationInputText(candidate),
+            timestampMs: candidate.createdAtMs,
+          })),
           buildSteeringPiMessage,
         );
         // The Turn saves the messages before they are marked.
@@ -499,7 +494,9 @@ async function projectTerminalTurn(
 export async function endActiveAgentInvocations(
   conversationId: string,
   options: {
-    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    enqueueResult?:
+      | ((invocation: TerminalAgentInvocation) => Promise<void>)
+      | undefined;
     errorMessage: string;
     exceptInvocationId?: string;
   },
@@ -587,8 +584,8 @@ function isInvocationInputCommitLost(error: unknown): boolean {
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
-  sandboxRef?: SandboxRef;
-  sendReply?: SendReply;
+  sandboxRef?: SandboxRef | undefined;
+  sendReply?: SendReply | undefined;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";
@@ -669,21 +666,14 @@ async function saveAgentInvocationResult(args: {
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
- * `maxAgentDepth` is the number of child agent levels that can start their
- * own child agents. The default, 0, lets only the root start child agents.
  */
 export function createAgentInvocationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
-    maxAgentDepth?: number;
     sendReply?: SendReply;
   } = {},
 ) {
-  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
-  // a child past the limit still sees spawnAgent, and the spawn-time check in
-  // spawn.ts refuses it. Depth is not stored or read per Run.
-  const canSpawn = (options.maxAgentDepth ?? 0) > 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -869,7 +859,7 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          ...agentInvocationRunPolicy(invocation, canSpawn),
+          ...agentInvocationRunPolicy(invocation),
           state: {
             sandboxRef,
           },

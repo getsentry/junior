@@ -146,7 +146,10 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
-      { destination: createTestDestination(firstThread) },
+      {
+        conversationId: firstThread.id,
+        destination: createTestDestination(firstThread),
+      },
     );
 
     const persisted = await firstThread.getState();
@@ -170,7 +173,10 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
-      { destination: createTestDestination(secondThread) },
+      {
+        conversationId: secondThread.id,
+        destination: createTestDestination(secondThread),
+      },
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -242,7 +248,7 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
-      { destination: createTestDestination(thread) },
+      { conversationId: thread.id, destination: createTestDestination(thread) },
     );
 
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
@@ -250,7 +256,7 @@ describe("bot image hydration", () => {
     const { loadConversationVisionCache } =
       await import("@/chat/slack/vision-cache");
     expect(
-      (await loadConversationVisionCache(threadId)).byFileId.F_EXPIRED,
+      (await loadConversationVisionCache(threadId)).byFileId["F_EXPIRED"],
     ).toEqual(
       expect.objectContaining({ summary: "Rebuilt screenshot summary" }),
     );
@@ -302,7 +308,7 @@ describe("bot image hydration", () => {
           },
         ],
       }),
-      { destination: createTestDestination(thread) },
+      { conversationId: thread.id, destination: createTestDestination(thread) },
     );
 
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
@@ -378,7 +384,10 @@ describe("bot image hydration", () => {
           },
         ],
       }),
-      { destination: createTestDestination(firstThread) },
+      {
+        conversationId: firstThread.id,
+        destination: createTestDestination(firstThread),
+      },
     );
 
     listThreadRepliesMock.mockResolvedValue([
@@ -437,7 +446,10 @@ describe("bot image hydration", () => {
           isMe: false,
         },
       }),
-      { destination: createTestDestination(secondThread) },
+      {
+        conversationId: secondThread.id,
+        destination: createTestDestination(secondThread),
+      },
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -466,7 +478,7 @@ describe("bot image hydration", () => {
     const { loadConversationVisionCache } =
       await import("@/chat/slack/vision-cache");
     const visionCache = await loadConversationVisionCache(secondThread.id);
-    expect(visionCache.byFileId.F_OLD?.summary).toBe(
+    expect(visionCache.byFileId["F_OLD"]?.summary).toBe(
       "Recovered screenshot context",
     );
     expect(visionCache.backfillCompletedAtMs).toBeTypeOf("number");
@@ -555,6 +567,7 @@ describe("bot image hydration", () => {
         ],
       }),
       {
+        conversationId: "slack:C0IMAGE:1700000003.000",
         destination: createTestDestination(
           await createTestThread({
             id: "slack:C0IMAGE:1700000003.000",
@@ -693,6 +706,7 @@ describe("bot image hydration", () => {
         ],
       }),
       {
+        conversationId: "slack:C0IMAGE:1700000004.000",
         destination: createTestDestination(
           await createTestThread({
             id: "slack:C0IMAGE:1700000004.000",
@@ -785,6 +799,7 @@ describe("bot image hydration", () => {
         ],
       }),
       {
+        conversationId: "slack:C0IMAGE:1700000005.000",
         destination: createTestDestination(
           await createTestThread({
             id: "slack:C0IMAGE:1700000005.000",

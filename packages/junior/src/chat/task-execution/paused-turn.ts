@@ -121,10 +121,10 @@ export interface PausedTurnRunOptions {
   drainSteeringMessages?: (
     turn: TurnRecord,
   ) => AgentDurability["drainSteeringMessages"];
-  shouldYield?: () => boolean;
-  checkIn?: () => Promise<boolean>;
+  shouldYield?: (() => boolean) | undefined;
+  checkIn?: (() => Promise<boolean>) | undefined;
   /** Aborts the resumed Run when someone stops the Conversation. */
-  stopSignal?: AbortSignal;
+  stopSignal?: AbortSignal | undefined;
 }
 
 /** Persist a delivered paused-turn reply as the terminal thread state. */
@@ -314,9 +314,9 @@ async function resolveSlackResumeUserActor(args: {
  * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   conversationId: string;
-  routingContext?: PausedTurnOptions["routingContext"];
+  routingContext?: PausedTurnOptions["routingContext"] | undefined;
   teamId: string;
   userMessage: {
     author?: { userId?: string };

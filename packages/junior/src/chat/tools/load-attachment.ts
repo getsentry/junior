@@ -6,9 +6,11 @@ import {
   ATTACHMENT_TOO_LARGE_MESSAGE,
   AttachmentDownloadError,
   readAttachmentContent,
+  storeAttachmentOnFirstUse,
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
+import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
   SandboxCommandInput,
@@ -18,7 +20,8 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const ATTACHMENT_DIR = ".junior/attachments";
+/** Sandbox directory for attachment files that tools write. */
+export const ATTACHMENT_DIR = ".junior/attachments";
 /** Bytes held in memory and sent to the sandbox in one write. */
 const PART_BYTES = 8 * 1024 * 1024;
 
@@ -116,13 +119,15 @@ async function writeParts(args: {
 /**
  * Create a tool that restores one conversation attachment to the sandbox.
  *
- * A large Slack file is never stored: each load streams it from Slack
+ * The first load of a large Slack file streams it from Slack into storage
  * through the host. The sandbox never gets a Slack URL or token.
+ *
+ * @runBuilt loadAttachment
  */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  /** Downloads a file that Junior recorded without storing it. */
+  /** Downloads a file that Junior recorded without storing it yet. */
   readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
@@ -133,17 +138,12 @@ export function createLoadAttachmentTool(args: {
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
-      // A large Slack file downloads from Slack on each load.
+      // A large Slack file downloads from Slack on its first load.
       openWorldHint: true,
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored attachment ID, as shown in attachment context or Slack read results.",
-        ),
+      attachment_id: attachmentIdParam,
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {
@@ -161,8 +161,12 @@ export function createLoadAttachmentTool(args: {
       let content;
       try {
         content = await readAttachmentContent({
-          attachment,
-          readAttachmentSource: args.readAttachmentSource,
+          attachment: await storeAttachmentOnFirstUse({
+            attachment,
+            db: args.db,
+            readAttachmentSource: args.readAttachmentSource,
+            storage: args.storage,
+          }),
           storage: args.storage,
         });
       } catch (error) {

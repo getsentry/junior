@@ -75,7 +75,7 @@ function csrfMatches(value: string, expectedHash: string): boolean {
 
 async function readForm(
   request: Request,
-): Promise<{ action?: string; csrf?: string }> {
+): Promise<{ action?: string | undefined; csrf?: string | undefined }> {
   try {
     const form = await request.formData();
     const action = form.get("action");
@@ -93,7 +93,7 @@ async function readForm(
 /** Show or complete MCP consent for one dashboard-authenticated user. */
 export async function handleMcpConsentPage(args: {
   agentName: string;
-  baseURL?: string;
+  baseURL?: string | undefined;
   request: Request;
   state: McpState;
   user: User;

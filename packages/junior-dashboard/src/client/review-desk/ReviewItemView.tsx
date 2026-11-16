@@ -8,11 +8,11 @@ import { Button } from "../components/ui/button";
 import { ChatLayout } from "../conversations/ChatLayout";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { reviewItemStatusLabel } from "./reviewItemFormat";
+import { formatRelativeTime } from "../time";
 
 /** Space above the card when the view starts at its top. */
 const CARD_TOP_MARGIN_PX = 24;
@@ -28,10 +28,10 @@ export function ReviewItemView(props: {
   backTo: string;
   detailsOpen: boolean;
   item: ReviewItemPayload;
-  next?: { title: string; to: string };
+  next?: { title: string; to: string } | undefined;
   onDetailsClick(): void;
   /** The title of the Conversation that added the item, when it is known. */
-  sourceTitle?: string;
+  sourceTitle?: string | undefined;
 }) {
   const { item } = props;
   const open = item.status === "open";

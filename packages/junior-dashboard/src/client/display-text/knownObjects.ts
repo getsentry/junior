@@ -73,12 +73,17 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
       (block) =>
         !block.fenced &&
         block.language === "markdown" &&
-        slackLinksToMarkdown(block.code)
-          .split(/\n[ \t]*\n/)
-          .some((paragraph) => {
-            const bare = standaloneUrl(paragraph.replace(/^\n+/, ""));
-            return bare !== undefined && objectUrlKey(bare) === key;
-          }),
+        standaloneUrlKeys(block.code).includes(key),
     )
   );
+}
+
+/** Return the `objectUrlKey` of each bare URL alone in a paragraph. */
+export function standaloneUrlKeys(markdown: string): string[] {
+  return slackLinksToMarkdown(markdown)
+    .split(/\n[ \t]*\n/)
+    .flatMap((paragraph) => {
+      const bare = standaloneUrl(paragraph.replace(/^\n+/, ""));
+      return (bare && objectUrlKey(bare)) || [];
+    });
 }

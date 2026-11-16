@@ -156,13 +156,13 @@ describe("buildHomeView", () => {
   });
 
   afterEach(() => {
-    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env["VERCEL_GIT_COMMIT_SHA"];
     vi.restoreAllMocks();
     vi.mocked(discoverSkills).mockResolvedValue([]);
   });
 
   it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
-    process.env.VERCEL_GIT_COMMIT_SHA = "abc123def456";
+    process.env["VERCEL_GIT_COMMIT_SHA"] = "abc123def456";
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 

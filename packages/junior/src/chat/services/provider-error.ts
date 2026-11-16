@@ -29,20 +29,20 @@ interface ProviderErrorOptions {
 interface ProviderErrorDetails {
   cause?: unknown;
   kind: ProviderErrorKind;
-  modelId?: string;
+  modelId?: string | undefined;
   retryable: boolean;
-  retryAfterMs?: number;
-  status?: number;
+  retryAfterMs?: number | undefined;
+  status?: number | undefined;
 }
 
 /** Structured failure produced at an AI provider boundary. */
 export class ProviderError extends Error {
   readonly code = "provider_error";
   readonly kind: ProviderErrorKind;
-  readonly modelId?: string;
+  readonly modelId?: string | undefined;
   readonly retryable: boolean;
-  readonly retryAfterMs?: number;
-  readonly status?: number;
+  readonly retryAfterMs?: number | undefined;
+  readonly status?: number | undefined;
 
   constructor(details: ProviderErrorDetails) {
     super(
@@ -258,7 +258,7 @@ const REFUSAL_STOP_REASONS = new Set(["refusal", "sensitive"]);
 
 /** Return whether the provider refused to answer a Pi assistant message. */
 export function isProviderRefusal(message: {
-  rawStopReason?: string;
+  rawStopReason?: string | undefined;
 }): boolean {
   return (
     message.rawStopReason !== undefined &&
@@ -268,7 +268,7 @@ export function isProviderRefusal(message: {
 
 /** Normalize a failed Pi assistant message. A provider refusal is a content policy block. */
 export function createAssistantProviderError(
-  message: { errorMessage?: string; rawStopReason?: string },
+  message: { errorMessage?: string; rawStopReason?: string | undefined },
   options: ProviderErrorOptions = {},
 ): ProviderError {
   return createProviderError(message.errorMessage ?? "", {

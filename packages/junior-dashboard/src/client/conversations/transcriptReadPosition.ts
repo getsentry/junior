@@ -56,7 +56,7 @@ export type ReadPositionAtOpen = {
   /** Set when unread events start before the latest page. */
   unreadCursor?: string;
   /** The page around `unreadCursor`, when the fetch brought it. */
-  unreadPage?: ConversationEventPage;
+  unreadPage?: ConversationEventPage | undefined;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -99,11 +99,11 @@ export function useReadPositionAtOpen(
   fetched: DetailAtOpen | undefined,
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
-  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [opened, setOpened] = useState<{ lastReadSeq?: number | undefined }>();
   const [fetchedEnd, setFetchedEnd] = useState<{
-    throughSeq?: number;
-    unreadCursor?: string;
-    unreadPage?: ConversationEventPage;
+    throughSeq?: number | undefined;
+    unreadCursor?: string | undefined;
+    unreadPage?: ConversationEventPage | undefined;
   }>();
   const read =
     opened ??
@@ -132,9 +132,9 @@ export function useReadPositionAtOpen(
 
 type DetailAtOpen = {
   events: readonly { seq: number }[];
-  readPosition?: ConversationReadPosition;
-  unreadCursor?: string;
-  unreadPage?: ConversationEventPage;
+  readPosition?: ConversationReadPosition | undefined;
+  unreadCursor?: string | undefined;
+  unreadPage?: ConversationEventPage | undefined;
 };
 
 /** Find the rows after the read position, through the last row at open. */
@@ -223,10 +223,10 @@ export function useMarkConversationRead(conversationId: string) {
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
   /** The stored position. Rows after it report. */
-  lastReadSeq?: number;
-  onRead?: (seq: number) => void;
+  lastReadSeq?: number | undefined;
+  onRead?: ((seq: number) => void) | undefined;
   /** The reader acted outside the transcript, such as in the composer. */
-  engaged?: boolean;
+  engaged?: boolean | undefined;
   /**
    * Stop reporting while the rows are not in reading order, such as search
    * results. This is read when a report is scheduled, so the render that
@@ -289,7 +289,7 @@ export function useTranscriptReadReporter(input: {
       }
       // Read the seq now: an activity group row moves its seq as it grows.
       for (const row of visibleRows) {
-        const seq = Number(row.dataset.transcriptSeq);
+        const seq = Number(row.dataset["transcriptSeq"]);
         if (Number.isSafeInteger(seq)) seenSeq = Math.max(seenSeq ?? -1, seq);
       }
       if (seenSeq === null) return;

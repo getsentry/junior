@@ -118,8 +118,13 @@ export function supportsWarming(request: ModelRequest): boolean {
 /** Return the cache TTL of a request that Junior can warm. */
 export function cacheTtlMs(request: ModelRequest): number | undefined {
   return supportsWarming(request)
-    ? CACHE_TTL_MS[providerOf(request.model.id)]
+    ? providerCacheTtlMs(request.model.id)
     : undefined;
+}
+
+/** Return the cache TTL of the model's provider, when it has a fixed one. */
+export function providerCacheTtlMs(modelId: string): number | undefined {
+  return CACHE_TTL_MS[providerOf(modelId)];
 }
 
 /** Return the cached prefix tokens of a finished model request. */
@@ -166,14 +171,53 @@ export async function breakerOpen(
   );
 }
 
+/**
+ * Report whether the breaker is open for each warmed provider of these
+ * models. Providers that no model uses are left out.
+ */
+export async function breakerStates(
+  state: ConnectedState,
+  modelIds: readonly string[],
+): Promise<Array<{ provider: string; open: boolean }>> {
+  const providers = new Set(
+    modelIds
+      .map(providerOf)
+      .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
+  );
+  return Promise.all(
+    [...providers].map(async (provider) => ({
+      provider,
+      open: (await state.get<boolean>(breakerOpenKey(provider))) === true,
+    })),
+  );
+}
+
+/**
+ * Close a provider's breaker so warming starts again, and forget its recent
+ * outcomes so old misses cannot reopen it. Returns false for a provider that
+ * is not warmed.
+ */
+export async function closeBreaker(
+  state: ConnectedState,
+  provider: string,
+): Promise<boolean> {
+  if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  await state.delete(breakerOutcomesKey(provider));
+  await state.delete(breakerOpenKey(provider));
+  return true;
+}
+
 // Count one warmup outcome. Open the breaker when too many recent warmups
-// missed. Only the call that opens it reports to Sentry.
+// missed. Only the call that opens it reports to Sentry. Warmups that started
+// before it opened are not counted, so their misses cannot reopen it right
+// after the pause.
 async function countOutcome(
   state: ConnectedState,
   modelId: string,
   miss: boolean,
 ): Promise<void> {
   const provider = providerOf(modelId);
+  if (await breakerOpen(state, modelId)) return;
   await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
     maxLength: BREAKER_OUTCOMES_MAX,
     ttlMs: BREAKER_OUTCOMES_TTL_MS,
@@ -217,7 +261,11 @@ export async function sendWarmup(
     reasoning?: ThinkingLevel;
     prefixTokens: number;
   },
-): Promise<{ refreshed: boolean; attributes: Record<string, unknown> }> {
+): Promise<{
+  refreshed: boolean;
+  costUsd: number;
+  attributes: Record<string, unknown>;
+}> {
   const { conversationId, modelId, context, prefixTokens } = params;
   const { message: result } = await completeText({
     modelId,
@@ -261,5 +309,5 @@ export async function sendWarmup(
     });
   }
   await countOutcome(state, modelId, !refreshed);
-  return { refreshed, attributes };
+  return { refreshed, costUsd: result.usage.cost.total, attributes };
 }

@@ -26,6 +26,7 @@ import type {
   EventPublisher,
   SlackConversationLink,
   PluginRegistration,
+  PluginToolDefinition,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
@@ -40,6 +41,7 @@ import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
@@ -69,7 +71,10 @@ import {
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type {
+  AnyToolDefinition,
+  ToolExecuteOptions,
+} from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
@@ -388,7 +393,7 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed = JSON.parse(serialized);
+  const parsed: unknown = JSON.parse(serialized);
   if (!isRecord(parsed)) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
@@ -409,15 +414,21 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
-  if (!isRecord(args.value) || typeof args.value.renderPrompt !== "function") {
+  if (
+    !isRecord(args.value) ||
+    typeof args.value["renderPrompt"] !== "function"
+  ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value.context);
+  const context = promptContextSchema.safeParse(args.value["context"]);
   if (!context.success) {
     return undefined;
   }
+  const renderPrompt = args.value["renderPrompt"] as () => unknown;
+  // Call it on its object: plugins may write renderPrompt as a method that
+  // reads `this`.
   const text = promptMessageSchema.safeParse({
-    text: args.value.renderPrompt(),
+    text: renderPrompt.call(args.value),
   });
   if (!text.success) {
     return undefined;
@@ -502,9 +513,9 @@ export function getPlugins(): PluginRegistration[] {
 /** Conversation facts that plugin Markdown rewrites may use. */
 export interface PluginMarkdownFormat {
   /** Config values by full key. Install defaults fill keys it does not set. */
-  configuration?: Record<string, unknown>;
+  configuration?: Record<string, unknown> | undefined;
   /** Slack mentions of known people, by lowercase `provider:handle`. */
-  mentions?: ReadonlyMap<string, string>;
+  mentions?: ReadonlyMap<string, string> | undefined;
   /** Where the text shows. Defaults to Slack. */
   platform?: "slack" | "web";
   /** The provider that wrote the text or that it went to. */
@@ -716,6 +727,55 @@ export async function getPluginUserPromptContributions(args: {
   return contributions;
 }
 
+/**
+ * Model-facing definitions of one plugin's tools, by host tool name. They
+ * come from the plugin's `tools()` with no Turn.
+ */
+function pluginToolDefinitions(
+  plugin: PluginRegistration,
+): Record<string, AnyToolDefinition> {
+  const hook = plugin.hooks?.tools;
+  if (!hook) return {};
+  const pluginName = plugin.manifest.name;
+  const namespace = pluginToolNamespace(pluginName);
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const [localName, definition] of Object.entries(hook())) {
+    const execute = definition.execute;
+    // Naming conventions belong in lint, not on the turn's critical path.
+    definitions[`${namespace}_${localName}`] = {
+      ...(definition as AnyToolDefinition),
+      // Keep prototype methods and their receiver on class-instance tools.
+      // `getPluginTools` passes the Turn context as the third argument.
+      ...(execute
+        ? {
+            execute: execute.bind(definition) as AnyToolDefinition["execute"],
+          }
+        : undefined),
+      approvalMode: definition.approvalMode ?? "auto",
+      identity: {
+        id: `${pluginName}.${localName}`,
+        name: localName,
+        plugin: pluginName,
+      },
+      source: { id: pluginName, description: plugin.manifest.description },
+      exposure: definition.exposure ?? "deferred",
+    };
+  }
+  return definitions;
+}
+
+/** Model-facing definitions of every plugin tool, with no Turn. */
+export function getStaticPluginToolDefinitions(): Record<
+  string,
+  AnyToolDefinition
+> {
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const plugin of getPlugins()) {
+    Object.assign(definitions, pluginToolDefinitions(plugin));
+  }
+  return definitions;
+}
+
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
@@ -822,6 +882,7 @@ export function getPluginTools(
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
+      conversations: createPluginConversations(context.conversationId),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
@@ -912,17 +973,23 @@ export function getPluginTools(
         };
         break;
     }
-    const pluginTools = hook(pluginContext);
+    const definitions = pluginToolDefinitions(plugin);
     const namespace = pluginToolNamespace(pluginName);
-    for (const [localName, tool] of Object.entries(pluginTools)) {
-      // Naming conventions belong in lint, not on the turn's critical path.
-      const name = `${namespace}_${localName}`;
+    const disabled = plugin.hooks?.disabledTools?.(pluginContext) ?? {};
+    for (const localName of Object.keys(disabled)) {
+      if (!definitions[`${namespace}_${localName}`]) {
+        throw new Error(
+          `Plugin "${pluginName}" disabled unknown tool "${localName}"`,
+        );
+      }
+    }
+    for (const [name, definition] of Object.entries(definitions)) {
+      const localName = definition.identity!.name;
       if (tools[name]) {
         throw new Error(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as AnyToolDefinition;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );
@@ -933,34 +1000,30 @@ export function getPluginTools(
           "app.tool.missing_annotations": missingAnnotationKeys.join(","),
         });
       }
-      definition.approvalMode ??= "auto";
-      definition.identity = {
-        id: `${pluginName}.${localName}`,
-        name: localName,
-        plugin: pluginName,
+      const execute = definition.execute as
+        | PluginToolDefinition["execute"]
+        | undefined;
+      const disabledReason = disabled[localName];
+      tools[name] = {
+        ...definition,
+        ...(disabledReason ? { disabledReason } : undefined),
+        ...(execute
+          ? {
+              execute: async (input: unknown, options: ToolExecuteOptions) =>
+                annotateToolResult(
+                  context.conversationId,
+                  pluginName,
+                  await recordToolReply({
+                    conversationId: context.conversationId,
+                    plugin: pluginName,
+                    result: await execute(input, options, pluginContext),
+                    toolCallId: options.toolCallId,
+                  }),
+                  { readOnly: definition.annotations?.readOnlyHint === true },
+                ),
+            }
+          : undefined),
       };
-      definition.source = {
-        id: pluginName,
-        description: plugin.manifest.description,
-      };
-      definition.exposure ??= "deferred";
-      const execute = definition.execute;
-      if (execute) {
-        // Keep prototype methods and their receiver on plugin tool instances.
-        const wrapped: AnyToolDefinition = Object.create(definition);
-        wrapped.execute = async (input, options) =>
-          annotateToolResult(
-            context.conversationId,
-            pluginName,
-            await recordToolReply({
-              conversationId: context.conversationId,
-              plugin: pluginName,
-              result: await execute.call(definition, input, options),
-              toolCallId: options.toolCallId,
-            }),
-          );
-        tools[name] = wrapped;
-      } else tools[name] = definition;
     }
   }
   return tools;
@@ -1641,9 +1704,9 @@ function normalizeEnv(value: unknown): Record<string, string> {
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
-    actors?: () => Actor[];
+    actors?: (() => Actor[]) | undefined;
     /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
     toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
@@ -1829,7 +1892,7 @@ export function createPluginHookRunner(
               juniorRoot: SANDBOX_JUNIOR_ROOT,
               env: {
                 get(key) {
-                  return env[key] ?? normalizeEnv(nextInput.env)[key];
+                  return env[key] ?? normalizeEnv(nextInput["env"])[key];
                 },
                 set(key, value) {
                   env[key] = value;

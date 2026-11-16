@@ -9,9 +9,10 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type {
-  AgentTools,
-  TurnBehavior,
+import {
+  promptModeTurnTools,
+  type AgentTools,
+  type TurnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
@@ -93,12 +94,13 @@ import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
 interface RunSandboxArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live projection of the run's committed instruction-authority actors so far. */
   currentActors?: () => Actor[];
   durability: Pick<AgentDurability, "onSandboxRefChanged">;
@@ -149,7 +151,16 @@ export async function createRunSandbox(
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
-    prepareSandbox: pluginHooks.prepareSandbox,
+    prepareSandbox: async (sandbox) => {
+      const actor = args.currentActor;
+      if (actor) {
+        await renewPreviewOrigins(
+          sandbox,
+          async () => (await readActorIdentity(actor))?.user,
+        );
+      }
+      await pluginHooks.prepareSandbox(sandbox);
+    },
     prepareWorkspace: async (sandbox, recipe, signal) =>
       await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
@@ -160,7 +171,7 @@ export async function createRunSandbox(
 
 /** Build the context that plugin prompt hooks read, before tool wiring exists. */
 export function createPromptHookContext(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: AgentRun;
   userInput: string;
 }): PromptHookContext {
@@ -180,7 +191,7 @@ interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
   behavior: TurnBehavior;
-  currentActor?: Actor;
+  currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
@@ -190,12 +201,12 @@ interface ToolWiringArgs {
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy?: ConversationPrivacy | undefined;
   durability: AgentDurability;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
@@ -214,7 +225,7 @@ interface ToolWiringArgs {
 
 /** Record optional reporting without changing the loadSkill outcome. */
 async function tryRecordSkillLoadStat(skill: Skill) {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: skill.pluginProvider ?? "junior",
@@ -245,7 +256,7 @@ type ToolRuntimeRoute =
       "actor" | "destination" | "source"
     >
   | {
-      actor?: Actor;
+      actor?: Actor | undefined;
       destination: Destination;
       source:
         | AgentInvocationSource
@@ -257,7 +268,7 @@ type ToolRuntimeRoute =
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   run: Pick<
     AgentRun,
     "destination" | "source" | "slackActionToken" | "toolChannelId"
@@ -419,20 +430,6 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
-    turnTools: {
-      ...args.behavior.tools,
-      // An Automation with no outcomes posts nothing, so its run cannot
-      // reply. A dispatch record from before #1788 has no outcomes and sends
-      // to its Destination.
-      // TODO(dcramer): Remove the `undefined` case and the same check in
-      // `finishedRunReply` when automation dispatches require `outcomes`.
-      // Automations have stored outcomes since #1788, and older dispatch
-      // records have passed the 7-day state TTL.
-      reply:
-        args.run.dispatch?.outcomes?.length === 0
-          ? "none"
-          : args.behavior.tools.reply,
-    },
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -475,7 +472,7 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...bindAgentTools(args.run, args.behavior.tools.agents),
+    ...bindTurnTools(args.run, args.behavior),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -565,9 +562,7 @@ export async function wireAgentTools(
     },
   );
 
-  const plannedToolExposure = planToolExposure(
-    tools as Record<string, AnyToolDefinition>,
-  );
+  const plannedToolExposure = planToolExposure(tools);
   const disabledTools = Object.entries(
     tools as Record<string, AnyToolDefinition>,
   ).flatMap(([name, definition]) =>
@@ -718,19 +713,55 @@ export async function wireAgentTools(
   };
 }
 
-/** Bind the agent tools that the Turn's behavior gives it. */
+/**
+ * Bind the tools that one Turn lists and the tools that it can use. Every
+ * Turn of a Prompt mode lists the same tools, so a Conversation keeps one
+ * tool list. `createTools` disables each listed tool that the Turn cannot
+ * use.
+ */
+export function bindTurnTools(
+  run: AgentRun,
+  behavior: TurnBehavior,
+): Pick<
+  ToolRuntimeContext,
+  "listedTools" | "messageAgent" | "spawnAgent" | "turnTools"
+> {
+  // An Automation with no outcomes posts nothing, so its run cannot reply. A
+  // dispatch record from before #1788 has no outcomes and sends to its
+  // Destination.
+  // TODO(dcramer): Remove the `undefined` case and the same check in
+  // `finishedRunReply` when automation dispatches require `outcomes`.
+  // Automations have stored outcomes since #1788, and older dispatch records
+  // have passed the 7-day state TTL.
+  // The listed tools come from the Prompt mode only. A run with no outcomes
+  // still lists `reply`, like every other Turn of its Conversation, and
+  // cannot call it.
+  const listedTools = promptModeTurnTools(behavior.promptMode);
+  return {
+    turnTools:
+      run.dispatch?.outcomes?.length === 0
+        ? { ...behavior.tools, reply: "none" }
+        : behavior.tools,
+    listedTools,
+    ...bindAgentTools(run, listedTools.agents),
+  };
+}
+
+/** Bind the agent tools that the Turn lists. */
 export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (agents === "none" || !bindSpawnAgent) return {};
-  const spawnAgent = isAgentRunFeatureDisabled(
-    run.disabledFeatures,
-    "subagents",
-  )
-    ? undefined
-    : bindSpawnAgent(run);
+  // The rule reads only the Turn behavior and the deployment, so a child gets
+  // the same tools on every path. Every child has depth 1 or more, so with
+  // maxAgentDepth 0 no child can spawn. With more, a child past the limit
+  // still sees spawnAgent, and the depth check in spawn.ts refuses it.
+  const canSpawn =
+    agents === "children" ||
+    (agents === "children_and_parent" && botConfig.maxAgentDepth > 0);
+  const spawnAgent = canSpawn ? bindSpawnAgent(run) : undefined;
   // A child agent can always message its parent, even when it is too deep to
   // start child agents of its own.
   const messageAgent =

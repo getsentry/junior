@@ -68,12 +68,12 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
-const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
+const LOCAL_FAILURE_EVENT_NAMES = {
   agent_run_failed: "local.agent_run.failed",
   delivery_failed: "local.reply.delivery.failed",
   model_execution_failed: "local.model.execution.failed",
   persistence_failed: "local.turn.persistence.failed",
-};
+} as const satisfies Record<ConversationTurnFailureCode, string>;
 
 export interface LocalAgentTurnInput {
   conversationId: string;
@@ -134,7 +134,7 @@ function captureLocalBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
 }): string | undefined {
   setTags({
     conversationId: args.conversationId,
@@ -431,10 +431,7 @@ async function runLocalAgentTurnInContext(
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.
     modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
-    const finalized = finalizeFailedTurnReplyWithEvent({
-      reply,
-      logException,
-    });
+    const finalized = finalizeFailedTurnReplyWithEvent({ reply });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
     modelFailureReason = finalized.failureReason;
@@ -491,6 +488,7 @@ async function runLocalAgentTurnInContext(
       throw new AggregateError(
         [error, persistenceError],
         "Local turn failure state could not be persisted",
+        { cause: persistenceError },
       );
     }
     await lifecycle.fail({

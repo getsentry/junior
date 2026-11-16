@@ -115,6 +115,7 @@ const oembedResponseSchema = z.object({
   author_name: optionalText,
   provider_name: optionalText,
   thumbnail_url: optionalText,
+  type: optionalText,
   cache_age: z.coerce.number().positive().optional().catch(undefined),
 });
 

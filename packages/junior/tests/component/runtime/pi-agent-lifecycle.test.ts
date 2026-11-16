@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { readAgentHistory, writeAgentHistory } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import { decideReply } from "@/chat/services/assistant-reply";
@@ -115,12 +116,9 @@ describe("Pi Agent lifecycle", () => {
     await agent.prompt("hello");
 
     expect(prepareNextTurn).toHaveBeenCalledOnce();
-    expect(agent.state.messages.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-      "user",
-      "assistant",
-    ]);
+    expect(
+      readAgentHistory(agent.state.messages).map((message) => message.role),
+    ).toEqual(["user", "assistant", "user", "assistant"]);
   });
 
   it("continues once after empty output without delivering it", async () => {
@@ -150,7 +148,7 @@ describe("Pi Agent lifecycle", () => {
     const continuation = nextEmptyOutputContinuation({
       attempt: 0,
       lastAssistant,
-      messages: agent.state.messages as PiMessage[],
+      messages: readAgentHistory(agent.state.messages as PiMessage[]),
     });
     expect(continuation).toMatchObject({
       kind: "retry",
@@ -159,7 +157,10 @@ describe("Pi Agent lifecycle", () => {
       throw new Error("Expected empty output continuation");
     }
 
-    agent.state.messages = continuation.messages;
+    agent.state.messages = writeAgentHistory(
+      agent.state.messages as PiMessage[],
+      continuation.messages,
+    );
     await agent.continue();
 
     expect(streamFn).toHaveBeenCalledTimes(2);

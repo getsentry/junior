@@ -190,7 +190,11 @@ async function readReplayedAutomation(
     : undefined;
 }
 
-/** Create the tool that stores a scheduled or event Automation. */
+/**
+ * Create the tool that stores a scheduled or event Automation.
+ *
+ * @runBuilt createAutomation
+ */
 export function createAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,

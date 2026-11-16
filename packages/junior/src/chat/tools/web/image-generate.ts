@@ -2,11 +2,12 @@ import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
-import { createGatewayProvider } from "@ai-sdk/gateway";
-import { generateImage, NoImageGeneratedError, type GeneratedFile } from "ai";
 import { botConfig } from "@/chat/config";
-import { completeText, type ConversationModelCost } from "@/chat/core-model";
-import { getGatewayApiKey } from "@/chat/pi/client";
+import {
+  completeText,
+  generateImages,
+  type ConversationModelCost,
+} from "@/chat/core-model";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
@@ -166,13 +167,17 @@ function extensionForMediaType(mediaType: string): string {
   return "bin";
 }
 
-/** Create the image tool with sandbox artifact guidance matched to file-send capability. */
+/**
+ * Create the image tool with sandbox artifact guidance matched to file-send capability.
+ *
+ * @runBuilt imageGenerate
+ */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
   options: {
     modelId: string;
     canSendFilesToActiveConversation?: boolean;
-    promptCost: ConversationModelCost;
+    modelCost: ConversationModelCost;
     sandbox: SandboxWorkspace;
   },
   deps: ImageGenerateToolDeps = {},
@@ -206,10 +211,6 @@ export function createImageGenerateTool(
     }),
     outputSchema: imageGenerateOutputSchema,
     execute: async ({ prompt, images = [] }) => {
-      const gateway = createGatewayProvider({
-        apiKey: await getGatewayApiKey(),
-        ...(deps.fetch ? { fetch: deps.fetch } : undefined),
-      });
       const model = options.modelId;
       const sourceImages = await Promise.all(
         images.map(async (path) => ({
@@ -236,36 +237,32 @@ export function createImageGenerateTool(
       const enrichedPrompt =
         inputImages.length > 0
           ? prompt
-          : await enrichImagePrompt(prompt, options.promptCost);
-      let generatedImages: GeneratedFile[];
-      try {
-        ({ images: generatedImages } = await generateImage({
-          model: gateway.imageModel(model),
-          // Input images make this an edit of those images.
-          prompt:
-            inputImages.length > 0
-              ? {
-                  text: enrichedPrompt,
-                  images: inputImages.map((image) => image.data),
-                }
-              : enrichedPrompt,
-          n: 1,
-        }));
-      } catch (error) {
-        if (NoImageGeneratedError.isInstance(error)) {
-          generatedImages = [];
-        } else if (
+          : await enrichImagePrompt(prompt, options.modelCost);
+      const { images: generatedImages } = await generateImages({
+        operation: "image_generation",
+        cost: options.modelCost,
+        modelId: model,
+        prompt:
+          inputImages.length > 0
+            ? {
+                text: enrichedPrompt,
+                images: inputImages.map((image) => image.data),
+              }
+            : enrichedPrompt,
+        fetch: deps.fetch,
+      }).catch((error: unknown) => {
+        if (
           error instanceof Error &&
           error.message.includes("not an image model")
         ) {
           // The model id comes from app config, so the agent cannot fix it.
           throw new Error(
             `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`,
+            { cause: error },
           );
-        } else {
-          throw error;
         }
-      }
+        throw error;
+      });
       const uploads = generatedImages.map((image, index) => ({
         data: Buffer.from(image.uint8Array),
         filename: `generated-image-${Date.now()}-${index + 1}.${extensionForMediaType(image.mediaType)}`,

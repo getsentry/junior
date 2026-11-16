@@ -28,7 +28,7 @@ export function readS3StorageConfig(env: NodeJS.ProcessEnv): S3StorageConfig {
     accessKeyId: readRequiredSetting(env, "JUNIOR_S3_ACCESS_KEY_ID"),
     bucket: readRequiredSetting(env, "JUNIOR_S3_BUCKET"),
     endpoint: readRequiredSetting(env, "JUNIOR_S3_ENDPOINT"),
-    region: toOptionalTrimmed(env.JUNIOR_S3_REGION) ?? "us-east-1",
+    region: toOptionalTrimmed(env["JUNIOR_S3_REGION"]) ?? "us-east-1",
     secretAccessKey: readRequiredSetting(env, "JUNIOR_S3_SECRET_ACCESS_KEY"),
   };
 }
@@ -67,6 +67,11 @@ async function expectOk(response: Response, operation: string): Promise<void> {
     // contain user filenames.
     throw new Error(`S3 ${operation} failed with status ${response.status}`);
   }
+}
+
+/** Presigned URL lifetime in whole seconds, at least one. */
+function expiresInSeconds(expiresAtMs: number): string {
+  return String(Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000)));
 }
 
 /** Store private conversation attachments in an S3-compatible bucket. */
@@ -108,7 +113,7 @@ export function createS3AttachmentStorage(
       const url = new URL(objectUrl(config, input.key));
       url.searchParams.set(
         "X-Amz-Expires",
-        String(Math.max(1, Math.ceil((input.expiresAtMs - Date.now()) / 1000))),
+        expiresInSeconds(input.expiresAtMs),
       );
       const browserHeaders = {
         "content-type": input.contentType,
@@ -127,6 +132,19 @@ export function createS3AttachmentStorage(
         method: "PUT",
         url: signed.url,
       };
+    },
+    async createDownloadUrl(input) {
+      const url = new URL(objectUrl(config, input.key));
+      url.searchParams.set(
+        "X-Amz-Expires",
+        expiresInSeconds(input.expiresAtMs),
+      );
+      // Sign only the host, so a fetch with no extra headers is valid.
+      const signed = await client.sign(url.toString(), {
+        aws: { signQuery: true },
+        method: "GET",
+      });
+      return signed.url;
     },
     async get(key, range) {
       const response = await client.fetch(

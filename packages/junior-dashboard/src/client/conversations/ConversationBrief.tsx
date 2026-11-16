@@ -13,10 +13,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
-import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { OutboundLink } from "../components/OutboundLink";
+import { formatTime } from "../time";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -162,7 +162,7 @@ function BriefSection(props: { children: ReactNode; title: string }) {
 
 function BriefDecisions(props: {
   decisions: BriefContent["decisions"];
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
 }) {
   return (
     <ul className="m-0 grid list-none gap-2.5 p-0">
@@ -201,7 +201,7 @@ function BriefDecisions(props: {
 
 function BriefList(props: {
   items: string[];
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
 }) {
   return (
     <ul className="my-0 grid gap-1.5 pl-4">

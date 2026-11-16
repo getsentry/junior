@@ -18,8 +18,8 @@ function markdownBody(call: CapturedSlackApiCall): string {
 
 describe("sendSlackReply", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     resetSlackApiMockState();
   });
 
@@ -257,7 +257,7 @@ describe("sendSlackReply", () => {
     expect(posts).toHaveLength(2);
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
     expect(posts[1]?.params).toMatchObject({ thread_ts: timestamps[0] });
-    expect(posts[1]?.params.blocks).toContainEqual({
+    expect(posts[1]?.params["blocks"]).toContainEqual({
       type: "section",
       text: {
         type: "mrkdwn",
@@ -265,7 +265,7 @@ describe("sendSlackReply", () => {
       },
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
-    expect(posts[1]?.params.text).toBe(
+    expect(posts[1]?.params["text"]).toBe(
       "Automation\nReminder &lt;@U123&gt;\nEvery Monday",
     );
     for (const post of posts) {
