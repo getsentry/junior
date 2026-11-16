@@ -966,6 +966,8 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(await replyPromise);
     expect(reply.diagnostics.errorMessage).toBe("eval test cancelled");
+    // A stopped run is the caller's outcome, not a failure to report.
+    expect(reply.diagnostics.eventId).toBeUndefined();
     expect(counters.abortCalls).toBe(1);
     expect(counters.continueCalls).toBe(0);
   });
