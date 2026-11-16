@@ -1,6 +1,11 @@
 import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
+import {
+  AttachmentDownloadError,
+  storeAttachmentOnFirstUse,
+} from "@/chat/attachments/download";
+import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { readLiveAttachment } from "@/chat/attachments/store";
 import { attachmentIdParam } from "@/chat/attachments/tool-params";
@@ -44,7 +49,7 @@ const transcribeAudioOutputSchema = juniorToolOutputSchema
   .strict();
 
 /** Storage that can sign a download URL for an outside service. */
-type SignedDownloadStorage = Pick<AttachmentStorage, "provider"> &
+type SignedDownloadStorage = AttachmentStorage &
   Required<Pick<AttachmentStorage, "createDownloadUrl">>;
 
 function mayHaveAudio(contentType: string): boolean {
@@ -103,8 +108,9 @@ function leadingLines(
 /**
  * Create a tool that transcribes speech in one Conversation attachment.
  *
- * The model provider downloads the file from a short-lived signed URL, so
- * the file never passes through the host. The URL never leaves this call.
+ * The model provider downloads the file from a short-lived signed URL. The
+ * URL never leaves this call. A large Slack file is stored first, so its
+ * first transcription streams it through the host once.
  *
  * @runBuilt transcribeAudio
  */
@@ -113,6 +119,8 @@ export function createTranscribeAudioTool(args: {
   db: JuniorSqlDatabase;
   modelCost: ConversationModelCost;
   modelId: string;
+  /** Downloads a file that Junior recorded without storing it yet. */
+  readAttachmentSource?: ReadAttachmentSource;
   storage: SignedDownloadStorage;
   workspace: Pick<SandboxWorkspace, "writeFiles">;
 }) {
@@ -142,19 +150,25 @@ export function createTranscribeAudioTool(args: {
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
-      if (!attachment.storageKey) {
-        throw new ToolInputError(
-          "This attachment is not available for transcription yet. Large Slack files are not stored.",
-        );
-      }
       if (!mayHaveAudio(attachment.contentType)) {
         throw new ToolInputError(
           `This attachment is ${attachment.contentType}, not audio or video.`,
         );
       }
+      const { storageKey } = await storeAttachmentOnFirstUse({
+        attachment,
+        db: args.db,
+        readAttachmentSource: args.readAttachmentSource,
+        storage: args.storage,
+      }).catch((error: unknown) => {
+        if (error instanceof AttachmentDownloadError) {
+          throw new ToolInputError(error.message, { cause: error });
+        }
+        throw error;
+      });
       const sourceUrl = await args.storage.createDownloadUrl({
         expiresAtMs: Date.now() + DOWNLOAD_URL_TTL_MS,
-        key: attachment.storageKey,
+        key: storageKey,
       });
       const transcript = await transcribeFromUrl({
         cost: args.modelCost,

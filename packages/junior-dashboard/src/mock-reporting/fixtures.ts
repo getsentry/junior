@@ -846,7 +846,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             contentType: "image/png",
             bytes: 6400,
           },
-          // Large Slack files that Junior never stores.
+          // Large Slack files that Junior has not stored yet.
           {
             id: "qa-recording-pending",
             filename: "standup-recording.mp4",

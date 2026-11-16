@@ -52,8 +52,8 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
     { waitUntil: "networkidle" },
   );
-  // Junior never stores a large Slack file, so it shows as a file row with
-  // no preview, not a video.
+  // Junior has not stored this large Slack file yet, so it shows as a file
+  // row with no preview, not a video.
   const recording = page.getByRole("button", {
     name: "Download standup-recording.mp4",
   });

@@ -6,6 +6,7 @@ import {
   ATTACHMENT_TOO_LARGE_MESSAGE,
   AttachmentDownloadError,
   readAttachmentContent,
+  storeAttachmentOnFirstUse,
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
@@ -118,7 +119,7 @@ async function writeParts(args: {
 /**
  * Create a tool that restores one conversation attachment to the sandbox.
  *
- * A large Slack file is never stored: each load streams it from Slack
+ * The first load of a large Slack file streams it from Slack into storage
  * through the host. The sandbox never gets a Slack URL or token.
  *
  * @runBuilt loadAttachment
@@ -126,7 +127,7 @@ async function writeParts(args: {
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  /** Downloads a file that Junior recorded without storing it. */
+  /** Downloads a file that Junior recorded without storing it yet. */
   readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
@@ -137,7 +138,7 @@ export function createLoadAttachmentTool(args: {
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
-      // A large Slack file downloads from Slack on each load.
+      // A large Slack file downloads from Slack on its first load.
       openWorldHint: true,
       readOnlyHint: false,
     },
@@ -160,8 +161,12 @@ export function createLoadAttachmentTool(args: {
       let content;
       try {
         content = await readAttachmentContent({
-          attachment,
-          readAttachmentSource: args.readAttachmentSource,
+          attachment: await storeAttachmentOnFirstUse({
+            attachment,
+            db: args.db,
+            readAttachmentSource: args.readAttachmentSource,
+            storage: args.storage,
+          }),
           storage: args.storage,
         });
       } catch (error) {
