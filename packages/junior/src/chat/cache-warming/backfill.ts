@@ -426,9 +426,10 @@ function replayConversation(
     }
     lastCallMs = startedAtMs;
     if (turnEnding) {
-      const waitsOnPendingWork =
-        turnBehavior({ kind, personInput: userActor }).promptMode ===
-        "automation";
+      const waitsOnPendingWork = turnBehavior({
+        kind,
+        personInput: userActor,
+      }).idleNeedsPendingWork;
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),

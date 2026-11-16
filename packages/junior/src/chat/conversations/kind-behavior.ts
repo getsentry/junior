@@ -25,14 +25,21 @@ export type TurnBehavior = {
   delivery: "location" | "conversation";
   /**
    * The system prompt of the Turn. Every Turn of a Thread has the `thread`
-   * mode, so the Thread keeps one system prompt and one tool list.
+   * mode, and every Turn of an Automation Conversation has the `automation`
+   * mode, so each keeps one system prompt and one tool list.
    */
   promptMode: PromptMode;
   /**
-   * Who sent the input of a `thread` Turn. The Turn context states it, so the
-   * Turn follows only the rules of the `thread` mode for that sender.
+   * Who sent the input of a Turn in a mode with two senders. The Turn context
+   * states it, so the Turn follows only the mode's rules for that sender.
    */
   sender?: TurnInputSender;
+  /**
+   * An ended Turn starts a cache-warming idle period only while a child agent
+   * or a Watch can start the next Turn. An Automation run almost never gets
+   * an answer from a person.
+   */
+  idleNeedsPendingWork: boolean;
   /**
    * The Turn can pause until its web Actor signs in. A child agent's Turn
    * cannot wait for a person, even when it runs as the web user who started
@@ -83,6 +90,7 @@ export type TurnBehavior = {
 const ROOT: TurnBehavior = {
   delivery: "location",
   promptMode: "conversation",
+  idleNeedsPendingWork: false,
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
@@ -115,6 +123,7 @@ const PERSON_IN_THREAD: TurnBehavior = {
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
+  idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: true,
   failureNotice: "none",
@@ -155,10 +164,12 @@ const AGENT_IN_TASK: TurnBehavior = {
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
-// answer. A person who replies in the run's thread gets a root Turn.
+// answer.
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
+  sender: "automation",
+  idleNeedsPendingWork: true,
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
@@ -170,6 +181,15 @@ const AUTOMATION_RUN: TurnBehavior = {
   },
 };
 
+// A person who replies in an Automation run's thread gets a Turn that runs
+// like a Turn on a root. It lists the run's tools, so the Conversation keeps
+// one tool list, and its own tools have no `reply` or `reportBlocked`.
+const PERSON_IN_AUTOMATION: TurnBehavior = {
+  ...ROOT,
+  promptMode: "automation",
+  sender: "person",
+};
+
 /** Return the behavior of one Turn. */
 export function turnBehavior(args: {
   kind: ConversationKind;
@@ -177,7 +197,7 @@ export function turnBehavior(args: {
 }): TurnBehavior {
   if (args.kind === "root") return ROOT;
   if (args.kind === "automation") {
-    return args.personInput ? ROOT : AUTOMATION_RUN;
+    return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
   }
   if (args.kind === "thread") {
     return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
@@ -188,9 +208,9 @@ export function turnBehavior(args: {
 }
 
 /**
- * Return the tools that every Turn of one Prompt mode lists. Only a `thread`
- * Turn lists more than its own tools. The listed tools that it cannot use are
- * disabled.
+ * Return the tools that every Turn of one Prompt mode lists. A Turn of a mode
+ * with two senders can list more than its own tools. The listed tools that it
+ * cannot use are disabled.
  */
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   if (mode === "automation") return AUTOMATION_RUN.tools;
