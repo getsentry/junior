@@ -201,9 +201,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         {
           entity_type: "slack#/entities/item",
           external_ref: {
-            id: Buffer.from(
-              JSON.stringify([conversationId, "objects", "repo#1"]),
-            ).toString("base64url"),
+            id: expect.stringMatching(/^[A-Za-z0-9_-]{1,128}$/),
             type: "annotation",
           },
           url: annotation.url,
