@@ -47,6 +47,9 @@ export function assertOutsideGit(dir: string): void {
   }
 }
 
+// The benchmark never reads these payloads, so an export may skip them.
+const UNREAD_TYPES = new Set(["message_updated", "structured_event"]);
+
 function payloadData(type: string, text: string): BenchEvent["data"] {
   try {
     const parsed = JSON.parse(text) as unknown;
@@ -102,7 +105,7 @@ export function mergeExport(dir: string): {
       if (event.data.payload_omitted) {
         const payload = payloads.get(event.seq);
         if (payload) data = payload;
-        else missing.push(event.seq);
+        else if (!UNREAD_TYPES.has(event.data.type)) missing.push(event.seq);
       }
       bySeq.set(event.seq, {
         seq: event.seq,
