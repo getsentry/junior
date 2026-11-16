@@ -113,10 +113,10 @@ export function ActivityChartXAxis(props: {
   /** Center every label, for categories that are not a time series. */
   centered?: boolean;
   dataKey?: string;
-  formatLabel?(label: string): string;
   keys: readonly string[];
+  /** Display label by key, for keys that are ids. */
+  labels?: ReadonlyMap<string, string>;
 }) {
-  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
   const ticks = activityLabelIndexes(props.keys.length).map(
     (index) => props.keys[index]!,
   );
@@ -144,7 +144,7 @@ export function ActivityChartXAxis(props: {
             x={x}
             y={y}
           >
-            {formatLabel(value)}
+            {formatActivityCategoryLabel(props.labels?.get(value) ?? value)}
           </text>
         );
       }}
@@ -295,23 +295,26 @@ type TooltipRows = ReadonlyArray<readonly [label: ReactNode, value: ReactNode]>;
 
 /**
  * Recharts tooltip body for one activity bucket. It titles the bucket with
- * `formatLabel`, or by default `formatActivityCategoryTooltipLabel`, and lists
- * `rows` for the hovered datum.
+ * `formatActivityCategoryTooltipLabel` of its display label, and lists `rows`
+ * for the hovered datum.
  * Pass it as `content` of `ChartTooltip`; Recharts injects the other props.
  */
 export function ActivityChartTooltipContent<Datum>(props: {
   active?: boolean;
-  formatLabel?(label: string): string;
   label?: unknown;
+  /** Display label by key, for keys that are ids. */
+  labels?: ReadonlyMap<string, string>;
   payload?: ReadonlyArray<{ payload?: unknown }>;
   rows(datum: Datum): TooltipRows;
 }) {
   const datum = props.payload?.[0]?.payload as Datum | undefined;
   if (!props.active || datum === undefined) return null;
-  const formatLabel = props.formatLabel ?? formatActivityCategoryTooltipLabel;
+  const key = String(props.label);
   return (
     <div className={tooltipContentVariants()} role="status">
-      <TooltipTitle>{formatLabel(String(props.label))}</TooltipTitle>
+      <TooltipTitle>
+        {formatActivityCategoryTooltipLabel(props.labels?.get(key) ?? key)}
+      </TooltipTitle>
       <ActivityTooltipRows rows={props.rows(datum)} />
     </div>
   );
