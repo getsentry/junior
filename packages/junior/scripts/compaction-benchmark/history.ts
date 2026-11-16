@@ -36,7 +36,7 @@ export interface CompactionPoint {
   dropped: BenchMessage[];
   /** Raw entries kept after the summary. */
   tail: BenchMessage[];
-  /** Raw entries after `markSeq` that stayed raw. */
+  /** Raw entries kept beyond the tail. Empty: the tail is counted at the compaction. */
   after: BenchMessage[];
   /** Rebuilt message count before compaction; compare with `inputMessageCount`. */
   rebuiltInputMessages: number;
@@ -156,10 +156,12 @@ export function rebuildCompactions(
       );
     }
     const markSeq = requests.get(event.historyVersion - 1) ?? event.seq;
-    const upToMark = history.filter((message) => message.seq <= markSeq);
-    const after = history.filter((message) => message.seq > markSeq);
-    const keep = Math.min(details.retainedMessageCount, upToMark.length);
-    const removed = upToMark.slice(0, upToMark.length - keep);
+    // The summary may have been prepared at an earlier mark, but the
+    // replacement keeps the last `retainedMessageCount` entries of the
+    // history at the compaction itself, which `inputMessageCount` counts.
+    const keep = Math.min(details.retainedMessageCount, history.length);
+    const removed = history.slice(0, history.length - keep);
+    const after: BenchMessage[] = [];
     const summary = String(data.summary ?? "");
     points.push({
       index: points.length,
@@ -173,9 +175,9 @@ export function rebuildCompactions(
       previousSummary: removed.find((message) => message.role === "summary")
         ?.text,
       dropped: removed.filter((message) => message.role !== "summary"),
-      tail: upToMark.slice(upToMark.length - keep),
+      tail: history.slice(history.length - keep),
       after,
-      rebuiltInputMessages: upToMark.length,
+      rebuiltInputMessages: history.length,
       nextVersionCalls: 0,
       windowEndSeq: 0,
     });
@@ -188,8 +190,7 @@ export function rebuildCompactions(
         text: summary,
         tokens: estimateTextTokens(summary),
       },
-      ...upToMark.slice(upToMark.length - keep),
-      ...after,
+      ...history.slice(history.length - keep),
     ];
   }
 

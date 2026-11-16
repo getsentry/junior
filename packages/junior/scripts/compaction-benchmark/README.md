@@ -20,6 +20,10 @@ The data directory holds an export made with the agent conversation tools:
 `merge` writes `events.jsonl` and fails while a payload that the benchmark
 reads is missing.
 
+Known gap: after the first compaction, rebuilt counts are one entry
+below the recorded `inputMessageCount`. The export reports only a count
+for the replacement history, and the rebuild adds back only the summary.
+
 ## Stages
 
 Run from `packages/junior`. Set `R="pnpm exec tsx scripts/compaction-benchmark/run.ts"`

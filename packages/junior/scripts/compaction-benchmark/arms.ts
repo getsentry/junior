@@ -56,7 +56,12 @@ export async function summaryRerun(
   return mapLimit(points, 2, async (point) => {
     const history = [
       point.previousSummary ? `Earlier summary:\n${point.previousSummary}` : "",
-      renderMessages([...point.dropped, ...point.tail]),
+      // Today's summary saw history only up to its request mark.
+      renderMessages(
+        [...point.dropped, ...point.tail].filter(
+          (message) => message.seq <= point.markSeq,
+        ),
+      ),
     ].join("\n\n");
     const result = await call({
       stage: `summary-rerun-${run}`,
