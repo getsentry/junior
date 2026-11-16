@@ -125,14 +125,22 @@ async function gatewayComplete(request: ModelCall, estimate: number) {
 
 interface OpenRouterResponse {
   choices?: Array<{ message?: { content?: string | null } }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    cost?: number;
+    cost_details?: { upstream_inference_cost?: number };
+  };
 }
 
 /**
- * Call OpenRouter's OpenAI-compatible endpoint with the same model ids. Use
- * the billed cost it returns; fall back to catalog rates on its token counts.
+ * Call OpenRouter's OpenAI-compatible endpoint with the same model ids.
+ * OpenRouter can report a zero cost (for example on keys with upstream
+ * billing), so charge the highest of its cost, its upstream cost, and catalog
+ * rates on its token counts, and the pre-call estimate when all are zero.
+ * This keeps `--max-usd` a real cap.
  */
-async function openRouterComplete(request: ModelCall) {
+async function openRouterComplete(request: ModelCall, estimate: number) {
   for (let attempt = 0; ; attempt += 1) {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -166,11 +174,15 @@ async function openRouterComplete(request: ModelCall) {
     const input = body.usage?.prompt_tokens ?? 0;
     const output = body.usage?.completion_tokens ?? 0;
     const rate = rates(request.modelId, input);
+    const costUsd = Math.max(
+      body.usage?.cost ?? 0,
+      body.usage?.cost_details?.upstream_inference_cost ?? 0,
+      (input * rate.input + output * rate.output) / PER_MILLION,
+    );
     return {
       text: body.choices?.[0]?.message?.content ?? "",
-      costUsd:
-        body.usage?.cost ??
-        (input * rate.input + output * rate.output) / PER_MILLION,
+      costUsd: costUsd > 0 ? costUsd : estimate,
+      usage: body.usage ?? null,
     };
   }
 }
@@ -215,7 +227,7 @@ export function modelCaller(budget: Budget) {
     reservedUsd += estimate;
     const saved = await (
       provider() === "openrouter"
-        ? openRouterComplete(request)
+        ? openRouterComplete(request, estimate)
         : gatewayComplete(request, estimate)
     ).finally(() => {
       reservedUsd -= estimate;
