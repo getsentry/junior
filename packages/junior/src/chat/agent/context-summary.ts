@@ -39,7 +39,8 @@ export const CONTEXT_COMPACTION_PROMPT_NAME = "junior.context_compaction";
 // a stop at this limit means that the output is not a usable summary.
 const SUMMARY_MAX_TOKENS = 8_000;
 
-const SUMMARY_INSTRUCTION = `Stop work on the task now. Do not call tools. Write a summary of the conversation so far. The summary replaces the earlier history, and you will continue the work from the summary alone.
+/** Instruction that asks the agent model for a capacity compaction summary. */
+export const SUMMARY_INSTRUCTION = `Stop work on the task now. Do not call tools. Write a summary of the conversation so far. The summary replaces the earlier history, and you will continue the work from the summary alone.
 
 Return only the summary inside <summary></summary> tags. Use these sections in this order. Write each item as one short line that starts with "- ". Write "- None" for an empty section.
 
