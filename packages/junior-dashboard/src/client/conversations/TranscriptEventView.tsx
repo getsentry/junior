@@ -23,6 +23,27 @@ function batchSummary(
   return `${events.length} events${shared ? ` · ${label}` : ""}`;
 }
 
+type BatchLine = { count: number; eventType: string; text: string };
+
+/**
+ * Merge Events with the same type and summary into one line with a count, in
+ * first-seen order. A provider can send one Event per check suite, so a batch
+ * can repeat one line dozens of times.
+ */
+function batchLines(
+  events: readonly { eventType: string; trustedSummary?: string | undefined }[],
+): BatchLine[] {
+  const lines = new Map<string, BatchLine>();
+  for (const event of events) {
+    const text = event.trustedSummary ?? event.eventType;
+    const key = `${event.eventType}\n${text}`;
+    const line = lines.get(key);
+    if (line) line.count += 1;
+    else lines.set(key, { count: 1, eventType: event.eventType, text });
+  }
+  return [...lines.values()];
+}
+
 /** Render an Event Message whose heading expands its full text. */
 export function TranscriptEventView(props: {
   conversationId: string;
@@ -66,20 +87,23 @@ export function TranscriptEventView(props: {
       </span>
       {isBatch ? (
         <span className="flex min-w-0 flex-col gap-1" role="list">
-          {events.map((event, index) => (
+          {batchLines(events).map((line, index) => (
             <span
               key={index}
               role="listitem"
               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
             >
-              <span className="min-w-0 break-words" title={event.eventType}>
+              <span className="min-w-0 break-words" title={line.eventType}>
                 <DisplayText
                   inline
                   links={links}
                   mentions={mentions}
-                  text={event.trustedSummary ?? event.eventType}
+                  text={line.text}
                 />
               </span>
+              {line.count > 1 ? (
+                <span className="shrink-0 tabular-nums">×{line.count}</span>
+              ) : null}
             </span>
           ))}
         </span>
