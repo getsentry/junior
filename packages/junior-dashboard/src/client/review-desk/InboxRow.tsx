@@ -46,6 +46,7 @@ import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import {
+  INBOX_ROW_INSET,
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
@@ -329,6 +330,44 @@ function ConversationInboxRow(
   const actionsBelow = props.expanded && hasThreads;
   const toggle =
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
+  // The row's own actions take the meta's place on hover or focus, in the
+  // meta's cell, so they never cover the title or summary.
+  const hoverActions = (
+    <>
+      <RowOpenLink to={rowConversationPath(props)} />
+      {participant && !actions.archived ? (
+        <RowActionButton
+          disabled={actions.pending.pin}
+          icon={
+            <Pin
+              aria-hidden="true"
+              fill={actions.pinned ? "currentColor" : "none"}
+              size={14}
+            />
+          }
+          label={`${actions.pinned ? "Unpin" : "Pin"} ${actions.title}`}
+          onClick={() => actions.setPinned(!actions.pinned)}
+          pressed={actions.pinned}
+          tooltip={actions.pinned ? "Unpin" : "Pin"}
+        />
+      ) : null}
+      {participant ? (
+        <RowActionButton
+          disabled={actions.pending.archive}
+          icon={
+            actions.archived ? (
+              <ArchiveRestore aria-hidden="true" size={14} />
+            ) : (
+              <Archive aria-hidden="true" size={14} />
+            )
+          }
+          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
+          onClick={actions.toggleArchive}
+          tooltip={actions.archived ? "Restore" : "Archive"}
+        />
+      ) : null}
+    </>
+  );
   return (
     <li
       className={cn(
@@ -351,7 +390,9 @@ function ConversationInboxRow(
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
+            hoverActions={hoverActions}
             preview={props.motion.grown}
+            threadsShown={hasThreads}
             linkProps={{
               "aria-keyshortcuts": drag
                 ? "Alt+ArrowUp Alt+ArrowDown"
@@ -361,45 +402,11 @@ function ConversationInboxRow(
               draggable: drag ? false : undefined,
             }}
           />
-          <div className="absolute top-2 right-2 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
-            <RowOpenLink to={rowConversationPath(props)} />
-            {participant && !actions.archived ? (
-              <RowActionButton
-                disabled={actions.pending.pin}
-                icon={
-                  <Pin
-                    aria-hidden="true"
-                    fill={actions.pinned ? "currentColor" : "none"}
-                    size={14}
-                  />
-                }
-                label={`${actions.pinned ? "Unpin" : "Pin"} ${actions.title}`}
-                onClick={() => actions.setPinned(!actions.pinned)}
-                pressed={actions.pinned}
-                tooltip={actions.pinned ? "Unpin" : "Pin"}
-              />
-            ) : null}
-            {participant ? (
-              <RowActionButton
-                disabled={actions.pending.archive}
-                icon={
-                  actions.archived ? (
-                    <ArchiveRestore aria-hidden="true" size={14} />
-                  ) : (
-                    <Archive aria-hidden="true" size={14} />
-                  )
-                }
-                label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
-                onClick={actions.toggleArchive}
-                tooltip={actions.archived ? "Restore" : "Archive"}
-              />
-            ) : null}
-          </div>
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
       {threads && threads.threads.length > 0 ? (
-        <div className="grid gap-0.5 px-1 pb-1.5">
+        <div className="grid gap-0.5 px-1 pb-2">
           {threads.threads.map((thread) => (
             <ConversationSidebarThreadRow
               conversation={thread.conversation}
@@ -443,12 +450,12 @@ function RowSummary(props: {
   summary: NonNullable<ReturnType<typeof rowSummary>>;
 }) {
   return (
-    <span className="flex min-w-0 items-start gap-1.5 text-xs leading-snug text-dashboard-text-muted">
-      {props.summary.status ? (
-        <span className="mt-px">
-          <BriefOutcomeMarker status={props.summary.status} />
-        </span>
-      ) : null}
+    <span
+      className="flex min-w-0 text-sm leading-snug text-dashboard-text-muted"
+      data-summary-lines={
+        props.expanded ? "all" : props.comfortable ? "2" : "1"
+      }
+    >
       <span
         className={cn(
           "min-w-0",
@@ -458,7 +465,7 @@ function RowSummary(props: {
           props.expanded
             ? "line-clamp-none"
             : props.comfortable
-              ? "line-clamp-3"
+              ? "line-clamp-2"
               : "line-clamp-1",
         )}
       >
@@ -482,9 +489,13 @@ function RowSummary(props: {
 
 function InboxRowBody(
   props: InboxRowProps & {
+    /** The row's own actions, shown in the meta's place on hover. */
+    hoverActions?: ReactNode;
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
     /** In focus on hover: comfortable, unclamped, every preview. */
     preview?: boolean;
+    /** Whether the row lists its Threads under the head. */
+    threadsShown?: boolean;
   },
 ) {
   const { bundle, conversation, preview } = props;
@@ -531,7 +542,7 @@ function InboxRowBody(
   // Message links fill what the linked work leaves of its lines.
   const links = (conversation?.links ?? []).slice(
     0,
-    Math.max(0, limit - work.filter(isCard).length),
+    Math.max(0, limit - work.length),
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
   const canDone = rowCanDone(props);
@@ -551,9 +562,21 @@ function InboxRowBody(
     comfortable &&
     (images || work.length > 0 || files.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
-  // A comfortable row with a summary reads in two columns on wider screens:
-  // the title and people, then the summary beside them.
-  const columns = comfortable && summary !== undefined;
+  const cast =
+    comfortable && conversation ? (
+      // A compact row that grows under the pointer keeps the name it reads
+      // under. The Threads list below counts the Threads, so the cast
+      // doesn't.
+      <span
+        aria-hidden={density === "compact" || undefined}
+        className="contents"
+      >
+        <ConversationCast
+          agents={!props.threadsShown}
+          conversation={conversation}
+        />
+      </span>
+    ) : null;
   return (
     <>
       <div
@@ -573,11 +596,7 @@ function InboxRowBody(
             on the head expands the row too, except on the links and buttons
             in it, such as pills and summary chips. */}
         <div
-          className={cn(
-            inboxHeadGridClass(columns),
-            "cursor-pointer",
-            cards ? "pb-1" : "pb-2.5",
-          )}
+          className={cn(inboxHeadGridClass(), "cursor-pointer", "pb-3")}
           onClick={(event) => {
             if (
               event.target instanceof Element &&
@@ -588,7 +607,13 @@ function InboxRowBody(
           }}
         >
           <span
-            aria-label={waiting ? "Waiting on you" : undefined}
+            aria-label={
+              waiting
+                ? "Waiting on you"
+                : openItems.length > 0
+                  ? "Waiting on others"
+                  : undefined
+            }
             className={cn(
               "col-start-1 row-start-1 mt-[0.45rem] size-2 justify-self-center rounded-full",
               comfortable && "mt-[0.55rem]",
@@ -599,7 +624,7 @@ function InboxRowBody(
                   : "",
             )}
             data-inbox-slot="dot"
-            role={waiting ? "img" : undefined}
+            role={waiting || openItems.length > 0 ? "img" : undefined}
           />
           <span
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
@@ -643,6 +668,10 @@ function InboxRowBody(
                 {props.itemTitle && bundle ? (
                   <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                 ) : null}
+                {/* The Brief's outcome marks the title, as the dot does. */}
+                {summary?.status ? (
+                  <BriefOutcomeMarker status={summary.status} />
+                ) : null}
                 <span className="min-w-0 truncate">
                   {props.itemTitle ?? props.title}
                 </span>
@@ -652,31 +681,14 @@ function InboxRowBody(
                   {props.itemSubtitle}
                 </span>
               ) : null}
-              {comfortable && conversation ? (
-                // A compact row that grows under the pointer keeps the name
-                // it reads under.
-                <span
-                  aria-hidden={density === "compact" || undefined}
-                  className="contents"
-                >
-                  <ConversationCast conversation={conversation} />
-                </span>
-              ) : null}
             </Link>
-            {summary && !columns ? (
-              <RowSummary
-                comfortable={comfortable}
-                conversationId={props.conversationId}
-                expanded={props.expanded || Boolean(preview)}
-                objects={objects}
-                summary={summary}
-              />
-            ) : null}
-            {/* What the row asks sits right under its title and people. */}
-            {hasChips ? (
+            {/* Who is in it and what it asks, in one small line under the
+                title. */}
+            {cast || hasChips ? (
               // No wrap: the pills and the linked work fit to one shared
               // line, and wrapping would let each one's fit move the other.
-              <span className="flex min-w-0 items-center gap-1">
+              <span className="flex min-w-0 items-center gap-2">
+                {cast}
                 {pills.length > 0 ? (
                   // One line of pills: those that do not fit become +N.
                   <span className="flex min-w-0 max-w-full items-center gap-1">
@@ -712,13 +724,13 @@ function InboxRowBody(
               </span>
             ) : null}
           </span>
-          {columns ? (
+          {summary ? (
             <span
-              className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5"
+              className="col-span-2 col-start-2 row-start-2 min-w-0"
               data-inbox-slot="summary"
             >
               <RowSummary
-                comfortable
+                comfortable={comfortable}
                 conversationId={props.conversationId}
                 expanded={props.expanded || Boolean(preview)}
                 objects={objects}
@@ -726,43 +738,48 @@ function InboxRowBody(
               />
             </span>
           ) : null}
-          <span
-            className={cn(
-              INBOX_ROW_META_CLASS,
-              columns && "sm:col-start-4",
-              // The row actions take the meta's place on hover or focus,
-              // over the hover card too.
-              conversation &&
-                (preview
-                  ? "invisible"
-                  : "sm:group-hover:invisible sm:group-focus-within:invisible"),
-            )}
-            data-inbox-slot="meta"
-          >
-            {conversation ? (
-              <ConversationStatusText
-                isPrivate={conversation.visibility === "private"}
-                status={visualStatusForConversation(conversation)}
-              />
+          <span className={INBOX_ROW_META_CLASS} data-inbox-slot="meta">
+            {/* The row's actions sit beside its state and never hide it.
+                They keep their room while hidden, so nothing moves when
+                they show: on hover or focus, and while the row is open. */}
+            {props.hoverActions ? (
+              <span
+                className={cn(
+                  "-my-1 flex gap-0.5 transition",
+                  !props.expanded &&
+                    "sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100",
+                )}
+                data-row-actions=""
+              >
+                {props.hoverActions}
+              </span>
             ) : null}
-            {pinned ? (
-              <Pin
-                aria-label="Pinned"
-                className="size-3 text-dashboard-accent-text"
-                role="img"
-              />
-            ) : null}
-            {running ? (
-              <Spinner aria-label="Running" className="size-3.5" />
-            ) : (
-              formatCompactAge(props.time)
-            )}
+            <span className="flex items-center gap-1" data-row-state="">
+              {conversation ? (
+                <ConversationStatusText
+                  isPrivate={conversation.visibility === "private"}
+                  status={visualStatusForConversation(conversation)}
+                />
+              ) : null}
+              {pinned ? (
+                <Pin
+                  aria-label="Pinned"
+                  className="size-3 text-dashboard-accent-text"
+                  role="img"
+                />
+              ) : null}
+              {running ? (
+                <Spinner aria-label="Running" className="size-3.5" />
+              ) : (
+                formatCompactAge(props.time)
+              )}
+            </span>
           </span>
         </div>
         {cards ? (
           // Under the title: the images first, at preview size, then the
           // linked work, links and files, one line each.
-          <div className="grid min-w-0 gap-2 pr-2 pb-2.5 pl-[1.875rem]">
+          <div className={cn("grid min-w-0 gap-3 pr-4 pb-3", INBOX_ROW_INSET)}>
             {images ? (
               <InboxImageStrip
                 asks={imageAsks}

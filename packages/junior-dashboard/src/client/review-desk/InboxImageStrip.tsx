@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Images } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -7,7 +7,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { Spinner } from "../components/ui/spinner";
 import { conversationAttachmentUrl } from "../conversations/TranscriptAttachment";
 import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
@@ -213,8 +212,8 @@ function ScrollButton(props: {
  * size: PR images first, each with its line, then the Conversation's
  * images, newest first. The row scrolls sideways and loads each image as
  * it comes near. The feed sends only the newest files, so the strip reads
- * older images from the Conversation's history once the person scrolls to
- * its end or asks for more.
+ * older images from the Conversation's history as the person scrolls near
+ * its end, one batch at a time, until the history runs out.
  */
 export function InboxImageStrip(props: {
   asks: ReadonlyMap<string, AskPill>;
@@ -249,7 +248,9 @@ export function InboxImageStrip(props: {
   const loadOlder = useRef(older.loadMore);
   loadOlder.current = older.loadMore;
   // Near the end, after the person scrolls, read the next older page. A
-  // strip that never scrolls reads nothing.
+  // strip that never scrolls reads nothing. Each batch gets a new observer:
+  // a batch with no new images leaves the end in view, and only a new
+  // observer reports that again.
   useEffect(() => {
     if (!canLoad || !scrolled || !end.current) return;
     const observer = new IntersectionObserver(
@@ -262,7 +263,7 @@ export function InboxImageStrip(props: {
     );
     observer.observe(end.current);
     return () => observer.disconnect();
-  }, [canLoad, images.length, scrolled]);
+  }, [canLoad, older.loading, older.pages, scrolled]);
   const scrollBy = (direction: -1 | 1) => {
     const element = scroller.current;
     if (!element) return;
@@ -308,27 +309,18 @@ export function InboxImageStrip(props: {
             root={scroller}
           />
         ))}
-        {canLoad ? (
-          <button
+        {/* A batch on its way shows as one placeholder tile of the same
+            size, so nothing moves when it lands. */}
+        {canLoad && older.loading ? (
+          <span
+            aria-label="Loading images"
             className={cn(
               FRAME,
-              "flex w-28 snap-start flex-col items-center justify-center gap-1.5 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+              "w-64 animate-pulse bg-dashboard-fill-hover motion-reduce:animate-none",
             )}
-            disabled={older.loading}
-            onClick={() => {
-              setScrolled(true);
-              setWantOlder(true);
-              older.loadMore();
-            }}
-            type="button"
-          >
-            {older.loading ? (
-              <Spinner aria-label="Loading images" className="size-4" />
-            ) : (
-              <Images aria-hidden="true" className="size-4" />
-            )}
-            Older images
-          </button>
+            data-image-skeleton=""
+            role="status"
+          />
         ) : null}
         <span aria-hidden="true" className="w-px shrink-0" ref={end} />
       </div>

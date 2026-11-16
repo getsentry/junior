@@ -201,15 +201,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     const row = await openConversations(page, dashboard.baseURL);
     const work = row.getByRole("group", { name: "Linked work" });
     const lines = work.locator("[data-linked-work-card]");
-    // Open work first, newest first; the 86 others fold into one button.
+    // Open work first, newest first; the 87 others fold into one button.
     await expect(lines).toHaveText([
       /^Tighten the pane spacing \(1\)#3400$/,
       /^Move the ask icons into pills \(2\)#3399$/,
       /^Load row images lazily \(3\)#3398$/,
-      /^Fold linked work into one line \(4\)#3397$/,
     ]);
     // Work in another repo names its repo.
-    const more = work.getByRole("button", { name: "+86 more" });
+    const more = work.getByRole("button", { name: "+87 more" });
     await more.click();
     await expect(lines).toHaveCount(90);
     await expect(
@@ -220,7 +219,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       /merged|closed/,
     );
     await work.getByRole("button", { name: "Show fewer" }).click();
-    await expect(lines).toHaveCount(4);
+    await expect(lines).toHaveCount(3);
     // The images sit right under the head, above the linked work.
     await expect
       .poll(() =>
@@ -249,9 +248,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ height: 900, width: 1100 });
     const requested = requestedImages(page);
     const details: string[] = [];
+    const eventPages: string[] = [];
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === BUSY_DETAIL) {
-        details.push(request.url());
+      const url = new URL(request.url());
+      if (url.pathname === BUSY_DETAIL) details.push(request.url());
+      if (url.pathname === `${BUSY_DETAIL}/events`) {
+        eventPages.push(url.search);
       }
     });
     const row = await openConversations(page, dashboard.baseURL);
@@ -271,12 +273,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       ),
     ).toBe(true);
 
-    // Near its end, the strip reads the older images.
+    // Near its end, the strip reads older batches one after another, with
+    // no click, until the history runs out. The newest batch has no images,
+    // and the strip still goes on.
     await strip.evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
     });
-    await expect.poll(() => details.length).toBe(1);
+    await expect(strip.locator("a[data-image-tile]")).toHaveCount(6);
+    await strip.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
     await expect(strip.locator("a[data-image-tile]")).toHaveCount(12);
+    await page.waitForLoadState("networkidle");
+    // The detail, then one events page per older batch, each cursor once.
+    expect(details).toHaveLength(1);
+    expect(eventPages).toHaveLength(2);
+    expect(new Set(eventPages).size).toBe(2);
+    await expect(strip.locator("[data-image-skeleton]")).toHaveCount(0);
+    await expect(strip.getByRole("button")).toHaveCount(0);
     // The oldest images are far along the strip, so they wait.
     await strip.evaluate((element) => {
       element.scrollLeft = 0;
@@ -292,20 +306,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(last).toHaveAttribute("loading", "lazy");
     await expect(last).toHaveAttribute("width", "256");
     await expect(last).toHaveAttribute("height", "160");
-  });
-
-  test("the strip asks for older images with a button when it does not scroll", async ({
-    dashboard,
-    page,
-  }) => {
-    const row = await openConversations(page, dashboard.baseURL);
-    const strip = row.getByRole("group", { name: "Images" });
-    await expect(strip.getByRole("img")).toHaveCount(3);
-    await strip.getByRole("button", { name: "Older images" }).click();
-    await expect(strip.locator("a[data-image-tile]")).toHaveCount(12);
-    // All of them are read, so the button goes.
-    await expect(
-      strip.getByRole("button", { name: "Older images" }),
-    ).toHaveCount(0);
   });
 });

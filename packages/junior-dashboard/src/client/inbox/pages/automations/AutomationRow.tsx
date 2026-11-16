@@ -57,7 +57,7 @@ export function AutomationRow(props: {
         props.onSelect();
       }}
     >
-      <div className={cn(inboxHeadGridClass(false), "pb-2.5")}>
+      <div className={cn(inboxHeadGridClass(), "pb-3")}>
         {problem ? (
           <TriangleAlert
             aria-hidden="true"

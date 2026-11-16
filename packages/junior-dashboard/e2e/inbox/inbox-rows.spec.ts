@@ -124,6 +124,128 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(summary).not.toContainText("https://");
   });
 
+  const SENTAUR = "Triage Sentaur GoCD deployment failures";
+
+  function sentaurRow(page: Page): Locator {
+    return page
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: SENTAUR })
+      .first();
+  }
+
+  test("a row's title has its own line, and its summary sits under it, clamped", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = sentaurRow(page);
+    await row.scrollIntoViewIfNeeded();
+    await expect.poll(() => slots(row)).toEqual(SLOTS);
+    // The summary spans the title's column and the meta's, under the title.
+    const summary = row.locator('[data-inbox-slot="summary"]');
+    await expect(summary).toHaveClass(/\bcol-span-2\b/);
+    await expect(summary).toHaveClass(/\brow-start-2\b/);
+    await expect(summary.locator("[data-summary-lines]")).toHaveAttribute(
+      "data-summary-lines",
+      "2",
+    );
+    // The Brief's running marker sits on the title, as the dot does.
+    await expect(
+      row
+        .locator('[data-inbox-slot="title"]')
+        .getByRole("img", { name: /^Brief: / }),
+    ).toBeVisible();
+    await expect(summary.getByRole("img", { name: /^Brief: / })).toHaveCount(0);
+    // Compact rows clamp it to one line. A new page has no comfortable
+    // density script.
+    const compact = await page.context().newPage();
+    await compact.goto(`${dashboard.baseURL}/?view=conversations`);
+    await compact.evaluate(() =>
+      localStorage.setItem("junior:density", "compact"),
+    );
+    await compact.reload();
+    await sentaurRow(compact).scrollIntoViewIfNeeded();
+    await expect(
+      sentaurRow(compact).locator(
+        '[data-inbox-slot="summary"] [data-summary-lines]',
+      ),
+    ).toHaveAttribute("data-summary-lines", "1");
+  });
+
+  test("a row's actions sit beside its time and pin, and never hide them", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = sentaurRow(page);
+    await row.scrollIntoViewIfNeeded();
+    const meta = row.locator('[data-inbox-slot="meta"]').first();
+    await row.locator('a[aria-controls^="inbox-row-"]').first().hover();
+    // The actions take their own room in the meta's cell, so they cover
+    // neither the title nor the summary, and the state stays in view.
+    await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
+    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(meta.getByText("1d")).toBeVisible();
+    await expect(meta.getByRole("button", { name: /^Unpin / })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // With the pointer on the row's own Threads, the row keeps its state.
+    await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
+    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(meta.getByText("1d")).toBeVisible();
+    // Open, with the pointer away, the row shows its state and its actions.
+    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
+    await page.mouse.move(0, 0);
+    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(meta.getByText("1d")).toBeVisible();
+    await expect(meta.getByRole("button", { name: /^Unpin / })).toBeVisible();
+  });
+
+  test("one cap and one ranking cover every kind of linked work", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = sentaurRow(page);
+    await row.scrollIntoViewIfNeeded();
+    const work = row.getByRole("group", { name: "Linked work" });
+    const lines = work.locator("[data-linked-work-card]");
+    // 6 pull requests and 9 Linear issues share 3 lines and one "+12 more",
+    // with no separate row of Linear ids.
+    await expect(lines).toHaveCount(3);
+    await expect(work.locator("[data-linked-work-chip]")).toHaveCount(0);
+    await work.getByRole("button", { name: "+12 more" }).click();
+    // Titled work has a line each, Linear issues too. Issues saved with no
+    // title share one line of ids.
+    await expect(lines).toHaveCount(9);
+    await expect(
+      lines.filter({ hasText: "Grow the GoCD agent pool" }),
+    ).toContainText("DI-2877");
+    await expect(
+      work.locator("[data-linked-work-chip]").filter({ hasText: "DI-2874" }),
+    ).not.toHaveCount(0);
+    await expect(lines.filter({ hasText: "DI-2874" })).toHaveCount(0);
+    // A repo that isn't the row's main one gives way before the title, and
+    // the tooltip names it in full.
+    const other = lines.filter({ has: page.locator("[data-work-repo]") });
+    await expect(other.first()).toBeVisible();
+    await expect(other.first()).toHaveAttribute(
+      "title",
+      /getsentry|devinfra-deployment-service#|sentaur#/,
+    );
+    // Each pull request's icon names its state.
+    for (const state of ["open", "draft", "merged", "closed"]) {
+      await expect(
+        lines.getByRole("img", { name: new RegExp(state, "i") }).first(),
+      ).toBeAttached();
+    }
+  });
+
   test("Automation rows use the Conversation rows' columns", async ({
     dashboard,
     page,
@@ -238,12 +360,17 @@ test.describe("new UI", { tag: "@new" }, () => {
         .first();
       await row.locator('a[aria-controls^="inbox-row-"]').first().click();
       const linked = row.getByRole("group", { name: "Linked work" }).last();
-      // Each item names itself, its number in its status color, and the rest
-      // become +N on the same line.
+      // Each item names itself, its number in its status color, on one
+      // line.
       await expect(
         linked.locator("[data-linked-work-chip]").first(),
       ).toHaveText("SEC-2172");
-      await expect(linked.locator("[data-linked-work-overflow]")).toBeVisible();
+      // The rest folds away: +N on the line, or one "+N more".
+      await expect(
+        linked
+          .locator("[data-linked-work-overflow], [data-linked-work-more]")
+          .first(),
+      ).toBeVisible();
       await expect(row.getByLabel(/^Linked work, newest first/)).toHaveCount(0);
     }
   });

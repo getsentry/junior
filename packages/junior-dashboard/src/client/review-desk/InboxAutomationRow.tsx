@@ -93,8 +93,8 @@ export function InboxAutomationRow(props: {
         aria-controls={regionId}
         aria-expanded={props.expanded}
         className={cn(
-          inboxHeadGridClass(comfortable),
-          "w-full cursor-pointer border-0 bg-transparent pb-2.5 text-left font-sans text-inherit transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          inboxHeadGridClass(),
+          "w-full cursor-pointer border-0 bg-transparent pb-3 text-left font-sans text-inherit transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           // Open, the header ends flat on the detail's rule, inside the
           // card. A closed card lights as a whole instead.
           props.expanded && "rounded-b-none hover:bg-dashboard-fill-hover",
@@ -129,16 +129,13 @@ export function InboxAutomationRow(props: {
         </span>
         {comfortable ? (
           <span
-            className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5"
+            className="col-span-2 col-start-2 row-start-2 min-w-0"
             data-inbox-slot="summary"
           >
             <AttentionStatus detail={detail} status={status} />
           </span>
         ) : null}
-        <span
-          className={cn(INBOX_ROW_META_CLASS, comfortable && "sm:col-start-4")}
-          data-inbox-slot="meta"
-        >
+        <span className={INBOX_ROW_META_CLASS} data-inbox-slot="meta">
           Automation
         </span>
       </button>

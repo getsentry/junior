@@ -128,10 +128,16 @@ function conversationCast(
 }
 
 /** The second line of a Comfortable row: other people, then agents. */
-export function ConversationCast(props: { conversation: Conversation }) {
+export function ConversationCast(props: {
+  /** Whether to count the Threads; off where the row lists them. */
+  agents?: boolean;
+  conversation: Conversation;
+}) {
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  const cast = conversationCast(props.conversation, viewerEmail);
-  if (!cast) return null;
+  const found = conversationCast(props.conversation, viewerEmail);
+  const cast =
+    found && props.agents === false ? { ...found, agents: 0 } : found;
+  if (!cast || (cast.others.length === 0 && cast.agents === 0)) return null;
   const visible = cast.others.slice(0, 3);
   const names = cast.others.map(participantName);
   const label = [

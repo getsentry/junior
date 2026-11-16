@@ -41,7 +41,8 @@ import { formatCompactAge } from "../time";
 // trees stop stepping in, so titles keep their width.
 const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
 // The new UI's rows have a wider glyph column and gap (`sidebarGrid`).
-const INBOX_DEPTH_INDENT = ["pl-[2.25rem]", "pl-[3.25rem]", "pl-[4.25rem]"];
+// Inbox Threads start on the row title's left edge (`INBOX_ROW_INSET`).
+const INBOX_DEPTH_INDENT = ["pl-7", "pl-11", "pl-15"];
 const ROW_GRID = "grid-cols-[0.875rem_minmax(0,1fr)_auto] gap-x-2 pr-3";
 const INBOX_ROW_GRID = "grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 pr-2";
 const TOGGLE_GRID = "grid-cols-[0.875rem_minmax(0,1fr)] gap-x-2 pr-3";

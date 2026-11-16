@@ -44,7 +44,7 @@ function pageImages(
 /**
  * The images of one Conversation past the feed's newest few, newest first.
  * It reads the Conversation's history only once `enabled`: the newest page,
- * then older pages on `loadMore`. The key sits outside the feed's
+ * then older pages on `loadMore`, each cursor once. The key sits outside the feed's
  * `["dashboard", "conversations"]` prefix, which only holds feeds.
  */
 export function useConversationImages(
@@ -77,5 +77,6 @@ export function useConversationImages(
       }
     },
     loading: query.isFetching,
+    pages: query.data?.pages.length ?? 0,
   };
 }

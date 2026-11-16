@@ -18,8 +18,10 @@ type CardAnnotation = Annotation & {
   url: string;
 };
 
-/** Linked work that a comfortable row lists before "+N more". */
-export const LINKED_WORK_LIMIT = 4;
+/**
+ * Linked work of any kind that a comfortable row lists before "+N more".
+ */
+export const LINKED_WORK_LIMIT = 3;
 /** Linked work that an open or hovered row lists before "+N more". */
 export const OPEN_LINKED_WORK_LIMIT = 6;
 
@@ -99,78 +101,114 @@ export function mainRepo(
   return main;
 }
 
-// The short name of a piece of work on its row: #123 in the row's main
-// repo, else repo#123, else its label.
+// The short name of a piece of work on its row: its repo when that is not
+// the row's main repo, then #123. Work with no repo, such as a Linear
+// issue, has its label.
 function workRef(
   work: { key: string; label: string },
   main: string | undefined,
-): string {
+): { number: string; repo?: string | undefined } {
   const repo = repoOf(work.key);
-  if (!repo) return work.label;
+  if (!repo) return { number: work.label };
   const number = work.key.slice(work.key.lastIndexOf("#"));
   return repo === main
-    ? number
-    : `${repo.slice(repo.indexOf("/") + 1)}${number}`;
+    ? { number }
+    : { number, repo: repo.slice(repo.indexOf("/") + 1) };
 }
 
 /** What one line of linked work names. */
 export type WorkLineObject = {
   key: string;
   label: string;
-  objectType: OwnedObjectAnnotation["objectType"];
+  objectType?: OwnedObjectAnnotation["objectType"] | undefined;
   status?: string | undefined;
-  title: string;
+  title?: string | undefined;
 };
 
 /**
- * One piece of linked work in one line: its status icon in its status
- * color, its title, then its short name.
+ * One piece of linked work of any kind in one line: its kind and status
+ * icon in its status color, its title, then its short name. Work saved
+ * with no title shows its icon and short name. A repo name gives way
+ * before the title does, and the tooltip names it in full.
  */
 export function WorkLine(props: {
-  href: string;
+  href?: string | undefined;
   main: string | undefined;
   work: WorkLineObject;
 }) {
   const { work } = props;
-  const { tone } = objectPresentation(work);
+  const tone = work.objectType
+    ? objectPresentation({ objectType: work.objectType, status: work.status })
+        .tone
+    : undefined;
   const ref = workRef(work, props.main);
-  return (
+  const name = work.title && work.title !== ref.number ? work.title : undefined;
+  const className =
+    "group/card flex min-w-0 items-center gap-1.5 rounded-sm font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+  const content = (
+    <>
+      <span className="flex shrink-0" data-status-tone={tone}>
+        {work.objectType ? (
+          <ObjectIcon
+            objectType={work.objectType}
+            size={14}
+            status={work.status}
+          />
+        ) : null}
+      </span>
+      {name ? (
+        <span className="min-w-0 truncate text-dashboard-text group-hover/card:underline">
+          {name}
+        </span>
+      ) : null}
+      {/* The quiet tier: ids and repos are smaller and fainter, so the
+          title leads. */}
+      <span className="flex shrink-[4] items-baseline whitespace-nowrap text-2xs tabular-nums text-dashboard-text-faint">
+        {ref.repo ? (
+          <span className="min-w-0 max-w-24 truncate" data-work-repo="">
+            {ref.repo}
+          </span>
+        ) : null}
+        <span className={cn("shrink-0", !name && "text-dashboard-text-muted")}>
+          {ref.number}
+        </span>
+      </span>
+    </>
+  );
+  const title = [
+    work.title,
+    ref.repo ? `${ref.repo}${ref.number}` : ref.number,
+    linkStatusLabel(work.status),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return props.href ? (
     <a
-      className="group/card flex min-w-0 items-center gap-1.5 rounded-sm font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      className={className}
       data-linked-work-card=""
       href={props.href}
       rel="noreferrer"
       target="_blank"
-      title={[work.title, ref, linkStatusLabel(work.status)]
-        .filter(Boolean)
-        .join(" · ")}
+      title={title}
     >
-      <span className="flex shrink-0" data-status-tone={tone}>
-        <ObjectIcon
-          objectType={work.objectType}
-          size={14}
-          status={work.status}
-        />
-      </span>
-      <span className="min-w-0 truncate text-dashboard-text group-hover/card:underline">
-        {work.title}
-      </span>
-      {ref === work.title ? null : (
-        <span className="shrink-0 tabular-nums text-dashboard-text-faint">
-          {ref}
-        </span>
-      )}
+      {content}
     </a>
+  ) : (
+    <span className={className} data-linked-work-card="" title={title}>
+      {content}
+    </span>
   );
 }
 
+// Items in a section sit close; sections keep more room between them.
 const WORK_GRID =
-  "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-4 gap-y-1";
+  "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-4 gap-y-0.5";
 
 /**
- * Linked work on a comfortable Inbox row, ranked, one line each, up to
- * `limit`. The rest folds into one "+N more" that lists them all. Work that
- * the plugin saved no title or URL for follows in one quiet line.
+ * Linked work of every kind on a comfortable Inbox row, ranked, up to
+ * `limit`: titled work one line each, then work with no title as ids on
+ * one shared line. The rest folds into one "+N more" that lists them all
+ * the same way.
  */
 export function InboxLinkedWork(props: {
   annotations: Annotation[];
@@ -178,10 +216,12 @@ export function InboxLinkedWork(props: {
   main: string | undefined;
 }) {
   const [all, setAll] = useState(false);
-  const cards = props.annotations.filter(isCard);
-  const chips = props.annotations.filter((annotation) => !isCard(annotation));
-  const shown = all ? cards : cards.slice(0, props.limit);
-  const more = cards.length - shown.length;
+  const listed = all
+    ? props.annotations
+    : props.annotations.slice(0, props.limit);
+  const shown = listed.filter((annotation) => annotation.title);
+  const untitled = listed.filter((annotation) => !annotation.title);
+  const more = props.annotations.length - props.limit;
   return (
     <div aria-label="Linked work" className="grid min-w-0 gap-1" role="group">
       {shown.length > 0 ? (
@@ -192,20 +232,21 @@ export function InboxLinkedWork(props: {
             all && "max-h-60 overflow-y-auto overscroll-contain",
           )}
         >
-          {shown.map((card) => (
+          {shown.map((work) => (
             <WorkLine
-              href={card.url}
-              key={card.key}
+              href={work.url}
+              key={work.key}
               main={props.main}
-              work={card}
+              work={work}
             />
           ))}
         </div>
       ) : null}
-      {more > 0 || all ? (
+      {untitled.length > 0 ? <WorkChipLine annotations={untitled} /> : null}
+      {more > 0 ? (
         <button
           aria-expanded={all}
-          className="justify-self-start rounded-sm text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          className="justify-self-start rounded-sm text-xs text-dashboard-text-faint hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           data-linked-work-more=""
           onClick={() => setAll(!all)}
           type="button"
@@ -213,7 +254,6 @@ export function InboxLinkedWork(props: {
           {all ? "Show fewer" : `+${more} more`}
         </button>
       ) : null}
-      {chips.length > 0 ? <WorkChipLine annotations={chips} /> : null}
     </div>
   );
 }

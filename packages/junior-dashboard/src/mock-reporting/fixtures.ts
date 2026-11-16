@@ -182,6 +182,7 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const BUSY_CONVERSATION_ID = "slack:CQA456:1770028800.000800";
+const SENTAUR_CONVERSATION_ID = "slack:CQA789:1770028800.000900";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -2020,6 +2021,131 @@ function busyConversation(nowMs: number): ConversationDetailReport {
   });
 }
 
+const SENTAUR_PULL_REQUESTS = [
+  [
+    "devinfra-deployment-service",
+    1019,
+    "open",
+    "feat(checks): Gate Sentaur rollouts on soak health",
+  ],
+  [
+    "devinfra-deployment-service",
+    1017,
+    "draft",
+    "fix(gocd): Retry the canary stage once on a lost agent",
+  ],
+  [
+    "devinfra-deployment-service",
+    1012,
+    "merged",
+    "ref(pipelines): Share the Sentaur stage template",
+  ],
+  [
+    "sentaur",
+    88,
+    "open",
+    "fix(deploy): Pin the GoCD material to the release tag",
+  ],
+  [
+    "sentaur",
+    86,
+    "merged",
+    "feat(alerts): Page the owner when a rollout pauses",
+  ],
+  ["sentaur", 81, "closed", "chore: Drop the old deploy webhook"],
+] as const;
+
+/**
+ * A Conversation shaped like a live triage row: a long title, a long
+ * Brief summary, pull requests from two repos, Linear issues with and
+ * without titles, a running outcome and Threads. Its Inbox row shows one
+ * cap across every kind of linked work.
+ */
+function sentaurConversation(nowMs: number): ConversationDetailReport {
+  const startedAt = iso(nowMs, -26 * 60 * 60_000);
+  const brief = mockBrief(nowMs, "live");
+  return detail(nowMs, {
+    conversationId: SENTAUR_CONVERSATION_ID,
+    displayTitle:
+      "Triage Sentaur GoCD deployment failures across the canary and soak stages",
+    startedAt,
+    lastSeenAt: iso(nowMs, -25 * 60 * 60_000),
+    lastProgressAt: iso(nowMs, -25 * 60 * 60_000),
+    surface: "slack",
+    channel: "CQA789",
+    channelName: "proj-devinfra",
+    // The viewer takes part, so the row has its pin and archive actions.
+    isParticipant: true,
+    actorIdentity: actor("michael@sentry.io", "Michael Hart", "michael"),
+    brief: {
+      ...brief,
+      content: {
+        ...brief.content,
+        record: { ...brief.content.record, codeChanges: [] },
+        summary:
+          "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
+        intent:
+          "Find why the Sentaur GoCD deploys fail and land the fixes for each stage.",
+        outcome: {
+          status: "in_progress",
+          text: "The canary retry and the soak gate are in review.",
+        },
+      },
+    },
+    // Newest first, like saved Annotations. Not a mock repository, so the
+    // Code pages keep their rows.
+    sidebarAnnotations: [
+      ...SENTAUR_PULL_REQUESTS.map(([repo, number, status, title]) => ({
+        icon:
+          status === "merged"
+            ? ("git-merge" as const)
+            : ("git-pull-request" as const),
+        objectType: "code_change" as const,
+        status,
+        key: `getsentry/${repo}#${number}`,
+        label: repo,
+        title,
+        url: `https://github.com/getsentry/${repo}/pull/${number}`,
+      })),
+      // Linear issues; the older ones have no saved title.
+      ...Array.from({ length: 9 }, (_, index) => {
+        const key = `DI-${2877 - index}`;
+        return {
+          objectType: "task" as const,
+          status: index < 2 ? "In Progress" : index < 5 ? "Todo" : "Done",
+          key,
+          label: key,
+          ...(index < 3
+            ? {
+                title: [
+                  "Grow the GoCD agent pool for canary stages",
+                  "Route Sentaur rollout alerts to the owner",
+                  "Update the Sentaur deploy runbook",
+                ][index],
+              }
+            : {}),
+          url: `https://linear.app/getsentry/issue/${key}`,
+        };
+      }),
+    ],
+    events: [
+      reportEvent(0, startedAt, {
+        type: "message",
+        messageId: "sentaur-user",
+        role: "user",
+        source: "slack",
+        text: "Sentaur deploys keep failing in GoCD. Can you find out why?",
+      }),
+      reportEvent(1, iso(Date.parse(startedAt), 60_000), {
+        type: "message",
+        messageId: "sentaur-assistant",
+        role: "assistant",
+        text: "Three failures overnight. I opened the fixes and the follow-ups.",
+      }),
+    ],
+  });
+}
+
 const HISTORY_TOPICS = [
   "Release notes draft",
   "Flaky test triage",
@@ -2254,6 +2380,23 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     longConversation(nowMs),
     manyTurnsConversation(nowMs),
     busyConversation(nowMs),
+    sentaurConversation(nowMs),
+    threadConversation(
+      nowMs,
+      "slack:CQA789:1770028800.000901",
+      "Check the last ten Sentaur pipeline runs",
+      "Check the last ten Sentaur pipeline runs for lost agents.",
+      -25.5 * 60 * 60_000,
+      SENTAUR_CONVERSATION_ID,
+    ),
+    threadConversation(
+      nowMs,
+      "slack:CQA789:1770028800.000902",
+      "Read the canary agent logs",
+      "Read the GoCD agent logs from the failed canary stages.",
+      -25.4 * 60 * 60_000,
+      SENTAUR_CONVERSATION_ID,
+    ),
     incidentConversation(nowMs),
     privateConversation(nowMs),
     failedConversation(nowMs),
@@ -3389,9 +3532,11 @@ export function readMockConversationEventsAround(
  * API, so the outline lists messages that have not loaded.
  */
 function mockPageLimit(conversationId: string, limit: number): number {
-  return conversationId === MANY_TURNS_CONVERSATION_ID
-    ? Math.min(limit, 6)
-    : limit;
+  if (conversationId === MANY_TURNS_CONVERSATION_ID) return Math.min(limit, 6);
+  // One event a page, so the Inbox image strip reads several batches, and
+  // the newest batch has no images.
+  if (conversationId === BUSY_CONVERSATION_ID) return Math.min(limit, 1);
+  return limit;
 }
 
 function mockBeforeCursor(conversationId: string, seq: number): string {
