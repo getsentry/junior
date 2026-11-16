@@ -100,10 +100,14 @@ export function TranscriptEventView(props: {
                   mentions={mentions}
                   text={line.text}
                 />
+                {/* Inside the text span, so a wrapped line keeps the count
+                    at its end. */}
+                {line.count > 1 ? (
+                  <span className="ml-1.5 whitespace-nowrap font-medium tabular-nums text-dashboard-text">
+                    ×{line.count}
+                  </span>
+                ) : null}
               </span>
-              {line.count > 1 ? (
-                <span className="shrink-0 tabular-nums">×{line.count}</span>
-              ) : null}
             </span>
           ))}
         </span>
