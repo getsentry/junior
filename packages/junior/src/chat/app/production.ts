@@ -20,6 +20,7 @@ import {
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 
@@ -56,13 +57,14 @@ export function getProductionConversationStore(): ConversationStore {
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options: {
   queue: ConversationWorkQueue;
-  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
   const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    sendPluginTask: options.sendPluginTask,
+    // Webhook ingress only starts and refreshes assistant threads. Turns run
+    // in conversation work, so this runtime never sends a plugin task.
+    sendPluginTask: sendVercelPluginTask,
     services: options?.services,
   });
   return {

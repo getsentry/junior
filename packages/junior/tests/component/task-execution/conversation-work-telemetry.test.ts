@@ -1,4 +1,4 @@
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
+import { createPausedTurns } from "@/chat/task-execution/turn-wake";
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import {
   afterAll,
@@ -335,8 +335,8 @@ describe("conversation work telemetry", () => {
         () =>
           runNextPausedTurn(conversationId, {
             agentRunner: doneAgentRunner,
+            pausedTurns: createPausedTurns(),
             sendPluginTask: sendVercelPluginTask,
-            wakePausedTurn,
           }),
       ),
     );

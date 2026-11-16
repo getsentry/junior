@@ -63,6 +63,7 @@ import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
   type PausedTurnRequest,
+  type PausedTurns,
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveConversationRouting,
@@ -110,8 +111,8 @@ export interface PausedTurnOptions {
   >;
   /** Sends the plugin tasks of a completed Turn. */
   sendPluginTask: SendPluginTask;
-  /** Wakes the paused Turn again, on the queue that the caller owns. */
-  wakePausedTurn: (request: PausedTurnRequest) => Promise<void>;
+  /** Paused Turns of the app, on the queue that the app chose. */
+  pausedTurns: PausedTurns;
 }
 
 /** Per-worker controls for one paused turn. */
@@ -709,7 +710,7 @@ async function runPausedTurnInContext(
             });
           },
           onSuspend: async (resumeVersion) => {
-            await options.wakePausedTurn({
+            await options.pausedTurns.wake({
               conversationId: payload.conversationId,
               destination: payload.destination,
               turnId: payload.turnId,

@@ -78,11 +78,8 @@ function continueAgentRun(args: {
       },
       {
         agentRunner,
+        pausedTurns: turnWakeModule.createPausedTurns({ queue }),
         sendPluginTask: sendVercelPluginTask,
-        wakePausedTurn: (request) =>
-          turnWakeModule.wakePausedTurn(request, {
-            queue,
-          }),
       },
     ),
   );

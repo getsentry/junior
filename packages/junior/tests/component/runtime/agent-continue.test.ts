@@ -1,6 +1,9 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
+import {
+  createPausedTurns,
+  wakePausedTurn,
+} from "@/chat/task-execution/turn-wake";
 import {
   getConversationWorkState,
   startConversationWork,
@@ -185,8 +188,8 @@ describe("paused turn scheduling", () => {
       run: async () => {
         await runNextPausedTurn(conversationId, {
           agentRunner: agentRunnerShouldNotRun,
+          pausedTurns: createPausedTurns(),
           sendPluginTask: sendVercelPluginTask,
-          wakePausedTurn,
         });
         return { status: "completed" as const };
       },
@@ -228,8 +231,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        pausedTurns: createPausedTurns(),
         sendPluginTask: sendVercelPluginTask,
-        wakePausedTurn,
       }),
     ).resolves.toBe(false);
     await expect(
@@ -288,8 +291,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        pausedTurns: createPausedTurns(),
         sendPluginTask: sendVercelPluginTask,
-        wakePausedTurn,
       }),
     ).resolves.toBe(false);
     await expect(

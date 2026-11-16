@@ -748,7 +748,6 @@ export async function createApp(
   const slackWebhookServices = {
     ...createProductionSlackWebhookServices({
       queue: conversationWorkQueue,
-      sendPluginTask,
       services: runtimeServiceOverrides,
     }),
     allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],

@@ -93,8 +93,8 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
+          pausedTurns,
           sendPluginTask: options.sendPluginTask,
-          wakePausedTurn: pausedTurns.wake,
         },
         runOptions,
       ),
@@ -109,8 +109,8 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
+          pausedTurns,
           sendPluginTask: options.sendPluginTask,
-          wakePausedTurn: pausedTurns.wake,
         },
         { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
