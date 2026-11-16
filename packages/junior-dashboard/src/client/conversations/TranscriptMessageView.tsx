@@ -175,7 +175,7 @@ export function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         {props.message.parts.map((_part, index) => (
           <div className="py-1" key={index}>
             <RedactedMarker />
