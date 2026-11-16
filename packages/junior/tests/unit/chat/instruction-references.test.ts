@@ -79,6 +79,13 @@ describe("requireAutomationTaskText", () => {
     ).toThrow(
       'The instruction says "me", and each run reads that as the Automation creator. Write <@U0TEST> for the requester.',
     );
+    // The creator's saved "my" does not allow a new "me".
+    expect(() =>
+      requireAutomationTaskText(
+        instruction("Remind my team, and remind me to bring the agenda."),
+        { creator, requester, current: instruction("Remind my team.") },
+      ),
+    ).toThrow('The instruction says "me"');
     // From the creator, "me" is the Automation creator.
     expect(() =>
       requireAutomationTaskText(instruction("Remind me to bring the agenda."), {

@@ -15,7 +15,22 @@ function namesPerson(text: string, name: string): boolean {
 }
 
 const CONVERSATION_REFERENCE = /\bthis (?:channel|conversation|thread)\b/i;
-const FIRST_PERSON = /\b(?:me|my|myself)\b/i;
+const FIRST_PERSON_WORDS = ["me", "my", "myself"] as const;
+
+function wordCount(text: string, word: string): number {
+  return text.match(new RegExp(`\\b${word}\\b`, "gi"))?.length ?? 0;
+}
+
+/**
+ * Return a first-person word that the text uses more often than the previous
+ * text, or undefined. A creator's "my" that the edit keeps stays allowed, but
+ * a new "me" next to it does not.
+ */
+function addedFirstPerson(text: string, previousText: string) {
+  return FIRST_PERSON_WORDS.find(
+    (word) => wordCount(text, word) > wordCount(previousText, word),
+  );
+}
 
 function refersTo(text: string, person: InstructionPerson): boolean {
   return (
@@ -66,8 +81,8 @@ function taskTextProblem(
     return undefined;
   }
   const mention = slackMention(requester.slackUserId);
-  const firstPerson = FIRST_PERSON.exec(text)?.[0];
-  if (firstPerson && !FIRST_PERSON.test(previousText)) {
+  const firstPerson = addedFirstPerson(text, previousText);
+  if (firstPerson) {
     return `The ${label} says "${firstPerson}", and each run reads that as the Automation creator. Write ${mention} for the requester.`;
   }
   if (
