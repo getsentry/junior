@@ -81,6 +81,15 @@ Datadog metric query strings follow the usual metric explorer shape:
 
 Use `metrics search` or `metrics list` to find names, `metrics metadata get` for metadata, and `metrics tags list` for tag dimensions before querying when needed.
 
+### Counting events in a distribution
+
+Before you count requests, errors, or other events, run `metrics metadata get` and read the metric type. For a `distribution`, such as a latency or size metric:
+
+- `count:` returns the number of recorded values. Use it for request or event counts.
+- `sum:` adds the recorded values, such as seconds of latency or bytes. It is not a count. When latency rises, `sum:` rises with traffic flat, so it looks like a traffic spike.
+
+Example: `count:service.request.duration{env:prod,status:5*}.as_count()` counts failed requests. `sum:` on the same metric gives total seconds spent.
+
 ## Time windows
 
 - For "right now" questions, default to the last 15 minutes.
