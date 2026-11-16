@@ -1160,11 +1160,6 @@ function emit(
   emitRecord([], level, eventName, attrs, body);
 }
 
-const CAPTURED_EVENT_ID = Symbol("junior.capturedEventId");
-
-/** An error with the ID of the Sentry event that `log.exception` sent for it. */
-type CapturedError = Error & { [CAPTURED_EVENT_ID]?: string };
-
 /**
  * Low-level adapter logger.
  *
@@ -1206,7 +1201,7 @@ export const log = {
     attrs: Record<string, unknown> = {},
     body?: string,
   ): string | undefined {
-    const normalizedError: CapturedError =
+    const normalizedError =
       error instanceof Error ? error : new Error(String(error));
     emit(
       "error",
@@ -1221,12 +1216,6 @@ export const log = {
       body,
     );
 
-    // The SDK sends an error object only once. A later capture of the same
-    // object returns a new event ID that no event has, so return the first one.
-    const capturedEventId = normalizedError[CAPTURED_EVENT_ID];
-    if (capturedEventId) {
-      return capturedEventId;
-    }
     let eventId: string | undefined;
     withScope((scope) => {
       setSentryScopeContext(scope, getBoundLogContext());
@@ -1241,15 +1230,10 @@ export const log = {
           scope.setTag(key, value);
         }
       }
-      const sentEventId = captureSentryException(normalizedError);
-      eventId = typeof sentEventId === "string" ? sentEventId : undefined;
+      const capturedEventId = captureSentryException(normalizedError);
+      eventId =
+        typeof capturedEventId === "string" ? capturedEventId : undefined;
     });
-    if (eventId) {
-      // `Reflect` returns false for a frozen error instead of throwing.
-      Reflect.defineProperty(normalizedError, CAPTURED_EVENT_ID, {
-        value: eventId,
-      });
-    }
     return eventId;
   },
 };

@@ -32,6 +32,8 @@ export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
   durationMs?: number | undefined;
   errorMessage?: string | undefined;
+  /** Sentry event that reported this failed run. The agent run sets it. */
+  eventId?: string | undefined;
   providerError?: unknown | undefined;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";

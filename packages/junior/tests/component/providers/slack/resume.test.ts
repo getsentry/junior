@@ -28,6 +28,8 @@ function testSlackSource(threadTs: string) {
 function makeDiagnostics() {
   return {
     assistantMessageCount: 0,
+    // A real agent run reports its failure and sets the event ID.
+    eventId: "0123456789abcdef0123456789abcdef",
     modelId: "fake-agent-model",
     outcome: "execution_failure" as const,
     toolCalls: [],

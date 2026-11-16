@@ -88,10 +88,10 @@ import {
 } from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
-  findProviderError,
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
+import { captureTurnFailure } from "@/chat/services/turn-failure-response";
 import {
   nextProviderRetry,
   nextRefusalFallback,
@@ -282,20 +282,44 @@ export async function executeAgentRun(
     assistantUserName: botConfig.userName,
   };
   return withLogContext(runLogContext, () =>
-    runWithConversationPrivacy(conversationPrivacy, () =>
-      executeAgentRunInPrivacyContext(
-        run,
-        // TODO(dcramer): Remove the `root` case one release after #3060 step
-        // 3. An Automation run in progress at deploy is stored as `root`.
-        run.dispatch?.declaresResult
-          ? "automation"
-          : (conversation?.kind ?? "root"),
-        conversationPrivacy,
-        runLogContext,
-        streamFn,
+    runWithConversationPrivacy(conversationPrivacy, async () =>
+      reportFailedRun(
+        await executeAgentRunInPrivacyContext(
+          run,
+          // TODO(dcramer): Remove the `root` case one release after #3060
+          // step 3. An Automation run in progress at deploy is stored as
+          // `root`.
+          run.dispatch?.declaresResult
+            ? "automation"
+            : (conversation?.kind ?? "root"),
+          conversationPrivacy,
+          runLogContext,
+          streamFn,
+        ),
+        run.signal,
       ),
     ),
   );
+}
+
+// The agent run owns the report of its own failure: callers only read
+// `diagnostics.eventId`. A run that its caller stopped, such as when a person
+// stops the Turn, is not a failure to report; the caller owns that outcome.
+function reportFailedRun(
+  outcome: AgentRunOutcome,
+  signal: AbortSignal | undefined,
+): AgentRunOutcome {
+  if (
+    outcome.status !== "completed" ||
+    outcome.result.diagnostics.outcome === "success" ||
+    signal?.aborted
+  ) {
+    return outcome;
+  }
+  return {
+    ...outcome,
+    result: captureTurnFailure(outcome.result, logException),
+  };
 }
 
 async function executeAgentRunInPrivacyContext(
@@ -1837,17 +1861,6 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
-    // The caller aborted the run, such as when a person stops the Turn. The
-    // caller owns that outcome; it is not a reply failure to report.
-    if (!signal?.aborted || error !== signal.reason) {
-      const providerError = findProviderError(error);
-      logException(
-        error,
-        "assistant.reply.generation.failed",
-        providerError ? getProviderErrorAttributes(providerError) : {},
-      );
-    }
-
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);
