@@ -165,9 +165,8 @@ describe("model message history", () => {
       expect.arrayContaining(["available-skills", "script-tools"]),
     );
     expect(initial).not.toHaveProperty("workspaces");
-    // The first sections apply from the start, so they go in the system
-    // prompt, not after the first instruction.
-    expect(first.systemPrompt).toContain("<script-tools>");
+    // The first sections apply from the start, so the request folds them
+    // into the system prompt instead of sending them after the instruction.
     expect(first.messages.map((message) => message.role)).not.toContain(
       "system",
     );
