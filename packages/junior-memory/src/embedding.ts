@@ -125,12 +125,12 @@ type EmbeddingModelColumns = Record<
 >;
 
 /**
- * Match stored vectors from the same model and size as a query vector. Pass
- * columns to match rows of a subquery over the embeddings table.
+ * Match stored vectors from the same model and size as a query vector.
+ * `columns` is the embeddings table, or a subquery over it.
  */
 export function sameEmbeddingModel(
   embedding: MemoryEmbedding,
-  columns: EmbeddingModelColumns = juniorMemoryEmbeddings,
+  columns: EmbeddingModelColumns,
 ): SQL {
   return and(
     eq(columns.provider, embedding.provider),

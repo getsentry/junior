@@ -914,7 +914,7 @@ async function listVectorAdjudicationCandidates(args: {
     .where(
       and(
         activeScopedSubjectPredicate(args),
-        sameEmbeddingModel(args.embedding),
+        sameEmbeddingModel(args.embedding, juniorMemoryEmbeddings),
       ),
     )
     .orderBy(
@@ -1135,7 +1135,7 @@ async function searchExactVectorRows(args: VectorSearchArgs) {
     .where(
       and(
         args.predicate,
-        sameEmbeddingModel(embedding),
+        sameEmbeddingModel(embedding, juniorMemoryEmbeddings),
         ...(distancePredicate ? [distancePredicate] : []),
       ),
     )
