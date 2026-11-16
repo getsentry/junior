@@ -36,4 +36,5 @@ export const REQUEST_CONTEXT_SECTION_TAG = {
   conversationNotes: "conversation-notes",
   disabledTools: "disabled-tools",
   userCustomization: "user-customization",
+  askerTimezone: "asker-timezone",
 } as const;

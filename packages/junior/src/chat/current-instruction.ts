@@ -41,7 +41,6 @@ export function renderCurrentInstruction(
   attrs?: {
     authorId?: string;
     authorName?: string;
-    authorTimezone?: string;
     slackTs?: string;
   },
 ): string {
@@ -49,9 +48,6 @@ export function renderCurrentInstruction(
     attrs?.authorId ? `author_id="${escapeXml(attrs.authorId)}"` : undefined,
     attrs?.authorName
       ? `author_name="${escapeXml(attrs.authorName)}"`
-      : undefined,
-    attrs?.authorTimezone
-      ? `author_timezone="${escapeXml(attrs.authorTimezone)}"`
       : undefined,
     attrs?.slackTs ? `slack_ts="${escapeXml(attrs.slackTs)}"` : undefined,
   ]

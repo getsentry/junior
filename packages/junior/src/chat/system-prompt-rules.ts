@@ -350,7 +350,7 @@ function buildOutputSection(platform: Platform, mode: PromptMode): string {
     CONCISE_REPLY_RULE,
     RESULT_REPORTING_RULE,
     ...SLACK_MARKDOWN_RULES,
-    "- Write each clock time in UTC and in the asker's `author_timezone` when it is known, such as `19:31 UTC (2:31 PM EST)`.",
+    "- Write each clock time in UTC and in the asker's timezone from `<asker-timezone>` when it is known, such as `19:31 UTC (2:31 PM EST)`.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");
