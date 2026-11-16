@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getDashboardAgentName } from "../agentName";
 import {
   Circle,
   CircleAlert,
@@ -65,7 +66,7 @@ const statusLabels: Record<ConversationPlanItem["status"], string> = {
 
 function assigneeLabel(item: ConversationPlanItem): string {
   const { assignee } = item;
-  if (assignee.kind === "self") return "Junior";
+  if (assignee.kind === "self") return getDashboardAgentName();
   if (assignee.kind === "agent") return assignee.name ?? "Child agent";
   return assignee.name ?? "Person";
 }
