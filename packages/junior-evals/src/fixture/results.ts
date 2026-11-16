@@ -6,6 +6,7 @@ import type * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
+  conversationWatchesReportSchema,
 } from "@/api/schema";
 import {
   CODE_MODE_CALL_STATUS_TEXT,
@@ -254,6 +255,30 @@ export async function readFailedCallRun(args: {
     ...combinedRun(calls, args.usage, args.startedAtMs),
     errors,
   };
+}
+
+/**
+ * Ids of the active Watches of one Conversation, read through
+ * `GET /api/conversations/:id/watches` as the dashboard does.
+ */
+export async function readWatchIds(
+  api: RequestApp,
+  conversationId: string,
+  viewerEmail: string,
+): Promise<string[]> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Watches returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { watches } = conversationWatchesReportSchema.parse(
+    await response.json(),
+  );
+  return watches.map((watch) => watch.id);
 }
 
 /** The connect prompt that the dashboard shows to a person. */
