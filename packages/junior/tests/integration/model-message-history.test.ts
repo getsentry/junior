@@ -13,6 +13,9 @@ import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
+import { signedInViewer } from "../fixtures/user";
+import { getSqlExecutor } from "@/chat/db";
+import { changePlan, setPlanItemStatusByUser } from "@/chat/plan/store";
 
 const originalBotConfig = { ...botConfig };
 
@@ -23,11 +26,7 @@ describe("model message history", () => {
   });
   it("preserves native messages and provider request prefixes across Turns", async () => {
     const toolArguments = {
-      explanation: "Check the result\u0000before replying.",
-      plan: [
-        { status: "in_progress", step: "Check the result" },
-        { status: "pending", step: "Reply to the user" },
-      ],
+      message: "Checking the result\u0000before replying.",
     };
     mockTitleModel("Conversation title");
     const requests = mockAnthropicStream("openai/gpt-6-astra", [
@@ -40,8 +39,8 @@ describe("model message history", () => {
         { type: "redacted_thinking", data: "opaque-redacted-data" },
         {
           type: "tool_use",
-          id: "plan-call",
-          name: "updatePlan",
+          id: "progress-call",
+          name: "reportProgress",
           input: toolArguments,
         },
       ],
@@ -222,5 +221,60 @@ describe("model message history", () => {
     ]);
     expect(undone["available-skills"]).not.toContain("release-notes");
     expect(undone["workspaces"]).toBeNull();
+  });
+
+  it("sends plan changes that a person made once, and none for the agent's own", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: ["First.", "Second.", "Third.", "Fourth."],
+    });
+    const newText = (
+      before: { messages: unknown[] },
+      after: { messages: unknown[] },
+    ) => JSON.stringify(after.messages.slice(before.messages.length));
+    const deltas = (text: string) => text.split("<plan-delta>").length - 1;
+
+    await agent.run("first");
+    const first = agent.snapshot();
+    // The agent's own changes are already in its tool results. The plan is
+    // in the database, so a fresh session reads the same items.
+    const self = { conversationId: agent.conversationId() };
+    const {
+      items: [, send],
+    } = await changePlan(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      nowMs: Date.now(),
+      change: {
+        add: [
+          { title: "Draft the brief", status: "in_progress", assignee: self },
+          { title: "Send the brief", status: "pending", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
+    });
+    await agent.run("second");
+    const second = agent.snapshot();
+    expect(deltas(newText(first, second))).toBe(0);
+
+    const person = await signedInViewer("person@example.com");
+    await setPlanItemStatusByUser(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      id: send!.id,
+      nowMs: Date.now(),
+      status: "cancelled",
+      userId: person.id,
+    });
+    await agent.run("third");
+    const third = agent.snapshot();
+    const delta = newText(second, third);
+    expect(deltas(delta)).toBe(1);
+    expect(delta).toContain(
+      `- #${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
+    );
+    expect(delta).not.toContain("Draft the brief");
+    // The block stays in history, so the next Turn does not send it again.
+    await agent.run("fourth");
+    expect(deltas(newText(third, agent.snapshot()))).toBe(0);
   });
 });

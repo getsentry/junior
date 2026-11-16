@@ -250,6 +250,16 @@ export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
 } from "./schema/watch";
+export {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
+} from "./schema/plan";
+export type {
+  ConversationPlanItem,
+  ConversationPlanReport,
+  PlanItemStatusBody,
+} from "./schema/plan";
 export type {
   ConversationWatch,
   ConversationWatchesReport,

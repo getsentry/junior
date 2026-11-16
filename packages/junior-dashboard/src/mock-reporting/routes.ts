@@ -44,6 +44,9 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -144,6 +147,7 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
 function withMockFeedIncludes(
@@ -542,6 +546,37 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.get("/conversations/:conversationId/plan", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationPlan(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationPlanReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/plan/:itemId", async (c) => {
+    const params = conversationParamsSchema.safeParse({
+      conversationId: c.req.param("conversationId"),
+    });
+    const itemId = Number(c.req.param("itemId"));
+    if (!params.success || !Number.isInteger(itemId)) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = planItemStatusBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const item = setMockPlanItemStatus(
+      params.data.conversationId,
+      itemId,
+      body.data,
+    );
+    return item
+      ? jsonResponse(conversationPlanItemSchema, item)
+      : errorResponse("Plan item not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

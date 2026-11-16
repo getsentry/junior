@@ -29,6 +29,7 @@ import {
   useConversationMemoryState,
   type ConversationMemoryEntry,
 } from "./conversationMemory";
+import { ConversationPlan } from "./ConversationPlan";
 import {
   ConversationWatches,
   useConversationWatches,
@@ -48,6 +49,8 @@ export function ConversationDetails(props: {
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
   brief?: Brief | undefined;
+  /** True when the viewer can close or reopen Plan items. */
+  canEditPlan: boolean;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
@@ -180,6 +183,10 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
+        <ConversationPlan
+          canEdit={props.canEditPlan}
+          conversationId={props.conversationId}
+        />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
