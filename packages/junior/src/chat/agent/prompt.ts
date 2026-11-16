@@ -7,6 +7,10 @@
  * the optional canonical telemetry view of public input messages.
  */
 import { isDeepStrictEqual } from "node:util";
+import {
+  renderSystemMessageUpdate,
+  type SystemMessage,
+} from "@earendil-works/pi-ai";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
@@ -16,7 +20,7 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
-  buildScriptToolsSection,
+  buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
@@ -27,27 +31,26 @@ import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
+import { systemSectionsUpdate } from "@/chat/pi/agent-history";
 import {
   renderAgentsInstructionsForPrompt,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import {
   hasRuntimeTurnContext,
-  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { serializeGenAiAttribute, type LogContext } from "@/chat/logging";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import {
+  toCanonicalInputMessage,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import {
-  CAPABILITY_SECTION_TAG,
-  SCRIPT_TOOLS_SECTION_TAG,
-} from "@/chat/turn-context-tag";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
@@ -84,6 +87,11 @@ export interface PromptAssembly {
   inputMessagesAttribute: string | undefined;
   promptTimestamp?: number;
   promptHistoryMessages: PiMessage[];
+  /**
+   * A system message with the capability sections that changed since the
+   * history, for a new prompt. It goes before the Turn's context message.
+   */
+  sectionsMessage?: SystemMessage;
   shouldPromptAgent: boolean;
   turnContexts: PluginTurnContext[];
   userContentParts: UserContentPart[];
@@ -644,37 +652,30 @@ export async function assemblePrompt(args: {
     workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
-  // Send the script tools again only when they changed. Context compaction
-  // keeps the latest copy, so this also holds after a compaction.
-  const scriptTools =
-    loadsTurnContext &&
-    latestTurnContextSection(
-      promptHistoryMessages,
-      SCRIPT_TOOLS_SECTION_TAG,
-    ) !== buildScriptToolsSection(args.scriptTools)
-      ? args.scriptTools
-      : undefined;
+  // Before the first assistant message, the request folds it into the
+  // system prompt. Later, Pi sends it right before the next assistant
+  // message, after this prompt. A resumed slice already holds it.
+  const sectionsMessage = loadsTurnContext
+    ? systemSectionsUpdate(
+        promptHistoryMessages,
+        buildCapabilitySections({
+          availableSkills: args.availableSkills,
+          activeMcpCatalogs: args.activeMcpCatalogs,
+          scriptTools: args.scriptTools,
+          toolGuidance: args.toolGuidance,
+          workspaces: workspaces ?? [],
+        }),
+        trimmedPrompt.promptTimestamp ?? Date.now(),
+      )
+    : undefined;
   // It returns nothing when no section has news for this Turn.
   const turnContextPrompt = loadsTurnContext
     ? buildTurnContextPrompt({
-        availableSkills: args.availableSkills,
-        activeMcpCatalogs: args.activeMcpCatalogs,
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Send a capability section again only when it changed. Context
-        // compaction keeps the latest copy of each.
-        latestCapabilitySections: Object.fromEntries(
-          Object.values(CAPABILITY_SECTION_TAG).map((tag) => [
-            tag,
-            latestTurnContextSection(promptHistoryMessages, tag),
-          ]),
-        ),
         pluginPromptContributions: pluginUserPromptContributions,
-        scriptTools,
-        toolGuidance: args.toolGuidance,
         userCustomization,
-        workspaces,
         runtime: {
           conversationId: args.spanContext.conversationId,
           slackConversation: args.run.slackConversation,
@@ -722,6 +723,19 @@ export async function assemblePrompt(args: {
       role: "system",
       content: [{ type: "text", text: baseInstructions }],
     },
+    ...(sectionsMessage
+      ? [
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: renderSystemMessageUpdate(sectionsMessage),
+              },
+            ],
+          },
+        ]
+      : []),
     ...(contextContentParts.length > 0
       ? [
           {
@@ -744,6 +758,9 @@ export async function assemblePrompt(args: {
             role: "system",
             parts: [{ type: "text", content: baseInstructions }],
           },
+          ...(sectionsMessage
+            ? [toCanonicalInputMessage(sectionsMessage)]
+            : []),
           ...(contextContentParts.length > 0
             ? [
                 {
@@ -778,6 +795,7 @@ export async function assemblePrompt(args: {
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
       : undefined),
     promptHistoryMessages,
+    ...(sectionsMessage ? { sectionsMessage } : undefined),
     shouldPromptAgent,
     turnContexts: [
       ...(userCustomization

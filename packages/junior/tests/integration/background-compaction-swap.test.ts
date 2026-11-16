@@ -6,7 +6,7 @@ import {
 } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
-import { buildScriptToolsSection, buildTurnContextPrompt } from "@/chat/prompt";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 import { renderCompactionSummary } from "@/chat/services/context-compaction";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { closeConversationFixture } from "../fixtures/conversation";
@@ -228,99 +228,42 @@ describe("background compaction swap", () => {
     ).toEqual([...messages, reply]);
   });
 
-  it.each([
-    { case: "summarized history", keptChange: undefined },
-    { case: "kept history", keptChange: "c" },
-  ])(
-    "keeps one copy of the latest script tools and skills from $case",
-    async ({ keptChange }) => {
-      const conversationId = `local:web:swap-script-tools-${keptChange ?? "summarized"}`;
-      const skills = (...names: string[]) =>
-        names.map((name) => ({
-          name,
-          description: `Use ${name}.`,
-          skillPath: `/skills/${name}`,
-        }));
-      const skillsSection = (text: string) =>
-        text.match(/<available-skills>\n[\s\S]*?\n<\/available-skills>/)![0];
-      const sessionContext = buildTurnContextPrompt({
-        availableSkills: skills("a"),
-        runtime: { conversationId },
-        scriptTools: "tools.a",
-      })!;
-      const changedContext = buildTurnContextPrompt({
-        availableSkills: skills("a", "b"),
-        includeSessionContext: false,
-        latestCapabilitySections: {
-          "available-skills": skillsSection(sessionContext),
-        },
-        scriptTools: "tools.b",
-      })!;
-      const keptContext = keptChange
-        ? buildTurnContextPrompt({
-            availableSkills: skills("a", "b", keptChange),
-            includeSessionContext: false,
-            latestCapabilitySections: {
-              "available-skills": skillsSection(changedContext),
-            },
-            scriptTools: `tools.${keptChange}`,
-          })!
-        : undefined;
-      const summarized = [
-        user(sessionContext, 1),
-        ...firstTurn,
-        user(changedContext, 5),
-        user("<current-instruction>Read the log.</current-instruction>", 5),
-        assistant("Read it.", 6),
-      ];
-      await prepareSummary(conversationId, summarized);
-      const kept = [
-        ...(keptContext ? [user(keptContext, 7)] : []),
-        user("<current-instruction>And the rollback?</current-instruction>", 7),
-        assistant("Read that too.", 8),
-      ];
-      await commitMessages({
+  it("drops capability section copies from the summarized Turn context", async () => {
+    const conversationId = "local:web:swap-script-tools";
+    // A Turn from before capability sections moved to system messages put a
+    // copy in its Turn context.
+    const sessionContext = buildTurnContextPrompt({
+      runtime: { conversationId },
+    })!.replace(
+      "\n\n</runtime-turn-context>",
+      "\n\n<script-tools>\ntools.a\n</script-tools>\n\n</runtime-turn-context>",
+    );
+    const summarized = [user(sessionContext, 1), ...firstTurn];
+    await prepareSummary(conversationId, summarized);
+    const kept = [
+      user("<current-instruction>And the rollback?</current-instruction>", 7),
+      assistant("Read that too.", 8),
+    ];
+    await commitMessages({
+      conversationId,
+      messages: [...summarized, ...kept],
+    });
+
+    const result = await compactWithPreparedSummary(
+      {
         conversationId,
-        messages: [...summarized, ...kept],
-      });
+        mode: "blocking",
+        modelId: MODEL_ID,
+        piMessages: [...summarized, ...kept],
+      },
+      vi.fn(),
+    );
 
-      const result = await compactWithPreparedSummary(
-        {
-          conversationId,
-          mode: "blocking",
-          modelId: MODEL_ID,
-          pendingMessages: [
-            {
-              message: user(
-                "<current-instruction>Done?</current-instruction>",
-                9,
-              ),
-              provenance: { authority: "instruction" },
-            },
-          ],
-          piMessages: [...summarized, ...kept],
-        },
-        vi.fn(),
-      );
-
-      expect(result.compacted).toBe(true);
-      const texts = result.piMessages!.map(textOf);
-      const all = texts.join("\n");
-      expect(texts[0]).toContain(`- gen_ai.conversation.id: ${conversationId}`);
-      // A Turn compares each section with its latest copy, so that copy must
-      // stay byte for byte, once.
-      const latestScriptTools = buildScriptToolsSection(
-        `tools.${keptChange ?? "b"}`,
-      );
-      expect(all.split("<script-tools>").length - 1).toBe(1);
-      expect(all).toContain(latestScriptTools);
-      expect(texts[0]!.includes(latestScriptTools)).toBe(!keptChange);
-      const latestSkills = skillsSection(keptContext ?? changedContext);
-      expect(all.split("<available-skills>").length - 1).toBe(1);
-      expect(all).toContain(latestSkills);
-      expect(texts[0]!.includes(latestSkills)).toBe(!keptChange);
-    },
-  );
+    expect(result.compacted).toBe(true);
+    const context = textOf(result.piMessages![0]!);
+    expect(context).toContain(`- gen_ai.conversation.id: ${conversationId}`);
+    expect(context).not.toContain("<script-tools>");
+  });
 
   it("swaps between model calls only above the threshold, without a summary call", async () => {
     const conversationId = "local:web:swap-active";

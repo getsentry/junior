@@ -15,7 +15,6 @@ import {
   CAPABILITY_SECTION_TAG,
   type CapabilitySectionTag,
   REQUEST_CONTEXT_SECTION_TAG,
-  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -556,23 +555,25 @@ function buildContextSection(params: {
 }
 
 /**
- * Context message, capability sections: the skills, MCP catalogs, tool
- * guidance, and Workspaces that the model can use now. A section goes in only
- * when it differs from its latest copy in history, so earlier messages and
- * the prompt cache stay the same. A section that became empty says "none", so
- * that the model stops using the earlier copy.
+ * Capability sections: the skills, MCP catalogs, tool guidance, Workspaces,
+ * and Code Mode script tools that the model can use now, each with its tags,
+ * or null when it is empty. A Turn sends the ones that changed as named
+ * system prompt sections, so the Turn context and history stay the same.
  */
-function buildCapabilitySections(params: {
+export function buildCapabilitySections(params: {
   availableSkills: SkillMetadata[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
-  latest: Partial<Record<CapabilitySectionTag, string>>;
+  /** From `renderScriptTools`. */
+  scriptTools: string;
   toolGuidance: ToolPromptContext[];
   workspaces: PromptWorkspace[];
-}): string[] {
+}): Record<string, string | null> {
   const contents: Record<CapabilitySectionTag, string | null> = {
     [CAPABILITY_SECTION_TAG.availableSkills]: formatAvailableSkillsForPrompt(
       params.availableSkills,
     ),
+    // MCP tool catalogs are dynamic, so the model reaches them through
+    // `searchMcpTools` and `callMcpTool`, not the native tool list.
     [CAPABILITY_SECTION_TAG.activeMcpCatalogs]:
       formatActiveMcpCatalogsForPrompt(params.activeMcpCatalogs),
     [CAPABILITY_SECTION_TAG.toolGuidance]: formatToolGuidanceForPrompt(
@@ -581,28 +582,19 @@ function buildCapabilitySections(params: {
     [CAPABILITY_SECTION_TAG.workspaces]: formatWorkspacesForPrompt(
       params.workspaces,
     ),
+    // Runtime declarations go in raw, like a tool description.
+    [CAPABILITY_SECTION_TAG.scriptTools]: params.scriptTools
+      ? params.scriptTools.replaceAll(
+          `</${CAPABILITY_SECTION_TAG.scriptTools}>`,
+          `&lt;/${CAPABILITY_SECTION_TAG.scriptTools}>`,
+        )
+      : null,
   };
-  return Object.values(CAPABILITY_SECTION_TAG).flatMap((tag) => {
-    const latest = params.latest[tag];
-    const content = contents[tag] ?? (latest ? "none" : null);
-    const section = content === null ? null : renderTagBlock(tag, content);
-    return section && section !== latest ? [section] : [];
-  });
-}
-
-/**
- * Context message, `<script-tools>`: the tools that a Code Mode script can
- * call, from `renderScriptTools`. The `codemode` description stays fixed, so
- * a change of tools does not change a tool definition. The text is runtime
- * declarations and goes in raw, like a tool description.
- */
-export function buildScriptToolsSection(scriptTools: string): string {
-  return renderTagBlock(
-    SCRIPT_TOOLS_SECTION_TAG,
-    scriptTools.replaceAll(
-      `</${SCRIPT_TOOLS_SECTION_TAG}>`,
-      `&lt;/${SCRIPT_TOOLS_SECTION_TAG}>`,
-    ),
+  return Object.fromEntries(
+    Object.values(CAPABILITY_SECTION_TAG).map((tag) => {
+      const content = contents[tag];
+      return [tag, content === null ? null : renderTagBlock(tag, content)];
+    }),
   );
 }
 
@@ -723,20 +715,12 @@ export function buildPluginSystemPromptContributions(
 }
 
 type TurnContextPromptInput = {
-  availableSkills: SkillMetadata[];
-  activeMcpCatalogs?: ActiveMcpCatalogSummary[];
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** Latest copy of each capability section in history, with its tags. */
-  latestCapabilitySections?: Partial<Record<CapabilitySectionTag, string>>;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
-  /** From `renderScriptTools`. Set it only when history lacks this copy. */
-  scriptTools?: string;
-  toolGuidance?: ToolPromptContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
-  workspaces?: PromptWorkspace[];
   runtime?: {
     conversationId?: string | undefined;
     slackConversation?: SlackConversationContext | undefined;
@@ -813,25 +797,11 @@ export function buildTurnContextPrompt(
   const userCustomization = buildUserCustomizationSection(
     params.userCustomization,
   );
-  // Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
-  // are dynamic data, so expose them through loadSkill/searchMcpTools/
-  // <active-mcp-catalogs> and execute them through callMcpTool without mutating
-  // the native tool list.
-  const capabilitySections = buildCapabilitySections({
-    availableSkills: params.availableSkills,
-    activeMcpCatalogs: params.activeMcpCatalogs ?? [],
-    latest: params.latestCapabilitySections ?? {},
-    toolGuidance: params.toolGuidance ?? [],
-    workspaces: params.workspaces ?? [],
-  });
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
-  // carry only the user's input, request-scoped context, and the sections
-  // that changed since their latest copy.
+  // carry only the user's input and request-scoped context.
   if (
     !includeSessionContext &&
-    capabilitySections.length === 0 &&
-    !params.scriptTools &&
     !pluginPromptContributions &&
     !conversationNotes &&
     !disabledTools &&
@@ -841,10 +811,6 @@ export function buildTurnContextPrompt(
   }
 
   const runtimeSections = [
-    // First, so this long block of declarations sits farthest from the
-    // instruction and the facts about the request.
-    params.scriptTools ? buildScriptToolsSection(params.scriptTools) : null,
-    ...capabilitySections,
     pluginPromptContributions,
     conversationNotes,
     disabledTools,
