@@ -12,12 +12,11 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 
 /**
- * Prompt mode for one Run. `automation` is for Scheduled automation and Event
- * automation runs, and `child_agent` is for agent invocation runs. Both
- * replace the interactive conversation rules. `thread` is for every Turn of a
- * Thread: it holds the `conversation` rules for a person's input and the
- * `child_agent` rules for an agent's input, so the Thread keeps one system
- * prompt.
+ * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
+ * interactive conversation rules. `thread` and `automation` are for every
+ * Turn of a Thread and of an Automation Conversation. Each holds the
+ * `conversation` rules for a person's input and the rules for its other
+ * sender, so the Conversation keeps one system prompt.
  */
 export type PromptMode =
   | "automation"
@@ -25,16 +24,39 @@ export type PromptMode =
   | "conversation"
   | "thread";
 
-/** A Prompt mode whose rules are for one sender only. */
-type SingleSenderMode = Exclude<PromptMode, "thread">;
+/**
+ * Who sent the input of a Turn in a Prompt mode with two senders. The Turn
+ * context states it.
+ */
+export type TurnInputSender = "person" | "agent" | "automation";
 
-/** Who sent the input of a `thread` Turn. The Turn context states it. */
-export type TurnInputSender = "person" | "agent";
+/** The rules for one sender. A Prompt mode holds one or two of them. */
+type RuleSet = "conversation" | "child_agent" | "automation_run";
+
+type SenderRules = { rules: RuleSet; sender?: TurnInputSender };
+
+/**
+ * The rule sets of each Prompt mode, in prompt order. A rule set with a
+ * sender renders its sections with a `for` attribute.
+ */
+const MODE_RULE_SETS: Record<PromptMode, SenderRules[]> = {
+  conversation: [{ rules: "conversation" }],
+  child_agent: [{ rules: "child_agent" }],
+  thread: [
+    { rules: "conversation", sender: "person" },
+    { rules: "child_agent", sender: "agent" },
+  ],
+  automation: [
+    { rules: "conversation", sender: "person" },
+    { rules: "automation_run", sender: "automation" },
+  ],
+};
 
 type SectionAttributes = Record<string, string>;
 
-const PERSON_SECTION = { for: "person" } satisfies SectionAttributes;
-const AGENT_SECTION = { for: "agent" } satisfies SectionAttributes;
+function senderAttributes({ sender }: SenderRules): SectionAttributes {
+  return sender ? { for: sender } : {};
+}
 
 /**
  * Block 2, `<task-execution>`: what the job is in a conversation, when to keep
@@ -98,15 +120,41 @@ const CHILD_AGENT_RUN_RULES = [
 ];
 
 /**
- * Block 2, `<thread-turns>`: how a Thread Turn picks its rules. A person's
- * input and an agent's input need different job, trust, and output rules.
- * Each of those sections says its sender with a `for` attribute, and
- * `<turn-input>` in the Turn context says the sender of this Turn.
+ * Block 2 line of a Prompt mode with two senders: how a Turn picks its rules.
+ * Each sender's sections say it with a `for` attribute, and `<turn-input>` in
+ * the Turn context says the sender of this Turn.
  */
-const THREAD_TURN_RULES = [
-  "- This Conversation is a Thread: the Conversation of a child agent that people can also message. The input of each Turn comes from a person or from an agent. An agent's input is a task or message from your parent agent, a result or message from one of your own child agents, or an event from one of your own watches.",
-  '- `<turn-input>` in the runtime context says who sent the input of this Turn. A section with `for="person"` applies only to a Turn with a person\'s input. A section with `for="agent"` applies only to a Turn with an agent\'s input. Follow only the sections for the sender of this Turn, and ignore the sections for the other sender. A section with no `for` applies to every Turn.',
-];
+function senderRoutingRule(other: {
+  sender: TurnInputSender;
+  input: string;
+}): string {
+  return `- \`<turn-input>\` in the runtime context says who sent the input of this Turn. A section with \`for="person"\` applies only to a Turn with a person's input. A section with \`for="${other.sender}"\` applies only to a Turn with ${other.input}. Follow only the sections for the sender of this Turn, and ignore the sections for the other sender. A section with no \`for\` applies to every Turn.`;
+}
+
+/**
+ * Block 2 sections that come first in a Prompt mode with two senders. A
+ * person's input and the other sender's input need different job, trust,
+ * and output rules.
+ */
+const SENDER_ROUTING: Partial<Record<PromptMode, [string, string[]]>> = {
+  thread: [
+    "thread-turns",
+    [
+      "- This Conversation is a Thread: the Conversation of a child agent that people can also message. The input of each Turn comes from a person or from an agent. An agent's input is a task or message from your parent agent, a result or message from one of your own child agents, or an event from one of your own watches.",
+      senderRoutingRule({ sender: "agent", input: "an agent's input" }),
+    ],
+  ],
+  automation: [
+    "automation-turns",
+    [
+      "- This Conversation is an Automation run that people can also reply in. The input of each Turn comes from a person or from the automation. The automation's input is the stored instruction of the run, an event from one of its watches, or a result or message from one of its child agents.",
+      senderRoutingRule({
+        sender: "automation",
+        input: "the automation's input",
+      }),
+    ],
+  ],
+};
 
 /**
  * Block 2, `<evidence>`: what Junior may claim and how it checks. It covers
@@ -155,12 +203,19 @@ const CONVERSATION_JOB_TRUST_RULE =
 const ATTRIBUTION_TRUST_RULE =
   "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.";
 
-/** Block 3 lines that only apply when a person sends the input. */
-const CONVERSATION_TRUST_RULES = [
-  CONVERSATION_JOB_TRUST_RULE,
-  REVIEW_ITEM_TRUST_RULE,
-  ATTRIBUTION_TRUST_RULE,
-];
+/**
+ * Block 3 lines of each rule set. A person's input needs all of them. A child
+ * agent gets the answers to its own Review items.
+ */
+const RULE_SET_TRUST_RULES: Record<RuleSet, string[]> = {
+  conversation: [
+    CONVERSATION_JOB_TRUST_RULE,
+    REVIEW_ITEM_TRUST_RULE,
+    ATTRIBUTION_TRUST_RULE,
+  ],
+  child_agent: [REVIEW_ITEM_TRUST_RULE],
+  automation_run: [],
+};
 
 /**
  * Block 4, `<safety>`: limits on what Junior does. It covers scope, approval
@@ -284,10 +339,10 @@ function renderRuleSection(
 }
 
 function buildJobSection(
-  mode: SingleSenderMode,
+  mode: RuleSet,
   attributes?: SectionAttributes,
 ): string {
-  if (mode === "automation") {
+  if (mode === "automation_run") {
     return renderRuleSection(
       "automation-run",
       AUTOMATION_RUN_RULES,
@@ -309,39 +364,34 @@ function buildJobSection(
 }
 
 function buildWorkingPrinciplesSection(mode: PromptMode): string {
-  const job =
-    mode === "thread"
-      ? [
-          renderRuleSection("thread-turns", THREAD_TURN_RULES),
-          buildJobSection("conversation", PERSON_SECTION),
-          buildJobSection("child_agent", AGENT_SECTION),
-        ]
-      : [buildJobSection(mode)];
-  return [...job, renderRuleSection("evidence", EVIDENCE_RULES)].join("\n\n");
+  const routing = SENDER_ROUTING[mode];
+  return [
+    ...(routing ? [renderRuleSection(...routing)] : []),
+    ...MODE_RULE_SETS[mode].map((set) =>
+      buildJobSection(set.rules, senderAttributes(set)),
+    ),
+    renderRuleSection("evidence", EVIDENCE_RULES),
+  ].join("\n\n");
 }
 
+// The trust lines that every rule set of the mode has go in one section with
+// no `for`, after the sections with the lines of one sender.
 function buildContextTrustSection(mode: PromptMode): string {
-  if (mode === "thread") {
-    return [
-      renderRuleSection(
-        "context-trust",
-        [CONVERSATION_JOB_TRUST_RULE, ATTRIBUTION_TRUST_RULE],
-        PERSON_SECTION,
-      ),
-      renderRuleSection("context-trust", [
-        REVIEW_ITEM_TRUST_RULE,
-        ...CONTEXT_TRUST_RULES,
-      ]),
-    ].join("\n\n");
-  }
-  return renderRuleSection("context-trust", [
-    ...(mode === "conversation"
-      ? CONVERSATION_TRUST_RULES
-      : mode === "child_agent"
-        ? [REVIEW_ITEM_TRUST_RULE]
-        : []),
-    ...CONTEXT_TRUST_RULES,
-  ]);
+  const sets = MODE_RULE_SETS[mode];
+  const shared = RULE_SET_TRUST_RULES[sets[0]!.rules].filter((line) =>
+    sets.every((set) => RULE_SET_TRUST_RULES[set.rules].includes(line)),
+  );
+  return [
+    ...sets.flatMap((set) => {
+      const own = RULE_SET_TRUST_RULES[set.rules].filter(
+        (line) => !shared.includes(line),
+      );
+      return own.length > 0
+        ? [renderRuleSection("context-trust", own, senderAttributes(set))]
+        : [];
+    }),
+    renderRuleSection("context-trust", [...shared, ...CONTEXT_TRUST_RULES]),
+  ].join("\n\n");
 }
 
 function buildToolsSection(): string {
@@ -354,7 +404,7 @@ function buildToolsSection(): string {
 
 function buildCommunicationSections(
   platform: Platform,
-  mode: SingleSenderMode,
+  mode: RuleSet,
   attributes?: SectionAttributes,
 ): string[] {
   // Narration and delivery rules are for a person who reads the run.
@@ -382,7 +432,7 @@ function buildCommunicationSections(
     ...conversationSections,
     renderRuleSection(
       "failure-reporting",
-      mode === "automation"
+      mode === "automation_run"
         ? AUTOMATION_FAILURE_REPORTING_RULES
         : mode === "child_agent"
           ? CHILD_AGENT_FAILURE_REPORTING_RULES
@@ -397,18 +447,11 @@ function buildCommunicationSection(
   platform: Platform,
   mode: PromptMode,
 ): string {
-  const sections =
-    mode === "thread"
-      ? [
-          ...buildCommunicationSections(
-            platform,
-            "conversation",
-            PERSON_SECTION,
-          ),
-          ...buildCommunicationSections(platform, "child_agent", AGENT_SECTION),
-        ]
-      : buildCommunicationSections(platform, mode);
-  return sections.join("\n\n");
+  return MODE_RULE_SETS[mode]
+    .flatMap((set) =>
+      buildCommunicationSections(platform, set.rules, senderAttributes(set)),
+    )
+    .join("\n\n");
 }
 
 /** Block 6 `<output>` lines for Slack formatting. */
@@ -419,12 +462,12 @@ const SLACK_MARKDOWN_RULES = [
 
 function buildOutputSection(
   platform: Platform,
-  mode: SingleSenderMode,
+  mode: RuleSet,
   attributes: SectionAttributes = {},
 ): string {
   const output = (format: "markdown" | "slack-markdown", lines: string[]) =>
     renderRuleSection("output", lines, { ...attributes, format });
-  if (mode === "automation") {
+  if (mode === "automation_run") {
     return output(platform === "slack" ? "slack-markdown" : "markdown", [
       "- Follow any format in the instruction. Otherwise keep the message as short as the job allows, and do not describe the run.",
       RESULT_REPORTING_RULE,

@@ -1032,7 +1032,10 @@ async function executeAgentRunInPrivacyContext(
     // Turns. Keep its gaps out of the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
-      isUserActor(actor) && conversationKind !== "task",
+      {
+        userActor: isUserActor(actor) && conversationKind !== "task",
+        idleNeedsPendingWork: behavior.idleNeedsPendingWork,
+      },
       { platform: promptPlatform, mode: behavior.promptMode },
     );
     // Batch counts go on the `gen_ai.invoke_agent` span, because production

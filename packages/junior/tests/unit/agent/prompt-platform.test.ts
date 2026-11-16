@@ -20,12 +20,16 @@ describe("promptPlatform", () => {
     expect(promptPlatform(slackRun, "conversation")).toBe("slack");
   });
 
-  // Every Turn of a Thread uses its Location's platform, also an agent's
-  // Turn with no Delivery, so the Thread keeps one system prompt.
-  it("gives every Turn of a Thread its Location's platform", () => {
-    const { delivery: _delivery, ...agentRun } = slackRun;
-    expect(promptPlatform(slackRun, "thread")).toBe("slack");
-    expect(promptPlatform(agentRun, "thread")).toBe("slack");
-    expect(promptPlatform({}, "thread")).toBe("local");
-  });
+  // Every Turn of a Thread or an Automation Conversation uses its Location's
+  // platform, also a Turn with no Delivery, so the Conversation keeps one
+  // system prompt.
+  it.each(["thread", "automation"] as const)(
+    "gives every Turn of a %s its Location's platform",
+    (mode) => {
+      const { delivery: _delivery, ...runWithoutDelivery } = slackRun;
+      expect(promptPlatform(slackRun, mode)).toBe("slack");
+      expect(promptPlatform(runWithoutDelivery, mode)).toBe("slack");
+      expect(promptPlatform({}, mode)).toBe("local");
+    },
+  );
 });

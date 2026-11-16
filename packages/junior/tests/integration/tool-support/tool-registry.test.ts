@@ -106,19 +106,21 @@ function modelFacing(tools: ToolRegistry): Record<string, unknown> {
 
 const plugins = () => defineJuniorPlugins([githubPlugin(), memoryPlugin()]);
 
-// A Thread Turn's run as the agent gets it: a person's Turn runs on the
-// Conversation loop with a Delivery, and an agent's Turn on its Agent
-// invocation has none. Both have the root's Slack Location.
-function threadRun(personInput: boolean) {
+// A Turn's run as the agent gets it: a person's Turn runs on the
+// Conversation loop with a Delivery, and any other Turn has none. All have
+// the same Slack Location.
+function turnRun(
+  conversationId: string,
+  personInput: boolean,
+  otherSource: AgentRun["source"],
+) {
   const spawnAgent = vi.fn(unavailable);
   const messageAgent = vi.fn(unavailable);
-  const run = {
-    conversationId: "slack:T0:C0:1.0:thread",
+  const run: AgentRun = {
+    conversationId,
     turnId: `turn-${personInput}`,
     instruction: { text: "hello" },
-    source: personInput
-      ? createWebSource("slack:T0:C0:1.0:thread")
-      : ({ kind: "agent_invocation" } as const),
+    source: personInput ? createWebSource(conversationId) : otherSource,
     destination: { platform: "slack", teamId: "T0", channelId: "C0" },
     location: {
       id: "location:T0:C0:1.0",
@@ -132,8 +134,71 @@ function threadRun(personInput: boolean) {
       bindSpawnAgent: () => spawnAgent,
       bindMessageAgent: () => messageAgent,
     },
-  } satisfies AgentRun;
+  };
   return { messageAgent, run, spawnAgent };
+}
+
+// The tools and system prompt that one Turn sends.
+async function sentTurn(
+  behavior: ReturnType<typeof turnBehavior>,
+  { run, spawnAgent, messageAgent }: ReturnType<typeof turnRun>,
+) {
+  const tools = createTools(
+    [],
+    { writeGeneratedArtifacts: () => [] },
+    {
+      ...fullContext("slack", behavior.promptMode),
+      ...bindTurnTools(run, behavior),
+    },
+  );
+  return {
+    disabled: Object.keys(tools).filter((name) => tools[name]!.disabledReason),
+    messageAgent,
+    piTools: createPiAgentTools(tools, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    }),
+    sender: behavior.sender!,
+    spawnAgent,
+    systemPrompt: await buildDeploymentSystemPrompt(
+      promptPlatform(run, behavior.promptMode),
+      behavior.promptMode,
+    ),
+    tools,
+  };
+}
+
+type SentTurn = Awaited<ReturnType<typeof sentTurn>>;
+
+// The tool adapter refuses a disabled tool before it runs.
+function callTool(
+  turn: SentTurn,
+  name: string,
+  input: Record<string, unknown> = {},
+) {
+  const direct = turn.piTools.find((tool) => tool.name === name);
+  return direct
+    ? direct.execute(`${name}-call`, input)
+    : turn.piTools
+        .find((tool) => tool.name === "executeTool")!
+        .execute(`${name}-call`, { tool_name: name, arguments: input });
+}
+
+// The same system prompt, tool names, and model-facing definitions.
+function expectSameCachedPrefix(turns: SentTurn[]) {
+  for (const turn of turns.slice(1)) {
+    expect(turn.systemPrompt).toBe(turns[0]!.systemPrompt);
+    expect(Object.keys(turn.tools)).toEqual(Object.keys(turns[0]!.tools));
+    expect(modelFacing(turn.tools)).toEqual(modelFacing(turns[0]!.tools));
+  }
+}
+
+// The Turn context states the sender, and holds no rules.
+function turnInputFact(turn: SentTurn) {
+  return buildTurnContextPrompt({
+    includeSessionContext: false,
+    turnInput: turn.sender,
+  });
 }
 
 describe("static tool registry", () => {
@@ -176,45 +241,18 @@ describe("static tool registry", () => {
   it("sends one system prompt and one tool list on every Turn of a Thread", async () => {
     await createApp({ plugins: plugins(), limits: { maxAgentDepth: 1 } });
     try {
-      const turns = await Promise.all(
-        [true, false].map(async (personInput) => {
-          const behavior = turnBehavior({ kind: "thread", personInput });
-          const { run, spawnAgent, messageAgent } = threadRun(personInput);
-          const tools = createTools(
-            [],
-            { writeGeneratedArtifacts: () => [] },
-            {
-              ...fullContext("slack", behavior.promptMode),
-              ...bindTurnTools(run, behavior),
-            },
-          );
-          return {
-            disabled: Object.keys(tools).filter(
-              (name) => tools[name]!.disabledReason,
-            ),
-            messageAgent,
-            piTools: createPiAgentTools(tools, new SkillSandbox([], []), {
-              spanContext: {},
-              searchToolsCost: { owner: "none" },
+      const [person, agent] = await Promise.all(
+        [true, false].map((personInput) =>
+          sentTurn(
+            turnBehavior({ kind: "thread", personInput }),
+            turnRun("slack:T0:C0:1.0:thread", personInput, {
+              kind: "agent_invocation",
             }),
-            sender: behavior.sender!,
-            spawnAgent,
-            systemPrompt: await buildDeploymentSystemPrompt(
-              promptPlatform(run, behavior.promptMode),
-              behavior.promptMode,
-            ),
-            tools,
-          };
-        }),
-      );
-      const [person, agent] = turns as [
-        (typeof turns)[number],
-        (typeof turns)[number],
-      ];
+          ),
+        ),
+      ).then((turns) => turns as [SentTurn, SentTurn]);
 
-      expect(person.systemPrompt).toBe(agent.systemPrompt);
-      expect(Object.keys(person.tools)).toEqual(Object.keys(agent.tools));
-      expect(modelFacing(person.tools)).toEqual(modelFacing(agent.tools));
+      expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toEqual(
         expect.arrayContaining([
           "spawnAgent",
@@ -238,51 +276,83 @@ describe("static tool registry", () => {
       expect(agent.disabled).not.toContain("spawnAgent");
       expect(agent.disabled).not.toContain("reply");
 
-      // The tool adapter refuses a disabled tool before it runs.
-      const call = (
-        turn: (typeof turns)[number],
-        name: string,
-        input: Record<string, unknown> = {},
-      ) => {
-        const direct = turn.piTools.find((tool) => tool.name === name);
-        return direct
-          ? direct.execute(`${name}-call`, input)
-          : turn.piTools
-              .find((tool) => tool.name === "executeTool")!
-              .execute(`${name}-call`, { tool_name: name, arguments: input });
-      };
       for (const name of ["spawnAgent", "messageAgent", "reply"]) {
-        await expect(call(person, name)).rejects.toThrow(
+        await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );
       }
       await expect(
-        call(agent, "setConversationSubscription", { subscribed: true }),
+        callTool(agent, "setConversationSubscription", { subscribed: true }),
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(call(agent, "addReviewItem")).rejects.toThrow(
+      await expect(callTool(agent, "addReviewItem")).rejects.toThrow(
         "addReviewItem is disabled in this Turn.",
       );
       expect(person.spawnAgent).not.toHaveBeenCalled();
       expect(person.messageAgent).not.toHaveBeenCalled();
 
-      // The Turn context states the sender, and holds no rules.
-      for (const turn of turns) {
-        expect(
-          buildTurnContextPrompt({
-            includeSessionContext: false,
-            turnInput: turn.sender,
-          }),
-        ).toContain(
-          turn.sender === "person"
-            ? "<turn-input>\nA person sent the input of this Turn.\n</turn-input>"
-            : "<turn-input>\nAn agent sent the input of this Turn.\n</turn-input>",
-        );
-      }
+      expect(turnInputFact(person)).toContain(
+        "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
+      );
+      expect(turnInputFact(agent)).toContain(
+        "<turn-input>\nAn agent sent the input of this Turn.\n</turn-input>",
+      );
     } finally {
       await createApp({ plugins: plugins() });
     }
+  });
+
+  // A person replies in an Automation run's thread between the run's Turns.
+  // Every switch must keep the cached tools and system prompt, but a
+  // person's Turn still cannot answer for the run.
+  it("sends one system prompt and one tool list on every Turn of an Automation Conversation", async () => {
+    const conversationId = "slack:T0:C0:2.0";
+    const runSource = { kind: "scheduled_automation" } as const;
+    const [person, automation] = await Promise.all(
+      [true, false].map((personInput) =>
+        sentTurn(
+          turnBehavior({ kind: "automation", personInput }),
+          turnRun(conversationId, personInput, runSource),
+        ),
+      ),
+    ).then((turns) => turns as [SentTurn, SentTurn]);
+    // An Automation with no outcomes posts nothing.
+    const silentRun = turnRun(conversationId, false, runSource);
+    const silent = await sentTurn(
+      turnBehavior({ kind: "automation", personInput: false }),
+      {
+        ...silentRun,
+        run: { ...silentRun.run, dispatch: { id: "dispatch-1", outcomes: [] } },
+      },
+    );
+
+    expectSameCachedPrefix([person, automation, silent]);
+    expect(person.disabled).toEqual(
+      expect.arrayContaining(["reply", "reportBlocked"]),
+    );
+    expect(person.disabled).not.toContain("spawnAgent");
+    expect(person.disabled).not.toContain("addReviewItem");
+    expect(automation.disabled).not.toContain("reply");
+    expect(automation.disabled).not.toContain("reportBlocked");
+    expect(silent.disabled).toContain("reply");
+    expect(silent.disabled).not.toContain("reportBlocked");
+
+    for (const name of ["reply", "reportBlocked"]) {
+      await expect(callTool(person, name)).rejects.toThrow(
+        `${name} is disabled in this Turn.`,
+      );
+    }
+    await expect(callTool(silent, "reply")).rejects.toThrow(
+      "reply is disabled in this Turn.",
+    );
+
+    expect(turnInputFact(person)).toContain(
+      "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
+    );
+    expect(turnInputFact(automation)).toContain(
+      "<turn-input>\nThe automation sent the input of this Turn.\n</turn-input>",
+    );
   });
 
   // A stale run-built name would hide a static tool from the check above.

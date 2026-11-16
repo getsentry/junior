@@ -606,19 +606,15 @@ export function promptPlatform(
   // child Turn is local, also on a path that has a Delivery, and its system
   // prompt stays the same on every path.
   if (promptMode === "child_agent") return "local";
-  // Every Turn of a Thread has one system prompt, so the Thread's Location
-  // picks the platform. A person's Turn in a Slack-located Thread keeps the
-  // Slack rules that it had, and an agent's Turn in it, which has no
-  // Delivery on its Agent invocation, gets the same prompt.
-  if (promptMode === "thread") {
+  // Every Turn of a Thread or an Automation Conversation has one system
+  // prompt, so its Location picks the platform. A person's Turn in a
+  // Slack-located one keeps the Slack rules that it had. The other Turns have
+  // no Delivery: an agent's Turn on its Agent invocation, and an Automation
+  // run, whose `reply` text still goes to Slack. They get the same prompt.
+  if (promptMode === "thread" || promptMode === "automation") {
     return run.location?.provider === "slack" ? "slack" : "local";
   }
-  // Automation runs have no Delivery port. Their `reply` text still goes to
-  // Slack, so they keep Slack formatting rules.
-  return (run.delivery || promptMode === "automation") &&
-    run.location?.provider === "slack"
-    ? "slack"
-    : "local";
+  return run.delivery && run.location?.provider === "slack" ? "slack" : "local";
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */

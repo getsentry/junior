@@ -252,7 +252,7 @@ function ConversationCard(props: ConversationCardProps) {
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <ConversationRowContextMenu
-      dragging={drag?.dragging}
+      move={drag?.move}
       {...prefetch}
       {...drag?.listeners}
       archive={archive}
