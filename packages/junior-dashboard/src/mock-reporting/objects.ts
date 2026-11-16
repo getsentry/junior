@@ -374,7 +374,7 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
     media: "video",
     siteName: "YouTube",
     thumbnailUrl: MOCK_THUMBNAIL_URL,
-    title: "Junior 4.2 launch demo",
+    title: "Checkout 4.2 launch demo",
     url: "https://www.youtube.com/watch?v=MockLaunchDemo",
   },
   "https://blog.example.com/posts/release-4-2": {

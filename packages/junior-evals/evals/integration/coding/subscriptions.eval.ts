@@ -97,19 +97,8 @@ describe("Watches", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("stopWatchingResources", stopped).map((call) => ({
-        input: call.input,
-        output: toolOutput(call),
-      })),
-    ).toEqual([
-      {
-        input: { id: watch!.id },
-        output: expect.objectContaining({
-          stopped_ids: [watch!.id],
-          watching_status: "stopped",
-        }),
-      },
-    ]);
+    // The model can stop the watch directly or from a codemode script, so
+    // check the active watches instead of the call.
+    expect(stopped.watchIds).not.toContain(watch!.id);
   });
 });

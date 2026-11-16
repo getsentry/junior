@@ -95,7 +95,7 @@ export function readDashboardClientManifest(): DashboardClientManifest {
   const manifestPath =
     dir && path.join(dir, "..", DASHBOARD_CLIENT_MANIFEST_FILE);
   if (!manifestPath || !existsSync(manifestPath)) {
-    throw new Error("Junior dashboard client bundle was not found");
+    throw new Error("Dashboard client bundle was not found");
   }
   return dashboardClientManifestSchema.parse(
     JSON.parse(readFileSync(manifestPath, "utf8")),

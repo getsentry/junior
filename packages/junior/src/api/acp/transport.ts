@@ -640,7 +640,7 @@ async function streamPrompt(args: {
           args.output.requestId,
           acp.RequestError.internalError(
             { failureCode: page.terminal.failureCode },
-            "Junior Turn failed",
+            "Turn failed",
           ),
         ),
       );

@@ -222,8 +222,8 @@ function ConversationDrawerContent(
             Conversation failed to load.
           </AlertTitle>
           <AlertDescription className="leading-relaxed">
-            Junior could not get this conversation. Use Open conversation to
-            view it on its own page.
+            Could not load this conversation. Use Open conversation to view it
+            on its own page.
           </AlertDescription>
         </Alert>
       ) : detail ? (

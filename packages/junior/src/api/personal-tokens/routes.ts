@@ -46,7 +46,7 @@ export function createPersonalTokenRoutes(): Hono<JuniorApiEnv> {
           origin: body.previewOrigin,
         }))
       ) {
-        throwApiError(403, "Junior did not make this Preview for you.");
+        throwApiError(403, "This Preview was not made for you.");
       }
       return jsonResponse(
         createdPersonalTokenSchema,

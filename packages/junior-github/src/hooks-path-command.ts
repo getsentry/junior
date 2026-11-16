@@ -13,7 +13,7 @@ import { parseShellCommands } from "@sentry/junior-plugin-api";
 import { GIT_OPTIONS_WITH_VALUE } from "./clone-command.js";
 
 const HOOKS_PATH_REDIRECT_MESSAGE =
-  "Do not override core.hooksPath. Junior's Git hooks set commit attribution. To skip the repository's pre-commit and commit-msg hooks, use `git commit --no-verify`.";
+  "Do not override core.hooksPath. The runtime's Git hooks set commit attribution. To skip the repository's pre-commit and commit-msg hooks, use `git commit --no-verify`.";
 
 /**
  * Return a redirect message when a bash command overrides `core.hooksPath`

@@ -390,7 +390,7 @@ describe("loadAttachment tool", () => {
         tool.execute?.({ attachment_id: stored.id }, {}),
       ).rejects.toThrow(
         new ToolInputError(
-          "standup.mp4 is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+          "standup.mp4 is no longer available: The Slack file was deleted, or this app can no longer access it.",
         ),
       );
     }

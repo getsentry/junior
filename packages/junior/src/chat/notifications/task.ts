@@ -21,6 +21,7 @@ import {
   sendPushNotificationToUser,
   type PushNotificationPayload,
 } from "./web-push";
+import { botConfig } from "@/chat/config";
 
 const PREVIEW_MAX_CHARS = 180;
 
@@ -144,7 +145,9 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   const payload: PushNotificationPayload = {
     body: notificationPreview(reply.text) || "New reply",
     tag: run.conversationId,
-    title: (await readConversationTitle(db, run.conversationId)) ?? "Junior",
+    title:
+      (await readConversationTitle(db, run.conversationId)) ??
+      botConfig.userName,
     url,
   };
   const result = await sendPushNotificationToUser({

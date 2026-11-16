@@ -127,10 +127,10 @@ export function ServiceAccountsSection(props: {
         title="Service accounts"
       />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-        A shared account that Junior uses for a plugin. It can do only what its
-        plugin allows, usually read. Everyone who can talk to{" "}
-        {getDashboardAgentName()} can use it, so give it only access that all of
-        them may have.
+        A shared account that {getDashboardAgentName()} uses for a plugin. It
+        can do only what its plugin allows, usually read. Everyone who can talk
+        to {getDashboardAgentName()} can use it, so give it only access that all
+        of them may have.
       </p>
       {displayedError ? (
         <InlineError className={listFailed ? undefined : "mb-4"}>

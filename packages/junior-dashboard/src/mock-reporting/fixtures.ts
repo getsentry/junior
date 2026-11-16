@@ -330,7 +330,7 @@ function mockSummary(
   return kind === "live"
     ? {
         summary:
-          "Checkout p95 rose after payments-v42. Junior linked the spike to the slow serializer path and is comparing deployment spans before a rollback decision.",
+          "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
       }
     : {
         summary:
@@ -2665,7 +2665,7 @@ export function readMockConversationPendingMessages(
             receivedAt: iso(nowMs, -3_500),
             role: "user" as const,
             source: "web" as const,
-            text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            text: "Keep the reply here. I will paste the dashboard link next.",
             attachments: [
               {
                 id: "qa-chart-png",

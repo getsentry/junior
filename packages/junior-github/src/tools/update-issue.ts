@@ -153,7 +153,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       : undefined;
     if (update.assign_requester && !assignee) {
       throw new PluginToolInputError(
-        "The requester has no linked GitHub account, so Junior cannot assign the issue to them.",
+        "The requester has no linked GitHub account, so the issue cannot be assigned to them.",
       );
     }
     const currentBody =

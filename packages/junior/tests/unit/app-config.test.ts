@@ -728,7 +728,7 @@ describe("createApp plugin config", () => {
         hooks: {},
       }),
     ).toThrow(
-      'Junior plugin registration name "GitHub" must be a lowercase plugin identifier',
+      'Plugin registration name "GitHub" must be a lowercase plugin identifier',
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
@@ -761,7 +761,7 @@ describe("createApp plugin config", () => {
           events: { closed: { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -780,7 +780,7 @@ describe("createApp plugin config", () => {
           events: { "issue.closed": { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -800,7 +800,7 @@ describe("createApp plugin config", () => {
           events: { "issue.closed": { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {

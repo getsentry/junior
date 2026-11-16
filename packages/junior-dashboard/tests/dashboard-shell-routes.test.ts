@@ -34,6 +34,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
@@ -411,6 +412,7 @@ describe("dashboard shell routes", () => {
 
   it("serves the notification service worker for the dashboard scope without auth", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       basePath: "/ops",

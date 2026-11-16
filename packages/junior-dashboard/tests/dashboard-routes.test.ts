@@ -58,6 +58,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
@@ -123,6 +124,7 @@ describe("dashboard routes", () => {
   it("uses the requested dashboard path as the Google sign-in callback", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -154,6 +156,7 @@ describe("dashboard routes", () => {
       },
     ];
     const unauthenticatedApp = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes,
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
@@ -173,6 +176,7 @@ describe("dashboard routes", () => {
     expect(handle).not.toHaveBeenCalled();
 
     const authenticatedApp = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes,
       allowedDomains: ["sentry.io"],
       auth: auth({
@@ -194,6 +198,7 @@ describe("dashboard routes", () => {
   it("rejects disallowed users on authenticated host routes", async () => {
     const handle = vi.fn(() => new Response("authenticated route"));
     const app = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes: [
         {
           handler: handle,
@@ -223,6 +228,7 @@ describe("dashboard routes", () => {
     let callbackURL: string | undefined;
     let errorCallbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value, errorValue) => {
         callbackURL = value;
@@ -269,6 +275,7 @@ describe("dashboard routes", () => {
   it("preserves non-root dashboard base paths through Google sign-in", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -295,6 +302,7 @@ describe("dashboard routes", () => {
 
   it("starts sign-in when the auth prefix overlaps the login route", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       authPath: "/auth",
@@ -313,6 +321,7 @@ describe("dashboard routes", () => {
   it("falls back to the dashboard root for unsafe login return paths", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -332,6 +341,7 @@ describe("dashboard routes", () => {
   it("does not restart Google sign-in for an already authorized session", async () => {
     let startedGoogleSignIn = false;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(
         {
@@ -361,6 +371,7 @@ describe("dashboard routes", () => {
 
   it("can explicitly disable dashboard auth for local development", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
     });
@@ -578,6 +589,7 @@ describe("dashboard routes", () => {
 
   it("keeps mock profile edits process-local", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
@@ -728,6 +740,7 @@ describe("dashboard routes", () => {
     process.env["JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"] = "true";
 
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io", "example.com"],
       auth: auth({
         user: {

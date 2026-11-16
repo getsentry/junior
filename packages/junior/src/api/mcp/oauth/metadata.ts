@@ -33,7 +33,7 @@ export interface McpUrls {
 export function resolveMcpUrls(request: Request, baseURL?: string): McpUrls {
   const origin = resolvePublicOrigin(request, baseURL);
   if (!origin) {
-    throw new Error("Junior MCP requires a configured public base URL");
+    throw new Error("MCP requires a configured public base URL");
   }
   const url = (path: string) => new URL(path, origin).toString();
   return {
