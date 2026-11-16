@@ -47,8 +47,11 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
+  queueSlackApiError,
+  queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -281,6 +284,183 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
     expect(handleNewMention).toHaveBeenCalledOnce();
+  });
+
+  describe("linked Slack files", () => {
+    const linkedFile = (id: string, name: string) => ({
+      id,
+      mimetype: "text/csv",
+      name,
+      size: 12,
+      url_private: `https://files.slack.com/files-pri/T123-${id}/${name}`,
+    });
+    const envelope = slackEnvelope({
+      text: `<@${SLACK_BOT_USER_ID}> read F0FIRST and F0SECOND`,
+    });
+    // Slack sends the message events with only the rich text file elements.
+    const blocks = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              { type: "user", user_id: SLACK_BOT_USER_ID },
+              { type: "text", text: " read " },
+              { type: "file", file_id: "F0FIRST" },
+              { type: "text", text: " and " },
+              { type: "file", file_id: "F0SECOND" },
+            ],
+          },
+        ],
+      },
+    ];
+    const queueRead = (
+      message: { files?: unknown[]; attachments?: unknown[] },
+      readBlocks: unknown[] = blocks,
+    ) =>
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          messages: [
+            {
+              ts: envelope.event.ts,
+              user: "U123",
+              text: envelope.event.text,
+              blocks: readBlocks,
+              upload: false,
+              ...message,
+            },
+          ],
+        }),
+      });
+    const messageLink =
+      "https://sentry.slack.com/archives/C0LINKED/p1712000000000100";
+    // A link to another Slack message reaches Junior as a rich text link.
+    const messageLinkBlocks = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              { type: "user", user_id: SLACK_BOT_USER_ID },
+              { type: "text", text: " read " },
+              { type: "link", url: messageLink },
+            ],
+          },
+        ],
+      },
+    ];
+    // Slack adds the linked message as an unfurl with that message's files.
+    const messageUnfurl = (files: ReturnType<typeof linkedFile>[]) => ({
+      from_url: messageLink,
+      is_msg_unfurl: true,
+      channel_id: "C0LINKED",
+      ts: "1712000000.000100",
+      files,
+    });
+    const readCalls = () =>
+      getCapturedSlackApiCalls("conversations.replies").map(
+        (call) => call.params,
+      );
+
+    /** Run one mention turn and return the names of its attachments. */
+    async function runTurn(eventBlocks: unknown[] = blocks): Promise<string[]> {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          ...envelope,
+          event: { ...envelope.event, blocks: eventBlocks },
+        }),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+      let names: string[] = [];
+      const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
+        names = restored.attachments.map(
+          (attachment: { name?: string }) => attachment.name,
+        );
+        await hooks.ack?.();
+      });
+      await expect(
+        processNextQueuedSlackWork({
+          getSlackAdapter: () => slackAdapter,
+          lookupSlackUser: async () => ({
+            email: "david@example.com",
+            fullName: "David Cramer",
+            userName: "dcramer",
+          }),
+          queue,
+          runtime: {
+            handleNewMention,
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      ).resolves.toEqual({ status: "completed" });
+      expect(handleNewMention).toHaveBeenCalledOnce();
+      return names;
+    }
+
+    it("adds the files that Slack attaches after a person links them", async () => {
+      // Slack attaches the linked files one at a time.
+      queueRead({ files: [linkedFile("F0FIRST", "first.csv")] });
+      queueRead({
+        files: [
+          linkedFile("F0FIRST", "first.csv"),
+          linkedFile("F0SECOND", "second.csv"),
+        ],
+      });
+
+      await expect(runTurn()).resolves.toEqual(["first.csv", "second.csv"]);
+      // Each read asks Slack for only the linked message.
+      expect(readCalls()).toEqual(
+        Array(2).fill(
+          expect.objectContaining({
+            oldest: envelope.event.ts,
+            latest: envelope.event.ts,
+            inclusive: "true",
+          }),
+        ),
+      );
+    });
+
+    it("runs the turn without linked files when Slack cannot read the message", async () => {
+      queueSlackApiError("conversations.replies", {
+        error: "channel_not_found",
+      });
+
+      await expect(runTurn()).resolves.toEqual([]);
+    });
+
+    it("adds the files of a Slack message that a person links", async () => {
+      queueRead({}, messageLinkBlocks);
+      queueRead(
+        {
+          attachments: [messageUnfurl([linkedFile("F0REPORT", "report.csv")])],
+        },
+        messageLinkBlocks,
+      );
+
+      await expect(runTurn(messageLinkBlocks)).resolves.toEqual(["report.csv"]);
+      expect(readCalls()).toHaveLength(2);
+    });
+
+    it("stops reading when the linked Slack message has no files", async () => {
+      queueRead({ attachments: [messageUnfurl([])] }, messageLinkBlocks);
+
+      await expect(runTurn(messageLinkBlocks)).resolves.toEqual([]);
+      expect(readCalls()).toHaveLength(1);
+    });
   });
 
   it("rejects malformed serialized Slack mailbox metadata", async () => {

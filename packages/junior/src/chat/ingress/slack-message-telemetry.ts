@@ -1,3 +1,4 @@
+import { extractAttachmentFiles } from "@/chat/slack/message/attachments";
 import type { SlackEventEnvelope } from "./slack-payload";
 
 // Keep absent and malformed fields distinct without recording arbitrary input.
@@ -6,6 +7,22 @@ function field(value: unknown, pattern: RegExp): string {
   return typeof value === "string" && value.length <= 64 && pattern.test(value)
     ? value
     : "invalid";
+}
+
+// Ingress drops `message_changed`. Record which message changed and how many
+// files it has, so a trace shows when Slack attached files late.
+function editedMessageAttributes(event: unknown) {
+  const { subtype, message } = (event ?? {}) as {
+    message?: { attachments?: unknown; files?: unknown; ts?: unknown };
+    subtype?: unknown;
+  };
+  if (subtype !== "message_changed" || !message) return {};
+  const fileCount = Array.isArray(message.files) ? message.files.length : 0;
+  return {
+    "app.slack.edited_message.ts": field(message.ts, /^\d+\.\d+$/),
+    "app.slack.edited_message.file_count":
+      fileCount + extractAttachmentFiles(message.attachments).length,
+  };
 }
 
 /** Record Slack's identity fields separately from the membership decision. */
@@ -35,5 +52,6 @@ export function slackMessageAttributes(body: SlackEventEnvelope) {
         : body.is_ext_shared_channel === undefined
           ? "missing"
           : "invalid",
+    ...editedMessageAttributes(event),
   };
 }
