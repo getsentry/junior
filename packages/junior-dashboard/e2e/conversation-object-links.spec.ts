@@ -67,7 +67,7 @@ test("links to saved objects show as a titled link, a hover card, and a row", as
   );
   // A bare URL in a sentence is a plain link with the title, and no status.
   const link = page.getByRole("link", {
-    name: "Update the package to 0.288.0 (#2201)",
+    name: "getsentry/junior#2201",
     exact: true,
   });
   await expect(link).toHaveAttribute(

@@ -1573,22 +1573,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "object",
+        kind: "resource_link",
         key: "getsentry/junior#2201",
         label: "getsentry/junior#2201",
-        title: "Update the package to 0.288.0",
-        description:
-          "Bump `@sentry/junior` and its plugins to 0.288.0. The safety checks pass.",
-        displayType: "Pull request",
-        facts: {
-          type: "code_change",
-          additions: 14,
-          author: "junior",
-          changedFiles: 3,
-          deletions: 14,
-          sourceBranch: "chore/self-update-0.288.0",
-          targetBranch: "main",
-        },
         objectType: "code_change",
         plugin: "github",
         status: "draft",
