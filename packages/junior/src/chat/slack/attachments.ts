@@ -136,7 +136,7 @@ export function getSlackFileId(attachment: Attachment): string | undefined {
 }
 
 /**
- * Look up a Slack file that Junior recorded without storing it.
+ * Look up a Slack file that Junior recorded without storing it yet.
  *
  * Uses the installation token that the caller binds: the Slack turn, or the
  * dashboard route for the conversation's Slack team.
