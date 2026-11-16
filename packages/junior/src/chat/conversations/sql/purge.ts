@@ -202,8 +202,8 @@ export async function selectExpiredRoots(
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. Non-public content also loses its
- * summary, outcome status, Conversation embedding, legacy Briefs, and the
- * Review items that it added. The metadata rows themselves survive.
+ * summary, Conversation embedding, legacy Briefs, and the Review items that
+ * it added. The metadata rows themselves survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -378,7 +378,6 @@ export async function purgeConversationTree(
                     channelName: null,
                     actor: null,
                     summary: null,
-                    outcomeStatus: null,
                     metadataThroughSeq: null,
                   }
                 : undefined),

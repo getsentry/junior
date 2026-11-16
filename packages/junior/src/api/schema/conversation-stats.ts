@@ -31,15 +31,8 @@ export const conversationMetricDaySchema = z
     inputTokens: z.number().optional(),
     /** Conversation cost split to `mergedCodeChanges`. */
     mergedCodeChangeCostUsd: z.number().optional(),
-    /** Code changes merged in this bucket. They are also `outcomes`. */
+    /** Code changes merged in this bucket. */
     mergedCodeChanges: z.number().optional(),
-    /** Conversation cost of `outcomes`. */
-    outcomeCostUsd: z.number().optional(),
-    /**
-     * Merged code changes, plus root Conversations without code changes
-     * whose outcome status is `done` or `answered`.
-     */
-    outcomes: z.number().optional(),
     tokens: z.number().optional(),
   })
   .strict();

@@ -65,7 +65,6 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
       costUsd: 0.0042,
       object: {
         summary: `Metadata summary ${TEST.calls.length}.`,
-        outcomeStatus: "done",
       },
     };
   }),
@@ -246,7 +245,6 @@ describe("Conversation metadata task", () => {
       const [row] = await getDb()
         .select({
           metadataThroughSeq: juniorConversations.metadataThroughSeq,
-          outcomeStatus: juniorConversations.outcomeStatus,
           summary: juniorConversations.summary,
         })
         .from(juniorConversations)
@@ -276,7 +274,6 @@ describe("Conversation metadata task", () => {
 
     await expect(readMetadata()).resolves.toEqual({
       metadataThroughSeq: firstTurn.throughSeq,
-      outcomeStatus: "done",
       summary: "Metadata summary 1.",
     });
     expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
@@ -383,7 +380,6 @@ describe("Conversation metadata task", () => {
     await expect(
       writeConversationMetadata(getDb(), {
         conversationId: purgedConversationId,
-        outcomeStatus: "done",
         summary: "Late summary.",
         throughSeq: 1,
       }),

@@ -24,8 +24,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
   bindings, Agent invocations). Not a UI word.
 - **Conversation metadata**: the stored facts about a Conversation: its
-  title, summary, and outcome status. A core task updates the summary and
-  outcome status after each Turn. A public summary outlives the transcript.
+  title and summary. A core task updates the summary after each Turn. A
+  public summary outlives the transcript.
   Do not say "Brief"; it is the retired name.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.

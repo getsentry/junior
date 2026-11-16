@@ -36,7 +36,6 @@ type ConversationProjectionSource = Pick<
   | "location"
   | "parentConversationId"
   | "source"
-  | "outcomeStatus"
   | "stoppedAtMs"
   | "summary"
   | "title"
@@ -295,9 +294,6 @@ export function conversationSummaryFromStoredConversation(args: {
     // The summary holds private content, like the title.
     ...(canViewPrivateContent && conversation.summary
       ? { summary: conversation.summary }
-      : undefined),
-    ...(canViewPrivateContent && conversation.outcomeStatus
-      ? { outcomeStatus: conversation.outcomeStatus }
       : undefined),
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }

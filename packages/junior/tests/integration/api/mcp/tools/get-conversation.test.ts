@@ -31,7 +31,6 @@ describe("getConversation MCP tool", () => {
     ]);
     await storeConversationMetadataFixture(getDb(), {
       conversationId: CONVERSATION_ID,
-      outcomeStatus: "done",
       summary: "Relay was rolled back.",
     });
     const call = await connectMcpTools();
@@ -43,7 +42,6 @@ describe("getConversation MCP tool", () => {
     expect(result.structuredContent).toEqual({
       conversation: expect.objectContaining({
         conversationId: CONVERSATION_ID,
-        outcomeStatus: "done",
         summary: "Relay was rolled back.",
         title: "Viewer incident",
       }),

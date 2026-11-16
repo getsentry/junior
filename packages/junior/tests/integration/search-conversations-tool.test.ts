@@ -51,7 +51,6 @@ describe("searchConversations", () => {
     });
     await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      outcomeStatus: "done",
       summary: "The launch decision uses a blue rollout.",
       throughSeq: 1,
     });
@@ -87,7 +86,6 @@ describe("searchConversations", () => {
       before: null,
       channel_id: null,
       limit: null,
-      outcome: "done",
       query: "launch decision",
     });
 
@@ -107,7 +105,6 @@ describe("searchConversations", () => {
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
-          outcome: "done",
           permalink:
             "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
           status: "idle",

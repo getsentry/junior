@@ -1,6 +1,5 @@
 import * as z from "zod";
 import type { ConversationEmbedder } from "@/chat/conversations/embedding";
-import { conversationOutcomeStatusSchema } from "@/chat/conversations/metadata/schema";
 import {
   searchConversations,
   type ConversationSearchResult,
@@ -69,9 +68,6 @@ const conversationMatchSchema = z
       .string()
       .optional()
       .describe("What was asked and what happened, as of its last Turn"),
-    outcome: conversationOutcomeStatusSchema
-      .optional()
-      .describe("Where its work ended, as of its last Turn"),
     excerpt: z
       .string()
       .optional()
@@ -130,7 +126,6 @@ async function conversationMatch(
     ...(match.summary
       ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
       : undefined),
-    ...(match.outcomeStatus ? { outcome: match.outcomeStatus } : undefined),
     ...(match.excerpt ? { excerpt: match.excerpt } : undefined),
     ...(match.links.length > 0 ? { links: match.links } : undefined),
     ...channelFields,
@@ -179,10 +174,6 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe("Return only these conversation IDs."),
-      outcome: conversationOutcomeStatusSchema
-        .nullable()
-        .optional()
-        .describe("Where its work ended, as of its last Turn."),
       after: z
         .string()
         .datetime()
@@ -239,7 +230,7 @@ export function searchConversationsToolDefinition(
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
-      "Search other conversations for past or current work, with their summary, outcome, and links. Finds conversations in public channels and in the same private channel or DM. A root summary covers the work of its child agents. Summaries remain after public transcripts are purged.",
+      "Search other conversations for past or current work, with their summary and links. Finds conversations in public channels and in the same private channel or DM. A root summary covers the work of its child agents. Summaries remain after public transcripts are purged.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -267,7 +258,6 @@ export function createSearchConversationsTool(context: {
     execute: async (input) => {
       const annotation = input.annotation ?? undefined;
       const conversationIds = input.conversation_ids ?? undefined;
-      const outcomeStatus = input.outcome ?? undefined;
       const query = input.query ?? undefined;
       // The schema accepts only ISO-8601 timestamps.
       const afterMs = input.after ? Date.parse(input.after) : undefined;
@@ -298,7 +288,6 @@ export function createSearchConversationsTool(context: {
           ...(conversationIds ? { conversationIds } : undefined),
           includeArchived: input.include_archived ?? false,
           limit: input.limit ?? DEFAULT_LIMIT,
-          ...(outcomeStatus ? { outcomeStatus } : undefined),
           ...(query ? { query } : undefined),
           rootsOnly: input.roots_only ?? true,
         },

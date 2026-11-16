@@ -3,7 +3,6 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
-import type { ConversationOutcomeStatus } from "./schema";
 
 /**
  * The word-search vector of a Conversation's title and summary. It matches
@@ -13,7 +12,6 @@ export const conversationSearchVector = sql`to_tsvector('english', coalesce(${ju
 
 /** The stored Conversation metadata that a Turn may update. */
 export type ConversationMetadata = {
-  outcomeStatus?: ConversationOutcomeStatus;
   summary?: string;
   throughSeq?: number;
   title?: string;
@@ -26,7 +24,6 @@ export async function readConversationMetadata(
 ): Promise<ConversationMetadata | undefined> {
   const [row] = await db
     .select({
-      outcomeStatus: juniorConversations.outcomeStatus,
       summary: juniorConversations.summary,
       throughSeq: juniorConversations.metadataThroughSeq,
       title: juniorConversations.title,
@@ -36,7 +33,6 @@ export async function readConversationMetadata(
     .limit(1);
   if (!row) return undefined;
   return {
-    ...(row.outcomeStatus ? { outcomeStatus: row.outcomeStatus } : undefined),
     ...(row.summary ? { summary: row.summary } : undefined),
     ...(row.throughSeq !== null ? { throughSeq: row.throughSeq } : undefined),
     ...(row.title ? { title: row.title } : undefined),
@@ -44,15 +40,14 @@ export async function readConversationMetadata(
 }
 
 /**
- * Store the summary and outcome status that cover events through
- * `throughSeq`. Returns false when stored metadata already covers that event,
- * so a retry or an older Turn never replaces newer metadata.
+ * Store the summary that covers events through `throughSeq`. Returns false
+ * when stored metadata already covers that event, so a retry or an older
+ * Turn never replaces newer metadata.
  */
 export async function writeConversationMetadata(
   db: JuniorDatabase,
   input: {
     conversationId: string;
-    outcomeStatus: ConversationOutcomeStatus;
     summary: string;
     throughSeq: number;
   },
@@ -84,7 +79,6 @@ export async function writeConversationMetadata(
       .set({
         detailVersion: nextDetailVersion,
         metadataThroughSeq: input.throughSeq,
-        outcomeStatus: input.outcomeStatus,
         summary: input.summary,
       })
       .where(

@@ -1,6 +1,5 @@
 /** Own the MCP view of one Conversation, shared by the conversation tools. */
 import * as z from "zod";
-import { conversationOutcomeStatusSchema } from "@/chat/conversations/metadata/schema";
 import {
   conversationReportStatusSchema,
   conversationSurfaceSchema,
@@ -24,9 +23,6 @@ export const mcpConversationSchema = z
       .string()
       .optional()
       .describe("What was asked and what happened, as of the last Turn."),
-    outcomeStatus: conversationOutcomeStatusSchema
-      .optional()
-      .describe("Where the work ended, as of the last Turn."),
     status: conversationReportStatusSchema.describe(
       "`active` while work runs, waits to start, or waits on you. `completed` when no work is left. `failed` when the last turn failed. `stopped` after a person or a parent agent stopped it, until a person sends it input or its parent gives it new work.",
     ),
@@ -60,7 +56,6 @@ export function mcpConversation(
     conversationId: summary.conversationId,
     title: summary.displayTitle,
     summary: summary.summary,
-    outcomeStatus: summary.outcomeStatus,
     status: summary.status,
     surface: summary.surface,
     channelName: summary.channelNameRedacted ? undefined : summary.channelName,

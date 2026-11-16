@@ -27,14 +27,13 @@ describe("conversation list API summaries", () => {
           visibility,
         });
       }
-      for (const [conversationId, throughSeq, outcomeStatus, summary] of [
-        [summarizedId, 1, "in_progress", "The rollout plan is a draft."],
-        [summarizedId, 2, "blocked", "The rollout waits on approval."],
-        [privateId, 1, "done", "The private launch is done."],
+      for (const [conversationId, throughSeq, summary] of [
+        [summarizedId, 1, "The rollout plan is a draft."],
+        [summarizedId, 2, "The rollout waits on approval."],
+        [privateId, 1, "The private launch is done."],
       ] as const) {
         await storeConversationMetadataFixture(fixture.sql.db(), {
           conversationId,
-          outcomeStatus,
           summary,
           throughSeq,
         });
@@ -51,14 +50,12 @@ describe("conversation list API summaries", () => {
       );
 
       expect(conversations.get(summarizedId)).toMatchObject({
-        outcomeStatus: "blocked",
         summary: "The rollout waits on approval.",
       });
       expect(conversations.get(unsummarizedId)).toBeDefined();
       expect(conversations.get(unsummarizedId)?.summary).toBeUndefined();
       expect(conversations.get(privateId)).toBeDefined();
       expect(conversations.get(privateId)?.summary).toBeUndefined();
-      expect(conversations.get(privateId)?.outcomeStatus).toBeUndefined();
     } finally {
       await fixture.close();
     }

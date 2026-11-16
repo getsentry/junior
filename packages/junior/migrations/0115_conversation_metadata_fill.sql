@@ -16,7 +16,6 @@ WITH "latest" AS (
 UPDATE "junior_conversations" AS "conversations"
 SET
   "summary" = "latest"."content"->>'summary',
-  "outcome_status" = "latest"."content"->'outcome'->>'status',
   "metadata_through_seq" = "latest"."through_seq",
   "detail_version" = "conversations"."detail_version" + 1
 FROM "latest"

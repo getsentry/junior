@@ -326,15 +326,13 @@ function detail(
 
 function mockSummary(
   kind: "live" | "expired",
-): Pick<ConversationDetailReport, "outcomeStatus" | "summary"> {
+): Pick<ConversationDetailReport, "summary"> {
   return kind === "live"
     ? {
-        outcomeStatus: "in_progress",
         summary:
           "Checkout p95 rose after payments-v42. Junior linked the spike to the slow serializer path and is comparing deployment spans before a rollback decision.",
       }
     : {
-        outcomeStatus: "done",
         summary:
           "The checkout regression was traced to payments-v42. PAYMENTS-42 contained 418 events. The team chose to roll it back and merged the change that restored normal latency.",
       };
@@ -2224,17 +2222,6 @@ function windowBounds(nowMs: number) {
   };
 }
 
-/** Count a completed mock conversation as an answered or done outcome. */
-function addMockOutcome(
-  bucket: ConversationStatsReport["metricDays"][number],
-  summary: ConversationSummaryReport,
-) {
-  if (summary.status !== "completed") return;
-  bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-  bucket.outcomeCostUsd =
-    (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
-}
-
 /** Add two mock merged code changes, with split conversation cost. */
 function addMockMergedCodeChanges(
   buckets: Map<string, ConversationStatsReport["metricDays"][number]>,
@@ -2250,8 +2237,6 @@ function addMockMergedCodeChanges(
     bucket.mergedCodeChanges = (bucket.mergedCodeChanges ?? 0) + 1;
     bucket.mergedCodeChangeCostUsd =
       (bucket.mergedCodeChangeCostUsd ?? 0) + change.costUsd;
-    bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-    bucket.outcomeCostUsd = (bucket.outcomeCostUsd ?? 0) + change.costUsd;
   }
 }
 
@@ -2272,7 +2257,6 @@ function conversationMetricDays(
     if (!day) continue;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(day, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2313,7 +2297,6 @@ function conversationMetricHours(
     if (!hour) continue;
     hour.conversations += 1;
     hour.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(hour, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;

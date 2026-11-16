@@ -12,7 +12,6 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { conversationOutcomeStatusSchema } from "@/chat/conversations/metadata/schema";
 import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
@@ -250,7 +249,6 @@ export const conversationSummaryReportSchema = z
      * Conversation has none until its first Turn completes.
      */
     summary: z.string().optional(),
-    outcomeStatus: conversationOutcomeStatusSchema.optional(),
     activityPreview: conversationActivityPreviewSchema.optional(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),

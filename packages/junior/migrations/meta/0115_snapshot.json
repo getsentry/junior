@@ -3005,12 +3005,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "outcome_status": {
-          "name": "outcome_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "metadata_through_seq": {
           "name": "metadata_through_seq",
           "type": "integer",

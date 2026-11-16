@@ -304,7 +304,7 @@ function ExpiredTranscriptView(props: {
   conversation: ConversationTranscript;
   expiredAt: string;
 }) {
-  const { outcomeStatus, summary, summaryMentions } = props.conversation;
+  const { summary, summaryMentions } = props.conversation;
   return (
     <>
       {summary ? (
@@ -314,7 +314,6 @@ function ExpiredTranscriptView(props: {
           </h3>
           <ConversationSummary
             mentions={summaryMentions}
-            outcomeStatus={outcomeStatus}
             summary={summary}
             variant="full"
           />

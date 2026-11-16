@@ -2,16 +2,12 @@ import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { screenshot } from "./screenshot";
 
-/** Vary outcomes so the running cost lines move. */
+/** Vary merges so the running cost line moves. */
 function unitCostDay(index: number) {
   const merged = index % 5 === 3 ? 1 : 0;
-  const mergedCost = merged * (3 + (index % 7) * 0.5);
-  const answered = 2 + (index % 3);
   return {
-    mergedCodeChangeCostUsd: mergedCost,
+    mergedCodeChangeCostUsd: merged * (3 + (index % 7) * 0.5),
     mergedCodeChanges: merged,
-    outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
-    outcomes: answered + merged,
   };
 }
 
@@ -52,11 +48,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Input cache")).toBeVisible();
+  await expect(page.getByText(/6 merged changes\. The line is/)).toBeVisible();
   await expect(
-    page.getByText(/6 merged changes and 90 answered or done conversations/),
-  ).toBeVisible();
-  await expect(
-    page.getByLabel("7-day rolling cost per outcome per day"),
+    page.getByLabel("7-day rolling cost per merged change per day"),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
@@ -80,7 +74,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await screenshot(page, "system-cache-tokens", { view: "desktop" });
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(
-    page.getByLabel("6-hour rolling cost per outcome per hour"),
+    page.getByLabel("6-hour rolling cost per merged change per hour"),
   ).toBeVisible();
   await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
   await page.getByText("Largest cache writes", { exact: true }).click();

@@ -691,9 +691,7 @@ describe("retention purge job", () => {
     // A public summary survives expiry. A private one is scrubbed with the
     // other metadata, and its embedding goes with it.
     expect(pub.summary).toBe("pub retention summary");
-    expect(pub.outcomeStatus).toBe("done");
     expect(priv.summary).toBe(null);
-    expect(priv.outcomeStatus).toBe(null);
     await expect(
       fixture.sql.db().select().from(juniorConversationEmbeddings),
     ).resolves.toMatchObject([{ conversationId: "pub", throughSeq: 0 }]);

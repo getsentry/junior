@@ -92,12 +92,10 @@ describe("Conversation search", () => {
       let throughSeq = 0;
       const append = async (args: {
         conversationId: string;
-        status?: "blocked" | "done";
         summary: string;
       }) =>
         await storeConversationMetadataFixture(db, {
           conversationId: args.conversationId,
-          ...(args.status ? { outcomeStatus: args.status } : undefined),
           summary: args.summary,
           throughSeq: (throughSeq += 1),
         });
@@ -112,7 +110,6 @@ describe("Conversation search", () => {
       });
       await append({
         conversationId: targetConversationId,
-        status: "done",
         summary: "The deployment decision uses the blue rollout.",
       });
       await append({
@@ -234,7 +231,6 @@ describe("Conversation search", () => {
               url: "https://example.com/acme/widget/12",
             },
           ],
-          outcomeStatus: "done",
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",
           title: "Title for CARCHIVE",
@@ -267,7 +263,6 @@ describe("Conversation search", () => {
             annotation: "ACME/WIDGET",
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
-            outcomeStatus: "done",
           },
         }),
       ).resolves.toEqual([

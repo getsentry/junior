@@ -26,7 +26,6 @@ import {
   type ConversationEmbedder,
 } from "@/chat/conversations/embedding";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
-import type { ConversationOutcomeStatus } from "@/chat/conversations/metadata/schema";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
   hasAnnotationKey,
@@ -69,7 +68,6 @@ export interface ConversationSearchResult {
   kind?: ConversationKind;
   /** Top linked resources, such as pull requests, of the Conversation tree. */
   links: ConversationSearchLink[];
-  outcomeStatus?: ConversationOutcomeStatus;
   /** Provider Destination id, such as a Slack channel id. */
   providerDestinationId?: string;
   rootConversationId: string;
@@ -101,7 +99,6 @@ export interface ConversationSearch {
   /** Include archived Conversations. */
   includeArchived: boolean;
   limit: number;
-  outcomeStatus?: ConversationOutcomeStatus;
   /** Words or meaning to match in the title or summary. */
   query?: string;
   /** Return only root Conversations, not their child agents. */
@@ -193,9 +190,6 @@ export async function searchConversations(
     search.channelId
       ? eq(juniorDestinations.providerDestinationId, search.channelId)
       : undefined,
-    search.outcomeStatus
-      ? eq(conversations.outcomeStatus, search.outcomeStatus)
-      : undefined,
     search.afterMs !== undefined
       ? gte(conversations.lastActivityAt, new Date(search.afterMs))
       : undefined,
@@ -239,7 +233,6 @@ export async function searchConversations(
       excerpt: excerpt.as("excerpt"),
       kind: conversations.kind,
       lastActivityAt: conversations.lastActivityAt,
-      outcomeStatus: conversations.outcomeStatus,
       providerDestinationId: juniorDestinations.providerDestinationId,
       rootConversationId: roots.conversationId,
       status: conversations.executionStatus,
@@ -295,7 +288,6 @@ export async function searchConversations(
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
       ...(row.kind ? { kind: row.kind } : undefined),
       links,
-      ...(row.outcomeStatus ? { outcomeStatus: row.outcomeStatus } : undefined),
       ...(row.providerDestinationId
         ? { providerDestinationId: row.providerDestinationId }
         : undefined),

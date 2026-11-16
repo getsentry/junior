@@ -170,8 +170,6 @@ type MetricRow = {
   inputTokens: number | null;
   mergedCodeChangeCostUsd: number | null;
   mergedCodeChanges: number | null;
-  outcomeCostUsd: number | null;
-  outcomes: number | null;
   tokens: number | null;
 };
 
@@ -186,8 +184,6 @@ function emptyMetricRow(date: string): MetricRow {
     inputTokens: null,
     mergedCodeChangeCostUsd: null,
     mergedCodeChanges: null,
-    outcomeCostUsd: null,
-    outcomes: null,
     tokens: null,
   };
 }
@@ -207,8 +203,6 @@ function applyMetricBuckets(
     const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
     row.mergedCodeChanges = bucket.mergedCodeChanges;
     row.mergedCodeChangeCostUsd = bucket.mergedCodeChangeCostUsd;
-    row.outcomes = bucket.outcomes;
-    row.outcomeCostUsd = bucket.outcomeCostUsd;
     byDate.set(bucket.date, row);
   }
   for (const metric of metrics) {
@@ -252,8 +246,6 @@ function metricPoint(
         inputTokens?: number | null;
         mergedCodeChangeCostUsd?: number | null;
         mergedCodeChanges?: number | null;
-        outcomeCostUsd?: number | null;
-        outcomes?: number | null;
         tokens?: number | null;
       }
     | undefined,
@@ -275,15 +267,13 @@ function metricPoint(
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
       : undefined),
-    ...(row?.outcomes !== null && row?.outcomes !== undefined
+    ...(row?.mergedCodeChanges !== null && row?.mergedCodeChanges !== undefined
       ? {
           mergedCodeChangeCostUsd: addUsd(
             undefined,
             row.mergedCodeChangeCostUsd ?? 0,
           ),
-          mergedCodeChanges: row.mergedCodeChanges ?? 0,
-          outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
-          outcomes: row.outcomes,
+          mergedCodeChanges: row.mergedCodeChanges,
         }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined

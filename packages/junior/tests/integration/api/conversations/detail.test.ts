@@ -418,13 +418,11 @@ describe("conversation detail API", () => {
       eventHistory: { status: "redacted" },
     });
     expect(hidden).not.toHaveProperty("summary");
-    expect(hidden).not.toHaveProperty("outcomeStatus");
     await expect(
       readConversationDetail(conversationId, {
         viewer: await signedInViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
-      outcomeStatus: "done",
       summary: "The private summary is participant-only.",
       annotations: [
         {

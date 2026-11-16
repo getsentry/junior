@@ -17,7 +17,6 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
-import type { ConversationOutcomeStatus } from "@/chat/conversations/metadata/schema";
 import type {
   ConversationKind,
   ConversationSource,
@@ -59,9 +58,8 @@ export const juniorConversations = pgTable(
     // Conversation metadata, refreshed in the background after each Turn.
     // Search, lists, details, unfurls, and the Conversation embedding read it.
     summary: text("summary"),
-    outcomeStatus: text("outcome_status").$type<ConversationOutcomeStatus>(),
-    // The last event that `summary` and `outcome_status` cover. A Turn whose
-    // terminal event is at or before it has nothing new to add.
+    // The last event that `summary` covers. A Turn whose terminal event is
+    // at or before it has nothing new to add.
     metadataThroughSeq: integer("metadata_through_seq"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),

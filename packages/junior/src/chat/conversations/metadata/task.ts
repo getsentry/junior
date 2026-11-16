@@ -101,9 +101,8 @@ async function readTurnCompletedSeq(
 }
 
 /**
- * Update the summary, outcome status, and Conversation embedding after one
- * completed Turn. Runs on the session-completed task queue, never on the
- * reply path. A retry repeats only the steps that did not finish.
+ * Update the summary and Conversation embedding after one completed Turn.
+ * Runs on the session-completed task queue, never on the reply path. A retry repeats only the steps that did not finish.
  */
 export async function updateConversationMetadata(args: {
   conversationId: string;
@@ -195,14 +194,7 @@ export async function updateConversationMetadata(args: {
             cost: { conversationId, turnId },
           }),
         input,
-        previous: previous?.summary
-          ? {
-              summary: previous.summary,
-              ...(previous.outcomeStatus
-                ? { outcomeStatus: previous.outcomeStatus }
-                : undefined),
-            }
-          : undefined,
+        previous: previous?.summary ? { summary: previous.summary } : undefined,
       });
       const stored = await writeConversationMetadata(db, {
         conversationId,
