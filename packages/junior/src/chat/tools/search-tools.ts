@@ -630,7 +630,7 @@ function selectedSourceSummaries(
 
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
   const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. The best match has its full input_schema; other results have a params summary. Search a tool's exact name to get its input_schema.";
+    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. The best match has its full input_schema. Other results have params, a preview for choosing a tool: before you call one, search its exact name to get its input_schema.";
   if (knownSources.length === 0) {
     return intro;
   }
