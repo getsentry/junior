@@ -329,6 +329,7 @@ describe("cache warming savings re-fill", () => {
       cacheRead: number;
       cacheWrite?: number;
       stopReason?: "stop" | "toolUse";
+      text?: string;
       toolName?: string;
       /** The stored result of the tool call. */
       toolFailed?: boolean;
@@ -380,7 +381,9 @@ describe("cache warming savings re-fill", () => {
                       },
                     ],
                   }
-                : undefined),
+                : call.text
+                  ? { content: [{ type: "text" as const, text: call.text }] }
+                  : undefined),
               model: MODEL_ID,
               stopReason: call.stopReason ?? "stop",
               usage: { ...message.usage, cacheWrite: call.cacheWrite ?? 0 },
@@ -429,8 +432,10 @@ describe("cache warming savings re-fill", () => {
     const person = authenticatedApi(PERSON);
     // The first idle period ends with a read of the cache 7 minutes later,
     // the second with a write, and the third within the cache TTL.
+    // Postgres jsonb rejects the `\u0000` escape that a NUL character in a
+    // stored message gets.
     await storeCalls("local:test:savings-refill-idle", [
-      { atMs: DAY_1, cacheRead: 60_000 },
+      { atMs: DAY_1, cacheRead: 60_000, text: "Read \0 from the file." },
       { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
       { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
       { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
