@@ -28,9 +28,11 @@ import {
   ConversationStatusText,
 } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
-import { useArchiveConversation } from "./conversationArchive";
 import { ConversationRowContextMenu } from "./ConversationRowContextMenu";
-import { usePinConversation } from "./usePinConversation";
+import {
+  useConversationRowActions,
+  type ConversationRowActionHandlers,
+} from "./useConversationRowActions";
 import { DisplayText } from "../display-text/DisplayText";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
@@ -174,17 +176,14 @@ function ConversationCardLoading(props: { index: number }) {
   );
 }
 
-function ConversationCardSection(props: {
-  collapsed: boolean;
-  onActionError(conversation: Conversation, title: string): void;
-  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
-  onArchived(conversation: Conversation): void;
-  onPinned(conversation: Conversation): void;
-  onRowAction(): void;
-  onToggle(): void;
-  section: ConversationSection;
-  waitingConversations: ReadonlyMap<string, WaitingConversation>;
-}) {
+function ConversationCardSection(
+  props: ConversationRowActionHandlers & {
+    collapsed: boolean;
+    onToggle(): void;
+    section: ConversationSection;
+    waitingConversations: ReadonlyMap<string, WaitingConversation>;
+  },
+) {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
       <ConversationSectionHeading
@@ -224,16 +223,10 @@ function ConversationCardSection(props: {
   );
 }
 
-type ConversationCardProps = {
+type ConversationCardProps = ConversationRowActionHandlers & {
   conversation: Conversation;
   /** Set on pinned cards, which drag to reorder. */
   drag?: PinnedRowDrag | undefined;
-  onActionError(conversation: Conversation, title: string): void;
-  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
-  onArchived(conversation: Conversation): void;
-  onPinned(conversation: Conversation): void;
-  /** Lets the list show the result of a row action at once. */
-  onRowAction(): void;
   waitingOnViewer: boolean;
 };
 
@@ -245,28 +238,7 @@ function PinnedConversationCard(props: Omit<ConversationCardProps, "drag">) {
 function ConversationCard(props: ConversationCardProps) {
   const conversation = props.conversation;
   const drag = props.drag;
-  const archive = useArchiveConversation(conversation.id, {
-    onError: () =>
-      props.onArchiveError(conversation, archive.variables?.archived ?? true),
-    onSuccess: (archived) => {
-      if (archived) props.onArchived(conversation);
-    },
-  });
-  const pin = usePinConversation(conversation.id, {
-    onError: (pinned) =>
-      props.onActionError(
-        conversation,
-        pinned ? "Could not pin" : "Could not unpin",
-      ),
-    onSuccess: () => props.onPinned(conversation),
-  });
-  const toggleArchive = () => {
-    props.onRowAction();
-    archive.mutate({
-      archived: !conversation.archivedAt,
-      lastSeenAt: conversation.lastSeenAt,
-    });
-  };
+  const { archive, pin } = useConversationRowActions(conversation, props);
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
@@ -282,7 +254,7 @@ function ConversationCard(props: ConversationCardProps) {
     <ConversationRowContextMenu
       {...prefetch}
       {...drag?.listeners}
-      archive={{ pending: archive.isPending, toggle: toggleArchive }}
+      archive={archive}
       className={cn(
         "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft not-data-pressing:has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
         // A held card sinks through the 500ms long press, so the row sheet
@@ -294,13 +266,7 @@ function ConversationCard(props: ConversationCardProps) {
       conversation={conversation}
       onActionError={props.onActionError}
       onKeyDown={drag?.onKeyDown}
-      pin={{
-        pending: pin.isPending,
-        set: (pinned) => {
-          props.onRowAction();
-          pin.mutate(pinned);
-        },
-      }}
+      pin={pin}
       ref={drag?.setNodeRef}
       render={<article />}
       role="listitem"
@@ -377,8 +343,8 @@ function ConversationCard(props: ConversationCardProps) {
           <button
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
             className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={archive.isPending}
-            onClick={toggleArchive}
+            disabled={archive.pending}
+            onClick={archive.toggle}
             type="button"
           >
             {conversation.archivedAt ? (

@@ -33,8 +33,6 @@ export function ConversationRowSheet(
   // Focus the list, not its first row, so a touch open shows no focus ring.
   const listRef = useRef<HTMLDivElement>(null);
   const sheet = useSheet(onClose, listRef);
-  // Close with the exit animation. `useSheet` calls `onClose` after it.
-  const close = () => sheet.rootProps.onOpenChange(false, { cancel() {} });
   return (
     <Drawer {...sheet.rootProps}>
       <DrawerContent
@@ -64,7 +62,7 @@ export function ConversationRowSheet(
             >
               {items.map((item) => (
                 <li key={item.key}>
-                  <SheetRow item={item} onClose={close} />
+                  <SheetRow item={item} onClose={sheet.close} />
                 </li>
               ))}
             </ul>

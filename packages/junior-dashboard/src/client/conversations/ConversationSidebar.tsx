@@ -2,10 +2,12 @@ import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { Archive, ArchiveRestore, Pin, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
-import { usePinConversation } from "./usePinConversation";
 import { ConversationRowContextMenu } from "./ConversationRowContextMenu";
+import {
+  useConversationRowActions,
+  type ConversationRowActionHandlers,
+} from "./useConversationRowActions";
 import {
   usePinnedRowDrag,
   type PinnedRowDrag,
@@ -90,15 +92,6 @@ export function ConversationSidebar(props: {
 }) {
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
-  const handlePinError = useCallback(
-    (conversation: Conversation, wasPinning: boolean) => {
-      showActionError(
-        conversation,
-        wasPinning ? "Could not pin" : "Could not unpin",
-      );
-    },
-    [showActionError],
-  );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
   const [expandedThreadRoots, setExpandedThreadRoots] = useState<
@@ -198,7 +191,6 @@ export function ConversationSidebar(props: {
                       conversation={entry.conversation}
                       onArchiveError={showArchiveError}
                       onArchived={showArchived}
-                      onPinError={handlePinError}
                       onPinned={clearActionError}
                       onActionError={showActionError}
                       onRowAction={releaseHold}
@@ -354,17 +346,10 @@ function threadEntries(
   return entries;
 }
 
-type ConversationSidebarRowProps = {
+type ConversationSidebarRowProps = ConversationRowActionHandlers & {
   conversation: Conversation;
   /** Set on pinned rows, which drag to reorder. */
   drag?: PinnedRowDrag | undefined;
-  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
-  onArchived(conversation: Conversation): void;
-  onPinError(conversation: Conversation, wasPinning: boolean): void;
-  onPinned(conversation: Conversation): void;
-  onActionError(conversation: Conversation, title: string): void;
-  /** Runs before a row action that can move rows, so its result shows. */
-  onRowAction(): void;
   selected: boolean;
   waiting?: WaitingConversation | undefined;
 };
@@ -388,23 +373,7 @@ function PinnedSidebarRow(props: Omit<ConversationSidebarRowProps, "drag">) {
 const ConversationSidebarRow = memo(function ConversationSidebarRow(
   props: ConversationSidebarRowProps,
 ) {
-  const archive = useArchiveConversation(props.conversation.id, {
-    // Read the attempted direction from the mutation call, not the (possibly
-    // already optimistically updated) conversation prop, so a failed archive
-    // never gets mislabeled as a failed restore.
-    onError: () =>
-      props.onArchiveError(
-        props.conversation,
-        archive.variables?.archived ?? true,
-      ),
-    onSuccess: (archived) => {
-      if (archived) props.onArchived(props.conversation);
-    },
-  });
-  const pin = usePinConversation(props.conversation.id, {
-    onError: (pinned) => props.onPinError(props.conversation, pinned),
-    onSuccess: () => props.onPinned(props.conversation),
-  });
+  const { archive, pin } = useConversationRowActions(props.conversation, props);
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
@@ -413,26 +382,14 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const archived = Boolean(props.conversation.archivedAt);
   // The API takes row actions only from participants.
   const participant = props.conversation.isParticipant;
-  const setPinned = (next: boolean) => {
-    props.onRowAction();
-    pin.mutate(next);
-  };
-  const togglePin = () => setPinned(!pinned);
-  const toggleArchive = () => {
-    props.onRowAction();
-    archive.mutate({
-      archived: !archived,
-      lastSeenAt: props.conversation.lastSeenAt,
-    });
-  };
   return (
     <ConversationRowContextMenu
       {...prefetch}
       {...drag?.listeners}
-      archive={{ pending: archive.isPending, toggle: toggleArchive }}
+      archive={archive}
       conversation={props.conversation}
       onActionError={props.onActionError}
-      pin={{ pending: pin.isPending, set: setPinned }}
+      pin={pin}
       selected={props.selected}
       className={cn(
         "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
@@ -498,8 +455,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                     aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
                     aria-pressed={pinned}
                     className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
-                    disabled={pin.isPending}
-                    onClick={togglePin}
+                    disabled={pin.pending}
+                    onClick={() => pin.set(!pinned)}
                     type="button"
                   >
                     <Pin
@@ -521,8 +478,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                 <button
                   aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
                   className={ROW_ACTION_BUTTON_CLASS}
-                  disabled={archive.isPending}
-                  onClick={toggleArchive}
+                  disabled={archive.pending}
+                  onClick={archive.toggle}
                   type="button"
                 >
                   {archived ? (

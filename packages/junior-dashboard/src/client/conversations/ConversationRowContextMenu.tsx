@@ -71,6 +71,7 @@ export function ConversationRowContextMenu(
   };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const title = conversationDisplayTitle(conversation);
   const menu: ConversationRowMenuProps = {
     actions: {
       archive: archive.toggle,
@@ -153,14 +154,14 @@ export function ConversationRowContextMenu(
         <ConversationRowSheet
           {...menu}
           onClose={() => setSheetOpen(false)}
-          title={conversationDisplayTitle(conversation)}
+          title={title}
         />
       ) : null}
       {renaming ? (
         <RenameConversationDialog
           onClose={() => setRenaming(false)}
           onSave={(next) => rename.mutate(next)}
-          title={conversationDisplayTitle(conversation)}
+          title={title}
         />
       ) : null}
       {continueInSlackOpen ? (
