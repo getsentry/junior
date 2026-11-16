@@ -266,6 +266,40 @@ test.describe("on a touch screen", () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
+  test("pins and archives a home card with a swipe", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const name = "Open Closed issue summary";
+    const swipe = async (dx: number) => {
+      const card = page.getByRole("link", { name });
+      await card.dispatchEvent("touchstart", {
+        touches: [{ clientX: 200, clientY: 1, identifier: 1 }],
+      });
+      await card.dispatchEvent("touchmove", {
+        touches: [{ clientX: 200 + dx, clientY: 1, identifier: 1 }],
+      });
+      await card.dispatchEvent("touchend", { touches: [] });
+    };
+    const pinned = page
+      .locator("section:has(#conversation-section-pinned)")
+      .getByRole("link", { name });
+
+    await expect(page.getByRole("link", { name })).toBeVisible();
+    // A swipe right pins.
+    await swipe(160);
+    await expect(pinned).toBeVisible();
+    // A swipe left archives, and the lift does not open the card.
+    await swipe(-160);
+    await expect(page.getByText("Conversation archived")).toBeVisible();
+    await expect(page.getByRole("link", { name })).toHaveCount(0);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
   test("opens the keyboard on home only when the dashboard opens there", async ({
     page,
     dashboard,
