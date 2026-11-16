@@ -66,7 +66,6 @@
     "packages/junior/tests/unit/guardian/reviewer.test.ts": 3,
     "packages/junior/tests/unit/plugins/plugin-model.test.ts": 1,
     "packages/junior/tests/unit/routing/subscribed-decision.test.ts": 2,
-    "packages/junior/tests/unit/runtime/update-plan.test.ts": 4,
     "packages/junior/tests/unit/services/provider-retry.test.ts": 3,
     "packages/junior/tests/unit/services/short-title.test.ts": 5,
     "packages/junior/tests/unit/tools/execution/tool-error-handler.test.ts": 1,
