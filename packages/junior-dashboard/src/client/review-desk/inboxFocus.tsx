@@ -54,10 +54,10 @@ export const DOCK_MEDIA =
 const FOCUS_INTENT_MS = 90;
 /**
  * How long the pointer holds still before the card under it expands in
- * place, pushing the rows below. While the pointer moves, no row changes
- * height, so rows never run away from it.
+ * place, pushing the rows below. A pointer that moves down the list, even
+ * slowly, expands nothing, so no row changes height under it.
  */
-const REST_MS = 140;
+const REST_MS = 300;
 /** As long as the card transitions in `inboxCardClass`, plus a frame. */
 const SETTLE_MS = 260;
 /**
@@ -97,19 +97,33 @@ function outermostCard(card: HTMLElement): HTMLElement {
 }
 
 /**
- * Where a card's box sits in the scroll area's content, without its scale:
- * a transform does not move layout.
+ * Where a card's box shows in the scroll area's viewport, without its
+ * scale: a transform does not move layout.
  */
-function layoutTop(card: HTMLElement, scroller: HTMLElement): number {
+function shownTop(card: HTMLElement, scroller: HTMLElement): number {
   const transform = getComputedStyle(card).transform;
   const scale = transform === "none" ? 1 : new DOMMatrix(transform).d;
   const shift = (card.offsetHeight * (scale - 1)) / 2;
   return (
     card.getBoundingClientRect().top +
     shift -
-    scroller.getBoundingClientRect().top +
-    scroller.scrollTop
+    scroller.getBoundingClientRect().top
   );
+}
+
+/**
+ * True while a card in the scroll area still animates its height, as
+ * `useAnimatedHeight` does. Spinners and transforms move no row.
+ */
+function cardsMoving(scroller: HTMLElement): boolean {
+  return scroller
+    .getAnimations({ subtree: true })
+    .some(
+      (animation) =>
+        animation.playState === "running" &&
+        animation.effect instanceof KeyframeEffect &&
+        animation.effect.getKeyframes().some((frame) => "height" in frame),
+    );
 }
 
 type FocusState = {
@@ -268,15 +282,17 @@ export function useInboxFocus(
       const area = scroller.current;
       cancelAnimationFrame(frame.current);
       if (!card || !area) return;
-      // Hold the card under the pointer still while the card that lost
-      // focus collapses above it.
-      const top = layoutTop(card, area);
+      // Hold the card under the pointer where it shows while the card that
+      // lost focus collapses above it. Each frame scrolls back only what the
+      // card moved on screen, so a move that the browser's own scroll
+      // anchoring already undid scrolls nothing.
+      const top = shownTop(card, area);
       const until = performance.now() + SETTLE_MS;
       const hold = () => {
         if (!card.isConnected) return;
-        const drift = layoutTop(card, area) - top;
+        const drift = shownTop(card, area) - top;
         if (Math.abs(drift) >= 0.5) area.scrollTop += drift;
-        if (performance.now() < until)
+        if (performance.now() < until || cardsMoving(area))
           frame.current = requestAnimationFrame(hold);
       };
       frame.current = requestAnimationFrame(hold);

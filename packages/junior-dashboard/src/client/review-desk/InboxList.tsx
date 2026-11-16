@@ -40,6 +40,7 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "./inboxFocus";
+import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
@@ -250,7 +251,9 @@ export function InboxList(props: {
     data.itemPages,
     view === "prs",
   );
-  const streamRows =
+  // While the pointer is on the list, a feed refresh moves no row under it.
+  const [held, setHeld] = useState<RowPlaces>();
+  const latestStreamRows =
     view === "inbox"
       ? data.conversationRows.filter(
           (row) =>
@@ -260,6 +263,7 @@ export function InboxList(props: {
       : view === "conversations"
         ? data.conversationRows
         : [];
+  const streamRows = heldRows(latestStreamRows, held);
 
   // `?item=` names one item, as old Inbox links and notifications do. Its
   // row expands, the list shows rows until it renders, and it scrolls into
@@ -837,7 +841,14 @@ export function InboxList(props: {
         data-inbox-scroll=""
         onScroll={state.onScroll}
         ref={state.scroller}
-        {...focus.handlers}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") setHeld(rowPlaces(streamRows));
+        }}
+        onPointerLeave={() => {
+          setHeld(undefined);
+          focus.handlers.onPointerLeave();
+        }}
+        onPointerMove={focus.handlers.onPointerMove}
       >
         <div
           className={cn(
