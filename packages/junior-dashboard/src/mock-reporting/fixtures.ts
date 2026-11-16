@@ -141,7 +141,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   };
 }
 
-const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+export const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
@@ -155,7 +155,7 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
-const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
+export const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
 const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";

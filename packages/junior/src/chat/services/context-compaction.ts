@@ -55,7 +55,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -223,9 +224,15 @@ function withoutSections(text: string, tags: string[]): string {
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
+/**
+ * Remove the sections that only the Turn that received them can use, and
+ * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ */
 function withoutRequestContext(text: string): string {
-  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+  return withoutSections(text, [
+    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
+    PLAN_DELTA_TAG,
+  ]);
 }
 
 /**
@@ -876,7 +883,10 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      appendOpenPlan(renderCompactionSummary(summary), source.messages),
+      await appendPlanSnapshot(
+        renderCompactionSummary(summary),
+        args.conversationId,
+      ),
     ),
     provenance: contextProvenance,
   };
