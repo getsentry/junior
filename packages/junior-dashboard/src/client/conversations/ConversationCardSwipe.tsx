@@ -82,9 +82,11 @@ export function useCardSwipe(options: {
     if (gesture.offset <= -SWIPE_COMMIT_PX) options.trailing?.run();
   };
 
+  const enabled = Boolean(options.leading ?? options.trailing);
+
   return {
     cardRef: setCardRef,
-    enabled: Boolean(options.leading ?? options.trailing),
+    enabled,
     leading: options.leading
       ? { action: options.leading, ref: leadingRef }
       : undefined,
@@ -121,9 +123,11 @@ export function useCardSwipe(options: {
       paint(offset, false);
     },
     onTouchStart: (event: TouchEvent) => {
+      // A second finger ends the swipe, so the card goes back.
+      if (gestureRef.current?.axis === "x") paint(0, true);
       const touch = event.touches[0];
       gestureRef.current =
-        event.touches.length === 1 && touch && !options.disabled
+        enabled && event.touches.length === 1 && touch && !options.disabled
           ? { offset: 0, x: touch.clientX, y: touch.clientY }
           : undefined;
     },
