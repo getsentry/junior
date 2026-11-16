@@ -17,9 +17,10 @@ export const SIDEBAR_WIDTH = { default: 20, max: 30, min: 15 } as const;
 
 /**
  * Rem limits for the new UI's desktop pane. It holds only short row names,
- * so it starts slimmer and leaves the room to the list beside it.
+ * so it starts slimmer than the list, but wide enough for "Search" and its
+ * shortcut chip in the top bar.
  */
-export const PANE_WIDTH = { default: 16, max: 30, min: 13 } as const;
+export const PANE_WIDTH = { default: 18, max: 30, min: 13 } as const;
 const PANE_WIDTH_KEY = "junior:pane-width-rem";
 
 /** Rem limits for the details panel beside the transcript. */

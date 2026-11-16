@@ -61,7 +61,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       Number(await resize.getAttribute("aria-valuenow"));
     const startWidth = await paneWidth();
     // The pane starts slim, so the list beside it has the room.
-    expect(startWidth).toBe(256);
+    expect(startWidth).toBe(288);
     await resize.focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");
@@ -71,6 +71,44 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(paneWidth).toBe(startWidth + 32);
     await page.reload();
     await expect.poll(paneWidth).toBe(startWidth + 32);
+  });
+
+  test("the pane's search bar fits its label, and drops the shortcut chip when narrow", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const search = page.getByRole("button", { name: /^Search/ });
+    const label = search.getByText("Search", { exact: true });
+    const chip = search.locator("kbd");
+    const shortcut = /^Search \((Ctrl K|⌘K)\)$/;
+    // The default width fits "Search" and the chip, untruncated.
+    await expect(chip).toBeVisible();
+    await expect
+      .poll(() => label.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+    await expect(search).toHaveAttribute("title", shortcut);
+    await expect(search).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+K Control+K",
+    );
+
+    // A saved width wins over the default. At the pane's minimum width the
+    // chip goes; the tooltip keeps the shortcut.
+    await page.evaluate(() =>
+      localStorage.setItem("junior:pane-width-rem", "13"),
+    );
+    await page.reload();
+    const resize = page.getByRole("separator", { name: "Resize sidebar" });
+    await expect(resize).toHaveAttribute("aria-valuenow", "208");
+    await expect(search).toBeVisible();
+    await expect(chip).toBeHidden();
+    await expect(search).toHaveAttribute("title", shortcut);
+    await expect(search).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+K Control+K",
+    );
   });
 
   test("the pane's spend meter takes 2 rows when tall and one compact row when short", async ({

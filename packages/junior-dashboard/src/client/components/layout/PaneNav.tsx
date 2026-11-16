@@ -458,16 +458,18 @@ function PaneNavHeader(props: { newAction: PaneNewAction }) {
 
 /**
  * Open the command palette from a bar that fills the header row, with its
- * shortcut shown. The page header keeps the compact `PaneSearch` while the
- * pane is hidden.
+ * shortcut shown. A bar too narrow for "Search" and the chip drops the chip;
+ * the tooltip still names the shortcut. The page header keeps the compact
+ * `PaneSearch` while the pane is hidden.
  */
 function PaneSearchBar() {
   const pane = usePaneNav();
   return (
     <button
       aria-keyshortcuts="Meta+K Control+K"
-      className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-control px-2.5 text-left font-sans text-sm text-dashboard-text-muted transition-colors hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+      className="@container flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-control px-2.5 text-left font-sans text-sm text-dashboard-text-muted transition-colors hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
       onClick={pane.onSearch}
+      title={`Search (${COMMAND_PALETTE_SHORTCUT})`}
       type="button"
     >
       <Search
@@ -476,7 +478,7 @@ function PaneSearchBar() {
         strokeWidth={1.9}
       />
       <span className="min-w-0 flex-1 truncate">Search</span>
-      <kbd className="shrink-0 whitespace-nowrap rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
+      <kbd className="shrink-0 whitespace-nowrap rounded @max-[7.5rem]:hidden border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
         {COMMAND_PALETTE_SHORTCUT}
       </kbd>
     </button>
