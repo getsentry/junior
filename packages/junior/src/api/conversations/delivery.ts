@@ -6,6 +6,7 @@ import {
 } from "@/chat/conversations/delivery-pause";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getConversationStore, getDb } from "@/chat/db";
+import { runBestEffort } from "@/chat/logging";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { postSlackDetachNotice } from "@/chat/slack/detach-notice";
 import { throwApiError } from "../http";
@@ -41,16 +42,22 @@ export async function setConversationDeliveryForViewer(
     const detached = await pauseConversationDelivery(conversationId);
     const location = conversation.location;
     if (detached && location?.provider === "slack") {
-      await runWithSlackInstallation({
-        adapter: getProductionSlackAdapter(),
-        installation: { teamId: location.teamId },
-        task: () =>
-          postSlackDetachNotice({
-            actorName: viewer.displayName ?? viewer.email,
-            conversationId,
-            location,
+      // Best-effort: the detach is saved, and a retry would not post again.
+      await runBestEffort(
+        () =>
+          runWithSlackInstallation({
+            adapter: getProductionSlackAdapter(),
+            installation: { teamId: location.teamId },
+            task: () =>
+              postSlackDetachNotice({
+                actorName: viewer.displayName ?? viewer.email,
+                conversationId,
+                location,
+              }),
           }),
-      });
+        "conversation.detach_notice.failed",
+        { "app.conversation.id": conversationId },
+      );
     }
   } else {
     await resumeConversationDelivery(conversationId);

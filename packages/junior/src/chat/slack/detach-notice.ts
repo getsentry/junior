@@ -1,6 +1,5 @@
 import type { SlackLocation } from "@sentry/junior-plugin-api";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { runBestEffort } from "@/chat/logging";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 // ast-grep-ignore: no-raw-slack-turn-post -- detach notice, not Turn output
 import { postSlackMessage } from "@/chat/slack/outbound";
@@ -16,7 +15,6 @@ function detachNoticeText(conversationId: string, actorName: string): string {
 /**
  * Tell a Slack thread once that its Conversation was detached, so people
  * there know replies stopped. Call it only when the detach changed state.
- * Best-effort: the detach already applied and shows on the dashboard.
  * Run it inside the Slack installation of `location.teamId`.
  */
 export async function postSlackDetachNotice(args: {
@@ -26,17 +24,10 @@ export async function postSlackDetachNotice(args: {
 }): Promise<void> {
   const { location } = args;
   if (!location.threadTs) return;
-  const threadTs = location.threadTs;
-  await runBestEffort(
-    async () => {
-      // ast-grep-ignore: no-raw-slack-turn-post -- detach notice, not Turn output
-      await postSlackMessage({
-        channelId: location.channelId,
-        text: detachNoticeText(args.conversationId, args.actorName),
-        threadTs,
-      });
-    },
-    "conversation.detach_notice.failed",
-    { "app.conversation.id": args.conversationId },
-  );
+  // ast-grep-ignore: no-raw-slack-turn-post -- detach notice, not Turn output
+  await postSlackMessage({
+    channelId: location.channelId,
+    text: detachNoticeText(args.conversationId, args.actorName),
+    threadTs: location.threadTs,
+  });
 }
