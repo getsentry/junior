@@ -88,9 +88,12 @@ import {
 } from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
+  ProviderError,
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
+import { findInErrorChain } from "@/chat/sandbox/errors";
+import { isRetryableSandboxFailure } from "@/chat/sandbox/provider";
 import { captureTurnFailure } from "@/chat/services/turn-failure-response";
 import {
   nextProviderRetry,
@@ -1842,6 +1845,19 @@ async function executeAgentRunInPrivacyContext(
       const outcome = await resume.translateSuspension({
         currentUsage: turnUsage,
         error: runError,
+        // A sandbox call outside a tool, such as the AGENTS.md refresh between
+        // steps, can fail for a short time. Run the step again on a later
+        // slice. Before the input commits, the queue redelivers instead. After
+        // a delivered reply, a retry would post a second reply. Model
+        // failures have their own retry policy.
+        retryable:
+          resume.inputCommitted &&
+          !acceptedToolFreeAssistant &&
+          !findInErrorChain(
+            runError,
+            (candidate) => candidate instanceof ProviderError,
+          ) &&
+          isRetryableSandboxFailure(runError),
       });
       if (outcome) {
         return outcome;
