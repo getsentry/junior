@@ -61,8 +61,11 @@ export function ConversationRowContextMenu(
   const [renaming, setRenaming] = useState(false);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  // Set from the long press until the finger lifts.
-  const touchOpenedRef = useRef(false);
+  // A finger on the row, and whether the menu opened under it. Any open
+  // while a finger is down is a long press, whatever event the browser
+  // sends for it: Base UI sends the touch, and a mobile browser can also
+  // send its own contextmenu.
+  const touchRef = useRef<"up" | "down" | "opened">("up");
   const [pressing, setPressing] = useState(false);
   const pressStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const endPress = () => {
@@ -104,9 +107,9 @@ export function ConversationRowContextMenu(
         if (!open) return;
         // The menu shows rows from the detail, so read it as a hover does.
         void prefetchConversationDetail(queryClient, conversation.id);
-        if (!isTouchEvent(details.event)) return;
+        if (touchRef.current === "up") return;
         details.cancel();
-        touchOpenedRef.current = true;
+        touchRef.current = "opened";
         endPress();
         setSheetOpen(true);
       }}
@@ -117,15 +120,15 @@ export function ConversationRowContextMenu(
         data-pressing={pressing ? "" : undefined}
         onTouchCancel={(event) => {
           triggerProps.onTouchCancel?.(event);
-          touchOpenedRef.current = false;
+          touchRef.current = "up";
           endPress();
         }}
         onTouchEnd={(event) => {
           triggerProps.onTouchEnd?.(event);
           // The sheet is open under the finger. Stop the click that the
           // lift would send to the row link or the sheet backdrop.
-          if (touchOpenedRef.current) event.preventDefault();
-          touchOpenedRef.current = false;
+          if (touchRef.current === "opened") event.preventDefault();
+          touchRef.current = "up";
           endPress();
         }}
         onTouchMove={(event) => {
@@ -141,6 +144,7 @@ export function ConversationRowContextMenu(
         }}
         onTouchStart={(event) => {
           triggerProps.onTouchStart?.(event);
+          touchRef.current = "down";
           const touch = event.touches[0];
           if (event.touches.length !== 1 || !touch) return endPress();
           pressStartRef.current = { x: touch.clientX, y: touch.clientY };
@@ -177,11 +181,3 @@ export function ConversationRowContextMenu(
 // A move past this ends the press, as it ends the Base UI long press. Touch
 // coordinates are CSS px.
 const LONG_PRESS_MOVE_PX = 10;
-
-// A long press sends a touch event. Android can also send a contextmenu
-// pointer event from the touch.
-function isTouchEvent(event: Event | undefined) {
-  if (!event) return false;
-  if (event.type.startsWith("touch")) return true;
-  return "pointerType" in event && event.pointerType === "touch";
-}

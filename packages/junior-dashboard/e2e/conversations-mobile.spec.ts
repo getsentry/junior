@@ -248,6 +248,11 @@ test.describe("on a touch screen", () => {
     // A touch opens the rows as a sheet, not as a menu at the finger.
     const sheet = page.getByRole("dialog", { name: "Closed issue summary" });
     await expect(sheet).toBeVisible();
+    // A mobile browser can send its own contextmenu from the same press.
+    // The open sheet hides the card from role queries.
+    await page
+      .locator('a[aria-label="Open Closed issue summary"]')
+      .dispatchEvent("contextmenu");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await screenshot(page, "conversation-home-card-sheet", { view: "mobile" });
 
