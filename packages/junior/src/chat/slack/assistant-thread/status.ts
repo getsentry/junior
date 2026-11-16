@@ -1,6 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
-import { getSlackClient } from "@/chat/slack/client";
 import {
   createAssistantStatusScheduler,
   type AssistantStatusSession,
@@ -54,7 +53,6 @@ export function createSlackAdapterAssistantStatusSession(args: {
 export function createSlackWebApiAssistantStatusSession(args: {
   channelId?: string;
   threadTs?: string | undefined;
-  getSlackClient?: typeof getSlackClient;
   loadingMessages?: string[];
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
@@ -65,7 +63,6 @@ export function createSlackWebApiAssistantStatusSession(args: {
     sendStatus: createSlackWebApiStatusSender({
       channelId: args.channelId,
       threadTs: args.threadTs,
-      getSlackClient: args.getSlackClient,
     }),
     loadingMessages: args.loadingMessages ?? botConfig.loadingMessages,
     now: args.now,
