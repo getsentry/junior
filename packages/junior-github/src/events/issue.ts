@@ -1,8 +1,11 @@
 import {
   eventMatchFieldsSchema,
   mergeEventMatchFields,
+  type Actor,
+  type PluginEventToolContext,
+  type PluginLogger,
+  type Source,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
   type WatchResult,
 } from "@sentry/junior-plugin-api";
 import {
@@ -140,7 +143,12 @@ const GITHUB_ISSUE_WATCH = {
  * returns the issue: the write already happened.
  */
 export async function watchGitHubIssue(
-  ctx: Pick<ToolRegistrationHookContext, "events" | "log">,
+  ctx: {
+    actor?: Actor | undefined;
+    events: PluginEventToolContext;
+    log: PluginLogger;
+    source?: Source | undefined;
+  },
   input: { number: number; repo: string },
 ): Promise<{
   subscribable?: SubscribableResource;
@@ -151,6 +159,13 @@ export async function watchGitHubIssue(
     ...input,
   });
   if (!subscribable) return {};
+  // Watch only when a person started this Turn from its own surface. An
+  // Automation run, Event, plugin dispatch, or Agent invocation acts for no
+  // person, and a run that triages many issues would get a Watch for each.
+  // Core's Automation tools use the same rule.
+  if (!ctx.actor || ctx.actor.platform !== ctx.source?.kind) {
+    return { subscribable };
+  }
   try {
     const subscription = await ctx.events.subscribe({
       ...GITHUB_ISSUE_WATCH,

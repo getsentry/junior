@@ -953,6 +953,13 @@ describe("github plugin", () => {
         userId: "U1",
       },
       conversationId: "slack:C123:1712345.0001",
+      source: {
+        kind: "slack",
+        teamId: "T1",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        visibility: "public",
+      },
       subscribe,
     });
     const plugin = githubPlugin();
@@ -1140,6 +1147,10 @@ describe("github plugin", () => {
 
   it("attributes automation writes to the Automation run", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
     const ctx = {
       ...githubToolsContext({
         actor: { platform: "system", name: "junior" },
@@ -1149,6 +1160,7 @@ describe("github plugin", () => {
           automationId: "evt_1",
           automationRunId: "dispatch_1",
         },
+        subscribe,
       }),
       automationLink: { url: "https://junior.example.com/automations/evt_1" },
     };
@@ -1157,7 +1169,7 @@ describe("github plugin", () => {
       ctx as any,
     );
 
-    await tool?.execute?.(
+    const result = await tool?.execute?.(
       {
         repo: "getsentry/junior",
         title: "Typed issue",
@@ -1167,6 +1179,9 @@ describe("github plugin", () => {
       { toolCallId: "call-create-issue-automation" },
     );
 
+    // No person started the run, so the issue gets no Watch.
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("subscription");
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
@@ -1309,7 +1324,10 @@ Conversation: \`local:test:old-conversation\`
       // Injected fault: the Watch store is down after GitHub created the issue.
       throw new Error("subscription store unavailable");
     });
-    const ctx = githubToolsContext({ subscribe });
+    const ctx = githubToolsContext({
+      actor: { platform: "local", userId: "local-user" },
+      subscribe,
+    });
     const tool = bindPluginTool(
       githubPlugin().hooks?.tools?.()?.["createIssue"],
       ctx as any,

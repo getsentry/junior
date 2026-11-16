@@ -358,8 +358,9 @@ Set `GITHUB_WEBHOOK_SECRET` to enable events. See
 [Watches](/concepts/watches/) for temporary watches versus durable event
 automations.
 
-After `github_createIssue` or `github_updateIssue`, Junior watches comments on
-the issue. It posts in the thread only when a comment needs an answer or a
+After `github_createIssue` or `github_updateIssue` in a turn that a person
+started, Junior watches comments on the issue. Automation runs, events, and
+child agents do not get this Watch. It posts in the thread only when a comment needs an answer or a
 decision from the person who asked for the issue. It does not reply on GitHub.
 A later create or update of the same issue in the same conversation replaces
 this Watch.

@@ -63,6 +63,13 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
       userName: "david",
     },
     conversationId: "slack:C123:123.456",
+    source: {
+      kind: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "123.456",
+      visibility: "public" as const,
+    },
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: {
