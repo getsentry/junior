@@ -50,6 +50,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { lookupSlackUser } from "@/chat/slack/user";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
@@ -110,6 +111,8 @@ export interface PromptTurnContext {
   >;
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
+  /** IANA timezone from the Slack profile of the person who asked. */
+  askerTimezone?: string | undefined;
 }
 
 interface PromptReplayArgs {
@@ -445,6 +448,15 @@ async function loadUserCustomization(
   return user ? await readUserCustomization(user.id) : undefined;
 }
 
+// Turn context is not part of the prompt identity that replay compares, so a
+// lookup that fails on one slice does not duplicate the instruction.
+async function loadAskerTimezone(
+  actor: Actor | undefined,
+): Promise<string | undefined> {
+  if (actor?.platform !== "slack") return undefined;
+  return (await lookupSlackUser(actor.teamId, actor.userId))?.timezone;
+}
+
 // Record the customization with the Turn input, so the dashboard can show it
 // beside plugin context such as recalled memories.
 function userCustomizationTurnContext(text: string): PluginTurnContext {
@@ -552,6 +564,7 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
+    askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
@@ -565,8 +578,10 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
+    loadAskerTimezone(args.currentActor),
   ]);
   return {
+    askerTimezone,
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
@@ -657,6 +672,7 @@ export async function assemblePrompt(args: {
   // A replayed or checkpointed prompt already holds the context of this Turn,
   // so `loadPromptTurnContext` returns nothing for it.
   const {
+    askerTimezone,
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
@@ -682,6 +698,7 @@ export async function assemblePrompt(args: {
   // It returns nothing when no section has news for this Turn.
   const turnContextPrompt = loadsTurnContext
     ? buildTurnContextPrompt({
+        askerTimezone,
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
