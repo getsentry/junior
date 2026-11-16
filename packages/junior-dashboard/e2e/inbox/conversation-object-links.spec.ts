@@ -46,7 +46,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       /Release 4\.2 metrics\.pdf/,
       /Release 4\.2 assets/,
       /#proj-release/,
-      /Junior 4\.2 launch demo/,
+      /Checkout 4\.2 launch demo/,
     ]) {
       await expect(page.getByRole("link", { name }).first()).toBeVisible();
     }
@@ -412,7 +412,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
-  test("a Sentry event link resolves to a titled link, an event card, and a hover card", async ({
+  test("a Sentry event link resolves to a titled link, an event row, and a hover card", async ({
     page,
     dashboard,
   }) => {
@@ -426,11 +426,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "TypeError: cart.total is undefined (7d3e9b1a)",
     });
     await expect(link).toHaveAttribute("href", url);
-    // The reply also links to it on its own line, which shows the card.
+    // The reply also links to it on its own line, which shows a compact row.
     const card = page.getByRole("region", {
       name: "Sentry event: TypeError: cart.total is undefined",
     });
     await expect(card).toHaveCount(1);
+    await expect(card).not.toContainText("junior@4.2.0");
+    await card.scrollIntoViewIfNeeded();
+    await screenshot(page, "conversation-sentry-event-card", {
+      lightTheme: true,
+      target: card,
+      view: "desktop",
+    });
+
+    // The hover card shows the facts of the event.
+    await waitForResolvedLinks(page);
+    await link.hover();
+    await expect(card).toHaveCount(2);
+    const preview = card.nth(1);
     for (const text of [
       "Level",
       "error",
@@ -441,33 +454,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Environment",
       "production",
     ]) {
-      await expect(card).toContainText(text);
+      await expect(preview).toContainText(text);
     }
     // The header shows when the event happened, in the viewer's time.
-    await expect(card).toContainText(
+    await expect(preview).toContainText(
       new Date(1770021650_000).toLocaleString("en-US", {
         dateStyle: "medium",
         timeStyle: "short",
       }),
     );
-    await card.scrollIntoViewIfNeeded();
-    await screenshot(page, "conversation-sentry-event-card", {
-      lightTheme: true,
-      target: card,
-      view: "desktop",
-    });
-
-    await waitForResolvedLinks(page);
-    await link.hover();
-    await expect(card).toHaveCount(2);
-    await expect(card.nth(1)).toContainText("junior@4.2.0");
     await screenshot(page, "conversation-sentry-event-link", {
       lightTheme: true,
       view: "desktop",
     });
   });
 
-  test("a Sentry release link resolves to a titled link, a release card, and a hover card", async ({
+  test("a Sentry release link resolves to a titled link, a release row, and a hover card", async ({
     page,
     dashboard,
   }) => {
@@ -480,30 +482,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "junior@4.2.0 (4.2.0)",
     });
     await expect(link).toHaveAttribute("href", url);
-    // The reply also links to it on its own line, which shows the card.
+    // The reply also links to it on its own line, which shows a compact row.
     const card = page.getByRole("region", {
       name: "Sentry release: junior@4.2.0",
     });
     await expect(card).toHaveCount(1);
-    for (const text of [
-      "Projects",
-      "junior, junior-dashboard",
-      "New issues",
-      "3",
-      "Crash-free sessions",
-      "99.42%",
-      "Deploys",
-      "2, last to production",
-    ]) {
-      await expect(card).toContainText(text);
-    }
-    // The header shows when the release happened, in the viewer's time.
-    await expect(card).toContainText(
-      new Date(1770020700_000).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
-    );
     await card.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-sentry-release-card", {
       lightTheme: true,
@@ -514,7 +497,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     await waitForResolvedLinks(page);
     await link.hover();
     await expect(card).toHaveCount(2);
-    await expect(card.nth(1)).toContainText("99.42%");
+    const preview = card.nth(1);
+    for (const text of [
+      "Projects",
+      "junior, junior-dashboard",
+      "New issues",
+      "3",
+      "Crash-free sessions",
+      "99.42%",
+      "Deploys",
+      "2, last to production",
+    ]) {
+      await expect(preview).toContainText(text);
+    }
+    // The header shows when the release happened, in the viewer's time.
+    await expect(preview).toContainText(
+      new Date(1770020700_000).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
+    );
     await screenshot(page, "conversation-sentry-release-link", {
       lightTheme: true,
       view: "desktop",
@@ -582,7 +584,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
-  test("a Sentry monitor link resolves to a titled link, a monitor card, and a hover card", async ({
+  test("a Sentry monitor link resolves to a titled link, a monitor row, and a hover card", async ({
     page,
     dashboard,
   }) => {
@@ -597,11 +599,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       "https://acme.sentry.io/monitors/4021/",
     );
-    // The reply also links to it on its own line, which shows the card.
+    // The reply also links to it on its own line, which shows a compact row.
     const card = page.getByRole("region", {
       name: "Sentry monitor: Checkout p95 latency",
     });
     await expect(card).toHaveCount(1);
+    await card.scrollIntoViewIfNeeded();
+    await screenshot(page, "conversation-sentry-monitor-card", {
+      lightTheme: true,
+      target: card,
+      view: "desktop",
+    });
+
+    await waitForResolvedLinks(page);
+    await link.hover();
+    await expect(card).toHaveCount(2);
+    const preview = card.nth(1);
     for (const text of [
       "Alerting",
       "Kind",
@@ -615,19 +628,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       // The trend's label sits over its sparkline.
       "p95(span.duration), last 4 h",
     ]) {
-      await expect(card).toContainText(text);
+      await expect(preview).toContainText(text);
     }
-    await card.scrollIntoViewIfNeeded();
-    await screenshot(page, "conversation-sentry-monitor-card", {
-      lightTheme: true,
-      target: card,
-      view: "desktop",
-    });
-
-    await waitForResolvedLinks(page);
-    await link.hover();
-    await expect(card).toHaveCount(2);
-    await expect(card.nth(1)).toContainText("Alerting");
     await screenshot(page, "conversation-sentry-monitor-link", {
       lightTheme: true,
       view: "desktop",
@@ -783,9 +785,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       async (route) => {
         const response = await route.fetch();
         const text = await response.text();
+        // A pull request description also says "picks up", so match the reply.
         const body = text.replace(
-          " picks up ",
-          ` picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
+          "dev%40example.com picks up ",
+          `dev%40example.com picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
         );
         await route.fulfill({ body, response });
       },
@@ -820,7 +823,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
-  test("a Slack message link resolves to a link, a card, and a hover card", async ({
+  test("a Slack message link resolves to a link, a row, and a hover card", async ({
     page,
     dashboard,
   }) => {
@@ -835,15 +838,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       "https://acme.slack.com/archives/CQA456/p1770021700000100",
     );
-    // The reply also links to it on its own line, which shows the card.
+    // The reply also links to it on its own line, which shows the row.
     const card = page.getByRole("region", {
       name: /^Message: Release notes are ready for review/,
     });
     await expect(card).toHaveCount(1);
-    await expect(card).toContainText("Morgan Lee");
+    await expect(card).toContainText("#proj-release");
     await waitForResolvedLinks(page);
+    // The hover card shows the full card, with the author.
     await link.hover();
     await expect(card).toHaveCount(2);
+    await expect(card.last()).toContainText("Morgan Lee");
     await screenshot(page, "conversation-slack-message-link", {
       lightTheme: true,
       view: "desktop",
@@ -874,14 +879,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
 
     // A video on its own line shows only its thumbnail.
-    const thumbnail = page.getByRole("img", { name: "Junior 4.2 launch demo" });
+    const thumbnail = page.getByRole("img", {
+      name: "Checkout 4.2 launch demo",
+    });
     await expect(thumbnail).toHaveAttribute("src", /^\/api\/images\//);
     await expect(
       page.getByRole("link").filter({ has: thumbnail }),
     ).toHaveAttribute("href", "https://www.youtube.com/watch?v=MockLaunchDemo");
 
     const link = linksParagraph(page).getByRole("link", {
-      name: "Junior 4.2 launch demo",
+      name: "Checkout 4.2 launch demo",
     });
     await expect(link).toHaveAttribute(
       "href",
@@ -890,7 +897,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await waitForResolvedLinks(page);
     await link.hover();
     const card = page.getByRole("region", {
-      name: "Web page: Junior 4.2 launch demo",
+      name: "Web page: Checkout 4.2 launch demo",
     });
     await expect(card).toContainText("YouTube · Sentry");
     await expect(card).not.toContainText("junior");

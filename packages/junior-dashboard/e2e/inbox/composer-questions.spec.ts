@@ -455,11 +455,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.getByRole("button", { name: "Try again" }).click();
       await expect(question).toBeFocused();
       await expect(loadError).toHaveCount(0);
+      // A question that docks after the transcript loads does not scroll it,
+      // so the record can sit under the dock. It only must not be marked.
       await expect(
         page.getByRole("region", {
           name: "Asked Approve the payments-v42 rollout",
         }),
-      ).toBeInViewport();
+      ).toBeVisible();
       const marks = await page.evaluate(
         () =>
           (window as Window & { askMarks: { count: number } }).askMarks.count,

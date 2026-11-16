@@ -390,7 +390,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await expect(
       pending.getByText(
-        "Keep the reply in Junior. I will paste the dashboard link next.",
+        "Keep the reply here. I will paste the dashboard link next.",
       ),
     ).toBeVisible();
     const expand = pending.getByRole("button", {
