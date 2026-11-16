@@ -11,6 +11,8 @@ also wake a Conversation or run an Event automation.
   in Slack only when a person must decide or act.
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
+- For now, Junior never approves or merges a PR. A person merges it. Later
+  policies can let Junior merge some PRs.
 - The requester is the first reviewer. Junior does not ask teammates to
   review before the requester has looked.
 - Junior acts as its own App, and credits people in attribution, not by
@@ -56,8 +58,7 @@ also wake a Conversation or run an Event automation.
 - A user's linked GitHub account is used for attribution and for what they
   can see.
 - Images in PRs, issues, and comments are links to public Junior images.
-- Junior can review and request changes, but it cannot approve or merge a
-  PR yet. A person merges it.
+- Junior can review a PR and request changes.
 - Junior cannot fork or administer a repo, and never pushes to or deletes
   the default branch.
 - Junior reaches only repos where its App is installed.
@@ -68,6 +69,6 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
-- A direct GitHub asset upload still uses the requester's GitHub account.
-  This breaks "acts as its own App". Image links cover the need, so the goal
-  is to remove that path.
+- Junior can still upload a file to GitHub with the requester's account.
+  This breaks "acts as its own App". Nothing needs it, because images are
+  public Junior image links, so the goal is to remove that path.

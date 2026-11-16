@@ -51,7 +51,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 
 ## Rules
 
-- Every item has at least one assignee: a User, or Everyone.
+- Every item has at least one assignee: a User, or Everyone. When no
+  assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's Participants.
 - An item from a private Conversation stays private and cannot go to
@@ -62,6 +63,6 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 
 ## Gaps
 
-- An item can end up with no assignees, and then anyone who can see it can
-  answer it. This breaks "every item has at least one assignee" and "only an
-  assignee answers".
+- An item can have no assignees, and then anyone who can see it can answer
+  it. It does not dismiss itself. This breaks "every item has at least one
+  assignee" and "only an assignee answers".
