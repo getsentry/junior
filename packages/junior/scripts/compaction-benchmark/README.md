@@ -49,8 +49,8 @@ in `$D/cache/ledger.json` sums actual spend.
 
 Review `$D/tier2.json` before `probe`. Remove or fix items that are wrong.
 
-`--model` takes `luna` or another Gateway text model id. Decision models
-such as Jev cannot write observations.
+Luna is the distiller. To compare another text model later, pass its
+Gateway model id with `--model`; the arm is named after the id.
 
 ## Arms
 
@@ -59,7 +59,7 @@ such as Jev cannot write observations.
   cost is the recorded `compaction_prepared` spend.
 - `removed`: all removed history. Upper bound.
 - `rerun-N`: today's `SUMMARY_INSTRUCTION` on rebuilt history, for spread.
-- `distill-<model>`: #2050's observer prompt per 16k-token segment,
+- `distill-gpt-6-luna`: #2050's observer prompt per 16k-token segment,
   appended across compactions. Past 20 observations, the oldest merge
   into one meta summary.
 

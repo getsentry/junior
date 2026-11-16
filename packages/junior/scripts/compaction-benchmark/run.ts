@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -76,15 +82,10 @@ function selected(points: CompactionPoint[]): CompactionPoint[] {
 
 function loadArms(): Record<string, ArmContext[]> {
   const arms: Record<string, ArmContext[]> = { ...freeArms(loadPoints()) };
-  for (const name of [
-    "distill-luna",
-    "distill-jev",
-    "rerun-1",
-    "rerun-2",
-    "rerun-3",
-  ]) {
-    if (existsSync(path(`arms/${name}.json`))) {
-      arms[name] = readJson(`arms/${name}.json`);
+  if (!existsSync(path("arms"))) return arms;
+  for (const file of readdirSync(path("arms")).sort()) {
+    if (file.endsWith(".json")) {
+      arms[file.slice(0, -".json".length)] = readJson(`arms/${file}`);
     }
   }
   return arms;
@@ -180,9 +181,11 @@ async function main() {
   const { call, ledger } = modelCaller(budget);
   try {
     if (command === "distill") {
-      const modelId = values.model === "jev" ? MODELS.jev : MODELS.luna;
+      // `luna` is the default distiller; any other value is a Gateway text model id.
+      const modelId = values.model === "luna" ? MODELS.luna : values.model;
       const arm = await distillationChain(loadPoints(), modelId, call);
-      if (!budget.dryRun) writeJson(`arms/distill-${values.model}.json`, arm);
+      const name = modelId.split("/").at(-1);
+      if (!budget.dryRun) writeJson(`arms/distill-${name}.json`, arm);
     } else if (command === "rerun-summary") {
       const points = selected(loadPoints());
       for (let run = 1; run <= Number(values.runs); run += 1) {
@@ -294,8 +297,8 @@ async function main() {
         }
       }
       lines.push("", `rerun spread (T1, summary only): ${pct(spread)}`);
-      for (const name of ["distill-luna", "distill-jev"].filter(
-        (arm) => arms[arm],
+      for (const name of Object.keys(arms).filter((arm) =>
+        arm.startsWith("distill-"),
       )) {
         const cost = costSummary(points, arms[name]!, arms["recorded"]!);
         const verdict = worthIt({

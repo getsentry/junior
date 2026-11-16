@@ -8,7 +8,6 @@ import { estimateTextTokens } from "@/chat/services/token-estimate";
 export const MODELS = {
   opus: "anthropic/claude-opus-5.5",
   luna: "openai/gpt-6-luna",
-  jev: "typesafe-ai/jev",
 } as const;
 
 /** One cached text completion. */
