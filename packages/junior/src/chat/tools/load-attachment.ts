@@ -9,6 +9,7 @@ import {
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
+import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
   SandboxCommandInput,
@@ -140,12 +141,7 @@ export function createLoadAttachmentTool(args: {
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored attachment ID, as shown in attachment context or Slack read results.",
-        ),
+      attachment_id: attachmentIdParam,
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {

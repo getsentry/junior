@@ -10,6 +10,7 @@ import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
@@ -451,6 +452,19 @@ const RUN_BUILT_TOOL_BUILDERS = {
           db: getSqlExecutor(),
         })
       : undefined,
+  transcribeAudio: (run) => {
+    const storage = run.context.attachmentStorage;
+    const createDownloadUrl = storage?.createDownloadUrl?.bind(storage);
+    return storage && createDownloadUrl
+      ? createTranscribeAudioTool({
+          conversationId: run.context.conversationId,
+          db: getSqlExecutor(),
+          modelCost: run.modelCost,
+          modelId: botConfig.transcriptionModelId,
+          storage: { createDownloadUrl, provider: storage.provider },
+        })
+      : undefined;
+  },
   searchMcpTools: (run) =>
     run.context.mcpToolManager
       ? createSearchMcpToolsTool(run.context.mcpToolManager)
