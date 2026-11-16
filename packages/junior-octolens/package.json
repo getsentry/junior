@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-octolens",
-  "version": "0.303.0",
+  "version": "0.304.0",
   "private": false,
   "publishConfig": {
     "access": "public"
