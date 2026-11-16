@@ -24,10 +24,31 @@ Known gap: after the first compaction, rebuilt counts are one entry
 below the recorded `inputMessageCount`. The export reports only a count
 for the replacement history, and the rebuild adds back only the summary.
 
+## Quick start
+
+Run from `packages/junior` with `AI_GATEWAY_API_KEY` set. `D` is the
+unpacked export directory.
+
+```sh
+pnpm exec tsx scripts/compaction-benchmark/run.ts all --data $D
+pnpm exec tsx scripts/compaction-benchmark/run.ts all --continue --data $D
+```
+
+The first command runs the free stages (merge, rebuild, tier1, score),
+prints a dry-run estimate for every model stage, mines Tier 2, and stops.
+Review `$D/tier2.json` and fix or delete wrong items. The second command
+runs the Luna distillation, three summary reruns at points 0, 9, and 19,
+the probes, and the report.
+
+`--max-usd` caps the total spend in `$D/cache` across both commands. It
+defaults to 30. `all --dry-run --data $D` prints only the estimate. A run
+stops before a call that would pass the cap and exits with code 3. Results
+are cached by content hash, so the same command resumes. An existing
+`tier2.json` is never overwritten; a new mine goes to `tier2.mined.json`.
+
 ## Stages
 
-Run from `packages/junior`. Set `R="pnpm exec tsx scripts/compaction-benchmark/run.ts"`
-and `D=<data directory>`.
+Each stage also runs alone. Set `R="pnpm exec tsx scripts/compaction-benchmark/run.ts"`.
 
 | Stage | Command | Model |
 | --- | --- | --- |
@@ -36,21 +57,14 @@ and `D=<data directory>`.
 | Mine Tier 1 facts | `$R tier1 --data $D` | none |
 | Tier 1 presence and modeled cost | `$R score --data $D` | none |
 | Mine Tier 2 probes | `$R tier2 --data $D --max-usd 15` | Opus |
-| Distillation arm | `$R distill --model luna --data $D --max-usd 5` | Luna |
+| Distillation arm | `$R distill --data $D --max-usd 5` | Luna |
 | Summary reruns | `$R rerun-summary --runs 3 --points 0,9,19 --data $D --max-usd 10` | Opus |
 | Probe answers | `$R probe --data $D --max-usd 10` | Luna |
 | Report | `$R report --data $D` | none |
 
-Model stages need `AI_GATEWAY_API_KEY`. Run each one with `--dry-run`
-first: it prints the uncached call count and estimated cost. A stage stops
-before a call that would pass `--max-usd` and exits with code 3. Results
-are cached by content hash in `$D/cache`, so a rerun resumes. The ledger
-in `$D/cache/ledger.json` sums actual spend.
-
-Review `$D/tier2.json` before `probe`. Remove or fix items that are wrong.
-
-Luna is the distiller. To compare another text model later, pass its
-Gateway model id with `--model`; the arm is named after the id.
+Model stages run alone need `--max-usd` and take `--dry-run`. Luna is the
+distiller. To compare another text model later, pass its Gateway model id
+with `--model`; the arm is named after the id.
 
 ## Arms
 
