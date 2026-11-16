@@ -33,6 +33,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
 import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -463,4 +464,18 @@ export async function insertCredential(args: {
     scope: args.scope,
   });
   onTestFinished(() => store.delete(userId, args.provider));
+}
+
+/**
+ * Create an install-wide Workspace recipe. Workspaces are install-wide, so
+ * the recipe is deleted when the test finishes.
+ */
+export async function insertWorkspace(args: {
+  name: string;
+  repos: Array<{ provider: "github"; repo: string }>;
+}): Promise<void> {
+  const workspace = await createWorkspace(args);
+  onTestFinished(async () => {
+    await deleteWorkspace(workspace.id);
+  });
 }
