@@ -41,7 +41,10 @@ import {
 } from "../fixtures/conversation-work";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { usersInfoOk } from "../fixtures/slack/factories/api";
-import { queueSlackApiResponse } from "../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../msw/handlers/slack-api";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -310,6 +313,12 @@ describe("Event author trust", () => {
       // been reused. `author` is U123's linked handle.
       expect(text).not.toContain("<@U123>");
     }
+    // Two Events name U123's account, and Slack is asked about it once.
+    expect(
+      getCapturedSlackApiCalls("users.info").filter(
+        (call) => call.params["user"] === "U123",
+      ),
+    ).toHaveLength(1);
     // A Trusted author with no own text, such as a bare approval, still
     // writes the Message, so it is not a system Event.
     expect(approval!.input.authorIdentityId).toBe(await identityOf("U123"));

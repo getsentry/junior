@@ -27,12 +27,13 @@ import {
   type LinkedSlackUser,
 } from "@/chat/identities/sql";
 import { logException, logWarn } from "@/chat/logging";
-import { parseSlackUserId } from "@/chat/slack/ids";
+import { parseSlackUserId, type SlackUserId } from "@/chat/slack/ids";
 import {
   lookupActiveSlackWorkspaceMember,
   lookupSlackUserProfile,
   type SlackUserProfile,
 } from "@/chat/slack/users";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
 
 /** The `createApp` settings that decide who is trusted. */
@@ -114,7 +115,7 @@ function isCoreIdentityProvider(provider: string): boolean {
   return provider === "junior" || isNativeIdentityProvider(provider);
 }
 
-function isSlackProfileDomainAllowed(profile: SlackUserProfile): boolean {
+function isSlackProfileDomainAllowed(profile: { email?: string }): boolean {
   // Slack verifies the profile email, so only its domain is read. A person
   // with no email has no domain and is not allowed. Listed bots have no
   // email and are trusted before this check.
@@ -133,6 +134,40 @@ function isSlackProfileDomainAllowed(profile: SlackUserProfile): boolean {
   return allowed;
 }
 
+// Like workspace membership: avoid a lookup per message, and let a changed
+// profile email or a deactivation apply within five minutes.
+const SLACK_TRUSTED_TTL_MS = 5 * 60 * 1000;
+const SLACK_UNTRUSTED_TTL_MS = 30 * 1000;
+
+/** The fields of an active Slack member that the trust decision reads. */
+type ActiveMember = Pick<SlackUserProfile, "email" | "name" | "real_name">;
+
+// Watch ingest, Event automation ingest, and repeated deliveries resolve the
+// same author, so cache the lookup like Slack ingress does. Errors are not
+// cached.
+async function readActiveMember(
+  userId: SlackUserId,
+  teamId: string,
+): Promise<ActiveMember | null> {
+  return await createCache(getStateAdapter(), "core").getOrLoad(
+    `slack:active-member:${teamId}:${userId}`,
+    async () => {
+      const member = await lookupActiveSlackWorkspaceMember(userId, teamId);
+      const value: ActiveMember | null = member
+        ? {
+            email: member.email,
+            name: member.name,
+            real_name: member.real_name,
+          }
+        : null;
+      return {
+        value,
+        ttlMs: value ? SLACK_TRUSTED_TTL_MS : SLACK_UNTRUSTED_TTL_MS,
+      };
+    },
+  );
+}
+
 /**
  * Accept one stored Slack link only when it is a current human member of the
  * workspace whose Slack email is on the allowed domains. With `email`, the
@@ -148,7 +183,7 @@ async function linkedMemberDecision(args: {
   if (!args.linked || !userId) {
     return { trusted: false, reason: "no_single_link" };
   }
-  const member = await lookupActiveSlackWorkspaceMember(userId, args.teamId);
+  const member = await readActiveMember(userId, args.teamId);
   if (!member) return { trusted: false, reason: "inactive_member" };
   if (args.email && member.email?.trim().toLowerCase() !== args.email) {
     return { trusted: false, reason: "email_changed" };
@@ -200,11 +235,6 @@ async function accountDecision(args: {
     teamId,
   });
 }
-
-// Like workspace membership: avoid a lookup per message, and let a changed
-// profile email apply within five minutes.
-const SLACK_TRUSTED_TTL_MS = 5 * 60 * 1000;
-const SLACK_UNTRUSTED_TTL_MS = 30 * 1000;
 
 /**
  * Return whether a Slack author may start a Turn. The caller must have
