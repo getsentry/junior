@@ -81,10 +81,12 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - Put the tools that a Code Mode script can call in `<script-tools>`, not in
   the `codemode` description.
 - At Turn start, one system message sets each capability section that
-  differs from the section state of history, or removes an empty one. Pi
-  sends it before the next assistant message, or collapses it into the
-  system prompt for a model without mid-conversation system messages.
-  Context compaction folds the section state into one system message.
+  differs from the section state of history, or removes an empty one.
+  System messages before the first assistant message fold into the system
+  prompt, because they apply from the start. Pi sends a later one before
+  the next assistant message, or collapses it into the system prompt for a
+  model without mid-conversation system messages. Context compaction folds
+  the section state into one system message.
 
 ### Changes
 

@@ -17,6 +17,7 @@
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   getCurrentSystemMessage,
+  getSystemMessageText,
   type Api,
   type AssistantMessageEventStream,
   type Context,
@@ -104,6 +105,33 @@ export function systemSectionsUpdate(
     : undefined;
 }
 
+// Anthropic wants instructions that apply from the start in the top-level
+// system prompt. Pi sends a later system message only before the next
+// assistant message, so the sections of a first Turn would land after its
+// prompt. Fold the system messages before the first assistant message into
+// the system prompt instead. They do not change after that Turn, so the
+// cached prefix stays the same.
+function foldLeadingSystemMessages(
+  systemPrompt: string,
+  history: PiMessage[],
+): Pick<Context, "systemPrompt" | "messages"> {
+  const firstAssistant = history.findIndex(
+    (message) => message.role === "assistant",
+  );
+  const end = firstAssistant === -1 ? history.length : firstAssistant;
+  const leading = getCurrentSystemMessage(history.slice(0, end));
+  return {
+    systemPrompt: leading
+      ? [systemPrompt, getSystemMessageText(leading)]
+          .filter((text) => text.length > 0)
+          .join("\n\n")
+      : systemPrompt,
+    messages: history.filter(
+      (message, index) => index >= end || !isSystemMessage(message),
+    ),
+  };
+}
+
 /**
  * Give the stream path Junior's own system prompt and tools, with Junior
  * history as the messages. The traced stream and cache warming then read the
@@ -117,8 +145,10 @@ export function withAgentRequest(
     base(
       model,
       {
-        systemPrompt: request.systemPrompt,
-        messages: readAgentHistory(context.messages),
+        ...foldLeadingSystemMessages(
+          request.systemPrompt,
+          readAgentHistory(context.messages),
+        ),
         tools: request.tools,
       },
       options,

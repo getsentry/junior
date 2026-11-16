@@ -652,7 +652,8 @@ export async function assemblePrompt(args: {
     workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
-  // Pi sends a later system message right before the next assistant
+  // Before the first assistant message, the request folds it into the
+  // system prompt. Later, Pi sends it right before the next assistant
   // message, after this prompt. A resumed slice already holds it.
   const sectionsMessage = loadsTurnContext
     ? systemSectionsUpdate(

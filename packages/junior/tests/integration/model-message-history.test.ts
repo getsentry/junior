@@ -84,7 +84,9 @@ describe("model message history", () => {
         stored.find((message) => message.role === "assistant")?.content,
       ),
     ).toBe(JSON.stringify(firstAssistant?.content));
-    expect(stored.slice(0, first.messages.length)).toEqual(first.messages);
+    // The request folds the first sections message into the system prompt.
+    expect(stored[0]?.role).toBe("system");
+    expect(stored.slice(1, first.messages.length + 1)).toEqual(first.messages);
     expect(requests).toHaveLength(3);
     expect(requests.map((request) => request.sessionAffinity)).toEqual(
       Array(3).fill(agent.conversationId()),
@@ -131,7 +133,9 @@ describe("model message history", () => {
     const third = agent.snapshot();
 
     expect((await agent.agentHistory())[firstHistory.length]).toEqual(saved);
-    expect(second.messages[firstHistory.length]).toEqual(saved);
+    // The request folds the first sections message into the system prompt,
+    // so the saved one is one message earlier there.
+    expect(second.messages[firstHistory.length - 1]).toEqual(saved);
     expect(
       JSON.stringify(third.messages.slice(0, second.messages.length)),
     ).toBe(JSON.stringify(second.messages));
@@ -161,6 +165,12 @@ describe("model message history", () => {
       expect.arrayContaining(["available-skills", "script-tools"]),
     );
     expect(initial).not.toHaveProperty("workspaces");
+    // The first sections apply from the start, so they go in the system
+    // prompt, not after the first instruction.
+    expect(first.systemPrompt).toContain("<script-tools>");
+    expect(first.messages.map((message) => message.role)).not.toContain(
+      "system",
+    );
     // A deploy adds a skill, and someone creates a Workspace.
     const removeSkills = await installTestSkills([
       {
@@ -180,9 +190,15 @@ describe("model message history", () => {
 
       // One system message after the cached prefix sets only the changed
       // sections. The next Turn sets none.
+      expect(second.systemPrompt).toBe(first.systemPrompt);
       expect(second.messages.slice(0, first.messages.length)).toEqual(
         first.messages,
       );
+      expect(
+        second.messages
+          .slice(first.messages.length)
+          .map((message) => message.role),
+      ).toContain("system");
       const updates = await sectionUpdates();
       expect(updates).toHaveLength(2);
       expect(Object.keys(updates[1]!).sort()).toEqual([

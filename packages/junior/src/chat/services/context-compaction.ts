@@ -881,8 +881,9 @@ async function compactActiveAboveThreshold(
     provenance: contextProvenance,
   };
   // The current system state directly follows the summary of the history
-  // that held it. A system message must follow a user message; Pi sends it
-  // before the next assistant message.
+  // that held it. A system message must follow a user message. With no
+  // assistant message before it, the request folds it into the system
+  // prompt.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
