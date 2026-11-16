@@ -4,7 +4,9 @@ import {
   pauseConversationDelivery,
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
+import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getConversationStore, getDb } from "@/chat/db";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { postSlackDetachNotice } from "@/chat/slack/detach-notice";
 import { throwApiError } from "../http";
 import type {
@@ -37,11 +39,17 @@ export async function setConversationDeliveryForViewer(
   }
   if (body.paused) {
     const detached = await pauseConversationDelivery(conversationId);
-    if (detached && conversation.location?.provider === "slack") {
-      await postSlackDetachNotice({
-        actorName: viewer.displayName ?? viewer.email,
-        conversationId,
-        location: conversation.location,
+    const location = conversation.location;
+    if (detached && location?.provider === "slack") {
+      await runWithSlackInstallation({
+        adapter: getProductionSlackAdapter(),
+        installation: { teamId: location.teamId },
+        task: () =>
+          postSlackDetachNotice({
+            actorName: viewer.displayName ?? viewer.email,
+            conversationId,
+            location,
+          }),
       });
     }
   } else {
