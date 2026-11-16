@@ -19,8 +19,10 @@ const OTHER_CONVERSATION_ID = "slack:C-transcribe-audio:other";
 const TRANSCRIPTION_MODEL_URL =
   "https://ai-gateway.vercel.sh/v4/ai/transcription-model";
 // A bearer credential in production. It must stay inside the tool call.
+// The key holds "timeout", so a failure message with the URL looks like a
+// timeout unless the URL is removed first.
 const SIGNED_URL =
-  "https://blob.example.test/conversations/standup.m4a?signature=secret-signature";
+  "https://blob.example.test/conversations/standup-timeout.m4a?signature=secret-signature";
 const MIB = 1024 * 1024;
 
 type TranscriptionRequest = {
@@ -307,7 +309,7 @@ describe("transcribeAudio tool", () => {
       createTool(files.storage).execute?.({ attachment_id: stored.id }, {}),
     ).catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ kind: "invalid_request", status: 400 });
     const chain: string[] = [];
     for (let cause = error; cause instanceof Error; cause = cause.cause) {
       chain.push(cause.message, JSON.stringify(cause));

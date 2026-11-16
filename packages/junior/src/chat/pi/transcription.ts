@@ -108,10 +108,22 @@ function withoutSourceUrl(
   sourceUrl: string,
   modelId: string,
 ): ProviderError {
-  const classified = createProviderError(error, { modelId });
-  const message = (
-    error instanceof Error ? error.message : String(error)
-  ).replaceAll(sourceUrl, "<signed URL>");
+  const failure = error instanceof Error ? error : undefined;
+  const message = (failure?.message ?? String(error)).replaceAll(
+    sourceUrl,
+    "<signed URL>",
+  );
+  // Classify the redacted message. The URL path holds the storage key, and a
+  // key can match a provider pattern such as "timeout" or "forbidden".
+  // The cause keeps transport codes such as ECONNRESET.
+  const classified = createProviderError(
+    Object.assign(new Error(message, { cause: failure?.cause }), {
+      code: failure && "code" in failure ? failure.code : undefined,
+      statusCode:
+        failure && "statusCode" in failure ? failure.statusCode : undefined,
+    }),
+    { modelId },
+  );
   return new ProviderError({
     cause: new Error(message),
     kind: classified.kind,
