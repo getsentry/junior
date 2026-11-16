@@ -123,7 +123,8 @@ export function buildAutomatedTurnLimitResponse(args: {
   maxTurns: number;
 }): string {
   return (
-    `I stopped automatic updates after ${args.maxTurns} replies without a new message from you. ` +
+    `I stopped automatic updates after ${args.maxTurns} automated turns without a new message from you. ` +
+    `Turns with no reply also count. ` +
     `Send a message or @mention me in this thread to continue.`
   );
 }
