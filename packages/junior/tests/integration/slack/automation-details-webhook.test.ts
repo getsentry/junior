@@ -250,6 +250,33 @@ describe("Slack Work Object details", () => {
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
+    // Cards already posted with the earlier reference form keep their details.
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "repo#2",
+      label: "repo#2",
+      title: "Legacy card",
+      objectType: "task",
+      url: "https://example.com/issues/2",
+    });
+    const legacyId = Buffer.from(
+      JSON.stringify([conversationId, "objects", "repo#2"]),
+    ).toString("base64url");
+    expect(
+      await requestDetails(legacyId, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id: legacyId, type: "annotation" },
+        entity_payload: { attributes: { title: { text: "Legacy card" } } },
+      },
+    });
+    expect(
+      await requestDetails(legacyId, "U999", "T123", "annotation"),
+    ).toMatchObject({ error: { status: "not_found" } });
     for (const invalidId of [
       JSON.stringify([conversationId, "objects", key]),
       Buffer.from('{"not":"a reference tuple"}').toString("base64url"),

@@ -102,6 +102,10 @@ export async function presentSlackAnnotationDetails(
   }
   await client.entity.presentDetails({
     trigger_id: parsed.data.trigger_id,
-    metadata: slackEntitySchema.parse(entity),
+    // Echo the posted reference so a legacy card keeps its identity.
+    metadata: slackEntitySchema.parse({
+      ...entity,
+      external_ref: parsed.data.external_ref,
+    }),
   });
 }
