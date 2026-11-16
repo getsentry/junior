@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
@@ -264,6 +264,41 @@ test.describe("on a touch screen", () => {
         .getByRole("link", { name: "Open Closed issue summary" }),
     ).toBeVisible();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("moves a pinned home card from its row sheet", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const pinned = page.locator(
+      'section[aria-labelledby="conversation-section-pinned"] a[aria-label]',
+    );
+    const sheet = page.getByRole("dialog");
+    // Playwright has no long press. Hold a touch past the menu delay.
+    const longPress = (card: Locator) =>
+      card.dispatchEvent("touchstart", {
+        touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+      });
+    for (const name of ["Closed issue summary", "Sandbox validation"]) {
+      await longPress(page.getByRole("link", { name: `Open ${name}` }));
+      await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+      await expect(
+        page
+          .locator('section[aria-labelledby="conversation-section-pinned"]')
+          .getByRole("link", { name: `Open ${name}` }),
+      ).toBeVisible();
+    }
+    const second = await pinned.nth(1).getAttribute("aria-label");
+
+    // A still touch on a pinned card opens the sheet, not a pin drag.
+    await longPress(pinned.first());
+    await expect(sheet.getByRole("button", { name: "Move up" })).toBeDisabled();
+    await sheet.getByRole("button", { name: "Move down" }).click();
+    await expect(pinned.first()).toHaveAttribute("aria-label", second!);
   });
 
   test("opens the keyboard on home only when the dashboard opens there", async ({
