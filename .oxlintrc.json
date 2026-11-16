@@ -85,6 +85,7 @@
       }
     ],
     "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
