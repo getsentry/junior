@@ -317,7 +317,8 @@ function bulletListFollowUpParagraphs(text: string): string {
       trimmed &&
       !isFence &&
       lines[i - 1]?.trim() === "" &&
-      !LIST_ITEM_PATTERN.test(trimmed)
+      !LIST_ITEM_PATTERN.test(trimmed) &&
+      !isTableRow(trimmed)
     ) {
       lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
     }
