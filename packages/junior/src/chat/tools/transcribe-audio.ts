@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -7,10 +8,13 @@ import {
   transcribeFromUrl,
   type ConversationModelCost,
 } from "@/chat/core-model";
-import { NoAudioError } from "@/chat/pi/transcription";
+import { NoAudioError, type TranscriptEntry } from "@/chat/pi/transcription";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ATTACHMENT_DIR } from "@/chat/tools/load-attachment";
 
 /** Deferred tool catalog source for speech transcription. */
 const AUDIO_TOOL_SOURCE = {
@@ -25,21 +29,15 @@ const DOWNLOAD_URL_TTL_MS = 5 * 60 * 1000;
 // Slack and browsers label some audio with no specific type.
 const UNTYPED_CONTENT_TYPE = "application/octet-stream";
 
+// Room for fields that the runtime adds to a result, such as continuation.
+const INLINE_RESERVE_CHARS = 1_000;
+
 const transcribeAudioOutputSchema = juniorToolOutputSchema
   .extend({
-    text: z.string(),
+    transcript: z.string(),
+    transcript_path: z.string(),
     language: z.string().optional(),
     duration_seconds: z.number().nonnegative().optional(),
-    segments: z.array(
-      z
-        .object({
-          start_seconds: z.number().nonnegative(),
-          end_seconds: z.number().nonnegative(),
-          speaker: z.string().optional(),
-          text: z.string(),
-        })
-        .strict(),
-    ),
   })
   .strict();
 
@@ -56,6 +54,50 @@ function mayHaveAudio(contentType: string): boolean {
   );
 }
 
+/** Format seconds as `MM:SS.s`, or `H:MM:SS.s` from one hour. */
+function timestamp(seconds: number): string {
+  const tenths = Math.floor(seconds * 10);
+  const hours = Math.floor(tenths / 36_000);
+  const minutes = String(Math.floor(tenths / 600) % 60).padStart(2, "0");
+  const secs = String(Math.floor(tenths / 10) % 60).padStart(2, "0");
+  const time = `${minutes}:${secs}.${tenths % 10}`;
+  return hours > 0 ? `${hours}:${time}` : time;
+}
+
+/** One log-style line per entry: start time, then speaker and text. */
+function transcriptLine(entry: TranscriptEntry): string {
+  const text = entry.text.replace(/\s+/g, " ");
+  const body =
+    entry.kind === "sound"
+      ? `(${text})`
+      : entry.speaker
+        ? `${entry.speaker}: ${text}`
+        : text;
+  return `[${timestamp(entry.startSeconds)}] ${body}`;
+}
+
+/**
+ * Keep the leading lines whose JSON-escaped size fits in `budget` chars.
+ * The cut is always on a line boundary.
+ */
+function leadingLines(
+  lines: string[],
+  budget: number,
+): { text: string; truncated: boolean } {
+  let used = 0;
+  let count = 0;
+  for (const line of lines) {
+    // JSON quotes cost 2 chars. The escaped newline before a line costs 2.
+    used += JSON.stringify(line).length - 2 + (count > 0 ? 2 : 0);
+    if (used > budget) break;
+    count += 1;
+  }
+  return {
+    text: lines.slice(0, count).join("\n"),
+    truncated: count < lines.length,
+  };
+}
+
 /**
  * Create a tool that transcribes speech in one Conversation attachment.
  *
@@ -70,16 +112,19 @@ export function createTranscribeAudioTool(args: {
   modelCost: ConversationModelCost;
   modelId: string;
   storage: SignedDownloadStorage;
+  workspace: Pick<SandboxWorkspace, "writeFiles">;
 }) {
   return zodTool({
     exposure: "deferred",
     source: AUDIO_TOOL_SOURCE,
     description:
-      "Transcribe speech in an audio or video attachment. Returns the text, its language and duration, and timed segments with speaker labels.",
+      "Transcribe speech in an audio or video attachment. Returns a transcript with one line per entry: `[MM:SS.s] speaker: text` for speech and `[MM:SS.s] (sound)` for sounds. The full transcript is always saved at `transcript_path`. When `truncated` is true, the inline transcript has only the first lines: read the rest of the file with readFile, or search it with grep.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
+      // The transcript file is scratch output in Junior's own sandbox, like
+      // the file that a cut tool result writes. Nothing outside changes.
       readOnlyHint: true,
     },
     inputSchema: z.object({
@@ -121,20 +166,40 @@ export function createTranscribeAudioTool(args: {
         }
         throw error;
       });
-      return {
-        text: transcript.text,
+      const lines = transcript.entries.map(transcriptLine);
+      const transcriptPath = path.posix.join(
+        ATTACHMENT_DIR,
+        `${attachment.id}.transcript.txt`,
+      );
+      try {
+        // Sandbox writes create missing parent directories.
+        await args.workspace.writeFiles([
+          { content: `${lines.join("\n")}\n`, path: transcriptPath },
+        ]);
+      } catch (error) {
+        throw new Error("Failed to save the transcript to the sandbox.", {
+          cause: error,
+        });
+      }
+      const result = {
+        transcript_path: transcriptPath,
         ...(transcript.language
           ? { language: transcript.language }
           : undefined),
         ...(transcript.durationSeconds !== undefined
           ? { duration_seconds: transcript.durationSeconds }
           : undefined),
-        segments: transcript.segments.map((segment) => ({
-          start_seconds: segment.startSeconds,
-          end_seconds: segment.endSeconds,
-          ...(segment.speaker ? { speaker: segment.speaker } : undefined),
-          text: segment.text,
-        })),
+      };
+      const inline = leadingLines(
+        lines,
+        TOOL_RESULT_MAX_CHARS -
+          INLINE_RESERVE_CHARS -
+          JSON.stringify({ ...result, transcript: "", truncated: true }).length,
+      );
+      return {
+        ...result,
+        transcript: inline.text,
+        ...(inline.truncated ? { truncated: true } : undefined),
       };
     },
   });

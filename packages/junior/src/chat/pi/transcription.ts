@@ -33,9 +33,9 @@ export class NoAudioError extends Error {
   override readonly name = "NoAudioError";
 }
 
-/** One stretch of speech by one speaker. */
-export interface TranscriptSegment {
-  endSeconds: number;
+/** One timed line of a transcript: speech by one speaker, or a sound. */
+export interface TranscriptEntry {
+  kind: "speech" | "sound";
   speaker?: string;
   startSeconds: number;
   text: string;
@@ -45,9 +45,8 @@ export interface TranscriptSegment {
 export interface Transcript {
   costUsd?: number;
   durationSeconds?: number;
+  entries: TranscriptEntry[];
   language?: string;
-  segments: TranscriptSegment[];
-  text: string;
 }
 
 // ElevenLabs Scribe returns each word, space, and audio event with its
@@ -56,7 +55,6 @@ const diarizedWordsSchema = z.object({
   elevenlabs: z.object({
     words: z.array(
       z.object({
-        end: z.number(),
         speaker_id: z.string().nullish(),
         start: z.number(),
         text: z.string(),
@@ -67,36 +65,46 @@ const diarizedWordsSchema = z.object({
 });
 
 /**
- * Group diarized words into segments. A segment ends when the speaker
- * changes or a sentence ends. Spaces join words and never start a segment.
+ * Group diarized words into entries. A speech entry ends when the speaker
+ * changes or a sentence ends. Each audio event is its own sound entry.
+ * Spaces join words and never start an entry.
  */
-function speakerSegments(
+function transcriptEntries(
   words: z.infer<typeof diarizedWordsSchema>["elevenlabs"]["words"],
-): TranscriptSegment[] {
-  const segments: TranscriptSegment[] = [];
-  let current: TranscriptSegment | undefined;
+): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+  let current: TranscriptEntry | undefined;
   for (const word of words) {
     if (word.type === "spacing") {
       if (current) current.text += word.text;
       continue;
     }
+    if (word.type === "audio_event") {
+      // ElevenLabs writes events as "[laughs]". The brackets are markup.
+      entries.push({
+        kind: "sound",
+        startSeconds: word.start,
+        text: word.text.replace(/^[[(]+|[\])]+$/g, ""),
+      });
+      current = undefined;
+      continue;
+    }
     const speaker = word.speaker_id ?? undefined;
     if (!current || current.speaker !== speaker) {
       current = {
-        endSeconds: word.end,
+        kind: "speech",
         startSeconds: word.start,
         text: "",
         ...(speaker ? { speaker } : undefined),
       };
-      segments.push(current);
+      entries.push(current);
     }
     current.text += word.text;
-    current.endSeconds = word.end;
     if (SENTENCE_END_PATTERN.test(word.text)) current = undefined;
   }
-  return segments
-    .map((segment) => ({ ...segment, text: segment.text.trim() }))
-    .filter((segment) => segment.text.length > 0);
+  return entries
+    .map((entry) => ({ ...entry, text: entry.text.trim() }))
+    .filter((entry) => entry.text.length > 0);
 }
 
 /**
@@ -183,10 +191,10 @@ export async function transcribeFromUrl(params: {
         const generationId =
           result.providerMetadata["gateway"]?.["generationId"];
         const words = diarizedWordsSchema.safeParse(result.providerMetadata);
-        const segments = words.success
-          ? speakerSegments(words.data.elevenlabs.words)
+        const entries: TranscriptEntry[] = words.success
+          ? transcriptEntries(words.data.elevenlabs.words)
           : result.segments.map((segment) => ({
-              endSeconds: segment.endSecond,
+              kind: "speech",
               startSeconds: segment.startSecond,
               text: segment.text,
             }));
@@ -197,7 +205,7 @@ export async function transcribeFromUrl(params: {
           ...(result.durationInSeconds !== undefined
             ? { "app.transcription.audio_seconds": result.durationInSeconds }
             : undefined),
-          "app.transcription.segment_count": segments.length,
+          "app.transcription.entry_count": entries.length,
           ...extractGenAiUsageAttributes(
             costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
           ),
@@ -207,9 +215,8 @@ export async function transcribeFromUrl(params: {
           ...(result.durationInSeconds !== undefined
             ? { durationSeconds: result.durationInSeconds }
             : undefined),
+          entries,
           ...(result.language ? { language: result.language } : undefined),
-          segments,
-          text: result.text,
         };
       },
       {

@@ -19,7 +19,8 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const ATTACHMENT_DIR = ".junior/attachments";
+/** Sandbox directory for attachment files that tools write. */
+export const ATTACHMENT_DIR = ".junior/attachments";
 /** Bytes held in memory and sent to the sandbox in one write. */
 const PART_BYTES = 8 * 1024 * 1024;
 

@@ -44,40 +44,81 @@ function gatewayTranscription(response: () => Response) {
   return requests;
 }
 
-/** ElevenLabs Scribe output for two speakers, as AI Gateway returns it. */
-function diarizedTranscript() {
-  const word = (text: string, start: number, speaker: string) => ({
-    end: start + 0.4,
-    speaker_id: speaker,
-    start,
-    text,
-    type: "word",
-  });
-  const space = (start: number, speaker: string) => ({
-    end: start + 0.1,
-    speaker_id: speaker,
-    start,
-    text: " ",
-    type: "spacing",
-  });
-  return HttpResponse.json({
-    durationInSeconds: 3.2,
-    language: "eng",
-    providerMetadata: {
-      elevenlabs: {
-        words: [
-          word("Ship", 0, "speaker_0"),
-          space(0.4, "speaker_0"),
-          word("it.", 0.5, "speaker_0"),
-          space(0.9, "speaker_0"),
-          word("Agreed.", 1.2, "speaker_1"),
-        ],
+type ScribeWord = {
+  end: number;
+  speaker_id: string | null;
+  start: number;
+  text: string;
+  type: "audio_event" | "spacing" | "word";
+};
+
+/** One ElevenLabs Scribe token, as AI Gateway returns it. */
+function token(
+  type: ScribeWord["type"],
+  text: string,
+  start: number,
+  speaker: string | null = "speaker_0",
+): ScribeWord {
+  return { end: start + 0.3, speaker_id: speaker, start, text, type };
+}
+
+/** Words of one sentence, with spaces between them. */
+function sentence(text: string, start: number, speaker?: string | null) {
+  return text
+    .split(" ")
+    .flatMap((word, index) => [
+      ...(index > 0 ? [token("spacing", " ", start + index, speaker)] : []),
+      token("word", word, start + index + 0.1, speaker),
+    ]);
+}
+
+function scribeResponse(words: ScribeWord[], durationInSeconds = 8) {
+  return () =>
+    HttpResponse.json({
+      durationInSeconds,
+      language: "eng",
+      providerMetadata: {
+        elevenlabs: { words },
+        gateway: { cost: "0.00183336", generationId: "gen_transcribe_1" },
       },
-      gateway: { cost: "0.00183336", generationId: "gen_transcribe_1" },
+      segments: [],
+      text: words.map((word) => word.text).join(""),
+    });
+}
+
+/** Two speakers, a sound between two sentences, and an unlabeled word. */
+const diarizedTranscript = scribeResponse(
+  [
+    token("word", "Okay", 0.4),
+    token("spacing", " ", 0.7),
+    token("word", "so", 0.8),
+    token("spacing", " ", 1.1),
+    token("word", "nothing.", 1.2),
+    token("audio_event", "[laughter]", 3.4),
+    token("word", "Wait,", 4.1),
+    token("spacing", " ", 4.4),
+    token("word", "there.", 4.5),
+    token("spacing", " ", 4.8),
+    token("word", "Agreed.", 5.2, "speaker_1"),
+    token("audio_event", "[notification chime]", 6.5, null),
+    token("word", "Bye.", 3725.04, null),
+  ],
+  3726,
+);
+
+/** Fake sandbox that keeps written files in memory. */
+function fakeWorkspace() {
+  const files = new Map<string, string>();
+  return {
+    files,
+    writeFiles: async (
+      written: Array<{ content: string | Uint8Array; path: string }>,
+    ) => {
+      for (const file of written) {
+        files.set(file.path, Buffer.from(file.content).toString("utf8"));
+      }
     },
-    segments: [],
-    text: "Ship it. Agreed.",
-  });
+  };
 }
 
 /** Memory storage with the signed reads that S3 and Vercel Blob have. */
@@ -135,13 +176,17 @@ async function recordConversation(conversationId: string): Promise<void> {
   });
 }
 
-function createTool(storage: ReturnType<typeof signedStorage>["storage"]) {
+function createTool(
+  storage: ReturnType<typeof signedStorage>["storage"],
+  workspace = fakeWorkspace(),
+) {
   return createTranscribeAudioTool({
     conversationId: CONVERSATION_ID,
     db: getSqlExecutor(),
     modelCost: { conversationId: CONVERSATION_ID },
     modelId: "elevenlabs/scribe-v2",
     storage,
+    workspace,
   });
 }
 
@@ -161,7 +206,7 @@ describe("transcribeAudio tool", () => {
     await closeDb();
   });
 
-  it("sends a fresh signed URL to the model and returns speaker segments", async () => {
+  it("sends a fresh signed URL to the model and returns a timed transcript", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const files = signedStorage();
     const stored = await files.store({
@@ -169,7 +214,8 @@ describe("transcribeAudio tool", () => {
       mimeType: "audio/mp4",
     });
     const requests = gatewayTranscription(diarizedTranscript);
-    const tool = createTool(files.storage);
+    const workspace = fakeWorkspace();
+    const tool = createTool(files.storage, workspace);
 
     const result = await tool.execute?.({ attachment_id: stored.id }, {});
 
@@ -188,25 +234,24 @@ describe("transcribeAudio tool", () => {
         },
       }),
     ]);
+    const transcript = [
+      "[00:00.4] speaker_0: Okay so nothing.",
+      "[00:03.4] (laughter)",
+      "[00:04.1] speaker_0: Wait, there.",
+      "[00:05.2] speaker_1: Agreed.",
+      "[00:06.5] (notification chime)",
+      "[1:02:05.0] Bye.",
+    ].join("\n");
+    const transcriptPath = `.junior/attachments/${stored.id}.transcript.txt`;
     expect(result).toEqual({
-      duration_seconds: 3.2,
+      duration_seconds: 3726,
       language: "eng",
-      segments: [
-        {
-          end_seconds: 0.9,
-          speaker: "speaker_0",
-          start_seconds: 0,
-          text: "Ship it.",
-        },
-        {
-          end_seconds: 1.6,
-          speaker: "speaker_1",
-          start_seconds: 1.2,
-          text: "Agreed.",
-        },
-      ],
-      text: "Ship it. Agreed.",
+      transcript,
+      transcript_path: transcriptPath,
     });
+    expect(workspace.files).toEqual(
+      new Map([[transcriptPath, `${transcript}\n`]]),
+    );
     const { events } = await getConversationEventStore().query(
       CONVERSATION_ID,
       { limit: 10, types: ["structured_event"] },
@@ -220,6 +265,37 @@ describe("transcribeAudio tool", () => {
     ]);
     expect(JSON.stringify(result)).not.toContain(SIGNED_URL);
     expect(JSON.stringify(logs)).not.toContain(SIGNED_URL);
+  });
+
+  it("saves a long transcript and returns the first lines that fit", async () => {
+    const files = signedStorage();
+    const stored = await files.store({
+      filename: "all-hands.m4a",
+      mimeType: "audio/mp4",
+    });
+    const words = Array.from({ length: 3000 }, (_, index) =>
+      sentence(`Point "${index}" was made.`, index * 5),
+    ).flat();
+    gatewayTranscription(scribeResponse(words, 15_000));
+    const workspace = fakeWorkspace();
+
+    const result = await createTool(files.storage, workspace).execute?.(
+      { attachment_id: stored.id },
+      {},
+    );
+
+    const saved = workspace.files.get(
+      `.junior/attachments/${stored.id}.transcript.txt`,
+    );
+    const lines = saved?.trimEnd().split("\n") ?? [];
+    expect(lines).toHaveLength(3000);
+    expect(lines.at(-1)).toBe('[4:09:55.1] speaker_0: Point "2999" was made.');
+    expect(result).toMatchObject({ truncated: true });
+    const inline = (result as { transcript: string }).transcript;
+    const inlineLines = inline.split("\n");
+    expect(inlineLines.length).toBeLessThan(3000);
+    expect(inlineLines).toEqual(lines.slice(0, inlineLines.length));
+    expect(JSON.stringify(result).length).toBeLessThan(32_000);
   });
 
   it("refuses attachments that it cannot transcribe before it signs a URL", async () => {

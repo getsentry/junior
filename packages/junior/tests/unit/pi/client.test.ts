@@ -587,9 +587,8 @@ describe("transcribeFromUrl", () => {
     expect(result).toEqual({
       costUsd: 0.00183336,
       durationSeconds: 30,
+      entries: [{ kind: "speech", startSeconds: 0.1, text: "Hello" }],
       language: "eng",
-      segments: [{ endSeconds: 0.7, startSeconds: 0.1, text: "Hello" }],
-      text: "Hello",
     });
     expect(mocks.transcribe.mock.calls[0]?.[0]).toMatchObject({
       audio: new Uint8Array(),
@@ -603,7 +602,7 @@ describe("transcribeFromUrl", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.total_usd": 0.00183336,
       "app.transcription.audio_seconds": 30,
-      "app.transcription.segment_count": 1,
+      "app.transcription.entry_count": 1,
       "gen_ai.response.id": "gen_1",
     });
     expect(recordedTelemetry()).not.toContain(SIGNED_URL);

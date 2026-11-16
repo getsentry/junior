@@ -462,6 +462,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
           modelCost: run.modelCost,
           modelId: botConfig.transcriptionModelId,
           storage: { createDownloadUrl, provider: storage.provider },
+          workspace: run.context.workspace,
         })
       : undefined;
   },
