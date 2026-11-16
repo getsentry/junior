@@ -44,6 +44,7 @@ import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSet
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
+import { getDashboardAgentName } from "../../../agentName";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
 const userCustomizationQueryKey = ["dashboard", "user-customization"] as const;
@@ -185,8 +186,8 @@ function ConversationStartSetting() {
         title="Open conversations at"
       />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-        Junior keeps your place in each conversation on all your devices. This
-        choice applies to this browser.
+        {getDashboardAgentName()} keeps your place in each conversation on all
+        your devices. This choice applies to this browser.
       </p>
       <RadioGroup<ConversationStartPosition>
         aria-label="Open conversations at"

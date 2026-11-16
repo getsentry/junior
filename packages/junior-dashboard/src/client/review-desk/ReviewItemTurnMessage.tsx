@@ -5,6 +5,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { useQuery } from "@tanstack/react-query";
 
+import { agentNamePossessive } from "../agentName";
 import { ClampedDisplayText } from "../display-text/DisplayText";
 import { fetchDashboardJson } from "../http";
 
@@ -54,17 +55,16 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
     staleTime: 60_000,
   });
   if (!text) return null;
+  const label = `${agentNamePossessive()} message`;
   return (
     <section
-      aria-label="Junior's message"
+      aria-label={label}
       className="grid min-w-0 gap-1 border-l-2 border-dashboard-border pl-3"
     >
-      <span className="text-xs text-dashboard-text-muted">
-        Junior's message
-      </span>
+      <span className="text-xs text-dashboard-text-muted">{label}</span>
       <ClampedDisplayText
         className="max-w-[80ch] leading-6"
-        label="Junior's message"
+        label={label}
         lines={4}
         text={text}
       />

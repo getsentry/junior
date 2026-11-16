@@ -39,6 +39,7 @@ import { automationOutcomeLabel } from "../../../pages/automations/automationOut
 import { TriggerFilters } from "../../../pages/automations/TriggerFilters";
 import { invalidateAutomationReads } from "../../../review-desk/inboxQueries";
 import { formatRelativeTime } from "../../../time";
+import { getDashboardAgentName } from "../../../agentName";
 
 /** Search param that selects the version to compare. */
 export const AUTOMATION_VERSION_PARAM = "version";
@@ -121,8 +122,8 @@ function AutomationVersionsView(props: {
     return (
       <Card padding="md">
         <p className="m-0 text-sm text-dashboard-text-muted">
-          No versions are saved yet. Junior saves a version each time the
-          settings change.
+          No versions are saved yet. {getDashboardAgentName()} saves a version
+          each time the settings change.
         </p>
       </Card>
     );
@@ -224,7 +225,8 @@ function AutomationVersionsView(props: {
             Make version {selected.version} active?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Junior saves these settings as a new version. Future runs use them.
+            {getDashboardAgentName()} saves these settings as a new version.
+            Future runs use them.
             {automation.ownedByViewer
               ? null
               : ` Only ${automation.createdBy} can turn on their connected accounts.`}

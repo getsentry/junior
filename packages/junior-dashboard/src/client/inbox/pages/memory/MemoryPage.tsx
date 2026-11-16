@@ -39,6 +39,7 @@ import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "../../../pages/memory/MemoryTimeline";
 import { MemoryCostChart } from "../../../pages/memory/MemoryCostChart";
 import { useMemoryRecord } from "../../../pages/memory/memoryRecord";
+import { getDashboardAgentName } from "../../../agentName";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
@@ -232,7 +233,7 @@ function MemoryLibrary(props: {
                   className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
                   id="memory-library-title"
                 >
-                  What Junior remembers
+                  What {getDashboardAgentName()} remembers
                 </h2>
               </div>
             </div>
@@ -375,7 +376,7 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
       <AnchorHeading
         anchor="memory-types"
         className="m-0 font-display text-xl font-medium text-dashboard-text"
-        title="What Junior remembers"
+        title={`What ${getDashboardAgentName()} remembers`}
       />
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
@@ -418,7 +419,7 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
         <OverviewBreakdownRow
           detail="Passive extraction after runs"
           icon={Sparkles}
-          label="Learned by Junior"
+          label={`Learned by ${getDashboardAgentName()}`}
           value={stats.automatic}
         />
         <OverviewBreakdownRow
