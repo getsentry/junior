@@ -13,7 +13,9 @@ the Automation.
 - A run posts nothing unless it chooses to. Each run starts its own
   Conversation, posts at most one message to each Destination, and puts
   later replies in that message's thread, where people continue it.
-- Failures and blocks go privately to the creator, never to the Destination.
+- Junior records every failure and block, and shows it to the creator as a
+  Review item or another notice. It never posts a failure to the
+  Destination.
 
 ## Behaviors
 
@@ -59,5 +61,5 @@ the Automation.
   can fail when the creator is not connected, and an edit by someone else
   switches it back to Junior's credentials. The goal is to remove creator
   credentials.
-- Repeated run failures tell nobody. This breaks "failures go privately to
-  the creator".
+- A failed run is not recorded where a person sees it, and repeated
+  failures tell nobody. This breaks "Junior records every failure and block".
