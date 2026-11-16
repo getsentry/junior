@@ -6,8 +6,8 @@ import test from "node:test";
 import {
   checkTypeAssertions,
   countTypeAssertions,
-  isCheckedFile,
 } from "./check-type-assertions.mjs";
+import { isCheckedFile } from "./source-ratchet.mjs";
 
 const FILE = "packages/junior/src/feature.ts";
 
