@@ -419,7 +419,11 @@ export function ConversationPage(props: {
   const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
     replyFocus && location.key !== replyFocusDoneKey
-      ? { draftFrom: replyFocus.draftFrom, key: location.key }
+      ? {
+          draftFrom: replyFocus.draftFrom,
+          key: location.key,
+          questionId: replyFocus.questionId,
+        }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
