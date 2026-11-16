@@ -17,30 +17,6 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 - "Needs you" means one thing on every surface: an open action assigned to
   you.
 
-## Behaviors
-
-- `ask` Junior asks a person. The item shows on the desk and as one card in
-  each linked Slack thread, with a button per choice, an Answer form, or
-  only Dismiss for a notice.
-- `first-answer-closes` The first assignee to answer or dismiss closes the
-  item for everyone. Every card shows that it is closed.
-- `answer-resumes` After an answer, the agent gets it in its Conversation and
-  continues the work. A dismiss does not start a Turn.
-- `thread-reply` An assignee replies in the thread with an answer. The item
-  closes. A reply that only acknowledges or asks back leaves it open.
-- `desk-groups` The desk lists open actions under "Needs you" and notices
-  under "FYI", oldest first. Closed items show only in search.
-- `count` The Inbox badge and the browser tab count the open actions for
-  the viewer as a named assignee.
-- `take` Anyone takes an item for Everyone and becomes its only assignee.
-- `dedupe` A later run with the same key updates the open item. It does
-  not add a second one.
-- `close-with-reason` Junior closes an item when the work resolves itself.
-  The desk shows who closed it and why.
-- `waiting` A dashboard conversation with an open item for the viewer shows
-  under "Needs you", and the question docks above the message box. A typed
-  message answers it.
-
 ## Entry points
 
 - Slack: the item card in each linked thread, and a thread reply.
@@ -51,6 +27,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 
 ## Rules
 
+- The first answer or dismiss closes the item for everyone. A dismiss is
+  not a decision, so it does not continue the work.
 - Every item has at least one assignee: a User, or Everyone. When no
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else

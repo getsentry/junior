@@ -17,7 +17,7 @@ current.
 - Code defines its own design. Put an invariant, a boundary, or a rule that is
   easy to break in a comment next to the code that it governs (see
   `code-comments.md`). Put a repo-wide rule in a policy.
-- Outside `features/`, do not write feature descriptions. Do not write
+- Do not write feature descriptions. Do not write
   tool-by-tool behavior, step lists that repeat the code, schemas, test
   inventories, history, or rollout notes. The code, types, and tests own
   those.
@@ -40,9 +40,9 @@ current.
 
 ## Exceptions
 
-- `features/` has one intent doc per major system: the user behavior it must
-  have and the rules users rely on. It follows the `feature-docs` skill, and
-  `maintain-feature-docs` keeps it true.
+- `design/` has one intent doc per major system: its goals, entry points,
+  the rules users rely on, and its gaps. It follows the `create-design-docs`
+  skill, and `maintain-design-docs` keeps it true.
 - Public product docs live in `packages/docs` and follow the `public-docs`
   skill.
 - Skills follow the `skill-writer` skill.
