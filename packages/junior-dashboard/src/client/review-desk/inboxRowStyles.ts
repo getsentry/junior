@@ -26,15 +26,12 @@ export function inboxCardClass(expanded: boolean): string {
 /**
  * The head of an Inbox row, as a grid: the dot or status icon, the title
  * line at full width, then the meta; the summary goes under the title.
- * Conversation and Automation rows share it, so their columns line up, and
- * everything under the dot starts on one left edge (`INBOX_ROW_INSET`).
+ * Conversation and Automation rows share it, so their columns line up.
+ * The title starts 2rem in, the left edge of the sections under it.
  */
 export function inboxHeadGridClass(): string {
   return "grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 rounded-xl px-4 pt-3";
 }
-
-/** The left edge of a row's sections under its head: the title's edge. */
-export const INBOX_ROW_INSET = "pl-8";
 
 /** The meta at the end of an Inbox row head, such as its age. */
 export const INBOX_ROW_META_CLASS =

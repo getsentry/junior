@@ -46,7 +46,6 @@ import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import {
-  INBOX_ROW_INSET,
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
@@ -630,58 +629,61 @@ function InboxRowBody(
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
             data-inbox-slot="title"
           >
-            <Link
-              {...props.linkProps}
-              aria-controls={controls}
-              aria-current={props.selected ? "page" : undefined}
-              aria-expanded={props.expanded}
-              className={cn(
-                "grid min-w-0 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-                // A long press opens the row menu or drags a pin, not the iOS
-                // link callout.
-                "[-webkit-touch-callout:none]",
-              )}
-              // A plain click or Enter expands the row in place. A modified
-              // click keeps the link, so Ctrl/⌘-click opens a new tab.
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                )
-                  return;
-                event.preventDefault();
-                props.onToggle();
-              }}
-              to={rowConversationPath(props)}
-            >
-              <span
-                className={cn(
-                  "flex min-w-0 items-center gap-1.5 font-medium leading-snug text-dashboard-text",
-                  comfortable ? "text-base" : "text-sm",
-                )}
-              >
-                {/* An item row's title names its kind; the icon marks it
-                    the way the pills do. */}
-                {props.itemTitle && bundle ? (
-                  <AskKindIcon kind={inboxItemKind(bundle.newest)} />
-                ) : null}
-                {/* The Brief's outcome marks the title, as the dot does. */}
-                {summary?.status ? (
-                  <BriefOutcomeMarker status={summary.status} />
-                ) : null}
-                <span className="min-w-0 truncate">
-                  {props.itemTitle ?? props.title}
-                </span>
-              </span>
-              {props.itemTitle && props.itemSubtitle ? (
-                <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
-                  {props.itemSubtitle}
-                </span>
+            {/* The Brief's outcome marks the title, as the dot does. It
+                sits outside the link, so the link's name stays the title. */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              {summary?.status ? (
+                <BriefOutcomeMarker status={summary.status} />
               ) : null}
-            </Link>
+              <Link
+                {...props.linkProps}
+                aria-controls={controls}
+                aria-current={props.selected ? "page" : undefined}
+                aria-expanded={props.expanded}
+                className={cn(
+                  "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+                  // A long press opens the row menu or drags a pin, not the iOS
+                  // link callout.
+                  "[-webkit-touch-callout:none]",
+                )}
+                // A plain click or Enter expands the row in place. A modified
+                // click keeps the link, so Ctrl/⌘-click opens a new tab.
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  props.onToggle();
+                }}
+                to={rowConversationPath(props)}
+              >
+                <span
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 font-medium leading-snug text-dashboard-text",
+                    comfortable ? "text-base" : "text-sm",
+                  )}
+                >
+                  {/* An item row's title names its kind; the icon marks it
+                    the way the pills do. */}
+                  {props.itemTitle && bundle ? (
+                    <AskKindIcon kind={inboxItemKind(bundle.newest)} />
+                  ) : null}
+                  <span className="min-w-0 truncate">
+                    {props.itemTitle ?? props.title}
+                  </span>
+                </span>
+                {props.itemTitle && props.itemSubtitle ? (
+                  <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                    {props.itemSubtitle}
+                  </span>
+                ) : null}
+              </Link>
+            </span>
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
             {cast || hasChips ? (
@@ -749,12 +751,11 @@ function InboxRowBody(
                   !props.expanded &&
                     "sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100",
                 )}
-                data-row-actions=""
               >
                 {props.hoverActions}
               </span>
             ) : null}
-            <span className="flex items-center gap-1" data-row-state="">
+            <span className="flex items-center gap-1">
               {conversation ? (
                 <ConversationStatusText
                   isPrivate={conversation.visibility === "private"}
@@ -777,9 +778,9 @@ function InboxRowBody(
           </span>
         </div>
         {cards ? (
-          // Under the title: the images first, at preview size, then the
-          // linked work, links and files, one line each.
-          <div className={cn("grid min-w-0 gap-3 pr-4 pb-3", INBOX_ROW_INSET)}>
+          // Under the title, on its left edge: the images first, at preview
+          // size, then the linked work, links and files, one line each.
+          <div className="grid min-w-0 gap-3 pr-4 pb-3 pl-8">
             {images ? (
               <InboxImageStrip
                 asks={imageAsks}

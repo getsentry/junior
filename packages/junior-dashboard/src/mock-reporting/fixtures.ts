@@ -182,7 +182,7 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const BUSY_CONVERSATION_ID = "slack:CQA456:1770028800.000800";
-const SENTAUR_CONVERSATION_ID = "slack:CQA789:1770028800.000900";
+const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -2055,6 +2055,16 @@ const SENTAUR_PULL_REQUESTS = [
   ["sentaur", 81, "closed", "chore: Drop the old deploy webhook"],
 ] as const;
 
+type SidebarAnnotation = NonNullable<
+  ConversationDetailReport["sidebarAnnotations"]
+>[number];
+
+const SENTAUR_ISSUE_TITLES = [
+  "Grow the GoCD agent pool for canary stages",
+  "Route Sentaur rollout alerts to the owner",
+  "Update the Sentaur deploy runbook",
+];
+
 /**
  * A Conversation shaped like a live triage row: a long title, a long
  * Brief summary, pull requests from two repos, Linear issues with and
@@ -2066,14 +2076,13 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
   const brief = mockBrief(nowMs, "live");
   return detail(nowMs, {
     conversationId: SENTAUR_CONVERSATION_ID,
-    displayTitle:
-      "Triage Sentaur GoCD deployment failures across the canary and soak stages",
+    displayTitle: "Triage Sentaur GoCD deployment failures",
     startedAt,
     lastSeenAt: iso(nowMs, -25 * 60 * 60_000),
     lastProgressAt: iso(nowMs, -25 * 60 * 60_000),
     surface: "slack",
-    channel: "CQA789",
-    channelName: "proj-devinfra",
+    channel: "CQA456",
+    channelName: "proj-release",
     // The viewer takes part, so the row has its pin and archive actions.
     isParticipant: true,
     actorIdentity: actor("michael@sentry.io", "Michael Hart", "michael"),
@@ -2110,22 +2119,16 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
       // Linear issues; the older ones have no saved title.
       ...Array.from({ length: 9 }, (_, index) => {
         const key = `DI-${2877 - index}`;
-        return {
-          objectType: "task" as const,
+        const issue: SidebarAnnotation = {
+          objectType: "task",
           status: index < 2 ? "In Progress" : index < 5 ? "Todo" : "Done",
           key,
           label: key,
-          ...(index < 3
-            ? {
-                title: [
-                  "Grow the GoCD agent pool for canary stages",
-                  "Route Sentaur rollout alerts to the owner",
-                  "Update the Sentaur deploy runbook",
-                ][index],
-              }
-            : {}),
           url: `https://linear.app/getsentry/issue/${key}`,
         };
+        const title = SENTAUR_ISSUE_TITLES[index];
+        if (title) issue.title = title;
+        return issue;
       }),
     ],
     events: [
@@ -2383,7 +2386,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     sentaurConversation(nowMs),
     threadConversation(
       nowMs,
-      "slack:CQA789:1770028800.000901",
+      "slack:CQA456:1770028800.000901",
       "Check the last ten Sentaur pipeline runs",
       "Check the last ten Sentaur pipeline runs for lost agents.",
       -25.5 * 60 * 60_000,
@@ -2391,7 +2394,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     threadConversation(
       nowMs,
-      "slack:CQA789:1770028800.000902",
+      "slack:CQA456:1770028800.000902",
       "Read the canary agent logs",
       "Read the GoCD agent logs from the failed canary stages.",
       -25.4 * 60 * 60_000,

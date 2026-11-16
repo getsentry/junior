@@ -266,7 +266,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("menuitemradio", { name: "Comfortable density" })
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
-    await expect(summary).toHaveClass(/line-clamp-3/);
+    await expect(summary).toHaveClass(/line-clamp-2/);
     await page.reload();
     await expect(root).toHaveAttribute("data-density", "comfortable");
   });
