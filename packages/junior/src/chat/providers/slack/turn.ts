@@ -1185,7 +1185,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             if (finalResult.diagnostics.outcome !== "success") {
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: finalResult,
-                logException,
               });
               finalResult = finalized.reply;
               failureEventId = finalized.eventId;

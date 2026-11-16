@@ -431,10 +431,7 @@ async function runLocalAgentTurnInContext(
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.
     modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
-    const finalized = finalizeFailedTurnReplyWithEvent({
-      reply,
-      logException,
-    });
+    const finalized = finalizeFailedTurnReplyWithEvent({ reply });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
     modelFailureReason = finalized.failureReason;

@@ -647,7 +647,6 @@ async function resumeSlackTurnInContext(
       run.signal?.throwIfAborted();
       const finalized = finalizeFailedTurnReplyWithEvent({
         reply: result,
-        logException,
       });
       const reply = finalized.reply;
       setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
