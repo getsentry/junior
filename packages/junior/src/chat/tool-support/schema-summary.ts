@@ -12,10 +12,12 @@ function propertyList(schema: JsonSchema): string {
     Array.isArray(schema["required"]) ? schema["required"] : [],
   );
   return Object.entries(properties)
-    .map(
-      ([name, property]) =>
-        `${name}${required.has(name) ? "" : "?"}: ${schemaType(asSchema(property))}`,
-    )
+    .map(([name, value]) => {
+      const property = asSchema(value);
+      // zod lists `.default()` fields as required, but a caller may omit them.
+      const optional = !required.has(name) || "default" in property;
+      return `${name}${optional ? "?" : ""}: ${schemaType(property)}`;
+    })
     .join(", ");
 }
 
@@ -56,5 +58,9 @@ function schemaType(schema: JsonSchema): string {
  * schema.
  */
 export function summarizeInputSchema(schema: Record<string, unknown>): string {
+  // A root union, such as `z.union([...])`, has variants and no properties.
+  if (!schema["properties"] && (schema["anyOf"] ?? schema["oneOf"])) {
+    return schemaType(schema);
+  }
   return propertyList(schema) || "No arguments.";
 }

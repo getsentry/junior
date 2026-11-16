@@ -27,6 +27,7 @@ import { effectiveToolExposure } from "@/chat/tool-exposure";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
 import {
+  PARAMS_PREVIEW_HINT,
   SEARCH_TOOLS_NAME,
   summarizeModelVisibleDescription,
 } from "@/chat/tools/search-tools";
@@ -155,7 +156,7 @@ export function renderScriptTools(
     // The catalog tools are `modelOnly`. Models still call them from scripts.
     ...(omitted > 0
       ? [
-          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. A result with only params is a preview: search its exact name to get its input_schema before you call it. A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
+          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. ${PARAMS_PREVIEW_HINT} A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
         ]
       : []),
     // MCP tools are not script tools. Only `callMcpTool` reaches them.
