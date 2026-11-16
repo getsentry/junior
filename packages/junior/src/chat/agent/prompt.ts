@@ -50,7 +50,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
-import { lookupSlackUser } from "@/chat/slack/user";
+import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
@@ -111,7 +111,7 @@ export interface PromptTurnContext {
   >;
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
-  /** IANA timezone from the Slack profile of the person who asked. */
+  /** IANA timezone of the person who asked, from `findActorTimezone`. */
   askerTimezone?: string | undefined;
 }
 
@@ -452,9 +452,15 @@ async function loadUserCustomization(
 // lookup that fails on one slice does not duplicate the instruction.
 async function loadAskerTimezone(
   actor: Actor | undefined,
+  context: Pick<PromptHookContext, "resolveActorIdentity">,
 ): Promise<string | undefined> {
-  if (actor?.platform !== "slack") return undefined;
-  return (await lookupSlackUser(actor.teamId, actor.userId))?.timezone;
+  return await findActorTimezone({
+    actor,
+    db: getDb(),
+    nowMs: Date.now(),
+    resolveUserId: async () =>
+      (await context.resolveActorIdentity?.())?.user?.id,
+  });
 }
 
 // Record the customization with the Turn input, so the dashboard can show it
@@ -578,7 +584,7 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    loadAskerTimezone(args.currentActor),
+    loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
