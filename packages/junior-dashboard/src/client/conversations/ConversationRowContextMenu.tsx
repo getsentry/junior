@@ -38,6 +38,8 @@ export function ConversationRowContextMenu(
     pin: { pending: boolean; set(pinned: boolean): void };
     /** The row is the open page. */
     selected?: boolean | undefined;
+    /** A pinned row in a drag. The drag takes the long press. */
+    dragging?: boolean | undefined;
   },
 ) {
   const {
@@ -46,6 +48,7 @@ export function ConversationRowContextMenu(
     onActionError,
     pin,
     selected,
+    dragging,
     ...triggerProps
   } = props;
   const rename = useRenameConversation(conversation.id, {
@@ -105,6 +108,12 @@ export function ConversationRowContextMenu(
     <ContextMenu
       onOpenChange={(open, details) => {
         if (!open) return;
+        // A still touch starts a pin drag before the long press ends, so
+        // the menu must not open over the drag.
+        if (dragging) {
+          details.cancel();
+          return;
+        }
         // The menu shows rows from the detail, so read it as a hover does.
         void prefetchConversationDetail(queryClient, conversation.id);
         if (touchRef.current === "up") return;
@@ -117,7 +126,7 @@ export function ConversationRowContextMenu(
       <ContextMenuTrigger
         {...triggerProps}
         // The row can show a touch press while the long press runs.
-        data-pressing={pressing ? "" : undefined}
+        data-pressing={pressing && !dragging ? "" : undefined}
         onTouchCancel={(event) => {
           triggerProps.onTouchCancel?.(event);
           touchRef.current = "up";

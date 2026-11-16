@@ -384,6 +384,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const participant = props.conversation.isParticipant;
   return (
     <ConversationRowContextMenu
+      dragging={drag?.dragging}
       {...prefetch}
       {...drag?.listeners}
       archive={archive}
