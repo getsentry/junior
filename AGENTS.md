@@ -18,13 +18,12 @@ Read the reference files at the end when your work touches their area.
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own
   provider routes, API fields, permissions, errors, and formatting.
 - No mutable runtime globals. No test-only singleton mutation APIs.
-- Query tables with the Drizzle query builder. Use `sql` only for
-  expressions inside a builder query, or for statements without a table.
+- Store state only when its owner cannot give it on read. Read it from the
+  provider, or derive it from rows that you already store.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
-- This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
-  a code comment next to the code that it governs.
+- Put intent in a code comment next to the code that it governs.
 - Change this file or a `README.md` only when intent, an invariant, or a
   boundary changes. Delete completed plans. Plans in `openspec/changes/`
   cannot override policy.
@@ -38,6 +37,22 @@ To prevent a problem or correct an agent, use the first of these that works:
 2. Directory structure and semantic names.
 3. Steering text: this file, `policies/`, prompts, and tool descriptions.
    `policies/agent-steering.md` owns how to write it.
+
+When you correct an agent, fix the mistake and add or update its row. A
+"Review" row that is corrected again needs a check.
+
+| Rule                                                    | Enforced by                        |
+| ------------------------------------------------------- | ---------------------------------- |
+| Query tables with Drizzle; `sql` only inside a builder  | `junior/no-raw-sql-queries`        |
+| Parse URLs with `URL`, not a regex                      | `junior/no-regex-url-parsing`      |
+| Read the bot name from config, never write "Junior"     | ast-grep `no-hardcoded-bot-name`   |
+| Parse data at its edge; no new type assertions          | `pnpm type-assertions:check`       |
+| Import a service; no optional fallback to it for tests  | `junior/no-service-fallback`       |
+| Loop with `for...of`, not `forEach`                     | `unicorn/no-array-for-each`        |
+| Bound a list's concurrency with `pLimit(N).map`         | `pnpm unbounded-concurrency:check` |
+| Call models through `@/chat/core-model`                 | `no-restricted-imports`            |
+| Only the repo root has an `AGENTS.md`                   | `pnpm file-length:check`           |
+| Store only state that the owner cannot give on read     | Review                             |
 
 ## Testing
 
