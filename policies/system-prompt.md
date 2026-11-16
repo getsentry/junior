@@ -90,9 +90,7 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
   the next assistant message, or collapses it into the system prompt for a
   model without mid-conversation system messages. Context compaction folds
   the section state into one system message.
-- A Turn adds `<plan-delta>` only for plan changes that others made after the
-  latest plan version in history. Context compaction replaces the deltas with
-  one `<plan>` snapshot of the open items.
+- `<plan-delta>`: plan changes by others. Compaction folds it into `<plan>`.
 
 ### Changes
 
