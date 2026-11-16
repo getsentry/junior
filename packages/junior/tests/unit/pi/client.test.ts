@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
     rerankingModel: vi.fn((modelId: string) => ({ modelId })),
+    transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
   streamSimpleAnthropic: vi.fn(),
+  transcribe: vi.fn(),
   withSpan: vi.fn(
     async (
       _name: string,
@@ -68,6 +70,7 @@ vi.mock("ai", () => ({
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
   },
   rerank: mocks.rerank,
+  transcribe: mocks.transcribe,
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -541,5 +544,94 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.total_usd": 0.0000074,
     });
+  });
+});
+
+describe("transcribeFromUrl", () => {
+  const SIGNED_URL = "https://blob.example.test/a.m4a?signature=secret";
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Every span attribute and log that the call recorded. */
+  function recordedTelemetry(): string {
+    return JSON.stringify([
+      mocks.withSpan.mock.calls.map((call) => [call[0], call[2], call[4]]),
+      mocks.setSpanAttributes.mock.calls,
+      mocks.logException.mock.calls,
+    ]);
+  }
+
+  it("records model, audio length, cost, and generation id on the span", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "api_key",
+      token: "gateway-key",
+    });
+    mocks.transcribe.mockResolvedValue({
+      durationInSeconds: 30,
+      language: "eng",
+      providerMetadata: {
+        gateway: { cost: "0.00183336", generationId: "gen_1" },
+      },
+      segments: [{ endSecond: 0.7, startSecond: 0.1, text: "Hello" }],
+      text: "Hello",
+    });
+
+    const { transcribeFromUrl } = await import("@/chat/pi/transcription");
+    const result = await transcribeFromUrl({
+      modelId: "elevenlabs/scribe-v2",
+      sourceUrl: SIGNED_URL,
+    });
+
+    expect(result).toEqual({
+      costUsd: 0.00183336,
+      durationSeconds: 30,
+      entries: [{ kind: "speech", startSeconds: 0.1, text: "Hello" }],
+      language: "eng",
+    });
+    expect(mocks.transcribe.mock.calls[0]?.[0]).toMatchObject({
+      audio: new Uint8Array(),
+      providerOptions: { elevenlabs: { diarize: true, sourceUrl: SIGNED_URL } },
+    });
+    expect(mocks.withSpan.mock.calls[0]?.[1]).toBe("gen_ai.transcription");
+    expect(mocks.withSpan.mock.calls[0]?.[4]).toMatchObject({
+      "gen_ai.operation.name": "transcription",
+      "gen_ai.request.model": "elevenlabs/scribe-v2",
+    });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.total_usd": 0.00183336,
+      "app.transcription.audio_seconds": 30,
+      "app.transcription.entry_count": 1,
+      "gen_ai.response.id": "gen_1",
+    });
+    expect(recordedTelemetry()).not.toContain(SIGNED_URL);
+    expect(recordedTelemetry()).not.toContain("Hello");
+  });
+
+  it("marks a file with no audio on the span without capturing it", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "api_key",
+      token: "gateway-key",
+    });
+    mocks.transcribe.mockRejectedValue(
+      new Error(
+        "File is corrupted. Please ensure it is playable audio. (invalid_audio)",
+      ),
+    );
+
+    const { NoAudioError, transcribeFromUrl } =
+      await import("@/chat/pi/transcription");
+
+    await expect(
+      transcribeFromUrl({
+        modelId: "elevenlabs/scribe-v2",
+        sourceUrl: SIGNED_URL,
+      }),
+    ).rejects.toBeInstanceOf(NoAudioError);
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "error.type": "invalid_audio",
+    });
+    expect(mocks.logException).not.toHaveBeenCalled();
   });
 });

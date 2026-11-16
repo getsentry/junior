@@ -212,6 +212,7 @@ const CORE_TOOLS = {
   loadAttachment: RUN_BUILT,
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
+  transcribeAudio: RUN_BUILT,
   spawnAgent: { when: hasAgents, definition: () => spawnAgentToolDefinition },
   stopAgent: { when: hasAgents, definition: () => stopAgentToolDefinition },
   archiveAgent: {

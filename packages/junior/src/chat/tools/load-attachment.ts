@@ -9,6 +9,7 @@ import {
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
+import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
   SandboxCommandInput,
@@ -18,7 +19,8 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const ATTACHMENT_DIR = ".junior/attachments";
+/** Sandbox directory for attachment files that tools write. */
+export const ATTACHMENT_DIR = ".junior/attachments";
 /** Bytes held in memory and sent to the sandbox in one write. */
 const PART_BYTES = 8 * 1024 * 1024;
 
@@ -140,12 +142,7 @@ export function createLoadAttachmentTool(args: {
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored attachment ID, as shown in attachment context or Slack read results.",
-        ),
+      attachment_id: attachmentIdParam,
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {

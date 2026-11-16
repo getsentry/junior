@@ -793,7 +793,7 @@ export async function embedTexts(params: {
 }
 
 /** Read the billed cost that AI Gateway reports in provider metadata. */
-function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+export function gatewayCostUsd(providerMetadata: unknown): number | undefined {
   const cost = (
     providerMetadata as { gateway?: { cost?: unknown } } | undefined
   )?.gateway?.cost;
