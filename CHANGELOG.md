@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.305.0
+
+Junior users get clearer search results, more dependable automation and dashboard state, and cleaner mobile status display.
+
+### New Features ✨
+
+- (tools) Return a params summary instead of full schemas from searchTools by @MathurAditya724 with @sentry-junior in [#3496](https://github.com/getsentry/junior/pull/3496)
+
+### Bug Fixes 🐛
+
+Child agents, automation counts, live prompts, dashboard state/version notices, Datadog distributions, queue deadlines, Slack references, and executeTool intent handling improve correctness.
+
+- (agents) Give child Turns one system prompt and tool set on every path by @BYK with @sentry-junior in [#3315](https://github.com/getsentry/junior/pull/3315)
+- (automations) Count automated turns, not replies, in the limit notice by @MathurAditya724 with @sentry-junior in [#3493](https://github.com/getsentry/junior/pull/3493)
+- (compaction) Send the live system prompt in background summaries by @thomasjiangcy with @sentry-junior in [#3499](https://github.com/getsentry/junior/pull/3499)
+- (dashboard) Keep the sidebar when a newer server adds response fields by @MathurAditya724 with @sentry-junior in [#3502](https://github.com/getsentry/junior/pull/3502)
+- (datadog) Count distribution events with count:, not sum: by @lcian with @sentry-junior in [#3504](https://github.com/getsentry/junior/pull/3504)
+- (queue) Give each queue delivery its own request deadline by @MathurAditya724 with @sentry-junior in [#3494](https://github.com/getsentry/junior/pull/3494)
+- (slack) Keep annotation Work Object references within Slack's limit by @MathurAditya724 with @sentry-junior in [#3497](https://github.com/getsentry/junior/pull/3497)
+- (tools) Accept top-level intent on executeTool like callMcpTool by @MathurAditya724 with @sentry-junior in [#3495](https://github.com/getsentry/junior/pull/3495)
+
+### Internal Changes 🔧
+
+- (dashboard) Keep the home card status badge inside its tile by @betegon with @sentry-junior in [#3077](https://github.com/getsentry/junior/pull/3077)
+
 ## 0.304.0
 
 Users gain richer content and clearer operations, while navigation, reporting, continuation, validation, and review workflows become more dependable.

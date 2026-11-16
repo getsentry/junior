@@ -1,17 +1,28 @@
 import {
   createLocalSource,
   createSlackSource,
+  createWebSource,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { promptPlatform } from "@/chat/agent/prompt";
+import { bindTurnTools } from "@/chat/agent/tools";
+import type { AgentRun } from "@/chat/agent/types";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { promptModeTurnTools } from "@/chat/conversations/kind-behavior";
+import {
+  promptModeTurnTools,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
 import { closeDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
+import { buildTurnContextPrompt } from "@/chat/prompt";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { readSlackActionToken } from "@/chat/slack/action-token";
+import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { createTools } from "@/chat/tools";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import {
@@ -21,7 +32,12 @@ import {
 
 type ToolContext = Parameters<typeof createTools>[2];
 
-const MODES: PromptMode[] = ["conversation", "child_agent", "automation"];
+const MODES: PromptMode[] = [
+  "conversation",
+  "child_agent",
+  "automation",
+  "thread",
+];
 const PLATFORMS = ["slack", "local"] as const;
 
 async function unavailable(): Promise<never> {
@@ -88,11 +104,41 @@ function modelFacing(tools: ToolRegistry): Record<string, unknown> {
   );
 }
 
+const plugins = () => defineJuniorPlugins([githubPlugin(), memoryPlugin()]);
+
+// A Thread Turn's run as the agent gets it: a person's Turn runs on the
+// Conversation loop with a Delivery, and an agent's Turn on its Agent
+// invocation has none. Both have the root's Slack Location.
+function threadRun(personInput: boolean) {
+  const spawnAgent = vi.fn(unavailable);
+  const messageAgent = vi.fn(unavailable);
+  const run = {
+    conversationId: "slack:T0:C0:1.0:thread",
+    turnId: `turn-${personInput}`,
+    instruction: { text: "hello" },
+    source: personInput
+      ? createWebSource("slack:T0:C0:1.0:thread")
+      : ({ kind: "agent_invocation" } as const),
+    destination: { platform: "slack", teamId: "T0", channelId: "C0" },
+    location: {
+      id: "location:T0:C0:1.0",
+      provider: "slack",
+      teamId: "T0",
+      channelId: "C0",
+      threadTs: "1.0",
+    },
+    ...(personInput ? { delivery: async () => {} } : undefined),
+    environment: {
+      bindSpawnAgent: () => spawnAgent,
+      bindMessageAgent: () => messageAgent,
+    },
+  } satisfies AgentRun;
+  return { messageAgent, run, spawnAgent };
+}
+
 describe("static tool registry", () => {
   beforeAll(async () => {
-    await createApp({
-      plugins: defineJuniorPlugins([githubPlugin(), memoryPlugin()]),
-    });
+    await createApp({ plugins: plugins() });
   });
 
   afterAll(async () => {
@@ -123,6 +169,121 @@ describe("static tool registry", () => {
       expect(modelFacing(definitions)).toEqual(modelFacing(staticBuilt));
     },
   );
+
+  // A person and an agent both send Turns to a Thread. Every switch between
+  // them must keep the cached tools and system prompt, but each Turn still
+  // cannot run the tools of the other sender.
+  it("sends one system prompt and one tool list on every Turn of a Thread", async () => {
+    await createApp({ plugins: plugins(), limits: { maxAgentDepth: 1 } });
+    try {
+      const turns = await Promise.all(
+        [true, false].map(async (personInput) => {
+          const behavior = turnBehavior({ kind: "thread", personInput });
+          const { run, spawnAgent, messageAgent } = threadRun(personInput);
+          const tools = createTools(
+            [],
+            { writeGeneratedArtifacts: () => [] },
+            {
+              ...fullContext("slack", behavior.promptMode),
+              ...bindTurnTools(run, behavior),
+            },
+          );
+          return {
+            disabled: Object.keys(tools).filter(
+              (name) => tools[name]!.disabledReason,
+            ),
+            messageAgent,
+            piTools: createPiAgentTools(tools, new SkillSandbox([], []), {
+              spanContext: {},
+              searchToolsCost: { owner: "none" },
+            }),
+            sender: behavior.sender!,
+            spawnAgent,
+            systemPrompt: await buildDeploymentSystemPrompt(
+              promptPlatform(run, behavior.promptMode),
+              behavior.promptMode,
+            ),
+            tools,
+          };
+        }),
+      );
+      const [person, agent] = turns as [
+        (typeof turns)[number],
+        (typeof turns)[number],
+      ];
+
+      expect(person.systemPrompt).toBe(agent.systemPrompt);
+      expect(Object.keys(person.tools)).toEqual(Object.keys(agent.tools));
+      expect(modelFacing(person.tools)).toEqual(modelFacing(agent.tools));
+      expect(person.disabled).toEqual(
+        expect.arrayContaining([
+          "spawnAgent",
+          "stopAgent",
+          "archiveAgent",
+          "listAgents",
+          "messageAgent",
+          "reply",
+          "reportBlocked",
+        ]),
+      );
+      expect(person.disabled).not.toContain("addReviewItem");
+      expect(agent.disabled).toEqual(
+        expect.arrayContaining([
+          "setConversationSubscription",
+          "addReviewItem",
+          "searchReviewItems",
+          "updateReviewItem",
+        ]),
+      );
+      expect(agent.disabled).not.toContain("spawnAgent");
+      expect(agent.disabled).not.toContain("reply");
+
+      // The tool adapter refuses a disabled tool before it runs.
+      const call = (
+        turn: (typeof turns)[number],
+        name: string,
+        input: Record<string, unknown> = {},
+      ) => {
+        const direct = turn.piTools.find((tool) => tool.name === name);
+        return direct
+          ? direct.execute(`${name}-call`, input)
+          : turn.piTools
+              .find((tool) => tool.name === "executeTool")!
+              .execute(`${name}-call`, { tool_name: name, arguments: input });
+      };
+      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
+        await expect(call(person, name)).rejects.toThrow(
+          `${name} is disabled in this Turn.`,
+        );
+      }
+      await expect(
+        call(agent, "setConversationSubscription", { subscribed: true }),
+      ).rejects.toThrow(
+        "setConversationSubscription is disabled in this Turn.",
+      );
+      await expect(call(agent, "addReviewItem")).rejects.toThrow(
+        "addReviewItem is disabled in this Turn.",
+      );
+      expect(person.spawnAgent).not.toHaveBeenCalled();
+      expect(person.messageAgent).not.toHaveBeenCalled();
+
+      // The Turn context states the sender, and holds no rules.
+      for (const turn of turns) {
+        expect(
+          buildTurnContextPrompt({
+            includeSessionContext: false,
+            turnInput: turn.sender,
+          }),
+        ).toContain(
+          turn.sender === "person"
+            ? "<turn-input>\nA person sent the input of this Turn.\n</turn-input>"
+            : "<turn-input>\nAn agent sent the input of this Turn.\n</turn-input>",
+        );
+      }
+    } finally {
+      await createApp({ plugins: plugins() });
+    }
+  });
 
   // A stale run-built name would hide a static tool from the check above.
   it("builds every run-built tool for a run with each capability", () => {

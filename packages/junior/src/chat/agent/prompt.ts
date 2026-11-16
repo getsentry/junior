@@ -12,7 +12,7 @@ import {
   type SystemMessage,
 } from "@earendil-works/pi-ai";
 import type { Platform } from "@sentry/junior-plugin-api";
-import type { PromptMode } from "@/chat/system-prompt-rules";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   sandboxSkillDir,
@@ -53,6 +53,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { lookupSlackUser } from "@/chat/slack/user";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
@@ -115,6 +116,8 @@ export interface PromptTurnContext {
   planItems?: PlanItem[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
+  /** IANA timezone from the Slack profile of the person who asked. */
+  askerTimezone?: string | undefined;
 }
 
 interface PromptReplayArgs {
@@ -450,6 +453,15 @@ async function loadUserCustomization(
   return user ? await readUserCustomization(user.id) : undefined;
 }
 
+// Turn context is not part of the prompt identity that replay compares, so a
+// lookup that fails on one slice does not duplicate the instruction.
+async function loadAskerTimezone(
+  actor: Actor | undefined,
+): Promise<string | undefined> {
+  if (actor?.platform !== "slack") return undefined;
+  return (await lookupSlackUser(actor.teamId, actor.userId))?.timezone;
+}
+
 // Record the customization with the Turn input, so the dashboard can show it
 // beside plugin context such as recalled memories.
 function userCustomizationTurnContext(text: string): PluginTurnContext {
@@ -558,6 +570,7 @@ export async function loadPromptTurnContext(
     userCustomization,
     workspaces,
     planItems,
+    askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
@@ -572,8 +585,10 @@ export async function loadPromptTurnContext(
       : undefined,
     listWorkspaces(getDb()),
     listPlanItems(getSqlExecutor(), args.context.conversationId),
+    loadAskerTimezone(args.currentActor),
   ]);
   return {
+    askerTimezone,
     conversationNotes,
     planItems,
     pluginUserPromptContributions,
@@ -591,6 +606,13 @@ export function promptPlatform(
   // child Turn is local, also on a path that has a Delivery, and its system
   // prompt stays the same on every path.
   if (promptMode === "child_agent") return "local";
+  // Every Turn of a Thread has one system prompt, so the Thread's Location
+  // picks the platform. A person's Turn in a Slack-located Thread keeps the
+  // Slack rules that it had, and an agent's Turn in it, which has no
+  // Delivery on its Agent invocation, gets the same prompt.
+  if (promptMode === "thread") {
+    return run.location?.provider === "slack" ? "slack" : "local";
+  }
   // Automation runs have no Delivery port. Their `reply` text still goes to
   // Slack, so they keep Slack formatting rules.
   return (run.delivery || promptMode === "automation") &&
@@ -613,6 +635,8 @@ export async function assemblePrompt(args: {
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
+  /** From `turnBehavior`. */
+  sender?: TurnInputSender | undefined;
   /** AGENTS.md read from the sandbox when this slice started. */
   repositoryInstructions?: RepositoryInstructions | undefined;
   resumedFromSessionRecord: boolean;
@@ -665,6 +689,7 @@ export async function assemblePrompt(args: {
   // A replayed or checkpointed prompt already holds the context of this Turn,
   // so `loadPromptTurnContext` returns nothing for it.
   const {
+    askerTimezone,
     conversationNotes,
     planItems,
     pluginUserPromptContributions,
@@ -691,6 +716,7 @@ export async function assemblePrompt(args: {
   // It returns nothing when no section has news for this Turn.
   const turnContextPrompt = loadsTurnContext
     ? buildTurnContextPrompt({
+        askerTimezone,
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
@@ -703,6 +729,7 @@ export async function assemblePrompt(args: {
             )
           : null,
         pluginPromptContributions: pluginUserPromptContributions,
+        ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,
         runtime: {
           conversationId: args.spanContext.conversationId,

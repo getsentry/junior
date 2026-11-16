@@ -1,11 +1,21 @@
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { useEffect, useState } from "react";
 import { DASHBOARD_VERSION_HEADER } from "../dashboard-version";
 
 const DASHBOARD_VERSION_EVENT = "junior:dashboard-version";
 
+/** What a tab whose bundle is older than the server tells the viewer. */
+export const DASHBOARD_VERSION_DRIFT_MESSAGE =
+  "The dashboard changed. Refresh to load the latest version.";
+
+/** Read the Junior version that one dashboard response reports. */
+export function dashboardServerVersion(response: Response): string | undefined {
+  return response.headers.get(DASHBOARD_VERSION_HEADER)?.trim() || undefined;
+}
+
 /** Publish the Junior version reported by one dashboard response. */
 export function recordDashboardServerVersion(response: Response): void {
-  const version = response.headers.get(DASHBOARD_VERSION_HEADER)?.trim();
+  const version = dashboardServerVersion(response);
   if (!version || typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<string>(DASHBOARD_VERSION_EVENT, { detail: version }),
@@ -28,4 +38,14 @@ export function useDashboardServerVersion(
     return () => window.removeEventListener(DASHBOARD_VERSION_EVENT, update);
   }, []);
   return version;
+}
+
+/** Report whether the browser bundle and server use different known versions. */
+export function dashboardVersionDrift(serverVersion?: string): boolean {
+  return (
+    Boolean(serverVersion) &&
+    JUNIOR_VERSION !== "unknown" &&
+    serverVersion !== "unknown" &&
+    serverVersion !== JUNIOR_VERSION
+  );
 }

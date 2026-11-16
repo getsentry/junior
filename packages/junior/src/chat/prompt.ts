@@ -45,6 +45,7 @@ import {
   buildRuleBlocks,
   SLACK_MENTION_FORMAT_RULE,
   type PromptMode,
+  type TurnInputSender,
 } from "@/chat/system-prompt-rules";
 
 const DEFAULT_SOUL = "You are a practical and concise assistant.";
@@ -631,6 +632,20 @@ export interface DisabledToolPromptContext {
   reason: string;
 }
 
+// The `thread` system prompt holds rules for each sender. This fact says
+// which of them apply to this Turn.
+function buildTurnInputSection(
+  sender: TurnInputSender | undefined,
+): string | null {
+  if (!sender) return null;
+  return renderTagBlock(
+    REQUEST_CONTEXT_SECTION_TAG.turnInput,
+    sender === "person"
+      ? "A person sent the input of this Turn."
+      : "An agent sent the input of this Turn.",
+  );
+}
+
 function buildDisabledToolsSection(
   tools: DisabledToolPromptContext[] | undefined,
 ): string | null {
@@ -719,6 +734,8 @@ export function buildPluginSystemPromptContributions(
 }
 
 type TurnContextPromptInput = {
+  /** IANA timezone of the person who asked. */
+  askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
   /** From `renderPlanDelta`: plan changes that others made. */
@@ -727,6 +744,8 @@ type TurnContextPromptInput = {
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
+  /** Who sent the input of a `thread` Turn, from `turnBehavior`. */
+  turnInput?: TurnInputSender;
   runtime?: {
     conversationId?: string | undefined;
     slackConversation?: SlackConversationContext | undefined;
@@ -778,6 +797,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
     local: buildStaticSystemPrompt("local", "conversation"),
     slack: buildStaticSystemPrompt("slack", "conversation"),
   },
+  thread: {
+    local: buildStaticSystemPrompt("local", "thread"),
+    slack: buildStaticSystemPrompt("slack", "thread"),
+  },
 };
 
 /** Return the fixed instructions for one platform and prompt mode. */
@@ -803,6 +826,13 @@ export function buildTurnContextPrompt(
   const userCustomization = buildUserCustomizationSection(
     params.userCustomization,
   );
+  const askerTimezone = params.askerTimezone
+    ? renderTagBlock(
+        REQUEST_CONTEXT_SECTION_TAG.askerTimezone,
+        escapeXml(params.askerTimezone),
+      )
+    : null;
+  const turnInput = buildTurnInputSection(params.turnInput);
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
   // carry only the user's input and request-scoped context.
@@ -812,7 +842,9 @@ export function buildTurnContextPrompt(
     !conversationNotes &&
     !params.planDelta &&
     !disabledTools &&
-    !userCustomization
+    !userCustomization &&
+    !askerTimezone &&
+    !turnInput
   ) {
     return null;
   }
@@ -823,6 +855,8 @@ export function buildTurnContextPrompt(
     params.planDelta,
     disabledTools,
     userCustomization,
+    askerTimezone,
+    turnInput,
     includeSessionContext
       ? buildContextSection({
           actor: params.actor,

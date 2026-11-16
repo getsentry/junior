@@ -130,6 +130,8 @@ describe("Slack Work Object details", () => {
   it("shows saved annotation facts only within the viewer's Conversation access", async () => {
     await saveReminder();
     const conversationId = "slack:D123:annotation";
+    // A long key must still fit the 128-character Slack reference.
+    const key = `repo/修正#1:"quoted"/${"segment/".repeat(25)}`;
     await getConversationStore().recordActivity({
       conversationId,
       actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
@@ -142,7 +144,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "ENG-1",
       title: "Saved issue",
       objectType: "task",
@@ -154,7 +156,7 @@ describe("Slack Work Object details", () => {
       {
         kind: "object",
         plugin: "objects",
-        key: 'repo/修正#1:"quoted"',
+        key,
         label: "ENG-1",
         title: "Saved issue",
         objectType: "task",
@@ -162,7 +164,7 @@ describe("Slack Work Object details", () => {
       },
       conversationId,
     ).entity!.external_ref.id;
-    expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(id).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
     expect(
       await requestDetails(id, "U123", "T123", "annotation"),
     ).toMatchObject({
@@ -196,7 +198,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "ENG-1",
       title: "Updated issue",
       objectType: "task",
@@ -222,7 +224,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "repo#1",
       title: "Saved code change",
       objectType: "code_change",
@@ -248,8 +250,35 @@ describe("Slack Work Object details", () => {
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
+    // Cards already posted with the earlier reference form keep their details.
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "repo#2",
+      label: "repo#2",
+      title: "Legacy card",
+      objectType: "task",
+      url: "https://example.com/issues/2",
+    });
+    const legacyId = Buffer.from(
+      JSON.stringify([conversationId, "objects", "repo#2"]),
+    ).toString("base64url");
+    expect(
+      await requestDetails(legacyId, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id: legacyId, type: "annotation" },
+        entity_payload: { attributes: { title: { text: "Legacy card" } } },
+      },
+    });
+    expect(
+      await requestDetails(legacyId, "U999", "T123", "annotation"),
+    ).toMatchObject({ error: { status: "not_found" } });
     for (const invalidId of [
-      JSON.stringify([conversationId, "objects", 'repo/修正#1:"quoted"']),
+      JSON.stringify([conversationId, "objects", key]),
       Buffer.from('{"not":"a reference tuple"}').toString("base64url"),
     ]) {
       expect(
