@@ -9,9 +9,10 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type {
-  AgentTools,
-  TurnBehavior,
+import {
+  promptModeTurnTools,
+  type AgentTools,
+  type TurnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
@@ -429,20 +430,6 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
-    turnTools: {
-      ...args.behavior.tools,
-      // An Automation with no outcomes posts nothing, so its run cannot
-      // reply. A dispatch record from before #1788 has no outcomes and sends
-      // to its Destination.
-      // TODO(dcramer): Remove the `undefined` case and the same check in
-      // `finishedRunReply` when automation dispatches require `outcomes`.
-      // Automations have stored outcomes since #1788, and older dispatch
-      // records have passed the 7-day state TTL.
-      reply:
-        args.run.dispatch?.outcomes?.length === 0
-          ? "none"
-          : args.behavior.tools.reply,
-    },
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -485,7 +472,7 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...bindAgentTools(args.run, args.behavior.tools.agents),
+    ...bindTurnTools(args.run, args.behavior),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -726,7 +713,38 @@ export async function wireAgentTools(
   };
 }
 
-/** Bind the agent tools that the Turn's behavior gives it. */
+/**
+ * Bind the tools that one Turn lists and the tools that it can use. Every
+ * Turn of a Prompt mode lists the same tools, so a Thread keeps one tool
+ * list. `createTools` disables each listed tool that the Turn cannot use.
+ */
+export function bindTurnTools(
+  run: AgentRun,
+  behavior: TurnBehavior,
+): Pick<
+  ToolRuntimeContext,
+  "listedTools" | "messageAgent" | "spawnAgent" | "turnTools"
+> {
+  // An Automation with no outcomes posts nothing, so its run cannot reply. A
+  // dispatch record from before #1788 has no outcomes and sends to its
+  // Destination.
+  // TODO(dcramer): Remove the `undefined` case and the same check in
+  // `finishedRunReply` when automation dispatches require `outcomes`.
+  // Automations have stored outcomes since #1788, and older dispatch records
+  // have passed the 7-day state TTL.
+  const withRunReply = (tools: TurnBehavior["tools"]) =>
+    run.dispatch?.outcomes?.length === 0
+      ? { ...tools, reply: "none" as const }
+      : tools;
+  const listedTools = withRunReply(promptModeTurnTools(behavior.promptMode));
+  return {
+    turnTools: withRunReply(behavior.tools),
+    listedTools,
+    ...bindAgentTools(run, listedTools.agents),
+  };
+}
+
+/** Bind the agent tools that the Turn lists. */
 export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,

@@ -14,9 +14,27 @@ import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 /**
  * Prompt mode for one Run. `automation` is for Scheduled automation and Event
  * automation runs, and `child_agent` is for agent invocation runs. Both
- * replace the interactive conversation rules.
+ * replace the interactive conversation rules. `thread` is for every Turn of a
+ * Thread: it holds the `conversation` rules for a person's input and the
+ * `child_agent` rules for an agent's input, so the Thread keeps one system
+ * prompt.
  */
-export type PromptMode = "automation" | "child_agent" | "conversation";
+export type PromptMode =
+  | "automation"
+  | "child_agent"
+  | "conversation"
+  | "thread";
+
+/** A Prompt mode whose rules are for one sender only. */
+type SingleSenderMode = Exclude<PromptMode, "thread">;
+
+/** Who sent the input of a `thread` Turn. The Turn context states it. */
+export type TurnInputSender = "person" | "agent";
+
+type SectionAttributes = Record<string, string>;
+
+const PERSON_SECTION = { for: "person" } satisfies SectionAttributes;
+const AGENT_SECTION = { for: "agent" } satisfies SectionAttributes;
 
 /**
  * Block 2, `<task-execution>`: what the job is in a conversation, when to keep
@@ -79,6 +97,17 @@ const CHILD_AGENT_RUN_RULES = [
 ];
 
 /**
+ * Block 2, `<thread-turns>`: how a Thread Turn picks its rules. A person's
+ * input and an agent's input need different job, trust, and output rules.
+ * Each of those sections says its sender with a `for` attribute, and
+ * `<turn-input>` in the Turn context says the sender of this Turn.
+ */
+const THREAD_TURN_RULES = [
+  "- This Conversation is a Thread: the Conversation of a child agent that people can also message. The input of each Turn comes from a person or from an agent. An agent's input is a task or message from your parent agent, a result or message from one of your own child agents, or an event from one of your own watches.",
+  '- `<turn-input>` in the runtime context says who sent the input of this Turn. A section with `for="person"` applies only to a Turn with a person\'s input. A section with `for="agent"` applies only to a Turn with an agent\'s input. Follow only the sections for the sender of this Turn, and ignore the sections for the other sender. A section with no `for` applies to every Turn.',
+];
+
+/**
  * Block 2, `<evidence>`: what Junior may claim and how it checks. It covers
  * which facts need a tool, where to look first, how to find the cause of a
  * failure, how to label inference, and how to answer pushback. These rules
@@ -117,11 +146,19 @@ const CONTEXT_TRUST_RULES = [
 const REVIEW_ITEM_TRUST_RULE =
   "- A `<review-item-answer id>` is the person's answer to the review item with that id. Continue the work that asked for it, as the answer says.";
 
+/** Block 3 line that says which inputs of a person's Turn are the job. */
+const CONVERSATION_JOB_TRUST_RULE =
+  "- The job is the `<current-instruction>`, `<task>`, and `<review-item-answer>` inputs of this Turn, in order. An `<agent-result>` or `<agent-message>` reports on earlier work.";
+
+/** Block 3 line that keeps who asks apart from who reported. */
+const ATTRIBUTION_TRUST_RULE =
+  "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.";
+
 /** Block 3 lines that only apply when a person sends the input. */
 const CONVERSATION_TRUST_RULES = [
-  "- The job is the `<current-instruction>`, `<task>`, and `<review-item-answer>` inputs of this Turn, in order. An `<agent-result>` or `<agent-message>` reports on earlier work.",
+  CONVERSATION_JOB_TRUST_RULE,
   REVIEW_ITEM_TRUST_RULE,
-  "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.",
+  ATTRIBUTION_TRUST_RULE,
 ];
 
 /**
@@ -230,27 +267,68 @@ const RESULT_REPORTING_RULE =
 const CONCISE_REPLY_RULE =
   "- Be precise and concise. Lead with the answer or result, and include only what the person needs to understand, decide, or act on. Let the request set the length.";
 
-function renderRuleSection(tag: string, lines: string[]): string {
-  return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
+function renderRuleSection(
+  tag: string,
+  lines: string[],
+  attributes: SectionAttributes = {},
+): string {
+  const attributeText = Object.entries(attributes)
+    .map(([name, value]) => ` ${name}="${value}"`)
+    .join("");
+  return [`<${tag}${attributeText}>`, ...lines, `</${tag}>`].join("\n");
+}
+
+function buildJobSection(
+  mode: SingleSenderMode,
+  attributes?: SectionAttributes,
+): string {
+  if (mode === "automation") {
+    return renderRuleSection(
+      "automation-run",
+      AUTOMATION_RUN_RULES,
+      attributes,
+    );
+  }
+  if (mode === "child_agent") {
+    return renderRuleSection(
+      "child-agent-run",
+      [...CHILD_AGENT_RUN_RULES, ...AGENT_INPUT_RULES],
+      attributes,
+    );
+  }
+  return renderRuleSection(
+    "task-execution",
+    [...TASK_EXECUTION_RULES, ...AGENT_INPUT_RULES],
+    attributes,
+  );
 }
 
 function buildWorkingPrinciplesSection(mode: PromptMode): string {
   const job =
-    mode === "automation"
-      ? renderRuleSection("automation-run", AUTOMATION_RUN_RULES)
-      : mode === "child_agent"
-        ? renderRuleSection("child-agent-run", [
-            ...CHILD_AGENT_RUN_RULES,
-            ...AGENT_INPUT_RULES,
-          ])
-        : renderRuleSection("task-execution", [
-            ...TASK_EXECUTION_RULES,
-            ...AGENT_INPUT_RULES,
-          ]);
-  return [job, renderRuleSection("evidence", EVIDENCE_RULES)].join("\n\n");
+    mode === "thread"
+      ? [
+          renderRuleSection("thread-turns", THREAD_TURN_RULES),
+          buildJobSection("conversation", PERSON_SECTION),
+          buildJobSection("child_agent", AGENT_SECTION),
+        ]
+      : [buildJobSection(mode)];
+  return [...job, renderRuleSection("evidence", EVIDENCE_RULES)].join("\n\n");
 }
 
 function buildContextTrustSection(mode: PromptMode): string {
+  if (mode === "thread") {
+    return [
+      renderRuleSection(
+        "context-trust",
+        [CONVERSATION_JOB_TRUST_RULE, ATTRIBUTION_TRUST_RULE],
+        PERSON_SECTION,
+      ),
+      renderRuleSection("context-trust", [
+        REVIEW_ITEM_TRUST_RULE,
+        ...CONTEXT_TRUST_RULES,
+      ]),
+    ].join("\n\n");
+  }
   return renderRuleSection("context-trust", [
     ...(mode === "conversation"
       ? CONVERSATION_TRUST_RULES
@@ -269,18 +347,29 @@ function buildToolsSection(): string {
   ].join("\n\n");
 }
 
-function buildCommunicationSection(
+function buildCommunicationSections(
   platform: Platform,
-  mode: PromptMode,
-): string {
+  mode: SingleSenderMode,
+  attributes?: SectionAttributes,
+): string[] {
   // Narration and delivery rules are for a person who reads the run.
   const conversationSections =
     mode === "conversation"
       ? [
-          renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
-          renderRuleSection("conversation", CONVERSATION_RULES),
+          renderRuleSection(
+            "tool-call-style",
+            TOOL_CALL_STYLE_RULES,
+            attributes,
+          ),
+          renderRuleSection("conversation", CONVERSATION_RULES, attributes),
           ...(platform === "slack"
-            ? [renderRuleSection("slack-actions", SLACK_ACTION_RULES)]
+            ? [
+                renderRuleSection(
+                  "slack-actions",
+                  SLACK_ACTION_RULES,
+                  attributes,
+                ),
+              ]
             : []),
         ]
       : [];
@@ -293,9 +382,28 @@ function buildCommunicationSection(
         : mode === "child_agent"
           ? CHILD_AGENT_FAILURE_REPORTING_RULES
           : FAILURE_REPORTING_RULES,
+      attributes,
     ),
-    buildOutputSection(platform, mode),
-  ].join("\n\n");
+    buildOutputSection(platform, mode, attributes),
+  ];
+}
+
+function buildCommunicationSection(
+  platform: Platform,
+  mode: PromptMode,
+): string {
+  const sections =
+    mode === "thread"
+      ? [
+          ...buildCommunicationSections(
+            platform,
+            "conversation",
+            PERSON_SECTION,
+          ),
+          ...buildCommunicationSections(platform, "child_agent", AGENT_SECTION),
+        ]
+      : buildCommunicationSections(platform, mode);
+  return sections.join("\n\n");
 }
 
 /** Block 6 `<output>` lines for Slack formatting. */
@@ -304,56 +412,47 @@ const SLACK_MARKDOWN_RULES = [
   "- Write a Slack channel as `<#C…>` when you already know its ID, so Slack renders a channel link. Do not look up an ID only for formatting. When the ID is unknown, write plain `#name` and never invent an ID.",
 ];
 
-function buildAutomationOutputSection(platform: Platform): string {
-  return [
-    platform === "slack"
-      ? `<output format="slack-markdown">`
-      : `<output format="markdown">`,
-    "- Follow any format in the instruction. Otherwise keep the message as short as the job allows, and do not describe the run.",
-    RESULT_REPORTING_RULE,
-    ...(platform === "slack"
-      ? SLACK_MARKDOWN_RULES
-      : [
-          "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
-        ]),
-    "</output>",
-  ].join("\n");
-}
-
-function buildOutputSection(platform: Platform, mode: PromptMode): string {
+function buildOutputSection(
+  platform: Platform,
+  mode: SingleSenderMode,
+  attributes: SectionAttributes = {},
+): string {
+  const output = (format: "markdown" | "slack-markdown", lines: string[]) =>
+    renderRuleSection("output", lines, { ...attributes, format });
   if (mode === "automation") {
-    return buildAutomationOutputSection(platform);
+    return output(platform === "slack" ? "slack-markdown" : "markdown", [
+      "- Follow any format in the instruction. Otherwise keep the message as short as the job allows, and do not describe the run.",
+      RESULT_REPORTING_RULE,
+      ...(platform === "slack"
+        ? SLACK_MARKDOWN_RULES
+        : [
+            "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+          ]),
+    ]);
   }
   if (mode === "child_agent") {
-    return [
-      `<output format="markdown">`,
+    return output("markdown", [
       "- Start with the result, not internal process narration.",
       RESULT_REPORTING_RULE,
       "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
       "- Reply with text only when the task is finished.",
-      "</output>",
-    ].join("\n");
+    ]);
   }
   if (platform === "local") {
-    return [
-      `<output format="markdown">`,
+    return output("markdown", [
       CONCISE_REPLY_RULE,
       RESULT_REPORTING_RULE,
       "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
       "- End every turn with a final user-facing response.",
-      "</output>",
-    ].join("\n");
+    ]);
   }
-
-  return [
-    `<output format="slack-markdown">`,
+  return output("slack-markdown", [
     CONCISE_REPLY_RULE,
     RESULT_REPORTING_RULE,
     ...SLACK_MARKDOWN_RULES,
     "- Write each clock time in UTC and in the asker's timezone from `<asker-timezone>` when it is known, such as `19:31 UTC (2:31 PM EST)`.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
-    "</output>",
-  ].join("\n");
+  ]);
 }
 
 /** Return the core rule blocks 2 to 6 for one platform and Prompt mode. */

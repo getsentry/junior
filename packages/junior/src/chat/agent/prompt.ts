@@ -12,7 +12,7 @@ import {
   type SystemMessage,
 } from "@earendil-works/pi-ai";
 import type { Platform } from "@sentry/junior-plugin-api";
-import type { PromptMode } from "@/chat/system-prompt-rules";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   sandboxSkillDir,
@@ -598,6 +598,13 @@ export function promptPlatform(
   // child Turn is local, also on a path that has a Delivery, and its system
   // prompt stays the same on every path.
   if (promptMode === "child_agent") return "local";
+  // Every Turn of a Thread has one system prompt, so the Thread's Location
+  // picks the platform. A person's Turn in a Slack-located Thread keeps the
+  // Slack rules that it had, and an agent's Turn in it, which has no
+  // Delivery on its Agent invocation, gets the same prompt.
+  if (promptMode === "thread") {
+    return run.location?.provider === "slack" ? "slack" : "local";
+  }
   // Automation runs have no Delivery port. Their `reply` text still goes to
   // Slack, so they keep Slack formatting rules.
   return (run.delivery || promptMode === "automation") &&
@@ -620,6 +627,8 @@ export async function assemblePrompt(args: {
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
+  /** From `turnBehavior`. */
+  sender?: TurnInputSender | undefined;
   /** AGENTS.md read from the sandbox when this slice started. */
   repositoryInstructions?: RepositoryInstructions | undefined;
   resumedFromSessionRecord: boolean;
@@ -703,6 +712,7 @@ export async function assemblePrompt(args: {
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
         pluginPromptContributions: pluginUserPromptContributions,
+        ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,
         runtime: {
           conversationId: args.spanContext.conversationId,

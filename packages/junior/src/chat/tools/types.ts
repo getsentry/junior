@@ -90,6 +90,12 @@ interface BaseToolRuntimeContext {
   turnId?: string;
   /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
   turnTools: TurnBehavior["tools"];
+  /**
+   * Tools that the Turn lists, from its Prompt mode. A Thread lists the tools
+   * of every sender, and the ones that `turnTools` does not allow are
+   * disabled. Omitted means `turnTools`.
+   */
+  listedTools?: TurnBehavior["tools"];
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */
