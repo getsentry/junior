@@ -69,6 +69,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type { AnyToolDefinition, ToolRegistry } from "@/chat/tools/definition";
 import {
   coreToolSlots,
@@ -139,6 +140,8 @@ interface ToolRun {
   availableSkills: SkillMetadata[];
   hooks: ToolHooks;
   context: ToolRuntimeContext;
+  /** The tools that the Turn lists. `context.turnTools` says which it can use. */
+  listedTools: TurnBehavior["tools"];
   options: CreateToolsOptions;
   state: ToolState;
   slack: SlackToolContext | undefined;
@@ -174,10 +177,11 @@ function isPublic(run: ToolRun): boolean {
 }
 
 // One binder for each static tool in the registry. The registry decides
-// whether a Turn has the tool, from the platform, the Turn tools and
+// whether a Turn lists the tool, from the platform, the listed Turn tools and
 // deployment config; a binder never repeats those gates. A binder reads only
 // the run: it can return `undefined` when the run lacks a capability that the
-// tool needs, or set `disabledReason` when the run cannot use the tool now.
+// tool needs, or set `disabledReason` when the run cannot use the tool now,
+// such as a listed tool that the Turn's own tools do not allow.
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
@@ -227,9 +231,19 @@ const STATIC_TOOL_BINDERS = {
   runOperatorSql: (run) =>
     isPublic(run) ? undefined : createRunOperatorSqlTool(),
   updateUserCustomization: (run) =>
-    createUpdateUserCustomizationTool(run.context),
+    withDisabledReason(
+      createUpdateUserCustomizationTool(run.context),
+      run.context.turnTools.userCustomization
+        ? undefined
+        : "Only a person's Turn can change user customization.",
+    ),
   setConversationSubscription: (run) =>
-    createSetConversationSubscriptionTool(run.context),
+    withDisabledReason(
+      createSetConversationSubscriptionTool(run.context),
+      run.context.turnTools.subscriptions
+        ? undefined
+        : "Only a person's Turn can change subscriptions.",
+    ),
   searchConversationEvents: (run) =>
     createSearchConversationEventsTool(run.context),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
@@ -253,33 +267,58 @@ const STATIC_TOOL_BINDERS = {
     }),
   spawnAgent: (run) =>
     run.context.spawnAgent
-      ? createSpawnAgentTool(run.context.spawnAgent, run.modelCost)
+      ? withDisabledReason(
+          createSpawnAgentTool(run.context.spawnAgent, run.modelCost),
+          agentToolsDisabledReason(run),
+        )
       : undefined,
   stopAgent: (run) =>
     run.context.spawnAgent
-      ? createStopAgentTool(run.context.conversationId)
+      ? withDisabledReason(
+          createStopAgentTool(run.context.conversationId),
+          agentToolsDisabledReason(run),
+        )
       : undefined,
   archiveAgent: (run) =>
     run.context.spawnAgent
-      ? createArchiveAgentTool(run.context.conversationId)
+      ? withDisabledReason(
+          createArchiveAgentTool(run.context.conversationId),
+          agentToolsDisabledReason(run),
+        )
       : undefined,
   // A child agent that is too deep to start child agents can still find its
   // parent and siblings.
   listAgents: (run) =>
     run.context.spawnAgent || run.context.messageAgent
-      ? createListAgentsTool({
-          conversationId: run.context.conversationId,
-          parentConversationId: run.context.parentConversationId,
-        })
+      ? withDisabledReason(
+          createListAgentsTool({
+            conversationId: run.context.conversationId,
+            parentConversationId: run.context.parentConversationId,
+          }),
+          agentToolsDisabledReason(run),
+        )
       : undefined,
   messageAgent: (run) =>
     run.context.messageAgent
-      ? createMessageAgentTool(run.context.messageAgent)
+      ? withDisabledReason(
+          createMessageAgentTool(run.context.messageAgent),
+          agentToolsDisabledReason(run),
+        )
       : undefined,
   [REPLY_TOOL_NAME]: (run) =>
-    createReplyTool(enabledMode(run.context.turnTools.reply)),
+    withDisabledReason(
+      createReplyTool(enabledMode(run.listedTools.reply)),
+      run.context.turnTools.reply === "none"
+        ? "A person's Turn ends with a final response, not a reply to the parent agent."
+        : undefined,
+    ),
   [REPORT_BLOCKED_TOOL_NAME]: (run) =>
-    createReportBlockedTool(enabledMode(run.context.turnTools.reportBlocked)),
+    withDisabledReason(
+      createReportBlockedTool(enabledMode(run.listedTools.reportBlocked)),
+      run.context.turnTools.reportBlocked === "none"
+        ? "A person's Turn does not report to the parent agent."
+        : undefined,
+    ),
   [NO_REPLY_TOOL_NAME]: () => createNoReplyTool(),
   slackCanvasRead: () => createSlackCanvasReadTool(),
   slackCanvasEdit: (run) => createSlackCanvasEditTool(run.state),
@@ -333,6 +372,15 @@ const STATIC_TOOL_BINDERS = {
       reviewDeskDisabledReason(run),
     ),
 } satisfies Record<StaticToolName, ToolBinder>;
+
+// A person's Turn in a Thread lists the agent tools of the Thread, but it
+// cannot use them: their results would report to the parent as the wrong
+// Actor.
+function agentToolsDisabledReason(run: ToolRun): string | undefined {
+  return run.context.turnTools.agents === "none"
+    ? "A person's Turn in a Thread cannot use agent tools."
+    : undefined;
+}
 
 function reviewDeskDisabledReason(run: ToolRun): string | undefined {
   return run.context.turnTools.reviewDesk
@@ -532,10 +580,12 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const slack = getSlackToolContext(context);
+  const listedTools = context.listedTools ?? context.turnTools;
   const run: ToolRun = {
     availableSkills,
     hooks,
     context,
+    listedTools,
     options,
     state: createToolState(),
     slack,
@@ -562,7 +612,7 @@ export function createTools(
   const tools: ToolRegistry = {};
   for (const slot of coreToolSlots({
     platform: slack ? "slack" : "local",
-    turnTools: context.turnTools,
+    listedTools,
   })) {
     const tool =
       slot.kind === "static"

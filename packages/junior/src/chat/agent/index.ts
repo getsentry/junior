@@ -793,6 +793,7 @@ async function executeAgentRunInPrivacyContext(
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
       promptMode: behavior.promptMode,
+      sender: behavior.sender,
       currentActor: actor,
       availableSkills,
       configurationValues,

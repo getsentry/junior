@@ -1,6 +1,6 @@
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
-import type { PromptMode } from "@/chat/system-prompt-rules";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 
 /**
  * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
@@ -23,7 +23,22 @@ export type TurnBehavior = {
    * text of a `reply` call leaves it.
    */
   delivery: "location" | "conversation";
+  /**
+   * The system prompt of the Turn. Every Turn of a Thread has the `thread`
+   * mode, so the Thread keeps one system prompt and one tool list.
+   */
   promptMode: PromptMode;
+  /**
+   * Who sent the input of a `thread` Turn. The Turn context states it, so the
+   * Turn follows only the rules of the `thread` mode for that sender.
+   */
+  sender?: TurnInputSender;
+  /**
+   * The Turn can pause until its web Actor signs in. A child agent's Turn
+   * cannot wait for a person, even when it runs as the web user who started
+   * it. Missing auth blocks it instead.
+   */
+  waitsForSignIn: boolean;
   /**
    * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
    * reminded once.
@@ -68,6 +83,7 @@ export type TurnBehavior = {
 const ROOT: TurnBehavior = {
   delivery: "location",
   promptMode: "conversation",
+  waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
@@ -87,16 +103,19 @@ const ROOT: TurnBehavior = {
 // the wrong Actor.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
+  promptMode: "thread",
+  sender: "person",
   sessionTasks: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
-// Every other Turn on a Thread comes from its parent, its child agents, or its
-// Watches. Its final response stays in the Thread, and only a `reply` reaches
-// the parent.
-const AGENT_IN_THREAD: TurnBehavior = {
+// A child agent's Turn comes from its parent, its child agents, or its
+// Watches. Its final response stays in its Conversation, and only a `reply`
+// reaches the parent.
+const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
+  waitsForSignIn: false,
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
@@ -111,10 +130,26 @@ const AGENT_IN_THREAD: TurnBehavior = {
   },
 };
 
+// Every Turn on a Thread that a person did not send.
+const AGENT_IN_THREAD: TurnBehavior = {
+  ...CHILD_AGENT_TURN,
+  promptMode: "thread",
+  sender: "agent",
+};
+
+// Every Turn of a Thread lists the tools of both senders, so the Thread keeps
+// one tool list. The Turn's own tools say which of them it can use.
+const THREAD_TOOLS: TurnBehavior["tools"] = {
+  ...AGENT_IN_THREAD.tools,
+  reviewDesk: PERSON_IN_THREAD.tools.reviewDesk,
+  subscriptions: PERSON_IN_THREAD.tools.subscriptions,
+  userCustomization: PERSON_IN_THREAD.tools.userCustomization,
+};
+
 // A Task does work for its parent, so its parent learns when it fails or ends
 // without an answer.
 const AGENT_IN_TASK: TurnBehavior = {
-  ...AGENT_IN_THREAD,
+  ...CHILD_AGENT_TURN,
   missingAnswerError: "No reply was sent.",
   failureNotice: "parent",
 };
@@ -124,6 +159,7 @@ const AGENT_IN_TASK: TurnBehavior = {
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
+  waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
@@ -152,12 +188,14 @@ export function turnBehavior(args: {
 }
 
 /**
- * Return the Turn tools of one Prompt mode. A person's Turn in a Thread also
- * uses the `conversation` mode with no agent tools, so this is the widest set.
+ * Return the tools that every Turn of one Prompt mode lists. Only a `thread`
+ * Turn lists more than its own tools. The listed tools that it cannot use are
+ * disabled.
  */
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   if (mode === "automation") return AUTOMATION_RUN.tools;
   if (mode === "child_agent") return AGENT_IN_TASK.tools;
+  if (mode === "thread") return THREAD_TOOLS;
   return ROOT.tools;
 }
 

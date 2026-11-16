@@ -24,12 +24,13 @@ When this policy and the code do not agree, fix one of them in the same change.
 
 ### System prompt blocks
 
-A Prompt mode (`conversation`, `automation`, `child_agent`) can replace the
-content of a block. It must not add or move a block. `<tool-call-style>`,
-`<conversation>`, and the conversation lines of `<context-trust>` are only in
-`conversation` mode. `child_agent` mode also gets the Review item line of
-`<context-trust>`, because a child gets answers to its own items.
-`<slack-actions>` is only in `conversation` mode on Slack.
+A Prompt mode (`conversation`, `automation`, `child_agent`, `thread`) can
+replace the content of a block. It must not add or move a block.
+`<tool-call-style>`, `<conversation>`, and the conversation lines of
+`<context-trust>` are only in `conversation` mode. `child_agent` mode also
+gets the Review item line of `<context-trust>`, because a child gets answers
+to its own items. `<slack-actions>` is only in `conversation` mode on Slack.
+`thread` mode holds both sets, as `for="person"` and `for="agent"` sections.
 
 1. **Identity.** One header sentence with the role and the precedence rule,
    then the name and platform identity.
