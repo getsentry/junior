@@ -313,12 +313,14 @@ export function createResumeState(args: ResumeStateArgs) {
     async translateSuspension(ending: {
       currentUsage?: AgentTurnUsage | undefined;
       error: unknown;
+      /** The run classified the error as transient. */
+      retryable?: boolean;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
       const reason =
         error instanceof CooperativeTurnYieldError
           ? "yield"
-          : error instanceof RetryableDeliveryError
+          : ending.retryable || error instanceof RetryableDeliveryError
             ? "retry"
             : timedOut
               ? "timeout"
@@ -328,7 +330,8 @@ export function createResumeState(args: ResumeStateArgs) {
       }
 
       if (reason === "retry") {
-        // Failed assistant message was never saved; regenerate from last safe boundary.
+        // The failed step was never saved; run it again from the last safe
+        // boundary.
         resumeMessages = [...latestSafeBoundaryMessages];
       }
 
