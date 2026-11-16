@@ -5,6 +5,14 @@ Review item: an action that asks a question, or a notice that only tells.
 Each assignee sees it on the desk and in its linked Slack threads, and the
 first answer lets the work continue. The dashboard labels the desk "Inbox".
 
+## Intent
+
+- Work that waits for a person has one place, so nobody has to watch every
+  thread to find what needs them.
+- Junior never decides for a person. Only an assignee answers.
+- The first answer wins, wherever it is given, and the work continues from
+  it.
+
 ## Behaviors
 
 - `ask` Junior asks a person. The item shows on the desk and as one card in
@@ -39,8 +47,7 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 
 ## Rules
 
-- Only an assignee acts. An assignee is a User, or Everyone. Junior cannot
-  answer for a person.
+- An assignee is a User, or Everyone.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's Participants.
 - An item from a private Conversation stays private and cannot go to

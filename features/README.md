@@ -8,21 +8,25 @@ they change the system. The `feature-docs` skill writes these files, and the
 ## File contract
 
 Each file has an H1 title and one paragraph that says what the user gets.
-Then it has exactly these H2 sections, in this order:
+Then it has these H2 sections, in this order:
 
-1. `Behaviors`: one bullet for each behavior. Start with a short ID in
+1. `Intent`: the goals that the system must meet, and why. Each goal
+   decides between real options, such as "runs work with no person
+   present". Behaviors and rules follow from these goals.
+2. `Behaviors`: one bullet for each behavior. Start with a short ID in
    backticks. Say what the user does and what the user then sees.
-2. `Entry points`: each place where a user reaches the system, by its
+3. `Entry points`: each place where a user reaches the system, by its
    visible name.
-3. `Rules`: the intent that users rely on, and what the system is not.
-   When the product does not meet an intent yet, start the bullet with
-   `Gap:`, say how the product falls short, and state the goal.
+4. `Rules`: limits that users rely on, such as who can act, and what the
+   system is not.
+5. `Gaps`: only when the product does not meet a goal or a rule yet. Say
+   how it falls short, and which goal or rule it breaks.
 
 These files state intent. The code shows what the product does, not what it
-should do, so do not change a rule only to match the code. Name only user
-actions, visible names, required access, and outcomes that a user can see.
-Leave out source paths, symbols, schemas, design, history, and rollout notes.
-Use the words in `../TERMINOLOGY.md`.
+should do. Do not change a goal or a rule only to match the code. Name only
+user actions, visible names, required access, and outcomes that a user can
+see. Leave out source paths, symbols, schemas, design, history, and rollout
+notes. Use the words in `../TERMINOLOGY.md`.
 
 Behavior IDs are stable. Evals, tests, and PRs refer to a behavior as
 `<file>#<id>`, for example `automations#run-now`.

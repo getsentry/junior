@@ -5,6 +5,15 @@ open and follow pull requests, review them, and work on issues. Junior
 does this as its GitHub App, so the user needs no token. GitHub activity can
 also wake a Conversation or run an Event automation.
 
+## Intent
+
+- Junior carries a change to ready for review without asking, like a
+  teammate. It asks a person only when they must decide or act.
+- A person decides what ships. Junior gets a change ready, and a person
+  reviews and merges it.
+- Work is attributed to the person who asked, but Junior writes as its own
+  App, so nobody hands over a token.
+
 ## Behaviors
 
 - `pr-draft` A user asks for a code change. Junior pushes a branch and opens
@@ -42,8 +51,9 @@ also wake a Conversation or run an Event automation.
 
 ## Rules
 
-- Junior writes to GitHub only as its App. A user's linked account is used
-  for attribution, for what they can see, and for a few personal actions.
+- PRs, issues, reviews, and pushes always use Junior's App. A user's linked
+  GitHub account is used for attribution, for what they can see, and for a
+  few personal actions.
 - Junior cannot merge, approve, fork, or administer a repo.
 - Junior never pushes to or deletes the default branch.
 - Junior reaches only repos where its App is installed.

@@ -10,6 +10,12 @@ The content in these examples is made up. Only the shape is real.
 A user saves short notes in Slack and finds them later from Slack or the
 dashboard.
 
+## Intent
+
+- A note is found in the place where the user asks, so nobody has to open
+  the dashboard to find one.
+- A note belongs to its author. Only the author decides when it goes away.
+
 ## Behaviors
 
 - `save` A user asks Junior to save a note. Junior replies with the note title.
@@ -23,9 +29,21 @@ dashboard.
 
 ## Rules
 
-- Only the author and Admins can delete a note.
+- Only the author can delete a note.
 - A note is not a Review item. Nobody is asked to act on it.
+
+## Gaps
+
+- Admins can delete any note. This breaks "only the author decides when it
+  goes away".
 ```
+
+## Goal that is not a goal
+
+Bad: `- Notes are fast and easy to use.` No reader can check the product
+against it, and it decides nothing.
+
+Fixed: `- A note is found in the place where the user asks.`
 
 ## Behavior that depends on access
 

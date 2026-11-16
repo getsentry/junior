@@ -1,9 +1,17 @@
 # Automations
 
-A user saves an instruction or a skill, and Junior runs it later without a
-person in the loop: on a Schedule, on a matching Event, or on a new message
-in a Slack channel. Each Automation run posts its result to the
-conversation where the user created the Automation.
+A user saves an instruction or a skill, and Junior runs it later: on a
+Schedule, on a matching Event, or on a new message in a Slack channel. Each
+Automation run posts its result to the conversation where the user created
+the Automation.
+
+## Intent
+
+- Runs work with no person present. A person sets up the work once, and
+  Junior does it later without asking anyone.
+- Each Automation run starts its own Conversation and posts at most one
+  message. People continue the Conversation from that message, so a run
+  never floods its Destination.
 
 ## Behaviors
 
@@ -36,16 +44,17 @@ conversation where the user created the Automation.
 
 - The agent creates or manages an Automation only in a Turn that a person
   started. An Automation run or an Event cannot.
-- Runs use Junior's credentials, so they work with no person present.
-- Gap: a creator can ask for runs to use their own credentials. A run can
-  then fail when the creator is not connected, and an edit by someone else
-  switches it back to Junior's credentials. The goal is to remove creator
-  credentials.
-- Each Automation run starts its own Conversation and posts at most one
-  message, to its Destination or to the creator's DM. People can continue
-  the Conversation from that message.
+- Runs use Junior's credentials.
+- A run posts only to its Destination or to the creator's DM.
 - Anyone in the workspace can see and manage an Automation that posts to a
   public channel. Other Automations are visible only to their creator or
   from their Destination.
 - An event filter limits noise. It is not access control.
 - A Watch is not an Automation. An Automation run is not a Run.
+
+## Gaps
+
+- A creator can ask for runs to use their own credentials. This breaks
+  "runs work with no person present": a run can fail when the creator is not
+  connected, and an edit by someone else switches it back to Junior's
+  credentials. The goal is to remove creator credentials.

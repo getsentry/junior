@@ -15,3 +15,7 @@
    not copy it.
 2. No size limit or CI check. The fixed H2s, the one-line rule, and the line
    test keep files small. A size check would only measure a proxy.
+3. `Intent` comes first and `Gaps` is its own section. The first seed docs
+   came from code alone, and they said what the product does, not what it
+   should do. A gap is visible only when the goal is written apart from the
+   behavior.
