@@ -22,6 +22,9 @@ import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
 const pullRequest = "getsentry/junior#691";
+// The Slack person who asked, on GitHub. GitHub authenticates `sender.id`,
+// so core trusts the review author by it.
+const requesterOnGitHub = { id: 7_001, login: "octo-requester" };
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
 const repository = {
   full_name: "getsentry/junior",
@@ -544,7 +547,7 @@ describe("Watches", () => {
       slackMention(`Let me know here when ${pullRequest} lands.`),
     );
     // The Slack person who asked also reviews on GitHub as this login.
-    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
     await insertWatch({
       conversation,
       events: ["pull_request.review.changes_requested"],
@@ -563,8 +566,9 @@ describe("Watches", () => {
         review: {
           body: "Please add a regression test.",
           state: "changes_requested",
-          user: { login: "octo-requester" },
+          user: { login: requesterOnGitHub.login },
         },
+        sender: { ...requesterOnGitHub, type: "User" },
       }),
     );
     await expect(delivery).toSatisfyJudge(
@@ -603,7 +607,7 @@ describe("Watches", () => {
     // The Slack person who asked also reviews on GitHub as this login. The
     // child agent watches the PR, so the review reaches the thread only
     // through its result.
-    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
     await insertWatch({
       conversation: { conversationId: spawned!.conversation_id! },
       events: ["pull_request.review.changes_requested"],
@@ -622,8 +626,9 @@ describe("Watches", () => {
         review: {
           body: "Please add a regression test.",
           state: "changes_requested",
-          user: { login: "octo-requester" },
+          user: { login: requesterOnGitHub.login },
         },
+        sender: { ...requesterOnGitHub, type: "User" },
       }),
     );
     await expect(delivery).toSatisfyJudge(

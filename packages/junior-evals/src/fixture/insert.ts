@@ -114,11 +114,13 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
 }
 
 /**
- * Link a GitHub login to a Slack person, as account linking does, so Events
- * that name the login resolve to that person.
+ * Link a GitHub account to a Slack person, as account linking does. Core
+ * trusts an Event author by the account id that GitHub sends as
+ * `sender.id`, never by login.
  */
 export async function insertLinkedGitHubIdentity(args: {
   author?: SlackAuthor;
+  id: number;
   login: string;
 }): Promise<void> {
   const slack = await insertSlackIdentity(resolveAuthor(args.author));
@@ -129,7 +131,7 @@ export async function insertLinkedGitHubIdentity(args: {
     handle: args.login,
     kind: "user",
     provider: "github",
-    providerSubjectId: `github-user-${args.login}`,
+    providerSubjectId: String(args.id),
   });
 }
 
