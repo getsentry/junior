@@ -1,9 +1,10 @@
 /**
  * Prompt cache prefix check for the agent requests of one test.
  *
- * Provider prompt caches key on the bytes of `tools`, then `system`, then
- * each message block. A request reads the cache only up to the first block
- * that differs from an earlier request, and writes the rest again. So each
+ * Provider prompt caches key on the model and its thinking and effort
+ * settings, then the bytes of `tools`, then `system`, then each message
+ * block. A request reads the cache only up to the first part that differs
+ * from an earlier request, and writes the rest again. So each
  * agent request of a Conversation must start with every block of the one
  * before it. Cache markers may move. Only context compaction may rewrite
  * the history, and only after the tools and system prompt. Its summary
@@ -19,6 +20,8 @@ export interface AgentGatewayRequest {
   system?: unknown;
   tools?: unknown;
   messages: Array<{ role: string; content: unknown }>;
+  thinking?: unknown;
+  output_config?: unknown;
   /** The `x-session-affinity` header: one session per Conversation. */
   sessionAffinity: string;
 }
@@ -29,7 +32,7 @@ interface CachePrefixBreak {
   request: number;
   /** The Conversation ID that the request was sent for. */
   conversation: string;
-  part: "model" | "tools" | "system" | "messages";
+  part: "model" | "settings" | "tools" | "system" | "messages";
   detail: string;
 }
 
@@ -119,6 +122,11 @@ function compactedBetween(before: SeenRequest, after: SeenRequest): boolean {
   );
 }
 
+// Anthropic drops the cached prefix when thinking or effort changes.
+function settingsJson({ thinking, output_config }: AgentGatewayRequest) {
+  return JSON.stringify({ thinking, output_config });
+}
+
 function prefixBreak(
   before: SeenRequest,
   after: SeenRequest,
@@ -128,6 +136,14 @@ function prefixBreak(
   const next = after.request;
   if (previous.model !== next.model) {
     return { part: "model", detail: `${previous.model} became ${next.model}` };
+  }
+  const beforeSettings = settingsJson(previous);
+  const afterSettings = settingsJson(next);
+  if (beforeSettings !== afterSettings) {
+    return {
+      part: "settings",
+      detail: `${beforeSettings} became ${afterSettings}`,
+    };
   }
   const tools = toolBreak(previous.tools, next.tools);
   if (tools) return { part: "tools", detail: tools };

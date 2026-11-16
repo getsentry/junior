@@ -71,6 +71,10 @@ describe("findCachePrefixBreaks", () => {
 
   it.each<[string, AgentGatewayRequest]>([
     [
+      "settings",
+      request(second.messages, { output_config: { effort: "low" } }),
+    ],
+    [
       "tools",
       request(second.messages, {
         tools: [{ name: "systemTime", description: "Return the time now." }],

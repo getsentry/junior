@@ -184,8 +184,17 @@ export function installGatewayObserver(): GatewayObserver {
       const sessionAffinity = request.headers.get("x-session-affinity");
       // Titles and other side calls offer no tools or have no agent session.
       if (!payload.tools?.length || !sessionAffinity) return passthrough();
-      const { model, system, tools, messages } = payload;
-      agentRequests.push({ model, system, tools, messages, sessionAffinity });
+      const { model, system, tools, messages, thinking, output_config } =
+        payload;
+      agentRequests.push({
+        model,
+        system,
+        tools,
+        messages,
+        thinking,
+        output_config,
+        sessionAffinity,
+      });
       const hook = progressHook;
       const rejection = modelRejections.shift();
       if (rejection) {
