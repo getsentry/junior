@@ -265,7 +265,7 @@ describe("dashboard conversation formatting", () => {
     expect(summarizeMessages(conversation)).toEqual({
       items: [
         { author: "Taylor Chen", bytes: 10 },
-        { author: "Junior", bytes: 4 },
+        { author: "Assistant", bytes: 4 },
       ],
       total: 2,
     });

@@ -115,7 +115,7 @@ export function renderBriefMarkdown(args: {
       "None.",
     ),
     "",
-    "### Assumed by Junior (not confirmed)",
+    "### Assumed (not confirmed)",
     "",
     list(
       brief.decisions

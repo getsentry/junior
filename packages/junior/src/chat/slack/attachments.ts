@@ -100,8 +100,9 @@ export async function matchSlackAttachments(args: {
 
 /**
  * Fingerprint the live Slack attachments that `matchSlackAttachments` can
- * return for a Conversation. It changes when one is stored or deleted, so a
- * reader can tell that stored messages may now show other files.
+ * return for a Conversation. It changes when one is recorded, stored, or
+ * deleted, so a reader can tell that stored messages may now show other
+ * files, or a file that is no longer pending.
  */
 export function slackAttachmentsVersionQuery(
   db: JuniorDatabase,
@@ -109,7 +110,7 @@ export function slackAttachmentsVersionQuery(
 ) {
   return db
     .select({
-      version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id}, ',' order by ${juniorAttachments.id})), '')`,
+      version: sql<string>`coalesce(md5(string_agg(concat(${juniorAttachments.id}, ':', ${juniorAttachments.storageKey} is null), ',' order by ${juniorAttachments.id})), '')`,
     })
     .from(juniorAttachments)
     .where(
@@ -136,7 +137,7 @@ export function getSlackFileId(attachment: Attachment): string | undefined {
 }
 
 /**
- * Look up a Slack file that Junior recorded without storing it.
+ * Look up a Slack file that Junior recorded without storing it yet.
  *
  * Uses the installation token that the caller binds: the Slack turn, or the
  * dashboard route for the conversation's Slack team.
@@ -146,7 +147,7 @@ export const readSlackAttachmentSource: ReadAttachmentSource = async (
 ) => {
   const unavailable = (cause?: unknown) =>
     new AttachmentSourceUnavailableError(
-      "The Slack file was deleted, or Junior can no longer access it.",
+      "The Slack file was deleted, or this app can no longer access it.",
       { cause },
     );
   if (source.provider !== "slack") throw unavailable();

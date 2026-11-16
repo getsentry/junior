@@ -17,6 +17,7 @@ describe("createApp model config", () => {
       imageGenerationModelId: "google/gemini-3-pro-image",
       modelId: "anthropic/claude-sonnet-5",
       rerankingModelId: "voyage/rerank-2.5",
+      transcriptionModelId: "elevenlabs/scribe-v1",
       visionModelId: "openai/gpt-5.6-sol",
       webSearchModelId: "openai/gpt-5.4",
       plugins: defineJuniorPlugins([]),
@@ -29,6 +30,7 @@ describe("createApp model config", () => {
       imageGenerationModelId: "google/gemini-3-pro-image",
       modelId: "anthropic/claude-sonnet-5",
       rerankingModelId: "voyage/rerank-2.5",
+      transcriptionModelId: "elevenlabs/scribe-v1",
       visionModelId: "openai/gpt-5.6-sol",
       webSearchModelId: "openai/gpt-5.4",
     });

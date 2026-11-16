@@ -12,15 +12,18 @@
  * - Write with `writeAgentHistory`. It keeps the leading system message of
  *   the current list, so Pi still sends the prompt and tools.
  * - Fold with `foldSystemMessages` when a history replacement drops them.
+ * - Change named sections with `systemSectionsUpdate`.
  */
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   getCurrentSystemMessage,
+  getSystemMessageText,
   type Api,
   type AssistantMessageEventStream,
   type Context,
   type Model,
   type SimpleStreamOptions,
+  type SystemMessage,
 } from "@earendil-works/pi-ai/compat";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -79,6 +82,60 @@ export function foldSystemMessages(
 }
 
 /**
+ * Return a system message that sets each section of `sections` that differs
+ * from the current state of Junior history, or none when all match. A null
+ * section removes it; a section that history does not have needs no removal.
+ */
+export function systemSectionsUpdate(
+  history: readonly PiMessage[],
+  sections: Record<string, string | null>,
+  timestamp: number,
+): SystemMessage | undefined {
+  const current = getCurrentSystemMessage(history)?.sections ?? {};
+  const changed = Object.entries(sections).filter(
+    ([name, value]) => (current[name] ?? null) !== value,
+  );
+  return changed.length > 0
+    ? {
+        role: "system",
+        content: "",
+        sections: Object.fromEntries(changed),
+        timestamp,
+      }
+    : undefined;
+}
+
+/**
+ * Return the system prompt and messages that Junior sends for this history.
+ * Anthropic wants instructions that apply from the start in the top-level
+ * system prompt, but Pi sends a later system message only before the next
+ * assistant message. So the system messages before the first assistant
+ * message fold into the system prompt. They do not change after that Turn,
+ * so the cached prefix stays the same. A request that must share the agent
+ * call's cached prefix, such as a context summary, builds its context here.
+ */
+export function foldLeadingSystemMessages(
+  systemPrompt: string,
+  history: PiMessage[],
+): Pick<Context, "systemPrompt" | "messages"> {
+  const firstAssistant = history.findIndex(
+    (message) => message.role === "assistant",
+  );
+  const end = firstAssistant === -1 ? history.length : firstAssistant;
+  const leading = getCurrentSystemMessage(history.slice(0, end));
+  return {
+    systemPrompt: leading
+      ? [systemPrompt, getSystemMessageText(leading)]
+          .filter((text) => text.length > 0)
+          .join("\n\n")
+      : systemPrompt,
+    messages: history.filter(
+      (message, index) => index >= end || !isSystemMessage(message),
+    ),
+  };
+}
+
+/**
  * Give the stream path Junior's own system prompt and tools, with Junior
  * history as the messages. The traced stream and cache warming then read the
  * same request on every Pi version, with saved system messages in place.
@@ -91,8 +148,10 @@ export function withAgentRequest(
     base(
       model,
       {
-        systemPrompt: request.systemPrompt,
-        messages: readAgentHistory(context.messages),
+        ...foldLeadingSystemMessages(
+          request.systemPrompt,
+          readAgentHistory(context.messages),
+        ),
         tools: request.tools,
       },
       options,

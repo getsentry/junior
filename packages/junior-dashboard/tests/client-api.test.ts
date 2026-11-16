@@ -62,6 +62,7 @@ describe("dashboard client API", () => {
 
   it("seeds core data from the page shell once, then reads the API", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: auth({ user: { email: "dev@example.com", emailVerified: true } }),
@@ -237,6 +238,7 @@ describe("dashboard client API", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {

@@ -32,7 +32,6 @@ import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
-  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -47,6 +46,8 @@ import {
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
+  CAPABILITY_SECTION_TAG,
+  REQUEST_CONTEXT_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -54,13 +55,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import {
-  LATEST_COPY_SECTION_TAGS,
-  latestSections,
-  withoutRequestContext,
-  withoutSections,
-} from "@/chat/services/context-compaction-sections";
 import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -217,33 +213,46 @@ function isSessionTurnContext(text: string | undefined): text is string {
   );
 }
 
+function withoutSections(text: string, tags: string[]): string {
+  return tags.reduce(
+    (result, tag) =>
+      result.replace(
+        new RegExp(
+          `\\n\\n<${tag}(?: [^>\\n]*)?>\\n[\\s\\S]*?\\n</${tag}>`,
+          "g",
+        ),
+        "",
+      ),
+    text,
+  );
+}
+
 /**
- * Remove every copy of the latest-copy sections, then put the given copies in
- * the first Turn context part. Callers leave out a section that kept history
- * already has.
+ * Remove the sections that only the Turn that received them can use, and
+ * plan deltas, which the `<plan>` snapshot of the summary replaces.
  */
-function withLatestSections(content: unknown[], sections: string[]): unknown[] {
-  const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
-  const added = sections.map((section) => `\n\n${section}`).join("");
-  let pending = sections.length > 0;
-  const result = content.map((part) => {
+function withoutRequestContext(text: string): string {
+  return withoutSections(text, [
+    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
+    PLAN_DELTA_TAG,
+  ]);
+}
+
+/**
+ * Remove the copies of capability sections that the Turn context of older
+ * Turns held. Later system messages hold them now, and compaction folds
+ * those.
+ */
+function withoutCapabilitySections(content: unknown[]): unknown[] {
+  return content.map((part) => {
     const text = textPart(part);
-    if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
-      return part;
-    }
-    let stripped = withoutSections(text, LATEST_COPY_SECTION_TAGS);
-    if (pending && stripped.endsWith(closingTag)) {
-      stripped = `${stripped.slice(0, -closingTag.length)}${added}${closingTag}`;
-      pending = false;
-    }
-    return { ...(part as object), text: stripped };
+    return text?.startsWith(`<${TURN_CONTEXT_TAG}>`)
+      ? {
+          ...(part as object),
+          text: withoutSections(text, Object.values(CAPABILITY_SECTION_TAG)),
+        }
+      : part;
   });
-  return pending
-    ? [
-        { type: "text", text: `<${TURN_CONTEXT_TAG}>${added}${closingTag}` },
-        ...result,
-      ]
-    : result;
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -276,17 +285,12 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  return runtimeContextContent(
-    effectiveMessages,
-    effectiveMessages,
-    latestSections(messages),
-  );
+  return runtimeContextContent(effectiveMessages, effectiveMessages);
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
-  latest: string[],
 ): {
   content: unknown[];
   timestamp: number;
@@ -295,11 +299,10 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = withLatestSections(
+  const content = withoutCapabilitySections(
     allContent.filter(
       (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
     ),
-    latest,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -352,8 +355,7 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context, the latest copy of each capability section and `<script-tools>`,
- * and AGENTS.md instructions.
+ * context and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -378,7 +380,6 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
-      latestSections([...earlierContext, ...turnContext]),
     ),
     timestamp,
   );
@@ -386,8 +387,7 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context, the latest copy of each
- * capability section and `<script-tools>`, and the AGENTS.md instructions.
+ * does not carry: the latest session context and the AGENTS.md instructions.
  * Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
@@ -405,12 +405,6 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
-      latestSections(
-        earlierContext,
-        LATEST_COPY_SECTION_TAGS.filter(
-          (tag) => !latestTurnContextSection(keptContext, tag),
-        ),
-      ),
     ),
   );
 }
@@ -532,13 +526,21 @@ async function loadRetainedUserMessages(
   });
 }
 
-/** Keep generated text inside the existing evidence-only prompt boundary. */
+const COMPACTION_READ_BACK_NOTE =
+  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+
+/**
+ * Keep generated text inside the existing evidence-only prompt boundary. The
+ * last line says where replaced detail stays readable: without it, the model
+ * often decides an exact value from a compacted tool result is gone.
+ */
 export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
     '<thread-context authority="evidence-only">',
     escapeXml(summary),
     "</thread-context>",
+    COMPACTION_READ_BACK_NOTE,
   ].join("\n");
 }
 
@@ -892,8 +894,9 @@ async function compactActiveAboveThreshold(
     provenance: contextProvenance,
   };
   // The current system state directly follows the summary of the history
-  // that held it. A system message must follow a user message; Pi sends it
-  // before the next assistant message.
+  // that held it. A system message must follow a user message. With no
+  // assistant message before it, the request folds it into the system
+  // prompt.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;

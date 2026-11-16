@@ -48,6 +48,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { getDashboardAgentName } from "../agentName";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -79,20 +80,20 @@ function pendingDeliveryMeta(
     return {
       icon: SkipForward,
       label: "Next step",
-      tooltip: "Junior reads it at its next step",
+      tooltip: `${getDashboardAgentName()} reads it at its next step`,
     };
   }
   if (message.delivery === "interrupt") {
     return {
       icon: STEER_ICON,
       label: "Steered",
-      tooltip: "Steered: Junior reads it at its next step",
+      tooltip: `Steered: ${getDashboardAgentName()} reads it at its next step`,
     };
   }
   return {
     icon: Clock3,
     label: "Queued",
-    tooltip: "Queued: Junior reads it after the current reply",
+    tooltip: `Queued: ${getDashboardAgentName()} reads it after the current reply`,
   };
 }
 
@@ -202,7 +203,7 @@ function PendingMetaIcons(props: {
           label="Steer queued message"
           onClick={props.onSteer}
           pending={props.steerPending}
-          tooltip="Steer: Junior reads it at its next step"
+          tooltip={`Steer: ${getDashboardAgentName()} reads it at its next step`}
         />
       ) : null}
       {props.onEdit ? (

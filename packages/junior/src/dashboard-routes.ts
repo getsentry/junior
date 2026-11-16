@@ -31,7 +31,8 @@ export interface JuniorDashboardOptions {
 }
 
 export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
-  agentName?: string;
+  /** The configured bot name (`botConfig.userName`). */
+  agentName: string;
   /** The app's `allowedDomains`. Dashboard auth requires at least one. */
   allowedDomains: string[];
   /** Google sign-in session of the dashboard. */

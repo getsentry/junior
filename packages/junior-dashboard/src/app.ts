@@ -103,7 +103,8 @@ export function resetMockDashboardState(): void {
 }
 
 export interface JuniorDashboardOptions {
-  agentName?: string;
+  /** The configured bot name. Core passes `botConfig.userName`. */
+  agentName: string;
   basePath?: string;
   baseURL?: string;
   authPath?: string;
@@ -402,7 +403,7 @@ export function createDashboardApp(
     DEFAULT_AUTH_PATH,
   );
   const allowedDomains = normalizeValues(options.allowedDomains);
-  const agentName = options.agentName?.trim() || "Junior";
+  const agentName = options.agentName;
 
   const authRequired = options.authRequired !== false;
   const configuredBaseURL = options.baseURL ?? process.env["JUNIOR_BASE_URL"];
@@ -412,13 +413,13 @@ export function createDashboardApp(
   }
 
   if (authRequired && allowedDomains.length === 0) {
-    throw new Error("Junior dashboard auth requires allowedDomains");
+    throw new Error("Dashboard auth requires allowedDomains");
   }
 
   // Core owns the Google sign-in session.
   const auth = options.auth;
   if (authRequired && !auth) {
-    throw new Error("Junior dashboard auth requires the core sign-in session");
+    throw new Error("Dashboard auth requires the core sign-in session");
   }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
@@ -480,7 +481,9 @@ export function createDashboardApp(
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
-  app.get(DASHBOARD_SERVICE_WORKER_PATH, () => renderServiceWorker(basePath));
+  app.get(DASHBOARD_SERVICE_WORKER_PATH, () =>
+    renderServiceWorker(basePath, agentName),
+  );
 
   /** Resolve the Junior user for a verified dashboard session. */
   const resolveSessionViewer = async (session: DashboardSession) => {

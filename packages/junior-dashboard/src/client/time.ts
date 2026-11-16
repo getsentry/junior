@@ -143,6 +143,44 @@ export function calendarDaysAgo(
   return Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS);
 }
 
+// Show the year only when it is not the current year.
+function otherYear(
+  time: number,
+  nowMs: number,
+  timeZone: string,
+): Intl.DateTimeFormatOptions | undefined {
+  const year = (ms: number) => formatTime(ms, { timeZone, year: "numeric" });
+  return year(time) === year(nowMs) ? undefined : { year: "numeric" };
+}
+
+/**
+ * Format a transcript message time for its author row. Messages from today
+ * show the time; older ones add the date, and the year when it differs, so
+ * the rows of an old Conversation do not all read "3 months ago".
+ */
+export function formatTranscriptMessageTime(
+  value: number | undefined,
+  nowMs = Date.now(),
+  timeZone = getDashboardTimeZone(),
+): string {
+  const time = toTime(value);
+  if (time === undefined) return "no timestamp";
+
+  const today = calendarDay(time, timeZone) === calendarDay(nowMs, timeZone);
+  return formatTime(time, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    ...(today
+      ? undefined
+      : {
+          day: "numeric",
+          month: "short",
+          ...otherYear(time, nowMs, timeZone),
+        }),
+  });
+}
+
 /**
  * Format an activity time as a short age for dense lists: `now`, `12m`, `3h`,
  * `2d`, `3w`, then a month and day.
@@ -177,12 +215,11 @@ export function formatActivityDay(
   }
   if (days === 1) return "Yesterday";
   if (days < 7) return formatTime(time, { timeZone, weekday: "short" });
-  const year = (ms: number) => formatTime(ms, { timeZone, year: "numeric" });
   return formatTime(time, {
     day: "numeric",
     month: "short",
     timeZone,
-    ...(year(time) === year(nowMs) ? undefined : { year: "numeric" }),
+    ...otherYear(time, nowMs, timeZone),
   });
 }
 
