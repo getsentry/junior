@@ -148,7 +148,7 @@ function repoPayload(repo: string): Record<string, unknown> {
     private: false,
     owner: organizationPayload(ownerLogin),
     html_url: htmlUrl,
-    description: "Junior eval repository fixture",
+    description: "Eval repository fixture",
     fork: false,
     url: apiUrl,
     trees_url: `${apiUrl}/git/trees{/sha}`,

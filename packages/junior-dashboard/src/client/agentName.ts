@@ -1,4 +1,6 @@
-const DEFAULT_AGENT_NAME = "Junior";
+// The shell always embeds the configured name. Only code that renders
+// outside a browser, such as tests, sees this neutral fallback.
+const DEFAULT_AGENT_NAME = "Assistant";
 
 /** Return the agent name embedded in the dashboard shell. */
 export function getDashboardAgentName(): string {

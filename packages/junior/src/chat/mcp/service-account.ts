@@ -28,6 +28,7 @@ import {
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import { botConfig } from "@/chat/config";
 
 const SERVICE_ACCOUNT_KEY_PREFIX = "junior:mcp_service_account";
 const SIGN_IN_KEY_PREFIX = "junior:mcp_service_account_sign_in";
@@ -147,7 +148,7 @@ export async function deleteMcpServiceAccountCredentials(
 
 function clientMetadata(redirectUrl: string): OAuthClientMetadata {
   return {
-    client_name: "Junior MCP Service Account",
+    client_name: `${botConfig.userName} MCP Service Account`,
     redirect_uris: [redirectUrl],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],

@@ -30,6 +30,7 @@ import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
+import { getDashboardAgentName } from "../agentName";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -572,7 +573,9 @@ export const ConversationComposer = memo(function ConversationComposer(
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
-          placeholder={props.placeholder ?? "Message Junior…"}
+          placeholder={
+            props.placeholder ?? `Message ${getDashboardAgentName()}…`
+          }
           ref={textareaRef}
           rows={1}
           spellCheck={autocorrect}

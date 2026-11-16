@@ -134,7 +134,7 @@ const queryClient = new QueryClient({
 export function startDashboard(Shell: ComponentType): void {
   const root = document.getElementById("dashboard-root");
   if (!root) {
-    throw new Error("Junior dashboard root element was not found");
+    throw new Error("Dashboard root element was not found");
   }
   const router = createBrowserRouter([{ path: "*", element: <Shell /> }], {
     basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/",

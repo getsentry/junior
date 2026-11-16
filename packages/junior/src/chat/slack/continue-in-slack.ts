@@ -35,8 +35,8 @@ import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
 /** Refusal for a move that cannot wait for the active Run. */
-export const BUSY = "Wait for Junior to finish, then try again.";
-const THREAD_TAKEN = "This thread already has a Junior conversation.";
+export const BUSY = "Wait for the current reply to finish, then try again.";
+const THREAD_TAKEN = "This Slack thread already has a conversation.";
 // Thrown in the move transaction to roll back the thread claim.
 const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
 
@@ -96,7 +96,7 @@ async function movedMessageText(
   conversation: Conversation,
   actorName: string,
 ): Promise<string> {
-  const title = conversation.title ?? "Junior conversation";
+  const title = conversation.title ?? "Untitled conversation";
   const url = getDashboardConversationLink(conversation.conversationId);
   const brief = await readLatestConversationBrief(
     getDb(),

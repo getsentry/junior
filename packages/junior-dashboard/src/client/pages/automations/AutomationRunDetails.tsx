@@ -31,6 +31,7 @@ import {
   formatRelativeTime,
   formatRuntime,
 } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 /** Search param that owns the selected run, so a run link can be shared. */
 export const AUTOMATION_RUN_PARAM = "run";
@@ -274,7 +275,7 @@ function RunDetails(props: {
     run.credentialMode === "creator"
       ? "Creator’s connected accounts"
       : run.credentialMode === "system"
-        ? "Junior’s accounts only"
+        ? `${agentNamePossessive()} accounts only`
         : null,
   ].filter(Boolean);
   return (

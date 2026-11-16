@@ -20,7 +20,7 @@ export const requireAdmin = createMiddleware<AuthenticatedApiEnv>(
       throwApiError(401, "Authentication required.");
     }
     if (viewer.isAdmin !== true) {
-      throwApiError(403, "Only Junior admins can do this.");
+      throwApiError(403, "Only admins can do this.");
     }
     await next();
   },

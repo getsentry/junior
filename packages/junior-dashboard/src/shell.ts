@@ -43,7 +43,7 @@ function readDashboardColorIcon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-avatar.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard color icon was not found");
+    throw new Error("Dashboard color icon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }
@@ -309,7 +309,7 @@ function readDashboardFavicon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-favicon.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard favicon was not found");
+    throw new Error("Dashboard favicon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }

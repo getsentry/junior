@@ -1,7 +1,7 @@
 /**
  * Own the remote ACP v1 Streamable HTTP edge.
  *
- * Shared state records route short-lived JSON-RPC messages. Junior's
+ * Shared state records route short-lived JSON-RPC messages. The
  * Conversation log remains the source for session replay and Turn output. No
  * request relies on another request reaching the same app process.
  */
@@ -12,7 +12,7 @@ import * as z from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
 import type { AcpConversations } from "./conversations";
 import {
-  ACP_AUTH_METHOD,
+  acpAuthMethod,
   ACP_AUTH_METHOD_ID,
   beginAcpAuthorization,
   createAcpConnectionCredential,
@@ -60,7 +60,7 @@ const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
 /** Dependencies for the serverless-safe remote ACP HTTP handler. */
 type AcpHttpHandlerOptions = {
-  browserAuth?: { baseURL?: string | undefined };
+  browserAuth?: { agentName: string; baseURL?: string | undefined };
   conversations: AcpConversations;
   onError?: ReportAcpError;
   state: AcpState;
@@ -94,12 +94,12 @@ function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {
   });
 }
 
-/** Reject client MCP servers because Junior does not use the client workspace. */
+/** Reject client MCP servers because the agent does not use the client workspace. */
 function rejectUnsupportedMcpServers(mcpServers: readonly unknown[]): void {
   if (mcpServers.length > 0) {
     throw acp.RequestError.invalidParams(
       { field: "mcpServers" },
-      "Junior does not accept client MCP servers",
+      "Client MCP servers are not supported",
     );
   }
 }
@@ -125,7 +125,7 @@ function promptText(prompt: PromptParams["prompt"]): string {
   if (prompt.length === 0) {
     throw acp.RequestError.invalidParams(
       { field: "prompt" },
-      "Junior accepts one or more text or resource link blocks",
+      "Prompt must have one or more text or resource link blocks",
     );
   }
   const blocks: string[] = [];
@@ -137,7 +137,7 @@ function promptText(prompt: PromptParams["prompt"]): string {
     if (!block.text.trim()) {
       throw acp.RequestError.invalidParams(
         { field: "prompt" },
-        "Junior accepts non-empty text blocks only",
+        "Text blocks must not be empty",
       );
     }
     blocks.push(block.text);
@@ -146,7 +146,7 @@ function promptText(prompt: PromptParams["prompt"]): string {
   if (text.length > MAX_PROMPT_TEXT_LENGTH) {
     throw acp.RequestError.invalidParams(
       { field: "prompt" },
-      `Junior accepts at most ${MAX_PROMPT_TEXT_LENGTH} prompt characters`,
+      `Prompt must have at most ${MAX_PROMPT_TEXT_LENGTH} characters`,
     );
   }
   return text;
@@ -427,7 +427,8 @@ function isJsonContentType(contentType: string | null): boolean {
 }
 
 async function handleInitialize(args: {
-  browserAuthAvailable: boolean;
+  /** The configured bot name, when browser sign-in is available. */
+  browserAuthAgentName: string | undefined;
   call: AcpCall;
   request: Request;
   state: AcpState;
@@ -442,7 +443,7 @@ async function handleInitialize(args: {
     if (!supportsUrlElicitation(args.call.params)) {
       throw acp.RequestError.invalidParams(
         { field: "clientCapabilities.elicitation.url" },
-        "Remote Junior authentication requires URL elicitation support",
+        "Remote authentication requires URL elicitation support",
       );
     }
     const credential = createAcpConnectionCredential(args.request);
@@ -456,7 +457,9 @@ async function handleInitialize(args: {
           embeddedContext: false,
         },
       },
-      authMethods: args.browserAuthAvailable ? [ACP_AUTH_METHOD] : [],
+      authMethods: args.browserAuthAgentName
+        ? [acpAuthMethod(args.browserAuthAgentName)]
+        : [],
       agentInfo: { name: "junior", version: args.version },
     } satisfies acp.InitializeResponse;
     const connection = await createAcpConnection(
@@ -518,7 +521,7 @@ async function handleConnectedPost(args: {
           if (params.methodId !== ACP_AUTH_METHOD_ID) {
             throw acp.RequestError.invalidParams(
               { field: "methodId" },
-              "Junior did not advertise this authentication method",
+              "This authentication method was not advertised",
             );
           }
           if (args.authenticated) {
@@ -534,10 +537,11 @@ async function handleConnectedPost(args: {
           if (!args.options.browserAuth) {
             throw acp.RequestError.internalError(
               undefined,
-              "Junior ACP authentication requires an enabled dashboard",
+              "ACP authentication requires an enabled dashboard",
             );
           }
           return await beginAcpAuthorization({
+            agentName: args.options.browserAuth.agentName,
             baseURL: args.options.browserAuth.baseURL,
             connectionId: args.connectionId,
             credentialHash: args.connection.credentialHash,
@@ -668,7 +672,7 @@ export function createAcpHttpHandler(
             );
           }
           return await handleInitialize({
-            browserAuthAvailable: options.browserAuth !== undefined,
+            browserAuthAgentName: options.browserAuth?.agentName,
             call,
             request,
             state,
