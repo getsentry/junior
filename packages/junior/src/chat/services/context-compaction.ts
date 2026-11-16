@@ -42,9 +42,9 @@ import {
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
 import {
+  COMPACTION_SUMMARY_PREFIX,
   hasCompactedConversationContext,
   isCompactionSummaryText,
-  renderCompactionSummary,
 } from "@/chat/services/context-compaction-marker";
 import {
   CAPABILITY_SECTION_TAG,
@@ -62,6 +62,7 @@ import {
   withCompactionSpan,
   type CompactionMode,
 } from "@/chat/services/context-compaction-telemetry";
+import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 
@@ -558,6 +559,24 @@ async function loadRetainedUserMessages(
       sourceEventSeq: projection.seqs[entry.sourceIndex],
     };
   });
+}
+
+const COMPACTION_READ_BACK_NOTE =
+  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+
+/**
+ * Keep generated text inside the existing evidence-only prompt boundary. The
+ * last line says where replaced detail stays readable: without it, the model
+ * often decides an exact value from a compacted tool result is gone.
+ */
+export function renderCompactionSummary(summary: string): string {
+  return [
+    COMPACTION_SUMMARY_PREFIX,
+    '<thread-context authority="evidence-only">',
+    escapeXml(summary),
+    "</thread-context>",
+    COMPACTION_READ_BACK_NOTE,
+  ].join("\n");
 }
 
 function timestampOf(message: PiMessage): number | undefined {

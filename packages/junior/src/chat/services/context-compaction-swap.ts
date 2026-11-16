@@ -36,11 +36,11 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { renderCompactionSummary } from "@/chat/services/context-compaction-marker";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
   estimateReplacementTokens,
+  renderCompactionSummary,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
   userMessage,

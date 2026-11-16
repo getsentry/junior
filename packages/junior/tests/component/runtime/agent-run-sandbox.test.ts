@@ -477,8 +477,8 @@ import {
   AGENTS_REMOVAL_NOTICE,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { renderCompactionSummary } from "@/chat/services/context-compaction-marker";
 import {
+  renderCompactionSummary,
   selectRetainedUserMessages,
   summarizedRuntimeContextMessage,
   userMessage,
