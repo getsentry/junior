@@ -1,3 +1,4 @@
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -32,7 +33,7 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversationEvents } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -440,6 +441,18 @@ describe("cache warming savings re-fill", () => {
       { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
       { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
     ]);
+    // Older releases kept these fields only in the message string.
+    await getDb()
+      .update(juniorConversationEvents)
+      .set({
+        payload: sql`${juniorConversationEvents.payload} - 'stopReason' - 'timestamp' - 'toolName' - 'isError'`,
+      })
+      .where(
+        eq(
+          juniorConversationEvents.conversationId,
+          "local:test:savings-refill-idle",
+        ),
+      );
     // Two 7 minute tool waits: the first reads the cache, the second writes.
     const RUN = DAY_1 + 2 * 60 * MINUTE;
     await storeCalls("local:test:savings-refill-tools", [
