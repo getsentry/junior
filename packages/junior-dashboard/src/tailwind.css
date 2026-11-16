@@ -308,6 +308,9 @@
    height. */
 @custom-variant tall (@media (min-height: 62.5rem));
 
+/* The new UI's nav pane footer: room for the spend meter on two rows. */
+@custom-variant pane-tall (@media (min-height: 45rem));
+
 /* Desktop and mobile layouts. Width alone treats landscape phones as
    desktop, so short windows below 64rem stay mobile. Keep in sync with
    `client/layoutMedia.ts`. */

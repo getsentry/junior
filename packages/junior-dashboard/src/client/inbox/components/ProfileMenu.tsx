@@ -92,7 +92,13 @@ const SPEND_COUNT_UP_MS = 700;
  * Show one spend total. When the total changes, count up from the last shown
  * value and tint the figure until the count ends.
  */
-function SpendAmount({ value }: { value?: number | undefined }) {
+function SpendAmount({
+  compact,
+  value,
+}: {
+  compact?: boolean;
+  value?: number | undefined;
+}) {
   const [shown, setShown] = useState(value);
   const [counting, setCounting] = useState(false);
   const shownRef = useRef(value);
@@ -137,7 +143,68 @@ function SpendAmount({ value }: { value?: number | undefined }) {
         counting && "text-dashboard-accent-text",
       )}
     >
-      {shown === undefined ? "—" : formatCostSummary({ total: shown })}
+      {shown === undefined ? "—" : formatSpend(shown, compact)}
+    </span>
+  );
+}
+
+const COMPACT_USD = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 1,
+  notation: "compact",
+  style: "currency",
+});
+
+/** Format a spend total; `compact` shortens $1,000 and up to "$2.1K". */
+function formatSpend(total: number, compact?: boolean): string {
+  return compact && Math.abs(total) >= 1000
+    ? COMPACT_USD.format(total)
+    : formatCostSummary({ total });
+}
+
+/**
+ * The spend meter under the name in the pane footer. Windows with the height
+ * show 7d and 30d on two rows with the full amounts; shorter ones fit one
+ * compact row. The tooltip keeps the exact amounts in both.
+ */
+function PaneSpendMeter({ spend }: { spend?: PersonalSpendReport }) {
+  const labelClass = "font-medium tracking-[0.08em] text-dashboard-text-muted";
+  const amountClass = "font-semibold text-dashboard-text";
+  return (
+    <span
+      className="min-w-0 font-sans text-xs tabular-nums"
+      data-spend-meter
+      title={personalSpendLabel(spend)}
+    >
+      <span
+        className="hidden grid-cols-[auto_minmax(0,1fr)] gap-x-1.5 pane-tall:grid"
+        data-spend-meter-mode="rows"
+      >
+        <span className={labelClass}>7d</span>
+        <span className={amountClass}>
+          <SpendAmount value={spend?.sevenDaysUsd} />
+        </span>
+        <span className={labelClass}>30d</span>
+        <span className={amountClass}>
+          <SpendAmount value={spend?.thirtyDaysUsd} />
+        </span>
+      </span>
+      <span
+        className="flex min-w-0 items-baseline gap-1 overflow-hidden whitespace-nowrap pane-tall:hidden"
+        data-spend-meter-mode="compact"
+      >
+        <span className={labelClass}>7d</span>
+        <span className={amountClass}>
+          <SpendAmount compact value={spend?.sevenDaysUsd} />
+        </span>
+        <span aria-hidden="true" className="text-dashboard-text-faint">
+          ·
+        </span>
+        <span className={labelClass}>30d</span>
+        <span className={amountClass}>
+          <SpendAmount compact value={spend?.thirtyDaysUsd} />
+        </span>
+      </span>
     </span>
   );
 }
@@ -379,7 +446,7 @@ export function ProfileMenu({
           // The sidebar row grid: the avatar on the icon axis, the name on
           // the label edge, the chevron on the right content edge.
           SIDEBAR_ROW_GRID_CLASS,
-          "h-12 w-full min-w-0 cursor-pointer items-center rounded-lg border-0 bg-transparent text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          "min-h-12 w-full min-w-0 cursor-pointer items-center rounded-lg py-1.5 border-0 bg-transparent text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-hover",
         )}
         {...hoverTrigger}
@@ -391,7 +458,7 @@ export function ProfileMenu({
         />
         <span className="grid min-w-0 gap-0.5">
           <span className="truncate font-medium leading-tight">{name}</span>
-          <SpendSummary spend={spend} />
+          <PaneSpendMeter spend={spend} />
         </span>
         <ChevronsUpDown
           aria-hidden="true"

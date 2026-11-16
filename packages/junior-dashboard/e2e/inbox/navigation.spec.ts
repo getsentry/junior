@@ -73,6 +73,57 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(paneWidth).toBe(startWidth + 32);
   });
 
+  test("the pane's spend meter takes 2 rows when tall and one compact row when short", async ({
+    page,
+    dashboard,
+  }) => {
+    const EXACT = "Personal model spend: 7 days $2,092.01, 30 days $7,019.00";
+    await page.route("**/api/people/me/spend", (route) =>
+      route.fulfill({
+        json: {
+          generatedAt: "2026-11-16T00:00:00.000Z",
+          sevenDaysUsd: 2092.01,
+          source: "conversation_index",
+          thirtyDaysUsd: 7019,
+          windowEnd: "2026-11-16T00:00:00.000Z",
+          windowStart: "2026-10-17T00:00:00.000Z",
+        },
+      }),
+    );
+    const profile = page.getByRole("button", {
+      name: /^Open profile menu for Dashboard User\./,
+    });
+    const meter = profile.locator("[data-spend-meter]");
+    const rows = meter.locator('[data-spend-meter-mode="rows"]');
+    const compact = meter.locator('[data-spend-meter-mode="compact"]');
+
+    // 720px and up: 7d over 30d, with the full amounts.
+    await page.setViewportSize({ width: 1440, height: 720 });
+    await page.goto(dashboard.baseURL);
+    await expect(profile).toHaveAccessibleName(
+      `Open profile menu for Dashboard User. ${EXACT}.`,
+    );
+    await expect(rows).toBeVisible();
+    await expect(rows).toHaveText("7d$2,092.0130d$7,019.00");
+    await expect(compact).toBeHidden();
+    await expect(meter).toHaveAttribute("title", EXACT);
+
+    // Shorter: one compact row, with the exact amounts in its tooltip.
+    await page.setViewportSize({ width: 1440, height: 719 });
+    await expect(compact).toBeVisible();
+    await expect(compact).toHaveText("7d$2.1K·30d$7K");
+    await expect(rows).toBeHidden();
+    await expect(meter).toHaveAttribute("title", EXACT);
+    await expect(profile).toHaveAccessibleName(
+      `Open profile menu for Dashboard User. ${EXACT}.`,
+    );
+
+    // Amounts under $1,000 stay exact in the compact row.
+    await page.unroute("**/api/people/me/spend");
+    await page.reload();
+    await expect(compact).toHaveText("7d$0.46·30d$0.46");
+  });
+
   test("Automations is a row that counts your Automations to do", async ({
     page,
     dashboard,
