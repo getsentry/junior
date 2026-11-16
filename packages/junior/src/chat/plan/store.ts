@@ -13,6 +13,7 @@ import {
   juniorPlanItemVersionSeq,
   juniorUsers,
 } from "@/db/schema";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PlanItem, PlanItemStatus } from "./types";
 
@@ -257,6 +258,8 @@ export async function changePlan(
         .returning({ id: juniorPlanItems.id });
       changedIds.push(inserted!.id);
     }
+    // Open detail views of the Conversation reload the plan on this bump.
+    await touchConversationDetail(db, [conversationId]);
     const items = await listPlanItems(executor, conversationId);
     return {
       items: changedIds.flatMap(
@@ -299,6 +302,7 @@ export async function setPlanItemStatusByUser(
       )
       .returning({ id: juniorPlanItems.id });
     if (updated.length === 0) return undefined;
+    await touchConversationDetail(executor.db(), [args.conversationId]);
     const items = await listPlanItems(executor, args.conversationId);
     return items.find((item) => item.id === args.id);
   });

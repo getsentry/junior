@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
+import { CONVERSATION_VERSION_HEADER } from "@/api/schema";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationPlanItemSchema,
@@ -34,6 +35,12 @@ async function readPlan(app: Hono<JuniorApiEnv>, conversationId: string) {
   );
   expect(response.status).toBe(200);
   return conversationPlanReportSchema.parse(await response.json()).items;
+}
+
+async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
+  return (
+    await app.request(`http://localhost/api/conversations/${conversationId}`)
+  ).headers.get(CONVERSATION_VERSION_HEADER);
 }
 
 function setStatus(
@@ -127,6 +134,7 @@ describe("conversation plan API", () => {
         .status,
     ).toBe(400);
 
+    const beforeChange = await detailVersion(owner.app, conversationId);
     const response = await setStatus(
       owner.app,
       conversationId,
@@ -134,6 +142,10 @@ describe("conversation plan API", () => {
       "done",
     );
     expect(response.status).toBe(200);
+    // Open detail views reload the plan when the detail version moves.
+    expect(await detailVersion(owner.app, conversationId)).not.toBe(
+      beforeChange,
+    );
     expect(conversationPlanItemSchema.parse(await response.json())).toEqual(
       expect.objectContaining({
         status: "done",
