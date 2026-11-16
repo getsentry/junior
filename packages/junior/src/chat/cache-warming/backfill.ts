@@ -235,11 +235,14 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
   const messageText = sql`${events.payload}->>'message'`;
-  // jsonb rejects the escape of a NUL character, and one such message would
-  // fail the query of its whole batch, so the cast drops these escapes.
+  // Newer rows keep the fields that replay reads as payload keys. Older rows
+  // keep them only in the message string. jsonb rejects the escape of a NUL
+  // character, and one such message would fail the query of its whole batch,
+  // so the cast drops these escapes.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
     WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
+    WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
     WHEN strpos(${messageText}, ${NUL_ESCAPE}) = 0 THEN (${messageText})::jsonb
     ELSE regexp_replace(${messageText}, ${NUL_ESCAPE_PATTERN}, ${NUL_ESCAPE_REPLACEMENT}, 'g')::jsonb
   END`;
@@ -253,7 +256,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
       toolName: sql<string | null>`(${message})->>'toolName'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
-      modelId: sql<string | null>`(${message})->>'model'`,
+      modelId: sql<string | null>`${events.payload}->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
     })
