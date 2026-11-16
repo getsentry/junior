@@ -115,6 +115,20 @@ const updatePlanOutputSchema = juniorToolOutputSchema.extend({
       "Items that this call added or changed, or every open item when it changed none.",
     ),
   removed_ids: z.array(z.number().int()).optional(),
+  replaced_person_changes: z
+    .array(
+      z
+        .object({
+          id: z.number().int(),
+          status: z.enum(PLAN_ITEM_STATUSES),
+          changed_by: z.string(),
+        })
+        .strict(),
+    )
+    .optional()
+    .describe(
+      "Statuses that a person set and this call replaced. Check that the person agrees, or set the status back.",
+    ),
 });
 
 export const updatePlanToolDefinition = zodToolDefinition({
@@ -199,7 +213,7 @@ export function createUpdatePlanTool(
             .map(outputItem),
         };
       }
-      const items = await changePlan(executor, {
+      const { items, replacedPersonChanges } = await changePlan(executor, {
         conversationId: context.conversationId,
         nowMs: Date.now(),
         change: {
@@ -228,6 +242,15 @@ export function createUpdatePlanTool(
       return {
         items: items.map(outputItem),
         ...(remove.length > 0 ? { removed_ids: remove } : undefined),
+        ...(replacedPersonChanges.length > 0
+          ? {
+              replaced_person_changes: replacedPersonChanges.map((item) => ({
+                id: item.id,
+                status: item.status,
+                changed_by: item.changedBy!.email,
+              })),
+            }
+          : undefined),
       };
     },
   });

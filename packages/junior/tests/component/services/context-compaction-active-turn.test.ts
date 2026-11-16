@@ -151,7 +151,9 @@ describe("active-turn context compaction", () => {
     const { getSqlExecutor } = await import("@/chat/db");
     const { changePlan } = await import("@/chat/plan/store");
     const self = { conversationId };
-    const [edit, test] = await changePlan(getSqlExecutor(), {
+    const {
+      items: [edit, test],
+    } = await changePlan(getSqlExecutor(), {
       conversationId,
       nowMs: 1,
       change: {

@@ -59,13 +59,14 @@ function assigneeColumns(assignee: StoredPlanAssignee) {
     : { assigneeConversationId: assignee.conversationId, assigneeUserId: null };
 }
 
-function assigneeKey(row: {
-  assigneeConversationId: string | null;
-  assigneeUserId: string | null;
-}): string {
+// An item without an assignee belongs to the plan's own agent.
+function assigneeKey(
+  row: { assigneeConversationId: string | null; assigneeUserId: string | null },
+  conversationId: string,
+): string {
   return row.assigneeUserId
     ? `user:${row.assigneeUserId}`
-    : `conversation:${row.assigneeConversationId}`;
+    : `conversation:${row.assigneeConversationId ?? conversationId}`;
 }
 
 function requireKnownIds(rows: Map<number, PlanItemRow>, ids: number[]) {
@@ -81,7 +82,11 @@ function requireKnownIds(rows: Map<number, PlanItemRow>, ids: number[]) {
  * Check the plan that a change would leave: each id changes once, and each
  * assignee has at most one item in progress.
  */
-function validateChange(rows: Map<number, PlanItemRow>, change: PlanChange) {
+function validateChange(
+  conversationId: string,
+  rows: Map<number, PlanItemRow>,
+  change: PlanChange,
+) {
   const touched = [...change.update.map((item) => item.id), ...change.remove];
   requireKnownIds(rows, touched);
   if (new Set(touched).size !== touched.length) {
@@ -116,7 +121,7 @@ function validateChange(rows: Map<number, PlanItemRow>, change: PlanChange) {
   const inProgress = new Map<string, string[]>();
   for (const item of after) {
     if (item.status !== "in_progress") continue;
-    const key = assigneeKey(item);
+    const key = assigneeKey(item, conversationId);
     inProgress.set(key, [...(inProgress.get(key) ?? []), item.id]);
   }
   const conflict = [...inProgress.values()].find((ids) => ids.length > 1);
@@ -139,14 +144,15 @@ async function withPlanLock<T>(
 }
 
 /**
- * Apply one batch of changes from the plan's own agent, and return the items
- * it added or updated. Throws `ToolInputError` for an unknown id or a second
- * item in progress for one assignee.
+ * Apply one batch of changes from the plan's own agent. Return the items it
+ * added or updated, and the items whose status a person set last and the
+ * change replaced, as they were before it. Throws `ToolInputError` for an
+ * unknown id or a second item in progress for one assignee.
  */
 export async function changePlan(
   executor: JuniorSqlDatabase,
   args: { conversationId: string; change: PlanChange; nowMs: number },
-): Promise<PlanItem[]> {
+): Promise<{ items: PlanItem[]; replacedPersonChanges: PlanItem[] }> {
   const { change, conversationId } = args;
   const now = new Date(args.nowMs);
   return await withPlanLock(executor, conversationId, async () => {
@@ -159,7 +165,26 @@ export async function changePlan(
           .where(eq(juniorPlanItems.conversationId, conversationId))
       ).map((row) => [row.id, row]),
     );
-    validateChange(rows, change);
+    validateChange(conversationId, rows, change);
+    // A person can change a status during a Turn, after the Turn context
+    // showed the plan. The agent's change wins, and its result shows what it
+    // replaced, since no later `<plan-delta>` can.
+    const replacedIds = change.update
+      .filter((update) => {
+        const row = rows.get(update.id)!;
+        return (
+          row.changedByUserId !== null &&
+          update.status !== undefined &&
+          update.status !== row.status
+        );
+      })
+      .map((update) => update.id);
+    const replacedPersonChanges =
+      replacedIds.length > 0
+        ? (await listPlanItems(executor, conversationId)).filter((item) =>
+            replacedIds.includes(item.id),
+          )
+        : [];
     if (change.remove.length > 0) {
       await db
         .delete(juniorPlanItems)
@@ -233,9 +258,12 @@ export async function changePlan(
       changedIds.push(inserted!.id);
     }
     const items = await listPlanItems(executor, conversationId);
-    return changedIds.flatMap(
-      (id) => items.find((item) => item.id === id) ?? [],
-    );
+    return {
+      items: changedIds.flatMap(
+        (id) => items.find((item) => item.id === id) ?? [],
+      ),
+      replacedPersonChanges,
+    };
   });
 }
 
@@ -332,7 +360,7 @@ export async function listPlanItems(
             email: assignedUserEmail ?? "",
             ...(assignedUserName ? { name: assignedUserName } : undefined),
           }
-        : item.assigneeConversationId === conversationId
+        : (item.assigneeConversationId ?? conversationId) === conversationId
           ? { kind: "self" as const }
           : {
               kind: "agent" as const,

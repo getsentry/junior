@@ -76,7 +76,9 @@ describe("conversation plan API", () => {
         userId: owner.viewer.id,
       });
     const self = { conversationId };
-    const [draft, approve] = await changePlan(getSqlExecutor(), {
+    const {
+      items: [draft, approve],
+    } = await changePlan(getSqlExecutor(), {
       conversationId,
       nowMs: 1_000,
       change: {

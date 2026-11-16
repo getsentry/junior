@@ -1,5 +1,5 @@
 {
-  "id": "c902cb08-540f-41a6-82c6-667966d496a2",
+  "id": "ac880283-910e-4dd3-8888-adc2636c94e7",
   "prevId": "889f2aa7-4cb2-41c2-b326-3ef3144c5790",
   "version": "7",
   "dialect": "postgresql",
@@ -3935,7 +3935,7 @@
               "nulls": "last"
             },
             {
-              "expression": "coalesce(\"assignee_conversation_id\", \"assignee_user_id\")",
+              "expression": "coalesce(\"assignee_conversation_id\", \"assignee_user_id\", \"conversation_id\")",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
@@ -3959,7 +3959,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "junior_plan_items_changed_by_user_id_junior_users_id_fk": {
@@ -4007,7 +4007,7 @@
         },
         "junior_plan_items_assignee_check": {
           "name": "junior_plan_items_assignee_check",
-          "value": "(\"junior_plan_items\".\"assignee_conversation_id\" is null) <> (\"junior_plan_items\".\"assignee_user_id\" is null)"
+          "value": "\"junior_plan_items\".\"assignee_conversation_id\" is null or \"junior_plan_items\".\"assignee_user_id\" is null"
         }
       },
       "isRLSEnabled": false

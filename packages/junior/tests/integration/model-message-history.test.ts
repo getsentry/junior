@@ -219,7 +219,9 @@ describe("model message history", () => {
     // The agent's own changes are already in its tool results. The plan is
     // in the database, so a fresh session reads the same items.
     const self = { conversationId: agent.conversationId() };
-    const [, send] = await changePlan(getSqlExecutor(), {
+    const {
+      items: [, send],
+    } = await changePlan(getSqlExecutor(), {
       conversationId: agent.conversationId(),
       nowMs: Date.now(),
       change: {

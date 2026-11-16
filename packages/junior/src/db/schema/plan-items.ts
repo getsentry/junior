@@ -24,9 +24,10 @@ export const juniorPlanItemVersionSeq = pgSequence(
 );
 
 /**
- * One Plan item: work that a Conversation has not finished. Exactly one
+ * One Plan item: work that a Conversation has not finished. At most one
  * assignee: a Conversation (the plan's own agent or one of its child agents)
- * or a User. `changed_by_user_id` is set when a person made the latest
+ * or a User. An item without one belongs to the plan's own agent, so
+ * deleting a User keeps the items assigned to them. `changed_by_user_id` is set when a person made the latest
  * change, and null when the plan's own agent did.
  */
 export const juniorPlanItems = pgTable(
@@ -39,7 +40,7 @@ export const juniorPlanItems = pgTable(
     status: text("status").$type<PlanItemStatus>().notNull(),
     assigneeConversationId: text("assignee_conversation_id"),
     assigneeUserId: text("assignee_user_id").references(() => juniorUsers.id, {
-      onDelete: "cascade",
+      onDelete: "set null",
     }),
     version: bigint("version", { mode: "number" }).notNull(),
     changedByUserId: text("changed_by_user_id").references(
@@ -65,13 +66,13 @@ export const juniorPlanItems = pgTable(
     ),
     check(
       "junior_plan_items_assignee_check",
-      sql`(${table.assigneeConversationId} is null) <> (${table.assigneeUserId} is null)`,
+      sql`${table.assigneeConversationId} is null or ${table.assigneeUserId} is null`,
     ),
     // Each assignee works on at most one item at a time.
     uniqueIndex("junior_plan_items_in_progress_uidx")
       .on(
         table.conversationId,
-        sql`coalesce(${table.assigneeConversationId}, ${table.assigneeUserId})`,
+        sql`coalesce(${table.assigneeConversationId}, ${table.assigneeUserId}, ${table.conversationId})`,
       )
       .where(sql`${table.status} = 'in_progress'`),
   ],
