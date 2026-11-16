@@ -941,6 +941,10 @@ describe("github plugin", () => {
 
   it("creates issues with deterministic requester attribution", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -949,6 +953,7 @@ describe("github plugin", () => {
         userId: "U1",
       },
       conversationId: "slack:C123:1712345.0001",
+      subscribe,
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
@@ -972,6 +977,7 @@ describe("github plugin", () => {
         namespace: "github",
         identifier: "getsentry/junior#660",
         type: "issue",
+        suggested_events: ["issue.closed", "issue.reopened", "issue.updated"],
         supported_events: [
           "issue.comment.created",
           "issue.opened",
@@ -980,9 +986,19 @@ describe("github plugin", () => {
           "issue.updated",
         ],
       },
+      subscription: { events: ["issue.comment.created"], id: "subscription-1" },
       url: "https://github.com/getsentry/junior/issues/660",
     });
     expect(result).not.toHaveProperty("data");
+    // The Watch wakes only on comments, and it does not reply on GitHub.
+    expect(subscribe).toHaveBeenCalledWith({
+      events: ["issue.comment.created"],
+      intent: expect.stringContaining("Do not reply on GitHub"),
+      resource: expect.objectContaining({
+        identifier: "getsentry/junior#660",
+        type: "issue",
+      }),
+    });
 
     expect(ctx.egressRequests()).toHaveLength(1);
     const request = ctx.egressRequests()[0];
@@ -1284,6 +1300,33 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject(expected);
 
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
+  it("returns the created issue when the Watch cannot be created", async () => {
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+    const subscribe = vi.fn(async () => {
+      // Injected fault: the Watch store is down after GitHub created the issue.
+      throw new Error("subscription store unavailable");
+    });
+    const ctx = githubToolsContext({ subscribe });
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createIssue"],
+      ctx as any,
+    );
+
+    const result = await tool?.execute?.(
+      { repo: "getsentry/junior", title: "Typed issue" },
+      { toolCallId: "call-create-issue-subscribe-fail" },
+    );
+    expect(result).toMatchObject({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+      subscribable: {
+        suggested_events: expect.arrayContaining(["issue.comment.created"]),
+      },
+    });
+    expect(result).not.toHaveProperty("subscription");
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 

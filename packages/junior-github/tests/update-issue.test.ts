@@ -65,18 +65,28 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    events: { canSubscribe: true },
+    events: {
+      canSubscribe: true,
+      subscribe: vi.fn(async ({ events }: { events: string[] }) => ({
+        events,
+        id: "subscription-1",
+      })),
+    },
     conversationLink: { url: "https://example.com/session" },
     users: {
       resolveActor: async () => (user ? { user } : undefined),
     },
   };
-  return { fetch, tool: bindPluginTool(gitHubUpdateIssueTool, ctx) };
+  return {
+    fetch,
+    subscribe: ctx.events.subscribe,
+    tool: bindPluginTool(gitHubUpdateIssueTool, ctx),
+  };
 }
 
 describe("updateIssue", () => {
   it("updates issue metadata and preserves runtime-owned body metadata", async () => {
-    const { fetch, tool } = toolContext();
+    const { fetch, subscribe, tool } = toolContext();
 
     await expect(
       tool.execute?.(
@@ -97,9 +107,20 @@ describe("updateIssue", () => {
       objectAnnotations: [{ description: "Updated body" }],
       subscribable: {
         identifier: "getsentry/junior#691",
+        suggested_events: expect.not.arrayContaining(["issue.comment.created"]),
       },
+      subscription: { events: ["issue.comment.created"], id: "subscription-1" },
       url: "https://github.com/getsentry/junior/issues/691",
     });
+    // The updated issue gets the same Watch as a created one.
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: ["issue.comment.created"],
+        resource: expect.objectContaining({
+          identifier: "getsentry/junior#691",
+        }),
+      }),
+    );
 
     expect(fetch.mock.calls[0]?.[0]).toMatchObject({
       operation: "github.issue.get",
