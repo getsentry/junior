@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { botConfig } from "@/chat/config";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import * as Sentry from "@/chat/sentry";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -47,7 +48,7 @@ export function createSubmitFeedbackTool(
     execute: async (input) => {
       const feedbackId = Sentry.captureFeedback({
         message: input.message,
-        name: "Junior agent",
+        name: `${botConfig.userName} agent`,
         source: "junior_agent",
         tags: {
           "gen_ai.conversation.id": context.conversationId,

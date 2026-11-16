@@ -138,7 +138,9 @@ test("starts a new conversation from a centered compose empty state", async ({
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
-  await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Conversation visibility" }),
+  ).toHaveText("Public");
   await expect(composer).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
