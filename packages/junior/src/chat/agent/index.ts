@@ -437,6 +437,10 @@ async function executeAgentRunInPrivacyContext(
   // Kept outside the main try so timeout recovery can finish after delivery.
   let agent: Agent | undefined;
   let acceptedToolFreeAssistant = false;
+  // Tool calls that Junior ended the run with. Pi stops after a batch only
+  // when every call in it is one of these. Kept outside the main try so a
+  // failed run does not retry after one.
+  const terminatingToolCallIds = new Set<string>();
   const generatedFiles: FileUpload[] = [];
   const toolCalls: string[] = [];
   let shouldTrace = false;
@@ -710,9 +714,6 @@ async function executeAgentRunInPrivacyContext(
     // A gated Turn's answer calls past a limit, and how many of them failed.
     const answerCallsPastLimit = new Set<string>();
     let failedAnswerCallsPastLimit = 0;
-    // Tool calls that Junior ended the run with. Pi stops after a batch only
-    // when every call in it is one of these.
-    const terminatingToolCallIds = new Set<string>();
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -1848,11 +1849,13 @@ async function executeAgentRunInPrivacyContext(
         // A sandbox call outside a tool, such as the AGENTS.md refresh between
         // steps, can fail for a short time. Run the step again on a later
         // slice. Before the input commits, the queue redelivers instead. After
-        // a delivered reply, a retry would post a second reply. Model
-        // failures have their own retry policy.
+        // a delivered reply or a call that ends the run, such as `answer`, the
+        // next slice would call the model again and could post a second
+        // reply. Model failures have their own retry policy.
         retryable:
           resume.inputCommitted &&
           !acceptedToolFreeAssistant &&
+          terminatingToolCallIds.size === 0 &&
           !findInErrorChain(
             runError,
             (candidate) => candidate instanceof ProviderError,
