@@ -14,14 +14,18 @@ Then it has exactly these H2 sections, in this order:
    backticks. Say what the user does and what the user then sees.
 2. `Entry points`: each place where a user reaches the system, by its
    visible name.
-3. `Rules`: invariants that users rely on, and what the system is not.
+3. `Rules`: the intent that users rely on, and what the system is not.
+   When the product does not meet an intent yet, start the bullet with
+   `Gap:`, say how the product falls short, and state the goal.
 
-Name only user actions, visible names, required access, and outcomes that a
-user can see. Leave out source paths, symbols, schemas, design, history, and
-rollout notes. Use the words in `../TERMINOLOGY.md`.
+These files state intent. The code shows what the product does, not what it
+should do, so do not change a rule only to match the code. Name only user
+actions, visible names, required access, and outcomes that a user can see.
+Leave out source paths, symbols, schemas, design, history, and rollout notes.
+Use the words in `../TERMINOLOGY.md`.
 
 Behavior IDs are stable. Evals, tests, and PRs refer to a behavior as
-`<file>#<id>`, for example `automations#create`.
+`<file>#<id>`, for example `automations#run-now`.
 
 ## Features
 

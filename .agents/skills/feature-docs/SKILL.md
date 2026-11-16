@@ -17,10 +17,12 @@ exactly.
 1. **Find the owning file.** Use the index in `features/README.md`. Add a new
    file only for a system that users name and use as a unit, such as
    Automations or GitHub. Otherwise, add to the closest existing file.
-2. **Get behavior from evidence.** Read the source, tests, evals, and
-   `packages/docs` pages for the system. Write only behavior that exists on
-   the base branch or in the current change. Planned behavior goes in an
-   `openspec/changes/` plan, not here.
+2. **Get behavior from evidence, and intent from people.** Read the source,
+   tests, evals, and `packages/docs` pages to learn what the system does.
+   Get what it should do from the requester, the PR, or the linked issue.
+   The code does not show intent. When the two differ, write a `Gap:` rule.
+   When you cannot tell which one is intended, ask the requester. Planned
+   work with no current intent goes in an `openspec/changes/` plan.
 3. **Edit in place.** Replace a stale line. Do not append a line that
    repeats or qualifies a line that is already there. When a behavior goes
    away, delete its line.

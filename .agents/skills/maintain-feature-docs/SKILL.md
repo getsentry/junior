@@ -42,7 +42,9 @@ drift: fix the doc. Product regression: report it, and keep the doc.
    the same time. Give each one the contract, its file, and this return
    shape. Subagents do not edit files.
    - per behavior ID: `holds`, `drift` (with a source citation), or `gone`
-   - per rule: `holds` or `drift` (with a source citation)
+   - per rule: `holds`, or `gap` (the code does not meet it, with a source
+     citation)
+   - per `Gap:` rule: `open`, or `closed` (the code now meets it)
    - lines that break the contract (implementation, history, a repeat of
      another line or file, a line with no outcome that a user can see)
    - user-facing behavior that is missing, each with a source path
@@ -55,6 +57,10 @@ drift: fix the doc. Product regression: report it, and keep the doc.
    `junior-qa` skill (`pnpm cli -- chat ...`) to see the behavior.
 5. **Triage.**
    - drift or a gone behavior: fix or delete the line
+   - a rule that the code does not meet: do not change it to match the
+     code. If a commit or PR in scope changed the intent on purpose, fix the
+     rule. Otherwise, report the gap outside the PR.
+   - a closed `Gap:` rule: rewrite it as a plain rule
    - contract break: cut it, or rewrite it as one bullet in the contract
    - missing main behavior: add one bullet, and follow `feature-docs`
    - product regression: report it, outside the PR
@@ -69,7 +75,8 @@ Keep it short:
 
 - outcome and scope, with the files checked
 - the PR link, when changed
-- regressions, each with its `<file>#<id>` and a source citation
+- regressions and new gaps, each with its `<file>#<id>` or rule and a
+  source citation
 - the coverage list: `<file>#<id>` entries with no eval or test
 
 Keep run notes in scratch space. Do not commit them.

@@ -34,14 +34,16 @@ conversation where the user created the Automation.
 
 ## Rules
 
-- Only a person creates or manages an Automation. An Automation run, an
-  Event, or an agent cannot.
-- Runs use Junior's credentials. They use the creator's credentials only
-  when the creator asks. Only the creator can turn this on.
-- When someone other than the creator changes what an Automation does, it
-  goes back to Junior's credentials.
-- Each run posts at most one message, to its Destination or to the
-  creator's DM.
+- The agent creates or manages an Automation only in a Turn that a person
+  started. An Automation run or an Event cannot.
+- Runs use Junior's credentials, so they work with no person present.
+- Gap: a creator can ask for runs to use their own credentials. A run can
+  then fail when the creator is not connected, and an edit by someone else
+  switches it back to Junior's credentials. The goal is to remove creator
+  credentials.
+- Each Automation run starts its own Conversation and posts at most one
+  message, to its Destination or to the creator's DM. People can continue
+  the Conversation from that message.
 - Anyone in the workspace can see and manage an Automation that posts to a
   public channel. Other Automations are visible only to their creator or
   from their Destination.
