@@ -82,10 +82,97 @@ export function readLedger(budget: Budget): Ledger {
 function cachePath(budget: Budget, call: ModelCall) {
   const key = createHash("sha256")
     .update(
-      JSON.stringify([call.modelId, call.system, call.user, call.maxTokens]),
+      JSON.stringify([
+        provider(),
+        call.modelId,
+        call.system,
+        call.user,
+        call.maxTokens,
+      ]),
     )
     .digest("hex");
   return join(budget.cacheDir, call.stage, `${key}.json`);
+}
+
+/** OpenRouter when `OPENROUTER_API_KEY` is set, else AI Gateway. */
+export function provider(): "openrouter" | "gateway" {
+  return process.env["OPENROUTER_API_KEY"] ? "openrouter" : "gateway";
+}
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+async function gatewayComplete(request: ModelCall, estimate: number) {
+  const result = await completeText({
+    modelId: request.modelId,
+    system: request.system,
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: request.user }],
+        timestamp: Date.now(),
+      },
+    ],
+    cacheRetention: "none",
+    maxTokens: request.maxTokens,
+    messageAttributeMode: "metadata",
+    promptName: `compaction_benchmark.${request.stage}`,
+  });
+  return {
+    text: result.text,
+    costUsd: result.message.usage?.cost?.total ?? estimate,
+  };
+}
+
+interface OpenRouterResponse {
+  choices?: Array<{ message?: { content?: string | null } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+}
+
+/**
+ * Call OpenRouter's OpenAI-compatible endpoint with the same model ids. Use
+ * the billed cost it returns; fall back to catalog rates on its token counts.
+ */
+async function openRouterComplete(request: ModelCall) {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env["OPENROUTER_API_KEY"]}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: request.modelId,
+        messages: [
+          { role: "system", content: request.system },
+          { role: "user", content: request.user },
+        ],
+        max_tokens: request.maxTokens,
+        usage: { include: true },
+      }),
+    });
+    // Rate limits and provider outages are transient; retry them twice.
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 5_000 * (attempt + 1)),
+      );
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(
+        `OpenRouter ${response.status} for ${request.modelId}: ${(await response.text()).slice(0, 300)}`,
+      );
+    }
+    const body = (await response.json()) as OpenRouterResponse;
+    const input = body.usage?.prompt_tokens ?? 0;
+    const output = body.usage?.completion_tokens ?? 0;
+    const rate = rates(request.modelId, input);
+    return {
+      text: body.choices?.[0]?.message?.content ?? "",
+      costUsd:
+        body.usage?.cost ??
+        (input * rate.input + output * rate.output) / PER_MILLION,
+    };
+  }
 }
 
 /**
@@ -126,25 +213,14 @@ export function modelCaller(budget: Budget) {
       );
     }
     reservedUsd += estimate;
-    const result = await completeText({
-      modelId: request.modelId,
-      system: request.system,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: request.user }],
-          timestamp: Date.now(),
-        },
-      ],
-      cacheRetention: "none",
-      maxTokens: request.maxTokens,
-      messageAttributeMode: "metadata",
-      promptName: `compaction_benchmark.${request.stage}`,
-    }).finally(() => {
+    const saved = await (
+      provider() === "openrouter"
+        ? openRouterComplete(request)
+        : gatewayComplete(request, estimate)
+    ).finally(() => {
       reservedUsd -= estimate;
     });
-    const costUsd = result.message.usage?.cost?.total ?? estimate;
-    const saved = { text: result.text, costUsd };
+    const costUsd = saved.costUsd;
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(saved));
     ledger.spentUsd += costUsd;

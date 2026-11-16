@@ -40,6 +40,11 @@ Review `$D/tier2.json` and fix or delete wrong items. The second command
 runs the Luna distillation, three summary reruns at points 0, 9, and 19,
 the probes, and the report.
 
+Set `OPENROUTER_API_KEY` instead to send the same model ids through
+OpenRouter's OpenAI-compatible API. Spend then comes from OpenRouter's
+returned cost. Its provider routing can differ slightly from AI Gateway, so
+compare runs on one provider. The cache keys include the provider.
+
 `--max-usd` caps the total spend in `$D/cache` across both commands. It
 defaults to 30. `all --dry-run --data $D` prints only the estimate. A run
 stops before a call that would pass the cap and exits with code 3. Results

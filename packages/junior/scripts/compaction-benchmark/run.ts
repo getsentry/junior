@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { Tier2Item } from "./arms";
 import { assertOutsideGit } from "./events";
-import { BudgetStop, modelCaller } from "./models";
+import { BudgetStop, modelCaller, provider } from "./models";
 import {
   distill,
   loadPoints,
@@ -56,6 +56,7 @@ const script = "pnpm exec tsx scripts/compaction-benchmark/run.ts";
 
 function context(dryRun: boolean, maxUsd: number) {
   const { call, ledger } = modelCaller({ cacheDir, maxUsd, dryRun });
+  if (!dryRun) console.log(`model provider: ${provider()}`);
   const ctx: StageContext = { dir: data!, call, dryRun };
   return { ctx, ledger };
 }
