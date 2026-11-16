@@ -11,6 +11,7 @@
 import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -712,7 +713,9 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
   for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
-      if ((message as { role?: unknown }).role !== "user") return undefined;
+      // A replacement adds only user messages and folded system state.
+      const role = (message as { role?: unknown }).role;
+      if (role !== "user" && role !== "system") return undefined;
       continue;
     }
     const tokens = measuredInputTokens(message);
@@ -886,10 +889,17 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
+  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemEntries = systemMessage
+    ? [{ message: systemMessage, provenance: contextProvenance }]
+    : [];
   const keptTokens = estimateReplacementTokens(
-    [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
-      (entry) => entry.message,
-    ),
+    [
+      ...retainedUserMessages,
+      ...contextEntries,
+      ...instructionEntries,
+      ...systemEntries,
+    ].map((entry) => entry.message),
     args.modelId,
     args.requestOverheadTokens,
   );
@@ -933,6 +943,9 @@ async function compactActiveAboveThreshold(
     ),
     provenance: contextProvenance,
   };
+  // The current system state directly follows the summary of the history
+  // that held it. A system message must follow a user message; Pi sends it
+  // before the next assistant message.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
@@ -941,10 +954,16 @@ async function compactActiveAboveThreshold(
     ? [
         ...retainedUserMessages,
         summaryEntry,
+        ...systemEntries,
         ...contextEntries,
         ...instructionEntries,
       ]
-    : [...contextEntries, ...instructionEntries, summaryEntry];
+    : [
+        ...contextEntries,
+        ...instructionEntries,
+        summaryEntry,
+        ...systemEntries,
+      ];
   const retainedMessageCount =
     retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);

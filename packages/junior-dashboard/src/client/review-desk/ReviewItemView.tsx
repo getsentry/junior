@@ -8,11 +8,11 @@ import { Button } from "../components/ui/button";
 import { ChatLayout } from "../conversations/ChatLayout";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatRelativeTime } from "../format";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { reviewItemStatusLabel } from "./reviewItemFormat";
+import { formatRelativeTime } from "../time";
 
 /** Space above the card when the view starts at its top. */
 const CARD_TOP_MARGIN_PX = 24;

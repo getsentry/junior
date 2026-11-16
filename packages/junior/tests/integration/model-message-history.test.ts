@@ -4,7 +4,10 @@ import {
   mockAnthropicStream,
   withoutCacheMarkers,
 } from "../fixtures/anthropic-stream";
+import { connectedState } from "@/chat/cache-warming/request";
+import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import { botConfig } from "@/chat/config";
+import { commitMessages } from "@/chat/conversations/projection";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
@@ -101,6 +104,45 @@ describe("model message history", () => {
         withoutCacheMarkers(after.messages.slice(0, before.messages.length)),
       ),
     ).toBe(JSON.stringify(withoutCacheMarkers(before.messages)));
+  });
+
+  it("replays a saved system message in place on every request", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: ["First.", "Second.", "Third."],
+    });
+    await agent.run("first");
+    // No runtime path writes a later system message yet, so commit one as
+    // the next history item, where Pi would put it.
+    const saved = {
+      role: "system" as const,
+      content: "Prefer short replies.",
+      sections: { skills: "<available-skills>\nnone\n</available-skills>" },
+      timestamp: Date.now(),
+    };
+    const firstHistory = await agent.agentHistory();
+    await commitMessages({
+      conversationId: agent.conversationId(),
+      messages: [...firstHistory, saved],
+    });
+
+    await agent.run("second");
+    const second = agent.snapshot();
+    await agent.run("third");
+    const third = agent.snapshot();
+
+    expect((await agent.agentHistory())[firstHistory.length]).toEqual(saved);
+    expect(second.messages[firstHistory.length]).toEqual(saved);
+    expect(
+      JSON.stringify(third.messages.slice(0, second.messages.length)),
+    ).toBe(JSON.stringify(second.messages));
+    // Cache warming stores this request context and sends it again.
+    const state = await connectedState();
+    const key = `snapshot:${agent.conversationId()}`;
+    await saveSnapshot(state, agent.conversationId(), key, third, 60_000);
+    await expect(
+      loadSnapshot(state, agent.conversationId(), key),
+    ).resolves.toEqual(third);
   });
 
   it("sends a capability section again only when it changed", async () => {

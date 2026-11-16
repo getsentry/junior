@@ -193,6 +193,7 @@ const STATIC_TOOL_BINDERS = {
   webSearch: (run) =>
     createWebSearchTool(
       botConfig.webSearchModelId,
+      run.modelCost,
       run.hooks.toolOverrides?.webSearch,
     ),
   webFetch: (run) =>
@@ -411,7 +412,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
             modelId: botConfig.imageGenerationModelId,
             canSendFilesToActiveConversation:
               run.canSendFilesToActiveConversation,
-            promptCost: run.modelCost,
+            modelCost: run.modelCost,
             sandbox: run.context.workspace,
           },
           run.hooks.toolOverrides?.imageGenerate,

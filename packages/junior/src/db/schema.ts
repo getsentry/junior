@@ -2,6 +2,7 @@ import { juniorArtifacts } from "./schema/artifacts";
 import {
   juniorAttachmentUploads,
   juniorAttachments,
+  juniorMessageAttachments,
 } from "./schema/attachments";
 import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
@@ -41,6 +42,7 @@ export {
   juniorArtifacts,
   juniorAttachmentUploads,
   juniorAttachments,
+  juniorMessageAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
   juniorConversationAnnotations,
@@ -79,6 +81,7 @@ export const juniorSqlSchema = {
   juniorArtifacts,
   juniorAttachmentUploads,
   juniorAttachments,
+  juniorMessageAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
   juniorConversationAnnotations,

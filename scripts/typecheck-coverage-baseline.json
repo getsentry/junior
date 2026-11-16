@@ -27,6 +27,7 @@
   "packages/junior-dashboard/e2e/conversations-read-position.spec.ts",
   "packages/junior-dashboard/e2e/conversations.spec.ts",
   "packages/junior-dashboard/e2e/harness.ts",
+  "packages/junior-dashboard/e2e/inbox-tab-count.spec.ts",
   "packages/junior-dashboard/e2e/locations.spec.ts",
   "packages/junior-dashboard/e2e/mcp-settings.spec.ts",
   "packages/junior-dashboard/e2e/memories.spec.ts",

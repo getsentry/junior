@@ -10,6 +10,7 @@ export function isEncodedHistoryType(type: string): boolean {
     type === "user_message" ||
     type === "assistant_message" ||
     type === "tool_result" ||
+    type === "system_message" ||
     type === "handoff" ||
     type === "compaction"
   );

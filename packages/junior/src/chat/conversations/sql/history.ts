@@ -40,6 +40,7 @@ import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
+import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
   rootConversationIsArchived,
@@ -264,6 +265,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
+        await writeMessageLinks(this.executor, conversationId, rows);
         if (
           pending.some(
             (event) =>

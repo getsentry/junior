@@ -23,7 +23,6 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
-import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
@@ -33,6 +32,7 @@ import {
 } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { DetailsList, DetailsRow } from "./DetailsList";
+import { formatTime } from "../time";
 
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {

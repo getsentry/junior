@@ -33,6 +33,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
 import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
@@ -40,6 +41,21 @@ import { isUnlistedMockConversation, withMockSends } from "./sends";
 export const NOW = "2026-08-07T12:00:00.000Z";
 /** Milliseconds for {@link NOW}. */
 export const NOW_MS = Date.parse(NOW);
+
+/** Count open changes idle past {@link IDLE_CHANGE_DAYS}, as the API does. */
+export function mockIdleCount(
+  changes: readonly CodeOverviewReport["changes"][number][],
+  nowMs = NOW_MS,
+): number {
+  return changes.filter(
+    (change) =>
+      change.state === "open" &&
+      Math.floor(
+        (nowMs - Date.parse(change.lastActivityAt ?? change.openedAt)) /
+          86_400_000,
+      ) > IDLE_CHANGE_DAYS,
+  ).length;
+}
 
 /** Build code activity for local dashboard development and QA. */
 export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
@@ -112,6 +128,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
       closed: 1,
       costUsd: 18.4,
       created: 8,
+      // The listed open change is two days old.
+      idle: 0,
       medianCostUsd: 3.5,
       medianMergeTimeMs: 2 * 86_400_000,
       merged: 6,
@@ -1420,6 +1438,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
         "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+        "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
         "The team watches it on https://acme.sentry.io/dashboard/42/",
@@ -1432,9 +1451,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, the trace, the event, the release, and
-        // the dashboard show a card, and the repeated pull request shows no
-        // second card.
+        // Slack message, the chart, the trace, the event, the release, the
+        // dashboard, and the monitor show a card, and the repeated pull
+        // request shows no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1448,6 +1467,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://acme.sentry.io/releases/junior%404.2.0/",
         "",
         "https://acme.sentry.io/dashboard/42/",
+        "",
+        "https://acme.sentry.io/monitors/4021/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
@@ -3835,7 +3856,11 @@ export function readMockPeopleCode(
       ),
     ],
     generatedAt: overview.generatedAt,
-    summary: { ...overview.summary, open: openChanges.length },
+    summary: {
+      ...overview.summary,
+      idle: mockIdleCount(openChanges),
+      open: openChanges.length,
+    },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };

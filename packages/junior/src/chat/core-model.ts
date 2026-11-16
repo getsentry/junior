@@ -1,10 +1,10 @@
 /**
  * Core model calls with required cost attribution.
  *
- * Core code calls the text, object, decision, and embedding models only
- * through this module. Each call names its operation and where its cost
- * goes, so a new call site cannot drop its cost. Plugins get the same rule
- * through `chat/plugins/model.ts`.
+ * Core code calls the text, object, decision, embedding, web search, and
+ * image models only through this module. Each call names its operation and
+ * where its cost goes, so a new call site cannot drop its cost. Plugins get
+ * the same rule through `chat/plugins/model.ts`.
  */
 import type { ZodTypeAny } from "zod";
 import type * as z from "zod";
@@ -29,12 +29,14 @@ type ConversationRecordedOperation =
   | "conversation_embedding"
   | "conversation_search_embedding"
   | "conversation_title"
+  | "image_generation"
   | "image_prompt_enrichment"
   | "review_item_reply_match"
   | "run_title"
   | "task_title"
   | "tool_search_rerank"
-  | "vision_summary";
+  | "vision_summary"
+  | "web_search";
 
 /** No Conversation exists, such as an eval. The cost stays on the span. */
 type NoConversation = { owner: "none" };
@@ -148,6 +150,25 @@ export async function embedTexts(
       ? { metadata: { conversationId: cost.conversationId } }
       : undefined),
   });
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Run one web search and attribute its cost. */
+export async function searchWeb(
+  params: Attributed<Parameters<typeof gateway.searchWeb>[0]>,
+): Promise<Awaited<ReturnType<typeof gateway.searchWeb>>> {
+  const result = await gateway.searchWeb(gatewayParams(params));
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Generate or edit images and attribute the cost. */
+export async function generateImages(
+  params: Parameters<typeof gateway.generateImages>[0] & ModelCallAttribution,
+): Promise<Awaited<ReturnType<typeof gateway.generateImages>>> {
+  const { cost: _cost, operation: _operation, ...rest } = params;
+  const result = await gateway.generateImages(rest);
   await recordCost(params, result.costUsd);
   return result;
 }

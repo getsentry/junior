@@ -157,7 +157,13 @@ export function getPiMessageRole(value: unknown): string | undefined {
 export function isContinuablePiBoundary(
   messages: readonly PiMessage[],
 ): boolean {
-  const lastRole = getPiMessageRole(messages.at(-1));
+  // A saved system message applies to the next model call, so the message
+  // before it decides.
+  let end = messages.length;
+  while (end > 0 && getPiMessageRole(messages[end - 1]) === "system") {
+    end -= 1;
+  }
+  const lastRole = getPiMessageRole(messages[end - 1]);
   return lastRole === "user" || lastRole === "toolResult";
 }
 

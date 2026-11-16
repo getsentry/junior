@@ -15,7 +15,6 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
@@ -26,7 +25,10 @@ import {
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
 } from "../schema/conversation-attachment-upload";
-import { conversationFeedSchema } from "../schema/conversation-feed";
+import {
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -142,7 +144,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, cursor, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -151,6 +153,7 @@ export function createConversationRoutes(
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
           ...(cursor ? { cursor } : undefined),
+          include,
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),

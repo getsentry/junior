@@ -5,12 +5,12 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { formatMessageTimestamp } from "../format";
 import {
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./transcriptFailure";
 import { OutboundLink } from "../components/OutboundLink";
+import { formatMessageTimestamp } from "../time";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
