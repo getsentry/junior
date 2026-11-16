@@ -17,7 +17,10 @@ import {
   type PlanItemAssignee,
 } from "./types";
 
-/** Turn context section with the plan changes that others made. */
+/**
+ * Turn context section with the plan changes that others made. Blocks are
+ * append-only; context compaction replaces them with one `<plan>` snapshot.
+ */
 export const PLAN_DELTA_TAG = "plan-delta";
 
 /** Compacted context block with every open Plan item. */

@@ -91,7 +91,6 @@ to its own items. `<slack-actions>` is only in `conversation` mode on Slack.
   the next assistant message, or collapses it into the system prompt for a
   model without mid-conversation system messages. Context compaction folds
   the section state into one system message.
-- `<plan-delta>`: plan changes by others. Compaction folds it into `<plan>`.
 
 ### Changes
 
