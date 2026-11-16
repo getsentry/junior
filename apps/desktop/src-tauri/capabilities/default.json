@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Local pages of the main window. The dashboard capability is added at run time for the configured JUNIOR_URL.",
+  "windows": ["main"],
+  "permissions": ["sentry:default"]
+}

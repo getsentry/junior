@@ -201,6 +201,8 @@ function dashboardHostRoutePaths(
     `${pagePath("settings")}/*`,
   ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
+  const desktopSignInPath =
+    basePath === "/" ? "/auth/desktop" : `${basePath}/auth/desktop`;
 
   return [
     ...pagePaths,
@@ -212,6 +214,8 @@ function dashboardHostRoutePaths(
     "/_junior/dashboard/manifest.webmanifest",
     "/_junior/dashboard/sw.js",
     loginPath,
+    desktopSignInPath,
+    `${desktopSignInPath}/token`,
     "/api/health",
     "/api/runtime",
     "/api/plugins",

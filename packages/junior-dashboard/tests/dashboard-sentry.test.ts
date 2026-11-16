@@ -1,4 +1,6 @@
 import {
+  BrowserClient,
+  defaultStackParser,
   getClient,
   getCurrentScope,
   type BrowserOptions,
@@ -33,6 +35,23 @@ describe("dashboard browser Sentry", () => {
     initDashboardSentry();
 
     expect(getClient()).toBeUndefined();
+  });
+
+  it("keeps the client that the desktop app started in the page", () => {
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: { dsn: "https://public@example.com/1" },
+    });
+    const desktop = new BrowserClient({
+      dsn: "https://public@example.com/2",
+      integrations: [],
+      stackParser: defaultStackParser,
+      transport: () => ({ flush: async () => true, send: async () => ({}) }),
+    });
+    getCurrentScope().setClient(desktop);
+
+    initDashboardSentry();
+
+    expect(getClient()).toBe(desktop);
   });
 
   it("removes search text and element labels from spans", () => {

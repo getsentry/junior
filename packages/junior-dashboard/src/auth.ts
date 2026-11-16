@@ -14,6 +14,22 @@ export interface DashboardAuth {
     callbackURL: string,
     errorCallbackURL: string,
   ): Promise<Response>;
+  createDesktopCode(
+    request: Request,
+    codeChallenge: string,
+  ): Promise<string | undefined>;
+  redeemDesktopCode(
+    code: string,
+    codeVerifier: string,
+  ): Promise<DesktopSessionCookie[] | undefined>;
+}
+
+/** One session cookie that the desktop app sets in its webview. */
+export interface DesktopSessionCookie {
+  maxAgeSeconds: number;
+  name: string;
+  secure: boolean;
+  value: string;
 }
 
 /** Read a personal bearer token from one dashboard API request. */

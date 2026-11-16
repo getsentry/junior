@@ -1,0 +1,19 @@
+{
+  "name": "@sentry/junior-desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:webview": "esbuild src/webview-sentry.ts --bundle --format=iife --minify --sourcemap --target=es2022 --outfile=dist/webview-sentry.js",
+    "check": "pnpm build:webview && cargo check --manifest-path src-tauri/Cargo.toml",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@sentry/browser": "catalog:",
+    "@tauri-apps/cli": "2.12.4",
+    "esbuild": "^0.27.0",
+    "tauri-plugin-sentry-api": "0.9.0",
+    "typescript": "^7.0.2"
+  }
+}

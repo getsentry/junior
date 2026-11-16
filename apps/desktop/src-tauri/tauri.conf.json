@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Junior",
+  "version": "0.1.0",
+  "identifier": "io.sentry.junior.desktop",
+  "build": {
+    "beforeBuildCommand": "pnpm build:webview",
+    "beforeDevCommand": "pnpm build:webview",
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; style-src 'self'"
+    },
+    "windows": []
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all"
+  }
+}
