@@ -30,6 +30,13 @@ const executeToolDefinition = zodToolDefinition({
           'Arguments matching the selected catalog tool schema, for example { "query": "..." }.',
         )
         .optional(),
+      intent: z
+        .string()
+        .min(1)
+        .describe(
+          "Optional short purpose of this call. It is not passed to the catalog tool.",
+        )
+        .optional(),
     })
     .strict(),
   outputSchema: juniorToolOutputSchema,
