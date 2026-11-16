@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notExists,
+  or,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAttachments,
@@ -11,7 +21,11 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
-import type { AttachmentSource } from "./source";
+import {
+  AttachmentSourceUnavailableError,
+  type AttachmentSource,
+  type AttachmentSourceFile,
+} from "./source";
 import { bufferBody, type AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,10 +47,16 @@ export interface AttachmentRecord {
   id: string;
   /** Where the file came from, when a provider supplied it. */
   source: AttachmentSource | null;
-  /** Null for a large Slack file, which Junior never stores. */
+  /**
+   * Null for a large Slack file that no read has needed yet. The first read
+   * that needs its bytes stores it with `storeDeferredAttachment`.
+   */
   storageKey: string | null;
   storageProvider: string;
 }
+
+/** A row whose bytes are in storage. */
+export type StoredAttachmentRecord = AttachmentRecord & { storageKey: string };
 
 /** Only `file` rows: a `url` row has no storage or file fields. */
 export const isFileAttachment = eq(juniorAttachments.kind, "file");
@@ -76,7 +96,7 @@ export interface AttachmentGarbageCollectionResult {
  *
  * A file with a source can stream. Its id comes from the source, so a retry
  * finds the stored copy before `open` downloads anything. A deferred file is
- * recorded without its bytes, and each read downloads it from its source. A
+ * recorded without its bytes. The first read that needs them stores it. A
  * file without a source must be in memory, because its id comes from its
  * digest.
  */
@@ -205,7 +225,11 @@ async function writeAttachmentObject(args: {
     try {
       return await writeAttachmentObjectOnce(args);
     } catch (error) {
-      if (error instanceof AttachmentSizeError || attempt >= WRITE_ATTEMPTS) {
+      if (
+        error instanceof AttachmentSizeError ||
+        error instanceof AttachmentSourceUnavailableError ||
+        attempt >= WRITE_ATTEMPTS
+      ) {
         // A write that committed before it failed leaves an object no row
         // points to.
         await bestEffortDelete(args.storage, args.key);
@@ -389,7 +413,8 @@ export async function storeAttachment(args: {
 
   await assertConversationNotPurged(args.db, args.conversationId);
 
-  // A deferred file gets a row with no object. Each read downloads it.
+  // A deferred file gets a row with no object. The first read that needs
+  // its bytes stores it.
   const { file } = args;
   let storageKey: string | null = null;
   let written: { bytes: number; sha256: string | null };
@@ -642,6 +667,83 @@ export async function recordUploadedAttachment(args: {
       storageKey: attachment.storageKey,
     });
   }
+}
+
+/**
+ * Store a file that Junior recorded without its bytes, on its first read.
+ *
+ * The bytes stream from the source to a fresh key. The row then takes that
+ * key only while it is still unstored, live, and in a conversation that is
+ * not purged. Purge marks rows in the transaction that purges the
+ * conversation, so this update cannot revive a purged row. When the update
+ * misses, the new object is deleted: return the row that another writer
+ * stored, or null when the row is no longer live.
+ */
+export async function storeDeferredAttachment(args: {
+  attachment: AttachmentRecord & { source: AttachmentSource };
+  db: JuniorSqlDatabase;
+  file: AttachmentSourceFile;
+  storage: AttachmentStorage;
+}): Promise<StoredAttachmentRecord | null> {
+  const { attachment, storage } = args;
+  const storageKey = attachmentKey({
+    attachmentId: attachment.id,
+    conversationId: attachment.conversationId,
+    filename: attachment.filename,
+    writeId: randomUUID(),
+  });
+  const written = await writeAttachmentObject({
+    file: {
+      bytes: args.file.bytes,
+      filename: attachment.filename,
+      mimeType: attachment.contentType,
+      open: args.file.open,
+      source: attachment.source,
+    },
+    key: storageKey,
+    storage,
+  });
+  const db = args.db.db();
+  const updated = await db
+    .with(conversationDetailTouch(db, [attachment.conversationId]))
+    .update(juniorAttachments)
+    .set({ ...written, storageKey })
+    .where(
+      and(
+        eq(juniorAttachments.id, attachment.id),
+        eq(juniorAttachments.conversationId, attachment.conversationId),
+        eq(juniorAttachments.storageProvider, storage.provider),
+        isNull(juniorAttachments.storageKey),
+        isNull(juniorAttachments.deleteRequestedAt),
+        notExists(
+          db
+            .select({ id: juniorConversations.conversationId })
+            .from(juniorConversations)
+            .where(
+              and(
+                eq(
+                  juniorConversations.conversationId,
+                  attachment.conversationId,
+                ),
+                isNotNull(juniorConversations.transcriptPurgedAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: juniorAttachments.id });
+  if (updated.length > 0) {
+    return { ...attachment, bytes: written.bytes, storageKey };
+  }
+  await bestEffortDelete(storage, storageKey);
+  const current = await readLiveAttachment({
+    attachmentId: attachment.id,
+    conversationId: attachment.conversationId,
+    db: args.db,
+  });
+  return current?.storageKey
+    ? { ...current, storageKey: current.storageKey }
+    : null;
 }
 
 /** Load one live attachment owned by a conversation. */

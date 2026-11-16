@@ -341,7 +341,7 @@ if [ "$#" -ge 3 ]; then
   source_commit=$3
 fi
 
-# Run the repository hook first so Junior's trailers stay final.
+# Run the repository hook first so the runtime's trailers stay final.
 ${findRepositoryHook("prepare-commit-msg")}
 if [ -n "$repository_hook" ]; then
   "$repository_hook" "$@"

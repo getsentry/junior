@@ -38,7 +38,7 @@ import {
 } from "../conversations/ConversationSidebarThreadRow";
 import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
-import { useConversationRowActions } from "../conversations/useConversationRowActions";
+import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
@@ -441,7 +441,7 @@ function ConversationInboxRow(
   },
 ) {
   const { conversation, drag } = props;
-  const actions = useConversationRowActions(conversation, {
+  const actions = useInboxRowActions(conversation, {
     onRowAction: props.onRowAction,
     selected: props.selected,
   });

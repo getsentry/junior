@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bindAgentTools } from "@/chat/agent/tools";
+import { bindAgentTools, bindTurnTools } from "@/chat/agent/tools";
 import type { AgentRun } from "@/chat/agent/types";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
@@ -12,6 +12,7 @@ import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -406,8 +407,14 @@ describe("Slack tool registration", () => {
 });
 
 describe("agent tool binding", () => {
-  // Binding reads only the Run's environment and disabled features.
-  function agentRun(disabledFeatures: AgentRun["disabledFeatures"] = []) {
+  afterEach(async () => {
+    // Restore the default maxAgentDepth, 0.
+    await createApp();
+  });
+
+  // Binding reads only the Run's environment, the Turn's agent tools and
+  // maxAgentDepth, so a child gets the same tools on every path.
+  function agentRun() {
     const spawnAgent = vi.fn();
     const messageAgent = vi.fn();
     const environment = {
@@ -423,43 +430,55 @@ describe("agent tool binding", () => {
         instruction: { text: "hello" },
         source: createLocalSource("local:agent-tools"),
         destination: { platform: "local", conversationId: "local:agent-tools" },
-        disabledFeatures,
         environment,
       } satisfies AgentRun,
       spawnAgent,
     };
   }
 
-  it("binds no agent tools for a person's Turn in a Thread", () => {
-    const { environment, run } = agentRun();
-    const agents = turnBehavior({
-      kind: "thread",
-      personInput: true,
-    }).tools.agents;
+  // A person's Turn in a Thread lists the Thread's agent tools, so the
+  // Thread keeps one tool list, but its own tools have none: `createTools`
+  // disables them, also when maxAgentDepth is above 0.
+  it("lists but does not give agent tools to a person's Turn in a Thread", async () => {
+    await createApp({ limits: { maxAgentDepth: 1 } });
+    const { environment, messageAgent, run, spawnAgent } = agentRun();
+    const behavior = turnBehavior({ kind: "thread", personInput: true });
 
-    expect(agents).toBe("none");
-    expect(bindAgentTools(run, agents)).toEqual({});
-    expect(environment.bindSpawnAgent).not.toHaveBeenCalled();
-    expect(environment.bindMessageAgent).not.toHaveBeenCalled();
+    expect(bindTurnTools(run, behavior)).toEqual({
+      turnTools: behavior.tools,
+      listedTools: {
+        ...behavior.tools,
+        agents: "children_and_parent",
+        reply: "parent",
+        reportBlocked: "parent",
+      },
+      spawnAgent,
+      messageAgent,
+    });
+    expect(behavior.tools.agents).toBe("none");
+    expect(environment.bindMessageAgent).toHaveBeenCalledWith(
+      run,
+      "children_and_parent",
+    );
   });
 
-  // The binder gets the agent tools of the Turn. A root's messageAgent then
-  // rejects `parent` when it is called, as the root has no parent agent.
-  it.each(["children", "children_and_parent"] as const)(
-    "binds spawnAgent and messageAgent for %s",
-    (agents) => {
+  // A root always spawns. A child spawns only when maxAgentDepth is above 0,
+  // and it can always message its parent. A root's messageAgent rejects
+  // `parent` when it is called, as the root has no parent agent.
+  it.each([
+    { agents: "children", maxAgentDepth: 0, spawns: true },
+    { agents: "children_and_parent", maxAgentDepth: 0, spawns: false },
+    { agents: "children_and_parent", maxAgentDepth: 1, spawns: true },
+  ] as const)(
+    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth: $spawns",
+    async ({ agents, maxAgentDepth, spawns }) => {
+      await createApp({ limits: { maxAgentDepth } });
       const { environment, messageAgent, run, spawnAgent } = agentRun();
 
-      expect(bindAgentTools(run, agents)).toEqual({ spawnAgent, messageAgent });
+      expect(bindAgentTools(run, agents)).toEqual(
+        spawns ? { spawnAgent, messageAgent } : { messageAgent },
+      );
       expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);
     },
   );
-
-  it("keeps messageAgent for the parent when the Turn is too deep to spawn", () => {
-    const tooDeep = agentRun(["subagents"]);
-    expect(bindAgentTools(tooDeep.run, "children_and_parent")).toEqual({
-      messageAgent: tooDeep.messageAgent,
-    });
-    expect(bindAgentTools(agentRun(["subagents"]).run, "children")).toEqual({});
-  });
 });

@@ -25,7 +25,7 @@ import { useRenameConversation } from "./useRenameConversation";
  * toasts. `onRowAction` runs before an action that can move rows, so a
  * held list shows the result at once.
  */
-export function useConversationRowActions(
+export function useInboxRowActions(
   conversation: Conversation,
   options: { onRowAction?(): void; selected: boolean },
 ) {

@@ -15,7 +15,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import { installEvalClock } from "./src/eval-clock";
+import { installTestClock } from "@sentry/junior-testing/clock";
 import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
@@ -122,7 +122,7 @@ export default async function setup(
     // The worker makes egress tokens, leases, and fixture credentials with
     // the eval clock, and this process checks them. Until the first test
     // sets it, the clock is real, so snapshot warmup below uses real time.
-    const evalClock = installEvalClock();
+    const evalClock = installTestClock();
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({

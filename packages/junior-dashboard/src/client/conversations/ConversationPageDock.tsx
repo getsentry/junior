@@ -1,9 +1,11 @@
 import { useMemo, useRef, type Ref } from "react";
+import { Lock } from "lucide-react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { committedMessageIds } from "./conversationOutbox";
+import { ComposerDock } from "./ComposerDock";
 import {
   ConversationReplyFooter,
   type ReplyFocusRequest,
@@ -67,5 +69,25 @@ export function ConversationPageDock(props: {
       }
       stoppable={props.live}
     />
+  );
+}
+
+/**
+ * Take the place of the composer when the reader may not post, so the
+ * transcript does not just end without a reason.
+ */
+export function ConversationReadOnlyDock() {
+  return (
+    <ComposerDock>
+      <p className="m-0 flex items-center justify-center gap-1.5 rounded-lg border border-dashboard-border px-3 py-2.5 text-center text-xs text-dashboard-text-muted">
+        <Lock
+          aria-hidden="true"
+          className="shrink-0"
+          size={12}
+          strokeWidth={2}
+        />
+        Only participants can reply to a private conversation.
+      </p>
+    </ComposerDock>
   );
 }

@@ -52,8 +52,8 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
     { waitUntil: "networkidle" },
   );
-  // Junior never stores a large Slack file, so it shows as a file row with
-  // no preview, not a video.
+  // Junior has not stored this large Slack file yet, so it shows as a file
+  // row with no preview, not a video.
   const recording = page.getByRole("button", {
     name: "Download standup-recording.mp4",
   });
@@ -84,7 +84,7 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("alert").filter({ hasText: "deleted-recording.mov" }),
   ).toHaveText(
-    "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+    "deleted-recording.mov is no longer available: The Slack file was deleted, or this app can no longer access it.",
   );
   // The failed download loaded in the hidden frame, not over the page.
   expect(page.url()).toBe(conversationUrl);

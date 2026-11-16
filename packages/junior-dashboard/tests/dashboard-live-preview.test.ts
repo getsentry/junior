@@ -52,6 +52,7 @@ afterEach(() => {
 function dashboard() {
   return withLivePreview(
     createDashboardApp({
+      agentName: "Junior",
       allowedDomains: [],
       authRequired: false,
       mockConversations: true,

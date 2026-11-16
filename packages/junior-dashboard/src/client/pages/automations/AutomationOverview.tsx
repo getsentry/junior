@@ -46,6 +46,7 @@ import {
 } from "./automationFormat";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { formatRelativeTime, formatRuntime } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
@@ -377,7 +378,7 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
         <Fact label="Accounts">
           {automation.credentialMode === "creator"
             ? `Connected by ${creator}`
-            : "Junior’s only"}
+            : `${agentNamePossessive()} only`}
         </Fact>
       </FactList>
     </FactSection>

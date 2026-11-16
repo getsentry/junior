@@ -610,7 +610,7 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(conversationCatchUpSchema, {
       needsYou: "Review the Safari fix on PR #12.",
       summary:
-        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+        "CI failed on Safari after you left. A fix was pushed to PR #12, and the checks pass now.",
     });
   });
   app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
@@ -791,7 +791,7 @@ export function createMockReportingApi(): Hono<{
     // A large Slack file that was deleted in Slack after Junior saw it.
     if (attachmentId === "qa-deleted-pending") {
       return errorResponse(
-        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or this app can no longer access it.",
         409,
       );
     }

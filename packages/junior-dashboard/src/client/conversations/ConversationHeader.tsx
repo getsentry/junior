@@ -141,7 +141,14 @@ export function ConversationHeader(props: {
     ) : (
       <h2
         aria-current="page"
-        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+        className={cn(
+          "m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight",
+          // The title names the Conversation, so it keeps its width and the
+          // tags after it truncate first. A long title still leaves them room.
+          !props.agentTree &&
+            Boolean(props.contextTags) &&
+            "md:max-w-[70%] md:shrink-0",
+        )}
       >
         {props.title}
       </h2>
@@ -188,7 +195,8 @@ export function ConversationHeader(props: {
         )}
       >
         <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
-          <div className="flex min-w-0 items-center gap-1.5">
+          {/* Fill the free width, so the title's max width is a share of it. */}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}

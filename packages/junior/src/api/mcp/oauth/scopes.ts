@@ -27,7 +27,7 @@ export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   "conversations:manage":
     "Archive, pin, and mark your conversations read, stop a running Turn, and cancel queued messages",
   "conversations:write":
-    "Start conversations and send messages as you. Junior runs agent work for each message",
+    "Start conversations and send messages as you. Each message starts agent work",
   "review_items:read": "List and read your review items",
   "automations:read": "List and read the automations that you can see",
 };

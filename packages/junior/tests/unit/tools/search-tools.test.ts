@@ -304,6 +304,8 @@ describe("searchTools", () => {
       ],
     });
     expect(result).not.toHaveProperty("data");
+    expect(result.tools[0]).not.toHaveProperty("params");
+    expect(result.tools[0]).not.toHaveProperty("annotations");
 
     const privateTraceResult = searchTools.privateTraceResult?.(result);
     expect(privateTraceResult).toEqual({
@@ -319,6 +321,82 @@ describe("searchTools", () => {
     // The model already has direct tools, so search does not return them.
     const directResult = await searchTools.execute!({ query: "shell" }, {});
     expect(directResult).toMatchObject({ total_matches: 0, tools: [] });
+  });
+
+  it("returns the full schema for the best match and a params summary for the rest", async () => {
+    const search = await createSearchToolsTool(mixedCatalog(), NO_COST)
+      .execute!({ query: "create memory" }, {});
+    expect(search.tools).toEqual([
+      {
+        tool_name: "memory_createMemory",
+        description: "Store an explicit long-term memory.",
+        source: "memory",
+        input_schema: expect.objectContaining({ required: ["content"] }),
+      },
+      {
+        tool_name: "memory_searchMemories",
+        description: "Search active memories visible in the current context.",
+        source: "memory",
+        params: "query: string",
+      },
+    ]);
+
+    const source = { id: "tracker", description: "Issue tracking" };
+    const searchTools = createSearchToolsTool(
+      {
+        tracker_updateIssue: tool({
+          description: "Update an issue's state, labels, or assignee.",
+          source,
+          exposure: "deferred",
+          inputSchema: Type.Object({
+            key: Type.String({ description: "Issue key." }),
+            state: Type.Optional(
+              Type.Union([Type.Literal("open"), Type.Literal("closed")]),
+            ),
+            labels: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  name: Type.String(),
+                  color: Type.Optional(Type.String()),
+                }),
+              ),
+            ),
+            assignee: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+          }),
+        }),
+        tracker_getIssue: tool({
+          description: "Get an issue.",
+          source,
+          exposure: "deferred",
+          inputSchema: Type.Object({ key: Type.String() }),
+        }),
+        tracker_listProjects: tool({
+          description: "List projects.",
+          source,
+          exposure: "deferred",
+          inputSchema: Type.Object({}),
+        }),
+      },
+      NO_COST,
+    );
+
+    // A source listing has no best match, so every tool gets a summary.
+    const listing = await searchTools.execute!({ source: "tracker" }, {});
+    expect(
+      listing.tools.map(({ tool_name, input_schema, params }) => ({
+        tool_name,
+        input_schema,
+        params,
+      })),
+    ).toEqual([
+      { tool_name: "tracker_getIssue", params: "key: string" },
+      { tool_name: "tracker_listProjects", params: "No arguments." },
+      {
+        tool_name: "tracker_updateIssue",
+        params:
+          'key: string, state?: "open" | "closed", labels?: { name: string, color?: string }[], assignee?: string | null',
+      },
+    ]);
   });
 
   it("filters by source and omits per-tool source in filtered results", async () => {

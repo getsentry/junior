@@ -786,12 +786,14 @@ async function executeAgentRunInPrivacyContext(
       platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
+      sectionsMessage,
       shouldPromptAgent,
       turnContexts,
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
       promptMode: behavior.promptMode,
+      sender: behavior.sender,
       currentActor: actor,
       availableSkills,
       configurationValues,
@@ -1030,7 +1032,10 @@ async function executeAgentRunInPrivacyContext(
     // Turns. Keep its gaps out of the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
-      isUserActor(actor) && conversationKind !== "task",
+      {
+        userActor: isUserActor(actor) && conversationKind !== "task",
+        idleNeedsPendingWork: behavior.idleNeedsPendingWork,
+      },
       { platform: promptPlatform, mode: behavior.promptMode },
     );
     // Batch counts go on the `gen_ai.invoke_agent` span, because production
@@ -1338,6 +1343,11 @@ async function executeAgentRunInPrivacyContext(
         runResume.adoptCommittedBoundary(currentAgentMessages());
       } else if (promptHistoryMessages.length > 0) {
         setAgentHistory(promptHistoryMessages);
+      }
+      // The sections message goes before the Turn start, so the messages of
+      // the Turn stay its context and prompt. The input checkpoint saves it.
+      if (sectionsMessage) {
+        setAgentHistory([...currentAgentMessages(), sectionsMessage]);
       }
       runResume.setBeforeMessageCount(currentAgentMessages().length);
       if (shouldPromptAgent) {

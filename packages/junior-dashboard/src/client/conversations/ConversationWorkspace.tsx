@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
@@ -18,13 +18,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import {
   ConversationFeedLoadMore,
   type ConversationFeedMorePages,
 } from "./ConversationFeedLoadMore";
+import { ConversationVisibilitySelect } from "./ConversationVisibilitySelect";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -153,8 +153,9 @@ export function ConversationWorkspace(props: {
   useEffect(() => {
     homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  // A failed next page keeps the loaded rows; the load-more row shows it.
-  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  // A failed refresh or next page keeps the loaded rows. The load-more row
+  // shows a failed next page.
+  const feedError = feed.data ? undefined : feed.error?.message;
   const morePages: ConversationFeedMorePages = {
     failed: feed.isFetchNextPageError,
     hasMore: feed.hasNextPage,
@@ -471,23 +472,10 @@ function NewConversationView(props: {
         draftId="new"
         error={props.error}
         footerStart={
-          <ToggleGroup
-            aria-label="Conversation visibility"
-            className="inline-flex shrink-0 gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
-            onValueChange={([next]) => {
-              if (next) setVisibility(next);
-            }}
-            value={[visibility]}
-          >
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="public">
-              <Globe2 aria-hidden="true" className="size-3" />
-              Public
-            </ToggleGroupItem>
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="private">
-              <LockKeyhole aria-hidden="true" className="size-3" />
-              Private
-            </ToggleGroupItem>
-          </ToggleGroup>
+          <ConversationVisibilitySelect
+            onChange={setVisibility}
+            value={visibility}
+          />
         }
         label="Start a conversation"
         holdDraftUntilAccept

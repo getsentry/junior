@@ -39,9 +39,7 @@ test("saves notification working hours and the Slack schedule choice", async ({
     page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Push notifications are not set up for this Junior install.",
-    ),
+    page.getByText("Push notifications are not set up for this app."),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
 

@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
 import { automationOutcomeLabel } from "./automationOutcomes";
+import { getDashboardAgentName } from "../../agentName";
 
 /** Show saved outcomes in order for a reader who cannot change them. */
 export function AutomationOutcomeList(props: {
@@ -195,7 +196,8 @@ export function AutomationOutcomeFields(props: {
         </div>
       ) : (
         <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-          Junior still does the work. No message is sent after success.
+          {getDashboardAgentName()} still does the work. No message is sent
+          after success.
         </p>
       )}
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">

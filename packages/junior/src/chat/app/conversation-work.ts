@@ -24,7 +24,6 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -164,7 +163,6 @@ export function createConversationWork(
   );
   const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     runTurn: conversationTurnWorker,
     state: options.state,

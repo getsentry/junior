@@ -32,6 +32,8 @@ import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 export type ComposerQuestionAnswers = {
   /** Send every question that has picks. Resolves false when one fails. */
   send(): Promise<boolean>;
+  /** Show the open question with this id, as the reader's move. */
+  show(id: string): void;
 };
 
 /**
@@ -164,6 +166,11 @@ export function ComposerQuestion(props: {
   );
   const item = props.questions[index];
   useImperativeHandle(props.answersRef, () => ({
+    show: (id) => {
+      if (id === item?.id || !props.questions.some((q) => q.id === id)) return;
+      readerMovedRef.current = true;
+      setSelectedId(id);
+    },
     send: async () => {
       sendingFromMessageBoxRef.current = true;
       const sends = props.questions.flatMap((question) => {

@@ -61,6 +61,7 @@ import { useInboxTabIcon } from "../review-desk/inboxTabIcon";
 import { useDocumentTitleCount } from "../documentTitle";
 import { useVersionsPoll } from "../versions";
 import type { DashboardCoreData } from "../types";
+import { getDashboardAgentName } from "../agentName";
 
 // Pages outside the conversation workspace load on first visit, so the
 // workspace's first paint skips their code and the chart library.
@@ -567,7 +568,7 @@ export function ClassicShell() {
               element={
                 loading ? (
                   <SystemRouteLoading
-                    description="Repository recipes Junior can switch into."
+                    description={`Repository recipes ${getDashboardAgentName()} can switch into.`}
                     label="Loading Workspaces"
                     title="Workspaces"
                     variant="list"
@@ -594,7 +595,7 @@ export function ClassicShell() {
               element={
                 loading ? (
                   <SystemRouteLoading
-                    description="Repository recipes Junior can switch into."
+                    description={`Repository recipes ${getDashboardAgentName()} can switch into.`}
                     label="Loading Workspaces"
                     title="Workspaces"
                     variant="list"

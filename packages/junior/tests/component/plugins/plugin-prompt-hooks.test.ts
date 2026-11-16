@@ -50,7 +50,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }) {
       captured.systemPrompt = input.initialState.systemPrompt;
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,

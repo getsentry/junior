@@ -85,7 +85,7 @@ async function previewBlocks(args: {
   footer?: KnownBlock;
   url: string;
 }): Promise<KnownBlock[]> {
-  const title = args.conversation.title ?? "Junior conversation";
+  const title = args.conversation.title ?? "Untitled conversation";
   const brief = await readLatestConversationBrief(
     getDb(),
     args.conversation.conversationId,
@@ -358,8 +358,8 @@ async function continueHere(
     const first = continueHereClickSchema.safeParse(waiting.move).data;
     await tell(
       first?.channelId === click.channelId && first.threadTs === click.threadTs
-        ? "This conversation moves here when Junior finishes."
-        : "This conversation moves to another thread when Junior finishes.",
+        ? "This conversation moves here when the current reply finishes."
+        : "This conversation moves to another thread when the current reply finishes.",
     );
     return;
   }

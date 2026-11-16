@@ -8,6 +8,7 @@ import {
   formatRelativeTime,
   formatRuntime,
   formatTime,
+  formatTranscriptMessageTime,
   formatTranscriptTimestampDetails,
 } from "../src/client/time";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
@@ -75,6 +76,20 @@ describe("time formatting", () => {
     );
     expect(details.local).toContain("9:00:00 AM");
     expect(details.utc).toContain("4:00:00 PM");
+  });
+
+  it("formats message times with the date only when they are not from today", () => {
+    const now = Date.parse("2026-08-10T20:00:00.000Z");
+    const format = (value: string) =>
+      formatTranscriptMessageTime(
+        Date.parse(value),
+        now,
+        "America/Los_Angeles",
+      );
+    expect(format("2026-08-10T16:05:09.000Z")).toBe("9:05 AM");
+    expect(format("2026-08-07T16:05:09.000Z")).toBe("Aug 7, 9:05 AM");
+    expect(format("2025-12-30T17:05:09.000Z")).toBe("Dec 30, 2025, 9:05 AM");
+    expect(formatTranscriptMessageTime(undefined)).toBe("no timestamp");
   });
 
   it("formats compact ages and activity days for conversation rows", () => {

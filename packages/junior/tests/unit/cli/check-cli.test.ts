@@ -297,7 +297,7 @@ describe("check cli", () => {
     expect(
       lines.some((line) =>
         line.includes(
-          "missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron",
+          "missing juniorNitro(). The Nitro module emits the Vercel queue trigger and heartbeat cron",
         ),
       ),
     ).toBe(true);
