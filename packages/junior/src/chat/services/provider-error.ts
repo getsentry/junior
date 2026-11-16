@@ -354,6 +354,10 @@ export function getProviderErrorAttributes(
       ? { "app.ai.provider_error.retry_after_ms": error.retryAfterMs }
       : undefined),
     ...(summary ? { "app.ai.provider_error.summary": summary } : undefined),
-    ...(error.modelId ? { "gen_ai.request.model": error.modelId } : undefined),
+    // The failing call can use another model than the Turn, such as the
+    // Guardian model. `gen_ai.request.model` stays the Turn model.
+    ...(error.modelId
+      ? { "app.ai.provider_error.model": error.modelId }
+      : undefined),
   };
 }
