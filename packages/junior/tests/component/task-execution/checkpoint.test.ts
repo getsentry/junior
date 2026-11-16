@@ -8,6 +8,11 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
+// Load the runtime graph while Vitest collects this file. Each test imports a
+// fresh copy after the module reset in `beforeEach`, which reuses the
+// transformed code. Without this, the first test pays the cold load inside its
+// timeout.
+import "@/chat/task-execution/checkpoint";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
