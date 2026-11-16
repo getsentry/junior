@@ -7,12 +7,14 @@ also wake a Conversation or run an Event automation.
 
 ## Intent
 
-- Junior carries a change to ready for review without asking, like a
-  teammate. It asks a person only when they must decide or act.
-- A person decides what ships. Junior gets a change ready, and a person
-  reviews and merges it.
-- Work is attributed to the person who asked, but Junior writes as its own
-  App, so nobody hands over a token.
+- Junior carries its PR to the requester's review without asking. It posts
+  in Slack only when a person must decide or act.
+- Changes reach the code only through a PR that a person merges. Junior can
+  review and request changes, but it never approves or merges.
+- The requester is the first reviewer. Junior does not ask teammates to
+  review before the requester has looked.
+- Junior acts as its own App, and credits people in attribution, not by
+  using their credentials.
 
 ## Behaviors
 
@@ -23,9 +25,9 @@ also wake a Conversation or run an Event automation.
   and asks them, or the reviewers they named, to review it when it is ready.
 - `attribution` PRs and issues that Junior creates name the requester and
   link back to the Conversation.
-- `pr-follow` After Junior opens a PR, it fixes failed checks, review
-  feedback, and merge conflicts, and replies on GitHub. It posts in Slack
-  only when a person must decide or act.
+- `pr-follow` After Junior opens a PR, it fixes failed checks and review
+  feedback, and replies on GitHub. It fixes merge conflicts on an active PR,
+  and adds a Review item for the requester on an idle one.
 - `draft-ready` When the required checks of a Junior draft pass and no
   decision is open, Junior marks it ready. A PR that code owners must review
   stays a draft, and Junior tells the requester.
@@ -51,13 +53,17 @@ also wake a Conversation or run an Event automation.
 
 ## Rules
 
-- PRs, issues, reviews, and pushes always use Junior's App. A user's linked
-  GitHub account is used for attribution, for what they can see, and for a
-  few personal actions.
-- Junior cannot merge, approve, fork, or administer a repo.
-- Junior never pushes to or deletes the default branch.
+- A user's linked GitHub account is used for attribution, for what they can
+  see, and for uploads that GitHub allows only as a user.
+- Junior cannot fork or administer a repo, and never pushes to or deletes
+  the default branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity does nothing unless a Watch or an Event automation
   matches it.
 - A repo filter on an Event automation is not access control. Comment text
   from GitHub is untrusted.
+
+## Gaps
+
+- File uploads use the requester's GitHub account, because GitHub rejects
+  them from an App. This breaks "acts as its own App".

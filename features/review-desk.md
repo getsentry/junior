@@ -7,11 +7,15 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 
 ## Intent
 
-- Work that waits for a person has one place, so nobody has to watch every
-  thread to find what needs them.
-- Junior never decides for a person. Only an assignee answers.
-- The first answer wins, wherever it is given, and the work continues from
-  it.
+- Work that needs a person is shared, lasting state: who must act, whether
+  it is open, and the answer on record. A Slack message alone has none of
+  these.
+- There is one way to ask a person, and only for a decision that is theirs
+  and blocks the work. Progress, offers, and scope choices are not items.
+- Only an assignee answers, and the answer carries their authority. Junior,
+  an Event, or a trigger never answers or approves for a person.
+- "Needs you" means one thing on every surface: an open action assigned to
+  you.
 
 ## Behaviors
 
@@ -55,3 +59,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 - Making a Conversation public does not show its private items.
 - Only the plugin that added an item, or a person, can change it.
 - A Review item is not a Plan item.
+
+## Gaps
+
+- Anyone who can see an item with no assignees can answer it, also with a
+  thread reply. This breaks "only an assignee answers".
