@@ -20,15 +20,18 @@ import {
   automationPath,
   formatCompactNumber,
   formatCostSummary,
-  formatMessageTimestamp,
-  formatRelativeMessageTimestamp,
-  formatRuntime,
 } from "../../format";
 import { cn, dashboardInlineLinkClass } from "../../styles";
 import {
   automationRunStatusTone,
   automationRunTitle,
 } from "./automationFormat";
+import {
+  formatMessageTimestamp,
+  formatRelativeTime,
+  formatRuntime,
+} from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 /** Search param that owns the selected run, so a run link can be shared. */
 export const AUTOMATION_RUN_PARAM = "run";
@@ -241,7 +244,7 @@ function RunDetails(props: {
         key="started"
         title={formatMessageTimestamp(Date.parse(runStartedAt(run)), true)}
       >
-        Started {formatRelativeMessageTimestamp(Date.parse(runStartedAt(run)))}
+        Started {formatRelativeTime(runStartedAt(run))}
       </time>
     ) : null,
     formatRuntime(run.durationMs),
@@ -272,7 +275,7 @@ function RunDetails(props: {
     run.credentialMode === "creator"
       ? "Creator’s connected accounts"
       : run.credentialMode === "system"
-        ? "Junior’s accounts only"
+        ? `${agentNamePossessive()} accounts only`
         : null,
   ].filter(Boolean);
   return (

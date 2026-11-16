@@ -61,7 +61,7 @@ class GitHubPullRequestCreateRejectedError extends Error {
 }
 
 const REVIEWERS_DESCRIPTION =
-  "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, Junior asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
+  "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, the tool asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
 
 const createPullRequestInputSchema = Type.Object(
   {

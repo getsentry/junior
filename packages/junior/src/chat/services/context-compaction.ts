@@ -561,13 +561,21 @@ async function loadRetainedUserMessages(
   });
 }
 
-/** Keep generated text inside the existing evidence-only prompt boundary. */
+const COMPACTION_READ_BACK_NOTE =
+  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+
+/**
+ * Keep generated text inside the existing evidence-only prompt boundary. The
+ * last line says where replaced detail stays readable: without it, the model
+ * often decides an exact value from a compacted tool result is gone.
+ */
 export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
     '<thread-context authority="evidence-only">',
     escapeXml(summary),
     "</thread-context>",
+    COMPACTION_READ_BACK_NOTE,
   ].join("\n");
 }
 

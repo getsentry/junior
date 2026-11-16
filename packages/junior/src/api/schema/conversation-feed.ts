@@ -19,7 +19,7 @@ export const conversationFeedBriefSchema = z
 
 export type ConversationFeedBrief = z.infer<typeof conversationFeedBriefSchema>;
 
-const conversationFeedIncludeSchema = z.enum(["media"]);
+const conversationFeedIncludeSchema = z.enum(["links", "media"]);
 
 /** Extra feed row content that a request asks for with `include=`. */
 export type ConversationFeedInclude = z.infer<
@@ -40,8 +40,8 @@ export const conversationFeedQuerySchema = z
     cursor: z.string().min(1).max(500).optional(),
     /**
      * Extra row content that costs a query, comma separated: `media` for
-     * each row's newest files. Rows show it only where the viewer sees
-     * private content.
+     * each row's newest files, `links` for web links from its recent
+     * messages. Rows show them only where the viewer sees private content.
      */
     include: z
       .string()
@@ -70,9 +70,13 @@ export const conversationFeedMediaSchema = z
 
 export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 
+/** The most links a feed row lists. */
+export const CONVERSATION_FEED_LINK_LIMIT = 3;
+
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   brief?: ConversationFeedBrief | undefined;
+  links?: string[] | undefined;
   media?: ConversationFeedMedia[] | undefined;
   threads?: ConversationFeedItem[] | undefined;
 };
@@ -84,6 +88,12 @@ export type ConversationFeedItem = ConversationSummaryReport & {
 const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
     brief: conversationFeedBriefSchema.optional(),
+    /**
+     * Web links from the Conversation's recent messages, newest first, for
+     * the row to resolve into cards. URLs only: never message text. Only
+     * with `include=links`.
+     */
+    links: z.array(z.url()).max(CONVERSATION_FEED_LINK_LIMIT).optional(),
     /** Only with `include=media`. */
     media: z
       .array(conversationFeedMediaSchema)

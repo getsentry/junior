@@ -23,6 +23,7 @@ import type {
   PluginUserPageRecord,
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
+import { getDashboardAgentName } from "../../agentName";
 
 // The heading and origin rows already show these values.
 const SUMMARIZED_METADATA = new Set(["Learned", "Memory ID", "Source", "Type"]);
@@ -136,7 +137,7 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
     learned === "Automatic"
       ? `From a ${source ?? "past"} conversation`
       : learned === "Explicit"
-        ? "Someone asked Junior"
+        ? `Someone asked ${getDashboardAgentName()}`
         : learned
           ? "Before origin tracking"
           : undefined;

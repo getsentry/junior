@@ -4,7 +4,6 @@ import {
 } from "../controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
-import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
 import {
   formatActivityChartAverage,
@@ -23,6 +22,7 @@ import {
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { InputCacheChart } from "./InputCacheChart";
+import { formatDuration } from "../../time";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 

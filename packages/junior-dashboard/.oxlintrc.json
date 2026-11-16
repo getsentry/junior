@@ -27,6 +27,10 @@
     {
       "name": "image-src",
       "specifier": "./oxlint/image-src.ts"
+    },
+    {
+      "name": "time-format",
+      "specifier": "./oxlint/time-format.ts"
     }
   ],
   "ignorePatterns": [
@@ -125,6 +129,18 @@
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
         "junior/no-regex-url-parsing": "error"
+      }
+    },
+    {
+      "files": ["src/client/**"],
+      "rules": {
+        "time-format/no-raw-time-format": "error"
+      }
+    },
+    {
+      "files": ["src/client/time.ts"],
+      "rules": {
+        "time-format/no-raw-time-format": "off"
       }
     },
     {

@@ -16,6 +16,7 @@ import {
   slackUserInputText,
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/tools/runtime/user-input-request";
+import { safeLinkUrl } from "@/net/link-url";
 
 /** Callback id of the modal form that answers a Review item. */
 export const SLACK_REVIEW_ITEM_VIEW_ID = "junior_review_item";
@@ -58,16 +59,6 @@ function titleText(item: ReviewItem): string {
   if (!href) return `**${item.title}**`;
   const label = item.title.replace(/[[\]\\]/g, "\\$&");
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
-}
-
-// Agents and plugins supply the subject URL, and URL parsing also accepts
-// `javascript:` and `data:` URLs.
-function safeLinkUrl(url: string | undefined): string | undefined {
-  if (!url || !URL.canParse(url)) return undefined;
-  const href = new URL(url);
-  return href.protocol === "https:" || href.protocol === "http:"
-    ? href.href
-    : undefined;
 }
 
 /** The title, body, and question of an item, in Slack markdown. */

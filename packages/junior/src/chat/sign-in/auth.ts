@@ -142,7 +142,7 @@ export function resolveSignInAuthConfig(
 
 function required(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new Error(`${name} is required for Junior sign-in`);
+    throw new Error(`${name} is required for sign-in`);
   }
   return value.trim();
 }

@@ -9,7 +9,7 @@ import {
   formatMessageTimestamp,
   formatTranscriptMessageTime,
   formatTranscriptTimestampDetails,
-} from "../format";
+} from "../time";
 
 const TranscriptTimestampContext = createContext<{
   full: boolean;

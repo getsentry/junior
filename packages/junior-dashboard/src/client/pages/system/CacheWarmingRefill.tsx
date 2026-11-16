@@ -5,8 +5,9 @@ import {
   type CacheWarmingSavingsRefill,
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
-import { formatCompactNumber, formatRelativeTime } from "../../format";
+import { formatCompactNumber } from "../../format";
 import { fetchDashboardJson, post } from "../../http";
+import { formatRelativeTime } from "../../time";
 
 const refillQueryKey = ["dashboard", "cache-warming", "refill"] as const;
 const savingsQueryKey = ["dashboard", "cache-warming", "savings"] as const;
