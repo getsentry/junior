@@ -1,7 +1,7 @@
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import { objectPresentation } from "@sentry/junior-plugin-api";
 import { useEffect, useState } from "react";
-import { objectToneClass } from "../components/ObjectIcon";
+import { ObjectIcon, objectToneClass } from "../components/ObjectIcon";
 import { FittingIcons } from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import {
@@ -18,10 +18,25 @@ type CardAnnotation = Annotation & {
   url: string;
 };
 
-/** The most cards, files and links a comfortable Inbox row shows. */
-export const MAX_ROW_PREVIEWS = 3;
+/** Linked work that a comfortable row lists before "+N more". */
+export const LINKED_WORK_LIMIT = 4;
+/** Linked work that an open or hovered row lists before "+N more". */
+export const OPEN_LINKED_WORK_LIMIT = 6;
 
-function isCard(annotation: Annotation): annotation is CardAnnotation {
+// Work that needs nothing more ranks last.
+const DONE_STATUSES = new Set([
+  "archived",
+  "canceled",
+  "cancelled",
+  "closed",
+  "completed",
+  "done",
+  "merged",
+  "resolved",
+]);
+
+/** Whether an annotation has what a card needs: a type, a title and a URL. */
+export function isCard(annotation: Annotation): annotation is CardAnnotation {
   return Boolean(annotation.objectType && annotation.title && annotation.url);
 }
 
@@ -45,110 +60,162 @@ export function linkedWorkObjects(
   }));
 }
 
-/** Count the linked-work cards that a comfortable row shows. */
-export function linkedWorkCardCount(annotations: Annotation[]): number {
-  return Math.min(annotations.filter(isCard).length, MAX_ROW_PREVIEWS);
+/**
+ * Rank a row's linked work: its asks' subjects first, then open work, then
+ * work that needs nothing more. Each group keeps the saved order, newest
+ * first.
+ */
+export function rankLinkedWork<T extends Annotation>(
+  annotations: readonly T[],
+  subjects: ReadonlySet<string>,
+): T[] {
+  const rank = (annotation: T) =>
+    annotation.url && subjects.has(annotation.url)
+      ? 0
+      : annotation.status && DONE_STATUSES.has(annotation.status)
+        ? 2
+        : 1;
+  return [...annotations].sort((a, b) => rank(a) - rank(b));
 }
 
-// The plugin key, such as owner/repo#123, when it names the object more
-// fully than the chip's short label.
-function identity(object: { key: string; label: string }): string {
-  return object.key.includes("/") || object.key.includes("#")
-    ? object.key
-    : object.label;
+// The owner/repo of a key such as owner/repo#123.
+function repoOf(key: string): string | undefined {
+  return /^([\w.-]+\/[\w.-]+)#\d+$/.exec(key)?.[1];
 }
 
-// A quiet card: the title, then the object's name and status in its status
-// color. No frame or icon, so the row's text leads.
-function WorkCard(props: {
-  href: string;
-  identity: string;
-  imageUrl?: string;
+/** The repo that most of a row's linked work is in. */
+export function mainRepo(
+  annotations: readonly Annotation[],
+): string | undefined {
+  const counts = new Map<string, number>();
+  let main: string | undefined;
+  for (const annotation of annotations) {
+    const repo = repoOf(annotation.key);
+    if (!repo) continue;
+    const count = (counts.get(repo) ?? 0) + 1;
+    counts.set(repo, count);
+    if (count > (main ? (counts.get(main) ?? 0) : 0)) main = repo;
+  }
+  return main;
+}
+
+/**
+ * The short name of a piece of work on its row: #123 in the row's main
+ * repo, else repo#123, else its label.
+ */
+export function workRef(
+  work: { key: string; label: string },
+  main: string | undefined,
+): string {
+  const repo = repoOf(work.key);
+  if (!repo) return work.label;
+  const number = work.key.slice(work.key.lastIndexOf("#"));
+  return repo === main
+    ? number
+    : `${repo.slice(repo.indexOf("/") + 1)}${number}`;
+}
+
+/** What one line of linked work names. */
+export type WorkLineObject = {
+  key: string;
+  label: string;
   objectType: OwnedObjectAnnotation["objectType"];
-  status?: string;
+  status?: string | undefined;
   title: string;
+};
+
+/**
+ * One piece of linked work in one line: its status icon in its status
+ * color, its title, then its short name.
+ */
+export function WorkLine(props: {
+  href: string;
+  main: string | undefined;
+  work: WorkLineObject;
 }) {
-  const status = linkStatusLabel(props.status);
-  const { tone } = objectPresentation(props);
-  // A preview that fails to load leaves no empty box or alt text.
-  const [imageFailed, setImageFailed] = useState(false);
+  const { work } = props;
+  const { tone } = objectPresentation(work);
+  const ref = workRef(work, props.main);
   return (
     <a
-      className="group/card flex w-56 shrink-0 flex-col rounded-md font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
+      className="group/card flex min-w-0 items-center gap-1.5 rounded-sm font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       data-linked-work-card=""
       href={props.href}
       rel="noreferrer"
       target="_blank"
+      title={[work.title, ref, linkStatusLabel(work.status)]
+        .filter(Boolean)
+        .join(" · ")}
     >
-      {props.imageUrl && !imageFailed ? (
-        <span className="mb-1.5 block aspect-video overflow-hidden rounded-md bg-dashboard-fill-soft">
-          <img
-            alt={`Preview of ${props.title}`}
-            className="size-full object-cover"
-            decoding="async"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            src={props.imageUrl}
-          />
+      <span className="flex shrink-0" data-status-tone={tone}>
+        <ObjectIcon
+          objectType={work.objectType}
+          size={14}
+          status={work.status}
+        />
+      </span>
+      <span className="min-w-0 truncate text-dashboard-text group-hover/card:underline">
+        {work.title}
+      </span>
+      {ref === work.title ? null : (
+        <span className="shrink-0 tabular-nums text-dashboard-text-faint">
+          {ref}
         </span>
-      ) : null}
-      <span className="truncate text-sm font-medium text-dashboard-text group-hover/card:underline">
-        {props.title}
-      </span>
-      <span
-        className={cn("truncate", objectToneClass[tone])}
-        data-status-tone={tone}
-      >
-        {/* A person card's label is the name the title already shows. */}
-        {[props.identity === props.title ? undefined : props.identity, status]
-          .filter(Boolean)
-          .join(" · ")}
-      </span>
+      )}
     </a>
   );
 }
 
+const WORK_GRID =
+  "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-4 gap-y-1";
+
 /**
- * Linked work on a comfortable Inbox row: up to three small cards, newest
- * first, each with its status color, title and preview image. Work that the
- * plugin saved no title or URL for follows in one quiet line.
+ * Linked work on a comfortable Inbox row, ranked, one line each, up to
+ * `limit`. The rest folds into one "+N more" that lists them all. Work that
+ * the plugin saved no title or URL for follows in one quiet line.
  */
 export function InboxLinkedWork(props: {
-  /** Show every card, with no "+N more". */
-  all?: boolean;
   annotations: Annotation[];
+  limit: number;
+  main: string | undefined;
 }) {
+  const [all, setAll] = useState(false);
   const cards = props.annotations.filter(isCard);
   const chips = props.annotations.filter((annotation) => !isCard(annotation));
-  const shown = props.all ? cards : cards.slice(0, MAX_ROW_PREVIEWS);
+  const shown = all ? cards : cards.slice(0, props.limit);
   const more = cards.length - shown.length;
   return (
-    <div
-      aria-label="Linked work"
-      className="flex min-w-0 items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible"
-      role="group"
-    >
-      {shown.map((card) => (
-        <WorkCard
-          href={card.url}
-          identity={identity(card)}
-          imageUrl={card.imageUrl}
-          key={card.key}
-          objectType={card.objectType}
-          status={card.status}
-          title={card.title}
-        />
-      ))}
-      {more > 0 ? (
-        <span className="shrink-0 text-xs text-dashboard-text-muted">
-          +{more} more
-        </span>
+    <div aria-label="Linked work" className="grid min-w-0 gap-1" role="group">
+      {shown.length > 0 ? (
+        <div
+          className={cn(
+            WORK_GRID,
+            // The full list scrolls inside the row, so the row stays short.
+            all && "max-h-60 overflow-y-auto overscroll-contain",
+          )}
+        >
+          {shown.map((card) => (
+            <WorkLine
+              href={card.url}
+              key={card.key}
+              main={props.main}
+              work={card}
+            />
+          ))}
+        </div>
       ) : null}
-      {chips.length > 0 ? (
-        <span className="flex min-w-32 flex-1 basis-0 items-center">
-          <WorkChipLine annotations={chips} />
-        </span>
+      {more > 0 || all ? (
+        <button
+          aria-expanded={all}
+          className="justify-self-start rounded-sm text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          data-linked-work-more=""
+          onClick={() => setAll(!all)}
+          type="button"
+        >
+          {all ? "Show fewer" : `+${more} more`}
+        </button>
       ) : null}
+      {chips.length > 0 ? <WorkChipLine annotations={chips} /> : null}
     </div>
   );
 }
@@ -253,33 +320,34 @@ export function InboxLinkedWorkChips(props: { annotations: Annotation[] }) {
 
 // The objects API checks the viewer's access to each link. A link that
 // names no object the viewer can see shows nothing.
-function LinkCard(props: { url: string }) {
+function LinkCard(props: { main: string | undefined; url: string }) {
   const { card, request } = useResolvedObject(props.url);
   useEffect(request, [request]);
   if (!card) return null;
   return (
-    <WorkCard
+    <WorkLine
       href={card.url ?? props.url}
-      identity={identity(card)}
-      objectType={card.objectType}
-      status={card.status}
-      title={card.title}
+      main={props.main}
+      work={{ ...card, title: card.title ?? card.label }}
     />
   );
 }
 
-/** Cards for the web links in a Conversation's recent messages. */
-export function InboxLinkCards(props: { links: string[] }) {
+/** Lines for the web links in a Conversation's recent messages. */
+export function InboxLinkCards(props: {
+  links: string[];
+  main: string | undefined;
+}) {
   // One provider per row: the row's links resolve in one request.
   return (
     <MessageObjectsProvider>
       <div
         aria-label="Links"
-        className="flex min-w-0 items-center gap-2 overflow-x-auto empty:hidden sm:flex-wrap sm:overflow-visible"
+        className={cn(WORK_GRID, "empty:hidden")}
         role="group"
       >
         {props.links.map((url) => (
-          <LinkCard key={url} url={url} />
+          <LinkCard key={url} main={props.main} url={url} />
         ))}
       </div>
     </MessageObjectsProvider>

@@ -185,7 +185,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
         objectType: "code_change",
-        title: "Update Junior to 0.288.0",
+        title: "Update the package to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
       title: "Ready to merge · #2201",

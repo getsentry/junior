@@ -795,7 +795,10 @@ export function createMockReportingApi(): Hono<{
         409,
       );
     }
-    if (attachmentId === "qa-chart-png") {
+    if (
+      attachmentId === "qa-chart-png" ||
+      attachmentId.startsWith("busy-image-")
+    ) {
       return new Response(mockChartPng, {
         headers: {
           "cache-control": "private, no-store",

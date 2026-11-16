@@ -35,15 +35,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: "Package release and self-update" });
     const title = row.locator('[data-inbox-slot="title"]');
     // The pills follow the title in the title column, before the summary.
-    await expect(
-      title.getByRole("button", { name: /^Review requested #91/ }),
-    ).toBeVisible();
+    // #2201 has no preview image, so its ask keeps its pill.
     await expect(
       title.getByRole("button", { name: /^Ready to merge #2201/ }),
-    ).toBeAttached();
-    // The pills keep to one line in the narrow title column: those that do
-    // not fit show as +N.
-    await expect(title.locator("[data-pill-overflow]")).toHaveText(/^\+\d+$/);
+    ).toBeVisible();
+    // #91 has one: its image card carries the ask's icon, so it has no pill.
+    await expect(
+      title.getByRole("button", { name: /^Review requested #91/ }),
+    ).toHaveCount(0);
+    await expect(
+      row.locator('[data-image-tile="work"]').getByRole("img", {
+        name: "Review requested #91: Pin the release train to payments 4.2",
+      }),
+    ).toBeVisible();
     await expect.poll(() => slots(row)).toEqual(SLOTS);
   });
 
@@ -62,7 +66,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Review requested #91: Pin the release train to payments 4.2",
     });
     const ready = row.getByRole("button", {
-      name: "Ready to merge #2201: Update Junior to 0.288.0",
+      name: "Ready to merge #2201: Update the package to 0.288.0",
     });
     await expect(review).toHaveText("Pin the release train to payments 4.2#91");
     await expect(review.locator("[data-ask-kind]")).toHaveAttribute(

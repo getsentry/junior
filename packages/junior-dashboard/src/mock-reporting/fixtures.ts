@@ -181,6 +181,7 @@ const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
+const BUSY_CONVERSATION_ID = "slack:CQA456:1770028800.000800";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -1546,7 +1547,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
-        title: "Update Junior to 0.288.0",
+        title: "Update the package to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
       {
@@ -1557,6 +1558,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "payments",
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
+        imageUrl: `${MOCK_DASHBOARD_ORIGIN}/api/images/payments-91-before`,
       },
       {
         icon: "git-merge",
@@ -1573,7 +1575,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "object",
         key: "getsentry/junior#2201",
         label: "getsentry/junior#2201",
-        title: "Update Junior to 0.288.0",
+        title: "Update the package to 0.288.0",
         description:
           "Bump `@sentry/junior` and its plugins to 0.288.0. The safety checks pass.",
         displayType: "Pull request",
@@ -1940,6 +1942,83 @@ function simpleConversation(
   });
 }
 
+const BUSY_TOPICS = [
+  "Tighten the pane spacing",
+  "Move the ask icons into pills",
+  "Load row images lazily",
+  "Fold linked work into one line",
+  "Keep the strip under the title",
+  "Quiet the summary links",
+];
+
+/**
+ * A Conversation with about 90 pull requests and a dozen images, so its
+ * Inbox row shows the linked-work cap, "+N more" and the image strip.
+ */
+function busyConversation(nowMs: number): ConversationDetailReport {
+  const startedAt = iso(nowMs, -30 * 60 * 60_000);
+  const images = (from: number) =>
+    Array.from({ length: 6 }, (_, index) => ({
+      id: `busy-image-${from + index}`,
+      filename: `screen-${from + index}.png`,
+      contentType: "image/png",
+      bytes: 6400,
+    }));
+  const repos = ["junior", "junior", "junior", "junior", "payments", "relay"];
+  const statuses = ["open", "draft", "merged", "merged", "closed", "merged"];
+  return detail(nowMs, {
+    conversationId: BUSY_CONVERSATION_ID,
+    displayTitle: "Inbox comfortable rows pass",
+    startedAt,
+    lastSeenAt: iso(nowMs, -29 * 60 * 60_000),
+    lastProgressAt: iso(nowMs, -29 * 60 * 60_000),
+    surface: "slack",
+    channel: "CQA456",
+    channelName: "proj-release",
+    actorIdentity: actor("riley@sentry.io", "Riley Park", "riley"),
+    // Newest first, like saved Annotations.
+    sidebarAnnotations: Array.from({ length: 90 }, (_, index) => {
+      const number = 3400 - index;
+      const repo = repos[index % repos.length]!;
+      // The newest few are open; most older ones are done.
+      const status = index < 4 ? "open" : statuses[index % statuses.length]!;
+      return {
+        icon: status === "merged" ? "git-merge" : "git-pull-request",
+        objectType: "code_change" as const,
+        status,
+        key: `getsentry/${repo}#${number}`,
+        label: repo,
+        title: `${BUSY_TOPICS[index % BUSY_TOPICS.length]} (${index + 1})`,
+        url: `https://github.com/getsentry/${repo}/pull/${number}`,
+      };
+    }),
+    events: [
+      reportEvent(0, startedAt, {
+        type: "message",
+        messageId: "busy-user",
+        role: "user",
+        source: "slack",
+        text: "Here are the screens from the first pass.",
+        attachments: images(1),
+      }),
+      reportEvent(1, iso(Date.parse(startedAt), 60_000), {
+        type: "message",
+        messageId: "busy-user-2",
+        role: "user",
+        source: "slack",
+        text: "And the second pass.",
+        attachments: images(7),
+      }),
+      reportEvent(2, iso(Date.parse(startedAt), 120_000), {
+        type: "message",
+        messageId: "busy-assistant",
+        role: "assistant",
+        text: "Both passes look right. I opened the follow-up PRs.",
+      }),
+    ],
+  });
+}
+
 const HISTORY_TOPICS = [
   "Release notes draft",
   "Flaky test triage",
@@ -2173,6 +2252,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     longConversation(nowMs),
     manyTurnsConversation(nowMs),
+    busyConversation(nowMs),
     incidentConversation(nowMs),
     privateConversation(nowMs),
     failedConversation(nowMs),

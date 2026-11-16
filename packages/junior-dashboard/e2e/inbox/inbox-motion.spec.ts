@@ -178,7 +178,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.locator("[data-hover-card]")).toHaveCount(0);
   });
 
-  test("the grown row shows linked work as quiet cards", async ({
+  test("the grown row shows linked work one line each", async ({
     dashboard,
     page,
   }) => {
@@ -192,14 +192,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row.locator('a[aria-controls^="inbox-row-"]').first().hover();
     await page.clock.runFor(PAST_REST_MS);
     await expect(row).toHaveAttribute("data-grown", "true");
-    // The same cards as comfortable rows: no icon, and a line in each one's
-    // status color. The two changes that its pills name show only there.
+    // The same lines as comfortable rows: a status icon, the title and the
+    // number. The changes that its pill and image card name show only there.
     const cards = row.locator(
       '[aria-label="Linked work"] [data-linked-work-card]',
     );
     await expect(cards).toHaveText([/Return 429 before parsing/]);
-    await expect(cards.locator("svg")).toHaveCount(0);
-    await expect(cards.locator("[data-status-tone]")).toHaveCount(1);
+    await expect(cards.locator("[data-status-tone] svg")).toHaveCount(1);
   });
 
   for (const where of ["list", "page"] as const) {

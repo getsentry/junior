@@ -43,9 +43,7 @@ import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { objectPresentation } from "@sentry/junior-plugin-api";
-import { objectToneClass } from "../components/ObjectIcon";
-import { AskKindIcon, askLook } from "./askKind";
+import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -59,154 +57,27 @@ import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import { askPills, Pill, type AskPill } from "./inboxAsks";
+import { InboxFiles } from "./InboxFiles";
+import { InboxImageStrip, type ImageWork } from "./InboxImageStrip";
 import {
   InboxLinkCards,
   InboxLinkedWork,
   InboxLinkedWorkChips,
-  linkedWorkCardCount,
+  isCard,
+  LINKED_WORK_LIMIT,
   linkedWorkObjects,
-  MAX_ROW_PREVIEWS,
+  mainRepo,
+  OPEN_LINKED_WORK_LIMIT,
+  rankLinkedWork,
 } from "./InboxLinkedWork";
-import { InboxMedia } from "./InboxMedia";
+import { isImageMedia } from "./useConversationImages";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
-
-const PLURALS: Record<string, string> = {
-  Approval: "Approvals",
-  Question: "Questions",
-};
-
-type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
-
-/**
- * One ask pill: what an item asks of the viewer, such as "Question". A pull
- * request ask also names its change, so the change needs no chip of its own.
- */
-type AskPill = {
-  count: number;
-  key: string;
-  kind: string;
-  /** The full name, such as "Review requested #91: Pin the release train". */
-  name: string;
-  /** The change's number, such as #91, in its status color. */
-  ref?: { number: string; tone?: string };
-  strong: boolean;
-  /** The change's title, or the kind's name for an ask with no change. */
-  label?: string;
-  /** The change's URL, which its chip would have linked. */
-  url?: string;
-};
-
-// The change a pull request ask names: its saved linked work when the
-// Conversation has it, else the item's own subject.
-function askChange(
-  item: ReviewItemPayload,
-  annotations: readonly Annotation[],
-) {
-  const url = item.subject?.url ?? item.subject?.id;
-  const work = url
-    ? annotations.find((annotation) => annotation.url === url)
-    : undefined;
-  const subjectTitle = item.subject?.title;
-  // A subject titled by its key, such as owner/repo#123, adds nothing to #123.
-  const title =
-    work?.title ??
-    (subjectTitle && !/^[\w.-]+\/[\w.-]+#\d+$/.test(subjectTitle)
-      ? subjectTitle
-      : undefined);
-  const tone = work?.objectType
-    ? objectToneClass[
-        objectPresentation({ objectType: work.objectType, status: work.status })
-          .tone
-      ]
-    : undefined;
-  return { title, tone, url };
-}
-
-/**
- * Name each open item the way the Inbox does: Question, Approval, the pull
- * request state with its change, or FYI. Repeats fold into a count.
- */
-function askPills(
-  items: readonly ReviewItemPayload[],
-  annotations: readonly Annotation[],
-): AskPill[] {
-  const pills = new Map<string, AskPill>();
-  for (const item of items) {
-    if (item.status !== "open") continue;
-    const kind = inboxItemKind(item);
-    const number = /#\d+/.exec(item.title)?.[0];
-    const isPullRequestState =
-      kind === "Review requested" || kind === "Ready to merge";
-    const key = isPullRequestState && number ? `${kind} ${number}` : kind;
-    const current = pills.get(key);
-    const strong = (current?.strong ?? false) || itemNeedsViewer(item);
-    if (isPullRequestState && number) {
-      const change = askChange(item, annotations);
-      pills.set(key, {
-        count: 1,
-        key,
-        kind,
-        name: change.title ? `${key}: ${change.title}` : key,
-        label: change.title,
-        ref: { number, tone: change.tone },
-        strong,
-        url: change.url,
-      });
-      continue;
-    }
-    const count = (current?.count ?? 0) + 1;
-    const name = count > 1 ? `${count} ${PLURALS[kind] ?? kind}` : kind;
-    pills.set(key, {
-      count,
-      key,
-      kind,
-      name,
-      strong,
-      // An FYI asks nothing, so its icon is enough.
-      label: kind === "FYI" ? (count > 1 ? String(count) : undefined) : name,
-    });
-  }
-  return [...pills.values()].sort(
-    (a, b) => Number(b.strong) - Number(a.strong),
-  );
-}
-
-// The icon carries the kind, so the words name only what it is about.
-function Pill(props: { pill: AskPill }) {
-  const { pill } = props;
-  const look = askLook(pill.kind);
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5 max-w-60 shrink-0 items-center gap-1 rounded-full px-1.5 text-2xs leading-none whitespace-nowrap",
-        pill.strong
-          ? cn(look?.tint ?? "bg-dashboard-fill-soft", "text-dashboard-text")
-          : "border border-dashboard-border text-dashboard-text-muted",
-      )}
-      data-ask-pill={pill.kind}
-    >
-      <AskKindIcon className="size-3" kind={pill.kind} />
-      {pill.label ? (
-        <span className="min-w-0 truncate font-medium">{pill.label}</span>
-      ) : null}
-      {pill.ref ? (
-        <span
-          className={cn(
-            "shrink-0 font-medium tabular-nums",
-            pill.ref.tone ?? "text-dashboard-text-muted",
-          )}
-        >
-          {pill.ref.number}
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 /** The second line: the Brief, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
@@ -619,29 +490,50 @@ function InboxRowBody(
   const { bundle, conversation, preview } = props;
   const [density] = useConversationDensity();
   const comfortable = Boolean(preview) || density === "comfortable";
-  const budget = preview ? Infinity : MAX_ROW_PREVIEWS;
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
   const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
-  const pills = props.itemTitle ? [] : askPills(openItems, annotations);
-  // A change that a pill names shows once, in its pill.
-  const named = new Set(pills.flatMap((pill) => pill.url ?? []));
-  const work =
-    named.size === 0
-      ? annotations
-      : annotations.filter((annotation) => !named.has(annotation.url ?? ""));
+  const asks = props.itemTitle ? [] : askPills(openItems, annotations);
+  const subjects = new Set(
+    openItems.flatMap((item) => item.subject?.url ?? item.subject?.id ?? []),
+  );
+  const ranked = rankLinkedWork(annotations, subjects);
+  // Comfortable rows show linked work with a preview image as an image
+  // card, which carries its ask's icon in place of a pill.
+  const imageWork: ImageWork[] = comfortable
+    ? ranked.flatMap((annotation) =>
+        isCard(annotation) && annotation.imageUrl
+          ? [{ ...annotation, imageUrl: annotation.imageUrl }]
+          : [],
+      )
+    : [];
+  const imageUrls = new Set(imageWork.map((work) => work.url));
+  const imageAsks = new Map<string, AskPill>();
+  for (const pill of asks) {
+    if (pill.url && imageUrls.has(pill.url)) imageAsks.set(pill.url, pill);
+  }
+  const pills = asks.filter((pill) => !imageAsks.has(pill.url ?? ""));
+  // A change that a pill or an image card names shows once, there.
+  const named = new Set([
+    ...pills.flatMap((pill) => pill.url ?? []),
+    ...imageUrls,
+  ]);
+  const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
+  const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
-  // One budget for the strip, in order: linked work (with any PR image),
-  // then files, then cards for message links.
-  const workCards = preview ? 0 : linkedWorkCardCount(work);
-  const media = (conversation?.media ?? []).slice(0, budget - workCards);
+  const open = props.expanded || Boolean(preview);
+  const limit = open ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
+  const media = conversation?.media ?? [];
+  const files = media.filter((file) => !isImageMedia(file));
+  // Message links fill what the linked work leaves of its lines.
   const links = (conversation?.links ?? []).slice(
     0,
-    budget - workCards - media.length,
+    Math.max(0, limit - work.filter(isCard).length),
   );
+  const images = imageWork.length > 0 || media.some(isImageMedia);
   const canDone = rowCanDone(props);
   const regionId = rowRegionId(props.rowKey);
   const asksShown =
@@ -653,9 +545,11 @@ function InboxRowBody(
     : regionId;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
-  // Comfortable rows show files and linked work as cards in their own strip.
+  // Comfortable rows show images, linked work, links and files under the
+  // head.
   const cards =
-    comfortable && (work.length > 0 || media.length > 0 || links.length > 0);
+    comfortable &&
+    (images || work.length > 0 || files.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
   // A comfortable row with a summary reads in two columns on wider screens:
   // the title and people, then the summary beside them.
@@ -866,19 +760,27 @@ function InboxRowBody(
           </span>
         </div>
         {cards ? (
-          <div
-            className={cn(
-              "grid min-w-0 gap-2 pr-2 pb-2.5 pl-[1.875rem]",
-              columns && "sm:pl-[calc(1.875rem+var(--inbox-lead)+0.625rem)]",
-            )}
-          >
+          // Under the title: the images first, at preview size, then the
+          // linked work, links and files, one line each.
+          <div className="grid min-w-0 gap-2 pr-2 pb-2.5 pl-[1.875rem]">
+            {images ? (
+              <InboxImageStrip
+                asks={imageAsks}
+                conversationId={props.conversationId}
+                main={main}
+                media={media}
+                work={imageWork}
+              />
+            ) : null}
             {work.length > 0 ? (
-              <InboxLinkedWork all={preview} annotations={work} />
+              <InboxLinkedWork annotations={work} limit={limit} main={main} />
             ) : null}
-            {media.length > 0 ? (
-              <InboxMedia conversationId={props.conversationId} media={media} />
+            {links.length > 0 ? (
+              <InboxLinkCards links={links} main={main} />
             ) : null}
-            {links.length > 0 ? <InboxLinkCards links={links} /> : null}
+            {files.length > 0 ? (
+              <InboxFiles conversationId={props.conversationId} files={files} />
+            ) : null}
           </div>
         ) : null}
       </div>
