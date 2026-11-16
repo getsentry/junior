@@ -24,7 +24,10 @@ import {
   mergeClientIdentity,
 } from "@earendil-works/pi-ai";
 import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
-import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
+import {
+  type AgentRequestStreamFn,
+  foldLeadingSystemMessages,
+} from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import { agentTurnCostUsd } from "@/chat/usage";
@@ -118,10 +121,10 @@ export async function buildAgentModelRequest(
   signal?: AbortSignal,
 ): Promise<AgentModelRequest> {
   const { model, thinkingLevel, tools } = agent.state;
-  // `agent.state.systemPrompt` folds later system messages into the prompt.
-  // They stay in place in the messages, as in the agent request.
+  // Fold like `withAgentRequest`, so the summary request keeps the agent
+  // call's cached prefix. `agent.state.systemPrompt` folds every system
+  // message, so start from Junior's leading prompt.
   const leading = getInitialSystemMessage(agent.state.messages);
-  const systemPrompt = leading ? getSystemMessageText(leading) : "";
   const transformed = agent.transformContext
     ? await agent.transformContext(messages, signal)
     : messages;
@@ -130,8 +133,10 @@ export async function buildAgentModelRequest(
     // oxlint-disable-next-line typescript/no-unsafe-assignment
     model,
     context: {
-      systemPrompt,
-      messages: await agent.convertToLlm(transformed),
+      ...foldLeadingSystemMessages(
+        leading ? getSystemMessageText(leading) : "",
+        await agent.convertToLlm(transformed),
+      ),
       tools,
     },
     options: {

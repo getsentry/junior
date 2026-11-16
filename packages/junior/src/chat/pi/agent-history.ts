@@ -105,13 +105,16 @@ export function systemSectionsUpdate(
     : undefined;
 }
 
-// Anthropic wants instructions that apply from the start in the top-level
-// system prompt. Pi sends a later system message only before the next
-// assistant message, so the sections of a first Turn would land after its
-// prompt. Fold the system messages before the first assistant message into
-// the system prompt instead. They do not change after that Turn, so the
-// cached prefix stays the same.
-function foldLeadingSystemMessages(
+/**
+ * Return the system prompt and messages that Junior sends for this history.
+ * Anthropic wants instructions that apply from the start in the top-level
+ * system prompt, but Pi sends a later system message only before the next
+ * assistant message. So the system messages before the first assistant
+ * message fold into the system prompt. They do not change after that Turn,
+ * so the cached prefix stays the same. A request that must share the agent
+ * call's cached prefix, such as a context summary, builds its context here.
+ */
+export function foldLeadingSystemMessages(
   systemPrompt: string,
   history: PiMessage[],
 ): Pick<Context, "systemPrompt" | "messages"> {
