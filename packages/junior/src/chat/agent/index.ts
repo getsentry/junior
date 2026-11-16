@@ -786,6 +786,7 @@ async function executeAgentRunInPrivacyContext(
       platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
+      sectionsMessage,
       shouldPromptAgent,
       turnContexts,
       userContentParts: promptUserContentParts,
@@ -1338,6 +1339,11 @@ async function executeAgentRunInPrivacyContext(
         runResume.adoptCommittedBoundary(currentAgentMessages());
       } else if (promptHistoryMessages.length > 0) {
         setAgentHistory(promptHistoryMessages);
+      }
+      // The sections message goes before the Turn start, so the messages of
+      // the Turn stay its context and prompt. The input checkpoint saves it.
+      if (sectionsMessage) {
+        setAgentHistory([...currentAgentMessages(), sectionsMessage]);
       }
       runResume.setBeforeMessageCount(currentAgentMessages().length);
       if (shouldPromptAgent) {

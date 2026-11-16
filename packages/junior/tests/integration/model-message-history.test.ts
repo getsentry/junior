@@ -84,7 +84,9 @@ describe("model message history", () => {
         stored.find((message) => message.role === "assistant")?.content,
       ),
     ).toBe(JSON.stringify(firstAssistant?.content));
-    expect(stored.slice(0, first.messages.length)).toEqual(first.messages);
+    // The request folds the first sections message into the system prompt.
+    expect(stored[0]?.role).toBe("system");
+    expect(stored.slice(1, first.messages.length + 1)).toEqual(first.messages);
     expect(requests).toHaveLength(3);
     expect(requests.map((request) => request.sessionAffinity)).toEqual(
       Array(3).fill(agent.conversationId()),
@@ -93,12 +95,10 @@ describe("model message history", () => {
     const after = requests[2]!;
     expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
     expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
-    // The first Turn sends the script tools. The same tools are not sent
-    // again.
-    const scriptToolsCount = (messages: unknown) =>
-      JSON.stringify(messages).split("<script-tools>\\n").length - 1;
-    expect(scriptToolsCount(requests[0]!.messages)).toBe(1);
-    expect(scriptToolsCount(after.messages)).toBe(1);
+    // This model takes no later system messages, so Pi collapses the
+    // capability sections into the system prompt.
+    expect(JSON.stringify(requests[0]!.system)).toContain("<script-tools>");
+    expect(JSON.stringify(after.messages)).not.toContain("<script-tools>");
     // Do not sort in the assertion: the real provider bytes must already match.
     expect(
       JSON.stringify(
@@ -133,7 +133,9 @@ describe("model message history", () => {
     const third = agent.snapshot();
 
     expect((await agent.agentHistory())[firstHistory.length]).toEqual(saved);
-    expect(second.messages[firstHistory.length]).toEqual(saved);
+    // The request folds the first sections message into the system prompt,
+    // so the saved one is one message earlier there.
+    expect(second.messages[firstHistory.length - 1]).toEqual(saved);
     expect(
       JSON.stringify(third.messages.slice(0, second.messages.length)),
     ).toBe(JSON.stringify(second.messages));
@@ -151,16 +153,23 @@ describe("model message history", () => {
     const agent = await createAgent({
       responses: ["First.", "Second.", "Third.", "Fourth."],
     });
-    const newText = (
-      before: { messages: unknown[] },
-      after: { messages: unknown[] },
-    ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const count = (text: string, tag: string) =>
-      text.split(`<${tag}>\\n`).length - 1;
+    const sectionUpdates = async () =>
+      (await agent.agentHistory()).flatMap((message) =>
+        message.role === "system" ? [message.sections ?? {}] : [],
+      );
 
     await agent.run("first");
     const first = agent.snapshot();
-    expect(count(JSON.stringify(first.messages), "workspaces")).toBe(0);
+    const [initial] = await sectionUpdates();
+    expect(Object.keys(initial!)).toEqual(
+      expect.arrayContaining(["available-skills", "script-tools"]),
+    );
+    expect(initial).not.toHaveProperty("workspaces");
+    // The first sections apply from the start, so the request folds them
+    // into the system prompt instead of sending them after the instruction.
+    expect(first.messages.map((message) => message.role)).not.toContain(
+      "system",
+    );
     // A deploy adds a skill, and someone creates a Workspace.
     const removeSkills = await installTestSkills([
       {
@@ -173,34 +182,45 @@ describe("model message history", () => {
       name: "docs",
       repos: [{ provider: "github", repo: "getsentry/docs" }],
     });
-    let third: ReturnType<typeof agent.snapshot>;
     try {
       await agent.run("second");
       const second = agent.snapshot();
       await agent.run("third");
-      third = agent.snapshot();
 
-      // The changed sections go after the cached prefix, once.
+      // One system message after the cached prefix sets only the changed
+      // sections. The next Turn sets none.
+      expect(second.systemPrompt).toBe(first.systemPrompt);
       expect(second.messages.slice(0, first.messages.length)).toEqual(
         first.messages,
       );
-      const changed = newText(first, second);
-      expect(changed).toContain("<name>release-notes</name>");
-      expect(changed).toContain("- docs: getsentry/docs");
-      expect(count(changed, "available-skills")).toBe(1);
-      expect(count(changed, "workspaces")).toBe(1);
-      expect(count(newText(second, third), "available-skills")).toBe(0);
-      expect(count(newText(second, third), "workspaces")).toBe(0);
+      expect(
+        second.messages
+          .slice(first.messages.length)
+          .map((message) => message.role),
+      ).toContain("system");
+      const updates = await sectionUpdates();
+      expect(updates).toHaveLength(2);
+      expect(Object.keys(updates[1]!).sort()).toEqual([
+        "available-skills",
+        "workspaces",
+      ]);
+      expect(updates[1]!["available-skills"]).toContain(
+        "<name>release-notes</name>",
+      );
+      expect(updates[1]!["workspaces"]).toContain("- docs: getsentry/docs");
     } finally {
       await removeSkills();
       await deleteWorkspace(workspace.id);
     }
 
-    // Both changes are undone. An empty section says so.
+    // Both changes are undone. An empty section is removed.
     await agent.run("fourth");
-    const undone = newText(third, agent.snapshot());
-    expect(count(undone, "available-skills")).toBe(1);
-    expect(undone).not.toContain("release-notes");
-    expect(undone).toContain("<workspaces>\\nnone\\n</workspaces>");
+    const undone = (await sectionUpdates()).at(-1)!;
+    expect(Object.keys(undone).sort()).toEqual([
+      "available-skills",
+      "workspaces",
+    ]);
+    expect(undone["available-skills"]).not.toContain("release-notes");
+    expect(undone["workspaces"]).toBeNull();
   });
 });
