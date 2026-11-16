@@ -4,7 +4,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException, logInfo } from "@/chat/logging";
 import { resolveEventAuthor } from "@/chat/identities/trust";
 import { enqueueEventNotification } from "@/chat/events/notification";
-import { resolveEventMentions, type EventMentions } from "@/chat/events/people";
+import { resolveEventMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 import { slackMention } from "@/chat/slack/mrkdwn";
 
@@ -39,10 +39,10 @@ export async function ingestEvent(
       "app.event.author.reason": author.reason,
     });
   }
-  let mentions: EventMentions = { people: [] };
-  if (options.slackTeamId) {
+  let people: string[] = [];
+  if (options.slackTeamId && event.people?.length) {
     try {
-      mentions = await resolveEventMentions(event, options.slackTeamId);
+      people = await resolveEventMentions(event.people, options.slackTeamId);
     } catch (error) {
       // People only add mentions. Deliver the Event without them.
       logException(error, "event.people.resolve.failed", {
@@ -51,12 +51,12 @@ export async function ingestEvent(
       });
     }
   }
-  // The trust decision matched the immutable account id, so its Slack member
-  // names the author better than a handle match.
+  // Only the trust decision names the author: it matched the immutable
+  // account id. A handle match could point at whoever reused the login.
   const doneBy =
     author.status === "trusted" && author.actor
       ? { mention: slackMention(author.actor.userId), handle: author.handle }
-      : mentions.doneBy;
+      : undefined;
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
@@ -77,7 +77,7 @@ export async function ingestEvent(
             author,
             doneBy,
             event,
-            people: mentions.people,
+            people,
             queue: options.queue,
             state: options.state,
             subscription: current,

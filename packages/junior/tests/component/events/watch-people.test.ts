@@ -112,9 +112,9 @@ describe("Watch Event people", () => {
           namespace: "demo",
           identifier: "job-1",
           trustedSummary: `Demo job 1: ${eventType}.`,
-          // The Event names this linked person by handle only. A handle
-          // names a person for wording and never makes them trusted.
-          author: { handle: "REQUESTER", trusted: true },
+          // The trust decision names the author by account id. The Event
+          // still calls them by its own handle.
+          author: { handle: "REQUESTER", subjectId: "demo-Requester" },
           // Handles match without case. Unlinked people and repeats drop out.
           people: [
             { provider: "demo", handle: "requester" },

@@ -306,6 +306,9 @@ describe("Event author trust", () => {
         ].join("\n"),
       );
       expect(count(text, REQUEST)).toBe(1);
+      // A handle match never names a Slack member, since the login may have
+      // been reused. `author` is U123's linked handle.
+      expect(text).not.toContain("<@U123>");
     }
     // A Trusted author with no own text, such as a bare approval, still
     // writes the Message, so it is not a system Event.
