@@ -20,6 +20,8 @@ describe("sandbox egress route trace config", () => {
       await import("@/chat/sandbox/egress/tracing");
     const { handleSandboxEgressRoute } =
       await import("@/handlers/sandbox-egress-route");
+    const { verifyVercelSandboxOidcToken } =
+      await import("@/chat/sandbox/egress/oidc");
 
     const response = await handleSandboxEgressRoute(
       new Request("https://junior.example.com/proxied"),
@@ -30,6 +32,7 @@ describe("sandbox egress route trace config", () => {
     expect(response?.status).toBe(200);
     expect(sandboxEgressProxyMock).toHaveBeenCalledWith(expect.any(Request), {
       tracePropagation: { domains: ["*.sentry.io"] },
+      verifyOidc: verifyVercelSandboxOidcToken,
     });
   });
 });

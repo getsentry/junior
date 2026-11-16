@@ -1,6 +1,5 @@
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { logWarn } from "@/chat/logging";
-import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
   executeSandboxEgressRequest,
   sandboxEgressAttributes,
@@ -44,7 +43,8 @@ type VercelSandboxNetworkPolicy =
 
 /** Runtime dependencies for the Vercel side of the sandbox egress proxy. */
 export interface VercelSandboxEgressProxyDeps extends SandboxEgressProxyDeps {
-  verifyOidc?: ((token: string) => Promise<JWTPayload>) | undefined;
+  /** Check the Vercel Sandbox OIDC token and return its claims. */
+  verifyOidc: (token: string) => Promise<JWTPayload>;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
@@ -255,7 +255,7 @@ export function isVercelSandboxEgressRequest(request: Request): boolean {
  */
 export async function proxyVercelSandboxEgressRequest(
   request: Request,
-  deps: VercelSandboxEgressProxyDeps = {},
+  deps: VercelSandboxEgressProxyDeps,
 ): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
   if (!oidcToken) {
@@ -264,9 +264,7 @@ export async function proxyVercelSandboxEgressRequest(
 
   let oidcPayload: JWTPayload;
   try {
-    oidcPayload = await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
-      oidcToken,
-    );
+    oidcPayload = await deps.verifyOidc(oidcToken);
   } catch (error) {
     logWarn("sandbox.egress.oidc_verification.failed", {
       "app.sandbox.oidc_error":

@@ -32,7 +32,7 @@ interface EvalEgressOptions {
   interceptHttp?: SandboxEgressHttpInterceptor;
   readFixtureState?: () => Promise<unknown> | unknown;
   resetFixtures?: (reset: EvalEgressReset) => Promise<void> | void;
-  verifyOidc?: SandboxEgressProxyOptions["verifyOidc"];
+  verifyOidc: SandboxEgressProxyOptions["verifyOidc"];
   verifyPublicUrl?: (baseUrl: string) => Promise<void>;
 }
 
@@ -206,9 +206,7 @@ function createEvalEgressServer(options: EvalEgressOptions): {
             ...(options.interceptHttp
               ? { interceptHttp: options.interceptHttp }
               : undefined),
-            ...(options.verifyOidc
-              ? { verifyOidc: options.verifyOidc }
-              : undefined),
+            verifyOidc: options.verifyOidc,
           }),
         );
       } catch (error) {
@@ -346,7 +344,7 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
 
 /** Start one public egress proxy for the complete eval worker lifecycle. */
 export async function startEvalEgress(
-  options: EvalEgressOptions = {},
+  options: EvalEgressOptions,
 ): Promise<EvalEgress> {
   const { controlToken, server } = createEvalEgressServer(options);
   let configDir: string | undefined;

@@ -1,6 +1,7 @@
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { isSandboxEgressRequest } from "@/handlers/sandbox-egress-proxy";
 import { nameRequestRoute } from "@/chat/sentry-route-name";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
 
 // The path segment after the proxy path is a signed credential token. The
@@ -19,6 +20,7 @@ export async function handleSandboxEgressRoute(
     nameRequestRoute(request.method, SANDBOX_EGRESS_ROUTE);
     return await sandboxEgressProxyALL(request, {
       tracePropagation: { domains: tracePropagationDomains },
+      verifyOidc: verifyVercelSandboxOidcToken,
     });
   }
   await next();

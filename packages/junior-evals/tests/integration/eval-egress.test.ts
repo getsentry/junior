@@ -4,6 +4,7 @@ import { createConnection } from "node:net";
 import { once } from "node:events";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import { startEvalEgress } from "../../src/eval-egress";
 
 const originalPath = process.env["PATH"];
@@ -87,6 +88,7 @@ setInterval(() => undefined, 1000);
           resetCount += 1;
           resetTimes.push(nowMs);
         },
+        verifyOidc: verifyVercelSandboxOidcToken,
         verifyPublicUrl: async () => {
           publicVerificationAttempts += 1;
           if (publicVerificationAttempts === 1)
