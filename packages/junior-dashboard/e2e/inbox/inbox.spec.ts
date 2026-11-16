@@ -842,7 +842,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(message).toBeVisible();
   });
 
-  test("comfortable cards grow near the pointer, except for reduced motion", async ({
+  test("cards grow near the pointer in both densities, except for reduced motion", async ({
     dashboard,
     page,
   }) => {
@@ -868,16 +868,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.mouse.move(0, 0);
     await expect(card).not.toHaveAttribute("style", /scale/);
 
-    // Compact rows hold still.
+    // Compact rows grow too, up to 2%.
     await page.evaluate(() => {
       localStorage.setItem("junior:density", "compact");
     });
     await page.reload();
     await card.hover();
-    await page.evaluate(
-      () => new Promise((done) => requestAnimationFrame(done)),
-    );
-    await expect(card).not.toHaveAttribute("style", /scale/);
+    await expect(card).toHaveAttribute("style", /scale\(1\.0[0-2]/);
   });
 
   test("an open ask holds its pull request still under the pointer", async ({

@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useLocalStorage } from "@uidotdev/usehooks";
 
 import { dockFalloff } from "@dashboard/lib/dock";
 import { HoverPreviewGate } from "../components/ui/hover-preview";
@@ -20,6 +21,20 @@ import { useConversationDensity } from "../conversations/conversationDensity";
  * list's side inset (`DOCK_GUTTER`) follows it.
  */
 const DOCK_GROW = 0.05;
+/**
+ * Compact rows are short and close together, so they grow less: the card
+ * in focus reaches about 1.02, and no card covers the gap to the next.
+ */
+const COMPACT_STRENGTH = 0.4;
+const MAGNIFY_STORAGE_KEY = "junior:inbox:magnify";
+
+/**
+ * Edit the browser-only choice to magnify the Inbox card under the pointer.
+ * On by default, so people opt out.
+ */
+export function useInboxMagnify() {
+  return useLocalStorage<boolean>(MAGNIFY_STORAGE_KEY, true);
+}
 
 /**
  * The list's side inset: at least half of a grown card's extra width, so a
@@ -182,9 +197,9 @@ export function useInboxFocus(
   scroller: RefObject<HTMLElement | null>,
   expandedKey: string,
 ) {
-  // Compact rows do not grow; one in focus may still expand.
   const [density] = useConversationDensity();
-  const grows = density === "comfortable";
+  const [grows] = useInboxMagnify();
+  const strength = density === "compact" ? COMPACT_STRENGTH : 1;
   const [store] = useState(createFocusStore);
   const pending = useRef<string>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -230,13 +245,13 @@ export function useInboxFocus(
       }
       // Neighbors stretch a little more in height than in width, so the
       // list reads as one surface under a lens.
-      const x = 1 + DOCK_GROW * grow * (index === at ? 1 : 0.7);
-      const y = 1 + DOCK_GROW * grow;
+      const x = 1 + DOCK_GROW * strength * grow * (index === at ? 1 : 0.7);
+      const y = 1 + DOCK_GROW * strength * grow;
       card.style.transform = `scale(${x.toFixed(4)}, ${y.toFixed(4)})`;
       card.style.willChange = "transform";
       scaled.current.add(card);
     }
-  }, [grows, scroller, store, unscale]);
+  }, [grows, scroller, store, strength, unscale]);
   // A card that opens or closes, or a density change, scales again.
   useEffect(applyScale, [applyScale, expandedKey]);
 

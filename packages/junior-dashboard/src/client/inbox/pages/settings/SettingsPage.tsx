@@ -26,6 +26,7 @@ import {
 } from "../../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../../conversations/composerAutocorrect";
 import { useInboxTabIconCount } from "../../../review-desk/inboxTabIcon";
+import { useInboxMagnify } from "../../../review-desk/inboxFocus";
 import { InlineError } from "../../../components/InlineError";
 import { AnchorHeading } from "../../../components/layout/AnchorHeading";
 import { Card } from "../../../components/layout/Card";
@@ -148,6 +149,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <InboxTabIconSetting />
+      <InboxMagnifySetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
@@ -268,6 +270,37 @@ function InboxTabIconSetting() {
           <FieldDescription id="inbox-tab-icon-count-help">
             The tab title shows the count either way. This choice applies to
             this browser.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+    </Card>
+  );
+}
+
+/** Let the user turn off the Inbox magnify on this browser. */
+function InboxMagnifySetting() {
+  const [magnify, setMagnify] = useInboxMagnify();
+  return (
+    <Card className="mt-6 mb-0" padding="md" variant="raised">
+      <AnchorHeading
+        anchor="inbox-motion"
+        className="m-0 text-lg font-bold"
+        title="Inbox motion"
+      />
+      <Field className="mt-4" orientation="horizontal">
+        <Checkbox
+          aria-describedby="inbox-magnify-help"
+          checked={magnify}
+          id="inbox-magnify"
+          onCheckedChange={setMagnify}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="inbox-magnify">
+            Magnify the row under the pointer
+          </FieldLabel>
+          <FieldDescription id="inbox-magnify-help">
+            Applies to compact and comfortable rows. Reduced motion turns it off
+            either way. This choice applies to this browser.
           </FieldDescription>
         </FieldContent>
       </Field>

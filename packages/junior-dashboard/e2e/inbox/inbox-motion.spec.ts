@@ -93,6 +93,42 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => transform(row)).toMatch(/^scale\(/);
   });
 
+  test("the magnifier grows rows in both densities, and its setting turns it off", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.clock.install();
+    const scale = async (row: Locator) => {
+      await expect.poll(() => transform(row)).toMatch(/^scale\(/);
+      return Number(/^scale\(([\d.]+)/.exec(await transform(row))![1]);
+    };
+    // Compact rows grow too, less than comfortable ones.
+    await page.goto(`${dashboard.baseURL}/`);
+    const compact = await scale(await restOnFirstRow(page));
+    expect(compact).toBeGreaterThan(1);
+    expect(compact).toBeLessThanOrEqual(1.02);
+    await page.evaluate(() =>
+      localStorage.setItem("junior:density", "comfortable"),
+    );
+    await page.reload();
+    expect(await scale(await restOnFirstRow(page))).toBeGreaterThan(compact);
+
+    await page.goto(`${dashboard.baseURL}/settings`);
+    await page
+      .getByRole("checkbox", { name: "Magnify the row under the pointer" })
+      .uncheck();
+    for (const density of ["comfortable", "compact"]) {
+      await page.evaluate(
+        (value) => localStorage.setItem("junior:density", value),
+        density,
+      );
+      await page.goto(`${dashboard.baseURL}/`);
+      const row = await restOnFirstRow(page);
+      await page.clock.runFor(PAST_REST_MS);
+      expect(await transform(row)).toBe("");
+    }
+  });
+
   test("rows never grow or expand under reduced motion", async ({
     dashboard,
     page,
@@ -126,6 +162,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("li[data-inbox-row]")
       .filter({ has: head })
       .first();
+    // The rows above it finish loading their cards first, so the row stays
+    // under the pointer.
+    await head.scrollIntoViewIfNeeded();
+    await page.waitForLoadState("networkidle");
     await head.hover();
     await page.clock.runFor(PAST_REST_MS);
     await expect(row).toHaveAttribute("data-grown", "true");
@@ -153,13 +193,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.clock.runFor(PAST_REST_MS);
     await expect(row).toHaveAttribute("data-grown", "true");
     // The same cards as comfortable rows: no icon, and a line in each one's
-    // status color.
+    // status color. The two changes that its pills name show only there.
     const cards = row.locator(
       '[aria-label="Linked work"] [data-linked-work-card]',
     );
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveText([/Return 429 before parsing/]);
     await expect(cards.locator("svg")).toHaveCount(0);
-    await expect(cards.locator("[data-status-tone]")).toHaveCount(3);
+    await expect(cards.locator("[data-status-tone]")).toHaveCount(1);
   });
 
   for (const where of ["list", "page"] as const) {
