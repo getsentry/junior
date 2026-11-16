@@ -255,11 +255,11 @@ describe("active-turn context compaction", () => {
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
     // One snapshot of the open items replaces the plan in summarized history.
     const summary = textOf(result.piMessages![2]!);
-    expect(summary.split("<plan version=").length - 1).toBe(1);
+    expect(summary.split("<plan>").length - 1).toBe(1);
     expect(summary).toContain(
       [
-        `<item id="${edit!.id}" status="in_progress" assignee="self">Apply requested edit</item>`,
-        `<item id="${test!.id}" status="pending" assignee="self">Run focused test</item>`,
+        `- #${edit!.id} (in_progress, assignee self): Apply requested edit`,
+        `- #${test!.id} (pending, assignee self): Run focused test`,
         "</plan>",
       ].join("\n"),
     );

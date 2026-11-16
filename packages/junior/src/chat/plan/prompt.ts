@@ -3,13 +3,13 @@
  * calls are already in history, so they get no block. A Turn adds a
  * `<plan-delta>` only for changes that others made since the highest
  * version that history shows. Compaction folds it all into one `<plan>`
- * snapshot of the open items. Both blocks carry that version, and later
- * deltas build on it.
+ * snapshot of the open items. Both blocks start with that version as plain
+ * text, and later deltas build on it.
  */
 import type { PiMessage } from "@/chat/pi/messages";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
-import { escapeXml, escapeXmlText } from "@/chat/xml";
+import { escapeXmlText } from "@/chat/xml";
 import {
   isOpenPlanItemStatus,
   SELF_PLAN_ASSIGNEE,
@@ -26,8 +26,10 @@ export const PLAN_DELTA_TAG = "plan-delta";
 /** Compacted context block with every open Plan item. */
 export const PLAN_SNAPSHOT_TAG = "plan";
 
+// The version line follows the opening tag. Escaped person text cannot write
+// a tag, so it cannot fake this line.
 const VERSION_PATTERN = new RegExp(
-  `<(?:${PLAN_SNAPSHOT_TAG}|${PLAN_DELTA_TAG}) version="(\\d+)">`,
+  `<(?:${PLAN_SNAPSHOT_TAG}|${PLAN_DELTA_TAG})>\\nPlan version (\\d+)\\.`,
   "g",
 );
 
@@ -44,21 +46,19 @@ export function renderPlanAssignee(assignee: PlanItemAssignee): string {
 }
 
 function renderItem(item: PlanItem, withAuthor: boolean): string {
-  const attributes = [
-    `id="${item.id}"`,
-    `status="${item.status}"`,
-    `assignee="${escapeXml(renderPlanAssignee(item.assignee))}"`,
+  const fields = [
+    item.status,
+    `assignee ${renderPlanAssignee(item.assignee)}`,
     ...(withAuthor && item.changedBy
       ? [
-          `author="${escapeXml(item.changedBy.name ?? item.changedBy.email)}"`,
-          `email="${escapeXml(item.changedBy.email)}"`,
+          `changed by ${item.changedBy.name ? `${item.changedBy.name} (${item.changedBy.email})` : item.changedBy.email}`,
         ]
       : []),
   ];
-  const notes = item.notes
-    ? `\n<notes>${escapeXmlText(item.notes)}</notes>`
-    : "";
-  return `<item ${attributes.join(" ")}>${escapeXmlText(item.title)}${notes}</item>`;
+  const notes = item.notes ? `\n  Notes: ${item.notes}` : "";
+  return escapeXmlText(
+    `- #${item.id} (${fields.join(", ")}): ${item.title}${notes}`,
+  );
 }
 
 function planVersion(items: readonly PlanItem[]): number {
@@ -109,8 +109,8 @@ export function renderPlanDelta(
   );
   if (changed.length === 0) return null;
   return [
-    `<${PLAN_DELTA_TAG} version="${planVersion(items)}">`,
-    "People changed these items of your plan since you last saw it. Each item shows its current fields.",
+    `<${PLAN_DELTA_TAG}>`,
+    `Plan version ${planVersion(items)}. People changed these items of your plan since you last saw it. Each item shows its current fields.`,
     ...changed.map((item) => renderItem(item, true)),
     `</${PLAN_DELTA_TAG}>`,
   ].join("\n");
@@ -125,10 +125,12 @@ export function renderPlanSnapshot(items: readonly PlanItem[]): string | null {
   if (items.length === 0) return null;
   const open = items.filter((item) => isOpenPlanItemStatus(item.status));
   return [
-    `<${PLAN_SNAPSHOT_TAG} version="${planVersion(items)}">`,
-    open.length > 0
-      ? "The open items of your plan."
-      : "Your plan has no open items.",
+    `<${PLAN_SNAPSHOT_TAG}>`,
+    `Plan version ${planVersion(items)}. ${
+      open.length > 0
+        ? "The open items of your plan."
+        : "Your plan has no open items."
+    }`,
     ...open.map((item) => renderItem(item, false)),
     `</${PLAN_SNAPSHOT_TAG}>`,
   ].join("\n");

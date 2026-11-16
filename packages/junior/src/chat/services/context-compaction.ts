@@ -217,10 +217,7 @@ function withoutSections(text: string, tags: string[]): string {
   return tags.reduce(
     (result, tag) =>
       result.replace(
-        new RegExp(
-          `\\n\\n<${tag}(?: [^>\\n]*)?>\\n[\\s\\S]*?\\n</${tag}>`,
-          "g",
-        ),
+        new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
         "",
       ),
     text,

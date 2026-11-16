@@ -232,7 +232,7 @@ describe("model message history", () => {
       before: { messages: unknown[] },
       after: { messages: unknown[] },
     ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const deltas = (text: string) => text.split("<plan-delta ").length - 1;
+    const deltas = (text: string) => text.split("<plan-delta>").length - 1;
 
     await agent.run("first");
     const first = agent.snapshot();
@@ -270,7 +270,7 @@ describe("model message history", () => {
     const delta = newText(second, third);
     expect(deltas(delta)).toBe(1);
     expect(delta).toContain(
-      `<item id=\\"${send!.id}\\" status=\\"cancelled\\" assignee=\\"self\\" author=\\"person@example.com\\" email=\\"person@example.com\\">Send the brief</item>`,
+      `- #${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
     );
     expect(delta).not.toContain("Draft the brief");
     // The block stays in history, so the next Turn does not send it again.
