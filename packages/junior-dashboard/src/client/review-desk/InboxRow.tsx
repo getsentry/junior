@@ -43,6 +43,9 @@ import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
+import { objectPresentation } from "@sentry/junior-plugin-api";
+import { objectToneClass } from "../components/ObjectIcon";
+import { AskKindIcon, askLook } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -77,52 +80,130 @@ const PLURALS: Record<string, string> = {
   Question: "Questions",
 };
 
-/** One ask pill: what an item asks of the viewer, such as "Approval". */
-type AskPill = { key: string; label: string; strong: boolean };
+type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
+
+/**
+ * One ask pill: what an item asks of the viewer, such as "Question". A pull
+ * request ask also names its change, so the change needs no chip of its own.
+ */
+type AskPill = {
+  count: number;
+  key: string;
+  kind: string;
+  /** The full name, such as "Review requested #91: Pin the release train". */
+  name: string;
+  /** The change's number, such as #91, in its status color. */
+  ref?: { number: string; tone?: string };
+  strong: boolean;
+  /** The change's title, or the kind's name for an ask with no change. */
+  label?: string;
+  /** The change's URL, which its chip would have linked. */
+  url?: string;
+};
+
+// The change a pull request ask names: its saved linked work when the
+// Conversation has it, else the item's own subject.
+function askChange(
+  item: ReviewItemPayload,
+  annotations: readonly Annotation[],
+) {
+  const url = item.subject?.url ?? item.subject?.id;
+  const work = url
+    ? annotations.find((annotation) => annotation.url === url)
+    : undefined;
+  const subjectTitle = item.subject?.title;
+  // A subject titled by its key, such as owner/repo#123, adds nothing to #123.
+  const title =
+    work?.title ??
+    (subjectTitle && !/^[\w.-]+\/[\w.-]+#\d+$/.test(subjectTitle)
+      ? subjectTitle
+      : undefined);
+  const tone = work?.objectType
+    ? objectToneClass[
+        objectPresentation({ objectType: work.objectType, status: work.status })
+          .tone
+      ]
+    : undefined;
+  return { title, tone, url };
+}
 
 /**
  * Name each open item the way the Inbox does: Question, Approval, the pull
- * request state with its number, or FYI. Repeats fold into a count.
+ * request state with its change, or FYI. Repeats fold into a count.
  */
-function askPills(items: readonly ReviewItemPayload[]): AskPill[] {
-  const pills = new Map<string, AskPill & { count: number }>();
+function askPills(
+  items: readonly ReviewItemPayload[],
+  annotations: readonly Annotation[],
+): AskPill[] {
+  const pills = new Map<string, AskPill>();
   for (const item of items) {
     if (item.status !== "open") continue;
     const kind = inboxItemKind(item);
     const number = /#\d+/.exec(item.title)?.[0];
     const isPullRequestState =
       kind === "Review requested" || kind === "Ready to merge";
-    const label = isPullRequestState && number ? `${kind} ${number}` : kind;
-    const current = pills.get(label);
-    pills.set(label, {
-      count: (current?.count ?? 0) + 1,
-      key: label,
-      label,
-      strong: (current?.strong ?? false) || itemNeedsViewer(item),
+    const key = isPullRequestState && number ? `${kind} ${number}` : kind;
+    const current = pills.get(key);
+    const strong = (current?.strong ?? false) || itemNeedsViewer(item);
+    if (isPullRequestState && number) {
+      const change = askChange(item, annotations);
+      pills.set(key, {
+        count: 1,
+        key,
+        kind,
+        name: change.title ? `${key}: ${change.title}` : key,
+        label: change.title,
+        ref: { number, tone: change.tone },
+        strong,
+        url: change.url,
+      });
+      continue;
+    }
+    const count = (current?.count ?? 0) + 1;
+    const name = count > 1 ? `${count} ${PLURALS[kind] ?? kind}` : kind;
+    pills.set(key, {
+      count,
+      key,
+      kind,
+      name,
+      strong,
+      // An FYI asks nothing, so its icon is enough.
+      label: kind === "FYI" ? (count > 1 ? String(count) : undefined) : name,
     });
   }
-  return [...pills.values()]
-    .sort((a, b) => Number(b.strong) - Number(a.strong))
-    .map((pill) => ({
-      ...pill,
-      label:
-        pill.count > 1
-          ? `${pill.count} ${PLURALS[pill.label] ?? pill.label}`
-          : pill.label,
-    }));
+  return [...pills.values()].sort(
+    (a, b) => Number(b.strong) - Number(a.strong),
+  );
 }
 
+// The icon carries the kind, so the words name only what it is about.
 function Pill(props: { pill: AskPill }) {
+  const { pill } = props;
+  const look = askLook(pill.kind);
   return (
     <span
       className={cn(
-        "inline-flex h-5 shrink-0 items-center rounded-full px-2 text-2xs font-semibold leading-none whitespace-nowrap",
-        props.pill.strong
-          ? "bg-dashboard-accent/15 text-dashboard-accent-text"
+        "inline-flex h-5 max-w-60 shrink-0 items-center gap-1 rounded-full px-1.5 text-2xs leading-none whitespace-nowrap",
+        pill.strong
+          ? cn(look?.tint ?? "bg-dashboard-fill-soft", "text-dashboard-text")
           : "border border-dashboard-border text-dashboard-text-muted",
       )}
+      data-ask-pill={pill.kind}
     >
-      {props.pill.label}
+      <AskKindIcon className="size-3" kind={pill.kind} />
+      {pill.label ? (
+        <span className="min-w-0 truncate font-medium">{pill.label}</span>
+      ) : null}
+      {pill.ref ? (
+        <span
+          className={cn(
+            "shrink-0 font-medium tabular-nums",
+            pill.ref.tone ?? "text-dashboard-text-muted",
+          )}
+        >
+          {pill.ref.number}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -165,7 +246,14 @@ function RowItem(props: {
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <Pill
-          pill={{ key: kind, label: kind, strong: itemNeedsViewer(item) }}
+          pill={{
+            count: 1,
+            key: kind,
+            kind,
+            name: kind,
+            label: kind,
+            strong: itemNeedsViewer(item),
+          }}
         />
         {/* An item row's head already names the ask. A Conversation row's
             head names the Conversation, so each ask keeps its title. */}
@@ -493,6 +581,9 @@ function RowSummary(props: {
       <span
         className={cn(
           "min-w-0",
+          // Links read as the summary's own words, and underline on hover,
+          // so a line of links does not shout over the title.
+          "[&_a]:font-normal [&_a]:text-dashboard-text [&_a]:no-underline [&_a:hover]:underline",
           props.expanded
             ? "line-clamp-none"
             : props.comfortable
@@ -531,15 +622,21 @@ function InboxRowBody(
   const budget = preview ? Infinity : MAX_ROW_PREVIEWS;
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
+  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
-  const pills = props.itemTitle ? [] : askPills(openItems);
+  const pills = props.itemTitle ? [] : askPills(openItems, annotations);
+  // A change that a pill names shows once, in its pill.
+  const named = new Set(pills.flatMap((pill) => pill.url ?? []));
+  const work =
+    named.size === 0
+      ? annotations
+      : annotations.filter((annotation) => !named.has(annotation.url ?? ""));
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
-  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   // One budget for the strip, in order: linked work (with any PR image),
   // then files, then cards for message links.
-  const workCards = preview ? 0 : linkedWorkCardCount(annotations);
+  const workCards = preview ? 0 : linkedWorkCardCount(work);
   const media = (conversation?.media ?? []).slice(0, budget - workCards);
   const links = (conversation?.links ?? []).slice(
     0,
@@ -558,9 +655,8 @@ function InboxRowBody(
   const running = conversation?.status === "active";
   // Comfortable rows show files and linked work as cards in their own strip.
   const cards =
-    comfortable &&
-    (annotations.length > 0 || media.length > 0 || links.length > 0);
-  const hasChips = pills.length > 0 || (!cards && annotations.length > 0);
+    comfortable && (work.length > 0 || media.length > 0 || links.length > 0);
+  const hasChips = pills.length > 0 || (!cards && work.length > 0);
   // A comfortable row with a summary reads in two columns on wider screens:
   // the title and people, then the summary beside them.
   const columns = comfortable && summary !== undefined;
@@ -644,11 +740,18 @@ function InboxRowBody(
             >
               <span
                 className={cn(
-                  "min-w-0 truncate font-medium leading-snug text-dashboard-text",
+                  "flex min-w-0 items-center gap-1.5 font-medium leading-snug text-dashboard-text",
                   comfortable ? "text-base" : "text-sm",
                 )}
               >
-                {props.itemTitle ?? props.title}
+                {/* An item row's title names its kind; the icon marks it
+                    the way the pills do. */}
+                {props.itemTitle && bundle ? (
+                  <AskKindIcon kind={inboxItemKind(bundle.newest)} />
+                ) : null}
+                <span className="min-w-0 truncate">
+                  {props.itemTitle ?? props.title}
+                </span>
               </span>
               {props.itemTitle && props.itemSubtitle ? (
                 <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
@@ -690,9 +793,11 @@ function InboxRowBody(
                         <button
                           aria-controls={controls}
                           aria-expanded={props.expanded}
+                          aria-label={pill.name}
                           className="shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                           key={pill.key}
                           onClick={props.onToggle}
+                          title={pill.name}
                           type="button"
                         >
                           <Pill pill={pill} />
@@ -709,9 +814,7 @@ function InboxRowBody(
                     />
                   </span>
                 ) : null}
-                {cards ? null : (
-                  <InboxLinkedWorkChips annotations={annotations} />
-                )}
+                {cards ? null : <InboxLinkedWorkChips annotations={work} />}
               </span>
             ) : null}
           </span>
@@ -769,8 +872,8 @@ function InboxRowBody(
               columns && "sm:pl-[calc(1.875rem+var(--inbox-lead)+0.625rem)]",
             )}
           >
-            {annotations.length > 0 ? (
-              <InboxLinkedWork all={preview} annotations={annotations} />
+            {work.length > 0 ? (
+              <InboxLinkedWork all={preview} annotations={work} />
             ) : null}
             {media.length > 0 ? (
               <InboxMedia conversationId={props.conversationId} media={media} />

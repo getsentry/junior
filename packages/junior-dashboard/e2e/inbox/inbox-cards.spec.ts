@@ -62,10 +62,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: "Package release and self-update" })
       .first();
     const work = release.getByRole("group", { name: "Linked work" });
-    // Newest first, each with its title and status.
+    // Each card has its title and status. The changes that its pills name
+    // (#2201 and #91) show only in their pills.
     await expect(work.getByRole("link")).toHaveText([
-      /Update Junior to 0\.288\.0.*getsentry\/junior#2201 · Draft/,
-      /Pin the release train to payments 4\.2.*getsentry\/payments#91 · Open/,
       /Return 429 before parsing oversized envelopes.*getsentry\/relay#44 · Merged/,
     ]);
     // Quiet cards: no icon, and a line in each one's status color.
@@ -79,10 +78,10 @@ test.describe("new UI", { tag: "@new" }, () => {
             lines.map((line) => line.getAttribute("data-status-tone")),
           ),
       )
-      .toEqual(["neutral", "success", "accent"]);
+      .toEqual(["accent"]);
     await expect(
-      work.getByRole("link", { name: /Pin the release train/ }),
-    ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
+      work.getByRole("link", { name: /Return 429/ }),
+    ).toHaveAttribute("href", "https://github.com/getsentry/relay/pull/44");
     // Work saved without a title follows as one quiet line, with no link.
     const qa = page
       .locator("[data-inbox-row]")
@@ -129,10 +128,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     // status color, on one line.
     await expect(release.locator("[data-linked-work-card]")).toHaveCount(0);
     const chips = release.locator("[data-linked-work-chip]");
-    await expect(chips.first()).toHaveText("Update Junior to 0.288.0#2201");
+    await expect(chips.first()).toHaveText(
+      "Return 429 before parsing oversized envelopes#44",
+    );
     await expect(chips.first().locator("[data-status-tone]")).toHaveAttribute(
       "data-status-tone",
-      "neutral",
+      "accent",
     );
   });
 

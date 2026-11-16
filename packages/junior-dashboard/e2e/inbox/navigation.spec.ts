@@ -60,6 +60,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const paneWidth = async () =>
       Number(await resize.getAttribute("aria-valuenow"));
     const startWidth = await paneWidth();
+    // The pane starts slim, so the list beside it has the room.
+    expect(startWidth).toBe(256);
     await resize.focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");

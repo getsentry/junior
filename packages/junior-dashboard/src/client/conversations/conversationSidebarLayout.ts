@@ -12,11 +12,15 @@ const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width-rem";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width-rem";
 
-/**
- * Rem limits for the conversation list beside a selected conversation, and
- * for the new UI's desktop pane, which shares its saved width.
- */
+/** Rem limits for the conversation list beside a selected conversation. */
 export const SIDEBAR_WIDTH = { default: 20, max: 30, min: 15 } as const;
+
+/**
+ * Rem limits for the new UI's desktop pane. It holds only short row names,
+ * so it starts slimmer and leaves the room to the list beside it.
+ */
+export const PANE_WIDTH = { default: 16, max: 30, min: 13 } as const;
+const PANE_WIDTH_KEY = "junior:pane-width-rem";
 
 /** Rem limits for the details panel beside the transcript. */
 export const DETAILS_WIDTH = { default: 25, max: 45, min: 20 } as const;
@@ -54,14 +58,19 @@ export function readSidebarWidth(): RemSize {
   return readWidth(WIDTH_KEY, SIDEBAR_WIDTH);
 }
 
-/** Read the new UI's desktop pane width saved in this browser, in rem. */
-export function readPaneWidth(): number {
-  return parseFloat(readSidebarWidth());
-}
-
-/** Save the conversation list or pane width, given in px. */
+/** Save the conversation list width in px without a React render per drag step. */
 export function saveSidebarWidth(px: number) {
   writeWidth(WIDTH_KEY, px);
+}
+
+/** Read the new UI's desktop pane width saved in this browser, in rem. */
+export function readPaneWidth(): number {
+  return parseFloat(readWidth(PANE_WIDTH_KEY, PANE_WIDTH));
+}
+
+/** Save the new UI's desktop pane width, given in px. */
+export function savePaneWidth(px: number) {
+  writeWidth(PANE_WIDTH_KEY, px);
 }
 
 /** Read the details panel width saved in this browser. */

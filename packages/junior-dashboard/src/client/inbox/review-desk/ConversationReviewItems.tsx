@@ -14,6 +14,8 @@ import {
 } from "../../conversations/DetailsList";
 import { cn, dashboardDisclosureChevronClass } from "../../styles";
 import { ReviewItemCard } from "./ReviewItemCard";
+import { AskKindIcon, askLook } from "../../review-desk/askKind";
+import { inboxItemKind } from "../../review-desk/inboxModel";
 import { useReviewItemsData } from "../../review-desk/queries";
 
 /**
@@ -73,6 +75,7 @@ function ReviewItemRow(props: {
   item: ReviewItemPayload;
 }) {
   const [expanded, setExpanded] = useState(props.defaultExpanded);
+  const kind = inboxItemKind(props.item);
   // Details can already be open when a sidebar review chip highlights it.
   useEffect(() => {
     if (props.defaultExpanded) setExpanded(true);
@@ -81,7 +84,14 @@ function ReviewItemRow(props: {
     <Collapsible className="min-w-0" onOpenChange={setExpanded} open={expanded}>
       <DetailsRow
         disclosure
-        icon={<Inbox aria-hidden="true" className="size-3.5" />}
+        icon={
+          // The kind's icon, as the Inbox pills show it.
+          askLook(kind) ? (
+            <AskKindIcon kind={kind} />
+          ) : (
+            <Inbox aria-hidden="true" className="size-3.5" />
+          )
+        }
         meta={
           <span className="grid size-5 place-items-center">
             <ChevronRight

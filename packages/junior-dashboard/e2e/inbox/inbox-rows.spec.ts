@@ -36,15 +36,61 @@ test.describe("new UI", { tag: "@new" }, () => {
     const title = row.locator('[data-inbox-slot="title"]');
     // The pills follow the title in the title column, before the summary.
     await expect(
-      title.getByRole("button", { name: "Review requested #91" }),
+      title.getByRole("button", { name: /^Review requested #91/ }),
     ).toBeVisible();
     await expect(
-      title.getByRole("button", { name: "Ready to merge #2201" }),
+      title.getByRole("button", { name: /^Ready to merge #2201/ }),
     ).toBeAttached();
     // The pills keep to one line in the narrow title column: those that do
     // not fit show as +N.
     await expect(title.locator("[data-pill-overflow]")).toHaveText(/^\+\d+$/);
     await expect.poll(() => slots(row)).toEqual(SLOTS);
+  });
+
+  test("a row's pills mark each kind by icon, and name a change once", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = page
+      .getByRole("region", { name: "To do" })
+      .getByRole("listitem")
+      .filter({ hasText: "Package release and self-update" });
+    // Each pull request ask names its change by title and number, so the
+    // icon carries the kind and the name keeps it for screen readers.
+    const review = row.getByRole("button", {
+      name: "Review requested #91: Pin the release train to payments 4.2",
+    });
+    const ready = row.getByRole("button", {
+      name: "Ready to merge #2201: Update Junior to 0.288.0",
+    });
+    await expect(review).toHaveText("Pin the release train to payments 4.2#91");
+    await expect(review.locator("[data-ask-kind]")).toHaveAttribute(
+      "data-ask-kind",
+      "Review requested",
+    );
+    await expect(ready.locator("[data-ask-kind]")).toHaveAttribute(
+      "data-ask-kind",
+      "Ready to merge",
+    );
+    // An FYI is its icon alone.
+    const fyi = row.getByRole("button", { name: "FYI", exact: true });
+    await expect(fyi).toHaveAttribute("title", "FYI");
+    await expect(fyi).toHaveText("");
+    // The changes the pills name get no chip of their own.
+    await expect(row.locator("[data-linked-work-chip]")).toHaveText([
+      "Return 429 before parsing oversized envelopes#44",
+    ]);
+
+    // Pull requests mark their asks the same way.
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await expect(
+      page
+        .getByRole("listitem")
+        .filter({ hasText: "Review requested · #91" })
+        .locator('[data-ask-kind="Review requested"]')
+        .first(),
+    ).toBeVisible();
   });
 
   test("a row's summary shows its links as titled links", async ({

@@ -18,9 +18,9 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { getDashboardAgentName } from "../../agentName";
 import { HeaderIconButton } from "../../conversations/ConversationHeaderActions";
 import {
+  PANE_WIDTH,
   readPaneWidth,
-  saveSidebarWidth,
-  SIDEBAR_WIDTH,
+  savePaneWidth,
   useSidebarFits,
 } from "../../conversations/conversationSidebarLayout";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
@@ -108,7 +108,7 @@ const PaneWidthContext = createContext<PaneWidthValue | null>(null);
 const RESIZE_KEY_STEP = 1;
 
 function clampWidth(width: number): number {
-  return Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width));
+  return Math.min(PANE_WIDTH.max, Math.max(PANE_WIDTH.min, width));
 }
 
 function rootFontPx(): number {
@@ -554,7 +554,7 @@ function PaneResizeHandle() {
     let next = startWidth;
     const move = (moveEvent: PointerEvent) => {
       const raw = startWidth + (moveEvent.clientX - startX) / remPx;
-      if (raw < SIDEBAR_WIDTH.min / 2) {
+      if (raw < PANE_WIDTH.min / 2) {
         end();
         pane.setOpen(false, { focus: true });
         return;
@@ -568,7 +568,7 @@ function PaneResizeHandle() {
       handle.removeEventListener("pointercancel", end);
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");
-      saveSidebarWidth(next * remPx);
+      savePaneWidth(next * remPx);
     };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -588,7 +588,7 @@ function PaneResizeHandle() {
     event.preventDefault();
     const next = clampWidth(width + step);
     setWidth(next);
-    saveSidebarWidth(next * rootFontPx());
+    savePaneWidth(next * rootFontPx());
   };
 
   // The separator reports px, the unit that the reader sees move.
@@ -598,8 +598,8 @@ function PaneResizeHandle() {
     <div
       aria-label="Resize sidebar"
       aria-orientation="vertical"
-      aria-valuemax={Math.round(SIDEBAR_WIDTH.max * remPx)}
-      aria-valuemin={Math.round(SIDEBAR_WIDTH.min * remPx)}
+      aria-valuemax={Math.round(PANE_WIDTH.max * remPx)}
+      aria-valuemin={Math.round(PANE_WIDTH.min * remPx)}
       aria-valuenow={Math.round(width * remPx)}
       className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize after:absolute after:inset-y-0 after:right-0 after:w-px after:transition-colors hover:after:bg-dashboard-border-interactive focus-visible:outline-none focus-visible:after:bg-dashboard-border-interactive max-md:hidden"
       onKeyDown={stepWidth}
