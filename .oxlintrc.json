@@ -124,6 +124,33 @@
     {
       "files": ["packages/*/src/**"],
       "rules": {
+        "junior/no-service-fallback": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-dashboard/src/client/components/charts/ActivityChart.tsx",
+        "packages/junior-memory/src/embedding.ts",
+        "packages/junior/src/chat/cache-warming/warmup.ts",
+        "packages/junior/src/chat/egress/credentialed.ts",
+        "packages/junior/src/chat/pi/request-prefix-attributes.ts",
+        "packages/junior/src/chat/pi/traced-stream.ts",
+        "packages/junior/src/chat/plugins/task-runner.ts",
+        "packages/junior/src/chat/providers/slack/resume.ts",
+        "packages/junior/src/chat/sandbox/egress/vercel.ts",
+        "packages/junior/src/chat/slack/assistant-thread/status-send.ts",
+        "packages/junior/src/chat/slack/attachment-fetchers.ts",
+        "packages/junior/src/chat/task-execution/paused-turn.ts",
+        "packages/junior/src/chat/task-execution/slack-work.ts",
+        "packages/junior/src/chat/tools/publish-image.ts"
+      ],
+      "rules": {
+        "junior/no-service-fallback": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
         "no-restricted-imports": [
           "error",
           {
@@ -358,7 +385,8 @@
       "files": ["packages/junior-evals/**", "packages/junior-testing/**"],
       "rules": {
         "junior/no-raw-sql-queries": "off",
-        "junior/no-regex-url-parsing": "off"
+        "junior/no-regex-url-parsing": "off",
+        "junior/no-service-fallback": "off"
       }
     }
   ],
