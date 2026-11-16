@@ -72,6 +72,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
+- `features/`: the intended user behavior of each major system.
 - `policies/correctness-complexity.md`: how much design a fix needs.
 - `policies/interface-design.md`: function and module shape, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
