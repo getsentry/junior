@@ -105,6 +105,7 @@ import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { runWithEventMatchCache } from "@/chat/events/match-cache";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -1232,8 +1233,13 @@ export function getPluginRoutes(options: {
         pathMethods.add(method);
       }
       methodsByPath.set(route.path, pathMethods);
+      const handler = route.handler;
       routes.push({
         ...route,
+        // One webhook checks the same resources for matches many times.
+        // Share those reads within the request.
+        handler: (...handlerArgs: Parameters<typeof handler>) =>
+          runWithEventMatchCache(() => handler(...handlerArgs)),
         pluginName,
       });
     }

@@ -17,6 +17,7 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { logWarn } from "@/chat/logging";
+import { createEventMatchCache } from "@/chat/events/match-cache";
 import { clearEventAutomationRuns } from "./run-limit";
 import {
   eventAutomationSchema,
@@ -330,11 +331,15 @@ function eventAutomationGateProblem(
  * and that select one of these event types. Skip and log a row that does
  * not parse or that the gate rejects.
  */
+const eventAutomationMatchCache =
+  createEventMatchCache<StoredEventAutomation[]>();
+
 async function readGatedEventAutomations(
   db: JuniorDatabase,
   input: {
     catalog: EventCatalog;
-    eventTypes: readonly string[];
+    /** Omit to read rows for every event type. */
+    eventTypes?: readonly string[] | undefined;
     identifiers: readonly string[];
     namespace: string;
     teamId: string;
@@ -349,7 +354,7 @@ async function readGatedEventAutomations(
         eq(juniorAutomations.teamId, input.teamId),
         eq(juniorAutomations.namespace, input.namespace),
         eventIdentifierWhere(input.identifiers),
-        eventTypesWhere(input.eventTypes),
+        input.eventTypes ? eventTypesWhere(input.eventTypes) : undefined,
         eq(juniorAutomations.status, "active"),
       ),
     )
@@ -448,19 +453,40 @@ export async function findMatchingEventAutomations(
   events: readonly Event[],
   teamId: string,
   catalog: EventCatalog,
+  options: {
+    /**
+     * Reuse this request's read for the same identifiers. Only for match
+     * checks; runs must read current rows.
+     */
+    cached?: boolean | undefined;
+  } = {},
 ): Promise<StoredEventAutomation[][]> {
   const namespace = events[0]?.namespace;
   if (namespace === undefined) return [];
   if (events.some((event) => event.namespace !== namespace)) {
     throw new Error("Events to match must share one namespace.");
   }
-  const tasks = await readGatedEventAutomations(db, {
-    catalog,
-    eventTypes: [...new Set(events.map((event) => event.eventType))],
-    identifiers: [...new Set(events.map((event) => event.identifier))],
-    namespace,
-    teamId,
-  });
+  const identifiers = [...new Set(events.map((event) => event.identifier))];
+  const tasks = options.cached
+    ? // Read every event type once, so later checks for other event types on
+      // these resources reuse it. The filter below still checks event type.
+      await eventAutomationMatchCache(
+        [teamId, namespace, ...[...identifiers].sort()].join("\0"),
+        async () =>
+          await readGatedEventAutomations(db, {
+            catalog,
+            identifiers,
+            namespace,
+            teamId,
+          }),
+      )
+    : await readGatedEventAutomations(db, {
+        catalog,
+        eventTypes: [...new Set(events.map((event) => event.eventType))],
+        identifiers,
+        namespace,
+        teamId,
+      });
   // The read holds rows for every identifier in `events`, so keep only the
   // rows for this event's identifier.
   return events.map((event) =>

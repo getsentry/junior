@@ -52,6 +52,7 @@ export function createEventAppPublisher(args: {
           events.map((event) =>
             limit(() =>
               findMatchingWatches({
+                cached: true,
                 data: event.data,
                 eventType: event.eventType,
                 namespace: event.namespace,
@@ -67,6 +68,7 @@ export function createEventAppPublisher(args: {
               events,
               eventAutomationTeamId,
               getEventCatalog(),
+              { cached: true },
             )
           : Promise.resolve([]),
       ]);
