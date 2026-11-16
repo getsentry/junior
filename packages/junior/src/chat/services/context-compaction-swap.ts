@@ -36,11 +36,12 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
   estimateReplacementTokens,
-  renderCompactionSummaryWithPlan,
+  renderCompactionSummary,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
   userMessage,
@@ -317,8 +318,8 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await renderCompactionSummaryWithPlan(
-          prepared.summary,
+        await appendPlanSnapshot(
+          renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),
       ),

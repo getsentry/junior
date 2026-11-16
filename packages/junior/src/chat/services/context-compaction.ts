@@ -28,7 +28,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
@@ -47,9 +47,6 @@ import {
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
-  CAPABILITY_SECTION_TAG,
-  REQUEST_CONTEXT_SECTION_TAG,
-  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -57,8 +54,13 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { PLAN_DELTA_TAG, renderPlanSnapshot } from "@/chat/plan/prompt";
-import { listPlanItems } from "@/chat/plan/store";
+import {
+  LATEST_COPY_SECTION_TAGS,
+  latestSections,
+  withoutRequestContext,
+  withoutSections,
+} from "@/chat/services/context-compaction-sections";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -213,47 +215,6 @@ function isSessionTurnContext(text: string | undefined): text is string {
     text?.startsWith(`<${TURN_CONTEXT_TAG}>`) === true &&
     text.includes(`\n<${SESSION_CONTEXT_SECTION_TAG}>\n`)
   );
-}
-
-function withoutSections(text: string, tags: string[]): string {
-  return tags.reduce(
-    (result, tag) =>
-      result.replace(
-        new RegExp(
-          `\\n\\n<${tag}(?: [^>\\n]*)?>\\n[\\s\\S]*?\\n</${tag}>`,
-          "g",
-        ),
-        "",
-      ),
-    text,
-  );
-}
-
-/**
- * Remove the sections that only the Turn that received them can use, and
- * plan deltas, which the `<plan>` snapshot of the summary replaces.
- */
-function withoutRequestContext(text: string): string {
-  return withoutSections(text, [
-    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
-    PLAN_DELTA_TAG,
-  ]);
-}
-
-/**
- * Turn context sections that a Turn sends only when they differ from the
- * latest copy in history. Compaction keeps exactly that copy, byte for byte.
- */
-const LATEST_COPY_SECTION_TAGS: string[] = [
-  ...Object.values(CAPABILITY_SECTION_TAG),
-  SCRIPT_TOOLS_SECTION_TAG,
-];
-
-function latestSections(
-  messages: PiMessage[],
-  tags = LATEST_COPY_SECTION_TAGS,
-): string[] {
-  return tags.flatMap((tag) => latestTurnContextSection(messages, tag) ?? []);
 }
 
 /**
@@ -579,22 +540,6 @@ export function renderCompactionSummary(summary: string): string {
     escapeXml(summary),
     "</thread-context>",
   ].join("\n");
-}
-
-/**
- * Render the summary message of a history replacement. It ends with one
- * `<plan>` snapshot of the open items, read from the database, so the plan
- * and its version survive the replacement.
- */
-export async function renderCompactionSummaryWithPlan(
-  summary: string,
-  conversationId: string,
-): Promise<string> {
-  const snapshot = renderPlanSnapshot(
-    await listPlanItems(getSqlExecutor(), conversationId),
-  );
-  const text = renderCompactionSummary(summary);
-  return snapshot ? `${text}\n\n${snapshot}` : text;
 }
 
 function timestampOf(message: PiMessage): number | undefined {
@@ -939,7 +884,10 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      await renderCompactionSummaryWithPlan(summary, args.conversationId),
+      await appendPlanSnapshot(
+        renderCompactionSummary(summary),
+        args.conversationId,
+      ),
     ),
     provenance: contextProvenance,
   };
