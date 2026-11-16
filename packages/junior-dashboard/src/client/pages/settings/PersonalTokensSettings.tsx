@@ -16,6 +16,7 @@ import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsSection } from "./SettingsPageLayout";
 import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
+import { formatTime } from "../../time";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 // Matches `createPersonalTokenBodySchema`.
@@ -23,10 +24,7 @@ const MAX_TOKEN_NAME_LENGTH = 80;
 
 // A blank name gets the creation time, so tokens stay distinguishable.
 function defaultTokenName(now = new Date()): string {
-  return `Token from ${now.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })}`;
+  return `Token from ${formatTime(now, { dateStyle: "medium", timeStyle: "short" })}`;
 }
 
 /**
@@ -223,7 +221,11 @@ export function PersonalTokensSettings() {
                   </p>
                   <p className="mt-1 mb-0 text-xs text-dashboard-text-muted">
                     Ends in {token.tokenSuffix} · Expires{" "}
-                    {new Date(token.expiresAt).toLocaleDateString()}
+                    {formatTime(token.expiresAt, {
+                      day: "numeric",
+                      month: "numeric",
+                      year: "numeric",
+                    })}
                   </p>
                 </div>
                 <Button

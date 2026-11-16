@@ -5,6 +5,7 @@ import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
 import type { SlackInteractivePayload } from "./slack-payload";
+import { botConfig } from "@/chat/config";
 
 /**
  * Resolve the Junior User of the person who clicked a Slack control. The
@@ -41,7 +42,7 @@ export async function resolveSlackActingUser(args: {
   if (!user) {
     await args.tell(
       slackUserId,
-      "Junior does not know your account yet. Sign in to the Junior dashboard, then try again.",
+      `${botConfig.userName} does not know your account yet. Sign in to the dashboard, then try again.`,
     );
     return undefined;
   }

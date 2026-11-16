@@ -26,13 +26,7 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { DisplayText } from "../../display-text/DisplayText";
-import {
-  automationPath,
-  formatCostSummary,
-  formatRelativeTime,
-  formatRuntime,
-  peoplePath,
-} from "../../format";
+import { automationPath, formatCostSummary, peoplePath } from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
 import { AutomationCost } from "./AutomationCost";
@@ -51,6 +45,8 @@ import {
   formatAutomationRunTime,
 } from "./automationFormat";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { formatRelativeTime, formatRuntime } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
@@ -382,7 +378,7 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
         <Fact label="Accounts">
           {automation.credentialMode === "creator"
             ? `Connected by ${creator}`
-            : "Junior’s only"}
+            : `${agentNamePossessive()} only`}
         </Fact>
       </FactList>
     </FactSection>

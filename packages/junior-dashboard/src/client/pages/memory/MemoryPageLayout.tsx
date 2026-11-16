@@ -5,6 +5,7 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
+import { getDashboardAgentName } from "../../agentName";
 
 const MEMORY_BASE_PATH = "/memories";
 const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
@@ -66,7 +67,7 @@ export function MemoryRouteLoading(props: {
       <PageHeader
         description={
           props.description ??
-          "Personal and public memories Junior can use across conversations."
+          `Personal and public memories ${getDashboardAgentName()} can use across conversations.`
         }
         title={props.title ?? "Memories"}
       />

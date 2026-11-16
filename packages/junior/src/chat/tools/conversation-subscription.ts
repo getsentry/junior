@@ -54,7 +54,7 @@ export function createSetConversationSubscriptionTool(
       const user = (await context.resolveActorIdentity?.())?.user;
       if (!user) {
         throw new ToolInputError(
-          "This person has no linked Junior user, so their subscription cannot change.",
+          "This person has no linked User, so their subscription cannot change.",
         );
       }
       const result = await updateConversationSubscription(

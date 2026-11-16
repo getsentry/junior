@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { dateTimeFormat, getDashboardTimeZone } from "../time";
 
 const storageKey = "junior:event-log:time-mode";
 
@@ -7,7 +8,7 @@ const storageKey = "junior:event-log:time-mode";
 export function useEventTime() {
   const [mode, setMode] = useLocalStorage<"utc" | "local">(storageKey, "utc");
   const local = mode === "local";
-  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localTimeZone = getDashboardTimeZone();
   const timeZone = local ? localTimeZone : "UTC";
   const formatters = useMemo(() => {
     const clock: Intl.DateTimeFormatOptions = {
@@ -20,8 +21,8 @@ export function useEventTime() {
       numberingSystem: "latn",
     };
     return {
-      clock: new Intl.DateTimeFormat("en-GB", clock),
-      timestamp: new Intl.DateTimeFormat(undefined, {
+      clock: dateTimeFormat(clock),
+      timestamp: dateTimeFormat({
         ...clock,
         year: "numeric",
         month: "short",
@@ -29,7 +30,7 @@ export function useEventTime() {
         timeZoneName: "short",
       }),
       // The details header is narrow, so it leaves out milliseconds.
-      shortTimestamp: new Intl.DateTimeFormat(undefined, {
+      shortTimestamp: dateTimeFormat({
         ...clock,
         fractionalSecondDigits: undefined,
         year: "numeric",
@@ -38,7 +39,7 @@ export function useEventTime() {
         timeZoneName: "short",
       }),
       // A log can span both standard time and daylight-saving time.
-      zone: new Intl.DateTimeFormat(undefined, {
+      zone: dateTimeFormat({
         timeZone,
         timeZoneName: "shortGeneric",
       }),

@@ -4,6 +4,7 @@ import type {
   AutomationTask,
   AutomationUpdate,
 } from "@sentry/junior/api/schema";
+import { dateTimeFormat } from "../../time";
 
 export const weekdays = [
   "sunday",
@@ -83,7 +84,7 @@ export function scheduleDraft(
     };
   }
   if (value.nextRunAtMs) {
-    const parts = new Intl.DateTimeFormat("en-CA", {
+    const parts = dateTimeFormat({
       timeZone: value.schedule.timezone,
       year: "numeric",
       month: "2-digit",

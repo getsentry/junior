@@ -168,5 +168,5 @@ export function MemoryCostChart(props: {
 }
 
 function formatRunCount(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "run" : "runs"}`;
+  return `${count.toLocaleString("en-US")} ${count === 1 ? "run" : "runs"}`;
 }

@@ -3,11 +3,7 @@ import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
-import {
-  formatMessageTimestamp,
-  transcriptMessageActor,
-  transcriptMessageActorLabel,
-} from "../format";
+import { transcriptMessageActor, transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -18,6 +14,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { formatMessageTimestamp } from "../time";
 
 /** Render ambient conversation context that is not a primary chat bubble. */
 export function TranscriptMessageContextView(props: {

@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router";
 
 import { conversationPath } from "../conversations/conversationRoutes";
-import { formatTime, visualStatusForConversation } from "../format";
+import { visualStatusForConversation } from "../format";
 import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
+import { formatTime } from "../time";
 
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {

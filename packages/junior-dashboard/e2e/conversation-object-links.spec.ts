@@ -44,7 +44,7 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
     /Release 4\.2 metrics\.pdf/,
     /Release 4\.2 assets/,
     /#proj-release/,
-    /Junior 4\.2 launch demo/,
+    /Checkout 4\.2 launch demo/,
   ]) {
     await expect(page.getByRole("link", { name }).first()).toBeVisible();
   }
@@ -871,14 +871,14 @@ test("a public web page link resolves to a link, a row, and a hover card", async
   });
 
   // A video on its own line shows only its thumbnail.
-  const thumbnail = page.getByRole("img", { name: "Junior 4.2 launch demo" });
+  const thumbnail = page.getByRole("img", { name: "Checkout 4.2 launch demo" });
   await expect(thumbnail).toHaveAttribute("src", /^\/api\/images\//);
   await expect(
     page.getByRole("link").filter({ has: thumbnail }),
   ).toHaveAttribute("href", "https://www.youtube.com/watch?v=MockLaunchDemo");
 
   const link = linksParagraph(page).getByRole("link", {
-    name: "Junior 4.2 launch demo",
+    name: "Checkout 4.2 launch demo",
   });
   await expect(link).toHaveAttribute(
     "href",
@@ -887,7 +887,7 @@ test("a public web page link resolves to a link, a row, and a hover card", async
   await waitForResolvedLinks(page);
   await link.hover();
   const card = page.getByRole("region", {
-    name: "Web page: Junior 4.2 launch demo",
+    name: "Web page: Checkout 4.2 launch demo",
   });
   await expect(card).toContainText("YouTube · Sentry");
   await expect(card).not.toContainText("junior");

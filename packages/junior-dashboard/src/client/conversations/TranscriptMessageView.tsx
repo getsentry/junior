@@ -12,7 +12,6 @@ import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
-  formatMessageTimestamp,
   transcriptMessageActor,
   transcriptMessageActorLabel,
   transcriptRoleKind,
@@ -30,6 +29,7 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
+import { formatMessageTimestamp } from "../time";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(

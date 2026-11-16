@@ -1,9 +1,10 @@
-import { and, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import {
   CONVERSATION_FEED_MEDIA_LIMIT,
   type ConversationFeedMedia,
 } from "@/api/schema/conversation-feed";
 import type { JuniorDatabase } from "@/db/db";
+import { isFileAttachment } from "@/chat/attachments/store";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 
 /**
@@ -20,7 +21,7 @@ export function feedMediaSql(
     .select({
       contentType: juniorAttachments.contentType,
       createdAt: juniorAttachments.createdAt,
-      filename: juniorAttachments.filename,
+      filename: juniorAttachments.title,
       id: juniorAttachments.id,
     })
     .from(juniorAttachments)
@@ -30,10 +31,7 @@ export function feedMediaSql(
           juniorAttachments.conversationId,
           juniorConversations.conversationId,
         ),
-        // Only a stored file has a storage provider. Rows for web links
-        // will share this table, and a worker that runs during their deploy
-        // must not list them as files.
-        isNotNull(juniorAttachments.storageProvider),
+        isFileAttachment,
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     )

@@ -20,12 +20,12 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
-import { formatRelativeTime, formatTime } from "../format";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
+import { formatRelativeTime, formatTime } from "../time";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
 // web page is its title. An event or a release ends with when it happened,
@@ -47,10 +47,7 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
       // A label that repeats the title or the type says nothing new.
       [card.title, type].includes(card.label) ? "" : card.label,
       time
-        ? new Date(time).toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })
+        ? formatTime(time, { dateStyle: "medium", timeStyle: "short" })
         : undefined,
     ]
       .filter(Boolean)
