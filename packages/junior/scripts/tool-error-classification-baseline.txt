@@ -58,7 +58,6 @@ packages/junior/src/chat/tools/sandbox/generated-artifacts.ts	throw new Error( `
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);
-packages/junior/src/chat/tools/transcribe-audio.ts	throw new Error("Failed to save the transcript to the sandbox.", { cause: error, });
 packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
 # Tool-call identity comes from the runtime, not model arguments.
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");

@@ -13,6 +13,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { logWarn } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { ATTACHMENT_DIR } from "@/chat/tools/load-attachment";
 
@@ -35,7 +36,8 @@ const INLINE_RESERVE_CHARS = 1_000;
 const transcribeAudioOutputSchema = juniorToolOutputSchema
   .extend({
     transcript: z.string(),
-    transcript_path: z.string(),
+    transcript_path: z.string().optional(),
+    note: z.string().optional(),
     language: z.string().optional(),
     duration_seconds: z.number().nonnegative().optional(),
   })
@@ -118,7 +120,7 @@ export function createTranscribeAudioTool(args: {
     exposure: "deferred",
     source: AUDIO_TOOL_SOURCE,
     description:
-      "Transcribe speech in an audio or video attachment. Returns a transcript with one line per entry: `[MM:SS.s] speaker: text` for speech and `[MM:SS.s] (sound)` for sounds. The full transcript is always saved at `transcript_path`. When `truncated` is true, the inline transcript has only the first lines: read the rest of the file with readFile, or search it with grep.",
+      "Transcribe speech in an audio or video attachment. Returns a transcript with one line per entry: `[MM:SS.s] speaker: text` for speech and `[MM:SS.s] (sound)` for sounds. The full transcript is saved at `transcript_path`. When `truncated` is true, the inline transcript has only the first lines: read the rest of the file with readFile, or search it with grep. When the save fails, `transcript_path` is absent and `note` says so.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -171,18 +173,24 @@ export function createTranscribeAudioTool(args: {
         ATTACHMENT_DIR,
         `${attachment.id}.transcript.txt`,
       );
+      // A failed write still returns the transcript. The model was already
+      // paid for, and the inline lines are useful without the file.
+      let saved = true;
       try {
         // Sandbox writes create missing parent directories.
         await args.workspace.writeFiles([
           { content: `${lines.join("\n")}\n`, path: transcriptPath },
         ]);
       } catch (error) {
-        throw new Error("Failed to save the transcript to the sandbox.", {
-          cause: error,
+        saved = false;
+        logWarn("tool.transcript.write.failed", {
+          "exception.message": String(error),
         });
       }
       const result = {
-        transcript_path: transcriptPath,
+        ...(saved
+          ? { transcript_path: transcriptPath }
+          : { note: "The full transcript was not saved." }),
         ...(transcript.language
           ? { language: transcript.language }
           : undefined),

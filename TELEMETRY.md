@@ -74,7 +74,7 @@ attributes. Nested logs and spans inherit them.
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
-| Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`                        | `chat/pi/transcription.ts`                                      |
+| Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |

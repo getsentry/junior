@@ -10,6 +10,7 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
 import { mswServer } from "../../msw/server";
@@ -178,7 +179,7 @@ async function recordConversation(conversationId: string): Promise<void> {
 
 function createTool(
   storage: ReturnType<typeof signedStorage>["storage"],
-  workspace = fakeWorkspace(),
+  workspace: Pick<SandboxWorkspace, "writeFiles"> = fakeWorkspace(),
 ) {
   return createTranscribeAudioTool({
     conversationId: CONVERSATION_ID,
@@ -296,6 +297,39 @@ describe("transcribeAudio tool", () => {
     expect(inlineLines.length).toBeLessThan(3000);
     expect(inlineLines).toEqual(lines.slice(0, inlineLines.length));
     expect(JSON.stringify(result).length).toBeLessThan(32_000);
+  });
+
+  it("returns the transcript when the sandbox cannot save it", async () => {
+    const files = signedStorage();
+    const stored = await files.store({
+      filename: "standup.m4a",
+      mimeType: "audio/mp4",
+    });
+    gatewayTranscription(diarizedTranscript);
+    const workspace = {
+      writeFiles: async () => {
+        throw new Error("Sandbox snapshot is not ready.");
+      },
+    };
+
+    const result = await createTool(files.storage, workspace).execute?.(
+      { attachment_id: stored.id },
+      {},
+    );
+
+    expect(result).toEqual({
+      duration_seconds: 3726,
+      language: "eng",
+      note: "The full transcript was not saved.",
+      transcript: expect.stringMatching(
+        /^\[00:00\.4\] speaker_0: Okay so nothing\.\n/,
+      ),
+    });
+    expect(logs.map((record) => record.eventName)).toContain(
+      "tool.transcript.write.failed",
+    );
+    expect(JSON.stringify(result)).not.toContain(SIGNED_URL);
+    expect(JSON.stringify(logs)).not.toContain(SIGNED_URL);
   });
 
   it("refuses attachments that it cannot transcribe before it signs a URL", async () => {
