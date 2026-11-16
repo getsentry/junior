@@ -8,6 +8,7 @@ import {
   listPlanItems,
   type StoredPlanAssignee,
 } from "@/chat/plan/store";
+import { outputPlanItem, planItemOutputSchema } from "@/chat/plan/tool-output";
 import {
   isOpenPlanItemStatus,
   PLAN_ITEM_STATUSES,
@@ -98,16 +99,6 @@ const updatePlanInputSchema = z
   })
   .strict();
 
-const planItemOutputSchema = z
-  .object({
-    id: z.number().int(),
-    title: z.string(),
-    notes: z.string().optional(),
-    status: z.enum(PLAN_ITEM_STATUSES),
-    assignee: z.string(),
-  })
-  .strict();
-
 const updatePlanOutputSchema = juniorToolOutputSchema.extend({
   items: z
     .array(planItemOutputSchema)
@@ -144,14 +135,8 @@ export const updatePlanToolDefinition = zodToolDefinition({
   outputSchema: updatePlanOutputSchema,
 });
 
-function outputItem(item: PlanItem): z.output<typeof planItemOutputSchema> {
-  return {
-    id: item.id,
-    title: item.title,
-    ...(item.notes ? { notes: item.notes } : undefined),
-    status: item.status,
-    assignee: renderPlanAssignee(item.assignee),
-  };
+function outputItem(item: PlanItem) {
+  return outputPlanItem(item, renderPlanAssignee(item.assignee));
 }
 
 /**

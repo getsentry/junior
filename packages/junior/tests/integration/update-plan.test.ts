@@ -6,6 +6,7 @@ import { setPlanItemStatusByUser } from "@/chat/plan/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { juniorUsers } from "@/db/schema";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
@@ -29,15 +30,34 @@ async function createHarness() {
     },
     { conversationStore, queue: work.queue, state: work.state },
   );
+  const { findMentionedUserId } = createSlackReviewItemToolServices(
+    () => work.queue,
+  );
   const tool = createUpdatePlanTool(
     { conversationId: parentConversationId },
-    createSlackReviewItemToolServices(() => work.queue).findMentionedUserId,
+    findMentionedUserId,
+  );
+  const childContext = {
+    conversationId: child.childConversationId,
+    parentConversationId,
+  };
+  const childListAgents = createListAgentsTool(childContext);
+  const childUpdatePlan = createUpdatePlanTool(
+    childContext,
+    findMentionedUserId,
   );
   return {
     childConversationId: child.childConversationId,
     close: async () => await fixture.close(),
     updatePlan: async (input: unknown) =>
       await tool.execute!(tool.prepareArguments!(input) as never, {}),
+    childListAgents: async () =>
+      await childListAgents.execute!({} as never, {}),
+    childUpdatePlan: async (input: unknown) =>
+      await childUpdatePlan.execute!(
+        childUpdatePlan.prepareArguments!(input) as never,
+        {},
+      ),
   };
 }
 
@@ -123,6 +143,25 @@ describe("updatePlan", () => {
           approval,
         ],
       });
+
+      // The child reads the parent's open items, with assignees from its own
+      // view, but its updatePlan changes only its own plan.
+      const { agents } = await harness.childListAgents();
+      expect(agents.find((agent) => agent.relation === "parent")).toMatchObject(
+        {
+          conversation_id: parentConversationId,
+          plan: [
+            { id: review!.id, status: "in_progress", assignee: "self" },
+            { ...approval },
+          ],
+        },
+      );
+      await expect(
+        harness.childUpdatePlan({
+          update: [{ id: approval!.id, status: "done" }],
+        }),
+      ).rejects.toThrow(ToolInputError);
+      await expect(harness.childUpdatePlan({})).resolves.toEqual({ items: [] });
 
       // A person's status that the agent replaces shows in the result, since
       // no later plan delta can show it.
