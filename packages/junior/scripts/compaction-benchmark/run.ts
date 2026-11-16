@@ -141,9 +141,11 @@ async function all(maxUsd: number) {
     );
   } else {
     if (!existsSync(join(data!, "tier2.json"))) {
-      throw new Error(
+      console.error(
         "tier2.json is missing. Run `all` without --continue first.",
       );
+      process.exitCode = 1;
+      return;
     }
     await distill(ctx);
     await rerunSummary(ctx, RERUN_COUNT, RERUN_POINTS);
