@@ -1,14 +1,12 @@
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getSqlExecutor } from "@/chat/db";
 import { setPlanItemStatusByUser } from "@/chat/plan/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { juniorUsers } from "@/db/schema";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   invocationInput,
@@ -185,12 +183,6 @@ describe("updatePlan", () => {
             changed_by: "reviewer@example.com",
           },
         ],
-      });
-
-      // Deleting the assigned User keeps the item, for the plan's own agent.
-      await getDb().delete(juniorUsers).where(eq(juniorUsers.id, reviewer.id));
-      await expect(harness.updatePlan({})).resolves.toMatchObject({
-        items: [{ id: review!.id }, { ...approval, assignee: "self" }],
       });
     } finally {
       await harness.close();

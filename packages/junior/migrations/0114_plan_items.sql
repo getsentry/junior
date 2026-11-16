@@ -16,7 +16,7 @@ CREATE TABLE "junior_plan_items" (
 	CONSTRAINT "junior_plan_items_assignee_check" CHECK ("junior_plan_items"."assignee_conversation_id" is null or "junior_plan_items"."assignee_user_id" is null)
 );
 --> statement-breakpoint
-ALTER TABLE "junior_plan_items" ADD CONSTRAINT "junior_plan_items_assignee_user_id_junior_users_id_fk" FOREIGN KEY ("assignee_user_id") REFERENCES "public"."junior_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "junior_plan_items" ADD CONSTRAINT "junior_plan_items_changed_by_user_id_junior_users_id_fk" FOREIGN KEY ("changed_by_user_id") REFERENCES "public"."junior_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "junior_plan_items" ADD CONSTRAINT "junior_plan_items_assignee_user_id_junior_users_id_fk" FOREIGN KEY ("assignee_user_id") REFERENCES "public"."junior_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "junior_plan_items" ADD CONSTRAINT "junior_plan_items_changed_by_user_id_junior_users_id_fk" FOREIGN KEY ("changed_by_user_id") REFERENCES "public"."junior_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "junior_plan_items" ADD CONSTRAINT "junior_plan_items_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "junior_plan_items_in_progress_uidx" ON "junior_plan_items" USING btree ("conversation_id",coalesce("assignee_conversation_id", "assignee_user_id", "conversation_id")) WHERE "junior_plan_items"."status" = 'in_progress';

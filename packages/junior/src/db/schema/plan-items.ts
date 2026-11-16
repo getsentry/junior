@@ -26,9 +26,11 @@ export const juniorPlanItemVersionSeq = pgSequence(
 /**
  * One Plan item: work that a Conversation has not finished. At most one
  * assignee: a Conversation (the plan's own agent or one of its child agents)
- * or a User. An item without one belongs to the plan's own agent, so
- * deleting a User keeps the items assigned to them. `changed_by_user_id` is set when a person made the latest
- * change, and null when the plan's own agent did.
+ * or a User. An item without one belongs to the plan's own agent.
+ * `changed_by_user_id` is set when a person made the latest change, and null
+ * when the plan's own agent did. Both User keys block deleting the User, as
+ * Conversation participants do: setting them null would turn a person's item
+ * into the agent's and hide an unseen change from `<plan-delta>`.
  */
 export const juniorPlanItems = pgTable(
   "junior_plan_items",
@@ -39,13 +41,10 @@ export const juniorPlanItems = pgTable(
     notes: text("notes"),
     status: text("status").$type<PlanItemStatus>().notNull(),
     assigneeConversationId: text("assignee_conversation_id"),
-    assigneeUserId: text("assignee_user_id").references(() => juniorUsers.id, {
-      onDelete: "set null",
-    }),
+    assigneeUserId: text("assignee_user_id").references(() => juniorUsers.id),
     version: bigint("version", { mode: "number" }).notNull(),
     changedByUserId: text("changed_by_user_id").references(
       () => juniorUsers.id,
-      { onDelete: "set null" },
     ),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),

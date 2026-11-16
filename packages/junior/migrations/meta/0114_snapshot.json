@@ -1,5 +1,5 @@
 {
-  "id": "ac880283-910e-4dd3-8888-adc2636c94e7",
+  "id": "b43de5d9-64b5-4909-9bec-8731f09505af",
   "prevId": "889f2aa7-4cb2-41c2-b326-3ef3144c5790",
   "version": "7",
   "dialect": "postgresql",
@@ -3959,7 +3959,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "junior_plan_items_changed_by_user_id_junior_users_id_fk": {
@@ -3972,7 +3972,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "junior_plan_items_conversation_id_fk": {
