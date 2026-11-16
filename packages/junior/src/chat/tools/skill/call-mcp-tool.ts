@@ -4,39 +4,10 @@ import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import * as z from "zod";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
   getResolvedActiveTools(): ManagedMcpTool[];
-}
-
-function resolveMcpArguments(
-  input: Record<string, unknown>,
-): Record<string, unknown> {
-  const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments" && key !== "intent",
-  );
-  if (extraKeys.length > 0) {
-    throw new ToolInputError(
-      `callMcpTool MCP arguments must be nested under arguments, not top-level fields: ${extraKeys.join(", ")}`,
-    );
-  }
-
-  if ("arguments" in input) {
-    const args = input["arguments"];
-    if (args === undefined) {
-      return {};
-    }
-    if (!args || typeof args !== "object" || Array.isArray(args)) {
-      throw new ToolInputError(
-        "callMcpTool arguments must be an object when provided",
-      );
-    }
-    return args as Record<string, unknown>;
-  }
-
-  return {};
 }
 
 function activeProviderNames(tools: ManagedMcpTool[]): string[] {
@@ -71,26 +42,36 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
     description:
       "Call an active MCP tool by its exact name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Authorization is handled by the runtime when required.",
     inputSchema: z
-      .object({
-        tool_name: z
-          .string()
-          .min(1)
-          .describe("Exact MCP tool_name from searchMcpTools."),
-        arguments: z
-          .record(z.string(), z.unknown())
-          .describe(
-            'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required. Omit only when the discovered tool has no arguments.',
-          )
-          .optional(),
-        intent: z
-          .string()
-          .min(1)
-          .describe(
-            'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
-          )
-          .optional(),
-      })
-      .passthrough(),
+      .object(
+        {
+          tool_name: z
+            .string()
+            .min(1)
+            .describe("Exact MCP tool_name from searchMcpTools."),
+          arguments: z
+            .record(z.string(), z.unknown(), {
+              error: "callMcpTool arguments must be an object when provided",
+            })
+            .describe(
+              'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required. Omit only when the discovered tool has no arguments.',
+            )
+            .optional(),
+          intent: z
+            .string()
+            .min(1)
+            .describe(
+              'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+            )
+            .optional(),
+        },
+        {
+          error: (issue) =>
+            issue.code === "unrecognized_keys"
+              ? `callMcpTool MCP arguments must be nested under arguments, not top-level fields: ${issue.keys.join(", ")}`
+              : undefined,
+        },
+      )
+      .strict(),
     resolveApprovalMetadata: ({ tool_name }) => {
       const activeTool = mcpToolManager
         .getResolvedActiveTools()
@@ -147,7 +128,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         });
         throw new McpToolError(missingToolMessage(tool_name, provider));
       }
-      const result = await mcpTool.execute(resolveMcpArguments(input), {
+      const result = await mcpTool.execute(input.arguments ?? {}, {
         ...(intent ? { authorizationIntent: intent } : undefined),
         conversationPrivacy: options?.conversationPrivacy ?? "private",
         ...(options?.signal ? { signal: options.signal } : undefined),
