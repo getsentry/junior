@@ -376,7 +376,7 @@ export const pluginEventTypeSchema = z
   .strict()
   .superRefine((resourceType, context) => {
     const supported = new Set<string>();
-    resourceType.supportedEvents.forEach((eventType, index) => {
+    for (const [index, eventType] of resourceType.supportedEvents.entries()) {
       if (supported.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -385,9 +385,11 @@ export const pluginEventTypeSchema = z
         });
       }
       supported.add(eventType);
-    });
+    }
     const suggested = new Set<string>();
-    resourceType.suggestedEvents?.forEach((eventType, index) => {
+    for (const [index, eventType] of (
+      resourceType.suggestedEvents ?? []
+    ).entries()) {
       if (suggested.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -403,9 +405,9 @@ export const pluginEventTypeSchema = z
         });
       }
       suggested.add(eventType);
-    });
+    }
     for (const [key, field] of Object.entries(resourceType.matchFields ?? {})) {
-      field.events?.forEach((eventType, index) => {
+      for (const [index, eventType] of (field.events ?? []).entries()) {
         if (!supported.has(eventType)) {
           context.addIssue({
             code: "custom",
@@ -413,7 +415,7 @@ export const pluginEventTypeSchema = z
             path: ["matchFields", key, "events", index],
           });
         }
-      });
+      }
     }
   });
 
@@ -490,7 +492,7 @@ export const pluginEventsSchema = z
   .strict()
   .superRefine((registration, context) => {
     const seen = new Set<string>();
-    registration.resourceTypes.forEach((resourceType, index) => {
+    for (const [index, resourceType] of registration.resourceTypes.entries()) {
       if (seen.has(resourceType.type)) {
         context.addIssue({
           code: "custom",
@@ -499,7 +501,7 @@ export const pluginEventsSchema = z
         });
       }
       seen.add(resourceType.type);
-    });
+    }
     const supported = new Set(
       registration.resourceTypes.flatMap(
         (resourceType) => resourceType.supportedEvents,

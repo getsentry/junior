@@ -272,7 +272,7 @@ export async function sendReviewItemMessages(args: {
   // Try every Conversation first, so one failure does not hide the change
   // from the others. A retry sends only the missing messages. The caller
   // reports the error; this log names each Conversation that missed it.
-  results.forEach((result, index) => {
+  for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
       logWarn("review_item.message.failed", {
         "app.review_item.id": args.item.id,
@@ -280,7 +280,7 @@ export async function sendReviewItemMessages(args: {
         "gen_ai.conversation.id": conversationIds[index],
       });
     }
-  });
+  }
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;
 }

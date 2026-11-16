@@ -55,15 +55,18 @@ const NAME_KEYS = new Set([
 function webActorIds(rows: RecordedEventRow[]): string[] {
   const ids = new Set<string>();
   const visit = (value: unknown): void => {
-    if (Array.isArray(value)) return value.forEach(visit);
     if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
     const record = value as Record<string, unknown>;
     if (record["platform"] === "web" && typeof record["userId"] === "string") {
       ids.add(record["userId"]);
     }
-    Object.values(record).forEach(visit);
+    for (const item of Object.values(record)) visit(item);
   };
-  rows.forEach((row) => visit(row.payload));
+  for (const row of rows) visit(row.payload);
   return [...ids];
 }
 
