@@ -48,6 +48,10 @@ export function encodeHistoryPayload(data: ConversationEventData): {
       provider: message["provider"],
       usage: message["usage"],
       toolCallId: message["toolCallId"],
+      stopReason: message["stopReason"],
+      timestamp: message["timestamp"],
+      toolName: message["toolName"],
+      isError: message["isError"],
     },
   };
 }
