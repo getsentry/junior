@@ -1964,7 +1964,8 @@ function busyConversation(nowMs: number): ConversationDetailReport {
       contentType: "image/png",
       bytes: 6400,
     }));
-  const repos = ["junior", "junior", "junior", "junior", "payments", "relay"];
+  // Not a mock repository, so the Code pages keep their rows.
+  const repos = ["sentry", "sentry", "sentry", "sentry", "relay", "snuba"];
   const statuses = ["open", "draft", "merged", "merged", "closed", "merged"];
   return detail(nowMs, {
     conversationId: BUSY_CONVERSATION_ID,

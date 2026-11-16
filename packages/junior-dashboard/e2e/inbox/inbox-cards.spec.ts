@@ -213,7 +213,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await more.click();
     await expect(lines).toHaveCount(90);
     await expect(
-      lines.filter({ hasText: /payments#\d+$/ }).first(),
+      lines.filter({ hasText: /relay#\d+$/ }).first(),
     ).toBeAttached();
     // Merged and closed work comes last.
     await expect(lines.last().getByRole("img")).toHaveAccessibleName(
