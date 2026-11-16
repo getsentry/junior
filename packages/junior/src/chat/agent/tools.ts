@@ -715,8 +715,9 @@ export async function wireAgentTools(
 
 /**
  * Bind the tools that one Turn lists and the tools that it can use. Every
- * Turn of a Prompt mode lists the same tools, so a Thread keeps one tool
- * list. `createTools` disables each listed tool that the Turn cannot use.
+ * Turn of a Prompt mode lists the same tools, so a Conversation keeps one
+ * tool list. `createTools` disables each listed tool that the Turn cannot
+ * use.
  */
 export function bindTurnTools(
   run: AgentRun,
@@ -732,13 +733,15 @@ export function bindTurnTools(
   // `finishedRunReply` when automation dispatches require `outcomes`.
   // Automations have stored outcomes since #1788, and older dispatch records
   // have passed the 7-day state TTL.
-  const withRunReply = (tools: TurnBehavior["tools"]) =>
-    run.dispatch?.outcomes?.length === 0
-      ? { ...tools, reply: "none" as const }
-      : tools;
-  const listedTools = withRunReply(promptModeTurnTools(behavior.promptMode));
+  // The listed tools come from the Prompt mode only. A run with no outcomes
+  // still lists `reply`, like every other Turn of its Conversation, and
+  // cannot call it.
+  const listedTools = promptModeTurnTools(behavior.promptMode);
   return {
-    turnTools: withRunReply(behavior.tools),
+    turnTools:
+      run.dispatch?.outcomes?.length === 0
+        ? { ...behavior.tools, reply: "none" }
+        : behavior.tools,
     listedTools,
     ...bindAgentTools(run, listedTools.agents),
   };

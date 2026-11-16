@@ -632,6 +632,36 @@ describe("cache warming savings re-fill", () => {
       [{ atMs: RUN + 60 * MINUTE, cacheRead: 60_000 }],
       "automation",
     );
+    // A person's reply in an Automation Conversation needs no pending work.
+    const REPLY = RUN + 120 * MINUTE;
+    const replyId = "local:test:replay-automation-reply";
+    await getConversationStore().recordActivity({
+      conversationId: replyId,
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      activityAtMs: REPLY,
+      nowMs: REPLY,
+      kind: "automation",
+    });
+    await getConversationEventStore().append(replyId, [
+      {
+        createdAtMs: REPLY,
+        data: historyItemFromPiMessage(
+          { role: "user", content: "Run it again.", timestamp: REPLY },
+          instructionProvenanceFor({
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          }),
+        ),
+      },
+      {
+        createdAtMs: REPLY + 1_000,
+        data: historyItemFromPiMessage(
+          { ...reply(60_000, REPLY), model: MODEL_ID },
+          contextProvenance,
+        ),
+      },
+    ]);
 
     const nowMs = DAY_2 + 26 * 60 * MINUTE;
     const { periods, toolWaits } = await scanIdlePeriods({
@@ -656,6 +686,7 @@ describe("cache warming savings re-fill", () => {
         turnEnding: "reply",
         gapMs: nowMs - RUN,
       }),
+      expect.objectContaining({ sinceMs: REPLY, turnEnding: "reply" }),
     ]);
   });
 });

@@ -356,13 +356,15 @@ const TURN_TOOL_LIMITS: Partial<
   archiveAgent: AGENT_TOOL_LIMIT,
   listAgents: AGENT_TOOL_LIMIT,
   messageAgent: AGENT_TOOL_LIMIT,
+  // The system prompt says why for each sender: a person's Turn ends with a
+  // final response, and an Automation with no outcomes posts nothing.
   [REPLY_TOOL_NAME]: (turnTools) =>
     turnTools.reply === "none"
-      ? "A person's Turn ends with a final response, not a reply to the parent agent."
+      ? `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`
       : undefined,
   [REPORT_BLOCKED_TOOL_NAME]: (turnTools) =>
     turnTools.reportBlocked === "none"
-      ? "A person's Turn does not report to the parent agent."
+      ? "This Turn cannot send a blocked report."
       : undefined,
   updateUserCustomization: (turnTools) =>
     turnTools.userCustomization

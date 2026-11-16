@@ -632,17 +632,21 @@ export interface DisabledToolPromptContext {
   reason: string;
 }
 
-// The `thread` system prompt holds rules for each sender. This fact says
-// which of them apply to this Turn.
+const TURN_INPUT_FACTS: Record<TurnInputSender, string> = {
+  person: "A person sent the input of this Turn.",
+  agent: "An agent sent the input of this Turn.",
+  automation: "The automation sent the input of this Turn.",
+};
+
+// The `thread` and `automation` system prompts hold rules for each sender.
+// This fact says which of them apply to this Turn.
 function buildTurnInputSection(
   sender: TurnInputSender | undefined,
 ): string | null {
   if (!sender) return null;
   return renderTagBlock(
     REQUEST_CONTEXT_SECTION_TAG.turnInput,
-    sender === "person"
-      ? "A person sent the input of this Turn."
-      : "An agent sent the input of this Turn.",
+    TURN_INPUT_FACTS[sender],
   );
 }
 
@@ -742,7 +746,7 @@ type TurnContextPromptInput = {
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
-  /** Who sent the input of a `thread` Turn, from `turnBehavior`. */
+  /** Who sent the input of a Turn with two senders, from `turnBehavior`. */
   turnInput?: TurnInputSender;
   runtime?: {
     conversationId?: string | undefined;
