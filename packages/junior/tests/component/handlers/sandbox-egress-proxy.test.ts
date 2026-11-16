@@ -78,7 +78,6 @@ import {
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
-import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -380,7 +379,6 @@ describe("sandbox egress proxy composition", () => {
   it("requires OIDC before forwarded routing details", async () => {
     const response = await ALL(
       new Request("https://junior.example.com/api/0/issues/"),
-      { verifyOidc: verifyVercelSandboxOidcToken },
     );
 
     expect(response.status).toBe(401);

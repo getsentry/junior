@@ -35,7 +35,7 @@ function digest(hash: Hash): string {
 
 function hashJson(
   value: unknown,
-  replacer: (key: string, value: unknown) => unknown,
+  replacer: (key: string, value: unknown) => unknown = withoutCacheControl,
 ): string {
   return digest(createHash("sha256").update(JSON.stringify(value, replacer)));
 }
@@ -157,11 +157,8 @@ function payloadAttributes(
   payload: Record<string, unknown>,
 ): Record<string, string | number> {
   const { model, system, tools, messages, thinking, output_config } = payload;
-  const systemHash =
-    system !== undefined ? hashJson(system, withoutCacheControl) : undefined;
-  const toolsHash = Array.isArray(tools)
-    ? hashJson(tools, withoutCacheControl)
-    : undefined;
+  const systemHash = system !== undefined ? hashJson(system) : undefined;
+  const toolsHash = Array.isArray(tools) ? hashJson(tools) : undefined;
   const messagesHash = Array.isArray(messages)
     ? messagesHashes(messages)
     : undefined;

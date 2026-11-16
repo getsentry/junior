@@ -6,6 +6,8 @@ import {
   ActivityChartTooltipContent,
   ActivityChartXAxis,
   ActivityChartYAxis,
+  formatActivityCategoryLabel,
+  formatActivityCategoryTooltipLabel,
   isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
@@ -132,13 +134,17 @@ export function PluginBarChart(props: {
             <ActivityChartXAxis
               centered
               dataKey="id"
+              formatLabel={(id) =>
+                formatActivityCategoryLabel(labels.get(id) ?? id)
+              }
               keys={categories.map((category) => category.id)}
-              labels={labels}
             />
             <ChartTooltip
               content={
                 <ActivityChartTooltipContent
-                  labels={labels}
+                  formatLabel={(id) =>
+                    formatActivityCategoryTooltipLabel(labels.get(id) ?? id)
+                  }
                   rows={({ category }: (typeof data)[number]) =>
                     widget.series.map((series) => [
                       series.label,

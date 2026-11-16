@@ -10,17 +10,14 @@ import type { JWTPayload } from "jose";
 export interface SandboxEgressProxyOptions {
   interceptHttp?: SandboxEgressHttpInterceptor;
   tracePropagation?: SandboxEgressTracePropagationConfig;
-  /**
-   * Check the Vercel Sandbox OIDC token. Evals check it with the real clock,
-   * because they replace `Date`.
-   */
-  verifyOidc: (token: string) => Promise<JWTPayload>;
+  /** Replace the Vercel OIDC check, for example to check with another clock. */
+  verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 
 /** Handles Vercel Sandbox firewall egress proxy requests. */
 export async function ALL(
   request: Request,
-  options: SandboxEgressProxyOptions,
+  options: SandboxEgressProxyOptions = {},
 ): Promise<Response> {
   return await proxyVercelSandboxEgressRequest(request, {
     interceptHttp: options.interceptHttp,

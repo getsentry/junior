@@ -1,5 +1,6 @@
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { logWarn } from "@/chat/logging";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
   executeSandboxEgressRequest,
   sandboxEgressAttributes,
@@ -43,8 +44,7 @@ type VercelSandboxNetworkPolicy =
 
 /** Runtime dependencies for the Vercel side of the sandbox egress proxy. */
 export interface VercelSandboxEgressProxyDeps extends SandboxEgressProxyDeps {
-  /** Check the Vercel Sandbox OIDC token and return its claims. */
-  verifyOidc: (token: string) => Promise<JWTPayload>;
+  verifyOidc?: ((token: string) => Promise<JWTPayload>) | undefined;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
@@ -255,7 +255,7 @@ export function isVercelSandboxEgressRequest(request: Request): boolean {
  */
 export async function proxyVercelSandboxEgressRequest(
   request: Request,
-  deps: VercelSandboxEgressProxyDeps,
+  deps: VercelSandboxEgressProxyDeps = {},
 ): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
   if (!oidcToken) {
@@ -264,7 +264,13 @@ export async function proxyVercelSandboxEgressRequest(
 
   let oidcPayload: JWTPayload;
   try {
-    oidcPayload = await deps.verifyOidc(oidcToken);
+    // Lint exception (.oxlintrc.json): the eval egress process replaces
+    // `Date` to check tokens that eval workers make with the eval clock.
+    // Vercel signs this token with real time, so evals pass a verifier with
+    // the real clock. Production never passes one.
+    oidcPayload = await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
+      oidcToken,
+    );
   } catch (error) {
     logWarn("sandbox.egress.oidc_verification.failed", {
       "app.sandbox.oidc_error":
