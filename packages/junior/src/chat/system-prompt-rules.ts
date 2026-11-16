@@ -59,6 +59,14 @@ const AUTOMATION_RUN_RULES = [
 ];
 
 /**
+ * How Slack text writes people and channels. The Slack identity block has it.
+ * A child agent's Turn is always `local`, so its job rules repeat it: its
+ * input and tool results can still hold Slack text.
+ */
+export const SLACK_MENTION_FORMAT_RULE =
+  "Slack text shows people as `<@U…>` and channels as `<#C…>`.";
+
+/**
  * Block 2, `<child-agent-run>`: the job rules for a run that a parent agent
  * started. No person reads the run, and only its `reply` reaches the parent.
  */
@@ -67,6 +75,7 @@ const CHILD_AGENT_RUN_RULES = [
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
   `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. \`${REPLY_TOOL_NAME}\` sends your finished work to the parent. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
+  `- ${SLACK_MENTION_FORMAT_RULE}`,
 ];
 
 /**
