@@ -37,6 +37,12 @@ function names are part of the interface.
 - Keep one source for each lifecycle. Write each copy, such as a SQL mirror,
   an index, a count, or a summary, in the same transition, or rebuild it from
   the source. Do not pick a winner between two copies.
+- Do not store a value that its source can give when you need it: the
+  provider, or rows that you already store. Store a handle, such as an id,
+  and read the value. Store the value itself only when the reader needs it
+  as it was at an earlier time, when the reader cannot get the authority to
+  read it, or when a measured read cost is too high. Then a copy follows the
+  rule above.
 - Do not repair an illegal state when you read it. Fix the writer.
 
 ### Services
