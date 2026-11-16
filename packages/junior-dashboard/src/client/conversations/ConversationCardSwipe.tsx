@@ -23,6 +23,8 @@ type SwipeAction = {
  * move.
  */
 export function useCardSwipe(options: {
+  /** A pin drag owns the touch. */
+  disabled: boolean;
   leading?: SwipeAction | undefined;
   trailing?: SwipeAction | undefined;
 }) {
@@ -75,7 +77,7 @@ export function useCardSwipe(options: {
     // The lift ends a swipe, not a tap on the card link.
     event.preventDefault();
     paint(0, true);
-    if (!run) return;
+    if (!run || options.disabled) return;
     if (gesture.offset >= SWIPE_COMMIT_PX) options.leading?.run();
     if (gesture.offset <= -SWIPE_COMMIT_PX) options.trailing?.run();
   };
@@ -97,6 +99,11 @@ export function useCardSwipe(options: {
       const gesture = gestureRef.current;
       const touch = event.touches[0];
       if (!gesture || !touch) return;
+      if (options.disabled) {
+        if (gesture.axis === "x") paint(0, true);
+        gestureRef.current = undefined;
+        return;
+      }
       const dx = touch.clientX - gesture.x;
       const dy = touch.clientY - gesture.y;
       if (!gesture.axis) {
@@ -120,7 +127,7 @@ export function useCardSwipe(options: {
       if (gestureRef.current?.axis === "x") paint(0, true);
       const touch = event.touches[0];
       gestureRef.current =
-        enabled && event.touches.length === 1 && touch
+        enabled && event.touches.length === 1 && touch && !options.disabled
           ? { offset: 0, x: touch.clientX, y: touch.clientY }
           : undefined;
     },

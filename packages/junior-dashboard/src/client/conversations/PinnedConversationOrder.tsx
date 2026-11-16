@@ -12,6 +12,7 @@ import {
   DndContext,
   DragOverlay,
   MouseSensor,
+  TouchSensor,
   useDndContext,
   useSensor,
   useSensors,
@@ -29,19 +30,11 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 export type PinnedRowDrag = {
   dragging: boolean;
   listeners: DraggableSyntheticListeners;
-  move: PinnedRowMove;
   onKeyDown(event: KeyboardEvent): void;
   setNodeRef(element: HTMLElement | null): void;
 };
 
-/** Move a pinned row one place. Each side is unset at its end of the list. */
-export type PinnedRowMove = {
-  down: (() => void) | undefined;
-  up: (() => void) | undefined;
-};
-
 type PinnedOrder = {
-  count: number;
   disabled: boolean;
   move(conversationId: string, toIndex: number): void;
 };
@@ -85,14 +78,14 @@ export function PinnedConversationOrder(props: {
     [conversations, ids, onError, reorder],
   );
   const disabled = !reorder || ids.length < 2;
-  const order = useMemo(
-    () => ({ count: ids.length, disabled, move }),
-    [disabled, ids.length, move],
-  );
+  const order = useMemo(() => ({ disabled, move }), [disabled, move]);
   const sensors = useSensors(
-    // A short move before the drag starts keeps a click a click. Touch has
-    // no drag: a long press opens the row sheet, which moves the row.
+    // A short move before the drag starts keeps a click a click.
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // A long press starts a drag, so a swipe still scrolls the list.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
   );
   const announcements = useMemo(
     () => pinAnnouncements(conversations),
@@ -128,9 +121,8 @@ export function PinnedConversationOrder(props: {
 
 /**
  * Make one pinned row draggable inside `PinnedConversationOrder`. Alt+ArrowUp
- * and Alt+ArrowDown, and the row menu, move the row one place without a
- * drag. Returns nothing when the order is disabled, so the row renders as a
- * plain row.
+ * and Alt+ArrowDown move the row one place without a pointer. Returns nothing
+ * when the order is disabled, so the row renders as a plain row.
  */
 export function usePinnedRowDrag(
   conversationId: string,
@@ -140,28 +132,16 @@ export function usePinnedRowDrag(
   const sortable = useSortable({ disabled, id: conversationId });
   const { index } = sortable;
   if (disabled) return undefined;
-  const move: PinnedRowMove = {
-    down:
-      index < order.count - 1
-        ? () => order.move(conversationId, index + 1)
-        : undefined,
-    up: index > 0 ? () => order.move(conversationId, index - 1) : undefined,
-  };
   return {
     dragging: sortable.isDragging,
     listeners: sortable.listeners,
-    move,
     onKeyDown: (event) => {
       if (!event.altKey) return;
-      const run =
-        event.key === "ArrowUp"
-          ? move.up
-          : event.key === "ArrowDown"
-            ? move.down
-            : undefined;
-      if (!run) return;
+      const offset =
+        event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (offset === 0) return;
       event.preventDefault();
-      run();
+      order.move(conversationId, index + offset);
     },
     setNodeRef: sortable.setNodeRef,
   };

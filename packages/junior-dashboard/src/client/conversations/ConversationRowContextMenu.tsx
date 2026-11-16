@@ -16,7 +16,6 @@ import {
   type ConversationRowMenuProps,
 } from "./ConversationRowMenu";
 import { ConversationRowSheet } from "./ConversationRowSheet";
-import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";
 import { RenameConversationDialog } from "./RenameConversationDialog";
@@ -39,8 +38,8 @@ export function ConversationRowContextMenu(
     pin: { pending: boolean; set(pinned: boolean): void };
     /** The row is the open page. */
     selected?: boolean | undefined;
-    /** Set on a pinned row that the viewer can reorder. */
-    move?: PinnedRowMove | undefined;
+    /** A pinned row in a drag. The drag takes the long press. */
+    dragging?: boolean | undefined;
   },
 ) {
   const {
@@ -49,7 +48,7 @@ export function ConversationRowContextMenu(
     onActionError,
     pin,
     selected,
-    move,
+    dragging,
     ...triggerProps
   } = props;
   const rename = useRenameConversation(conversation.id, {
@@ -98,7 +97,6 @@ export function ConversationRowContextMenu(
     },
     conversation,
     conversationId: conversation.id,
-    move,
     pending: {
       archive: archive.pending,
       delivery: delivery.isPending,
@@ -110,6 +108,12 @@ export function ConversationRowContextMenu(
     <ContextMenu
       onOpenChange={(open, details) => {
         if (!open) return;
+        // A still touch starts a pin drag before the long press ends, so
+        // the menu must not open over the drag.
+        if (dragging) {
+          details.cancel();
+          return;
+        }
         // The menu shows rows from the detail, so read it as a hover does.
         void prefetchConversationDetail(queryClient, conversation.id);
         if (touchRef.current === "up") return;
@@ -122,7 +126,7 @@ export function ConversationRowContextMenu(
       <ContextMenuTrigger
         {...triggerProps}
         // The row can show a touch press while the long press runs.
-        data-pressing={pressing ? "" : undefined}
+        data-pressing={pressing && !dragging ? "" : undefined}
         onTouchCancel={(event) => {
           triggerProps.onTouchCancel?.(event);
           touchRef.current = "up";

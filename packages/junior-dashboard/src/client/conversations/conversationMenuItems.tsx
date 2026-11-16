@@ -3,8 +3,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   Archive,
   ArchiveRestore,
-  ArrowDown,
-  ArrowUp,
   Bell,
   BellOff,
   MessageSquareShare,
@@ -19,7 +17,6 @@ import {
 import { useCopyText } from "../components/CopyButton";
 import { visualStatusForConversation } from "../format";
 import type { Conversation } from "../types";
-import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { SlackMark } from "./SlackMark";
 import { useShareConversationLink } from "./useShareConversationLink";
 
@@ -69,8 +66,6 @@ export type ConversationMenu = {
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
   eventLogOpen?: boolean;
-  /** Set on a pinned row that the viewer can reorder. */
-  move?: PinnedRowMove | undefined;
   getMarkdown?: (() => Promise<string>) | undefined;
   pending: {
     archive: boolean;
@@ -190,25 +185,6 @@ export function useConversationMenuItems(
       onClick: () => actions.pin(!pinned),
       toggle: true,
     });
-  }
-  // A touch has no drag, so the menu reorders pins too.
-  if (menu.move) {
-    viewerItems.push(
-      {
-        disabled: !menu.move.up,
-        icon: ArrowUp,
-        key: "move-up",
-        label: "Move up",
-        onClick: menu.move.up,
-      },
-      {
-        disabled: !menu.move.down,
-        icon: ArrowDown,
-        key: "move-down",
-        label: "Move down",
-        onClick: menu.move.down,
-      },
-    );
   }
   viewerItems.push(
     {

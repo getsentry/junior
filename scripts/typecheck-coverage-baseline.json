@@ -20,7 +20,6 @@
   "packages/junior-dashboard/e2e/conversationMenu.ts",
   "packages/junior-dashboard/e2e/conversations-attention.spec.ts",
   "packages/junior-dashboard/e2e/conversations-event-log.spec.ts",
-  "packages/junior-dashboard/e2e/conversations-home-touch.spec.ts",
   "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts",
   "packages/junior-dashboard/e2e/conversations-mobile.spec.ts",
   "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts",
