@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
+import { transcriptWidthClassName } from "./ChatLayout";
 
 /**
  * Own reply-thread composer bottom padding and dock chrome.
@@ -37,11 +38,16 @@ export function ComposerDock(props: {
       data-composer-dock=""
     >
       {props.above ? (
-        <div className="mx-auto w-full max-w-[52.5rem] min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
+        <div
+          className={cn(
+            transcriptWidthClassName,
+            "min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible",
+          )}
+        >
           {props.above}
         </div>
       ) : null}
-      <div className="mx-auto w-full max-w-[52.5rem] min-w-0 shrink-0">
+      <div className={cn(transcriptWidthClassName, "min-w-0 shrink-0")}>
         {props.children}
       </div>
     </div>

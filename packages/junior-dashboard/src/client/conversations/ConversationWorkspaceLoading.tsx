@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
-import { ChatLayout } from "./ChatLayout";
+import { ChatLayout, transcriptWidthClassName } from "./ChatLayout";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
 import { ConversationRowSkeletons } from "./ConversationSidebar";
@@ -109,7 +109,7 @@ function ConversationDetailLoading() {
               <Skeleton className="h-6 w-2/3 max-w-lg" />
               <Skeleton className="h-3 w-1/3 max-w-56 opacity-70" />
             </div>
-            <div aria-hidden="true" className="mx-auto w-full max-w-[52.5rem]">
+            <div aria-hidden="true" className={transcriptWidthClassName}>
               <TranscriptLoading />
             </div>
           </section>

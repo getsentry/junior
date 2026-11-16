@@ -7,8 +7,16 @@ export const transcriptScrollClassName =
   "thin-scrollbar px-4 pb-4 md:px-7 md:pb-6";
 
 /**
- * Center a transcript in the `ChatLayout` scroll region. `full` gives the
- * event log the whole width.
+ * Fill the `ChatLayout` width with transcript or composer content. From the
+ * width where `ConversationOutline` shows, the side padding keeps text clear
+ * of it. The width has no cap, so a smaller browser font fits more text on a
+ * line.
+ */
+export const transcriptWidthClassName = "w-full @min-[62rem]/chat:px-6";
+
+/**
+ * Hold a transcript in the `ChatLayout` scroll region. `full` gives the event
+ * log the whole width.
  */
 export function TranscriptColumn(props: {
   children: ReactNode;
@@ -19,7 +27,7 @@ export function TranscriptColumn(props: {
     <section className="min-w-0">
       <div
         className={cn(
-          props.full ? "w-full" : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7",
+          props.full ? "w-full" : cn(transcriptWidthClassName, "pt-5 md:pt-7"),
           props.className,
         )}
       >
@@ -57,7 +65,7 @@ export function ChatLayout(props: {
   /** Keep conversation chrome outside the scrolling content. */
   header?: ReactNode;
   /**
-   * Show over the scroll region without scrolling with it. It sits in a
+   * Show over the scroll region without scrolling with it. The layout is a
    * `chat` container, so it can show only when the region is wide enough.
    */
   overlay?: ReactNode;
@@ -71,14 +79,14 @@ export function ChatLayout(props: {
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,auto)]",
+        "@container/chat grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,auto)]",
         props.scrollMinTall &&
           "grid-rows-[auto_minmax(7rem,1fr)_minmax(0,auto)]",
         props.className,
       )}
     >
       <div className="min-w-0">{props.header}</div>
-      <div className="@container/chat relative grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
+      <div className="relative grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
         <div
           aria-label={props.scrollAriaLabel}
           className={cn(
