@@ -4,7 +4,10 @@ import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import * as z from "zod";
+import { nestedArgumentsErrorMap } from "@/chat/tool-support/dispatcher-envelope";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+
+const MISSING_TOOL_NAME_ERROR = "callMcpTool requires an MCP tool_name";
 
 interface CallMcpToolManager {
   getResolvedActiveTools(): ManagedMcpTool[];
@@ -45,8 +48,8 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       .object(
         {
           tool_name: z
-            .string()
-            .min(1)
+            .string({ error: MISSING_TOOL_NAME_ERROR })
+            .min(1, { error: MISSING_TOOL_NAME_ERROR })
             .describe("Exact MCP tool_name from searchMcpTools."),
           arguments: z
             .record(z.string(), z.unknown(), {
@@ -64,12 +67,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
             )
             .optional(),
         },
-        {
-          error: (issue) =>
-            issue.code === "unrecognized_keys"
-              ? `callMcpTool MCP arguments must be nested under arguments, not top-level fields: ${issue.keys.join(", ")}`
-              : undefined,
-        },
+        { error: nestedArgumentsErrorMap("callMcpTool MCP") },
       )
       .strict(),
     resolveApprovalMetadata: ({ tool_name }) => {

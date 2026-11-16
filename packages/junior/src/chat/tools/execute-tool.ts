@@ -1,10 +1,11 @@
 import * as z from "zod";
+import { nestedArgumentsErrorMap } from "@/chat/tool-support/dispatcher-envelope";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export const EXECUTE_TOOL_NAME = "executeTool";
-const MISSING_TOOL_NAME_ERROR = "executeTool requires a catalog tool_name.";
+const MISSING_TOOL_NAME_ERROR = "executeTool requires a catalog tool_name";
 
 /** Input envelope of `executeTool`, which the dispatcher parses before it runs the catalog tool. */
 export const executeToolInputSchema = z
@@ -18,7 +19,7 @@ export const executeToolInputSchema = z
         ),
       arguments: z
         .record(z.string(), z.unknown(), {
-          error: "executeTool arguments must be an object when provided.",
+          error: "executeTool arguments must be an object when provided",
         })
         .describe(
           'Arguments matching the selected catalog tool schema, for example { "query": "..." }.',
@@ -34,12 +35,7 @@ export const executeToolInputSchema = z
         )
         .optional(),
     },
-    {
-      error: (issue) =>
-        issue.code === "unrecognized_keys"
-          ? `executeTool arguments must be nested under arguments, not top-level fields: ${issue.keys.join(", ")}`
-          : undefined,
-    },
+    { error: nestedArgumentsErrorMap(EXECUTE_TOOL_NAME) },
   )
   .strict();
 
