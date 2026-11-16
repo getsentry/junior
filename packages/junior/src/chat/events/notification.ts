@@ -23,7 +23,7 @@ import {
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { EVENT_AUTHOR_ID, eventBotAuthorId } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
@@ -366,9 +366,7 @@ function eventMessageAuthor(
   }
   // No system Identity either: with it, the bot's Message could join a
   // paused system Event Turn, whose owner has only that Identity.
-  return {
-    authorId: `${EVENT_AUTHOR_ID}:${author.provider}:${author.handle.toLowerCase()}`,
-  };
+  return { authorId: eventBotAuthorId(author.provider, author.handle) };
 }
 
 /** Build plain conversation mailbox input for one matched watch. */
