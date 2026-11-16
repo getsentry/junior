@@ -15,9 +15,9 @@ import {
   type Span,
 } from "@sentry/browser";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
-import { DASHBOARD_VERSION_HEADER } from "../dashboard-version";
 import {
   DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardServerVersion,
   dashboardVersionDrift,
 } from "./dashboard-version";
 
@@ -141,8 +141,7 @@ function parseResponseValue<T>(
   try {
     return schema.parse(value);
   } catch (error) {
-    const serverVersion = response.headers.get(DASHBOARD_VERSION_HEADER);
-    if (!dashboardVersionDrift(serverVersion ?? undefined)) throw error;
+    if (!dashboardVersionDrift(dashboardServerVersion(response))) throw error;
     throw new Error(DASHBOARD_VERSION_DRIFT_MESSAGE, { cause: error });
   }
 }

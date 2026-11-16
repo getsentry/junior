@@ -155,8 +155,7 @@ export function ConversationWorkspace(props: {
   }, [search]);
   // A failed refresh or next page keeps the loaded rows. The load-more row
   // shows a failed next page.
-  const feedError =
-    feed.isFetchNextPageError || feed.data ? undefined : feed.error?.message;
+  const feedError = feed.data ? undefined : feed.error?.message;
   const morePages: ConversationFeedMorePages = {
     failed: feed.isFetchNextPageError,
     hasMore: feed.hasNextPage,

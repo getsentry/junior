@@ -8,9 +8,14 @@ const DASHBOARD_VERSION_EVENT = "junior:dashboard-version";
 export const DASHBOARD_VERSION_DRIFT_MESSAGE =
   "The dashboard changed. Refresh to load the latest version.";
 
+/** Read the Junior version that one dashboard response reports. */
+export function dashboardServerVersion(response: Response): string | undefined {
+  return response.headers.get(DASHBOARD_VERSION_HEADER)?.trim() || undefined;
+}
+
 /** Publish the Junior version reported by one dashboard response. */
 export function recordDashboardServerVersion(response: Response): void {
-  const version = response.headers.get(DASHBOARD_VERSION_HEADER)?.trim();
+  const version = dashboardServerVersion(response);
   if (!version || typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<string>(DASHBOARD_VERSION_EVENT, { detail: version }),
