@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
+import { viewAsParticipant } from "./conversationMenu";
 
 /** Hold new Conversation creates until the returned function runs. */
 async function holdCreate(page: Page): Promise<() => void> {
@@ -227,6 +228,41 @@ test.describe("on a touch screen", () => {
     await composer.press("Enter");
     await composer.pressSequentially("Second line");
     await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("opens the row sheet on a long press of a home card", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const card = page.getByRole("link", { name: "Open Closed issue summary" });
+    await expect(card).toBeVisible();
+    // Playwright has no long press. Hold a touch past the menu delay.
+    await card.dispatchEvent("touchstart", {
+      touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+    });
+    // A touch opens the rows as a sheet, not as a menu at the finger.
+    const sheet = page.getByRole("dialog", { name: "Closed issue summary" });
+    await expect(sheet).toBeVisible();
+    // A mobile browser can send its own contextmenu from the same press.
+    // The open sheet hides the card from role queries.
+    await page
+      .locator('a[aria-label="Open Closed issue summary"]')
+      .dispatchEvent("contextmenu");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await screenshot(page, "conversation-home-card-sheet", { view: "mobile" });
+
+    await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(
+      page
+        .locator("section:has(#conversation-section-pinned)")
+        .getByRole("link", { name: "Open Closed issue summary" }),
+    ).toBeVisible();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
