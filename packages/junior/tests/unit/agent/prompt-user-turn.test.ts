@@ -50,11 +50,12 @@ describe("buildUserTurnText", () => {
       buildUserTurnText("hello", {
         authorId: "U123",
         authorName: "Alice <Lead>",
+        authorTimezone: "America/New_York",
         slackTs: "1712345.000100",
       }),
     ).toBe(
       [
-        '<current-instruction author_id="U123" author_name="Alice &lt;Lead&gt;" slack_ts="1712345.000100">',
+        '<current-instruction author_id="U123" author_name="Alice &lt;Lead&gt;" author_timezone="America/New_York" slack_ts="1712345.000100">',
         "hello",
         "</current-instruction>",
       ].join("\n"),

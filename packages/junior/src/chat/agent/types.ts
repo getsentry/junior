@@ -51,6 +51,8 @@ export type AgentAttachment = {
 export type AgentInstructionActor = {
   authorId?: string;
   authorName?: string;
+  /** IANA timezone from the author's Slack profile, so replies can show local times. */
+  authorTimezone?: string;
   /**
    * Slack message ts for the instruction when known.
    * TODO(dcramer): Use a provider-neutral message id after prompt attributes no

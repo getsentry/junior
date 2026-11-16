@@ -148,6 +148,7 @@ import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
+  instructionAuthorTimezone,
   loadPromptTurnContext,
 } from "@/chat/agent/prompt";
 import {
@@ -635,8 +636,17 @@ async function executeAgentRunInPrivacyContext(
       skillSandbox,
     });
     // ── Prompt input ─────────────────────────────────────────────────
+    const authorTimezone = await instructionAuthorTimezone(
+      actor,
+      run.instruction.actor,
+    );
     const { contextContentParts, userContentParts } = buildPromptInput({
-      instruction: run.instruction,
+      instruction: authorTimezone
+        ? {
+            ...run.instruction,
+            actor: { ...run.instruction.actor, authorTimezone },
+          }
+        : run.instruction,
     });
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];

@@ -50,6 +50,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { lookupSlackUser } from "@/chat/slack/user";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
@@ -165,6 +166,20 @@ export function instructionActorFor(
     ...(authorName ? { authorName } : undefined),
     ...(slackTs ? { slackTs } : undefined),
   };
+}
+
+/**
+ * Return the Slack profile timezone of the instruction author when the Run
+ * actor wrote the instruction. `lookupSlackUser` has a short in-process cache.
+ */
+export async function instructionAuthorTimezone(
+  actor: Actor | undefined,
+  author: AgentInstructionActor | undefined,
+): Promise<string | undefined> {
+  if (actor?.platform !== "slack" || actor.userId !== author?.authorId) {
+    return undefined;
+  }
+  return (await lookupSlackUser(actor.teamId, actor.userId))?.timezone;
 }
 
 /**
