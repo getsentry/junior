@@ -83,12 +83,10 @@ Use `metrics search` or `metrics list` to find names, `metrics metadata get` for
 
 ### Counting events in a distribution
 
-Before you count requests, errors, or other events, run `metrics metadata get` and read the metric type. For a `distribution`, such as a latency or size metric:
+Before you count events, run `metrics metadata get` and read the metric type. For a `distribution`:
 
-- `count:` returns the number of recorded values. Use it for request or event counts.
-- `sum:` adds the recorded values, such as seconds of latency or bytes. It is not a count. When latency rises, `sum:` rises with traffic flat, so it looks like a traffic spike.
-
-Example: `count:service.request.duration{env:prod,status:5*}.as_count()` counts failed requests. `sum:` on the same metric gives total seconds spent.
+- `count:` returns the number of recorded values. Use it to count events.
+- `sum:` adds the recorded values. It is not a count. It changes when the values change, even when the number of events stays the same.
 
 ## Time windows
 
