@@ -7,7 +7,7 @@ import {
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildScriptToolsSection, buildTurnContextPrompt } from "@/chat/prompt";
-import { renderCompactionSummary } from "@/chat/services/context-compaction";
+import { renderCompactionSummary } from "@/chat/services/context-compaction-marker";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { closeConversationFixture } from "../fixtures/conversation";
 
