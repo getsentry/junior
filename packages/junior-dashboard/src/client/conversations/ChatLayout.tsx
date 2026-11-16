@@ -1,22 +1,24 @@
 import type { FocusEvent, ReactNode, Ref } from "react";
 
 import { cn } from "../styles";
+import { useTranscriptFullWidth } from "./transcriptWidth";
 
 /** Scroll region padding that goes with `TranscriptColumn`. */
 export const transcriptScrollClassName =
   "thin-scrollbar px-4 pb-4 md:px-7 md:pb-6";
 
 /**
- * Fill the `ChatLayout` width with transcript or composer content. From the
- * width where `ConversationOutline` shows, the side padding keeps text clear
- * of it. The width has no cap, so a smaller browser font fits more text on a
- * line.
+ * Size transcript or composer content in `ChatLayout`. It keeps a readable
+ * width unless the reader chose full width in the conversation menu. At full
+ * width, from the width where `ConversationOutline` shows, the side padding
+ * keeps text clear of it.
  */
-export const transcriptWidthClassName = "w-full @min-[62rem]/chat:px-6";
+export const transcriptWidthClassName =
+  "mx-auto w-full max-w-[52.5rem] group-data-full-width/chat:max-w-none group-data-full-width/chat:@min-[62rem]/chat:px-6";
 
 /**
- * Hold a transcript in the `ChatLayout` scroll region. `full` is for the event
- * log, which has no outline, so it drops the outline and top padding.
+ * Hold a transcript in the `ChatLayout` scroll region. `full` gives the event
+ * log the whole width.
  */
 export function TranscriptColumn(props: {
   children: ReactNode;
@@ -76,10 +78,12 @@ export function ChatLayout(props: {
   scrollClassName?: string;
   scrollRef?: Ref<HTMLDivElement>;
 }) {
+  const [fullWidth] = useTranscriptFullWidth();
   return (
     <div
+      data-full-width={fullWidth ? "" : undefined}
       className={cn(
-        "@container/chat grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,auto)]",
+        "group/chat @container/chat grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,auto)]",
         props.scrollMinTall &&
           "grid-rows-[auto_minmax(7rem,1fr)_minmax(0,auto)]",
         props.className,

@@ -134,6 +134,7 @@ import {
   type TranscriptHistory,
 } from "./transcriptAroundHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { useTranscriptFullWidth } from "./transcriptWidth";
 import {
   ConversationDrawer,
   type ConversationDrawerTarget,
@@ -253,6 +254,7 @@ export function ConversationPage(props: {
   }
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
+  const [fullWidth, setFullWidth] = useTranscriptFullWidth();
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
@@ -767,6 +769,7 @@ export function ConversationPage(props: {
                 conversationId,
                 detail: conversationDetail,
                 eventLogOpen: view === "raw",
+                fullWidth: { on: fullWidth, set: setFullWidth },
                 getMarkdown: conversationDetail
                   ? async () =>
                       buildConversationMarkdown(

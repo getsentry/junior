@@ -7,12 +7,14 @@ import {
   ArrowUp,
   Bell,
   BellOff,
+  FoldHorizontal,
   MessageSquareShare,
   MessagesSquare,
   Pencil,
   Pin,
   PinOff,
   ScrollText,
+  UnfoldHorizontal,
   Unlink,
 } from "lucide-react";
 
@@ -69,6 +71,8 @@ export type ConversationMenu = {
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
   eventLogOpen?: boolean;
+  /** Set where the menu can change the transcript width in this browser. */
+  fullWidth?: { on: boolean; set(full: boolean): void };
   /** Set on a pinned row that the viewer can reorder. */
   move?: PinnedRowMove | undefined;
   getMarkdown?: (() => Promise<string>) | undefined;
@@ -151,6 +155,17 @@ export function useConversationMenuItems(
     label: menu.eventLogOpen ? "Back to conversation" : "Open event log",
     onClick: actions.eventLog,
   });
+  // The event log always fills the pane.
+  if (menu.fullWidth && !menu.eventLogOpen) {
+    const { on, set } = menu.fullWidth;
+    conversationItems.push({
+      icon: on ? FoldHorizontal : UnfoldHorizontal,
+      key: "full-width",
+      label: on ? "Fixed width" : "Full width",
+      onClick: () => set(!on),
+      toggle: true,
+    });
+  }
   if (detail?.sentryConversationUrl) {
     conversationItems.push({
       href: detail.sentryConversationUrl,

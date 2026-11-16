@@ -825,6 +825,35 @@ test("inspects and copies a child agent transcript", async ({
   ).toBeDisabled();
 });
 
+test("keeps the full-width transcript choice across visits", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const url = `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`;
+  await page.goto(url);
+  const transcript = page.locator("[data-chat-scroll] > section > div");
+  const fixedWidth = await transcript.evaluate((node) => node.clientWidth);
+
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("menuitem", { name: "Full width", exact: true }).click();
+  await expect
+    .poll(() => transcript.evaluate((node) => node.clientWidth))
+    .toBeGreaterThan(fixedWidth);
+
+  await page.reload();
+  await expect
+    .poll(() => transcript.evaluate((node) => node.clientWidth))
+    .toBeGreaterThan(fixedWidth);
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Fixed width", exact: true })
+    .click();
+  await expect
+    .poll(() => transcript.evaluate((node) => node.clientWidth))
+    .toBe(fixedWidth);
+});
+
 test("rates a Junior Reply once, with time to change it", async ({
   page,
   dashboard,
