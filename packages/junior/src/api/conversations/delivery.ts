@@ -5,6 +5,7 @@ import {
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
 import { getConversationStore, getDb } from "@/chat/db";
+import { postSlackDetachNotice } from "@/chat/slack/detach-notice";
 import { throwApiError } from "../http";
 import type {
   ConversationDeliveryBody,
@@ -15,7 +16,7 @@ import { readConversationAccessFromSql } from "./access";
 /**
  * Detach a root from its Location, or attach it again. Only a participant
  * can change it, the same as rename. A mention in the Location attaches it
- * again too.
+ * again too. Each detach tells the Slack thread once.
  */
 export async function setConversationDeliveryForViewer(
   viewer: User,
@@ -35,7 +36,14 @@ export async function setConversationDeliveryForViewer(
     throwApiError(409, "Only a conversation with a Slack thread can detach.");
   }
   if (body.paused) {
-    await pauseConversationDelivery(conversationId);
+    const detached = await pauseConversationDelivery(conversationId);
+    if (detached && conversation.location?.provider === "slack") {
+      await postSlackDetachNotice({
+        actorName: viewer.displayName ?? viewer.email,
+        conversationId,
+        location: conversation.location,
+      });
+    }
   } else {
     await resumeConversationDelivery(conversationId);
   }
