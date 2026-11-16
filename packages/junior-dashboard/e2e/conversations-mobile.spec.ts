@@ -231,7 +231,7 @@ test.describe("on a touch screen", () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
-  test("opens the row menu on a long press of a home card", async ({
+  test("opens the row sheet on a long press of a home card", async ({
     page,
     dashboard,
   }) => {
@@ -245,7 +245,9 @@ test.describe("on a touch screen", () => {
     await card.dispatchEvent("touchstart", {
       touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
     });
-    await expect(page.getByRole("menuitem")).toHaveText([
+    // A touch opens the rows as a sheet, not as a menu at the finger.
+    const sheet = page.getByRole("dialog", { name: "Closed issue summary" });
+    await expect(sheet.getByRole("listitem")).toHaveText([
       "Share",
       "Copy as Markdown",
       "Open event log",
@@ -254,8 +256,11 @@ test.describe("on a touch screen", () => {
       "Subscribe",
       "Archive",
     ]);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await screenshot(page, "conversation-home-card-sheet", { view: "mobile" });
 
-    await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+    await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
     await expect(
       page
         .locator("section:has(#conversation-section-pinned)")

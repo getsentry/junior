@@ -284,7 +284,11 @@ function ConversationCard(props: ConversationCardProps) {
       {...drag?.listeners}
       archive={{ pending: archive.isPending, toggle: toggleArchive }}
       className={cn(
-        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
+        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft not-data-pressing:has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
+        // A held card sinks through the 500ms long press, so the row sheet
+        // opens at the end of a press that the reader can see. A release
+        // springs back fast, and a scroll ends the press.
+        "motion-safe:data-pressing:scale-[0.97] motion-safe:data-pressing:duration-500 motion-safe:data-pressing:ease-linear",
         drag?.dragging && "opacity-40",
       )}
       conversation={conversation}
