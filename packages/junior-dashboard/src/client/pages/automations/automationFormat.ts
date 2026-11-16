@@ -4,7 +4,7 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import type { StatusChipTone } from "../../components/StatusChip";
-import { formatTime } from "../../format";
+import { formatTime } from "../../time";
 
 type ScheduledAutomation = Extract<AutomationSummary, { kind: "scheduled" }>;
 
@@ -30,11 +30,7 @@ export function formatAutomationRunTime(
     timeZoneName: "short",
     year: "numeric",
   };
-  return timeZone
-    ? new Intl.DateTimeFormat(undefined, { ...options, timeZone }).format(
-        new Date(value),
-      )
-    : formatTime(value, options);
+  return formatTime(value, timeZone ? { ...options, timeZone } : options);
 }
 
 /** Map a run outcome to its status color. */

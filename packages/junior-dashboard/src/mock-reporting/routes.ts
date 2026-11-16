@@ -44,6 +44,9 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -141,6 +144,7 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -518,6 +522,37 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
+  app.get("/conversations/:conversationId/plan", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationPlan(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationPlanReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/plan/:itemId", async (c) => {
+    const params = conversationParamsSchema.safeParse({
+      conversationId: c.req.param("conversationId"),
+    });
+    const itemId = Number(c.req.param("itemId"));
+    if (!params.success || !Number.isInteger(itemId)) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = planItemStatusBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const item = setMockPlanItemStatus(
+      params.data.conversationId,
+      itemId,
+      body.data,
+    );
+    return item
+      ? jsonResponse(conversationPlanItemSchema, item)
+      : errorResponse("Plan item not found.", 404);
+  });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -585,7 +620,7 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(conversationCatchUpSchema, {
       needsYou: "Review the Safari fix on PR #12.",
       summary:
-        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+        "CI failed on Safari after you left. A fix was pushed to PR #12, and the checks pass now.",
     });
   });
   app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
@@ -766,7 +801,7 @@ export function createMockReportingApi(): Hono<{
     // A large Slack file that was deleted in Slack after Junior saw it.
     if (attachmentId === "qa-deleted-pending") {
       return errorResponse(
-        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or this app can no longer access it.",
         409,
       );
     }

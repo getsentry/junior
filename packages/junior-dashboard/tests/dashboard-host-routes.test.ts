@@ -14,7 +14,10 @@ afterEach(() => {
 });
 
 it("forwards every dashboard route through the Junior app", async () => {
-  const registeredDashboard = createDashboardApp({ authRequired: false });
+  const registeredDashboard = createDashboardApp({
+    agentName: "Junior",
+    authRequired: false,
+  });
   const registeredRoutes = registeredDashboard.routes
     .map((route) => ({
       method: route.method === "ALL" ? "GET" : route.method,

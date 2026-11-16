@@ -138,7 +138,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       ) => Promise<unknown> | unknown;
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -860,6 +867,7 @@ describe("agent run continuation", () => {
     expect(counters.continueCalls).toBe(1);
 
     expect(reply.piMessages?.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",
@@ -875,6 +883,7 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",
@@ -957,6 +966,8 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(await replyPromise);
     expect(reply.diagnostics.errorMessage).toBe("eval test cancelled");
+    // A stopped run is the caller's outcome, not a failure to report.
+    expect(reply.diagnostics.eventId).toBeUndefined();
     expect(counters.abortCalls).toBe(1);
     expect(counters.continueCalls).toBe(0);
   });
@@ -1037,7 +1048,8 @@ describe("agent run continuation", () => {
       "slack:C123:1712345.0001",
       "turn-steering",
     );
-    expect(sessionRecord?.turnStartMessageIndex).toBe(2);
+    // Two earlier messages and the capability sections come first.
+    expect(sessionRecord?.turnStartMessageIndex).toBe(3);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
@@ -1162,6 +1174,7 @@ describe("agent run continuation", () => {
       "turn-delivery-steering-yield",
     );
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",
@@ -1203,6 +1216,7 @@ describe("agent run continuation", () => {
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",
@@ -1210,7 +1224,7 @@ describe("agent run continuation", () => {
       "user",
     ]);
     // A resumed Turn finds AGENTS.md only in context messages.
-    expect(JSON.stringify(sessionRecord?.piMessages[4])).toContain(
+    expect(JSON.stringify(sessionRecord?.piMessages[5])).toContain(
       "# AGENTS.md instructions for /vercel/sandbox/repo",
     );
     expect(sessionRecord?.piMessageProvenance[4]).toEqual({
@@ -1367,6 +1381,7 @@ describe("agent run continuation", () => {
       sliceId: 1,
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",

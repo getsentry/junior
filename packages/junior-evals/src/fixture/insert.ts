@@ -33,6 +33,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
 import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -122,7 +123,7 @@ export async function insertLinkedGitHubIdentity(args: {
 }): Promise<void> {
   const slack = await insertSlackIdentity(resolveAuthor(args.author));
   if (!slack.userId) {
-    throw new Error("Slack identity has no Junior user to link");
+    throw new Error("Slack identity has no User to link");
   }
   await upsertLinkedIdentity(getSqlExecutor(), slack.userId, {
     handle: args.login,
@@ -281,7 +282,7 @@ export async function insertReviewItem(args: {
 }): Promise<{ id: string }> {
   const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
   if (!identity.userId) {
-    throw new Error("insertReviewItem() needs an assignee with a Junior user");
+    throw new Error("insertReviewItem() needs an assignee with a User");
   }
   const conversationId = await insertCreationThread(args.destination);
   const item = await insertStoredReviewItem(getDb(), {
@@ -314,7 +315,7 @@ export async function insertWebReviewItem(args: {
   viewerEmail: string;
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
-  if (!user) throw new Error(`No Junior user for ${args.viewerEmail}`);
+  if (!user) throw new Error(`No User for ${args.viewerEmail}`);
   const item = await insertStoredReviewItem(getDb(), {
     addedByConversationId: args.conversationId,
     assignedToEveryone: false,
@@ -463,4 +464,18 @@ export async function insertCredential(args: {
     scope: args.scope,
   });
   onTestFinished(() => store.delete(userId, args.provider));
+}
+
+/**
+ * Create an install-wide Workspace recipe. Workspaces are install-wide, so
+ * the recipe is deleted when the test finishes.
+ */
+export async function insertWorkspace(args: {
+  name: string;
+  repos: Array<{ provider: "github"; repo: string }>;
+}): Promise<void> {
+  const workspace = await createWorkspace(args);
+  onTestFinished(async () => {
+    await deleteWorkspace(workspace.id);
+  });
 }

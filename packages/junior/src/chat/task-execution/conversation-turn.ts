@@ -379,10 +379,7 @@ export function createConversationTurnWorker(
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A child agent's Turn cannot wait for a person to sign in, even when it
-    // runs as the web user who started it; missing auth blocks it instead.
-    const signInActor =
-      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const signInActor = behavior.waitsForSignIn ? webActor : undefined;
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
@@ -726,7 +723,6 @@ export function createConversationTurnWorker(
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: result,
-                logException,
               });
               const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;

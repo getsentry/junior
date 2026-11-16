@@ -18,7 +18,7 @@ import path from "node:path";
 // this module writes the few DER structures that a CA and a TLS server
 // certificate need.
 
-const CA_COMMON_NAME = "Junior Docker Sandbox Egress CA";
+const CA_COMMON_NAME = "Docker Sandbox Egress CA";
 const CA_VALID_DAYS = 3650;
 /** Clients reject long-lived leaf certificates, so keep them short. */
 const LEAF_VALID_DAYS = 365;

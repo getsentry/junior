@@ -2,10 +2,10 @@
  * Static tool registry: the core tools in provider order, and the model-facing
  * definitions of the core and plugin tools, read with no run context.
  *
- * The registry decides which tools a Turn has. Its gates read only the
- * platform, the Turn tools, and deployment config (experimental features,
- * the event catalog, workspace providers). `createTools` binds each static
- * definition to one run with the binder of the same name.
+ * The registry decides which tools a Turn lists. Its gates read only the
+ * platform, the listed Turn tools, and deployment config (experimental
+ * features, the event catalog, workspace providers). `createTools` binds each
+ * static definition to one run with the binder of the same name.
  *
  * Run-built entries keep their place in the provider order, but each run
  * builds them, because their definitions or presence depend on the run.
@@ -74,6 +74,7 @@ import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conv
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
 import { systemTimeToolDefinition } from "@/chat/tools/system-time";
+import { submitFeedbackToolDefinition } from "@/chat/tools/submit-feedback";
 import { updateUserCustomizationToolDefinition } from "@/chat/tools/user-customization";
 import {
   userLookupIdentityProviders,
@@ -95,10 +96,10 @@ export interface ToolDefinitionsKey {
   mode: PromptMode;
 }
 
-/** What the registry gates read: the platform and the Turn tools. */
+/** What the registry gates read: the platform and the listed Turn tools. */
 export interface ToolRegistryScope {
   platform: Platform;
-  turnTools: TurnBehavior["tools"];
+  listedTools: TurnBehavior["tools"];
 }
 
 interface StaticToolEntry {
@@ -127,8 +128,8 @@ function always(definition: StaticZodToolDefinition): StaticToolEntry {
 
 const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
-const hasAgents = ({ turnTools }: ToolRegistryScope) =>
-  turnTools.agents !== "none";
+const hasAgents = ({ listedTools }: ToolRegistryScope) =>
+  listedTools.agents !== "none";
 
 // Write tools exist when the deployment has a workspace provider.
 function workspaceTool(
@@ -152,6 +153,7 @@ const CORE_TOOLS = {
   updatePlan: always(updatePlanToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
+  submitFeedback: always(submitFeedbackToolDefinition),
   bash: always(bashToolDefinition),
   readFile: always(readFileToolDefinition),
   editFile: always(editFileToolDefinition),
@@ -188,13 +190,13 @@ const CORE_TOOLS = {
     definition: () => runOperatorSqlToolDefinition,
   },
   updateUserCustomization: {
-    when: ({ turnTools }) =>
+    when: ({ listedTools }) =>
       isExperimentalFeatureEnabled("user-customization") &&
-      turnTools.userCustomization,
+      listedTools.userCustomization,
     definition: () => updateUserCustomizationToolDefinition,
   },
   setConversationSubscription: {
-    when: ({ turnTools }) => turnTools.subscriptions,
+    when: ({ listedTools }) => listedTools.subscriptions,
     definition: () => setConversationSubscriptionToolDefinition,
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
@@ -212,6 +214,7 @@ const CORE_TOOLS = {
   loadAttachment: RUN_BUILT,
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
+  transcribeAudio: RUN_BUILT,
   spawnAgent: { when: hasAgents, definition: () => spawnAgentToolDefinition },
   stopAgent: { when: hasAgents, definition: () => stopAgentToolDefinition },
   archiveAgent: {
@@ -227,17 +230,17 @@ const CORE_TOOLS = {
     definition: () => messageAgentToolDefinition,
   },
   [REPLY_TOOL_NAME]: {
-    when: ({ turnTools }) => turnTools.reply !== "none",
-    definition: ({ turnTools }) =>
-      replyToolDefinition(enabledMode(turnTools.reply)),
+    when: ({ listedTools }) => listedTools.reply !== "none",
+    definition: ({ listedTools }) =>
+      replyToolDefinition(enabledMode(listedTools.reply)),
   },
   [REPORT_BLOCKED_TOOL_NAME]: {
-    when: ({ turnTools }) => turnTools.reportBlocked !== "none",
-    definition: ({ turnTools }) =>
-      reportBlockedToolDefinition(enabledMode(turnTools.reportBlocked)),
+    when: ({ listedTools }) => listedTools.reportBlocked !== "none",
+    definition: ({ listedTools }) =>
+      reportBlockedToolDefinition(enabledMode(listedTools.reportBlocked)),
   },
   [NO_REPLY_TOOL_NAME]: {
-    when: ({ turnTools }) => turnTools.noReply,
+    when: ({ listedTools }) => listedTools.noReply,
     definition: () => noReplyToolDefinition,
   },
   searchMcpTools: RUN_BUILT,
@@ -375,7 +378,7 @@ function modelFacing(definition: StaticZodToolDefinition) {
 export function staticToolDefinitions(key: ToolDefinitionsKey): ToolRegistry {
   const scope = {
     platform: key.platform,
-    turnTools: promptModeTurnTools(key.mode),
+    listedTools: promptModeTurnTools(key.mode),
   };
   const core: ToolRegistry = {};
   for (const [name, entry] of coreToolEntries()) {

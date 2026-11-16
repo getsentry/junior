@@ -47,7 +47,7 @@ export async function resolveAssignee(
   if (text.includes("@")) {
     const user = await findUserByEmailFromSql(db, text);
     if (!user) {
-      throw new ToolInputError(`No Junior user has the email ${text}.`);
+      throw new ToolInputError(`No User has the email ${text}.`);
     }
     return { userId: user.id };
   }

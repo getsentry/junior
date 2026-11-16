@@ -52,6 +52,7 @@ export function ConversationDetailsPanel(props: {
           )
         }
         brief={detail?.brief}
+        canEditPlan={detail?.isParticipant === true}
         conversationId={props.conversationId}
         highlightReview={props.highlightReview}
         identity={

@@ -29,8 +29,10 @@ export function resolveCatalogToolCall(
   input: Record<string, unknown>,
   catalogTools: Record<string, AnyToolDefinition>,
 ): CatalogToolCall {
+  // `intent` keeps one envelope with callMcpTool. Catalog tool auth prompts
+  // use the user's message as the reason, so it is accepted and dropped.
   const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments",
+    (key) => key !== "tool_name" && key !== "arguments" && key !== "intent",
   );
   if (extraKeys.length > 0) {
     throw new ToolInputError(

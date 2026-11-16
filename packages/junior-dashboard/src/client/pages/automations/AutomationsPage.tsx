@@ -28,6 +28,7 @@ import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
 import { automationNeedsAttention } from "./AutomationStatus";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { getDashboardAgentName } from "../../agentName";
 
 const EMPTY: AutomationSummary[] = [];
 
@@ -145,7 +146,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             <p className="m-0 text-sm text-dashboard-text-muted">
               {LANDING_FILTERS.some((key) => searchParams.has(key))
                 ? "No automations matched these filters."
-                : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
+                : `No automations yet. Ask ${getDashboardAgentName()} in Slack to do something on a schedule or when something happens.`}
             </p>
           </Card>
         ) : null}

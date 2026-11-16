@@ -51,6 +51,12 @@ export interface AttachmentUploadTarget {
   url: string;
 }
 
+/** One stored object that an outside service may read, and for how long. */
+export interface AttachmentDownloadRequest {
+  expiresAtMs: number;
+  key: string;
+}
+
 /** Small object-storage capability used by conversation attachments. */
 export interface AttachmentStorage {
   readonly provider: string;
@@ -64,6 +70,15 @@ export interface AttachmentStorage {
   createUploadTarget?(
     input: AttachmentUploadRequest,
   ): Promise<AttachmentUploadTarget>;
+  /**
+   * Sign a plain HTTPS GET of one key until `expiresAtMs`.
+   *
+   * An outside service, such as a transcription provider, fetches the bytes
+   * with this URL and no headers. The URL is a bearer credential: anyone who
+   * has it can read the object until it expires. Do not log it or put it in
+   * telemetry. A provider without signed reads omits this.
+   */
+  createDownloadUrl?(input: AttachmentDownloadRequest): Promise<string>;
   /**
    * Return live object bytes, or null when the key is missing.
    *

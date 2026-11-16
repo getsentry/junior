@@ -96,7 +96,8 @@ Canonical words for Junior code and docs. One concept, one word.
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
-  tool calls), or `tool_result` event. Not `model_item` or `model_message`.
+  tool calls), `tool_result`, or `system_message` (a Pi system message after
+  the leading one) event. Not `model_item` or `model_message`.
 - **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
@@ -132,6 +133,10 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Plan**: the durable list of work that outlives a Turn in one
+  Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
+  entry, with a status and one Assignee: the Conversation's own agent, one of
+  its child agents, or a User. Each change gets a new version.
 
 ## Naming
 

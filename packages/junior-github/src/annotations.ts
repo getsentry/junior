@@ -41,21 +41,24 @@ export function githubSidebarAnnotations(
 ): ConversationSidebarAnnotation[] {
   return annotations
     .flatMap((annotation) => {
-      const status = annotation.status;
       const label = repositoryName(annotation);
-      return label
-        ? [
-            {
-              annotation: {
-                objectType: githubObjectType(annotation),
-                status,
-                key: annotation.key,
-                label,
-              },
-              updatedAt: annotation.updatedAt,
-            },
-          ]
-        : [];
+      if (!label) return [];
+      const sidebar: ConversationSidebarAnnotation = {
+        objectType: githubObjectType(annotation),
+        status: annotation.status,
+        key: annotation.key,
+        label,
+      };
+      if (annotation.kind === "object") {
+        sidebar.title = annotation.title;
+        const image =
+          annotation.facts?.type === "code_change"
+            ? annotation.facts.previewImageUrls?.[0]
+            : undefined;
+        if (image) sidebar.imageUrl = image;
+      }
+      if (annotation.url) sidebar.url = annotation.url;
+      return [{ annotation: sidebar, updatedAt: annotation.updatedAt }];
     })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .map(({ annotation }) => annotation);

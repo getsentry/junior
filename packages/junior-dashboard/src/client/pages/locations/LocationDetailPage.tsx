@@ -9,14 +9,11 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import {
-  formatCompactNumber,
-  formatRelativeTime,
-  peoplePath,
-} from "../../format";
+import { formatCompactNumber, peoplePath } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationActivityChart } from "./LocationActivityChart";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { formatRelativeTime } from "../../time";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {

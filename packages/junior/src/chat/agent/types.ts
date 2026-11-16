@@ -188,7 +188,7 @@ export type AgentDispatch = {
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
-export const AGENT_RUN_FEATURES = ["interactive-auth", "subagents"] as const;
+export const AGENT_RUN_FEATURES = ["interactive-auth"] as const;
 
 /** One optional agent capability controlled per run. */
 export type AgentFeature = (typeof AGENT_RUN_FEATURES)[number];

@@ -22,6 +22,7 @@ import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PromptMode } from "@/chat/system-prompt-rules";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 
@@ -73,6 +74,22 @@ const finalReply: AssistantMessage = {
 
 const definitionsKey = { platform: "local", mode: "conversation" } as const;
 
+// The recorder input of a Turn in the Conversation kind that has this mode,
+// from `turnBehavior`.
+function turnOf(userActor: boolean, mode: PromptMode = definitionsKey.mode) {
+  const kind =
+    mode === "automation"
+      ? "automation"
+      : mode === "child_agent"
+        ? "task"
+        : "root";
+  return {
+    userActor,
+    idleNeedsPendingWork: turnBehavior({ kind, personInput: userActor })
+      .idleNeedsPendingWork,
+  };
+}
+
 // Run one Turn that ends with a final response, like one agent run does.
 async function endTurn(
   userActor: boolean,
@@ -80,7 +97,7 @@ async function endTurn(
   turnContext = context,
   mode: PromptMode = definitionsKey.mode,
 ) {
-  const recorder = createCacheWarmingRecorder(id, userActor, {
+  const recorder = createCacheWarmingRecorder(id, turnOf(userActor, mode), {
     ...definitionsKey,
     mode,
   });
@@ -97,10 +114,14 @@ const toolCall = (name: string): AssistantMessage => ({
 // Run one Turn that calls a tool and then an answer tool that ends the run,
 // like one agent run does.
 async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
-  const recorder = createCacheWarmingRecorder(conversationId, false, {
-    ...definitionsKey,
-    mode,
-  });
+  const recorder = createCacheWarmingRecorder(
+    conversationId,
+    turnOf(false, mode),
+    {
+      ...definitionsKey,
+      mode,
+    },
+  );
   const stream = recorder.wrap((() => undefined) as never);
   void stream(model, context, {});
   await recorder.record(toolCall("systemTime"));
@@ -249,6 +270,21 @@ describe("cache warming gap segments", () => {
       }
     },
   );
+
+  // A person's reply shares the `automation` Prompt mode with the run, but
+  // it can get an answer, so it needs no pending work.
+  it("starts an idle period from a person's reply in an Automation Conversation", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    mocks.sendCacheWarmup.mockClear();
+    await endTurn(
+      true,
+      `${automationConversationId}:reply`,
+      context,
+      "automation",
+    );
+
+    expect(scheduledWarmup()).toBeDefined();
+  });
 
   it.each(["timer", "child", "watch"] as const)(
     "starts an idle period from the ending of an Automation run with a pending %s",
@@ -636,7 +672,7 @@ describe("cache warming gap segments", () => {
       // The person replies. The warmup comes due before the model call ends.
       const reply = createCacheWarmingRecorder(
         conversationId,
-        true,
+        turnOf(true),
         definitionsKey,
       );
       void reply.wrap((() => undefined) as never)(model, context, {});
@@ -727,7 +763,7 @@ describe("cache warming gap segments", () => {
       // The Turn sends its request to the model service, like a run does.
       const recorder = createCacheWarmingRecorder(
         conversationId,
-        true,
+        turnOf(true),
         definitionsKey,
       );
       await (await recorder.wrap()(model, imageContext, {})).result();
@@ -805,7 +841,7 @@ describe("cache warming gap segments", () => {
     const endTurnWith = async (cacheRead: number, turnContext = context) => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
-        true,
+        turnOf(true),
         definitionsKey,
       );
       void recorder.wrap((() => undefined) as never)(model, turnContext, {});
@@ -883,7 +919,7 @@ describe("cache warming gap segments", () => {
       const base = vi.fn();
       const recorder = createCacheWarmingRecorder(
         conversationId,
-        true,
+        turnOf(true),
         definitionsKey,
       );
       void recorder.wrap(base as never)(

@@ -21,12 +21,13 @@ import {
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { pinnedAndWaitingFirst } from "../../conversations/conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../../format";
+import { buildConversations } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversations } from "../../review-desk/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
+import { getDashboardTimeZone } from "../../time";
 
 const PAGE_SIZE = 25;
 

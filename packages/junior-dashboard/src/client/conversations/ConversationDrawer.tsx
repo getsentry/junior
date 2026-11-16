@@ -5,11 +5,7 @@ import { Link } from "react-router";
 import { ChildAgentTags } from "./ChildAgentTags";
 import { useConversationData } from "./queries";
 import { conversationPath } from "./conversationRoutes";
-import {
-  conversationDetailTitle,
-  formatMessageTimestamp,
-  formatRelativeMessageTimestamp,
-} from "../format";
+import { conversationDetailTitle } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -26,6 +22,7 @@ import { TranscriptLoading } from "./TranscriptLoading";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import { useTranscriptSearchMatch } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { formatMessageTimestamp, formatRelativeTime } from "../time";
 
 /** One Conversation to show, with what the page that opens it already knows. */
 export interface ConversationDrawerTarget {
@@ -192,7 +189,7 @@ function ConversationDrawerContent(
                 dateTime={startedAtIso}
                 title={formatMessageTimestamp(startedAt, true)}
               >
-                Started {formatRelativeMessageTimestamp(startedAt)}
+                Started {formatRelativeTime(startedAt)}
               </time>
             ) : null}
             <Link
@@ -225,8 +222,8 @@ function ConversationDrawerContent(
             Conversation failed to load.
           </AlertTitle>
           <AlertDescription className="leading-relaxed">
-            Junior could not get this conversation. Use Open conversation to
-            view it on its own page.
+            Could not load this conversation. Use Open conversation to view it
+            on its own page.
           </AlertDescription>
         </Alert>
       ) : detail ? (

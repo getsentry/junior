@@ -76,7 +76,10 @@ export function historyItemFromPiMessage(
       type: "tool_result",
     });
   }
-  throw new Error(`Unsupported durable agent message role "${role}"`);
+  return agentHistoryItemSchema.parse({
+    ...fields,
+    type: "system_message",
+  });
 }
 
 /** Translate one Junior-native history item into the Pi message it represents. */
@@ -88,6 +91,10 @@ export function piMessageFromHistoryItem(data: AgentHistoryItem): PiMessage {
   if (data.type === "assistant_message") {
     const { type: _, ...fields } = data;
     return piMessageSchema.parse({ ...fields, role: "assistant" });
+  }
+  if (data.type === "system_message") {
+    const { type: _, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "system" });
   }
   const { type: _, ...fields } = data;
   return piMessageSchema.parse({ ...fields, role: "toolResult" });
@@ -147,7 +154,8 @@ export function projectConversationEvents(
     if (
       event.data.type === "user_message" ||
       event.data.type === "assistant_message" ||
-      event.data.type === "tool_result"
+      event.data.type === "tool_result" ||
+      event.data.type === "system_message"
     ) {
       const message = piMessageFromHistoryItem(event.data);
       messages.push(message);
