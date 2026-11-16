@@ -6,6 +6,7 @@ import {
   type ToolCall,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
+import { mockWebPages } from "@junior-evals/fixture/web";
 
 type SpawnInput = { fork?: boolean | null; kind?: string | null };
 
@@ -71,6 +72,27 @@ describe("Implicit Delegation", () => {
     expect(
       planAssignees(completedToolCalls("updatePlan", conversation)),
     ).toEqual(expect.arrayContaining([expect.not.stringMatching(/^self$/i)]));
+  });
+
+  test("when a multi-step request finishes in this Turn, keep it off the plan", async ({
+    run,
+  }) => {
+    const index = "https://example.com/runbooks";
+    mockWebPages({
+      [index]: `<html><body><h1>Runbooks</h1><ul><li><a href="${index}/rotate-keys">Rotate API keys</a></li><li><a href="${index}/restore-backup">Restore a backup</a></li></ul></body></html>`,
+      [`${index}/rotate-keys`]: `<html><body><h1>Rotate API keys</h1><p>See <a href="${index}/rotate-keys/verify">verification</a>.</p></body></html>`,
+      [`${index}/rotate-keys/verify`]: `<html><body><h1>Verify a key rotation</h1><p>Run the smoke test, then confirm that the old key returns 401.</p></body></html>`,
+      [`${index}/restore-backup`]: `<html><body><h1>Restore a backup</h1></body></html>`,
+    });
+    const conversation = await run(
+      slackMention(
+        `${index} lists our runbooks. Open the key rotation one, follow its link to the verification page, and tell me how to verify a rotation.`,
+      ),
+    );
+
+    // The plan holds only work that outlives the Turn.
+    expect(completedToolCalls("updatePlan", conversation)).toEqual([]);
+    expect(conversation.replies).toHaveLength(1);
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({

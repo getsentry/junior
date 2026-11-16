@@ -130,7 +130,7 @@ export const updatePlanToolDefinition = zodToolDefinition({
     readOnlyHint: false,
   },
   description:
-    "Change the plan: the durable list of work that this conversation has not finished. It survives context compaction and sandbox resets. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Each assignee can have one item in progress; your own item in progress shows as your loading status. Returns the items that changed, or every open item when the call changes nothing.",
+    "Change the plan: the durable list of work that outlives this Turn, such as work queued for a later Turn, work for a child agent, or work for a person. It survives context compaction and sandbox resets. Do not add steps that you finish in this Turn. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Each assignee can have one item in progress. Returns the items that changed, or every open item when the call changes nothing.",
   inputSchema: updatePlanInputSchema,
   outputSchema: updatePlanOutputSchema,
 });

@@ -9,8 +9,6 @@ import {
 } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { updatePlanToolDefinition } from "@/chat/tools/runtime/update-plan";
-import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -64,44 +62,6 @@ function actionReview(
 describe("Pi tool adapter", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
-  });
-
-  it("emits assistant status for updatePlan only", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const onStatus = vi.fn(async () => undefined);
-    const [updatePlanTool, bashTool] = createPiAgentTools(
-      {
-        // The plan is in the database. Only its result shape matters here.
-        updatePlan: zodTool({
-          ...updatePlanToolDefinition,
-          execute: async () => ({
-            items: [
-              {
-                id: 2,
-                title: "Implement the MVP",
-                status: "in_progress" as const,
-                assignee: "self",
-              },
-            ],
-          }),
-        }),
-        bash: {
-          description: "bash",
-          inputSchema: {},
-          execute: async () => ({ ok: true }),
-        },
-      },
-      sandbox,
-      { spanContext: {}, searchToolsCost: { owner: "none" }, onStatus },
-    );
-
-    await updatePlanTool!.execute("tool-plan", {
-      update: [{ id: 2, status: "in_progress" }],
-    });
-    await bashTool!.execute("tool-bash", { command: "pwd" });
-
-    expect(onStatus).toHaveBeenCalledOnce();
-    expect(onStatus).toHaveBeenCalledWith({ text: "Implement the MVP" });
   });
 
   it("emits assistant status when reportProgress runs through executeTool", async () => {

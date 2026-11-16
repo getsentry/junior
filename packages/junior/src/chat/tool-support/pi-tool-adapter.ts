@@ -18,7 +18,6 @@ import {
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import {
-  buildPlanStatus,
   buildReportedProgressStatus,
 } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -450,14 +449,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       toolCallId,
       toolName,
     });
-    // The plan is in the database, so only the result knows the active item.
-    const planStatus =
-      toolName === "updatePlan"
-        ? buildPlanStatus(toolResult.details)
-        : undefined;
-    if (planStatus) {
-      await onStatus?.(planStatus);
-    }
     return { result: toolResult, nudges };
   };
   const executeDefinition = async (args: {

@@ -195,11 +195,11 @@ const SKILL_POLICY_RULES = [
 ];
 
 /**
- * Block 5, `<planning>`: what goes on the durable plan, across Turns and
- * child agents. How to call `updatePlan` goes in its description.
+ * Block 5, `<planning>`: what goes on the durable plan: only work that
+ * outlives the Turn. It is not a per-Turn checklist. How to call `updatePlan` goes in its description.
  */
 const PLANNING_RULES = [
-  "- Use `updatePlan` for substantial work with dependent steps, and for each piece of work that this Turn does not finish: work someone asked for, work you queue for later, and work you hand to a child agent, with that child as assignee. Skip it for short answers, simple lookups, and routine actions that you finish now.",
+  "- Use `updatePlan` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
   "- The plan is your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
   "- Close an item when its work ends, such as when a child agent's result arrives. After a compaction, `<plan>` lists the open items. `<plan-delta>` shows items that people changed since you last saw them.",
   "- Do not repeat the plan in chat, and do not end a Turn with a plan when you can do the work now.",
