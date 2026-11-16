@@ -15,6 +15,7 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid
 packages/junior-github/src/tools/create-repository.ts	throw new Error( "GitHub repository creation for this tool call has an uncertain result; refusing to create it again. Check whether the repository exists.", );
 packages/junior-github/src/tools/create-repository.ts	throw new Error( "GitHub repository creation needs a conversation and a tool call id.", );
 packages/junior-github/src/tools/create-repository.ts	throw new Error(message);
+packages/junior-github/src/tools/create-repository.ts	throw new Error( `GitHub repository lookup failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`, );
 packages/junior-github/src/tools/create-repository.ts	throw new Error( `GitHub team lookup failed with HTTP ${teamResponse.status}: ${githubErrorMessage(teamResponse.body)}`, );
 packages/junior-github/src/tools/create-repository.ts	throw new Error( `GitHub team membership lookup failed with HTTP ${membership.status}: ${githubErrorMessage(membership.body)}`, );
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
