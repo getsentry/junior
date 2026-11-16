@@ -15,6 +15,11 @@ import {
   type Span,
 } from "@sentry/browser";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
+import { DASHBOARD_VERSION_HEADER } from "../dashboard-version";
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardVersionDrift,
+} from "./dashboard-version";
 
 declare global {
   interface Window {
@@ -125,6 +130,23 @@ export function recordTranscriptShown(): void {
   }).end();
 }
 
+// Response schemas are strict, so a tab that still runs an older bundle can
+// reject a field that a newer server added. Name that cause, not the schema
+// issues. The version drift banner offers the refresh.
+function parseResponseValue<T>(
+  response: Response,
+  schema: { parse: (value: unknown) => T },
+  value: unknown,
+): T {
+  try {
+    return schema.parse(value);
+  } catch (error) {
+    const serverVersion = response.headers.get(DASHBOARD_VERSION_HEADER);
+    if (!dashboardVersionDrift(serverVersion ?? undefined)) throw error;
+    throw new Error(DASHBOARD_VERSION_DRIFT_MESSAGE, { cause: error });
+  }
+}
+
 /**
  * Read, parse, and validate a dashboard API response body. While a pageload
  * or navigation is open, a span times it from the response headers to the
@@ -136,7 +158,9 @@ export async function readResponseJson<T>(
   schema: { parse: (value: unknown) => T },
 ): Promise<T> {
   const routeSpan = activeRouteSpan();
-  if (!routeSpan) return schema.parse(await response.json());
+  if (!routeSpan) {
+    return parseResponseValue(response, schema, await response.json());
+  }
   const span = startInactiveSpan({
     attributes: {
       "url.path": response.url ? new URL(response.url).pathname : undefined,
@@ -150,7 +174,7 @@ export async function readResponseJson<T>(
     const downloadedAt = performance.now();
     const json: unknown = JSON.parse(text);
     const parsedAt = performance.now();
-    const value = schema.parse(json);
+    const value = parseResponseValue(response, schema, json);
     span.setAttributes({
       "app.dashboard.response.chars": text.length,
       "app.dashboard.response.json_parse_ms": Math.round(
