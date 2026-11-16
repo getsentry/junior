@@ -231,21 +231,16 @@ async function listChildAgentsFromInvocations(
   const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   const onConversationLoop = new Set(
     (
-      await Promise.all(
-        active.map((row) =>
-          limit(async () =>
-            (await runsOnConversationLoop(
-              conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0],
-              row.stoppedAt?.getTime(),
-              workStates.get(row.conversationId)?.execution.pendingMessages ??
-                [],
-              mailboxTurnSources.get(row.conversationId) ?? [],
-            ))
-              ? row.conversationId
-              : undefined,
-          ),
-        ),
+      await limit.map(active, async (row) =>
+        (await runsOnConversationLoop(
+          conversationKindFromRow(row),
+          byChild.get(row.conversationId)![0],
+          row.stoppedAt?.getTime(),
+          workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+          mailboxTurnSources.get(row.conversationId) ?? [],
+        ))
+          ? row.conversationId
+          : undefined,
       )
     ).filter((id) => id !== undefined),
   );
@@ -349,45 +344,41 @@ async function listChildAgentsWithoutAgentInvocations(
     listActiveMailboxTurnSources(ids),
   ]);
   const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
-  return await Promise.all(
-    rows.map(async (row): Promise<ChildAgent> => {
-      // A spawn without an agent invocation always stores the kind.
-      const kind = childAgentKindSchema.parse(row.kind);
-      const stoppedAtMs = row.stoppedAt?.getTime();
-      const running =
-        stoppedAtMs === undefined &&
-        (await limit(() =>
-          runsOnConversationLoop(
-            kind,
-            undefined,
-            undefined,
-            workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
-            mailboxTurnSources.get(row.conversationId) ?? [],
-          ),
-        ));
-      return {
-        ...(row.agentName ? { agentName: row.agentName } : undefined),
-        ...(row.archivedAt
-          ? { archivedAtMs: row.archivedAt.getTime() }
-          : undefined),
-        childConversationId: row.conversationId,
+  return await limit.map(rows, async (row): Promise<ChildAgent> => {
+    // A spawn without an agent invocation always stores the kind.
+    const kind = childAgentKindSchema.parse(row.kind);
+    const stoppedAtMs = row.stoppedAt?.getTime();
+    const running =
+      stoppedAtMs === undefined &&
+      (await runsOnConversationLoop(
         kind,
-        status:
-          stoppedAtMs !== undefined
-            ? "stopped"
-            : running
-              ? "running"
-              : row.executionStatus === "failed"
-                ? "failed"
-                : "completed",
-        // The task text stays in the child's transcript. The spawn title
-        // names it.
-        task: row.title ?? "",
-        ...(row.title ? { title: row.title } : undefined),
-        updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
-      };
-    }),
-  );
+        undefined,
+        undefined,
+        workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+        mailboxTurnSources.get(row.conversationId) ?? [],
+      ));
+    return {
+      ...(row.agentName ? { agentName: row.agentName } : undefined),
+      ...(row.archivedAt
+        ? { archivedAtMs: row.archivedAt.getTime() }
+        : undefined),
+      childConversationId: row.conversationId,
+      kind,
+      status:
+        stoppedAtMs !== undefined
+          ? "stopped"
+          : running
+            ? "running"
+            : row.executionStatus === "failed"
+              ? "failed"
+              : "completed",
+      // The task text stays in the child's transcript. The spawn title
+      // names it.
+      task: row.title ?? "",
+      ...(row.title ? { title: row.title } : undefined),
+      updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
+    };
+  });
 }
 
 // Only a gated Turn answers the parent. A person's Turn in a Thread does not.

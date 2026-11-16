@@ -48,18 +48,14 @@ export function createEventAppPublisher(args: {
       const eventAutomationTeamId = await resolveEventAutomationTeamId();
       const limit = pLimit(WATCH_MATCH_CONCURRENCY);
       const [subscriptions, tasks] = await Promise.all([
-        Promise.all(
-          events.map((event) =>
-            limit(() =>
-              findMatchingWatches({
-                data: event.data,
-                eventType: event.eventType,
-                namespace: event.namespace,
-                identifier: event.identifier,
-                state: work.state,
-              }),
-            ),
-          ),
+        limit.map(events, (event) =>
+          findMatchingWatches({
+            data: event.data,
+            eventType: event.eventType,
+            namespace: event.namespace,
+            identifier: event.identifier,
+            state: work.state,
+          }),
         ),
         eventAutomationTeamId
           ? findMatchingEventAutomations(
