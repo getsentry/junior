@@ -96,7 +96,11 @@ export type CredentialedEgressHttpInterceptor = (input: {
 export interface CredentialedEgressDeps {
   fetch?: typeof fetch;
   interceptHttp?: CredentialedEgressHttpInterceptor;
-  recordAuthRequired?: (input: {
+  /**
+   * Report that the request needs a credential. Sandbox commands read a
+   * signal; host plugin tools ask the person to connect.
+   */
+  recordAuthRequired: (input: {
     authorization?: SandboxEgressCredentialLease["authorization"];
     credentialContext: SandboxEgressCredentialContext;
     grant: SandboxEgressCredentialLease["grant"];
@@ -495,7 +499,8 @@ function leaseLogAttributes(input: {
   };
 }
 
-async function recordSandboxAuthRequired(input: {
+/** Store the auth-required signal that the sandbox command reads. */
+export async function recordSandboxAuthRequired(input: {
   authorization?: SandboxEgressCredentialLease["authorization"];
   credentialContext: SandboxEgressCredentialContext;
   grant: SandboxEgressCredentialLease["grant"];
@@ -653,9 +658,6 @@ export async function executeCredentialedEgressRequest(input: {
     }
     throw error;
   }
-  const recordAuthRequired =
-    deps.recordAuthRequired ?? recordSandboxAuthRequired;
-
   async function resolveLease(): Promise<
     SandboxEgressCredentialLease | Response
   > {
@@ -669,7 +671,7 @@ export async function executeCredentialedEgressRequest(input: {
       if (!(error instanceof SandboxEgressCredentialError)) {
         throw error;
       }
-      await recordAuthRequired({
+      await deps.recordAuthRequired({
         credentialContext,
         provider: error.provider,
         grant: error.grant,
@@ -800,7 +802,7 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await recordAuthRequired({
+      await deps.recordAuthRequired({
         credentialContext,
         provider,
         grant: lease.grant,
@@ -843,7 +845,7 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await recordAuthRequired({
+      await deps.recordAuthRequired({
         credentialContext,
         provider,
         grant: lease.grant,

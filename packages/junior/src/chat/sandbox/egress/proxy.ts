@@ -4,6 +4,7 @@ import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
   egressDecisionAttributes,
   executeCredentialedEgressRequest,
+  recordSandboxAuthRequired,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
@@ -226,7 +227,7 @@ export async function executeSandboxEgressRequest(
       await executeCredentialedEgressRequest({
         activeEgressId,
         credentialContext,
-        deps,
+        deps: { ...deps, recordAuthRequired: recordSandboxAuthRequired },
         provider,
         request,
         upstreamUrl,
