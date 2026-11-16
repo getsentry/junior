@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
+import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import type { AttachmentDownloadRequest } from "@/chat/attachments/storage";
 import {
   closeDb,
@@ -11,8 +13,16 @@ import {
 } from "@/chat/db";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
+import { juniorAttachments } from "@/db/schema";
+import { filesInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackFileDownloadCalls,
+  queueSlackApiResponse,
+  queueSlackPrivateFileDownload,
+} from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 
 const CONVERSATION_ID = "slack:C-transcribe-audio:1";
@@ -127,9 +137,10 @@ function signedStorage() {
   const storage = createMemoryAttachmentStorage();
   const signed: AttachmentDownloadRequest[] = [];
   return {
+    objects: storage.objects,
     signed,
     storage: {
-      provider: storage.provider,
+      ...storage,
       createDownloadUrl: async (input: AttachmentDownloadRequest) => {
         signed.push(input);
         return SIGNED_URL;
@@ -180,12 +191,14 @@ async function recordConversation(conversationId: string): Promise<void> {
 function createTool(
   storage: ReturnType<typeof signedStorage>["storage"],
   workspace: Pick<SandboxWorkspace, "writeFiles"> = fakeWorkspace(),
+  readAttachmentSource?: ReadAttachmentSource,
 ) {
   return createTranscribeAudioTool({
     conversationId: CONVERSATION_ID,
     db: getSqlExecutor(),
     modelCost: { conversationId: CONVERSATION_ID },
     modelId: "elevenlabs/scribe-v2",
+    ...(readAttachmentSource ? { readAttachmentSource } : undefined),
     storage,
     workspace,
   });
@@ -268,6 +281,48 @@ describe("transcribeAudio tool", () => {
     expect(JSON.stringify(logs)).not.toContain(SIGNED_URL);
   });
 
+  it("stores a large Slack file on first use and signs its storage key", async () => {
+    const files = signedStorage();
+    const stored = await files.storeLargeSlackFile();
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "F0ALLHANDS",
+        size: MIB,
+        urlPrivate:
+          "https://files.slack.com/files-pri/T0TEST-F0ALLHANDS/all-hands.mp4",
+      }),
+    });
+    queueSlackPrivateFileDownload({
+      body: new Blob([Buffer.alloc(MIB, 7)]).stream(),
+    });
+    const requests = gatewayTranscription(diarizedTranscript);
+
+    const result = await createTool(
+      files.storage,
+      fakeWorkspace(),
+      readSlackAttachmentSource,
+    ).execute?.({ attachment_id: stored.id }, {});
+
+    const [row] = await getSqlExecutor()
+      .db()
+      .select({ storageKey: juniorAttachments.storageKey })
+      .from(juniorAttachments)
+      .where(eq(juniorAttachments.id, stored.id));
+    expect(getCapturedSlackFileDownloadCalls()).toHaveLength(1);
+    expect([...files.objects.keys()]).toEqual([row?.storageKey]);
+    expect(files.signed).toEqual([
+      { expiresAtMs: expect.any(Number), key: row?.storageKey },
+    ]);
+    expect(requests).toEqual([
+      expect.objectContaining({
+        providerOptions: {
+          elevenlabs: expect.objectContaining({ sourceUrl: SIGNED_URL }),
+        },
+      }),
+    ]);
+    expect(result).toMatchObject({ language: "eng" });
+  });
+
   it("saves a long transcript and returns the first lines that fit", async () => {
     const files = signedStorage();
     const stored = await files.store({
@@ -340,7 +395,6 @@ describe("transcribeAudio tool", () => {
       filename: "elsewhere.m4a",
       mimeType: "audio/mp4",
     });
-    const largeSlackFile = await files.storeLargeSlackFile();
     const document = await files.store({
       filename: "notes.pdf",
       mimeType: "application/pdf",
@@ -352,13 +406,6 @@ describe("transcribeAudio tool", () => {
       tool.execute?.({ attachment_id: elsewhere.id }, {}),
     ).rejects.toThrow(
       new ToolInputError("Attachment not found in this conversation."),
-    );
-    await expect(
-      tool.execute?.({ attachment_id: largeSlackFile.id }, {}),
-    ).rejects.toThrow(
-      new ToolInputError(
-        "This attachment is not available for transcription yet. Large Slack files are not stored.",
-      ),
     );
     await expect(
       tool.execute?.({ attachment_id: document.id }, {}),

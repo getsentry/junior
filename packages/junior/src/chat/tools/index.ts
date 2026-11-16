@@ -463,7 +463,10 @@ const RUN_BUILT_TOOL_BUILDERS = {
           db: getSqlExecutor(),
           modelCost: run.modelCost,
           modelId: botConfig.transcriptionModelId,
-          storage: { createDownloadUrl, provider: storage.provider },
+          ...(run.slack
+            ? { readAttachmentSource: readSlackAttachmentSource }
+            : undefined),
+          storage: { ...storage, createDownloadUrl },
           workspace: run.context.workspace,
         })
       : undefined;
