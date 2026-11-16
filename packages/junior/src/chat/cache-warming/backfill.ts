@@ -83,6 +83,11 @@ const CONVERSATION_BATCH_SIZE = 10;
 const CONVERSATION_PAGE_SIZE = 500;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
+// The JSON escape of a NUL character, and a Postgres regex for each one that
+// is not itself escaped: it follows an even number of backslashes.
+const NUL_ESCAPE = String.raw`\u0000`;
+const NUL_ESCAPE_PATTERN = String.raw`(?<!\\)((?:\\\\)*)\\u0000`;
+const NUL_ESCAPE_REPLACEMENT = String.raw`\1`;
 /**
  * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
  * most of its function time for the writes and the other heartbeat work.
@@ -229,10 +234,14 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
+  const messageText = sql`${events.payload}->>'message'`;
+  // jsonb rejects the escape of a NUL character, and one such message would
+  // fail the query of its whole batch, so the cast drops these escapes.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
-    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
-    ELSE ${events.payload}
+    WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
+    WHEN strpos(${messageText}, ${NUL_ESCAPE}) = 0 THEN (${messageText})::jsonb
+    ELSE regexp_replace(${messageText}, ${NUL_ESCAPE_PATTERN}, ${NUL_ESCAPE_REPLACEMENT}, 'g')::jsonb
   END`;
   return await getDb()
     .select({
