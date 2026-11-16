@@ -326,7 +326,7 @@ const COMPONENTS: Components = {
   td: ({ children, style }) => (
     <TableCell
       className={cn(
-        "min-w-[8ch] px-2.5 py-1.5 align-top whitespace-normal [overflow-wrap:break-word]",
+        "min-w-[12ch] px-2.5 py-1.5 align-top whitespace-normal [overflow-wrap:break-word]",
         alignClass(style?.textAlign),
       )}
     >
@@ -336,7 +336,7 @@ const COMPONENTS: Components = {
   th: ({ children, style }) => (
     <TableHead
       className={cn(
-        "min-w-[8ch] px-2.5 py-1.5 align-bottom whitespace-normal [overflow-wrap:break-word]",
+        "min-w-[12ch] px-2.5 py-1.5 align-bottom whitespace-normal [overflow-wrap:break-word]",
         alignClass(style?.textAlign),
       )}
       scope="col"
