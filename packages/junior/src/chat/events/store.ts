@@ -14,6 +14,7 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { createEventMatchCache } from "@/chat/events/match-cache";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -628,8 +629,31 @@ export async function collectEventMatchKeys(input: {
   return [...keys].sort();
 }
 
+const resourceWatchCache = createEventMatchCache<(Watch | undefined)[]>();
+
+async function readResourceWatches(
+  state: StateAdapter,
+  namespace: string,
+  identifier: string,
+): Promise<(Watch | undefined)[]> {
+  const ids = await readSubscriptionIdIndex(
+    state,
+    resourceIndexKey(namespace, identifier),
+  );
+  return await Promise.all(
+    ids.map(async (id) =>
+      parseSubscription(await state.get(subscriptionKey(id))),
+    ),
+  );
+}
+
 /** Find active subscriptions interested in a normalized event. */
 export async function findMatchingWatches(input: {
+  /**
+   * Reuse this request's read of the resource's Watches. Only for match
+   * checks; delivery must read current state.
+   */
+  cached?: boolean | undefined;
   data?: EventData | undefined;
   eventType: string;
   nowMs?: number;
@@ -640,15 +664,14 @@ export async function findMatchingWatches(input: {
   const state = input.state ?? getStateAdapter();
   await state.connect();
   const nowMs = input.nowMs ?? Date.now();
-  const ids = await readSubscriptionIdIndex(
-    state,
-    resourceIndexKey(input.namespace, input.identifier),
-  );
-  const records = await Promise.all(
-    ids.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const load = async () =>
+    await readResourceWatches(state, input.namespace, input.identifier);
+  const records = input.cached
+    ? await resourceWatchCache(
+        resourceIndexKey(input.namespace, input.identifier),
+        load,
+      )
+    : await load();
   return records.filter(
     (record): record is Watch =>
       record !== undefined &&
