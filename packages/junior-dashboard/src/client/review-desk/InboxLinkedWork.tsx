@@ -99,11 +99,9 @@ export function mainRepo(
   return main;
 }
 
-/**
- * The short name of a piece of work on its row: #123 in the row's main
- * repo, else repo#123, else its label.
- */
-export function workRef(
+// The short name of a piece of work on its row: #123 in the row's main
+// repo, else repo#123, else its label.
+function workRef(
   work: { key: string; label: string },
   main: string | undefined,
 ): string {
