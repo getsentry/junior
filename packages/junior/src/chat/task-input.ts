@@ -5,14 +5,15 @@
  * `tests/unit/chat/task-input.test.ts` own the exact text. Event data stays in
  * its own child tags, and the outcome rule is always last.
  */
-import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import {
+  agentEventKeys,
   escapeClosingTags,
-  renderChildTag,
+  renderInlineTag,
   renderTag,
-  renderUntrustedTag,
   tagJson,
-} from "@/chat/input-tags";
+  type TaskOutcome,
+} from "@sentry/junior-plugin-api";
+import { renderUntrustedTag } from "@/chat/input-tags";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -107,11 +108,13 @@ function peopleTags(
   });
   return [
     ...(involved.length > 0
-      ? [renderChildTag("people", escapeClosingTags(involved.join(", ")))]
+      ? [renderInlineTag("people", escapeClosingTags(involved.join(", ")))]
       : []),
     ...doers
       .filter((doer) => !people.includes(doer.mention))
-      .map((doer) => renderChildTag("done-by", escapeClosingTags(label(doer)))),
+      .map((doer) =>
+        renderInlineTag("done-by", escapeClosingTags(label(doer))),
+      ),
     ...doers.map((doer) =>
       escapeClosingTags(
         `If your reply is to ${doer.mention}, write to them as "you".${
@@ -163,7 +166,7 @@ function verifiedDetailsTag(
   details: Record<string, unknown> | undefined,
 ): string[] {
   return details && Object.keys(details).length > 0
-    ? [renderChildTag("verified-details", tagJson(agentEventKeys(details)))]
+    ? [renderInlineTag("verified-details", tagJson(agentEventKeys(details)))]
     : [];
 }
 
@@ -241,7 +244,7 @@ export function renderTaskInput(args: {
       // Say what to write, or the model drops the mention.
       ...(creator
         ? [
-            renderChildTag(
+            renderInlineTag(
               "created-by",
               escapeClosingTags(
                 `${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.`,
@@ -272,7 +275,7 @@ export function renderTaskInput(args: {
         : []),
       ...(instructions
         ? [
-            renderChildTag(
+            renderInlineTag(
               "instructions",
               escapeClosingTags(
                 creator
@@ -285,7 +288,7 @@ export function renderTaskInput(args: {
       ...(guidance ? [guidanceTag(guidance)] : []),
       ...(trustedSummary
         ? [
-            renderChildTag(
+            renderInlineTag(
               "summary",
               escapeClosingTags(
                 clip(trustedSummary, args.trustedSummaryMaxLength),
@@ -330,7 +333,7 @@ function eventTag(event: TaskBatchEvent, index: number): string {
   const trustedSummary = event.trustedSummary?.trim();
   return renderTag("event", { index, type: event.eventType }, [
     ...(trustedSummary
-      ? [renderChildTag("summary", escapeClosingTags(trustedSummary))]
+      ? [renderInlineTag("summary", escapeClosingTags(trustedSummary))]
       : []),
     ...verifiedDetailsTag(event.verifiedDetails),
     ...externalTextTag(event.externalText?.trim(), event.source),
@@ -383,7 +386,7 @@ export function renderTaskBatchInput(args: {
     body.push(
       renderTag("watch", { about: about ? oneLine(about) : undefined }, [
         ...peopleTags(people, batchDoers(numbered)),
-        renderChildTag("instructions", escapeClosingTags(instructions)),
+        renderInlineTag("instructions", escapeClosingTags(instructions)),
         ...(guidance.size > 0
           ? [
               guidanceTag(

@@ -1,0 +1,55 @@
+{
+  "packages/junior-memory/src/agent.ts": {
+    "message": ["actor", "authority", "index", "is_run_actor", "role"],
+    "tool-result": ["index", "is_error", "tool"]
+  },
+  "packages/junior/src/chat/agent-invocations/result.ts": {
+    "agent-message": ["conversation_id", "name", "source", "title"],
+    "agent-result": [
+      "conversation_id",
+      "name",
+      "source",
+      "status",
+      "title",
+      "waiting_on"
+    ]
+  },
+  "packages/junior/src/chat/agent-invocations/top-level-message.ts": {
+    "agent-message": ["conversation_id", "source"]
+  },
+  "packages/junior/src/chat/current-instruction.ts": {
+    "current-instruction": ["author_id", "author_name", "slack_ts"]
+  },
+  "packages/junior/src/chat/guardian/evidence.ts": {
+    "truncated": ["omitted_approx_tokens"]
+  },
+  "packages/junior/src/chat/input-tags.ts": {
+    "thread-context": ["authority"]
+  },
+  "packages/junior/src/chat/plugins/after-tool-hooks.ts": {
+    "plugin-note": ["plugin"]
+  },
+  "packages/junior/src/chat/prompt.ts": {
+    "channel-details": ["source"],
+    "plugin-contribution": ["id", "plugin"],
+    "tool": ["name"]
+  },
+  "packages/junior/src/chat/review-items/prompt-input.ts": {
+    "review-item-answer": ["id"]
+  },
+  "packages/junior/src/chat/services/conversation-memory.ts": {
+    "message": ["actor_id", "author", "index", "role", "slack_ts", "ts"]
+  },
+  "packages/junior/src/chat/services/subscribed-decision.ts": {
+    "truncated": ["omitted_approx_tokens"]
+  },
+  "packages/junior/src/chat/system-prompt-rules.ts": {
+    "*": ["for", "format"]
+  },
+  "packages/junior/src/chat/task-input.ts": {
+    "event": ["index", "type"],
+    "external-text": ["source"],
+    "task": ["about", "event"],
+    "watch": ["about"]
+  }
+}

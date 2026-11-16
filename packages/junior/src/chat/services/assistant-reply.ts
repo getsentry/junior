@@ -2,7 +2,9 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isLegacyNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
+// The model's own `<thinking>` text in a reply, not a prompt tag.
 const THINKING_XML_BLOCK_PATTERN =
+  // oxlint-disable-next-line junior/no-prompt-tag-matching
   /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 

@@ -89,6 +89,8 @@ runtime, not the markers, enforces approval.
 - JSON bodies: write `<`, `>`, and `&` as `\u003c`, `\u003e`, and `\u0026`.
 - System prompt, skill, and `AGENTS.md` text goes in raw. Escape only a copy
   of the closing tag of its own wrapper.
+- `prompt-tags.ts` (`@sentry/junior-plugin-api`) writes, escapes, and reads
+  every tag. Oxlint enforces it and ratchets old attributes down.
 
 ### Example
 
