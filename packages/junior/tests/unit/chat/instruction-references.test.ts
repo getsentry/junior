@@ -64,6 +64,30 @@ describe("requireAutomationTaskText", () => {
     );
   });
 
+  it("rejects another requester's first-person words and gives their mention", () => {
+    expect(() =>
+      requireAutomationTaskText(
+        instruction(
+          "Post the planning reminder and remind me to bring the agenda.",
+        ),
+        {
+          creator,
+          requester,
+          current: instruction("Post the planning reminder."),
+        },
+      ),
+    ).toThrow(
+      'The instruction says "me", and each run reads that as the Automation creator. Write <@U0TEST> for the requester.',
+    );
+    // From the creator, "me" is the Automation creator.
+    expect(() =>
+      requireAutomationTaskText(instruction("Remind me to bring the agenda."), {
+        creator,
+        requester: creator,
+      }),
+    ).not.toThrow();
+  });
+
   it("accepts the Automation creator, mentioned requesters, skills, and unchanged text", () => {
     const cases: [AutomationTask, AutomationTask | undefined][] = [
       [
@@ -87,6 +111,10 @@ describe("requireAutomationTaskText", () => {
       [
         instruction("Post a reminder in this channel to bring the agenda."),
         instruction("Post a reminder in this channel."),
+      ],
+      [
+        instruction("Remind my team and <@U0TEST> to submit timesheets."),
+        instruction("Remind my team to submit timesheets."),
       ],
       [
         instruction("Check CI. If green, end with exactly [[NO_REPLY]]."),
