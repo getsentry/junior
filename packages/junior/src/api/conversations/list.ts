@@ -46,7 +46,10 @@ import {
 } from "./record";
 import { readFeedThreads } from "./threads";
 import { conversationFeedSchema } from "../schema/conversation-feed";
-import type { ConversationFeed } from "../schema/conversation-feed";
+import type {
+  ConversationFeed,
+  ConversationFeedInclude,
+} from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
   readConversationTreeMetricsFromSql,
@@ -65,6 +68,8 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
+import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
+import { feedMediaSql } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -140,6 +145,7 @@ async function conversationRows(
     conversationIds,
     cursor,
     filter,
+    include = [],
     includePrivateBriefs = false,
     limit,
     pinnedForUserId,
@@ -152,6 +158,8 @@ async function conversationRows(
     /** Read only rows after this feed position. */
     cursor?: ConversationFeedCursor;
     filter: ConversationFeedMembership | undefined;
+    /** Extra row content to read in the same statement. */
+    include?: readonly ConversationFeedInclude[];
     includePrivateBriefs?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
@@ -175,6 +183,8 @@ async function conversationRows(
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
       ),
+      links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
+      media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -241,6 +251,7 @@ async function waitingRowsOutsidePage(
   db: JuniorDatabase,
   filter: ConversationFeedMembership & { kind: "viewer" },
   page: FeedRow[],
+  include: readonly ConversationFeedInclude[],
 ): Promise<FeedRow[]> {
   const loaded = new Set(page.map((row) => row.conversation.conversationId));
   const missing = (await listWaitingConversations(db, filter.userId))
@@ -250,6 +261,7 @@ async function waitingRowsOutsidePage(
   return await conversationRows(db, {
     conversationIds: missing,
     filter,
+    include,
     includePrivateBriefs: true,
     limit: missing.length,
     status: "active",
@@ -442,6 +454,8 @@ export async function readConversationFeedFromSql(
     codeRepositoryId?: string;
     /** `nextCursor` of the previous page. */
     cursor?: string | undefined;
+    /** Extra row content that costs a query. */
+    include?: readonly ConversationFeedInclude[];
     limit?: number;
     q?: string | undefined;
     status?: "active" | "archived";
@@ -464,6 +478,7 @@ export async function readConversationFeedFromSql(
   // pages by activity. Pins are not paged, so the cursor stays a plain
   // activity position.
   const pinsFirst = filter?.kind === "viewer" && status === "active";
+  const include = options.include ?? [];
   const feedQuery = {
     ...(options.codeRepositoryId
       ? {
@@ -476,6 +491,7 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     filter,
+    include,
     includePrivateBriefs: filter?.kind === "viewer",
     query,
     status,
@@ -501,7 +517,7 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows)));
+    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -648,6 +664,16 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
+      // Files and links are private content.
+      const media = access?.canViewPrivateContent ? row.media : null;
+      const links =
+        access?.canViewPrivateContent && row.links
+          ? pickFeedLinks(
+              conversation.conversationId,
+              row.links,
+              annotationUrls(annotations),
+            )
+          : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -662,6 +688,8 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
+        ...(media?.length ? { media } : undefined),
+        ...(links.length > 0 ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
@@ -707,6 +735,7 @@ export async function readConversationFeed(
     actorEmail?: string;
     codeRepositoryId?: string;
     cursor?: string;
+    include?: readonly ConversationFeedInclude[];
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;

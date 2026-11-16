@@ -13,6 +13,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { fileFields } from "@/chat/attachments/store";
 
 /** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
@@ -69,8 +70,9 @@ export async function matchSlackAttachments(args: {
       providerId: juniorAttachments.providerId,
       bytes: juniorAttachments.bytes,
       contentType: juniorAttachments.contentType,
-      filename: juniorAttachments.filename,
       storageKey: juniorAttachments.storageKey,
+      storageProvider: juniorAttachments.storageProvider,
+      title: juniorAttachments.title,
     })
     .from(juniorAttachments)
     .where(
@@ -81,9 +83,19 @@ export async function matchSlackAttachments(args: {
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-  return rows.map(({ storageKey, ...row }) =>
-    storageKey === null ? { ...row, pending: true as const } : row,
-  );
+  return rows.map((row) => {
+    const { bytes, contentType, filename } = fileFields(row);
+    const attachment = {
+      bytes,
+      contentType,
+      filename,
+      id: row.id,
+      providerId: row.providerId,
+    };
+    return row.storageKey === null
+      ? { ...attachment, pending: true as const }
+      : attachment;
+  });
 }
 
 /**
@@ -134,7 +146,7 @@ export const readSlackAttachmentSource: ReadAttachmentSource = async (
 ) => {
   const unavailable = (cause?: unknown) =>
     new AttachmentSourceUnavailableError(
-      "The Slack file was deleted, or Junior can no longer access it.",
+      "The Slack file was deleted, or this app can no longer access it.",
       { cause },
     );
   if (source.provider !== "slack") throw unavailable();

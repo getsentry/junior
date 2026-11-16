@@ -1,6 +1,5 @@
 import type { CodePersonReport } from "@sentry/junior/api/schema";
 import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
-import { formatDuration } from "../../components/Duration";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -12,6 +11,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "../code/CodeActivityChart";
 import { ProfileCodeChanges } from "./ProfileCodeChanges";
+import { formatDuration } from "../../time";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;

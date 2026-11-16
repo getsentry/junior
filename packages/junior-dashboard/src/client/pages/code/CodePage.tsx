@@ -28,6 +28,7 @@ import {
   formatMergeRate,
 } from "./CodeSummaryCards";
 import { codeRepositoryPath } from "./codeRepositoryRoutes";
+import { getDashboardAgentName } from "../../agentName";
 
 /** Render code analytics and recent code changes. */
 export function CodePage() {
@@ -36,7 +37,7 @@ export function CodePage() {
   if (!query.data && !query.error) {
     return (
       <PageRouteLoading
-        description="Repositories and code changes created by Junior."
+        description={`Repositories and code changes created by ${getDashboardAgentName()}.`}
         label="Loading code activity"
         title="Code"
         variant="stats"
@@ -46,7 +47,7 @@ export function CodePage() {
   return (
     <PageLayout>
       <PageHeader
-        description="Repositories and code changes created by Junior."
+        description={`Repositories and code changes created by ${getDashboardAgentName()}.`}
         onRangeChange={setRange}
         range={range}
         title="Code"

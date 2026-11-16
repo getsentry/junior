@@ -194,7 +194,7 @@ describe("review item tools", () => {
       });
     await expect(
       execute(first.update, { id: added.item.id, assignees: ["<@U999>"] }),
-    ).rejects.toThrow("<@U999> has no Junior user yet");
+    ).rejects.toThrow("<@U999> has no User yet");
 
     // A public item stays inside its Slack workspace.
     await conversation("slack:CFAR:1.000004", "CFAR", "public", "T999");

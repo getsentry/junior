@@ -45,7 +45,11 @@ function fullContext(
       runCommand: unavailable,
       writeFiles: unavailable,
     },
-    attachmentStorage: createMemoryAttachmentStorage(),
+    // Memory storage cannot sign download URLs. Production storage can.
+    attachmentStorage: {
+      ...createMemoryAttachmentStorage(),
+      createDownloadUrl: unavailable,
+    },
     spawnAgent: unavailable,
     messageAgent: unavailable,
     mcpToolManager: new McpToolManager([]),

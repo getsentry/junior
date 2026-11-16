@@ -9,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import { formatMessageTimestamp, memoryPath } from "../format";
+import { memoryPath } from "../format";
 import { cn } from "../styles";
 import { Button } from "../components/ui/button";
 import type { TranscriptViewMessage } from "../types";
@@ -26,6 +26,7 @@ import { MemoryLinkIcons } from "./MemoryIcons";
 import { chipClass } from "./TranscriptTasksLine";
 import type { TranscriptTurnFooter } from "./transcriptListRows";
 import { memoryRecallContent } from "./turnContext";
+import { formatMessageTimestamp } from "../time";
 
 function memoryCount(count: number): string {
   return `${count} ${count === 1 ? "memory" : "memories"}`;

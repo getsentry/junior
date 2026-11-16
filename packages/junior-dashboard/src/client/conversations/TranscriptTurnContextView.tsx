@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
-import { formatMessageTimestamp, memoryPath, peoplePath } from "../format";
+import { memoryPath, peoplePath } from "../format";
 import {
   memoryRecallContent,
   userCustomizationContent,
@@ -31,6 +31,7 @@ import { cn } from "../styles";
 import { DetailsCard } from "./DetailsList";
 import { MemoryLinkIcons } from "./MemoryIcons";
 import { HighlightText } from "./transcriptSearch";
+import { formatMessageTimestamp } from "../time";
 
 /** What one turn context view shows: who spoke, when, and the context. */
 export type TurnContext = {

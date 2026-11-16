@@ -31,7 +31,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
         <PageHeader
           description={
             <>
-              Setup that only Junior admins can see. Change who is an admin with{" "}
+              Setup that only admins can see. Change who is an admin with{" "}
               <code>junior admin grant &lt;email&gt;</code> and{" "}
               <code>junior admin revoke &lt;email&gt;</code>.
             </>

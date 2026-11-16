@@ -167,6 +167,7 @@ export async function updateConversationBrief(
       // with the Turn, so the main model's cache cannot help.
       const modelId = botConfig.fastModelId;
       const generation = await generateBrief({
+        assistantName: botConfig.userName,
         completeObject: (request) =>
           completeObject({
             ...request,

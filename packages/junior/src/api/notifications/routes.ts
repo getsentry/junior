@@ -26,6 +26,7 @@ import {
 } from "../schema/notification";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { botConfig } from "@/chat/config";
 
 async function readSettings(userId: string) {
   const db = getDb();
@@ -136,7 +137,7 @@ export function createNotificationRoutes(): Hono<JuniorApiEnv> {
       payload: {
         body: "Notifications work on this device.",
         tag: "junior-test",
-        title: "Junior",
+        title: botConfig.userName,
         url: getDashboardSettingsLink() ?? "/",
       },
       userId: context.get("viewer").id,

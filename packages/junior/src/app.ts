@@ -570,7 +570,7 @@ export async function createApp(
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":
-          "allowedDomains is empty, so any Slack workspace member can use Junior",
+          "allowedDomains is empty, so any Slack workspace member can use the bot",
       });
     }
     if (dashboard && !dashboard.disabled) {
@@ -671,7 +671,12 @@ export async function createApp(
     acpRuntime = {
       handleRequest: createAcpHttpHandler({
         ...(dashboard && !dashboard.disabled
-          ? { browserAuth: { baseURL: resolvePublicBaseURL(dashboard) } }
+          ? {
+              browserAuth: {
+                agentName: botConfig.userName,
+                baseURL: resolvePublicBaseURL(dashboard),
+              },
+            }
           : undefined),
         conversations: createAcpConversations({
           conversationStore: work.conversationStore,

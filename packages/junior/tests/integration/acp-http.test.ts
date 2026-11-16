@@ -212,9 +212,11 @@ describe("remote ACP HTTP", () => {
       streamReplies("First ACP reply."),
     );
     const app = await createApp({
+      botName: "Marky",
       conversationWork: harness.conversationWork,
     });
     const secondApp = await createApp({
+      botName: "Marky",
       conversationWork: createIndependentConversationWork(harness),
     });
     const expectedFirstPromptText =
@@ -238,7 +240,7 @@ describe("remote ACP HTTP", () => {
           authMethods: [
             expect.objectContaining({
               id: "junior",
-              name: "Sign in to Junior",
+              name: "Sign in to Marky",
             }),
           ],
         });

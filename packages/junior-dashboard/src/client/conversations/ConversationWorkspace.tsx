@@ -55,7 +55,7 @@ import {
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
 import { pinnedAndWaitingFirst } from "./conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../format";
+import { buildConversations } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
@@ -73,6 +73,7 @@ import {
   useConversationSidebarOpen,
   useSidebarFits,
 } from "./conversationSidebarLayout";
+import { getDashboardTimeZone } from "../time";
 
 const SIDEBAR_PANEL_ID = "conversation-list";
 

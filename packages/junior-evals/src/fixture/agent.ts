@@ -62,6 +62,7 @@ import {
   readCallEvents,
   readFailedCallRun,
   readConversationDetail,
+  readWatchIds,
   participantSlackUserIds,
   slackCallReplies,
   slackThreadEffects,
@@ -157,6 +158,8 @@ export interface Conversation extends HarnessRun {
   authorizationPrompt?: string;
   /** Times Junior replaced agent history with a summary, as the dashboard shows. */
   compactions: number;
+  /** Ids of the active Watches that the dashboard lists after the call. */
+  watchIds: string[];
   turns: Turn[];
   continue(
     input: Input | Input[],
@@ -776,6 +779,11 @@ export async function createFixtureAgent(
       archived: Boolean(detail.archivedAt),
       toolCalls: events.toolCalls,
       turns: events.turns,
+      watchIds: await readWatchIds(
+        api,
+        record.conversationId,
+        record.viewerEmail,
+      ),
     });
     // A person can reply in the thread of the automation's first post.
     const [firstPost] = record.surface === "automation" ? callPosts : [];
@@ -896,6 +904,7 @@ export async function createFixtureAgent(
       archived: Boolean(detail.archivedAt),
       toolCalls: [],
       turns: [],
+      watchIds: await readWatchIds(api, conversationId, viewerEmail),
     });
   };
 

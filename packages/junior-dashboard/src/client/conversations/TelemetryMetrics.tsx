@@ -6,8 +6,6 @@ import type {
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatRuntime,
-  formatTime,
   formatTokenSummary,
   summarizeCost,
   summarizeModelCost,
@@ -27,6 +25,7 @@ import {
   type UsageCardSection,
   type UsageCardSplit,
 } from "./UsageCard";
+import { formatRuntime, formatTime } from "../time";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -342,6 +341,7 @@ export function auxiliaryOperationLabel(
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
     "junior/tool_search_rerank": "Tool search",
+    "junior/transcription": "Transcription",
     "junior/turn_routed": "Thinking routing",
     "junior/vision_summary": "Image summary",
     "junior/web_search": "Web search",
