@@ -4,13 +4,13 @@ import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
   egressDecisionAttributes,
   executeCredentialedEgressRequest,
-  recordSandboxAuthRequired,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   parseSandboxEgressCredentialToken,
+  setSandboxEgressAuthRequiredSignal,
   type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
@@ -223,14 +223,23 @@ export async function executeSandboxEgressRequest(
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
     credentialContext,
-    async () =>
-      await executeCredentialedEgressRequest({
+    async () => {
+      const result = await executeCredentialedEgressRequest({
         activeEgressId,
         credentialContext,
-        deps: { ...deps, recordAuthRequired: recordSandboxAuthRequired },
+        deps,
         provider,
         request,
         upstreamUrl,
-      }),
+      });
+      // The sandbox command reads this signal to ask the person to connect.
+      if (result.authRequired) {
+        await setSandboxEgressAuthRequiredSignal(
+          credentialContext,
+          result.authRequired,
+        );
+      }
+      return result.response;
+    },
   );
 }

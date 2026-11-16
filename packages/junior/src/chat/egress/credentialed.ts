@@ -18,7 +18,6 @@ import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
   clearSandboxEgressCredentialLease,
-  setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
@@ -39,8 +38,9 @@ import {
 // `proxy.ts` first proves that the request came from the expected Vercel
 // Sandbox VM and reconstructs the upstream URL from Vercel forwarding headers.
 // This module starts after that point: it chooses the provider grant, obtains
-// credential header transforms, forwards the upstream request, and records the
-// auth/permission signal that the sandbox command runner consumes afterward.
+// credential header transforms, and forwards the upstream request. It records
+// the permission signal that the sandbox command runner consumes afterward, and
+// returns a needed credential for the caller to ask for.
 //
 // Keep this file about the provider request itself. Source authentication and
 // forwarded-header parsing belong to callers such as the sandbox proxy; lease
@@ -96,36 +96,45 @@ export type CredentialedEgressHttpInterceptor = (input: {
 export interface CredentialedEgressDeps {
   fetch?: typeof fetch;
   interceptHttp?: CredentialedEgressHttpInterceptor;
-  /**
-   * Report that the request needs a credential. Sandbox commands read a
-   * signal; host plugin tools ask the person to connect.
-   */
-  recordAuthRequired: (input: {
-    authorization?: SandboxEgressCredentialLease["authorization"];
-    credentialContext: SandboxEgressCredentialContext;
-    grant: SandboxEgressCredentialLease["grant"];
-    kind?: "auth_required" | "unavailable";
-    message: string;
-    provider: string;
-  }) => Promise<void>;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
-function authRequiredResponse(input: {
-  grant: Pick<SandboxEgressCredentialLease["grant"], "access" | "name">;
+/** A credential that the request needs and the host could not issue. */
+export interface CredentialedEgressAuthRequired {
+  authorization?: SandboxEgressCredentialLease["authorization"];
+  grant: SandboxEgressCredentialLease["grant"];
+  kind: "auth_required" | "unavailable";
   message: string;
   provider: string;
-}): Response {
-  return new Response(
-    `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
-    {
-      status: 401,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
+}
+
+/**
+ * The response for the caller. `authRequired` is set when the response is a
+ * 401 because the request needs a credential. Each caller decides how to ask
+ * for it.
+ */
+export interface CredentialedEgressResult {
+  authRequired?: CredentialedEgressAuthRequired;
+  response: Response;
+}
+
+function authRequiredResult(
+  authRequired: CredentialedEgressAuthRequired,
+  responseMessage = authRequired.message,
+): CredentialedEgressResult {
+  return {
+    authRequired,
+    response: new Response(
+      `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${authRequired.provider} grant=${authRequired.grant.name} access=${authRequired.grant.access} 401 unauthorized\n${responseMessage}`,
+      {
+        status: 401,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
       },
-    },
-  );
+    ),
+  };
 }
 
 function policyDeniedResponse(error: EgressPolicyDenied): Response {
@@ -499,26 +508,6 @@ function leaseLogAttributes(input: {
   };
 }
 
-/** Store the auth-required signal that the sandbox command reads. */
-export async function recordSandboxAuthRequired(input: {
-  authorization?: SandboxEgressCredentialLease["authorization"];
-  credentialContext: SandboxEgressCredentialContext;
-  grant: SandboxEgressCredentialLease["grant"];
-  kind?: "auth_required" | "unavailable";
-  message: string;
-  provider: string;
-}): Promise<void> {
-  await setSandboxEgressAuthRequiredSignal(input.credentialContext, {
-    provider: input.provider,
-    grant: input.grant,
-    kind: input.kind ?? "auth_required",
-    ...(input.authorization
-      ? { authorization: input.authorization }
-      : undefined),
-    message: input.message,
-  });
-}
-
 async function recordSandboxPermissionDenied(input: {
   credentialContext: SandboxEgressCredentialContext;
   lease: SandboxEgressCredentialLease;
@@ -562,8 +551,8 @@ async function recordSandboxPolicyDenied(input: {
  * The caller must already have authenticated the sandbox VM, checked the signed
  * credential context, and resolved the provider for `upstreamUrl`. This function
  * then selects the read/write grant, issues or reuses a short-lived credential
- * lease, applies its header transforms, and maps provider auth failures into
- * command-level signals instead of throwing raw upstream details at the agent.
+ * lease, and applies its header transforms. A provider auth failure becomes a
+ * 401 response and `authRequired`, not raw upstream details for the agent.
  */
 export async function executeCredentialedEgressRequest(input: {
   activeEgressId: string;
@@ -575,7 +564,7 @@ export async function executeCredentialedEgressRequest(input: {
   upstreamUrl: URL;
   /** Use only the credential subject's own stored OAuth token. */
   userOAuthOnly?: boolean;
-}): Promise<Response> {
+}): Promise<CredentialedEgressResult> {
   const {
     activeEgressId,
     credentialContext,
@@ -592,21 +581,23 @@ export async function executeCredentialedEgressRequest(input: {
     if (!(error instanceof TypeError)) {
       throw error;
     }
-    return unreadableBodyResponse(
-      logException(error, "sandbox.egress.request_body.unreadable", {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          provider,
-          status: 500,
+    return {
+      response: unreadableBodyResponse(
+        logException(error, "sandbox.egress.request_body.unreadable", {
+          ...egressAttributes({
+            egressId: activeEgressId,
+            host: upstreamUrl.hostname,
+            method: request.method,
+            path: upstreamUrl.pathname,
+            provider,
+            status: 500,
+          }),
+          ...routingAttributes(request, upstreamUrl),
+          ...credentialAuditAttributes(credentialContext.source),
+          ...egressDecisionAttributes("denied", "request body is unreadable"),
         }),
-        ...routingAttributes(request, upstreamUrl),
-        ...credentialAuditAttributes(credentialContext.source),
-        ...egressDecisionAttributes("denied", "request body is unreadable"),
-      }),
-    );
+      ),
+    };
   }
   let grantSelection: SandboxEgressGrantSelection;
   try {
@@ -654,12 +645,12 @@ export async function executeCredentialedEgressRequest(input: {
         request,
         upstreamUrl,
       });
-      return policyDeniedResponse(error);
+      return { response: policyDeniedResponse(error) };
     }
     throw error;
   }
   async function resolveLease(): Promise<
-    SandboxEgressCredentialLease | Response
+    SandboxEgressCredentialLease | CredentialedEgressResult
   > {
     try {
       return await sandboxEgressCredentialLease(
@@ -671,14 +662,6 @@ export async function executeCredentialedEgressRequest(input: {
       if (!(error instanceof SandboxEgressCredentialError)) {
         throw error;
       }
-      await deps.recordAuthRequired({
-        credentialContext,
-        provider: error.provider,
-        grant: error.grant,
-        kind: error.kind,
-        authorization: error.authorization,
-        message: error.message,
-      });
       const isAuthRequired = error.kind === "auth_required";
       logWarn(
         isAuthRequired
@@ -701,19 +684,23 @@ export async function executeCredentialedEgressRequest(input: {
           ...egressDecisionAttributes("denied", error.message),
         },
       );
-      return authRequiredResponse({
-        provider: error.provider,
+      return authRequiredResult({
+        ...(error.authorization
+          ? { authorization: error.authorization }
+          : undefined),
         grant: error.grant,
+        kind: error.kind,
         message: error.message,
+        provider: error.provider,
       });
     }
   }
 
-  let leaseOrResponse = await resolveLease();
-  if (leaseOrResponse instanceof Response) {
-    return leaseOrResponse;
+  let leased = await resolveLease();
+  if ("response" in leased) {
+    return leased;
   }
-  let lease = leaseOrResponse;
+  let lease = leased;
 
   const attributes = (
     activeLease: SandboxEgressCredentialLease,
@@ -740,10 +727,12 @@ export async function executeCredentialedEgressRequest(input: {
         (transform) => transform.domain,
       ),
     });
-    return Response.json(
-      { error: "Credential lease does not cover forwarded host" },
-      { status: 403 },
-    );
+    return {
+      response: Response.json(
+        { error: "Credential lease does not cover forwarded host" },
+        { status: 403 },
+      ),
+    };
   }
 
   const fetchImpl = deps.fetch ?? fetch;
@@ -767,7 +756,7 @@ export async function executeCredentialedEgressRequest(input: {
       upstreamUrl,
     });
     if (intercepted) {
-      return intercepted;
+      return { response: intercepted };
     }
 
     const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
@@ -802,21 +791,17 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await deps.recordAuthRequired({
-        credentialContext,
-        provider,
-        grant: lease.grant,
-        authorization: error.authorization ?? lease.authorization,
-        message: error.message,
-      });
       logWarn("sandbox.egress.upstream_auth_requirement.classified", {
         ...attributes(lease, upstream.status),
       });
       await upstream.body?.cancel().catch(() => undefined);
-      return authRequiredResponse({
-        provider,
+      const authorization = error.authorization ?? lease.authorization;
+      return authRequiredResult({
+        ...(authorization ? { authorization } : undefined),
         grant: lease.grant,
+        kind: "auth_required",
         message: error.message,
+        provider,
       });
     }
     logSandboxEgressUpstreamRequest({
@@ -845,19 +830,20 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await deps.recordAuthRequired({
-        credentialContext,
-        provider,
-        grant: lease.grant,
-        authorization: lease.authorization,
-        message: `Provider rejected the injected ${provider} credential.`,
-      });
       await upstream.body?.cancel().catch(() => undefined);
-      return authRequiredResponse({
-        provider,
-        grant: lease.grant,
-        message: `Provider rejected the injected ${provider} credential.\n`,
-      });
+      const message = `Provider rejected the injected ${provider} credential.`;
+      return authRequiredResult(
+        {
+          ...(lease.authorization
+            ? { authorization: lease.authorization }
+            : undefined),
+          grant: lease.grant,
+          kind: "auth_required",
+          message,
+          provider,
+        },
+        `${message}\n`,
+      );
     }
     if (
       upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
@@ -875,11 +861,11 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.retrying", {
         ...attributes(lease, upstream.status),
       });
-      leaseOrResponse = await resolveLease();
-      if (leaseOrResponse instanceof Response) {
-        return leaseOrResponse;
+      leased = await resolveLease();
+      if ("response" in leased) {
+        return leased;
       }
-      lease = leaseOrResponse;
+      lease = leased;
       retriedAfter403 = true;
       continue;
     }
@@ -907,11 +893,13 @@ export async function executeCredentialedEgressRequest(input: {
           ...attributes(lease, upstream.status),
         });
       }
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
-      });
+      return {
+        response: new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: responseHeaders(upstream),
+        }),
+      };
     }
 
     if (pluginPermissionDenied) {
@@ -928,10 +916,12 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
 
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders(upstream),
-    });
+    return {
+      response: new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders(upstream),
+      }),
+    };
   }
 }
