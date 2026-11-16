@@ -15,8 +15,8 @@ export const transcriptScrollClassName =
 export const transcriptWidthClassName = "w-full @min-[62rem]/chat:px-6";
 
 /**
- * Hold a transcript in the `ChatLayout` scroll region. `full` gives the event
- * log the whole width.
+ * Hold a transcript in the `ChatLayout` scroll region. `full` is for the event
+ * log, which has no outline, so it drops the outline and top padding.
  */
 export function TranscriptColumn(props: {
   children: ReactNode;
