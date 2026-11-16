@@ -734,6 +734,8 @@ export function buildPluginSystemPromptContributions(
 }
 
 type TurnContextPromptInput = {
+  /** IANA timezone of the person who asked. */
+  askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
   disabledTools?: DisabledToolPromptContext[];
@@ -822,6 +824,12 @@ export function buildTurnContextPrompt(
   const userCustomization = buildUserCustomizationSection(
     params.userCustomization,
   );
+  const askerTimezone = params.askerTimezone
+    ? renderTagBlock(
+        REQUEST_CONTEXT_SECTION_TAG.askerTimezone,
+        escapeXml(params.askerTimezone),
+      )
+    : null;
   const turnInput = buildTurnInputSection(params.turnInput);
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
@@ -832,6 +840,7 @@ export function buildTurnContextPrompt(
     !conversationNotes &&
     !disabledTools &&
     !userCustomization &&
+    !askerTimezone &&
     !turnInput
   ) {
     return null;
@@ -842,6 +851,7 @@ export function buildTurnContextPrompt(
     conversationNotes,
     disabledTools,
     userCustomization,
+    askerTimezone,
     turnInput,
     includeSessionContext
       ? buildContextSection({

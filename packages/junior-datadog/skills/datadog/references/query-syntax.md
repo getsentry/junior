@@ -81,6 +81,13 @@ Datadog metric query strings follow the usual metric explorer shape:
 
 Use `metrics search` or `metrics list` to find names, `metrics metadata get` for metadata, and `metrics tags list` for tag dimensions before querying when needed.
 
+### Counting events in a distribution
+
+Before you count events, run `metrics metadata get` and read the metric type. For a `distribution`:
+
+- `count:` returns the number of recorded values. Use it to count events.
+- `sum:` adds the recorded values. It is not a count. It changes when the values change, even when the number of events stays the same.
+
 ## Time windows
 
 - For "right now" questions, default to the last 15 minutes.

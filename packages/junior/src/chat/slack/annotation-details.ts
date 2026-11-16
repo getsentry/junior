@@ -7,6 +7,7 @@ import { getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { annotationKeyDigest, decodeAnnotationRef } from "./annotation-ref";
 import { getSlackClient } from "./client";
 import { renderSlackObjectCard } from "./object-card";
 import { slackEntitySchema, slackExternalRefIdSchema } from "./work-object";
@@ -16,7 +17,7 @@ const eventSchema = z.object({
   user: z.string().min(1),
   external_ref: z.object({
     type: z.literal("annotation"),
-    id: slackExternalRefIdSchema.max(4096),
+    id: slackExternalRefIdSchema,
   }),
 }) satisfies z.ZodType<
   Pick<
@@ -24,11 +25,6 @@ const eventSchema = z.object({
     "trigger_id" | "user" | "external_ref"
   >
 >;
-const refSchema = z.tuple([
-  z.string().min(1),
-  z.string().min(1),
-  z.string().min(1),
-]);
 
 /** Show saved annotation facts only to a viewer who can read their Conversation. */
 export async function presentSlackAnnotationDetails(
@@ -48,21 +44,12 @@ export async function presentSlackAnnotationDetails(
     await missing();
     return;
   }
-  let value: unknown;
-  try {
-    value = JSON.parse(
-      Buffer.from(parsed.data.external_ref.id, "base64url").toString("utf8"),
-    );
-  } catch {
+  const ref = decodeAnnotationRef(parsed.data.external_ref.id);
+  if (!ref) {
     await missing();
     return;
   }
-  const ref = refSchema.safeParse(value);
-  if (!ref.success) {
-    await missing();
-    return;
-  }
-  const [conversationId, plugin, key] = ref.data;
+  const { conversationId, keyDigest } = ref;
   const db = getDb();
   const identity = await readActorIdentity({
     platform: "slack",
@@ -99,7 +86,7 @@ export async function presentSlackAnnotationDetails(
   }
   const annotation = (
     await listConversationAnnotations(db, conversationId)
-  ).find((item) => item.plugin === plugin && item.key === key);
+  ).find((item) => annotationKeyDigest(item.plugin, item.key) === keyDigest);
   if (!annotation) {
     await missing();
     return;
@@ -115,6 +102,10 @@ export async function presentSlackAnnotationDetails(
   }
   await client.entity.presentDetails({
     trigger_id: parsed.data.trigger_id,
-    metadata: slackEntitySchema.parse(entity),
+    // Echo the posted reference so a legacy card keeps its identity.
+    metadata: slackEntitySchema.parse({
+      ...entity,
+      external_ref: parsed.data.external_ref,
+    }),
   });
 }

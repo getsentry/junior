@@ -153,8 +153,9 @@ export function ConversationWorkspace(props: {
   useEffect(() => {
     homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  // A failed next page keeps the loaded rows; the load-more row shows it.
-  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  // A failed refresh or next page keeps the loaded rows. The load-more row
+  // shows a failed next page.
+  const feedError = feed.data ? undefined : feed.error?.message;
   const morePages: ConversationFeedMorePages = {
     failed: feed.isFetchNextPageError,
     hasMore: feed.hasNextPage,
