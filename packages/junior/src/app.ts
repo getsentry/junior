@@ -96,9 +96,13 @@ import {
   createVercelPluginTaskCallback,
   pluginTaskQueueConsumer,
   registerVercelPluginTaskDevConsumer,
+  sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import { processPluginTask } from "@/chat/plugins/task-runner";
+import {
+  processPluginTask,
+  type SendPluginTask,
+} from "@/chat/plugins/task-runner";
 import {
   cacheWarmupQueueConsumer,
   createVercelCacheWarmupCallback,
@@ -613,6 +617,9 @@ export async function createApp(
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const sendPluginTask: SendPluginTask = pluginTaskQueue
+    ? (message) => pluginTaskQueue.send(message)
+    : sendVercelPluginTask;
   const backgroundCompactionQueue =
     options?.backgroundCompactionQueue?.((message) =>
       processBackgroundCompaction(message),
@@ -643,9 +650,7 @@ export async function createApp(
       createProductionConversationWorkOptions({
         agentRunner,
         queue: conversationWorkQueue,
-        ...(pluginTaskQueue
-          ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
-          : undefined),
+        sendPluginTask,
         services: runtimeServiceOverrides,
         waitUntil: (task) => {
           backgroundWork.add(task);
@@ -743,6 +748,7 @@ export async function createApp(
   const slackWebhookServices = {
     ...createProductionSlackWebhookServices({
       queue: conversationWorkQueue,
+      sendPluginTask,
       services: runtimeServiceOverrides,
     }),
     allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],

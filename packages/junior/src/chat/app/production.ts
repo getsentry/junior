@@ -19,7 +19,7 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 
@@ -56,11 +56,13 @@ export function getProductionConversationStore(): ConversationStore {
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options: {
   queue: ConversationWorkQueue;
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
   const conversationStore = getProductionConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
+    sendPluginTask: options.sendPluginTask,
     services: options?.services,
   });
   return {
@@ -76,8 +78,7 @@ export function createProductionSlackWebhookServices(options: {
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
   queue: ConversationWorkQueue;
-  /** Send path for plugin tasks. Without it, tasks go to the Vercel queue. */
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides;
   waitUntil: (task: Promise<unknown>) => void;
 }): ConversationWorkCallbackOptions {

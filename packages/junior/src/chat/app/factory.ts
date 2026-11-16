@@ -32,7 +32,7 @@ import {
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   createPausedTurns,
   type PausedTurns,
@@ -42,9 +42,7 @@ export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: (() => number) | undefined;
   pausedTurns?: PausedTurns;
-  sendPluginTask?:
-    | ScheduleSessionCompletedPluginTasksOptions["send"]
-    | undefined;
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides | undefined;
   /** Keeps background work started by a turn alive. */
   waitUntil?: ((task: Promise<unknown>) => void) | undefined;

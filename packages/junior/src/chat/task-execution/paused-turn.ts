@@ -59,9 +59,9 @@ import {
   markTurnCompleted,
   markTurnFailed,
 } from "@/chat/runtime/turn";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
-  wakePausedTurn as defaultWakePausedTurn,
   type PausedTurnRequest,
 } from "@/chat/task-execution/turn-wake";
 import {
@@ -108,11 +108,10 @@ export interface PausedTurnOptions {
     AgentRun,
     "actor" | "credentialContext" | "dispatch" | "surface"
   >;
-  wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
-  scheduleSessionCompletedPluginTasks?: (params: {
-    conversationId: string;
-    sessionId: string;
-  }) => Promise<void>;
+  /** Sends the plugin tasks of a completed Turn. */
+  sendPluginTask: SendPluginTask;
+  /** Wakes the paused Turn again, on the queue that the caller owns. */
+  wakePausedTurn: (request: PausedTurnRequest) => Promise<void>;
 }
 
 /** Per-worker controls for one paused turn. */
@@ -434,7 +433,6 @@ async function runPausedTurnInContext(
     payload.destination,
     "Paused turn",
   );
-  const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
   const routing = await resolveConversationRouting({
     conversationId: payload.conversationId,
   });
@@ -457,8 +455,7 @@ async function runPausedTurnInContext(
     ...(target.threadTs ? { threadTs: target.threadTs } : undefined),
     executeTurn: async (run, saveResult) =>
       await executeTurn(options.agentRunner, run, saveResult),
-    scheduleSessionCompletedPluginTasks:
-      options.scheduleSessionCompletedPluginTasks,
+    sendPluginTask: options.sendPluginTask,
     beforeStart: async () => {
       let turn: TurnRecord | undefined;
       try {
@@ -712,7 +709,7 @@ async function runPausedTurnInContext(
             });
           },
           onSuspend: async (resumeVersion) => {
-            await wakePausedTurn({
+            await options.wakePausedTurn({
               conversationId: payload.conversationId,
               destination: payload.destination,
               turnId: payload.turnId,

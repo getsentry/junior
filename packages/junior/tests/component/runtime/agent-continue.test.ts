@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
@@ -184,6 +185,8 @@ describe("paused turn scheduling", () => {
       run: async () => {
         await runNextPausedTurn(conversationId, {
           agentRunner: agentRunnerShouldNotRun,
+          sendPluginTask: sendVercelPluginTask,
+          wakePausedTurn,
         });
         return { status: "completed" as const };
       },
@@ -225,6 +228,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        sendPluginTask: sendVercelPluginTask,
+        wakePausedTurn,
       }),
     ).resolves.toBe(false);
     await expect(
@@ -283,6 +288,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        sendPluginTask: sendVercelPluginTask,
+        wakePausedTurn,
       }),
     ).resolves.toBe(false);
     await expect(

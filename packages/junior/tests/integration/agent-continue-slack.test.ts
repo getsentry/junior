@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
@@ -77,6 +78,7 @@ function continueAgentRun(args: {
       },
       {
         agentRunner,
+        sendPluginTask: sendVercelPluginTask,
         wakePausedTurn: (request) =>
           turnWakeModule.wakePausedTurn(request, {
             queue,

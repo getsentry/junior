@@ -295,7 +295,7 @@ describe("Conversation Brief task", () => {
       params: { conversationId, sessionId: "turn-1" },
     };
     const send = vi.fn();
-    await scheduleSessionCompletedPluginTasks(firstTask.params, { send });
+    await scheduleSessionCompletedPluginTasks(firstTask.params, send);
     expect(send).toHaveBeenCalledWith(firstTask);
     await processPluginTask(firstTask);
 

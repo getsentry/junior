@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
@@ -159,6 +160,7 @@ export async function createConversationWebHarness(
     // longer requires one for web input.
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
+    sendPluginTask: sendVercelPluginTask,
     state,
   });
   // Sign in like the dashboard and ACP, so the web Actor id is the User id.
