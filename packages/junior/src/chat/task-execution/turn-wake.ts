@@ -16,6 +16,7 @@ import {
   type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { logException } from "@/chat/logging";
 import {
   failTurnRecord,
   loadTurnCheckpoint,
@@ -108,7 +109,7 @@ export async function getPausedTurnRequest(args: {
 
 /**
  * Record that a resume failed a dispatch turn for good. Without this outcome,
- * the dispatch runs the turn again.
+ * the dispatch runs the turn again, so a failed write is only logged.
  */
 export async function recordFailedDispatchTurn(
   turn: TurnRecord,
@@ -116,20 +117,27 @@ export async function recordFailedDispatchTurn(
   if (!turn.dispatchId) {
     return;
   }
-  // The dispatch record owns the routing of a dispatch Conversation. Its
-  // Conversation has no Slack session Source.
-  const dispatch = await getDispatchRecord(turn.dispatchId);
-  await recordTurnSummary({
-    conversationId: turn.conversationId,
-    destination: dispatch?.destination,
-    dispatchId: turn.dispatchId,
-    dispatchOutcome: "failed",
-    turnId: turn.turnId,
-    sliceId: turn.sliceId,
-    source: dispatch?.source,
-    state: "failed",
-    surface: turn.surface,
-  });
+  try {
+    // The dispatch record owns the routing of a dispatch Conversation. Its
+    // Conversation has no Slack session Source.
+    const dispatch = await getDispatchRecord(turn.dispatchId);
+    await recordTurnSummary({
+      conversationId: turn.conversationId,
+      destination: dispatch?.destination,
+      dispatchId: turn.dispatchId,
+      dispatchOutcome: "failed",
+      turnId: turn.turnId,
+      sliceId: turn.sliceId,
+      source: dispatch?.source,
+      state: "failed",
+      surface: turn.surface,
+    });
+  } catch (error) {
+    logException(error, "agent.continue.dispatch_failure_summary.failed", {
+      "app.ai.conversation_id": turn.conversationId,
+      "app.ai.session_id": turn.turnId,
+    });
+  }
 }
 
 /** Wake the conversation worker for a paused turn. */

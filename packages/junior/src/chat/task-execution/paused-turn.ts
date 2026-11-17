@@ -386,14 +386,7 @@ async function failPausedTurn(args: {
   });
   if (!failed) return;
 
-  try {
-    await recordFailedDispatchTurn(failed);
-  } catch (error) {
-    logException(error, "agent.continue.dispatch_failure_summary.failed", {
-      "app.ai.conversation_id": args.conversationId,
-      "app.ai.session_id": args.summary.turnId,
-    });
-  }
+  await recordFailedDispatchTurn(failed);
 }
 
 /**
