@@ -834,6 +834,13 @@
       "when": 1794933647013,
       "tag": "0118_automation_last_run_index",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794934394385,
+      "tag": "0119_automation_rollout_repair",
+      "breakpoints": true
     }
   ]
 }
