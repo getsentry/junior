@@ -25,7 +25,7 @@
   "packages/junior/src/chat/conversations/sql/history.ts": 3,
   "packages/junior/src/chat/conversations/sql/purge.ts": 2,
   "packages/junior/src/chat/credentials/state-adapter-token-store.ts": 4,
-  "packages/junior/src/chat/egress/credentialed.ts": 15,
+  "packages/junior/src/chat/egress/credentialed.ts": 13,
   "packages/junior/src/chat/egress/graphql.ts": 1,
   "packages/junior/src/chat/event-automations/ingest.ts": 8,
   "packages/junior/src/chat/event-automations/runs.ts": 2,

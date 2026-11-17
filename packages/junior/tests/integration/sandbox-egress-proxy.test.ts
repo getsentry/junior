@@ -6,6 +6,7 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   EgressAuthRequired,
+  EgressPolicyDenied,
   pluginToolOutputSchema,
   type PluginHooks,
 } from "@sentry/junior-plugin-api";
@@ -104,8 +105,13 @@ function traceHeadersFor(
   return allow?.[host]?.[0]?.transform?.[0]?.headers;
 }
 
+// Sandbox tools ask for a credential by sending the plugin placeholder.
+const PLACEHOLDER_AUTHORIZATION = "Bearer host_managed_credential";
+
 function proxiedRequest(input: {
   body?: BodyInit;
+  /** The Authorization header. `null` sends none, as git does. */
+  credential?: string | null;
   forwardURL: string;
   headers?: Record<string, string>;
   method?: string;
@@ -127,6 +133,9 @@ function proxiedRequest(input: {
       "vercel-forwarded-path": upstreamPath,
       "vercel-forwarded-scheme": "https",
       "vercel-sandbox-oidc-token": "signed-vercel-token",
+      ...(input.credential === null
+        ? undefined
+        : { authorization: input.credential ?? PLACEHOLDER_AUTHORIZATION }),
       ...(input.body !== undefined
         ? { "content-type": "application/json" }
         : undefined),
@@ -141,6 +150,7 @@ async function registerManagedEgressPlugin(input?: {
   issueCredential?: NonNullable<PluginHooks["issueCredential"]>;
   onEgressResponse?: NonNullable<PluginHooks["onEgressResponse"]>;
   tools?: NonNullable<PluginHooks["tools"]>;
+  toolsSendNoCredential?: boolean;
 }) {
   const { createApp, defineJuniorPlugins } = await import("@/app");
   await createApp({
@@ -151,6 +161,9 @@ async function registerManagedEgressPlugin(input?: {
           displayName: "Managed Egress",
           description: "Managed egress integration fixture",
           domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
+          ...(input?.toolsSendNoCredential
+            ? { toolsSendNoCredential: true }
+            : undefined),
         },
         hooks: {
           grantForEgress:
@@ -1283,6 +1296,7 @@ describe("sandbox egress proxy integration", () => {
     const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body,
+        credential: null,
         forwardURL,
         headers: {
           "content-type": "application/x-git-receive-pack-request",
@@ -2061,5 +2075,187 @@ describe("sandbox egress proxy integration", () => {
       },
       message: "Missing GITHUB_APP_ID",
     });
+  });
+
+  /** Send one Sandbox request and return the response and the upstream headers. */
+  async function sendFromSandbox(input: {
+    credential?: string | null;
+    headers?: Record<string, string>;
+    method?: string;
+    upstreamHost: string;
+  }) {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      input.upstreamHost,
+    );
+    const upstream: Headers[] = [];
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        upstream.push(new Headers(init?.headers));
+        return new Response("ok");
+      },
+    );
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        ...(input.credential !== undefined
+          ? { credential: input.credential }
+          : undefined),
+        forwardURL,
+        ...(input.headers ? { headers: input.headers } : undefined),
+        ...(input.method ? { method: input.method } : undefined),
+        upstreamHost: input.upstreamHost,
+        upstreamPath: "/v1/items",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    return { response, upstream };
+  }
+
+  it("sandbox-credentials#placeholder-only: adds the credential only to a request that sends the placeholder", async () => {
+    const asked = await sendFromSandbox({ upstreamHost: PROVIDER_HOST });
+    expect(asked.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
+    // Git and other tools send the placeholder as a Basic auth password.
+    const basic = await sendFromSandbox({
+      credential: `Basic ${Buffer.from("x-access-token:ghp_host_managed_credential").toString("base64")}`,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(basic.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#placeholder-only: asks nobody to connect for a request without the placeholder", async () => {
+    const issueCredential = vi.fn(() => ({
+      type: "needed" as const,
+      message: "Connect the managed provider.",
+    }));
+    await registerManagedEgressPlugin({ issueCredential });
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+    expect(issueCredential).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
+  });
+
+  it("sandbox-credentials#own-credential-kept: keeps a credential that the request carries", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    const strict = await sendFromSandbox({
+      credential: "Bearer person-test-login",
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(strict.upstream[0]?.get("authorization")).toBe(
+      "Bearer person-test-login",
+    );
+
+    const token = await sendFromSandbox({
+      credential: "token person-test-login",
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(token.upstream[0]?.get("authorization")).toBe(
+      "token person-test-login",
+    );
+
+    // A browser that a person signed in keeps its session.
+    const browser = await sendFromSandbox({
+      credential: null,
+      headers: { cookie: "user_session=person" },
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(browser.upstream[0]?.get("authorization")).toBeNull();
+    expect(browser.upstream[0]?.get("cookie")).toBe("user_session=person");
+  });
+
+  it("sandbox-credentials#tools-send-none: adds the credential to a bare request only when the plugin's tools send none", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(bare.upstream[0]?.get("authorization")).toBe(
+      "Bearer installation-read",
+    );
+
+    const strict = await sendFromSandbox({
+      credential: null,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(strict.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#browser-none: adds no credential to a browser request", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    // A page script can send the placeholder too.
+    const placeholder = await sendFromSandbox({
+      headers: { "sec-fetch-mode": "cors" },
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(placeholder.response.status).toBe(200);
+    expect(placeholder.upstream[0]?.get("authorization")).toBe(
+      "Bearer host_managed_credential",
+    );
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      headers: { "sec-fetch-mode": "navigate" },
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#policy-any-credential: applies the plugin's egress policy to a request that carries its own credential", async () => {
+    const grantForEgress = vi.fn<NonNullable<PluginHooks["grantForEgress"]>>(
+      (ctx) => {
+        if (ctx.request.method === "DELETE") {
+          throw new EgressPolicyDenied("Deletes are blocked here.");
+        }
+        return { name: "installation-read", access: "read" };
+      },
+    );
+    await registerManagedEgressPlugin({ grantForEgress });
+
+    const denied = await sendFromSandbox({
+      credential: "token person-test-login",
+      method: "DELETE",
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+
+    expect(denied.response.status).toBe(403);
+    await expect(denied.response.json()).resolves.toEqual({
+      error: "Deletes are blocked here.",
+    });
+    expect(denied.upstream).toHaveLength(0);
+    // The hook knows that Junior adds no credential to this request.
+    expect(grantForEgress.mock.calls[0]?.[0].request.withoutCredential).toBe(
+      true,
+    );
   });
 });

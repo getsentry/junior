@@ -203,47 +203,57 @@ function matchText(subject: unknown, match: unknown, value: unknown): string {
   return `${String(subject)} ${verb}${tail}`;
 }
 
+type FilterFields = { comparison: unknown; fields: Record<string, unknown> };
+
+// Plain words for each filter condition type. Undefined falls back to the
+// type name.
+const FILTER_TEXTS: Record<
+  string,
+  (filter: FilterFields) => string | undefined
+> = {
+  issue_category: ({ fields }) => {
+    const name = ISSUE_CATEGORIES[Number(fields["value"])];
+    return name && fields["include"] === false
+      ? `Not ${name.toLowerCase()}`
+      : name;
+  },
+  tagged_event: ({ fields }) =>
+    matchText(fields["key"], fields["match"], fields["value"]),
+  event_attribute: ({ fields }) =>
+    matchText(fields["attribute"], fields["match"], fields["value"]),
+  issue_priority_equals: ({ comparison }) => {
+    const priority = PRIORITIES[Number(comparison)];
+    return priority && `Priority is ${priority}`;
+  },
+  issue_priority_greater_or_equal: ({ comparison }) => {
+    const priority = PRIORITIES[Number(comparison)];
+    return priority && `Priority ${priority} or higher`;
+  },
+  level: ({ fields }) => {
+    const level = LEVELS[Number(fields["level"])];
+    if (!level) return undefined;
+    const match = fields["match"];
+    return match === "gte"
+      ? `Level ${level} or higher`
+      : match === "lte"
+        ? `Level ${level} or lower`
+        : `Level is ${level}`;
+  },
+  issue_occurrences: ({ fields }) => `Seen ${String(fields["value"])}+ times`,
+  event_frequency_count: ({ fields }) =>
+    `Over ${String(fields["value"])} events in ${String(fields["interval"])}`,
+  event_unique_user_frequency_count: ({ fields }) =>
+    `Over ${String(fields["value"])} users in ${String(fields["interval"])}`,
+};
+
 /** Say what one filter condition of an alert checks, in plain words. */
 function filterText({ type, comparison }: z.infer<typeof conditionSchema>) {
   const fields =
     z.record(z.string(), z.unknown()).safeParse(comparison).data ?? {};
-  switch (type) {
-    case "issue_category": {
-      const name = ISSUE_CATEGORIES[Number(fields["value"])];
-      if (!name) break;
-      return fields["include"] === false ? `Not ${name.toLowerCase()}` : name;
-    }
-    case "tagged_event":
-      return matchText(fields["key"], fields["match"], fields["value"]);
-    case "event_attribute":
-      return matchText(fields["attribute"], fields["match"], fields["value"]);
-    case "issue_priority_greater_or_equal":
-    case "issue_priority_equals": {
-      const priority = PRIORITIES[Number(comparison)];
-      if (!priority) break;
-      return type === "issue_priority_equals"
-        ? `Priority is ${priority}`
-        : `Priority ${priority} or higher`;
-    }
-    case "level": {
-      const level = LEVELS[Number(fields["level"])];
-      if (!level) break;
-      const match = fields["match"];
-      return match === "gte"
-        ? `Level ${level} or higher`
-        : match === "lte"
-          ? `Level ${level} or lower`
-          : `Level is ${level}`;
-    }
-    case "issue_occurrences":
-      return `Seen ${String(fields["value"])}+ times`;
-    case "event_frequency_count":
-    case "event_unique_user_frequency_count": {
-      const noun = type === "event_frequency_count" ? "events" : "users";
-      return `Over ${String(fields["value"])} ${noun} in ${String(fields["interval"])}`;
-    }
-  }
-  return humanize(type);
+  const read = Object.hasOwn(FILTER_TEXTS, type)
+    ? FILTER_TEXTS[type]
+    : undefined;
+  return read?.({ comparison, fields }) ?? humanize(type);
 }
 
 /** Summarize when an alert fires, such as "First seen · Feedback". */

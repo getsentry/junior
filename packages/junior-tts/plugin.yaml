@@ -10,3 +10,6 @@ domains:
 
 api-headers:
   Authorization: Bearer ${AI_GATEWAY_API_KEY}
+
+# The skill sends no credential header. Junior adds it.
+tools-send-no-credential: true

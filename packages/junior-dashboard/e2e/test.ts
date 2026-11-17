@@ -33,7 +33,10 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
       await use(server);
       await server.close();
     },
-    { scope: "worker" },
+    // The server takes 4 to 6 seconds to boot. With the default, that time
+    // counts against the first test of each worker and against every retry,
+    // because a retry starts a new worker. Give the boot its own limit.
+    { scope: "worker", timeout: 60_000 },
   ],
   page: async ({ page, controlTimers, dashboard, ui }, use) => {
     // The dashboard server is shared per worker; reset its mutable mock

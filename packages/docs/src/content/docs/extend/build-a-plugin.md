@@ -81,6 +81,23 @@ This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
 
+### Placeholders
+
+Junior adds a credential only to a Sandbox request that asks for one. A tool
+asks by sending the placeholder from its auth env var, such as
+`Authorization: Bearer host_managed_credential`. A placeholder contains
+`host_managed_credential`, or equals `auth-token-placeholder`.
+
+- A request without the placeholder goes upstream with no credential.
+- A request that carries its own credential, such as a test login or a
+  browser cookie, keeps it.
+- A request from a browser, such as Chromium driven by Playwright, gets no
+  credential. Junior detects it by its `Sec-Fetch-Mode` header.
+
+When your tools send no credential, such as `curl` with no auth header, set
+`tools-send-no-credential: true`. Junior then adds the credential to requests
+that carry none, except browser requests.
+
 ### Pre-registered MCP OAuth clients
 
 Junior registers itself as an OAuth client when an MCP server asks a user to
