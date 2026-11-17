@@ -31,6 +31,23 @@ describe("Skills", () => {
     expect(second.replies).toHaveLength(1);
   });
 
+  test("when an invoked skill names manual-only skills, load each one it names", async ({
+    run,
+  }) => {
+    // `launch-review` names `launch-checks`, which names `launch-signoff`.
+    // Only `launch-signoff` has the code, and it becomes loadable only after
+    // `launch-checks` loads.
+    const result = await run(slackMention("/launch-review Atlas"));
+
+    const loads = toolCallsOf("loadSkill", result);
+    expect(loads.map((call) => call.status)).not.toContain("error");
+    expect(
+      loads.filter((call) => call.status === "completed").length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(result.replies).toHaveLength(1);
+    expect(result.replies[0]!.text).toContain("ORCHID-42");
+  });
+
   test("when an automation runs a manual-only skill, follow that skill with its context", async ({
     run,
   }) => {
