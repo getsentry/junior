@@ -1,0 +1,37 @@
+{
+  "addedByConversationId": "internal:question-qa",
+  "assignedToEveryone": false,
+  "assignees": [
+    {
+      "displayName": "Dashboard User",
+      "email": "dev@example.com",
+      "userId": "u-dev"
+    }
+  ],
+  "body": "The canary error rate is flat for 30 minutes.",
+  "canAct": true,
+  "canTake": false,
+  "conversationIds": ["internal:question-qa"],
+  "createdAt": "2026-08-07T11:34:00.000Z",
+  "id": "qa-rollout",
+  "kind": "action",
+  "request": {
+    "question": "Roll out payments-v42 to every region?",
+    "fields": [
+      {
+        "id": "go",
+        "label": "Rollout",
+        "kind": "choice",
+        "options": [
+          { "label": "Roll out", "recommended": true },
+          { "label": "Hold" },
+          { "label": "EU first" }
+        ]
+      }
+    ]
+  },
+  "status": "open",
+  "title": "Approve the payments-v42 rollout",
+  "updatedAt": "2026-08-07T11:34:00.000Z",
+  "visibility": "public"
+}

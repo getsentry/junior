@@ -1,0 +1,11 @@
+{
+  "autoArchiveDefault": false,
+  "autoArchiveGraceHours": 24,
+  "experimentalUi": false,
+  "user": {
+    "email": "dev@example.com",
+    "emailVerified": true,
+    "name": "Dashboard User",
+    "isAdmin": false
+  }
+}

@@ -1,0 +1,273 @@
+{
+  "automations": [
+    {
+      "costUsd": { "1": 0, "7": 0, "30": 0, "90": 0 },
+      "credentialMode": "creator",
+      "createdAt": "2026-07-30T16:00:00.000Z",
+      "createdBy": "Avery Chen",
+      "createdByEmail": "avery@sentry.io",
+      "destination": {
+        "channelId": "C456",
+        "label": "#incident-response",
+        "teamId": "T123",
+        "visibility": "public"
+      },
+      "id": "event-2",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Notify responders when the incident changes"
+      },
+      "ownedByViewer": false,
+      "recentRuns": [],
+      "runs": { "1": 0, "7": 0, "30": 0, "90": 0 },
+      "outcomes": [
+        {
+          "action": "send_message",
+          "destination": {
+            "platform": "slack",
+            "teamId": "T123",
+            "channelId": "C123"
+          }
+        }
+      ],
+      "title": "Incident change alerts",
+      "totalCostUsd": 0,
+      "totalRuns": 0,
+      "trigger": {
+        "events": ["incident updated"],
+        "filters": [],
+        "problems": ["The plugin for this source is not enabled."]
+      },
+      "kind": "event",
+      "resource": "Incident · INC-17",
+      "source": "pagerduty",
+      "status": "active"
+    },
+    {
+      "costUsd": { "1": 0, "7": 0.12, "30": 0.48, "90": 0.84 },
+      "credentialMode": "creator",
+      "createdAt": "2026-07-29T16:00:00.000Z",
+      "createdBy": "Morgan",
+      "createdByEmail": "dev@example.com",
+      "destination": {
+        "channelId": "C123",
+        "label": "#project-updates",
+        "teamId": "T123",
+        "visibility": "public"
+      },
+      "id": "event-1",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Summarize the closed issue"
+      },
+      "lastConversationId": "agent-dispatch:event-1",
+      "lastRunAt": "2026-08-05T18:30:00.000Z",
+      "ownedByViewer": true,
+      "recentRuns": [
+        {
+          "durationMs": 30000,
+          "executedAt": "2026-07-12T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 67000,
+          "executedAt": "2026-07-16T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 54000,
+          "executedAt": "2026-07-20T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 41000,
+          "executedAt": "2026-07-24T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 78000,
+          "executedAt": "2026-07-28T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 65000,
+          "executedAt": "2026-08-01T18:30:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 52000,
+          "executedAt": "2026-08-05T18:30:00.000Z",
+          "status": "completed"
+        }
+      ],
+      "runs": { "1": 0, "7": 1, "30": 4, "90": 7 },
+      "outcomes": [],
+      "title": "Closed issue summary",
+      "totalCostUsd": 0.84,
+      "totalRuns": 7,
+      "trigger": {
+        "events": ["issue closed"],
+        "filters": ["labels includes bug", "repository is api or web"],
+        "problems": []
+      },
+      "kind": "event",
+      "resource": "Issue · ACME-42",
+      "source": "github",
+      "status": "active"
+    },
+    {
+      "costUsd": { "1": 0.42, "7": 1.02, "30": 4.18, "90": 16.4 },
+      "credentialMode": "creator",
+      "createdAt": "2026-07-28T16:00:00.000Z",
+      "createdBy": "Morgan",
+      "createdByEmail": "dev@example.com",
+      "destination": {
+        "channelId": "C123",
+        "label": "#project-updates",
+        "teamId": "T123",
+        "visibility": "public"
+      },
+      "id": "scheduled-1",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Send the weekly project summary"
+      },
+      "lastConversationId": "scheduler:daily-ops-digest",
+      "lastRunAt": "2026-08-06T16:00:00.000Z",
+      "ownedByViewer": true,
+      "recentRuns": [
+        {
+          "durationMs": 30000,
+          "executedAt": "2026-03-26T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 67000,
+          "executedAt": "2026-04-02T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 54000,
+          "executedAt": "2026-04-09T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 41000,
+          "executedAt": "2026-04-16T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 78000,
+          "executedAt": "2026-04-23T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 65000,
+          "executedAt": "2026-04-30T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 52000,
+          "executedAt": "2026-05-07T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 39000,
+          "executedAt": "2026-05-14T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 76000,
+          "executedAt": "2026-05-21T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 63000,
+          "executedAt": "2026-05-28T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 50000,
+          "executedAt": "2026-06-04T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 37000,
+          "executedAt": "2026-06-11T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 74000,
+          "executedAt": "2026-06-18T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 61000,
+          "executedAt": "2026-06-25T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 48000,
+          "executedAt": "2026-07-02T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 35000,
+          "executedAt": "2026-07-09T16:00:00.000Z",
+          "status": "failed"
+        },
+        {
+          "durationMs": 72000,
+          "executedAt": "2026-07-16T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 59000,
+          "executedAt": "2026-07-23T16:00:00.000Z",
+          "status": "completed"
+        },
+        {
+          "durationMs": 46000,
+          "executedAt": "2026-07-30T16:00:00.000Z",
+          "status": "blocked"
+        },
+        {
+          "durationMs": 33000,
+          "executedAt": "2026-08-06T16:00:00.000Z",
+          "status": "completed"
+        }
+      ],
+      "runs": { "1": 1, "7": 3, "30": 12, "90": 48 },
+      "outcomes": [
+        {
+          "action": "send_message",
+          "destination": {
+            "platform": "slack",
+            "teamId": "T123",
+            "channelId": "C123"
+          }
+        }
+      ],
+      "title": "Weekly project summary",
+      "totalCostUsd": 18.62,
+      "totalRuns": 48,
+      "kind": "scheduled",
+      "nextRunAt": "2026-08-10T16:00:00.000Z",
+      "schedule": "Every Monday at 9:00 AM",
+      "timezone": "America/Los_Angeles",
+      "status": "active"
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "pageSize": 100,
+  "counts": { "all": 3, "mine": 2, "public": 3, "private": 0 },
+  "creators": [
+    { "value": "avery@sentry.io", "label": "Avery Chen" },
+    { "value": "dev@example.com", "label": "Morgan" }
+  ],
+  "destinations": [
+    { "value": "T123:C456", "label": "#incident-response" },
+    { "value": "T123:C123", "label": "#project-updates" }
+  ]
+}

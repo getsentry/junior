@@ -1,0 +1,53 @@
+{
+  "addedByConversationId": "internal:questions-qa",
+  "answer": {
+    "requestId": "qa-migration-window",
+    "values": { "window": ["Sunday 02:00 UTC"] }
+  },
+  "assignedToEveryone": false,
+  "assignees": [
+    {
+      "displayName": "Dashboard User",
+      "email": "dev@example.com",
+      "userId": "u-dev"
+    }
+  ],
+  "body": "Each window keeps the write lock for about 4 minutes.",
+  "canAct": false,
+  "canTake": false,
+  "closedAt": "2026-08-07T12:00:00.000Z",
+  "closedBy": {
+    "displayName": "Dashboard User",
+    "email": "dev@example.com",
+    "userId": "u-dev"
+  },
+  "conversationIds": ["internal:questions-qa"],
+  "createdAt": "2026-08-07T11:18:00.000Z",
+  "id": "qa-migration-window",
+  "kind": "action",
+  "request": {
+    "question": "When should the billing migration run?",
+    "fields": [
+      {
+        "id": "window",
+        "label": "Window",
+        "kind": "choice",
+        "options": [
+          {
+            "label": "Sunday 02:00 UTC",
+            "description": "Lowest traffic of the week.",
+            "recommended": true
+          },
+          {
+            "label": "Tuesday 14:00 UTC",
+            "description": "Support is online if invoices fail."
+          }
+        ]
+      }
+    ]
+  },
+  "status": "done",
+  "title": "Pick the billing migration window",
+  "updatedAt": "2026-08-07T12:00:00.000Z",
+  "visibility": "public"
+}

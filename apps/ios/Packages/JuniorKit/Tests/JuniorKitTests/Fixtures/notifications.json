@@ -1,0 +1,12 @@
+{
+  "schedule": {
+    "followSlack": true,
+    "workingHoursOnly": true,
+    "days": [1, 2, 3, 4, 5],
+    "start": "09:00",
+    "end": "18:00"
+  },
+  "timezone": "America/Los_Angeles",
+  "timezoneSource": "slack",
+  "deviceCount": 0
+}

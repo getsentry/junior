@@ -68,6 +68,21 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 
 Split long files at a feature boundary. Do not compress formatting to pass.
 
+## iOS app
+
+`apps/ios` is the native client. Read `apps/ios/README.md` first. One
+simulator can use about 10 GB of memory, so:
+
+- Test logic with `swift test` in `apps/ios/Packages/JuniorKit`. It needs no
+  simulator.
+- Build and run only with `apps/ios/scripts/xcbuild.sh` and `sim.sh`: one
+  simulator at a time, build before boot, and delete the device after.
+- Do not shut down a simulator that you did not boot. Shut down one that you
+  boot, and check `xcrun simctl list devices booted` before you finish.
+- Run only the UI tests that the change needs.
+- Do not clean-build or delete DerivedData or the shared cache to fix a build
+  until you know the cause.
+
 ## Reference
 
 - `TERMINOLOGY.md`: canonical words for code and docs.
