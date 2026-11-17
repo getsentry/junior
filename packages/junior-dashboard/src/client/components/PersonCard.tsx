@@ -32,43 +32,70 @@ function referenceCard(person: Person): OwnedObjectAnnotation {
   };
 }
 
-function count(value: number, noun: string): string {
-  return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`;
+const SECTION_CLASS =
+  "grid gap-2 border-t border-dashboard-border pt-3 text-xs";
+const SECTION_TITLE_CLASS = "m-0 text-xs font-medium text-dashboard-text-muted";
+const ROW_LINK_CLASS =
+  "min-w-0 truncate text-sm text-dashboard-text hover:underline focus-visible:outline-dashboard-focus";
+
+// The pull requests the person merged come first: they say more about what
+// the person does than their Junior activity.
+function MergedChanges(props: { changes: PersonCardReport["mergedChanges"] }) {
+  if (props.changes.length === 0) return null;
+  return (
+    <section aria-label="Recently shipped" className={SECTION_CLASS}>
+      <p className={SECTION_TITLE_CLASS}>Recently shipped</p>
+      <ul className="m-0 grid list-none gap-2 p-0">
+        {props.changes.map((change) => {
+          const at = change.mergedAt ?? change.openedAt;
+          const title = change.title ?? `#${change.number}`;
+          return (
+            // The title gets the whole first line. The pull request and
+            // when it merged go below it.
+            <li key={change.id} className="grid min-w-0">
+              {change.url ? (
+                <a
+                  className={ROW_LINK_CLASS}
+                  href={change.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {title}
+                </a>
+              ) : (
+                <span className="min-w-0 truncate text-sm">{title}</span>
+              )}
+              <span className="min-w-0 truncate text-dashboard-text-muted">
+                {change.repository}#{change.number} ·{" "}
+                <time dateTime={at} title={formatTime(at)}>
+                  merged {formatRelativeTime(at)}
+                </time>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
-function PersonActivity(props: {
-  activity: PersonCardReport["activity"] | undefined;
-  loading: boolean;
-}) {
+function PersonActivity(props: { activity: PersonCardReport["activity"] }) {
   const { activity } = props;
-  if (!activity) {
-    return props.loading ? (
-      <p className="m-0 text-xs text-dashboard-text-muted">
-        Loading recent activity…
-      </p>
-    ) : null;
-  }
   return (
-    <section
-      aria-label="Recent activity"
-      className="grid gap-2 border-t border-dashboard-border pt-3 text-xs"
-    >
-      <p className="m-0 text-dashboard-text-muted">
+    <section aria-label="Recent activity" className={SECTION_CLASS}>
+      <p className={SECTION_TITLE_CLASS}>
         {activity.lastActiveAt ? (
           <>
-            Last active{" "}
+            Last active on Junior{" "}
             <time
               dateTime={activity.lastActiveAt}
               title={formatTime(activity.lastActiveAt)}
             >
               {formatRelativeTime(activity.lastActiveAt)}
             </time>
-            {" · "}
-            {count(activity.turns, "turn")} in{" "}
-            {count(activity.conversations, "conversation")} this week
           </>
         ) : (
-          "No recent activity"
+          "No recent activity on Junior"
         )}
       </p>
       {activity.recentConversations.length > 0 && (
@@ -79,7 +106,7 @@ function PersonActivity(props: {
               className="flex min-w-0 items-baseline gap-2"
             >
               <Link
-                className="min-w-0 truncate text-sm text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+                className={ROW_LINK_CLASS}
                 to={conversationPath(item.conversationId)}
               >
                 {item.title}
@@ -101,8 +128,8 @@ function PersonActivity(props: {
 
 /**
  * The card of one person: their person object card, the same one a link to
- * their People page shows, and their recent activity in the Conversations
- * the viewer may read. It loads when it opens. `actions` holds buttons for
+ * their People page shows, the pull requests they merged most recently, and
+ * their recent activity in the Conversations the viewer may read. It loads when it opens. `actions` holds buttons for
  * this person, such as an invite.
  */
 export function PersonCard(props: { actions?: ReactNode; person: Person }) {
@@ -126,9 +153,17 @@ export function PersonCard(props: { actions?: ReactNode; person: Person }) {
         className="my-0 rounded-none border-0"
         live
       >
-        {email !== undefined && (
-          <PersonActivity activity={data?.activity} loading={isPending} />
-        )}
+        {email !== undefined && isPending ? (
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            Loading recent activity…
+          </p>
+        ) : null}
+        {data ? (
+          <>
+            <MergedChanges changes={data.mergedChanges} />
+            <PersonActivity activity={data.activity} />
+          </>
+        ) : null}
         {props.actions ? (
           <div className="flex flex-wrap gap-2">{props.actions}</div>
         ) : null}

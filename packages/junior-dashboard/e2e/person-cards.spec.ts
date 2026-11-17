@@ -48,12 +48,28 @@ test("a message header name opens the person card", async ({
   ).toHaveAttribute("href", /\/people\/dev%40example\.com$/);
   await expect(card).toContainText("dev@example.com");
   await expect(card).toContainText("@dev-example");
-  // With the recent activity of the person.
+  // The pull requests the person merged come first, then their activity.
+  const shipped = card.getByRole("region", { name: "Recently shipped" });
+  await expect(shipped.getByRole("link").first()).toHaveAttribute(
+    "href",
+    /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
+  );
+  // Each one names its repository and number, and when it merged.
+  await expect(shipped).toContainText(/\S+\/\S+#\d+ · merged /);
   const activity = card.getByRole("region", { name: "Recent activity" });
-  await expect(activity).toContainText("Last active");
+  await expect(activity).toContainText("Last active on Junior");
   await expect(activity.getByRole("link").first()).toHaveAttribute(
     "href",
     /^\/conversations\//,
+  );
+  const names = await card
+    .getByRole("region")
+    .evaluateAll((regions) =>
+      regions.map((region) => region.getAttribute("aria-label")),
+    );
+  expect(names.indexOf("Recently shipped")).toBeGreaterThanOrEqual(0);
+  expect(names.indexOf("Recently shipped")).toBeLessThan(
+    names.indexOf("Recent activity"),
   );
 
   // A keyboard reader opens it with focus and closes it with Escape.
@@ -96,9 +112,9 @@ test("a Slack mention shows the photo and name, and opens the person card", asyn
   await mention.locator('[aria-hidden="true"]').first().hover();
   await expect(card).toBeVisible();
   // Avery's one Conversation is a private one the viewer is not in: it
-  // counts, but it does not show.
+  // sets "Last active", but it does not show.
   const activity = card.getByRole("region", { name: "Recent activity" });
-  await expect(activity).toContainText("1 conversation this week");
+  await expect(activity).toContainText("Last active on Junior");
   await expect(activity.getByRole("link")).toHaveCount(0);
 });
 
@@ -203,11 +219,24 @@ test(
       await expect(
         message.getByRole("link", { name: "@Avery Chen" }),
       ).toBeVisible();
-      await page
-        .getByRole("region", { name: "Asked Pick the canary region" })
-        .scrollIntoViewIfNeeded();
+      const ask = page.getByRole("region", {
+        name: "Asked Pick the canary region",
+      });
+      await ask.scrollIntoViewIfNeeded();
       await screenshot(page, "person-references", {
         lightTheme: true,
+        view: view.name,
+      });
+      // Close crops of a mention and an "Answered by" line, to check that
+      // each photo sits on the middle of its line.
+      await screenshot(page, "person-mention-line", {
+        lightTheme: true,
+        target: message.locator("p").filter({ hasText: "can roll it back" }),
+        view: view.name,
+      });
+      await screenshot(page, "person-answered-by-line", {
+        lightTheme: true,
+        target: ask,
         view: view.name,
       });
       // The viewer's own card has Conversations they may read.
@@ -218,7 +247,7 @@ test(
         .hover();
       await expect(
         personCard(page, "Dashboard User")
-          .getByRole("region", { name: "Recent activity" })
+          .getByRole("region", { name: "Recently shipped" })
           .getByRole("link")
           .first(),
       ).toBeVisible();

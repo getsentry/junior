@@ -46,10 +46,13 @@ function PersonPhoto(props: {
   );
 }
 
+// `vertical-align: middle` centres the photo on the x-height of the name at
+// any font size. A baseline offset hung an initial below the line: the
+// baseline of an initial is the baseline of its letter, not its bottom.
 function InlinePhoto(props: { person: Person }) {
   return (
     <PersonPhoto
-      className="mr-1 inline-grid size-[1em] align-[-0.125em]"
+      className="mr-1 inline-grid size-[1em] align-middle"
       initialClassName="text-[0.6em]"
       person={props.person}
     />

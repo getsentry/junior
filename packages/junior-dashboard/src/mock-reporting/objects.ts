@@ -11,8 +11,8 @@ import {
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
-  NOW_MS,
   readMockConversationDetail,
+  readMockPeopleCode,
   readMockPeopleDirectory,
   readMockPeopleProfile,
 } from "./fixtures";
@@ -512,11 +512,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   return [{ object: { ...object, plugin: "junior" }, url: href }];
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
- * Build a person card like the person card API: the person link card and
- * their recent activity. Each mock Conversation counts as one Turn.
+ * Build a person card like the person card API: the person link card, the
+ * merged code changes of their People profile, and their recent activity.
  */
 export function readMockPersonCard(
   origin: string,
@@ -524,19 +522,20 @@ export function readMockPersonCard(
 ): PersonCardReport {
   const card = mockObject(`${origin}/people/${encodeURIComponent(email)}`)[0]
     ?.object;
-  const all = [
+  const recent = [
     ...(readMockPeopleProfile(email)?.recentConversations ?? []),
   ].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
-  const week = all.filter(
-    (item) => Date.parse(item.lastSeenAt) >= NOW_MS - WEEK_MS,
-  );
+  const merged = (readMockPeopleCode(email)?.changes ?? [])
+    .filter((change) => change.state === "merged" && change.mergedAt)
+    .sort(
+      (a, b) => Date.parse(b.mergedAt ?? "") - Date.parse(a.mergedAt ?? ""),
+    );
   return {
-    // Counts cover every Conversation, like the API. Mocks have one viewer,
-    // who may read a private Conversation only as a participant.
+    // Last active covers every Conversation, like the API. Mocks have one
+    // viewer, who may read a private Conversation only as a participant.
     activity: {
-      conversations: week.length,
-      ...(all[0] ? { lastActiveAt: all[0].lastSeenAt } : undefined),
-      recentConversations: all
+      ...(recent[0] ? { lastActiveAt: recent[0].lastSeenAt } : undefined),
+      recentConversations: recent
         .filter((item) => item.visibility !== "private" || item.isParticipant)
         .slice(0, PERSON_CARD_RECENT_LIMIT)
         .map((item) => ({
@@ -544,9 +543,9 @@ export function readMockPersonCard(
           lastTurnAt: item.lastSeenAt,
           title: item.displayTitle,
         })),
-      turns: week.length,
     },
     ...(card ? { card } : undefined),
+    mergedChanges: merged.slice(0, PERSON_CARD_RECENT_LIMIT),
   };
 }
 
