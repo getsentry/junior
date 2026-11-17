@@ -42,6 +42,7 @@
     "oxlint/**/*.ts",
     "e2e/dashboard-switch.spec.ts",
     "e2e/inbox/**/*.ts",
+    "e2e/person-cards.spec.ts",
     "e2e/request-budget.ts",
     "playwright.config.ts"
   ]

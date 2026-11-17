@@ -21,6 +21,14 @@ const viewer = {
   userId: "u-dev",
 };
 
+// The mock rollback owner. Junior names people as Slack mentions, and the
+// API resolves each mention to its person.
+const AVERY_MENTION = {
+  email: "avery@sentry.io",
+  fullName: "Avery Chen",
+  slackUserId: "U789",
+};
+
 // Fixture Conversations that the plugin asks and notices link to.
 const DEPLOY_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
@@ -31,7 +39,14 @@ const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
   ReviewItemPayload,
-  "answer" | "body" | "id" | "request" | "status" | "subject" | "title"
+  | "answer"
+  | "body"
+  | "id"
+  | "mentions"
+  | "request"
+  | "status"
+  | "subject"
+  | "title"
 > &
   Partial<
     Pick<
@@ -60,8 +75,10 @@ function seeds(nowMs: number): MockItemSeed[] {
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(58),
       id: "qa-canary-region",
+      mentions: [AVERY_MENTION],
       request: {
-        question: "Which region should run the canary?",
+        question:
+          "Which region should run the canary? <@U789> owns the rollback.",
         fields: [
           {
             id: "region",
@@ -575,12 +592,15 @@ export function mockQuestionConversations(nowMs: number) {
         "The build is ready. I need a region for the canary first.",
       ),
       message(3, at(50), "user", region!.answer!.other!),
-      message(
-        4,
-        at(49),
-        "assistant",
-        "The canary is running in us-east-1. I will check it in 20 minutes.",
-      ),
+      {
+        ...message(
+          4,
+          at(49),
+          "assistant",
+          "The canary is running in us-east-1. I will check it in 20 minutes, and <@U789> can roll it back.",
+        ),
+        mentions: [AVERY_MENTION],
+      },
       addItemCall(5, at(26), rollout!),
       message(
         6,

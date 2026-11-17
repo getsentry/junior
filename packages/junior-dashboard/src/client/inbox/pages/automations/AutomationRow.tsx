@@ -36,6 +36,8 @@ import { AutomationRunStrip } from "../../../pages/automations/AutomationRunStri
 import { automationProblemSummary } from "../../../pages/automations/AutomationStatus";
 import { useAutomationLifecycle } from "../../../pages/automations/useAutomationLifecycle";
 import { formatRelativeTime, formatRuntime } from "../../../time";
+import { PersonReference } from "../../../components/PersonReference";
+import { automationCreator } from "../../../person";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;
@@ -165,7 +167,11 @@ export function AutomationRow(props: {
               size="list"
             />
             <span className="max-w-28 truncate">
-              {automation.ownedByViewer ? "You" : automation.createdBy}
+              <PersonReference
+                avatar={false}
+                label={automation.ownedByViewer ? "You" : undefined}
+                person={automationCreator(automation)}
+              />
             </span>
           </span>
           <span className="hidden lg:block">
@@ -250,7 +256,11 @@ function AutomationRowDetail(props: {
               size="list"
             />
             <span className="truncate">
-              {automation.ownedByViewer ? "You" : automation.createdBy}
+              <PersonReference
+                avatar={false}
+                label={automation.ownedByViewer ? "You" : undefined}
+                person={automationCreator(automation)}
+              />
             </span>
           </span>
         </DetailFact>

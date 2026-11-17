@@ -76,6 +76,8 @@ import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 
@@ -111,7 +113,7 @@ function RowItem(props: {
   const kind = inboxItemKind(item);
   return (
     <section
-      aria-label={item.title}
+      aria-label={reviewItemTitleText(item)}
       className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 font-sans text-sm"
       data-inbox-item
     >
@@ -130,7 +132,7 @@ function RowItem(props: {
             head names the Conversation, so each ask keeps its title. */}
         {props.headTitled ? null : (
           <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
-            {item.title}
+            <ReviewItemTitle item={item} links />
           </h4>
         )}
       </div>
@@ -140,8 +142,9 @@ function RowItem(props: {
         {showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
-            label={item.title}
+            label={reviewItemTitleText(item)}
             lines={4}
+            mentions={item.mentions}
             text={item.body}
           />
         ) : null}

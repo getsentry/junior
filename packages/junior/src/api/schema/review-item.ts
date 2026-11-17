@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import { actorIdentitySchema } from "./conversation";
 
 const answerSchema = z
   .object({
@@ -12,6 +13,8 @@ const answerSchema = z
 
 const personSchema = z
   .object({
+    /** Junior API path of the profile photo. */
+    avatarUrl: z.string().min(1).optional(),
     displayName: z.string().min(1).optional(),
     email: z.string().min(1),
     userId: z.string().min(1),
@@ -41,6 +44,8 @@ export const reviewItemSchema = z
     createdAt: z.string().datetime(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
+    /** People that the title, body, and question mention. */
+    mentions: z.array(actorIdentitySchema).optional(),
     request: userInputRequestSchema.optional(),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z

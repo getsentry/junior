@@ -23,7 +23,7 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { ANCHOR_CLASS } from "./links";
-import { PersonMention } from "./people";
+import { PersonInline } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
@@ -267,7 +267,14 @@ export function PersonLink(props: {
   const { card } = props;
   const facts = card.facts?.type === "person" ? card.facts : undefined;
   return (
-    <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
+    <PersonInline
+      highlightSelf
+      person={{
+        avatarUrl: facts?.avatarUrl,
+        email: facts?.email,
+        name: card.label,
+      }}
+    >
       <ObjectLinkPreview
         card={card}
         className={ANCHOR_CLASS}
@@ -277,6 +284,6 @@ export function PersonLink(props: {
       >
         @{card.label}
       </ObjectLinkPreview>
-    </PersonMention>
+    </PersonInline>
   );
 }

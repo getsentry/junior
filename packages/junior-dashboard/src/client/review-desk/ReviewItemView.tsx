@@ -13,6 +13,8 @@ import { ReviewItemContext } from "./ReviewItemContext";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { reviewItemStatusLabel } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** Space above the card when the view starts at its top. */
 const CARD_TOP_MARGIN_PX = 24;
@@ -72,7 +74,7 @@ export function ReviewItemView(props: {
   const bodyInCard = item.kind === "notice" || !item.request;
   const body = (
     <ReviewItemObjects conversationId={item.addedByConversationId}>
-      <DisplayText text={item.body} />
+      <DisplayText mentions={item.mentions} text={item.body} />
     </ReviewItemObjects>
   );
   const conversationLink = (
@@ -100,7 +102,7 @@ export function ReviewItemView(props: {
                 Inbox
               </Link>
               <h2 className="m-0 min-w-0 break-words font-display text-xl font-medium leading-tight tracking-tight">
-                {item.title}
+                <ReviewItemTitle item={item} links />
               </h2>
               <p className="m-0 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-dashboard-text-muted">
                 <StatusChip size="compact" tone={open ? "accent" : "neutral"}>
@@ -130,7 +132,7 @@ export function ReviewItemView(props: {
       scrollClassName="px-4 pb-6 md:px-7"
       scroll={
         <article
-          aria-label={item.title}
+          aria-label={reviewItemTitleText(item)}
           ref={articleRef}
           className="mx-auto grid w-full min-w-0 max-w-[52.5rem] gap-5 pt-5 md:pt-7"
         >

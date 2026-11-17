@@ -27,6 +27,8 @@ import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** Lets the message box send the picks of the docked questions. */
 export type ComposerQuestionAnswers = {
@@ -254,7 +256,7 @@ export function ComposerQuestion(props: {
 
   return (
     <MessageCard
-      aria-label={`Question: ${item.title}`}
+      aria-label={`Question: ${reviewItemTitleText(item)}`}
       // Esc here dismisses the question, so it does not leave the page.
       data-escape-scope=""
       className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
@@ -368,7 +370,7 @@ function DockedQuestion(props: {
             onClick={props.onShowRecord}
             variant="link"
           >
-            {item.title}
+            <ReviewItemTitle item={item} />
           </Button>
         </h2>
         {props.stepper}
@@ -392,7 +394,10 @@ function DockedQuestion(props: {
       {item.request ? (
         <div className="min-w-0">
           <div className="font-medium [&_p]:my-0">
-            <DisplayText text={item.request.question} />
+            <DisplayText
+              mentions={item.mentions}
+              text={item.request.question}
+            />
           </div>
           <UserInputForm
             docked

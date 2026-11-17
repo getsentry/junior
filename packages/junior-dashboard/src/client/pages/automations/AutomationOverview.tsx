@@ -26,7 +26,7 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { DisplayText } from "../../display-text/DisplayText";
-import { automationPath, formatCostSummary, peoplePath } from "../../format";
+import { automationPath, formatCostSummary } from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
 import { AutomationCost } from "./AutomationCost";
@@ -47,6 +47,8 @@ import {
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { formatRelativeTime, formatRuntime } from "../../time";
 import { agentNamePossessive } from "../../agentName";
+import { PersonReference } from "../../components/PersonReference";
+import { automationCreator } from "../../person";
 
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
@@ -397,24 +399,17 @@ function AutomationAbout({ automation }: { automation: AutomationSummary }) {
         name={automation.createdBy}
         size="list"
       />
-      {automation.ownedByViewer ? "You" : automation.createdBy}
+      <PersonReference
+        avatar={false}
+        label={automation.ownedByViewer ? "You" : undefined}
+        person={automationCreator(automation)}
+      />
     </span>
   );
   return (
     <FactSection title="About">
       <FactList>
-        <Fact label="Created by">
-          {automation.createdByEmail ? (
-            <Link
-              className="text-inherit no-underline hover:underline"
-              to={peoplePath(automation.createdByEmail)}
-            >
-              {creator}
-            </Link>
-          ) : (
-            creator
-          )}
-        </Fact>
+        <Fact label="Created by">{creator}</Fact>
         <Fact label="Created">
           {formatAutomationRunTime(automation.createdAt)}
         </Fact>

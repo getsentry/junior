@@ -13,13 +13,7 @@ import { useReviewItemAction } from "./queries";
 import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
-
-function personLabel(person: {
-  displayName?: string | undefined;
-  email: string;
-}) {
-  return person.displayName ?? person.email;
-}
+import { ReviewItemCloser } from "./ReviewItemPeople";
 
 function actionError(error: unknown): string {
   if (error instanceof DashboardApiError && error.apiError) {
@@ -51,12 +45,12 @@ export function AnswerSummary(props: {
 /** Show who closed an item, when, and the submitted answer. */
 function ClosedSummary(props: { item: ReviewItemPayload }) {
   const { item } = props;
-  const who = item.closedBy ? personLabel(item.closedBy) : "An agent";
   const what = item.status === "dismissed" ? "dismissed" : "closed";
   return (
     <div className="grid gap-2 text-sm">
       <p className="m-0 text-dashboard-text-muted">
-        {who} {what} this {formatRelativeTime(item.closedAt)}.
+        <ReviewItemCloser item={item} /> {what} this{" "}
+        {formatRelativeTime(item.closedAt)}.
       </p>
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
@@ -135,7 +129,10 @@ export function ReviewItemActions(props: {
       {item.kind === "action" && item.request ? (
         <div className="text-sm">
           <div className="font-medium">
-            <DisplayText text={item.request.question} />
+            <DisplayText
+              mentions={item.mentions}
+              text={item.request.question}
+            />
           </div>
           <UserInputForm
             onUnsentChange={setUnsent}

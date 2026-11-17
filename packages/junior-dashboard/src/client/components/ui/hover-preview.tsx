@@ -1,6 +1,8 @@
 import { PreviewCard } from "@base-ui/react/preview-card";
 import {
   createContext,
+  type MouseEvent,
+  type PointerEvent,
   type ReactElement,
   type ReactNode,
   useContext,
@@ -38,16 +40,22 @@ export function HoverPreviewGate(props: {
 
 /**
  * Show a card beside a link or button when the reader hovers or focuses it.
- * `trigger` is the element without children: `children` fill it.
+ * `trigger` is the element without children: `children` fill it. With
+ * `tapToOpen`, a tap on a touch screen opens the card instead of following
+ * the link, a second tap follows it, and the trigger says whether the card
+ * is open.
  */
 export function HoverPreview(props: {
   children: ReactNode;
   className?: string | undefined;
   content: ReactNode;
+  tapToOpen?: boolean | undefined;
   trigger: ReactElement;
 }) {
   const allowed = useContext(PreviewsOpen);
   const [open, setOpen] = useState(false);
+  // A touch screen has no hover, so the first tap shows the card.
+  const [touch, setTouch] = useState(false);
   // When the reader moves into the card, it keeps its side. Opening "More
   // details" grows the card; a flip would move it away from the pointer,
   // and the card would close.
@@ -64,7 +72,23 @@ export function HoverPreview(props: {
       }}
       open={allowed && open}
     >
-      <PreviewCard.Trigger delay={PREVIEW_DELAY_MS} render={props.trigger}>
+      <PreviewCard.Trigger
+        delay={PREVIEW_DELAY_MS}
+        render={props.trigger}
+        {...(props.tapToOpen
+          ? {
+              "aria-expanded": allowed && open,
+              "aria-haspopup": "dialog" as const,
+              onClick: (event: MouseEvent) => {
+                if (!touch || (allowed && open)) return;
+                event.preventDefault();
+                setOpen(true);
+              },
+              onPointerDown: (event: PointerEvent) =>
+                setTouch(event.pointerType === "touch"),
+            }
+          : undefined)}
+      >
         {props.children}
       </PreviewCard.Trigger>
       <PreviewCard.Portal>

@@ -16,10 +16,16 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  hasUserPhoto,
+  userAvatarUrlsFromIdentities,
+} from "@/chat/identities/avatar";
+import {
   juniorConversations,
+  juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
@@ -60,6 +66,8 @@ interface ReviewItemSubject {
 
 /** One assigned User of a Review item. */
 export interface ReviewItemAssignee {
+  /** Junior API path of the profile photo. */
+  avatarUrl?: string;
   displayName?: string;
   email: string;
   userId: string;
@@ -108,29 +116,51 @@ export interface ReviewItemContent {
 
 type ItemRow = typeof juniorReviewItems.$inferSelect;
 
+const userPhotos = alias(juniorIdentities, "review_item_user_photos");
+
 async function readUsers(
   db: JuniorDatabase,
   userIds: readonly string[],
 ): Promise<Map<string, ReviewItemAssignee>> {
   if (userIds.length === 0) return new Map();
+  // One read returns each User with their photo Identities.
   const rows = await db
     .select({
       displayName: juniorUsers.displayName,
       email: juniorUsers.primaryEmail,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       userId: juniorUsers.id,
     })
     .from(juniorUsers)
+    .leftJoin(
+      userPhotos,
+      and(eq(userPhotos.userId, juniorUsers.id), hasUserPhoto(userPhotos)),
+    )
     .where(inArray(juniorUsers.id, [...new Set(userIds)]));
-  return new Map(
-    rows.map((row) => [
-      row.userId,
-      {
-        email: row.email,
-        userId: row.userId,
-        ...(row.displayName ? { displayName: row.displayName } : undefined),
-      },
-    ]),
+  const avatars = userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [{ ...photo, identityId: photo.identityId, userId }]
+        : [],
+    ),
   );
+  const users = new Map<string, ReviewItemAssignee>();
+  for (const row of rows) {
+    if (users.has(row.userId)) continue;
+    const avatarUrl = avatars.get(row.userId);
+    users.set(row.userId, {
+      email: row.email,
+      userId: row.userId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    });
+  }
+  return users;
 }
 
 async function hydrate(

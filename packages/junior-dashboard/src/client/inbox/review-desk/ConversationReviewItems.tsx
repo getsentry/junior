@@ -17,6 +17,7 @@ import { ReviewItemCard } from "./ReviewItemCard";
 import { AskKindIcon, askLook } from "../../review-desk/askKind";
 import { inboxItemKind } from "../../review-desk/inboxModel";
 import { useReviewItemsData } from "../../review-desk/queries";
+import { reviewItemTitleText } from "../../review-desk/reviewItemFormat";
 
 /**
  * Show the open Review items linked to a Conversation in its details. Each
@@ -100,7 +101,7 @@ function ReviewItemRow(props: {
             />
           </span>
         }
-        title={props.item.title}
+        title={reviewItemTitleText(props.item)}
       />
       <CollapsibleContent className="px-1.5 pb-1">
         <ReviewItemCard item={props.item} />

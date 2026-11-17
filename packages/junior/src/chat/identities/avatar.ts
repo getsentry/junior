@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities } from "@/db/schema";
 import { GOOGLE_IDENTITY_PROVIDER } from "./identity";
@@ -62,6 +63,20 @@ function avatarPath(identityId: string, avatarUrl: string): string {
 }
 
 /**
+ * Match the user Identities that hold a photo, for a read that joins them to
+ * the Identities of other rows.
+ */
+export function hasUserPhoto(
+  identities: Record<"avatarUrl" | "kind" | "provider", AnyPgColumn>,
+) {
+  return and(
+    eq(identities.kind, "user"),
+    inArray(identities.provider, AVATAR_PROVIDERS),
+    isNotNull(identities.avatarUrl),
+  );
+}
+
+/**
  * Read the photo path of each user: the Slack photo, then the Google photo.
  * Users without a photo are not in the map.
  */
@@ -82,9 +97,7 @@ export async function readUserAvatarUrls(
     .where(
       and(
         inArray(juniorIdentities.userId, [...new Set(userIds)]),
-        eq(juniorIdentities.kind, "user"),
-        inArray(juniorIdentities.provider, AVATAR_PROVIDERS),
-        isNotNull(juniorIdentities.avatarUrl),
+        hasUserPhoto(juniorIdentities),
       ),
     );
   return userAvatarUrlsFromIdentities(rows);

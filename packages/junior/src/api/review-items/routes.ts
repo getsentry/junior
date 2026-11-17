@@ -18,7 +18,7 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
@@ -43,6 +43,8 @@ import {
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import type { ActorIdentity } from "@/api/schema/conversation";
+import { readReviewItemMentions } from "./mentions";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -151,7 +153,11 @@ function subjectPayload(
 }
 
 /** Build the API payload of one Review item for its viewer. */
-function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
+function reviewItemPayload(
+  item: ReviewItem,
+  viewer: User,
+  mentions: readonly ActorIdentity[],
+): ReviewItemPayload {
   return {
     addedByConversationId: item.addedByConversationId,
     assignedToEveryone: item.assignedToEveryone,
@@ -174,9 +180,21 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(mentions.length > 0 ? { mentions: [...mentions] } : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
+}
+
+/** Build the API payloads of Review items, with the people they mention. */
+async function reviewItemPayloads(
+  items: readonly ReviewItem[],
+  viewer: User,
+): Promise<ReviewItemPayload[]> {
+  const mentions = await readReviewItemMentions(getSqlExecutor(), items);
+  return items.map((item, index) =>
+    reviewItemPayload(item, viewer, mentions[index]!),
+  );
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -243,7 +261,7 @@ export function createReviewItemRoutes(services: {
         const page = closed.slice(0, query.limit);
         const last = page.at(-1);
         return jsonResponse(reviewItemListSchema, {
-          items: page.map((item) => reviewItemPayload(item, viewer)),
+          items: await reviewItemPayloads(page, viewer),
           ...(closed.length > query.limit && last
             ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
@@ -282,8 +300,9 @@ export function createReviewItemRoutes(services: {
       const page = open.slice(0, query.limit);
       const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
-        items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
-          reviewItemPayload(item, viewer),
+        items: await reviewItemPayloads(
+          [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
+          viewer,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -360,7 +379,10 @@ export function createReviewItemRoutes(services: {
           viewer,
           context.req.valid("param").id,
         );
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        return jsonResponse(
+          reviewItemSchema,
+          (await reviewItemPayloads([item], viewer))[0]!,
+        );
       } catch (error) {
         return actionErrorResponse(error);
       }
@@ -385,7 +407,10 @@ export function createReviewItemRoutes(services: {
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
         });
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        return jsonResponse(
+          reviewItemSchema,
+          (await reviewItemPayloads([item], viewer))[0]!,
+        );
       } catch (error) {
         return actionErrorResponse(error);
       }

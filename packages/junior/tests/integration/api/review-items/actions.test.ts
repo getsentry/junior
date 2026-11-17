@@ -19,7 +19,9 @@ import {
   insertReviewItem,
   takeReviewItem,
 } from "@/chat/review-items/store";
-import { juniorConversationParticipants } from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -217,6 +219,63 @@ describe("review item actions API", () => {
         },
       ],
     });
+  });
+
+  it("names the people that an item mentions, with their photos", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "bea@example.com",
+        fullName: "Bea Owner",
+        platform: "slack",
+        slackUserId: "UBEA1",
+        teamId: "T123",
+      },
+      conversationId: "slack:CPUB:1.000001",
+      destination: { platform: "slack", teamId: "T123", channelId: "CPUB" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    const [bea] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/bea_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UBEA1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
+    await addItem({
+      kind: "action",
+      title: "Ask <@UBEA1> about acme",
+      body: "<@UBEA1> owns the acme entry.",
+      assignees: ["ana@example.com"],
+      request: { ...REQUEST, question: "Did <@UBEA1> approve it?" },
+    });
+
+    // The names and photos come with the items, in one more statement.
+    const { items } = await (
+      await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+        statements: 5,
+        serialRounds: 4,
+      })
+    ).json();
+    expect(items).toMatchObject([
+      {
+        mentions: [
+          {
+            avatarUrl: avatarPath(bea!.id),
+            email: "bea@example.com",
+            fullName: "Bea Owner",
+            slackUserId: "UBEA1",
+          },
+        ],
+        title: "Ask <@UBEA1> about acme",
+      },
+    ]);
   });
 
   it("shows a Conversation's items to the people in it", async () => {
