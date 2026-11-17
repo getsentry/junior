@@ -262,7 +262,6 @@
     "packages/junior/src/api/conversations/detail-etag.ts: ConversationDetailState",
     "packages/junior/src/api/conversations/usage.ts: ChildAgentMetrics",
     "packages/junior/src/api/schema/person.ts: ConversationSummaryReport",
-    "packages/junior/src/chat/agent-dispatch/types.ts: DispatchTurnOutcome",
     "packages/junior/src/chat/agent/types.ts: MessageAgentResult",
     "packages/junior/src/chat/agent/types.ts: SpawnAgentResult",
     "packages/junior/src/chat/attachments/storage.ts: AttachmentUploadRequest",
