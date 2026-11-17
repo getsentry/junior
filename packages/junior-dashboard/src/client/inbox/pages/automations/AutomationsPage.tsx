@@ -218,7 +218,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </Button>
               </InlineError>
             ) : null}
-            {snoozesQuery.error ? (
+            {showSnoozes && snoozesQuery.error ? (
               <InlineError>
                 Snoozes could not be loaded.{" "}
                 <Button
