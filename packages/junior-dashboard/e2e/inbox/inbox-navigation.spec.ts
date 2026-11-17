@@ -62,11 +62,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
     await triage.scrollIntoViewIfNeeded();
     // A pointer that rests on a compact row expands it in place, and the
-    // click may scroll to reach it. Back restores the place the reader left
-    // from, so read it once the row has settled.
+    // click on Open would scroll to reach it. Back restores the place the
+    // reader left from, so scroll to Open and read the place once it holds.
     await triage.hover();
     const row = triage.locator("xpath=ancestor::*[@data-inbox-row][1]");
     await expect(row).toHaveAttribute("data-grown", "true");
+    const open = row.getByRole("link", { name: "Open conversation" }).first();
+    await open.scrollIntoViewIfNeeded();
     const target = await row.elementHandle();
     await steady(() =>
       scroller.evaluate(
@@ -77,7 +79,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     const top = await scroller.evaluate((node) => node.scrollTop);
     expect(top).toBeGreaterThan(0);
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await open.click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
     const back = page.getByRole("link", { name: "Back to Conversations" });
     await expect(back).toBeVisible();
