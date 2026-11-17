@@ -42,9 +42,9 @@ import type { ConversationEvent, KnownConversationEventType } from "./history";
 import { eventFromRow } from "./sql/history";
 
 // Keyword search computes lexemes for at most this many of the newest events
-// without stored ones. On a local Postgres 17 that takes about 4 s for 3,000
-// events with 14 MB of text, and about 24 s for 20,000. With stored lexemes,
-// the same searches take under 0.1 s and 0.6 s.
+// without stored ones. On a local Postgres 17 that takes about 3 s for 3,000
+// events with 15 MB of text, and about 18 s for 20,000. With stored lexemes,
+// the same searches take about 0.2 s and 1.2 s when every event matches.
 const MAX_COMPUTED_EVENTS = 20_000;
 const CANDIDATES_PER_LEG = 100;
 const RECIPROCAL_RANK_FUSION_K = 60;

@@ -26,6 +26,10 @@ const MAX_EVENTS_PER_RUN = 2_000;
 // lexeme. Spaces in their place let a query match each part, such as a file
 // name or a pull request number.
 const LEXEME_SEPARATORS = "/#\\:@?&=";
+// The parser also keeps a number inside a file name, as in `build-7421.log`,
+// and reads `-7421` as a negative number. A space between a number and a
+// dot or a dash lets a query match the number. `lease.ts` stays one lexeme.
+const NUMBER_PUNCTUATION = "(?<=[0-9])[.-]|[.-](?=[0-9])";
 const LEXEME_SEPARATOR_SPACES = " ".repeat(LEXEME_SEPARATORS.length);
 
 /**
@@ -33,7 +37,7 @@ const LEXEME_SEPARATOR_SPACES = " ".repeat(LEXEME_SEPARATORS.length);
  * null gives no lexemes, so an event without text is still stored once.
  */
 export function lexemesSql(text: SQL | string): SQL {
-  return sql`to_tsvector('english', translate(coalesce(${text}, ''), ${LEXEME_SEPARATORS}, ${LEXEME_SEPARATOR_SPACES}))`;
+  return sql`to_tsvector('english', translate(regexp_replace(coalesce(${text}, ''), ${NUMBER_PUNCTUATION}, ' ', 'g'), ${LEXEME_SEPARATORS}, ${LEXEME_SEPARATOR_SPACES}))`;
 }
 
 /** Match event seqs against one array parameter, however many there are. */

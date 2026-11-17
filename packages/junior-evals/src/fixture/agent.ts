@@ -814,6 +814,7 @@ export async function createFixtureAgent(
         items: options.history,
         replyMessages,
         slack,
+        started: record.started,
         viewerEmail: record.viewerEmail,
       });
       record.started = true;

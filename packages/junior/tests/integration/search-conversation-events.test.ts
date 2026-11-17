@@ -377,6 +377,10 @@ describe("searchConversationEvents", () => {
     await expect(executeTool({ query: "ci-7421.log" })).resolves.toMatchObject({
       events: [{ seq: 1, data: { type: "assistant_message" } }],
     });
+    // A number inside a file name matches on its own.
+    await expect(executeTool({ query: "7421" })).resolves.toMatchObject({
+      events: [{ seq: 1, data: { type: "assistant_message" } }],
+    });
     await expect(executeTool({ query: "7733" })).resolves.toMatchObject({
       events: [{ seq: 1, data: { type: "assistant_message" } }],
     });
