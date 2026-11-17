@@ -714,12 +714,13 @@ export function reviewItemsNeedingUserVersionQuery(
   db: JuniorDatabase,
   userId: string,
 ) {
+  const nowMs = Date.now();
   return db
     .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${wakeAutomationsVersion(userId)})`,
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${wakeAutomationsVersion(userId, nowMs)})`,
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUserNow(userId, Date.now()));
+    .where(reviewItemNeedsUserNow(userId, nowMs));
 }
 
 /**

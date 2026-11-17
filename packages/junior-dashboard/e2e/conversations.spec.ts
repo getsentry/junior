@@ -1,4 +1,5 @@
 import { withRequestedMailbox } from "./harness";
+import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
 
@@ -29,16 +30,22 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(
+        `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+        { waitUntil: "networkidle" },
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: "Investigate checkout latency",
+          exact: true,
+        }),
+      ).toBeVisible();
+    },
+    { requests: 10, serialRounds: 2 },
   );
-  await expect(
-    page.getByRole("heading", {
-      name: "Investigate checkout latency",
-      exact: true,
-    }),
-  ).toBeVisible();
   const conversationList = page.getByRole("navigation", {
     name: "Your conversations",
   });
@@ -281,10 +288,16 @@ test("reuses the fresh conversation feed after window focus", async ({
     await route.fallback();
   });
 
-  await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(dashboard.baseURL);
+      await expect(
+        page.getByRole("navigation", { name: "Your conversations" }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 1 },
+  );
   expect(requests).toBe(1);
 
   // Fresh feeds must not refetch on focus. Fail if another list fetch starts.

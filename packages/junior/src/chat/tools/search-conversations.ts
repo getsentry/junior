@@ -1,5 +1,5 @@
 import * as z from "zod";
-import type { ConversationEmbedder } from "@/chat/conversations/embedding";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   briefLinkSchema,
   briefOutcomeStatusSchema,
@@ -253,7 +253,7 @@ export function createSearchConversationsTool(context: {
   channels?: ConversationSearchChannelPort;
   conversationId: string;
   /** Embeds a query to also match Briefs by meaning. */
-  embedder?: ConversationEmbedder;
+  embedder?: PluginEmbedder;
 }) {
   const { channels } = context;
   return zodTool({

@@ -10,18 +10,19 @@
  * safe: a stored vector is skipped, and a write replaces only its own row.
  */
 import type {
+  PluginEmbedder,
   PluginRegistration,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
+import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEventEmbeddings,
   juniorConversationEvents,
 } from "@/db/schema";
-import { botConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
-import { embedTexts, type ConversationModelCost } from "@/chat/core-model";
+import { createConversationEmbedder } from "./embedding";
 import { storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
@@ -34,114 +35,73 @@ const MAX_EVENTS_PER_RUN = 256;
 const EMBEDDING_BATCH_SIZE = 32;
 const EMBEDDING_LOCK_TTL_MS = 10 * 60 * 1_000;
 
-/** Embeds event text as documents with one model. */
-export interface ConversationEventEmbedder {
-  embedDocuments(texts: string[]): Promise<{
-    model: string;
-    provider: string;
-    vectors: number[][];
-  }>;
-  /** Model id that the embedder uses, before the first call. */
-  model: string;
-}
-
-/** Create the event embedder that charges its cost to one Conversation. */
-export function createConversationEventEmbedder(
-  cost: ConversationModelCost,
-): ConversationEventEmbedder {
-  const model = botConfig.embeddingModelId;
-  return {
-    model,
-    async embedDocuments(texts) {
-      return await embedTexts({
-        cost,
-        inputType: "document",
-        modelId: model,
-        operation: "conversation_embedding",
-        texts,
-      });
-    },
-  };
-}
-
 /**
  * Embed the newest searchable events of one Conversation that have no
  * vector of the embedder's model. Return how many it stored.
  */
 export async function embedConversationEvents(
   db: JuniorDatabase,
-  embedder: ConversationEventEmbedder,
+  embedder: PluginEmbedder,
   conversationId: string,
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
   const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
-  const selected = await db
-    .select({ seq: events.seq, text })
-    .from(events)
-    .leftJoin(
-      embeddings,
-      and(
-        eq(embeddings.conversationId, events.conversationId),
-        eq(embeddings.seq, events.seq),
-        eq(embeddings.model, embedder.model),
-      ),
-    )
-    .where(
-      and(
-        eq(events.conversationId, conversationId),
-        inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
-        isNull(embeddings.seq),
-        // Text of only whitespace, such as newlines, has nothing to embed.
-        sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
-      ),
-    )
-    .orderBy(desc(events.seq))
-    .limit(MAX_EVENTS_PER_RUN);
-  // The embedder rejects text that JavaScript trims to nothing, such as a
-  // no-break space, which the SQL filter above keeps.
-  const rows = selected.filter((row) => row.text.trim() !== "");
-  for (let start = 0; start < rows.length; start += EMBEDDING_BATCH_SIZE) {
-    const batch = rows.slice(start, start + EMBEDDING_BATCH_SIZE);
-    // oxlint-disable-next-line no-await-in-loop -- one batch at a time, so a provider failure stops the run and keeps the batches stored before it.
-    const result = await embedder.embedDocuments(batch.map((row) => row.text));
-    // The query above finds unembedded events by the embedder's model, so a
-    // row of another model would look unembedded on every run.
-    if (result.model !== embedder.model) {
-      throw new Error(
-        `Embedding provider used model ${result.model}, not ${embedder.model}`,
-      );
-    }
-    const values = batch.map((row, index) => {
-      const vector = result.vectors[index];
-      if (!vector) {
-        throw new Error("Embedding provider returned too few vectors");
-      }
-      return {
-        conversationId,
-        dimensions: vector.length,
-        embedding: vector,
-        model: result.model,
-        provider: result.provider,
-        seq: row.seq,
-      };
-    });
-    // oxlint-disable-next-line no-await-in-loop -- stores the batch embedded above before the next batch starts.
-    await db
-      .insert(embeddings)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [embeddings.conversationId, embeddings.seq],
-        set: {
-          dimensions: sql`excluded.dimensions`,
-          embedding: sql`excluded.embedding`,
-          model: sql`excluded.model`,
-          provider: sql`excluded.provider`,
-          createdAt: sql`now()`,
-        },
-      });
-  }
-  return rows.length;
+  const refresh = await refreshEmbeddings<{ seq: number; text: string }>({
+    batchSize: EMBEDDING_BATCH_SIZE,
+    embedder,
+    maxItems: MAX_EVENTS_PER_RUN,
+    listMissing: async ({ after, limit }) =>
+      await db
+        .select({ seq: events.seq, text })
+        .from(events)
+        .leftJoin(
+          embeddings,
+          and(
+            eq(embeddings.conversationId, events.conversationId),
+            eq(embeddings.seq, events.seq),
+            eq(embeddings.provider, embedder.provider),
+            eq(embeddings.model, embedder.model),
+          ),
+        )
+        .where(
+          and(
+            eq(events.conversationId, conversationId),
+            inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
+            isNull(embeddings.seq),
+            // Text of only whitespace, such as newlines, has nothing to embed.
+            sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
+            after ? lt(events.seq, after.seq) : undefined,
+          ),
+        )
+        .orderBy(desc(events.seq))
+        .limit(limit),
+    write: async (rows, batch) => {
+      await db
+        .insert(embeddings)
+        .values(
+          rows.map(({ item, vector }) => ({
+            conversationId,
+            dimensions: batch.dimensions,
+            embedding: vector,
+            model: batch.model,
+            provider: batch.provider,
+            seq: item.seq,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [embeddings.conversationId, embeddings.seq],
+          set: {
+            dimensions: sql`excluded.dimensions`,
+            embedding: sql`excluded.embedding`,
+            model: sql`excluded.model`,
+            provider: sql`excluded.provider`,
+            createdAt: sql`now()`,
+          },
+        });
+    },
+  });
+  return refresh.embedded;
 }
 
 /**
@@ -171,9 +131,12 @@ export function eventSearchTaskRegistration(options: {
                 options.embedEvents
                   ? embedConversationEvents(
                       getDb(),
-                      createConversationEventEmbedder({
-                        conversationId: run.conversationId,
-                        turnId: run.runId,
+                      createConversationEmbedder({
+                        cost: {
+                          conversationId: run.conversationId,
+                          turnId: run.runId,
+                        },
+                        operation: "conversation_embedding",
                       }),
                       run.conversationId,
                     )
