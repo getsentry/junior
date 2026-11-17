@@ -9,7 +9,6 @@
     },
     {
       "files": [
-        "packages/junior-google/src/tools/read-meeting-transcript.ts",
         "packages/junior/src/chat/agent-dispatch/heartbeat.ts",
         "packages/junior/src/chat/agent-invocations/list.ts",
         "packages/junior/src/chat/agent-invocations/result.ts",
