@@ -26,6 +26,9 @@ type SentryLog = Parameters<
 const PAYLOAD_ATTRIBUTE_KEYS = new Set([
   "app.message.input",
   "app.message.output",
+  // The SDK's `vercelAIIntegration` records the texts sent to `embedMany`,
+  // such as memory content.
+  "gen_ai.embeddings.input",
   "gen_ai.input.messages",
   "gen_ai.output.messages",
   "gen_ai.system_instructions",

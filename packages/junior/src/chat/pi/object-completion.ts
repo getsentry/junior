@@ -1,5 +1,4 @@
-import type { LanguageModelUsage, NoObjectGeneratedError } from "ai";
-import { extractGenAiUsageAttributes } from "@/chat/logging";
+import type { NoObjectGeneratedError } from "ai";
 
 /**
  * Output tokens added on top of the object size that a caller asks for.
@@ -20,25 +19,6 @@ export function structuredOutputTokenLimit(
   if (objectTokens === undefined) return undefined;
   const limit = objectTokens + STRUCTURED_OUTPUT_REASONING_TOKENS;
   return modelMaxTokens !== undefined ? Math.min(limit, modelMaxTokens) : limit;
-}
-
-/** Span attributes for the finish reason and usage of one object completion. */
-export function objectCompletionAttributes(
-  finishReason: string | undefined,
-  usage: LanguageModelUsage | undefined,
-): Record<string, unknown> {
-  // `extractGenAiUsageAttributes` reads the Pi usage shape, which has no
-  // nested `outputTokenDetails`.
-  const reasoningTokens = usage?.outputTokenDetails?.reasoningTokens;
-  return {
-    ...(finishReason
-      ? { "gen_ai.response.finish_reasons": [finishReason] }
-      : undefined),
-    ...extractGenAiUsageAttributes(usage),
-    ...(reasoningTokens !== undefined
-      ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }
-      : undefined),
-  };
 }
 
 /**

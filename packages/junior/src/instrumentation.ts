@@ -1,6 +1,4 @@
 import * as Sentry from "@/chat/sentry";
-import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
-import { setChatSpanEndAttributes } from "@/chat/pi/chat-span";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
   scrubPrivateSentryEvent,
@@ -71,10 +69,6 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
   };
 }
 
-// The AI integrations record prompts and responses only for public
-// Conversations. They decide when each call starts.
-const recordAiContent = () => getCurrentConversationPrivacy() === "public";
-
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -134,17 +128,6 @@ export function initSentry(): void {
     beforeSend: scrubPrivateSentryEvent,
     beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
     beforeSendSpan: scrubPrivateSentrySpan,
-    // The configured `piAiIntegration` replaces the default one.
-    integrations: (defaultIntegrations) => [
-      ...defaultIntegrations.filter(
-        (integration) => integration.name !== "VercelAI",
-      ),
-      Sentry.piAiIntegration({
-        recordInputs: recordAiContent,
-        recordOutputs: recordAiContent,
-        onSpanEnd: setChatSpanEndAttributes,
-      }),
-    ],
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.

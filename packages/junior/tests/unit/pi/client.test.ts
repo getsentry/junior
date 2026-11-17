@@ -17,13 +17,15 @@ const mocks = vi.hoisted(() => ({
     transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
   })),
   embedMany: vi.fn(),
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
+  getActiveSpan: vi.fn(() => ({ origin: "auto.ai.vercelai" })),
   getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
     { id: "openai/gpt-4o-mini" },
   ]),
   logException: vi.fn(),
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
+  outputObject: vi.fn((options: unknown): unknown => ({ object: options })),
   registerApiProvider: vi.fn(),
   rerank: vi.fn(),
   resolveGatewayCredential: vi.fn(),
@@ -67,13 +69,36 @@ vi.mock("@ai-sdk/gateway", () => ({
 
 vi.mock("ai", () => ({
   embedMany: mocks.embedMany,
-  generateObject: mocks.generateObject,
+  generateText: mocks.generateText,
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
   },
+  NoOutputGeneratedError: { isInstance: vi.fn(() => false) },
+  Output: { object: mocks.outputObject },
   rerank: mocks.rerank,
   transcribe: mocks.transcribe,
 }));
+
+// The SDK's `vercelAIIntegration` span that `ai` callbacks run inside.
+vi.mock("@/chat/sentry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/sentry")>()),
+  getActiveSpan: mocks.getActiveSpan,
+  spanToJSON: (span: { origin?: string }) => ({
+    attributes: { "sentry.origin": span.origin },
+  }),
+}));
+
+/** Resolve an `ai` call with `result` after running its span callbacks. */
+function resolveWithCallbacks(result: unknown, endEvent: unknown = result) {
+  return async (options: {
+    onEnd?: (event: unknown) => void;
+    onStart?: () => void;
+  }) => {
+    options.onStart?.();
+    options.onEnd?.(endEvent);
+    return result;
+  };
+}
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
@@ -179,8 +204,12 @@ describe("completeText", () => {
   });
 
   it("uses AI SDK structured output for object completions", async () => {
-    mocks.generateObject.mockResolvedValue({
-      object: { ok: true },
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
+    });
+    mocks.generateText.mockResolvedValue({
+      output: { ok: true },
       finishReason: "stop",
       usage: {
         inputTokens: 10,
@@ -203,30 +232,27 @@ describe("completeText", () => {
       schema,
       prompt: "return json",
       system: "structured only",
+      promptName: "classifier",
     });
 
     expect(result).toEqual({
       costUsd: 0.003,
       object: { ok: true },
     });
-    expect(mocks.generateObject).toHaveBeenCalledWith(
+    expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
         model: { modelId: "openai/gpt-4o-mini" },
-        schema,
+        output: { object: { schema } },
         prompt: "return json",
         system: "structured only",
-      }),
-    );
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "gen_ai.response.finish_reasons": ["stop"],
+        telemetry: { functionId: "classifier" },
       }),
     );
   });
 
   it("keeps a successful object when cost estimation fails", async () => {
-    mocks.generateObject.mockResolvedValue({
-      object: { ok: true },
+    mocks.generateText.mockResolvedValue({
+      output: { ok: true },
       finishReason: "stop",
       usage: {
         inputTokens: 10,
@@ -255,7 +281,7 @@ describe("completeText", () => {
   });
 
   it("rethrows retryable object provider failures without capturing", async () => {
-    mocks.generateObject.mockRejectedValue(
+    mocks.generateText.mockRejectedValue(
       new Error("Anthropic stream ended before message_stop"),
     );
 
@@ -279,11 +305,8 @@ describe("completeText", () => {
       }),
       { name: "AI_NoObjectGeneratedError", text: "model output" },
     );
-    mocks.generateObject.mockRejectedValue(sdkError);
-    // The span records usage first, then the error is classified.
-    mocks.noObjectGeneratedErrorIsInstance
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(true);
+    mocks.generateText.mockRejectedValue(sdkError);
+    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
 
     const { completeObject } = await import("@/chat/pi/client");
 
@@ -339,7 +362,10 @@ describe("completeText", () => {
       rerankingModel: vi.fn((modelId: string) => ({ modelId })),
       transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
     });
-    mocks.generateObject.mockImplementationOnce(ai.generateObject);
+    mocks.generateText.mockImplementationOnce(ai.generateText);
+    mocks.outputObject.mockImplementationOnce((options) =>
+      ai.Output.object(options as { schema: z.ZodTypeAny }),
+    );
     mocks.noObjectGeneratedErrorIsInstance.mockImplementation(
       ai.NoObjectGeneratedError.isInstance,
     );
@@ -368,13 +394,6 @@ describe("completeText", () => {
       return true;
     });
     expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(8_500);
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "gen_ai.response.finish_reasons": ["length"],
-        "gen_ai.usage.output_tokens": 8_500,
-        "gen_ai.usage.reasoning.output_tokens": 8_495,
-      }),
-    );
   });
 
   it.each([
@@ -392,8 +411,8 @@ describe("completeText", () => {
     mocks.getModels.mockReturnValueOnce([
       { id: "mistral/mistral-small", maxTokens: 4_000 },
     ]);
-    mocks.generateObject.mockResolvedValue({
-      object: { ok: true },
+    mocks.generateText.mockResolvedValue({
+      output: { ok: true },
       finishReason: "stop",
       usage: {
         inputTokens: 10,
@@ -416,19 +435,26 @@ describe("completeText", () => {
       maxTokens: 2_500,
     });
 
-    expect(mocks.generateObject).toHaveBeenCalledWith(
+    expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({ maxOutputTokens }),
     );
   });
 
-  it("records embedding usage and dimensions on the embedding span", async () => {
-    mocks.embedMany.mockResolvedValue({
-      embeddings: [
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-      ],
-      usage: { tokens: 8 },
+  it("adds cost and dimensions to the SDK embedding span", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
     });
+    const embeddings = [
+      [0.1, 0.2, 0.3],
+      [0.4, 0.5, 0.6],
+    ];
+    mocks.embedMany.mockImplementation(
+      resolveWithCallbacks(
+        { embeddings, usage: { tokens: 8 } },
+        { embedding: embeddings, usage: { tokens: 8 } },
+      ),
+    );
 
     const { embedTexts } = await import("@/chat/pi/client");
     const result = await embedTexts({
@@ -438,17 +464,16 @@ describe("completeText", () => {
 
     expect(result.dimensions).toBe(3);
     expect(result.costUsd).toBe(0.00000016);
-    const startAttributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
-      string,
-      unknown
-    >;
-    expect(startAttributes["gen_ai.operation.name"]).toBe("embeddings");
-    expect(startAttributes["gen_ai.output.type"]).toBeUndefined();
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "app.conversation.privacy": "private",
+        "gen_ai.provider.auth_mode": "oidc",
+      }),
+    );
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.input_usd": 0.00000016,
       "app.cost.total_usd": 0.00000016,
       "gen_ai.embeddings.dimension.count": 3,
-      "gen_ai.usage.input_tokens": 8,
     });
   });
 
@@ -479,10 +504,16 @@ describe("completeText", () => {
   });
 
   it("leaves embedding cost unknown for models without a verified rate", async () => {
-    mocks.embedMany.mockResolvedValue({
-      embeddings: [[0.1, 0.2, 0.3]],
-      usage: { tokens: 8 },
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
     });
+    mocks.embedMany.mockImplementation(
+      resolveWithCallbacks(
+        { embeddings: [[0.1, 0.2, 0.3]], usage: { tokens: 8 } },
+        { embedding: [[0.1, 0.2, 0.3]], usage: { tokens: 8 } },
+      ),
+    );
 
     const { embedTexts } = await import("@/chat/pi/client");
     const result = await embedTexts({
@@ -491,13 +522,12 @@ describe("completeText", () => {
     });
 
     expect(result).not.toHaveProperty("costUsd");
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+    expect(mocks.setSpanAttributes).toHaveBeenLastCalledWith({
       "gen_ai.embeddings.dimension.count": 3,
-      "gen_ai.usage.input_tokens": 8,
     });
   });
 
-  it("validates embedding output before the embedding span ends", async () => {
+  it("rejects embedding vectors of different lengths", async () => {
     mocks.embedMany.mockResolvedValue({
       embeddings: [[0.1], [0.2, 0.3]],
       usage: { tokens: 8 },
@@ -511,18 +541,23 @@ describe("completeText", () => {
         texts: ["one", "two"],
       }),
     ).rejects.toThrow("AI provider error: invalid_response");
-    expect(mocks.setSpanAttributes).not.toHaveBeenCalled();
   });
 
   it("returns rerank scores in input order with the gateway cost", async () => {
     // The SDK sorts by score and AI Gateway reports cost as a decimal string.
-    mocks.rerank.mockResolvedValue({
-      providerMetadata: { gateway: { cost: "0.0000074" } },
-      ranking: [
-        { originalIndex: 1, score: 0.9 },
-        { originalIndex: 0, score: 0.2 },
-      ],
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
     });
+    mocks.rerank.mockImplementation(
+      resolveWithCallbacks({
+        providerMetadata: { gateway: { cost: "0.0000074" } },
+        ranking: [
+          { originalIndex: 1, score: 0.9 },
+          { originalIndex: 0, score: 0.2 },
+        ],
+      }),
+    );
 
     const { rerankTexts } = await import("@/chat/pi/client");
     const result = await rerankTexts({
@@ -532,7 +567,10 @@ describe("completeText", () => {
     });
 
     expect(result).toEqual({ costUsd: 0.0000074, scores: [0.2, 0.9] });
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({ "app.rerank.document.count": 2 }),
+    );
+    expect(mocks.setSpanAttributes).toHaveBeenLastCalledWith({
       "app.cost.total_usd": 0.0000074,
     });
   });
