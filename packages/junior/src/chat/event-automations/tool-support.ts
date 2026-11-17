@@ -22,7 +22,7 @@ import {
 } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  automationToolResult,
+  saveAutomationCardResult,
   automationResultFields,
   automationResultFieldSchemas,
 } from "@/chat/automations/result";
@@ -222,7 +222,7 @@ export async function eventAutomationToolResult(
   isCreator: boolean,
 ) {
   const description = describeEventAutomationTrigger(task.trigger, catalog);
-  return automationToolResult(
+  return saveAutomationCardResult(
     conversationId,
     compactEventAutomation(task, catalog, isCreator),
     {

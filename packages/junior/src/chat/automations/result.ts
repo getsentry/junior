@@ -76,11 +76,40 @@ export function automationResultFields(
 }
 
 /**
- * Build the result of a tool that changed one Automation, with its card. The
- * card shows the saved status of the Automation. An active Automation whose
- * trigger cannot work shows as unavailable.
+ * Return the status and warning that the card and the Slack details of an
+ * Automation show. The status is the saved status, except that an active
+ * Automation whose trigger cannot work shows as unavailable.
  */
-export async function automationToolResult<
+export function automationCardStatus(automation: {
+  status: string;
+  statusReason?: string | null | undefined;
+  triggerProblems?: readonly string[] | undefined;
+}): { status: string; warning: string | undefined } {
+  const problems = automation.triggerProblems ?? [];
+  const warning = [
+    automation.status === "blocked"
+      ? (automation.statusReason ?? "This automation is blocked.")
+      : undefined,
+    automation.status === "completed"
+      ? "This automation has completed."
+      : undefined,
+    problems.length > 0
+      ? ["Trigger unavailable.", ...problems].join(" ")
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    status:
+      automation.status === "active" && problems.length > 0
+        ? "unavailable"
+        : automation.status,
+    warning: warning || undefined,
+  };
+}
+
+/** Save the card of an Automation that a tool changed, and return the tool result. */
+export async function saveAutomationCardResult<
   T extends {
     id: string;
     title: string | null;
@@ -101,20 +130,6 @@ export async function automationToolResult<
   const description = automationTaskDescription(card.task);
   const title =
     automation.title ?? fallbackShortTitle(description, card.fallbackTitle);
-  const problems = card.triggerProblems ?? [];
-  const warning = [
-    automation.status === "blocked"
-      ? (automation.status_reason ?? "This automation is blocked.")
-      : undefined,
-    automation.status === "completed"
-      ? "This automation has completed."
-      : undefined,
-    problems.length > 0
-      ? ["Trigger unavailable.", ...problems].join(" ")
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join(" ");
   const annotation: ObjectAnnotation = {
     kind: "object",
     objectType: "automation",
@@ -123,12 +138,12 @@ export async function automationToolResult<
     title,
     url: automation.dashboard_url,
     description,
-    status:
-      automation.status === "active" && problems.length > 0
-        ? "unavailable"
-        : automation.status,
+    ...automationCardStatus({
+      status: automation.status,
+      statusReason: automation.status_reason,
+      triggerProblems: card.triggerProblems,
+    }),
     trigger: card.trigger,
-    warning: warning || undefined,
   };
   return {
     automation,

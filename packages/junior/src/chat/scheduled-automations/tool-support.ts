@@ -2,7 +2,7 @@ import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import * as z from "zod";
 import type { AutomationDestination } from "@/chat/automations/creator";
 import {
-  automationToolResult,
+  saveAutomationCardResult,
   automationResultFields,
   automationResultFieldSchemas,
 } from "@/chat/automations/result";
@@ -109,16 +109,20 @@ export async function scheduleAutomationToolResult(
   task: ScheduledAutomation,
   isCreator: boolean,
 ) {
-  return automationToolResult(conversationId, compactTask(task, isCreator), {
-    task: task.task,
-    fallbackTitle: "Scheduled automation",
-    trigger:
-      task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
-        ? `${new Intl.DateTimeFormat("en-US", {
-            dateStyle: "medium",
-            timeStyle: "short",
-            timeZone: task.schedule.timezone,
-          }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
-        : task.schedule.description,
-  });
+  return saveAutomationCardResult(
+    conversationId,
+    compactTask(task, isCreator),
+    {
+      task: task.task,
+      fallbackTitle: "Scheduled automation",
+      trigger:
+        task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
+          ? `${new Intl.DateTimeFormat("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: task.schedule.timezone,
+            }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
+          : task.schedule.description,
+    },
+  );
 }
