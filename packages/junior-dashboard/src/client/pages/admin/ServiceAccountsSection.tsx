@@ -97,7 +97,10 @@ export function ServiceAccountsSection(props: {
         serviceAccountPath(account.provider),
       ),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: serviceAccountsQueryKey }),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: serviceAccountsQueryKey,
+      }),
   });
 
   const accounts = accountsQuery.data?.serviceAccounts ?? [];

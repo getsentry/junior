@@ -3,6 +3,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renameConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { patchFeedConversation } from "./conversationArchive";
 import {
   mapConversationFeedCache,
   type ConversationFeedCache,
@@ -26,11 +27,9 @@ export function useRenameConversation(
     queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
       feed
         ? mapConversationFeedCache(feed, (conversations) =>
-            conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, displayTitle }
-                : conversation,
-            ),
+            patchFeedConversation(conversations, conversationId, {
+              displayTitle,
+            }),
           )
         : feed,
     );
@@ -60,20 +59,19 @@ export function useRenameConversation(
       return previous;
     },
     onError: (_error, _title, previous) => {
-      previous?.feeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of previous?.feeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       queryClient.setQueryData(detailQueryKey, previous?.detail);
       options?.onError?.();
     },
+    // The answer's title is in every feed, so no feed refetches. The
+    // versions poll refreshes the feeds if another change moved them.
     onSuccess: (result) => setTitle(result.title),
     onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries(feeds),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: detailQueryKey,
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: detailQueryKey,
+      }),
   });
 }

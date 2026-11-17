@@ -171,13 +171,13 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. It does not watch approvals, merges, or closes, because GitHub already tells people about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. Approvals, merges, and closes reach the Watch quietly: they start no Turn and post nothing, because GitHub already tells people about them, but the next Turn knows about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.merge_conflict`, even when `events` omits it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
+This watch always includes `pull_request.merge_conflict`, even when `events` omits it. It also gets `pull_request.review.approved`, `pull_request.merged`, and `pull_request.closed_unmerged` quietly, and a draft's watch gets `pull_request.ready_for_review` quietly. When `events` lists one of them, it starts a Turn like other events. Quiet events stay in the suggested events, so Junior can still watch a merge when someone asks to hear about it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
 
 When a watch or event automation receives `pull_request.review.approved` or `pull_request.merged`, the event lists the people involved. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only lists people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
@@ -337,6 +337,10 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
+- After it files an issue for a person, ask them with a Review item whether
+  to start a Thread that implements it. When they already asked for the fix,
+  start the Thread without asking. Automation runs, events, and child agents
+  do not ask
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs

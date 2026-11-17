@@ -34,7 +34,7 @@
 - [ ] Include only compact per-tool source ids for cross-source results.
 - [ ] Avoid repeating expanded plugin or provider metadata per tool.
 - [ ] Return `tool_name`, description, and call notes. Return the full input
-      schema for the best match of a query only, and a params summary for
+      schema for the first result of a query only, and a params summary for
       other results. Do not return exposure or annotations.
 
 ## 5. Verification

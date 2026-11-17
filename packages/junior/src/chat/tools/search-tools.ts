@@ -1,5 +1,10 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import * as z from "zod";
+import {
+  bm25InverseDocumentFrequency,
+  bm25NormalizedFrequency,
+  bm25Saturation,
+} from "@sentry/junior-search";
 import type { ConversationModelCost } from "@/chat/core-model";
 import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
@@ -18,7 +23,6 @@ const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
 // Drop matches that score below this share of the best match, so a query
 // returns the tools that fit it instead of every tool that shares one word.
 const MIN_RELATIVE_SCORE = 0.3;
-const BM25_K1 = 1.2;
 // Length normalization per field. Long tool descriptions add usage guidance,
 // not more topics, so they get a weaker length penalty than the other fields.
 const BM25_B = [0.75, 0.3, 0.75] as const;
@@ -414,10 +418,9 @@ function scoreQueryTerms(
     ).length;
     return {
       weights,
-      inverseDocumentFrequency: Math.log(
-        1 +
-          (documents.length - documentFrequency + 0.5) /
-            (documentFrequency + 0.5),
+      inverseDocumentFrequency: bm25InverseDocumentFrequency(
+        documents.length,
+        documentFrequency,
       ),
     };
   });
@@ -435,13 +438,15 @@ function weightedTermFrequency(
     if (termFrequency === 0) {
       return weighted;
     }
-    const averageLength = averageLengths[fieldIndex] ?? 0;
-    const lengthRatio = averageLength === 0 ? 1 : field.length / averageLength;
     return (
       weighted +
       SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-        (termFrequency /
-          (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
+        bm25NormalizedFrequency(
+          termFrequency,
+          field.length,
+          averageLengths[fieldIndex] ?? 0,
+          BM25_B[fieldIndex]!,
+        )
     );
   }, 0);
 }
@@ -458,10 +463,7 @@ function scoreSearchDocument(
     let best = 0;
     for (const [term, weight] of weights) {
       const frequency = weightedTermFrequency(document, term, averageLengths);
-      best = Math.max(
-        best,
-        (weight * frequency * (BM25_K1 + 1)) / (frequency + BM25_K1),
-      );
+      best = Math.max(best, weight * bm25Saturation(frequency));
     }
     return score + inverseDocumentFrequency * best;
   }, 0);
@@ -476,16 +478,16 @@ function nameMatch(document: SearchDocument, query: QueryTerm[]): number {
     return 0;
   }
   let best = 0;
-  query.forEach((term, actionIndex) => {
+  for (const [actionIndex, term] of query.entries()) {
     const actionWeight = term.get(action) ?? 0;
     if (actionWeight === 0) {
-      return;
+      continue;
     }
     const covered = objects.filter((object) =>
       query.some((other, index) => index !== actionIndex && other.has(object)),
     ).length;
     best = Math.max(best, (actionWeight * covered) / objects.length);
-  });
+  }
   return best;
 }
 
@@ -628,9 +630,15 @@ function selectedSourceSummaries(
   return knownSources.filter((source) => matchedSourceIds.has(source.id));
 }
 
+/**
+ * Tell the model that a `params` preview is not enough to call a tool. Both
+ * the searchTools description and the Code Mode hint use it.
+ */
+export const PARAMS_PREVIEW_HINT =
+  "A result with only params is a preview: search its exact name to get its input_schema before you call it.";
+
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
-  const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. The best match has its full input_schema. Other results have params, a preview for choosing a tool: before you call one, search its exact name to get its input_schema.";
+  const intro = `Search the executable tool catalog. Deferred tools are grouped by source. List a source, or search with a query. The first result of a query has its full input_schema. ${PARAMS_PREVIEW_HINT} Then call the tool with executeTool and its exact tool_name.`;
   if (knownSources.length === 0) {
     return intro;
   }
@@ -777,7 +785,7 @@ export function createSearchToolsTool(
         ? listCatalogTools(catalogTools, requestedSource).length
         : 0;
       const includePerToolSource = requestedSource === null;
-      // A source listing has no best match, so it shows no full schema.
+      // A source listing is not ranked, so it shows no full schema.
       const renderedTools = matches.map((name, index) =>
         toolMetadata(
           name,

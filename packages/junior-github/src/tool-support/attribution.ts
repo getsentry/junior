@@ -1,11 +1,12 @@
 import * as z from "zod";
-import type {
-  Actor,
-  Identity,
-  PluginEgress,
-  PluginLogger,
-  Source,
-  User,
+import {
+  PluginToolInputError,
+  type Actor,
+  type PluginEgress,
+  type PluginLogger,
+  type PluginWorkOwner,
+  type Source,
+  type User,
 } from "@sentry/junior-plugin-api";
 import { githubApi, githubErrorMessage } from "./github-api.js";
 
@@ -63,64 +64,47 @@ function cleanDisplayValue(
   return cleaned;
 }
 
-/** Name the Automation run that made this write. */
-function automationLabel(
-  source: Source | undefined,
-  automationUrl: string | undefined,
-): string | undefined {
-  if (
-    (source?.kind !== "event_automation" &&
-      source?.kind !== "scheduled_automation") ||
-    !source.automationId
-  ) {
-    return undefined;
-  }
-  const automation = `automation \`${source.automationId}\``;
-  const label = automationUrl
-    ? `[${automation}](${automationUrl})`
-    : automation;
-  return source.automationRunId
-    ? `${label} · Run ID \`${source.automationRunId}\``
-    : label;
+/**
+ * Whether a person started this Turn from its own surface. An Automation run,
+ * Event, plugin dispatch, or Agent invocation acts for no person. Core's
+ * Automation tools use the same rule.
+ */
+export function startedByPerson(ctx: {
+  actor?: Actor | undefined;
+  source?: Source | undefined;
+}): boolean {
+  return !!ctx.actor && ctx.actor.platform === ctx.source?.kind;
 }
 
 /**
- * Resolve the requester display label through the host identity path first.
- *
- * Automation runs use the automation label. Other system actors get no label
- * because their names are internal. For people, prefer a linked GitHub login
- * as an `@` mention so GitHub subscribes the requester. Otherwise use the
- * linked user name, then the stored identity name/handle, then the
- * already-hydrated actor profile. Never publish a raw actor id.
+ * Name the work owner of this write. For a person, prefer a linked GitHub
+ * login as an `@` mention so GitHub subscribes them. Otherwise use the linked
+ * user name, then the stored identity name/handle, then the Turn Actor's
+ * already-hydrated profile. Never publish a raw actor id. A system owner,
+ * such as an Automation run, is named by its record.
  */
-function requesterLabel(args: {
-  actor: Actor | undefined;
-  automationUrl?: string | undefined;
-  identity?: Identity | undefined;
-  source?: Source | undefined;
-  user?: User | undefined;
-}): string | undefined {
-  const { actor, identity, user } = args;
-  const automation = automationLabel(args.source, args.automationUrl);
-  if (automation) {
-    return automation;
+function requesterLabel(
+  owner: PluginWorkOwner | undefined,
+): string | undefined {
+  if (!owner) return undefined;
+  if (owner.kind === "system") {
+    const record = `${owner.name} \`${owner.id}\``;
+    const label = owner.url ? `[${record}](${owner.url})` : record;
+    return owner.runId ? `${label} · Run ID \`${owner.runId}\`` : label;
   }
-  if (!actor || actor.platform === "system") {
-    return undefined;
-  }
-
+  const { actor, identity, user } = owner;
   const login = linkedGitHubLogin(user);
   if (login) {
     return `@${login}`;
   }
 
-  const userId = actor.userId;
+  const userId = actor?.userId;
   const display =
     cleanDisplayValue(user?.displayName, userId) ??
     cleanDisplayValue(identity?.displayName, userId) ??
     cleanDisplayValue(identity?.handle, userId) ??
-    cleanDisplayValue(actor.fullName, userId) ??
-    cleanDisplayValue(actor.userName, userId);
+    cleanDisplayValue(actor?.fullName, userId) ??
+    cleanDisplayValue(actor?.userName, userId);
   return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 
@@ -136,11 +120,11 @@ function parseExistingLabels(blockContents: string): string[] {
   }
   const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
   // Only split on a comma that starts the next label (bold markdown, a GitHub
-  // mention, an automation label, a system-actor label, or a legacy repeated
-  // "via") so a display name that itself contains a comma is not broken into
-  // extra labels.
+  // mention, a system record label such as an Automation run, a legacy
+  // system-actor label, or a legacy repeated "via") so a display name that
+  // itself contains a comma is not broken into extra labels.
   return withoutLeadIn
-    .split(/,\s*(?=\*\*|@|\[?automation `|Junior system actor `|via\s)/i)
+    .split(/,\s*(?=\*\*|@|\[?[a-z][a-z ]* `|via\s)/i)
     .map((entry) => entry.trim().replace(/^via\s+/i, ""))
     .filter(Boolean);
 }
@@ -210,36 +194,53 @@ export async function readGitHubBody(
   );
 }
 
-/** The stored Junior identity and user of the Actor that makes a GitHub write. */
-export interface GitHubRequester {
-  identity?: Identity;
-  user?: User;
-}
-
 /**
- * Look up the current Actor once for one GitHub write. The attribution block,
+ * Look up the requester once for one GitHub write. The attribution block,
  * the saved pull request requester, and the assignee all use this one result.
- *
- * System actors have no requester. The lookup is best effort: a failure is
- * logged and gives no requester, so it never blocks the write.
+ * The host decides whose work the Turn does. When the lookup fails, a person
+ * who runs the Turn keeps their hydrated profile, and a system Turn fails.
  */
 export async function resolveGitHubRequester(ctx: {
   actor?: Actor | undefined;
   log: PluginLogger;
-  users: {
-    resolveActor(): Promise<GitHubRequester | undefined>;
-  };
-}): Promise<GitHubRequester | undefined> {
-  if (!ctx.actor || ctx.actor.platform === "system") return undefined;
+  resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+}): Promise<PluginWorkOwner | undefined> {
   try {
-    return await ctx.users.resolveActor();
+    return await ctx.resolveWorkOwner();
   } catch (error) {
-    ctx.log.warn("github.requester.resolve_actor.failed", {
+    const { actor } = ctx;
+    // Only a person Turn has a fallback. A system Turn rethrows, so a failed
+    // lookup is not reported as work that nobody asked for.
+    if (!actor || actor.platform === "system") throw error;
+    ctx.log.warn("github.requester.resolve_work_owner.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
-    return undefined;
+    return { kind: "person", actor };
   }
+}
+
+/** Return the requester when it is a person, for assignment and openers. */
+export function requesterPerson(
+  requester: PluginWorkOwner | undefined,
+): Extract<PluginWorkOwner, { kind: "person" }> | undefined {
+  return requester?.kind === "person" ? requester : undefined;
+}
+
+/**
+ * Reject a pull request that would not say who it is for. The check uses the
+ * same label as the attribution block, so a pull request that passes always
+ * names its work owner.
+ */
+export function assertGitHubPullRequestRequester(
+  requester: PluginWorkOwner | undefined,
+): void {
+  if (requesterLabel(requester)) return;
+  throw new PluginToolInputError(
+    requester?.kind === "person"
+      ? "Cannot open a pull request: the person who asked for it has no linked GitHub account or name to attribute it to. Do not retry. Ask them to link their GitHub account and ask again, or report it as blocked."
+      : "Cannot open a pull request: no person or Automation run asked for this work. Do not retry. Report it as blocked, so the person who wants it can ask for it.",
+  );
 }
 
 /**
@@ -250,23 +251,8 @@ export async function resolveGitHubRequester(ctx: {
  */
 export function appendGitHubRequesterAttribution(
   body: string,
-  ctx: {
-    actor?: Actor | undefined;
-    automationLink?: { url: string };
-    source?: Source | undefined;
-  },
-  requester: GitHubRequester | undefined,
+  requester: PluginWorkOwner | undefined,
   currentBody?: string,
 ): string {
-  return applyAttribution(
-    body,
-    requesterLabel({
-      actor: ctx.actor,
-      automationUrl: ctx.automationLink?.url,
-      identity: requester?.identity,
-      source: ctx.source,
-      user: requester?.user,
-    }),
-    currentBody,
-  );
+  return applyAttribution(body, requesterLabel(requester), currentBody);
 }

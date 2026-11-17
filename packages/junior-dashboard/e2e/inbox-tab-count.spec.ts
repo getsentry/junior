@@ -103,7 +103,7 @@ test("the tab icon count fills the top-left corner, clear of the eye", async ({
   expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
 });
 
-test("turning off the tab icon count keeps the title count", async ({
+test("turning off the tab count hides it in the title and on the icon", async ({
   dashboard,
   page,
 }) => {
@@ -111,19 +111,20 @@ test("turning off the tab icon count keeps the title count", async ({
   await page.goto(`${dashboard.baseURL}/settings`);
   const icon = page.locator('link[rel="icon"]');
   const showCount = page.getByRole("checkbox", {
-    name: "Show Inbox count on the tab icon",
+    name: "Show the Inbox count in the tab",
   });
   await expect(showCount).toBeChecked();
+  await expect(page).toHaveTitle(/^\(1\) .+ - Junior$/);
   await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
 
   await showCount.click();
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
-  await expect(page).toHaveTitle(/^\(1\) .+ - Junior$/);
+  await expect(page).toHaveTitle(/^[^(].* - Junior$/);
 
   // The choice stays on this browser.
   await page.reload();
   await expect(showCount).not.toBeChecked();
-  await expect(page).toHaveTitle(/^\(1\) .+ - Junior$/);
+  await expect(page).toHaveTitle(/^[^(].* - Junior$/);
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
 });
 

@@ -3,7 +3,7 @@
  *
  * The sandbox module owns provider lifecycle and recovery. This module adds
  * agent-specific preparation, durable reference propagation, custom command
- * routing, and generated-artifact materialization.
+ * routing, and generated-file materialization.
  */
 import type { FileUpload } from "chat";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
@@ -25,8 +25,8 @@ import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { writeSandboxGeneratedArtifacts } from "@/chat/tools/sandbox/generated-artifacts";
-import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
+import { writeSandboxGeneratedFiles } from "@/chat/tools/sandbox/generated-files";
+import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
@@ -61,9 +61,7 @@ export interface AgentSandbox {
   sandboxRef(): SandboxRef | undefined;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
-  writeGeneratedArtifacts(
-    files: FileUpload[],
-  ): Promise<GeneratedArtifactFileRef[]>;
+  writeGeneratedFiles(files: FileUpload[]): Promise<GeneratedFileRef[]>;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -214,8 +212,8 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
         return await sandbox.tools.execute(params);
       },
     },
-    async writeGeneratedArtifacts(files) {
-      return await writeSandboxGeneratedArtifacts(sandbox.workspace, files);
+    async writeGeneratedFiles(files) {
+      return await writeSandboxGeneratedFiles(sandbox.workspace, files);
     },
   };
 }

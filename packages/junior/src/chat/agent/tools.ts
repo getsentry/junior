@@ -532,14 +532,21 @@ export async function wireAgentTools(
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
+      destinationFacts: pluginCatalogRuntime
+        .getProviders()
+        .flatMap(({ manifest }) =>
+          manifest.reviewContext
+            ? [{ plugin: manifest.name, text: manifest.reviewContext }]
+            : [],
+        ),
       modelId: botConfig.guardianModelId,
     }),
   });
   const tools = createTools(
     loadableSkills(args.availableSkills, args.invokedSkill?.name),
     {
-      writeGeneratedArtifacts: async (files) => {
-        const refs = await agentSandbox.writeGeneratedArtifacts(files);
+      writeGeneratedFiles: async (files) => {
+        const refs = await agentSandbox.writeGeneratedFiles(files);
         args.generatedFiles.push(...files);
         return refs;
       },

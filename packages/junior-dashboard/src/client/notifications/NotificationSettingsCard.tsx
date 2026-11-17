@@ -148,7 +148,10 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     },
     onSuccess: (next) => {
       if (next) saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: pushDeviceQueryKey });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: pushDeviceQueryKey,
+      });
     },
   });
   const test = useMutation({ mutationFn: sendTestNotification });

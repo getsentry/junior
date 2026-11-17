@@ -48,6 +48,7 @@ export async function classifyGitHubPullRequestCommitComposition(args: {
   let inspectedCommits = 0;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const commits = commitPageSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first page that settles the answer.
       await args.loadPage(page, PAGE_SIZE),
     );
     inspectedCommits += commits.length;

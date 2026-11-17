@@ -1,4 +1,7 @@
+import { isBriefsEnabled } from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
+import { createConversationEmbedder } from "@/chat/conversations/embedding";
+import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import {
@@ -271,5 +274,21 @@ export async function runHeartbeat(args: {
     await runSavingsRefillSlice({ nowMs: args.nowMs });
   } catch (error) {
     logException(error, "cache_warming.savings_refill.failed");
+  }
+  // The Brief task writes these vectors, so the backfill runs only with it.
+  if (isBriefsEnabled()) {
+    try {
+      await runConversationEmbeddingBackfill(
+        createConversationEmbedder({
+          // One batch embeds the Briefs of many Conversations, so no one
+          // Conversation pays. The cost stays on the span.
+          cost: { owner: "none" },
+          operation: "conversation_embedding",
+        }),
+      );
+    } catch (error) {
+      // The claim expires, and a later heartbeat tries again.
+      logException(error, "conversation_embeddings.backfill.failed");
+    }
   }
 }

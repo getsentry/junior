@@ -524,12 +524,13 @@ async function loadRetainedUserMessages(
 }
 
 const COMPACTION_READ_BACK_NOTE =
-  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+  "The summary replaced earlier messages and tool results and leaves out most of their details. Before you call a detail unknown or ask for it, search for it with a searchConversationEvents query, then read the full text with readConversationEvent.";
 
 /**
  * Keep generated text inside the existing evidence-only prompt boundary. The
  * last line says where replaced detail stays readable: without it, the model
- * often decides an exact value from a compacted tool result is gone.
+ * often decides a detail from a compacted tool result is gone, and asks the
+ * person for it.
  */
 export function renderCompactionSummary(summary: string): string {
   return [

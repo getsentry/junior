@@ -1,6 +1,7 @@
 import { withRequestedMailbox } from "./harness";
+import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
-import { mobile, screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -29,16 +30,22 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(
+        `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+        { waitUntil: "networkidle" },
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: "Investigate checkout latency",
+          exact: true,
+        }),
+      ).toBeVisible();
+    },
+    { requests: 10, serialRounds: 2 },
   );
-  await expect(
-    page.getByRole("heading", {
-      name: "Investigate checkout latency",
-      exact: true,
-    }),
-  ).toBeVisible();
   const conversationList = page.getByRole("navigation", {
     name: "Your conversations",
   });
@@ -192,10 +199,14 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     .filter({ has: page.locator('img[alt="chart.png"]') })
     .first();
   await image.waitFor({ state: "visible" });
-  await image.evaluate((element) =>
-    element.scrollIntoView({ block: "center", inline: "nearest" }),
-  );
-  await screenshot(page, "conversation-attachment");
+  // A resize keeps another scroll position, so center the image in each view.
+  for (const view of [desktop, mobile]) {
+    await page.setViewportSize(view);
+    await image.evaluate((element) =>
+      element.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
+    await screenshot(page, "conversation-attachment", { view: view.name });
+  }
 
   await image.click();
   const preview = page.getByRole("dialog", { name: "chart.png" });
@@ -277,10 +288,16 @@ test("reuses the fresh conversation feed after window focus", async ({
     await route.fallback();
   });
 
-  await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(dashboard.baseURL);
+      await expect(
+        page.getByRole("navigation", { name: "Your conversations" }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 1 },
+  );
   expect(requests).toBe(1);
 
   // Fresh feeds must not refetch on focus. Fail if another list fetch starts.

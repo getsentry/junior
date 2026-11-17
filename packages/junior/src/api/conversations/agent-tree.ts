@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
@@ -55,36 +57,39 @@ export async function readConversationAgentTree(
     readAutomationTitlesByConversationId(root ? [root] : []),
     readFirstHumanMessageTexts(getDb(), root ? [root] : []),
   ]);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   return await Promise.all(
-    ids.map(async (id) => {
-      const itemAccess = access.get(id);
-      if (root?.conversationId === id) {
-        // The summary projection owns root titles and their privacy labels.
-        const summary = conversationSummaryFromStoredConversation({
-          access: itemAccess,
-          automationTitle: automationTitleByConversation.get(id),
-          conversation: root,
-          durationMs: 0,
-          firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
-        });
+    ids.map((id) =>
+      limit(async () => {
+        const itemAccess = access.get(id);
+        if (root?.conversationId === id) {
+          // The summary projection owns root titles and their privacy labels.
+          const summary = conversationSummaryFromStoredConversation({
+            access: itemAccess,
+            automationTitle: automationTitleByConversation.get(id),
+            conversation: root,
+            durationMs: 0,
+            firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
+          });
+          return {
+            conversationId: id,
+            kind: "root" as const,
+            label: summary.displayTitle,
+          };
+        }
+        const kind = kindById.get(id)!;
+        if (!itemAccess?.canViewPrivateContent) {
+          return { conversationId: id, kind, label: childLabel(kind) };
+        }
+        const agent = await getChildAgentLabel(id);
         return {
           conversationId: id,
-          kind: "root" as const,
-          label: summary.displayTitle,
+          kind,
+          label: agent?.title ?? agent?.agentName ?? childLabel(kind),
+          ...(agent?.agentType ? { agentType: agent.agentType } : undefined),
+          ...(agent?.fork ? { fork: true as const } : undefined),
         };
-      }
-      const kind = kindById.get(id)!;
-      if (!itemAccess?.canViewPrivateContent) {
-        return { conversationId: id, kind, label: childLabel(kind) };
-      }
-      const agent = await getChildAgentLabel(id);
-      return {
-        conversationId: id,
-        kind,
-        label: agent?.title ?? agent?.agentName ?? childLabel(kind),
-        ...(agent?.agentType ? { agentType: agent.agentType } : undefined),
-        ...(agent?.fork ? { fork: true as const } : undefined),
-      };
-    }),
+      }),
+    ),
   );
 }

@@ -323,7 +323,7 @@ describe("searchTools", () => {
     expect(directResult).toMatchObject({ total_matches: 0, tools: [] });
   });
 
-  it("returns the full schema for the best match and a params summary for the rest", async () => {
+  it("returns the full schema for the first result and a params summary for the rest", async () => {
     const search = await createSearchToolsTool(mixedCatalog(), NO_COST)
       .execute!({ query: "create memory" }, {});
     expect(search.tools).toEqual([
@@ -376,11 +376,31 @@ describe("searchTools", () => {
           exposure: "deferred",
           inputSchema: Type.Object({}),
         }),
+        // zod `toJSONSchema` lists a `.default()` field as required.
+        tracker_listIssues: tool({
+          description: "List issues.",
+          source,
+          exposure: "deferred",
+          inputSchema: Type.Object({
+            project: Type.String(),
+            limit: Type.Number({ default: 20 }),
+          }),
+        }),
+        // A root union, such as `z.union([...])`, has no root properties.
+        tracker_moveIssue: tool({
+          description: "Move an issue.",
+          source,
+          exposure: "deferred",
+          inputSchema: Type.Union([
+            Type.Object({ key: Type.String(), project: Type.String() }),
+            Type.Object({ key: Type.String(), board: Type.String() }),
+          ]),
+        }),
       },
       NO_COST,
     );
 
-    // A source listing has no best match, so every tool gets a summary.
+    // A source listing is not ranked, so every tool gets a summary.
     const listing = await searchTools.execute!({ source: "tracker" }, {});
     expect(
       listing.tools.map(({ tool_name, input_schema, params }) => ({
@@ -390,7 +410,16 @@ describe("searchTools", () => {
       })),
     ).toEqual([
       { tool_name: "tracker_getIssue", params: "key: string" },
+      {
+        tool_name: "tracker_listIssues",
+        params: "project: string, limit?: number",
+      },
       { tool_name: "tracker_listProjects", params: "No arguments." },
+      {
+        tool_name: "tracker_moveIssue",
+        params:
+          "{ key: string, project: string } | { key: string, board: string }",
+      },
       {
         tool_name: "tracker_updateIssue",
         params:

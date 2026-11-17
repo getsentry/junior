@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import * as z from "zod";
 
 const mocks = vi.hoisted(() => ({
@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
-  getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
+  getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
+    { id: "openai/gpt-4o-mini" },
+  ]),
   logException: vi.fn(),
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
@@ -401,7 +403,10 @@ describe("completeText", () => {
       { name: "AI_NoObjectGeneratedError", text: "model output" },
     );
     mocks.generateObject.mockRejectedValue(sdkError);
-    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
+    // The span records usage first, then the error is classified.
+    mocks.noObjectGeneratedErrorIsInstance
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true);
 
     const { completeObject } = await import("@/chat/pi/client");
 
@@ -428,6 +433,115 @@ describe("completeText", () => {
     });
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
+  });
+
+  it("adds reasoning room to the object budget and reports a spent budget", async () => {
+    const ai = await vi.importActual<typeof import("ai")>("ai");
+    const { MockLanguageModelV4 } = await import("ai/test");
+    // Reasoning used most of the budget, so the JSON stops partway through.
+    const model = new MockLanguageModelV4({
+      modelId: "openai/gpt-6-luna",
+      doGenerate: {
+        content: [{ type: "text", text: '{"ok": tr' }],
+        finishReason: { unified: "length", raw: "max_output_tokens" },
+        usage: {
+          inputTokens: {
+            total: 100,
+            noCache: 100,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+          outputTokens: { total: 8_500, text: 5, reasoning: 8_495 },
+        },
+        warnings: [],
+      },
+    });
+    mocks.createGatewayProvider.mockReturnValueOnce({
+      chat: vi.fn(() => model),
+      embeddingModel: vi.fn((modelId: string) => ({ modelId })),
+      rerankingModel: vi.fn((modelId: string) => ({ modelId })),
+      transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
+    });
+    mocks.generateObject.mockImplementationOnce(ai.generateObject);
+    mocks.noObjectGeneratedErrorIsInstance.mockImplementation(
+      ai.NoObjectGeneratedError.isInstance,
+    );
+    onTestFinished(() => {
+      mocks.noObjectGeneratedErrorIsInstance.mockReset();
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+
+    await expect(
+      completeObject({
+        modelId: "openai/gpt-6-luna",
+        schema: z.object({ ok: z.boolean() }),
+        prompt: "return json",
+        maxTokens: 2_500,
+      }),
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({ kind: "invalid_response" });
+      expect(error.cause).toMatchObject({
+        name: "StructuredOutputLengthError",
+        message: "Structured output hit the output token limit",
+      });
+      expect(
+        JSON.stringify(error.cause, Object.getOwnPropertyNames(error.cause)),
+      ).not.toContain('{"ok": tr');
+      return true;
+    });
+    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(8_500);
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.response.finish_reasons": ["length"],
+        "gen_ai.usage.output_tokens": 8_500,
+        "gen_ai.usage.reasoning.output_tokens": 8_495,
+      }),
+    );
+  });
+
+  it.each([
+    [
+      "clamps to the output limit of a catalog model",
+      "mistral/mistral-small",
+      4_000,
+    ],
+    [
+      "keeps the full limit for a model outside the catalog",
+      "plugin/custom",
+      8_500,
+    ],
+  ] as const)("%s", async (_name, modelId, maxOutputTokens) => {
+    mocks.getModels.mockReturnValueOnce([
+      { id: "mistral/mistral-small", maxTokens: 4_000 },
+    ]);
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+        totalTokens: 13,
+      },
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+    await completeObject({
+      modelId,
+      schema: z.object({ ok: z.boolean() }),
+      prompt: "return json",
+      maxTokens: 2_500,
+    });
+
+    expect(mocks.generateObject).toHaveBeenCalledWith(
+      expect.objectContaining({ maxOutputTokens }),
+    );
   });
 
   it("records embedding usage and dimensions on the embedding span", async () => {

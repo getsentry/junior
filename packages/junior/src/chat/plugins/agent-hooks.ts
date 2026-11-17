@@ -33,6 +33,7 @@ import type {
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
@@ -77,11 +78,8 @@ import type {
 } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import {
-  getDashboardConversationLink,
-  getDashboardTaskLink,
-} from "@/chat/dashboard-link";
-import { createWatch } from "@/chat/events/store";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { createWatch, turnEvents } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -851,22 +849,19 @@ export function getPluginTools(
             registration,
             input.resource.identifier,
           ),
+          quietEvents: input.quietEvents,
           resourceType: input.resource.type,
         });
+        // Quiet Events never wake the Conversation, so the agent does not
+        // count on them. It can still watch them with watchEvents.
         return {
-          events: subscription.events,
+          events: turnEvents(subscription),
           id: subscription.id,
         };
       },
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
-    const automationUrl =
-      (context.source.kind === "event_automation" ||
-        context.source.kind === "scheduled_automation") &&
-      context.source.automationId
-        ? getDashboardTaskLink(context.source.automationId)
-        : undefined;
     const onCost = createPluginModelCostRecorder({
       conversationId: context.conversationId,
       pluginName,
@@ -876,9 +871,12 @@ export function getPluginTools(
     const common = {
       ...basePluginContext(plugin),
       annotations,
-      ...(automationUrl
-        ? { automationLink: { url: automationUrl } }
-        : undefined),
+      resolveWorkOwner: async () =>
+        await resolveWorkOwner({
+          actor: context.actor,
+          conversationId: context.conversationId,
+          resolveActor,
+        }),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),

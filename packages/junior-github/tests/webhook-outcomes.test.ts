@@ -2967,6 +2967,7 @@ describe("GitHub-owned pull request outcomes", () => {
         providerSubjectId: person,
       },
       user: {
+        displayName: person,
         email: `${person}@example.com`,
         id: `user-${person}`,
         identities: linkedGitHub.has(person)
@@ -3090,11 +3091,11 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       },
       events: { canSubscribe: false },
+      async resolveWorkOwner() {
+        return { kind: "person", ...identityOf(person) };
+      },
       users: {
         replaceSlackMentions: async (value: unknown) => value,
-        async resolveActor() {
-          return identityOf(person);
-        },
       },
       state: {
         async delete(key: string) {
@@ -3107,7 +3108,7 @@ describe("GitHub-owned pull request outcomes", () => {
           state.set(key, value);
         },
         async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
-          return await run();
+          return { acquired: true, value: await run() };
         },
       },
     } as any;

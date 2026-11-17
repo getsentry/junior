@@ -12,7 +12,8 @@ export type StatusChipTone =
 
 export type StatusChipSize = "default" | "compact";
 
-const toneClass: Record<StatusChipTone, string> = {
+/** Text color for each tone, for status shown as an icon instead of a chip. */
+export const statusToneClass: Record<StatusChipTone, string> = {
   accent: "text-dashboard-accent",
   danger: "text-rose-300",
   info: "text-cyan-300",
@@ -38,7 +39,7 @@ export function StatusChip(props: {
       className={cn(
         "inline-flex w-fit items-center gap-1.5 font-sans font-medium normal-case leading-snug tracking-normal",
         sizeClass[props.size ?? "default"],
-        toneClass[props.tone ?? "neutral"],
+        statusToneClass[props.tone ?? "neutral"],
         props.className,
       )}
     >

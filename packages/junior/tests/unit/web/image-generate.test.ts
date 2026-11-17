@@ -55,12 +55,12 @@ function requestBody(fetchMock: ReturnType<typeof gatewayFetch>, index = 0) {
   return JSON.parse(request[1]!.body as string);
 }
 
-function writeGeneratedArtifacts(files: FileUpload[]) {
+function writeGeneratedFiles(files: FileUpload[]) {
   return files.map((file) => ({
     bytes: Buffer.isBuffer(file.data) ? file.data.byteLength : 0,
     filename: file.filename,
     mime_type: file.mimeType,
-    path: `/tmp/junior/artifacts/${file.filename}`,
+    path: `/tmp/jr/gen/0123456789ab/${file.filename}`,
   }));
 }
 
@@ -80,9 +80,9 @@ describe("createImageGenerateTool", () => {
     const uploads: FileUpload[] = [];
     const tool = createImageGenerateTool(
       {
-        writeGeneratedArtifacts: (files: FileUpload[]) => {
+        writeGeneratedFiles: (files: FileUpload[]) => {
           uploads.push(...files);
-          return writeGeneratedArtifacts(files);
+          return writeGeneratedFiles(files);
         },
       },
       { ...defaultImageOptions, modelId: "openai/gpt-image-1.5" },
@@ -107,7 +107,7 @@ describe("createImageGenerateTool", () => {
           bytes: PNG_BYTES.byteLength,
           filename: "generated-image-1737000000000-1.png",
           mime_type: "image/png",
-          path: "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
+          path: "/tmp/jr/gen/0123456789ab/generated-image-1737000000000-1.png",
         },
       ],
       delivery: expect.stringContaining("no file-send tool"),
@@ -121,7 +121,7 @@ describe("createImageGenerateTool", () => {
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       { ...defaultImageOptions, canSendFilesToActiveConversation: true },
       { fetch: gatewayFetch([imageResponse()]) },
     );
@@ -152,7 +152,7 @@ describe("createImageGenerateTool", () => {
     ]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       {
         modelId: "google/gemini-3-pro-image",
         modelCost: { owner: "none" },
@@ -175,7 +175,7 @@ describe("createImageGenerateTool", () => {
     const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       defaultImageOptions,
       { fetch: fetchMock },
     );
@@ -196,7 +196,7 @@ describe("createImageGenerateTool", () => {
     const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       defaultImageOptions,
       { fetch: fetchMock },
     );
@@ -212,7 +212,7 @@ describe("createImageGenerateTool", () => {
     const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       defaultImageOptions,
       { fetch: fetchMock },
     );
@@ -227,7 +227,7 @@ describe("createImageGenerateTool", () => {
     const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       {
         ...defaultImageOptions,
         sandbox: sandbox({ "/vercel/sandbox/photo.png": PNG_BYTES }),
@@ -256,7 +256,7 @@ describe("createImageGenerateTool", () => {
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       defaultImageOptions,
       {
         fetch: gatewayFetch([
@@ -291,7 +291,7 @@ describe("createImageGenerateTool", () => {
     expect(largePng.byteLength).toBeGreaterThan(3 * 1024 * 1024);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       {
         ...defaultImageOptions,
         sandbox: sandbox({
@@ -338,7 +338,7 @@ describe("createImageGenerateTool", () => {
     const fetchMock = gatewayFetch([]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       {
         ...defaultImageOptions,
         sandbox: sandbox({

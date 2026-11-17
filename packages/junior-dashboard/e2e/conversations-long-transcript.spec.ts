@@ -130,9 +130,17 @@ async function mockLongConversation(
     async (route) => {
       await route.fulfill({
         json: {
-          items: events(0, lastSeq).flatMap(({ data, seq }) =>
+          items: events(0, lastSeq).flatMap(({ createdAt, data, seq }) =>
             data.type === "message" && data.role === "user"
-              ? [{ seq, text: data.text }]
+              ? [
+                  {
+                    actorIdentityId: "identity-asker",
+                    createdAt,
+                    seq,
+                    text: data.text,
+                    reply: `Transcript message ${seq + 1} with enough content to occupy a visible row.`,
+                  },
+                ]
               : [],
           ),
         },
@@ -185,6 +193,7 @@ async function mockLongConversation(
     await route.fulfill({
       json: withRequestedMailbox(route, {
         ...conversation,
+        authors: { "identity-asker": { fullName: "Andrew Asker" } },
         eventHistory: { status: "available" },
         events: events(firstSeq, lastSeq),
         generatedAt,
@@ -203,6 +212,13 @@ function mountedRows(transcript: Locator) {
 
 function row(transcript: Locator, seq: number) {
   return transcript.locator(`[data-transcript-seq="${seq}"]`);
+}
+
+// Headless Chrome hides every scrollbar, so read the style that hides it.
+function scrollbarHidden(transcript: Locator): Promise<boolean> {
+  return transcript.evaluate(
+    (element) => getComputedStyle(element).scrollbarWidth === "none",
+  );
 }
 
 // Rows that load above the reader leave the content below them unchanged, so
@@ -355,8 +371,8 @@ test("keeps a Reply rating while its row unmounts", async ({
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
-  // The outline shows only beside a transcript with room to its left.
-  await page.setViewportSize({ height: 900, width: 1920 });
+  // The outline shows beside a transcript that fills its column too.
+  await page.setViewportSize(desktop);
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
     paged: true,
@@ -372,16 +388,98 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   // The outline lists every person message, not only the loaded page.
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
+  // By default the scrollbar stays, the outline sits on the left, and it
+  // marks no thumb.
+  expect(await scrollbarHidden(transcript)).toBe(false);
+  await expect(outline).toHaveAttribute("data-side", "left");
+  await expect(outline.locator("button[data-in-view]")).toHaveCount(0);
 
   const item = outline.getByRole("button", {
     name: "Transcript message 1234 with",
   });
+  // The preview of a message that has not loaded shows its reply too.
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-description"]'),
+  ).toHaveText(/^Transcript message 1235 /);
+  await expect(
+    page.locator('[data-slot="message-outline-preview-meta"]'),
+  ).toHaveText(/^Andrew Asker · /);
   await item.click();
   // The message starts at the top of the viewport.
   await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
+test("scrolls with the outline instead of the scrollbar", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/settings#scroll-conversations-with`);
+  await page.getByRole("radio", { name: "Outline" }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  await expect.poll(() => scrollbarHidden(transcript)).toBe(true);
+  // The outline takes the place of the scrollbar on the right.
+  await expect(outline).toHaveAttribute("data-side", "right");
+  // The items on screen form a thumb that holds the active item.
+  const thumb = outline.locator("button[data-in-view]");
+  await expect(thumb.first()).toHaveAttribute("aria-current", "location");
+
+  // The wheel still scrolls the transcript.
+  const before = await transcript.evaluate((element) => element.scrollTop);
+  await transcript.hover();
+  await page.mouse.wheel(0, -600);
+  await expect
+    .poll(() => transcript.evaluate((element) => element.scrollTop))
+    .toBeLessThan(before);
+
+  // A drag up the list moves the transcript to the item under the pointer,
+  // through the pages that are not loaded.
+  const active = outline.locator("button[aria-current]");
+  const startSeq = Number(
+    /message (\d+) /.exec((await active.getAttribute("aria-label"))!)![1],
+  );
+  const target = outline.getByRole("button", {
+    name: `Transcript message ${startSeq - 100} with`,
+  });
+  await active.dragTo(target, { steps: 20 });
+  await expect(target).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, startSeq - 100)).toBeInViewport();
+  expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+
+  // A press released off the list ends there, so a later hover does not
+  // move the transcript.
+  await target.hover();
+  await page.mouse.down();
+  await row(transcript, startSeq - 100).hover();
+  await page.mouse.up();
+  await outline
+    .getByRole("button", { name: `Transcript message ${startSeq - 60} with` })
+    .hover();
+  await expect(target).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, startSeq - 100)).toBeInViewport();
+
+  // A shorter transcript shows fewer items, and the thumb follows.
+  const inView = await thumb.count();
+  await page.setViewportSize({ height: 600, width: 1920 });
+  await expect.poll(() => thumb.count()).toBeLessThan(inView);
+
+  // Where the outline hides, the scrollbar comes back.
+  await page.setViewportSize({ height: 900, width: 700 });
+  await expect(outline).toBeHidden();
+  await expect.poll(() => scrollbarHidden(transcript)).toBe(false);
 });
 
 test("points at the outline item under a still pointer while the list scrolls", async ({
@@ -607,9 +705,8 @@ test.describe("on a touch screen", () => {
       transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
     ).toHaveCount(0);
     await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+    // No screenshot: where a fling stops depends on the timing of the touch
+    // events, so each run would show other rows.
     expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-    await screenshot(page, "conversation-long-transcript-touch", {
-      view: "mobile",
-    });
   });
 });

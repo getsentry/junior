@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
@@ -87,20 +89,23 @@ export function createAgentRunner(
       const drainSteeringMessages = nextRun.durability?.drainSteeringMessages;
       if (drainSteeringMessages) {
         // Steered web messages carry stored files like the instruction does.
+        const limit = pLimit(FAN_OUT_CONCURRENCY);
         nextRun.durability = {
           ...nextRun.durability,
           drainSteeringMessages: (accept) =>
             drainSteeringMessages(async (messages) =>
               accept(
                 await Promise.all(
-                  messages.map(async ({ storedAttachments, ...message }) =>
-                    storedAttachments?.length
-                      ? {
-                          ...message,
-                          attachments:
-                            await loadStoredAttachments(storedAttachments),
-                        }
-                      : message,
+                  messages.map(({ storedAttachments, ...message }) =>
+                    limit(async () =>
+                      storedAttachments?.length
+                        ? {
+                            ...message,
+                            attachments:
+                              await loadStoredAttachments(storedAttachments),
+                          }
+                        : message,
+                    ),
                   ),
                 ),
               ),

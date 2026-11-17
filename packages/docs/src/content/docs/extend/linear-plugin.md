@@ -85,6 +85,24 @@ export const plugins = defineJuniorPlugins([linearPlugin()], {
 Until an admin connects the account, Junior tells people that Linear is not
 available yet.
 
+## Review context
+
+Linear can sync issues to GitHub repositories. When some of those repositories
+are public, tell action review which teams sync, so that it blocks private
+data in their issues:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  linearPlugin({
+    reviewContext:
+      "Issues in the Linear teams SDK and DOCS sync to public GitHub repositories. Other teams are internal.",
+  }),
+]);
+```
+
+Action review reads this text in its system prompt. The agent does not see
+it. Without it, action review treats Linear as an internal destination.
+
 ## Config
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.

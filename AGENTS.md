@@ -87,6 +87,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/serverless-background-work.md`: work that must survive request
   edges.
 - `policies/observability.md`: telemetry for diagnosis.
+- `policies/performance.md`: awaits, fan-out, and query refreshes.
 - `policies/system-prompt.md`: system prompt blocks.
 - `policies/prompt-markers.md`: tags, untrusted text, IDs, and escaping in
   model-read text.
