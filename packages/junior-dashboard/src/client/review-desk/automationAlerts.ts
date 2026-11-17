@@ -1,4 +1,4 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
@@ -18,7 +18,7 @@ type PutAway = { alert: string; untilMs?: number };
  * What an Automation alert says now. A new failure, run, or blocked reason
  * changes it, so a dismissed or snoozed alert shows again.
  */
-function alertIdentity(automation: AutomationSummary): string {
+function alertIdentity(automation: AutomationListItem): string {
   const problems =
     automation.kind === "event" ? automation.trigger.problems : [];
   return JSON.stringify([
@@ -55,7 +55,7 @@ export function useAutomationAlerts(nowMs: number) {
     return () => clearTimeout(timer);
   }, [nextWakeMs]);
 
-  const hidden = (automation: AutomationSummary) => {
+  const hidden = (automation: AutomationListItem) => {
     const entry = stored[automation.id];
     return (
       entry !== undefined &&
@@ -63,7 +63,7 @@ export function useAutomationAlerts(nowMs: number) {
       (entry.untilMs === undefined || entry.untilMs > nowMs)
     );
   };
-  const putAway = (automation: AutomationSummary, untilMs?: number) =>
+  const putAway = (automation: AutomationListItem, untilMs?: number) =>
     setStored({
       ...stored,
       [automation.id]: { alert: alertIdentity(automation), untilMs },
@@ -73,9 +73,9 @@ export function useAutomationAlerts(nowMs: number) {
     anyPutAway: Object.values(stored).some(
       (entry) => entry.untilMs === undefined || entry.untilMs > nowMs,
     ),
-    dismiss: (automation: AutomationSummary) => putAway(automation),
+    dismiss: (automation: AutomationListItem) => putAway(automation),
     hidden,
-    snooze: (automation: AutomationSummary, choice: SnoozeChoice) =>
+    snooze: (automation: AutomationListItem, choice: SnoozeChoice) =>
       putAway(automation, choice.untilMs(nowMs)),
   };
 }

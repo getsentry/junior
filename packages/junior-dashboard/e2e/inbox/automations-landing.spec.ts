@@ -4,7 +4,7 @@ import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  test("groups automations into To do, then by state, on the landing page", async ({
+  test("groups automations into To do, then by latest run, on the landing page", async ({
     page,
     dashboard,
   }) => {

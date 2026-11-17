@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   automationEditSchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
 
 import { useToastManager } from "../../components/ui/toast";
@@ -14,7 +14,7 @@ import { invalidateAutomationReads } from "../../review-desk/inboxQueries";
  * after another surface changed the lifecycle.
  */
 export function useAutomationLifecycle(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
   action: "pause" | "resume",
 ) {
   const toast = useToastManager();

@@ -1,4 +1,4 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { CalendarClock, LockKeyhole, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
@@ -26,7 +26,7 @@ const automationRowColumns =
  * owner line with what is wrong and the link that fixes it.
  */
 export function AutomationRow(props: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   onSelect(): void;
   to: string;
 }) {
@@ -110,7 +110,7 @@ export function AutomationRow(props: {
 function AutomationTriggerLine({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   const scheduled = automation.kind === "scheduled";
   const Icon = scheduled ? CalendarClock : Zap;
@@ -162,7 +162,7 @@ function AutomationTriggerLine({
 }
 
 /** What happens next on top, the last run under it. */
-function AutomationTiming({ automation }: { automation: AutomationSummary }) {
+function AutomationTiming({ automation }: { automation: AutomationListItem }) {
   const next =
     automation.status === "paused"
       ? { label: "Paused" }

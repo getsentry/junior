@@ -1,14 +1,8 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
-import {
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
@@ -47,12 +41,12 @@ import {
   inboxViewPath,
   itemRowSubtitle,
   sweepOf,
-  TIME_SECTIONS,
-  timeSectionAt,
+  timeGroups,
   viewRows,
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
+import { PageEnd, RetryRow } from "./PageEnd";
 import { useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
 import {
@@ -86,72 +80,6 @@ function SweepControl(props: {
   );
 }
 
-/** A failed read, with Try again. */
-function RetryRow(props: {
-  children: string;
-  loading: boolean;
-  onRetry(): void;
-}) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-3 text-xs">
-      <InlineError className="w-auto">{props.children}</InlineError>
-      <Button
-        className="h-7 px-2 text-xs"
-        disabled={props.loading}
-        onClick={props.onRetry}
-        variant="ghost"
-      >
-        Try again
-      </Button>
-    </div>
-  );
-}
-
-/**
- * The end of a paged list. While it shows, it asks for more, and asks again
- * whenever `progress` changes. After a failed read it shows Try again
- * instead, and asks for nothing until the reader tries again.
- */
-function PageEnd(props: {
-  failed: boolean;
-  loading: boolean;
-  more: boolean;
-  onRetry(): void;
-  onShow(): void;
-  progress: string;
-}) {
-  const sentinel = useRef<HTMLDivElement>(null);
-  const onShow = useEffectEvent(props.onShow);
-  const active = props.more && !props.failed;
-  // A new observer reports at once, so the list keeps loading while its
-  // end shows.
-  useEffect(() => {
-    const node = sentinel.current;
-    if (!node || !active) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) onShow();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [active, props.progress]);
-  if (props.failed)
-    return (
-      <RetryRow loading={props.loading} onRetry={props.onRetry}>
-        Could not load more.
-      </RetryRow>
-    );
-  if (!props.more) return null;
-  return (
-    <div
-      className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
-      ref={sentinel}
-      role="status"
-    >
-      {props.loading ? "Loading more…" : null}
-    </div>
-  );
-}
-
 function RowsLoading() {
   return (
     <div aria-busy="true" className="grid gap-1 pt-2" role="status">
@@ -164,20 +92,6 @@ function RowsLoading() {
       ))}
     </div>
   );
-}
-
-/** Split rows into Today, This week, and Earlier, keeping their order. */
-function timeGroups<Row>(
-  rows: readonly Row[],
-  timeOf: (row: Row) => string,
-  nowMs: number,
-) {
-  return TIME_SECTIONS.map((section) => ({
-    ...section,
-    rows: rows.filter(
-      (row) => timeSectionAt(timeOf(row), nowMs) === section.key,
-    ),
-  })).filter((section) => section.rows.length > 0);
 }
 
 /** A pinned row of the Conversations bundle, which drags into a new order. */
@@ -508,7 +422,7 @@ export function InboxList(props: {
   };
   // In To do, an alert can be dismissed or snoozed in this browser.
   const automationRow = (
-    automation: AutomationSummary,
+    automation: AutomationListItem,
     options: { todo?: boolean } = {},
   ) => {
     const key = `automation:${automation.id}`;

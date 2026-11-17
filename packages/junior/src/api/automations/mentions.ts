@@ -1,13 +1,15 @@
 import { automationTaskText } from "@/chat/automations/task";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { resolveMentions } from "../mentions";
-import type { AutomationSummary } from "../schema/automation";
+import type { AutomationListItem } from "../schema/automation";
 
 /** Attach the people that each Automation instruction or context mentions, resolved at read time. */
-export async function attachAutomationMentions(
+export async function attachAutomationMentions<
+  Automation extends AutomationListItem,
+>(
   executor: JuniorSqlDatabase,
-  automations: readonly AutomationSummary[],
-): Promise<AutomationSummary[]> {
+  automations: readonly Automation[],
+): Promise<Automation[]> {
   const mentions = await resolveMentions(
     executor,
     automations.map((automation) => ({

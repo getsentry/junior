@@ -1,4 +1,3 @@
-import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
@@ -30,7 +29,6 @@ import type {
   PersonalSpendReport,
   PluginOperationalReportFeed,
   AutomationExecutionList,
-  AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
@@ -4584,9 +4582,9 @@ function mockTasks(): AutomationSummary[] {
   ];
 }
 
-/** Build mock Tasks list for local dashboard development. */
-export function readMockAutomationList(): AutomationList {
-  return mockAutomationCollection({ automations: mockTasks() });
+/** Build the mock Automation summaries for local dashboard development. */
+export function readMockAutomationList(): { automations: AutomationSummary[] } {
+  return { automations: mockTasks() };
 }
 
 function mockStatusDays(
