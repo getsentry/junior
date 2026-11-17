@@ -28,6 +28,9 @@ import {
 } from "./store";
 
 const BRIEF_LOCK_TTL_MS = 10 * 60 * 1_000;
+// Brief generation takes about 40s at most, so a newer Turn waits out an older
+// Turn's Brief. Each Brief covers only events through its own Turn.
+const BRIEF_LOCK_WAIT_MS = 60_000;
 
 function hasUserInstruction(run: PluginRunContext): boolean {
   return run.transcript.some(
@@ -201,10 +204,9 @@ export async function updateConversationBrief(
         logSkip(context, run.conversationId, "turn_already_stored");
       }
     },
+    { waitMs: BRIEF_LOCK_WAIT_MS },
   );
   if (!attempt.acquired) {
-    // Another Turn's Brief is in progress. The next Brief reads every event
-    // through its own Turn, so it also covers this one.
     logSkip(context, run.conversationId, "brief_in_progress");
   }
 }

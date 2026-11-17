@@ -4,13 +4,15 @@ export interface PluginState {
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
   setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean>;
   /**
-   * Run `callback` only when no other caller holds `key`. A held lock is a
-   * normal outcome, so it returns `{ acquired: false }` instead of throwing.
+   * Run `callback` only when no other caller holds `key`, waiting up to
+   * `waitMs` (default 0) for the holder. A held lock is a normal outcome, so
+   * it returns `{ acquired: false }` instead of throwing.
    */
   withLock<T>(
     key: string,
     ttlMs: number,
     callback: () => Promise<T>,
+    options?: { waitMs?: number },
   ): Promise<PluginLockResult<T>>;
 }
 

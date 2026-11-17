@@ -469,26 +469,34 @@ describe("Conversation Brief task", () => {
       previousPiMessages: thirdTurn.piMessages,
       turnId: "turn-4",
     });
-    // While another Turn's Brief holds the lock, this task skips instead of
-    // failing. The turn-4 Brief below covers turn-3.
+    // While an older Turn's Brief holds the lock, the turn-4 task waits for
+    // it instead of skipping, so the newest Turn still gets a Brief.
     const { createPluginState } = await import("@/chat/plugins/state");
-    await createPluginState("briefs").withLock(
+    let release!: () => void;
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => {
+      holding = resolve;
+    });
+    const holder = createPluginState("briefs").withLock(
       `brief:${conversationId}`,
       60_000,
-      async () => {
-        await processPluginTask({
-          plugin: "briefs",
-          name: "updateBrief",
-          params: { conversationId, sessionId: "turn-3" },
-        });
-      },
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          holding();
+        }),
     );
-    expect(TEST.calls).toHaveLength(2);
-    await processPluginTask({
+    await held;
+    const fourthTask = processPluginTask({
       plugin: "briefs",
       name: "updateBrief",
       params: { conversationId, sessionId: "turn-4" },
     });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(TEST.calls).toHaveLength(2);
+    release();
+    await holder;
+    await fourthTask;
     await processPluginTask({
       plugin: "briefs",
       name: "updateBrief",

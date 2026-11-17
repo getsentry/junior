@@ -63,12 +63,13 @@ export function createPluginState(
         ttlMs,
       );
     },
-    async withLock(key, ttlMs, callback) {
+    async withLock(key, ttlMs, callback, options) {
       validatePluginStateKey(key);
       const state = getAdapter();
       await state.connect();
       return await withLock(state, pluginStateKey(plugin, key), callback, {
         ttlMs,
+        waitMs: options?.waitMs,
       });
     },
   };
