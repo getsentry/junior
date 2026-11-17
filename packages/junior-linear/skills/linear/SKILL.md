@@ -49,7 +49,7 @@ Classify the work as `bug`, `feature`, or `task`. Shape the title and body per [
 - Never infer a solution from research. If a user-provided proposal must be preserved, attribute it as a proposal and keep it separate from verified diagnosis.
 - End the body with the line `Action taken by Junior.` Linear records the person who asked as the creator, so do not name them in this line.
 
-Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice during incident triage"). If the reporter differs from the person who asked, keep them separate with durable body text such as `Reported by Alice.` — do not reference Slack channels, threads, or conversation internals. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
+Name the reporter only when the person who reported or observed the problem differs from the person who asked. Use durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.` Do not name the person who asked: Linear shows them as the creator. Do not reference Slack channels, threads, or conversation internals. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
 
 4. Set optional Linear fields literally:
 
