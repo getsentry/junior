@@ -1,4 +1,3 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentInvocation,
@@ -13,7 +12,6 @@ import {
   markAgentInvocationMailboxAppended,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import type { AgentRun } from "@/chat/agent/types";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
@@ -21,7 +19,6 @@ import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import {
-  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
@@ -33,6 +30,7 @@ import {
   createHarness,
   finishInvocation,
   sendPersonMessage,
+  slackParentRun,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
@@ -40,19 +38,7 @@ import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import { mockTitleModel } from "../fixtures/title-model";
 
-const parentRun: AgentRun = {
-  actor: slackInvocationInput.actor,
-  conversationId: slackParentConversationId,
-  destination: slackDestination,
-  instruction: { text: "Coordinate the work." },
-  source: createSlackSource({
-    channelId: "C123",
-    teamId: "T123",
-    threadTs: "1712345.0001",
-    visibility: "public",
-  }),
-  turnId: "parent-turn",
-};
+const parentRun = slackParentRun();
 
 /**
  * Create one child, then run `withOpenWork` while the child still has its

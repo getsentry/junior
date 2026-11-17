@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import {
+  cancelWaitingParentMessages,
   dropOwnUnreadLoopReplies,
   stopChildAgentsBelow,
 } from "@/chat/agent-invocations/stop";
@@ -91,6 +92,10 @@ export async function stopConversation(args: {
       state: args.state,
     });
     await dropOwnUnreadLoopReplies(args.conversationId, args.state);
+    await cancelWaitingParentMessages(args.conversationId, {
+      nowMs: stoppedAtMs,
+      state: args.state,
+    });
     await cancelSignInWait(args.conversationId);
     const result = await stopConversationWork({
       conversationId: args.conversationId,

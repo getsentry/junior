@@ -15,7 +15,10 @@ interface TurnOwner {
    * parent message from one parent has the same author, so these decide
    * which of them share a Turn.
    */
-  grants?: { actor: Actor; credentialContext?: CredentialContext | undefined };
+  credentials?: {
+    actor: Actor;
+    credentialContext?: CredentialContext | undefined;
+  };
   identityId?: string | undefined;
   source?: string | undefined;
 }
@@ -26,7 +29,7 @@ function inputOwner(message: InboundMessage): TurnOwner {
     authorId: message.input.authorId,
     ...(parentMessage
       ? {
-          grants: {
+          credentials: {
             actor: parentMessage.actor,
             credentialContext: parentMessage.credentialContext,
           },
@@ -55,7 +58,11 @@ function turnOwner(turn: TurnOwnerFacts): TurnOwner {
  */
 function hasSameOwner(a: TurnOwner, b: TurnOwner): boolean {
   if (a.source && b.source && a.source !== b.source) return false;
-  if (a.grants && b.grants && !hasSameGrants(a.grants, b.grants)) {
+  if (
+    a.credentials &&
+    b.credentials &&
+    !hasSameCredentials(a.credentials, b.credentials)
+  ) {
     return false;
   }
   const sameIdentity =
@@ -69,9 +76,9 @@ function hasSameOwner(a: TurnOwner, b: TurnOwner): boolean {
   );
 }
 
-function hasSameGrants(
-  a: NonNullable<TurnOwner["grants"]>,
-  b: NonNullable<TurnOwner["grants"]>,
+function hasSameCredentials(
+  a: NonNullable<TurnOwner["credentials"]>,
+  b: NonNullable<TurnOwner["credentials"]>,
 ): boolean {
   return (
     sameActorIdentity(a.actor, b.actor) &&

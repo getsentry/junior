@@ -1,4 +1,3 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAgentBinding } from "@/chat/agent-invocations/bindings";
@@ -11,7 +10,6 @@ import {
 import {
   getAgentInvocationId,
   getAgentInvocationMessageId,
-  getChildAgentLockName,
 } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -29,6 +27,10 @@ import {
   markConversationsStopped,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
+import { stopConversation } from "@/chat/conversations/stop";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
+import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -41,7 +43,6 @@ import {
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   loadSubagentEvents,
-  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
@@ -54,27 +55,19 @@ import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createHarness,
   finishRun,
+  sendPersonMessage,
+  slackParentRun,
   type Harness,
 } from "../fixtures/thread-input";
 
 /** The parent's Turn, as the root Turn code binds it to agent tools. */
 function parentRun(turnId = "parent-turn"): AgentRun {
-  return {
-    actor: slackInvocationInput.actor,
-    conversationId: slackParentConversationId,
+  return slackParentRun({
     credentialContext: {
       actor: { type: "user", userId: slackInvocationInput.actor.userId },
     },
-    destination: slackDestination,
-    instruction: { text: "Coordinate the work." },
-    source: createSlackSource({
-      channelId: "C123",
-      teamId: "T123",
-      threadTs: "1712345.0001",
-      visibility: "public",
-    }),
     turnId,
-  };
+  });
 }
 
 async function spawn(
@@ -552,40 +545,98 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("runs parent messages from different Actors as separate Turns", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await spawn(harness, "call-1");
-      const otherActor = { ...slackInvocationInput.actor, userId: "U999" };
-      const otherRun: AgentRun = {
-        ...parentRun(),
-        actor: otherActor,
+  it.each([
+    {
+      name: "different Actors",
+      other: {
+        actor: { ...slackInvocationInput.actor, userId: "U999" },
         credentialContext: { actor: { type: "user", userId: "U999" } },
-      };
-      vi.setSystemTime(1_800_000_001_000);
-      await bindMessageAgent(otherRun, {
-        queue: harness.queue,
-        state: harness.state,
-      })!({ text: "Check it again.", to: childId }, { toolCallId: "call-2" });
-      harness.onPersonRun(finishRun);
-      await harness.drain(childId);
+      },
+    },
+    {
+      name: "one Actor with different credentials",
+      other: {
+        actor: slackInvocationInput.actor,
+        credentialContext: { actor: { platform: "system", name: "junior" } },
+      },
+    },
+  ] satisfies {
+    name: string;
+    other: Pick<AgentRun, "actor" | "credentialContext">;
+  }[])(
+    "runs parent messages from $name as separate Turns",
+    async ({ other }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await spawn(harness, "call-1");
+        vi.setSystemTime(1_800_000_001_000);
+        await bindMessageAgent(
+          { ...parentRun(), ...other },
+          { queue: harness.queue, state: harness.state },
+        )!({ text: "Check it again.", to: childId }, { toolCallId: "call-2" });
+        harness.onPersonRun(finishRun);
+        await harness.drain(childId);
 
-      expect(harness.runs).toMatchObject([
-        {
-          actor: slackInvocationInput.actor,
-          credentialContext: parentRun().credentialContext,
-        },
-        { actor: otherActor, credentialContext: otherRun.credentialContext },
-      ]);
-      expect(harness.runs[0]!.instruction.text).not.toContain(
-        "Check it again.",
-      );
-      expect(harness.runs[1]!.instruction.text).toContain("Check it again.");
-    } finally {
-      await harness.close();
-    }
-  });
+        // The Turn derives its credentials from its Actor, so only the
+        // split into two Turns shows the credentials of each message.
+        expect(harness.runs.map((run) => run.actor)).toEqual([
+          slackInvocationInput.actor,
+          other.actor,
+        ]);
+        expect(harness.runs[0]!.instruction.text).not.toContain(
+          "Check it again.",
+        );
+        expect(harness.runs[1]!.instruction.text).toContain("Check it again.");
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it.each([
+    {
+      input: "new parent work",
+      send: (harness: Harness, threadId: string) =>
+        message(harness, threadId, "call-2"),
+      text: "Check it again.",
+    },
+    {
+      input: "a person's message",
+      send: (harness: Harness, threadId: string) =>
+        sendPersonMessage(harness, threadId, "person-1"),
+      text: "What did you find?",
+    },
+  ])(
+    "runs only $input after a person stops a Thread with a waiting task",
+    async ({ send, text }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const threadId = await spawn(harness, "call-1", { kind: "thread" });
+        vi.setSystemTime(1_800_000_001_000);
+        await stopConversation({
+          conversationId: threadId,
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        });
+
+        vi.setSystemTime(1_800_000_002_000);
+        await send(harness, threadId);
+        harness.onPersonRun(finishRun);
+        await harness.drain(threadId);
+
+        expect(harness.runs).toHaveLength(1);
+        expect(harness.runs[0]!.instruction.text).toContain(text);
+        expect(harness.runs[0]!.instruction.text).not.toContain(
+          "Check the deploy.",
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 
   it("leaves a stopped parent's message as a note that the child's next Turn shows", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
@@ -600,11 +651,19 @@ describe("spawn and messageAgent without Agent invocations", () => {
         state: harness.state,
       });
       vi.setSystemTime(1_800_000_001_000);
+      const tool = createMessageAgentTool(
+        bindMessageAgent(parentRun(), {
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+      );
       for (let attempt = 0; attempt < 2; attempt++) {
-        await expect(message(harness, childId, "call-2")).resolves.toEqual({
-          conversationId: childId,
-          delivery: "noted",
-        });
+        await expect(
+          tool.execute!(
+            { text: "Check it again.", to: childId },
+            { toolCallId: "call-2" },
+          ),
+        ).resolves.toEqual({ conversation_id: childId, delivery: "noted" });
       }
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         1_800_000_000_000,
@@ -649,6 +708,23 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await expect(spawn(harness, "call-1")).rejects.toBeInstanceOf(
         AgentStoppedError,
       );
+      const tool = createSpawnAgentTool(
+        bindSpawnAgent(parentRun(), {
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+        { owner: "none" },
+      );
+      await expect(
+        tool.execute!(tool.prepareArguments({ task: "Check the deploy." }), {
+          toolCallId: "call-2",
+        }),
+      ).rejects.toSatisfy(
+        (error) =>
+          error instanceof ToolInputError &&
+          error.message.endsWith("Do not start more work. End this turn."),
+      );
       expect(harness.queue.sentRecords()).toEqual([]);
     } finally {
       await harness.close();
@@ -659,17 +735,18 @@ describe("spawn and messageAgent without Agent invocations", () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      // The spawn raced the stop, so the stop of the tree missed the child.
+      // The spawn raced the stop: it created the child after the stop, so
+      // the stop of the tree missed the child.
       const childId = await spawn(harness, "call-1");
-      vi.setSystemTime(1_800_000_001_000);
       await markConversationsStopped([slackParentConversationId], {
         cancelWatches: false,
+        nowMs: 1_799_999_999_000,
         state: harness.state,
       });
       await stopChildAgentsOf(slackParentConversationId, harness.state);
 
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
-        1_800_000_001_000,
+        1_799_999_999_000,
       );
       await harness.drain(childId);
       expect(harness.runs).toEqual([]);
@@ -719,49 +796,33 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("leaves the children running when the parent resumes before its late tree stop", async () => {
+  it("keeps a Thread that a person resumed running when its parent's late stop runs", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      const childId = await spawn(harness, "call-1");
+      const threadId = await spawn(harness, "call-1", { kind: "thread" });
       vi.setSystemTime(1_800_000_001_000);
-      await markConversationsStopped([slackParentConversationId], {
+      await markConversationsStopped([slackParentConversationId, threadId], {
         cancelWatches: false,
         state: harness.state,
       });
+      // A person resumes only the Thread. Then the parent's run sees its
+      // stop late.
       vi.setSystemTime(1_800_000_002_000);
-      // A person resumes the parent while its run's late tree stop waits for
-      // the parent's lock.
-      const resumed = deferred();
-      const release = deferred();
-      const holder = getSqlExecutor().withLock(
-        getChildAgentLockName(slackParentConversationId),
-        async () => {
-          await resumeStoppedConversationTree(
-            slackParentConversationId,
-            Date.now(),
-          );
-          resumed.resolve();
-          await release.promise;
-        },
-      );
-      await resumed.promise;
-      const lateStop = stopChildAgentsOf(
-        slackParentConversationId,
-        harness.state,
-      );
-      await vi.waitFor(async () => {
-        const rows = await getSqlExecutor().query<{ waiting: number }>(
-          "select count(*)::int as waiting from pg_locks where locktype = 'advisory' and not granted",
-        );
-        expect(rows[0]!.waiting).toBeGreaterThan(0);
-      });
-      release.resolve();
-      await Promise.all([holder, lateStop]);
+      await resumeStoppedConversationTree(threadId, Date.now());
+      await sendPersonMessage(harness, threadId, "person-1");
+      await stopChildAgentsOf(slackParentConversationId, harness.state);
 
-      await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
+      await expect(getConversationStoppedAtMs(threadId)).resolves.toBe(
         undefined,
       );
+      harness.onPersonRun(finishRun);
+      await harness.drain(threadId);
+      expect(
+        harness.runs.some((run) =>
+          run.instruction.text.includes("What did you find?"),
+        ),
+      ).toBe(true);
     } finally {
       await harness.close();
     }

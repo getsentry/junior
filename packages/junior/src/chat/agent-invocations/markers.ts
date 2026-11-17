@@ -1,17 +1,20 @@
 /**
- * Dashboard records for agent invocations. The parent Conversation gets one
- * `subagent_started` and one `subagent_ended` event for each agent invocation.
- * The child Conversation gets `message` events for its input and its result,
- * because a child posts nothing to its Location.
+ * Dashboard records for child agent work. The parent Conversation gets one
+ * `subagent_started` and one `subagent_ended` event for each Agent invocation,
+ * or for each parent message to a child that no Agent invocation names. For an
+ * Agent invocation, the child Conversation also gets `message` events for its
+ * input and its result, because a child posts nothing to its Location.
+ * These records are for the dashboard only: no runtime rule reads them.
  */
 import type { StateAdapter } from "chat";
 import { and, eq, inArray } from "drizzle-orm";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorConversationEvents } from "@/db/schema";
 import { readChildConversationSender } from "./child-input";
-import { getAgentInvocationMessageId, isAgentInvocationMessageId } from "./ids";
+import { getAgentInvocationMessageId } from "./ids";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.
@@ -49,13 +52,17 @@ export async function recordSubagentStarted(
       createdAtMs: invocation.createdAtMs,
     },
   ]);
-  await recordSubagentStartedMarker(invocation);
+  await recordSubagentStartedMarker({
+    ...invocation,
+    markerId: invocation.invocationId,
+  });
 }
 
 /**
- * The fields of one `subagent_started` marker. A child with no Agent
- * invocation uses the id that an Agent invocation for the same idempotency
- * key would have, so a retry writes nothing.
+ * The fields of one `subagent_started` marker. `markerId` names the marker
+ * and its `subagent_ended`: the Agent invocation id, or for a child with no
+ * Agent invocation, the id of the parent message. A retry with the same id
+ * writes nothing.
  */
 export type SubagentStart = Pick<
   AgentInvocation,
@@ -63,12 +70,11 @@ export type SubagentStart = Pick<
   | "childConversationId"
   | "createdAtMs"
   | "input"
-  | "invocationId"
   | "parentConversationId"
   | "parentToolCallId"
   | "reasoningLevel"
   | "title"
->;
+> & { markerId: string };
 
 /**
  * Record in the parent Conversation that a child agent got one task,
@@ -80,10 +86,10 @@ export async function recordSubagentStartedMarker(
 ): Promise<void> {
   await getConversationEventStore().append(start.parentConversationId, [
     {
-      idempotencyKey: `${SUBAGENT_STARTED_KEY_PREFIX}${start.invocationId}`,
+      idempotencyKey: `${SUBAGENT_STARTED_KEY_PREFIX}${start.markerId}`,
       data: {
         type: "subagent_started",
-        subagentInvocationId: start.invocationId,
+        subagentInvocationId: start.markerId,
         subagentKind: SUBAGENT_KIND,
         childConversationId: start.childConversationId,
         ...(start.agentName ? { agentName: start.agentName } : undefined),
@@ -168,6 +174,11 @@ export async function recordChildAgentEnded(
     state?: StateAdapter | undefined;
   } = {},
 ): Promise<void> {
+  // Only a child that a spawn created without an Agent invocation stores an
+  // agent config. Its parent messages are the only input with these markers.
+  if (!(await readAgentConfig(childConversationId))) {
+    return;
+  }
   const work = await getConversationWorkState({
     conversationId: childConversationId,
     state: options.state,
@@ -177,10 +188,8 @@ export async function recordChildAgentEnded(
       ? []
       : (work?.messages.map((message) => message.inboundMessageId) ?? []),
   );
-  // Only parent messages have markers, so the lookup skips the child's other
-  // input.
   const taken = (work?.execution.inboundMessageIds ?? []).filter(
-    (id) => isAgentInvocationMessageId(id) && !waiting.has(id),
+    (id) => !waiting.has(id),
   );
   if (taken.length === 0) {
     return;
@@ -227,13 +236,13 @@ export async function recordChildAgentEnded(
 // A marker that already ended keeps its outcome: its key is taken.
 async function appendSubagentEnded(
   parentConversationId: string,
-  invocationIds: readonly string[],
+  markerIds: readonly string[],
   outcome: SubagentOutcome,
   createdAtMs: number,
 ): Promise<void> {
   await getConversationEventStore().append(
     parentConversationId,
-    invocationIds.map((id) => ({
+    markerIds.map((id) => ({
       idempotencyKey: `${SUBAGENT_ENDED_KEY_PREFIX}${id}`,
       data: { type: "subagent_ended", subagentInvocationId: id, outcome },
       createdAtMs,

@@ -561,9 +561,11 @@ export function createDeliverToParent(options: {
 
 /**
  * End the work of a child Conversation whose last attempt lost its worker.
- * Its open agent invocations end as before. A Turn on the Conversation loop
- * has none, so a Task tells its parent that it failed, as a failed Turn
- * does. A Thread keeps the stored failure and its telemetry.
+ * Its open Agent invocations end as before. Without them, its open markers
+ * end with `error`. Then a Task tells its parent that it failed, as a failed
+ * Turn does. A Thread keeps the stored failure and its telemetry, and
+ * reports the `replaced` result of its parent now, so its grandparent does
+ * not wait for it.
  */
 export function createEndStoppedChildWork(options: {
   queue: ConversationWorkQueue;

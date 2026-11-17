@@ -46,7 +46,13 @@ export function getSpawnedChildConversationId(
   );
 }
 
-/** Return the stable child identity for one named binding. */
+/**
+ * Return the stable child identity for one named binding.
+ *
+ * TODO(dcramer): Delete with Agent bindings. A spawn with no Agent
+ * invocation names its child with `getSpawnedChildConversationId`
+ * (#3060 step 7).
+ */
 export function getNamedAgentConversationId(
   parentConversationId: string,
   name: string,
@@ -89,15 +95,6 @@ export function getAgentInvocationTurnId(invocationId: string): string {
 /** Return the stable mailbox identity for one agent invocation. */
 export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
-}
-
-/**
- * Return whether an inbound message id has the form that
- * `getAgentInvocationMessageId` builds, as a parent message does. Use it only
- * to narrow a lookup. It gives the message no authority.
- */
-export function isAgentInvocationMessageId(id: string): boolean {
-  return id.startsWith("agent-invocation:") && id.endsWith(":input");
 }
 
 const REPLY_MESSAGE_PREFIX = "agent-reply:";

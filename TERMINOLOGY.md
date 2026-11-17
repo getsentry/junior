@@ -93,11 +93,14 @@ Canonical words for Junior code and docs. One concept, one word.
   is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
-  Conversation and its child agents. A run that sees its stop late also stops
-  the child agents it tasked after the stop. A person's input sent after the
-  stop, or new work from a child's parent, ends the stop. A person's
-  stop keeps the Watches; an agent's `stopAgent` also cancels them. Reports
-  show it as `stopped` while no work runs.
+  Conversation and its child agents, and drops the Parent messages that wait
+  for them. A run that sees its stop late also stops the child agents that it
+  spawned or gave an Agent invocation to after the stop. A person's input
+  sent after the stop, or new work from a child's parent, ends the stop. With
+  `child-agents-without-agent-invocations` on, a stopped parent gives no new
+  work: `messageAgent` leaves a Conversation note and `spawnAgent` fails. A
+  person's stop keeps the Watches; an agent's `stopAgent` also cancels them.
+  Reports show it as `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.
@@ -132,9 +135,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Only a `reply`, or a failed, blocked, or stopped
   result, reaches the parent. Never shorten to "invocation".
+- **Parent message**: a task or message from a parent to a child that no
+  Agent invocation names. It waits in the child's mailbox as other input
+  does, and runs as the Actor of the parent's Turn, with that Turn's
+  credentials. The child checks its sender before it runs it.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
-  child's instruction: it starts an Agent invocation or steers a running one.
+  child's instruction: it starts an Agent invocation or a Parent message, or
+  steers a running one.
   To a parent or a top-level agent it is an Event Inbound message, and it
   gives no user approval.
 - **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks

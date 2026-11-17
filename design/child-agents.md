@@ -46,6 +46,8 @@ child chooses to report reaches the parent.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, its parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop.
+- A stopped parent gives no new work. Its message to a child becomes a note
+  that the child sees when it next runs, and it cannot start a child.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A
@@ -62,13 +64,17 @@ child chooses to report reaches the parent.
 ## Gaps
 
 - By default, each child gets an Agent invocation, with its own worker and
-  status. Spawn and message without one
-  (getsentry/junior#3435) is in review behind the
-  `child-agents-without-agent-invocations` flag. Some branches on `kind`
+  status. Spawn and message without one (getsentry/junior#3435) is behind
+  the `child-agents-without-agent-invocations` flag, off by default. Some
+  branches on `kind`
   are outside the one switch. This breaks "its `kind` is the only
   switch". getsentry/junior#3060 and getsentry/junior#2567 track it.
-- When a stop ends, the parent messages to a grandchild that the stop
-  skipped run again. This breaks "one stop stops the whole tree".
+- A stopped Conversation still starts a Turn for Events other than Watch
+  Events, and for a person's message sent before the stop. This breaks "one
+  stop stops the whole tree". getsentry/junior#2888 tracks it.
+- With an Agent invocation, the default, a stopped parent's message still
+  starts work and ends the child's stop. This breaks "a stopped parent
+  gives no new work".
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
@@ -77,4 +83,5 @@ child chooses to report reaches the parent.
   agent to use it. This breaks "a parent manages the lifecycle of its child
   agents".
 - For some child messages, Junior reads the sender from the message id.
-  This breaks "a message id is an opaque key".
+  This breaks "a message id is an opaque key". Step 7 of
+  getsentry/junior#3060 removes it.

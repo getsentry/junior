@@ -63,6 +63,8 @@ export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
  * Cap the non-terminal Agent invocations of one child, including the one that
  * runs. Each message to a busy child with a row queues one more. A child with
  * no row has no cap: its parent messages wait in its mailbox like any input.
+ *
+ * TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
  */
 const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
 
@@ -124,38 +126,17 @@ function sameCreateInput(
   input: ReturnType<typeof createAgentInvocationSchema.parse>,
 ): boolean {
   return (
-    JSON.stringify(createInputFields(invocation)) ===
-    JSON.stringify(createInputFields(input))
+    invocation.parentConversationId === input.parentConversationId &&
+    invocation.agentName === input.agentName &&
+    invocation.input === input.input &&
+    invocation.agentType === input.agentType &&
+    invocation.fork === input.fork &&
+    invocation.reasoningLevel === input.reasoningLevel &&
+    JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
+    JSON.stringify(invocation.credentialContext) ===
+      JSON.stringify(input.credentialContext) &&
+    JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
   );
-}
-
-// The durable creation input that a replay of one idempotency key must
-// match.
-function createInputFields(
-  input: Pick<
-    AgentInvocation,
-    | "actor"
-    | "agentName"
-    | "agentType"
-    | "credentialContext"
-    | "destination"
-    | "fork"
-    | "input"
-    | "parentConversationId"
-    | "reasoningLevel"
-  >,
-) {
-  return [
-    input.parentConversationId,
-    input.agentName ?? null,
-    input.input,
-    input.agentType ?? null,
-    input.fork ?? null,
-    input.reasoningLevel ?? null,
-    input.actor,
-    input.credentialContext ?? null,
-    input.destination,
-  ];
 }
 
 /**
@@ -176,14 +157,19 @@ async function assertCanGiveChildWork(
     await getLatestAgentInvocationForConversation(parentConversationId);
   // A child that no Agent invocation names stays stopped until new work
   // from its parent ends the stop.
-  const stopped = latest
-    ? isStoppedAgentInvocation(latest)
-    : (await readAgentConfig(parentConversationId)) !== undefined &&
-      (await getConversationStoppedAtMs(parentConversationId)) !== undefined;
-  if (stopped) {
-    throw new Error(
-      `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
-    );
+  if (latest) {
+    if (isStoppedAgentInvocation(latest)) {
+      throw new Error(
+        `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
+      );
+    }
+    return;
+  }
+  if (
+    (await readAgentConfig(parentConversationId)) !== undefined &&
+    (await getConversationStoppedAtMs(parentConversationId)) !== undefined
+  ) {
+    throw new AgentStoppedError();
   }
 }
 
@@ -446,7 +432,7 @@ export async function createAgentInvocationForMessage(
       const openCount = open.filter(
         (row) => row.childConversationId === input.childConversationId,
       ).length;
-      // TODO(#3060 step 7): delete with rows
+      // TODO(dcramer): Delete this cap with Agent invocation rows (#3060 step 7).
       if (latest && openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
         throw new AgentMessageQueueFullError(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
@@ -531,7 +517,7 @@ async function giveChildAgentWork<T>(
         childConversationId: work.childConversationId,
         createdAtMs: work.nowMs,
         input: work.text,
-        invocationId: message.inboundMessageId,
+        markerId: message.inboundMessageId,
         parentConversationId: work.parentConversationId,
         parentToolCallId: work.parentToolCallId,
         reasoningLevel: work.reasoningLevel,

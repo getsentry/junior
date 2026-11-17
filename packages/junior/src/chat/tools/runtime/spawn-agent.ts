@@ -176,7 +176,7 @@ export function createSpawnAgentTool(
         }
         if (error instanceof AgentStoppedError) {
           throw new ToolInputError(
-            `${error.message}. Do not start more work. Tell the user instead.`,
+            `${error.message}. Do not start more work. End this turn.`,
             { cause: error },
           );
         }

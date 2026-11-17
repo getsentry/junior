@@ -7,7 +7,6 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   getConversationStoppedAtMs,
-  isSkippedAfterConversationStop,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
 import {
@@ -135,10 +134,10 @@ export type ParentMessageDelivery = "message" | "new_child";
  * exists only when this transaction commits.
  *
  * New work for a child that exists ends the stop of the child and of the
- * child agents below it, as an Agent invocation does. The parent messages
- * that the stop skipped stay skipped: they leave the mailbox first. A
- * message that already reached the mailbox changes nothing, so a replay
- * does not end a later stop.
+ * child agents below it, as an Agent invocation does. The stop already
+ * dropped the parent messages that waited then. A message that already
+ * reached the mailbox changes nothing, so a replay does not end a later
+ * stop.
  */
 export async function appendParentMessage(
   message: InboundMessage,
@@ -166,7 +165,7 @@ export async function appendParentMessage(
     if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
       return;
     }
-    await endStopForParentMessage(message, work?.messages ?? [], options);
+    await endStopForParentMessage(message);
   }
   const { status } = await appendInboundMessage({
     message,
@@ -186,54 +185,41 @@ export async function appendParentMessage(
   }
 }
 
-async function endStopForParentMessage(
-  message: InboundMessage,
-  pending: readonly InboundMessage[],
-  options: { state?: StateAdapter | undefined },
-): Promise<void> {
-  const conversationId = message.conversationId;
-  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs === undefined || message.createdAtMs <= stoppedAtMs) {
-    return;
+async function endStopForParentMessage(message: InboundMessage): Promise<void> {
+  const stoppedAtMs = await getConversationStoppedAtMs(message.conversationId);
+  if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
+    await resumeStoppedConversationTree(
+      message.conversationId,
+      message.createdAtMs,
+    );
   }
-  const skipped = pending.filter(
-    (waiting) =>
-      readParentMessage(waiting) !== undefined &&
-      isSkippedAfterConversationStop(waiting, stoppedAtMs),
-  );
-  if (skipped.length > 0) {
-    await dropPendingMessages({
-      conversationId,
-      inboundMessageIds: skipped.map((waiting) => waiting.inboundMessageId),
-      ...(options.state ? { state: options.state } : undefined),
-    });
-    for (const waiting of skipped) {
-      logDroppedParentMessage(waiting, readParentMessage(waiting)!);
-    }
-  }
-  await resumeStoppedConversationTree(conversationId, message.createdAtMs);
 }
 
 /**
- * Drop every parent message that waits in a Conversation's mailbox. A tree
- * stop calls this before it stops the Conversation's work: no task from
- * before the stop runs, and an idle Conversation gets no stop request that
- * could cancel its next Turn after the stop ends.
+ * Drop every parent message that waits in a Conversation's mailbox. A stop
+ * calls this before it saves its stop request: no task from before the stop
+ * runs, and an idle Conversation gets no stop request that could cancel its
+ * next Turn after the stop ends.
  */
 export async function dropWaitingParentMessages(
   conversationId: string,
   state?: StateAdapter,
 ): Promise<void> {
   const work = await getConversationWorkState({ conversationId, state });
-  const waiting = (work?.messages ?? []).filter(
-    (message) => readParentMessage(message) !== undefined,
-  );
-  if (waiting.length > 0) {
-    await dropPendingMessages({
-      conversationId,
-      inboundMessageIds: waiting.map((message) => message.inboundMessageId),
-      ...(state ? { state } : undefined),
-    });
+  const waiting = (work?.messages ?? []).flatMap((message) => {
+    const parentMessage = readParentMessage(message);
+    return parentMessage ? [{ message, parentMessage }] : [];
+  });
+  if (waiting.length === 0) {
+    return;
+  }
+  await dropPendingMessages({
+    conversationId,
+    inboundMessageIds: waiting.map(({ message }) => message.inboundMessageId),
+    ...(state ? { state } : undefined),
+  });
+  for (const { message, parentMessage } of waiting) {
+    logDroppedParentMessage(message, parentMessage);
   }
 }
 

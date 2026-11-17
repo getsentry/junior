@@ -168,6 +168,7 @@ describe("agent invocation spawn and result delivery", () => {
   });
 
   it("derives spawn authority from the parent run and replays one tool call", async () => {
+    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
     // Row-only: it reads the Agent invocation and its dashboard marker.
     // child-agent-writes-without-agent-invocation.test.ts checks the same
     // authority and replay for a child with no Agent invocation.

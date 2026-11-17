@@ -117,6 +117,7 @@ describe("user approval for child agents", () => {
   });
 
   it("reads approval only from the Run's own Conversation", async () => {
+    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
     // Row-only: it reads each child before its first Turn and builds nested
     // Agent invocations. child-agent-writes-without-agent-invocation.test.ts
     // checks what Guardian reads in a child with no Agent invocation.

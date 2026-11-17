@@ -252,8 +252,9 @@ export async function startThread(
  * `child-agents-without-agent-invocations` on, it writes no Agent
  * invocation.
  */
-export async function spawnThread(harness: Harness, toolCallId: string) {
-  const parentRun: AgentRun = {
+/** The Run of the shared Slack parent Turn that spawns and messages children. */
+export function slackParentRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
     actor: slackInvocationInput.actor,
     conversationId: slackParentConversationId,
     destination: slackDestination,
@@ -265,8 +266,12 @@ export async function spawnThread(harness: Harness, toolCallId: string) {
       visibility: "public",
     }),
     turnId: "parent-turn",
+    ...overrides,
   };
-  const { childConversationId } = await bindSpawnAgent(parentRun, {
+}
+
+export async function spawnThread(harness: Harness, toolCallId: string) {
+  const { childConversationId } = await bindSpawnAgent(slackParentRun(), {
     conversationStore: harness.conversationStore,
     queue: harness.queue,
     state: harness.state,

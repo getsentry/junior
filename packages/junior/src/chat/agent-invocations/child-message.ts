@@ -112,8 +112,8 @@ const LEGACY_RESULT_ID =
  * Read the sender of child messages that reached a mailbox before senders
  * stored their fields, from their ids.
  *
- * TODO: remove one release after this ships. Step 7 of #3060 deletes it and
- * makes the id a plain generated key.
+ * TODO(dcramer): Delete one release after this ships, and make the id a
+ * plain generated key (#3060 step 7).
  */
 async function readLegacyChildMessageSenders(
   inboundMessageIds: readonly string[],

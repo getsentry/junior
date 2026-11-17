@@ -88,7 +88,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
       : undefined;
   }
 
-  /** Return when a Turn started, when it started. */
+  /** Return the time a Turn started, or undefined before its `turn_started` event. */
   async loadStartedAtMs(
     conversationId: string,
     turnId: string,

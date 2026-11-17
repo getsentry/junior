@@ -235,8 +235,12 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
-    // spawnAgent and messageAgent give child agents their work as parent
-    // messages and write no Agent invocation.
+    // Off by default. spawnAgent and messageAgent queue a child's work in
+    // the child's own conversation instead of a separate task record. While
+    // a conversation is stopped, its messageAgent calls return `noted` and
+    // start no work, and its spawnAgent calls fail. If you turn this off
+    // again, later messages to children created while it was on use task
+    // records.
     "child-agents-without-agent-invocations": true,
   },
 });
