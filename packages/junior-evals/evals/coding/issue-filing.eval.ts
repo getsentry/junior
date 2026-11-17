@@ -1,9 +1,5 @@
 import { describe, expect } from "vitest";
-import { heartbeat, slackMention } from "@junior-evals/fixture/inputs";
-import {
-  insertScheduledAutomation,
-  slackChannel,
-} from "@junior-evals/fixture/insert";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedToolCalls,
@@ -36,7 +32,8 @@ function threadsStarted(result: { toolCalls: ToolCall[] }): ToolCall[] {
 
 // After an issue is created, whether Junior does the work is the
 // requester's decision. These cases measure when Junior asks with a Review
-// item, when it starts the work, and when it does neither.
+// item, when it starts the work, and when it does neither. Automation runs
+// get no note at all; `github-plugin.test.ts` covers that fixed rule.
 describe("Filing Issues", () => {
   test("when someone only asks for an issue, file it and ask with a Review item whether to start a Thread", async ({
     run,
@@ -58,12 +55,9 @@ describe("Filing Issues", () => {
     expect(threadsStarted(conversation)).toHaveLength(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
-      rubric({
-        pass: ["The reply names or links the created issue."],
-        fail: [
-          "Do not ask in the reply text whether to start work on the issue.",
-        ],
-      }),
+      // Visible text includes the Review item, so the judge checks only
+      // that the issue is named.
+      rubric({ pass: ["The reply names or links the created issue."] }),
     );
   });
 
@@ -81,24 +75,6 @@ describe("Filing Issues", () => {
     const [first] = conversation.turns;
     expect(threadsStarted(first!)).toHaveLength(1);
     expect(reviewItemKeys(first!)).toEqual([]);
-  });
-
-  test("when an Automation run files an issue, do not ask whether to implement it", async ({
-    run,
-  }) => {
-    await insertScheduledAutomation({
-      credentialMode: "system",
-      destination: slackChannel(),
-      due: true,
-      once: true,
-      task: "File a GitHub issue in acme/storefront: the cart page drops the coupon code when it reloads. Then post the issue link here.",
-    });
-
-    const delivery = await run(heartbeat());
-
-    expect(createdIssues(delivery)).toHaveLength(1);
-    expect(reviewItemKeys(delivery)).toEqual([]);
-    expect(threadsStarted(delivery)).toHaveLength(0);
   });
 
   test("when the issue hands work to another team, do not ask whether to implement it", async ({
