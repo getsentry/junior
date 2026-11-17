@@ -577,6 +577,59 @@ describe("check cli", () => {
     ]);
   });
 
+  it.each([
+    {
+      name: "a packaged plugin cannot be imported",
+      source: 'throw new Error("missing peer dependency");',
+      error: "index.js: missing peer dependency",
+    },
+    {
+      name: "a packaged plugin factory throws",
+      source: [
+        "export function brokenPlugin() {",
+        '  throw new Error("factory exploded");',
+        "}",
+      ].join("\n"),
+      error: "index.js#brokenPlugin: factory exploded",
+    },
+  ])("fails when $name", async ({ source, error }) => {
+    const repoRoot = makeTempDir("junior-validate-broken-js-plugin-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify({ dependencies: { "@acme/junior-broken": "1.0.0" } }),
+    );
+    const packageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@acme",
+      "junior-broken",
+    );
+    writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({
+        name: "@acme/junior-broken",
+        version: "1.0.0",
+        type: "module",
+        exports: { ".": { default: "./index.js" } },
+      }),
+    );
+    writeFile(path.join(packageRoot, "index.js"), `${source}\n`);
+    fs.mkdirSync(path.join(packageRoot, "skills"), { recursive: true });
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 1 plugin manifest, 0 skill directories checked).",
+    );
+
+    expect(lines).toContain(`✖ error: ${path.join(packageRoot, error)}`);
+  });
+
   it("warns when official plugin package versions differ from core", async () => {
     const repoRoot = makeTempDir("junior-validate-version-skew-");
     writeFile(
