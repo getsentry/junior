@@ -45,7 +45,7 @@ describe("Code Mode Scripts", () => {
 
     const results = scriptResults(conversation);
     expect(results).toContainEqual(
-      expect.stringMatching(/\[cut: .* full: \/tmp\/jr\/\w+\./),
+      expect.stringMatching(/\[cut: .* full: \/tmp\/jr\/spills\/\w+\./),
     );
     expect(conversation.replies).toHaveLength(1);
   });

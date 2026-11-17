@@ -283,6 +283,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
+  test("a scroll while a rested row settles stays where the reader put it", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.clock.install();
+    await page.goto(`${dashboard.baseURL}/`);
+    const list = page.locator("[data-inbox-scroll]");
+    await expect(todoRows(page).first()).toBeVisible();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    // The rest starts the hold that keeps this row where it shows while
+    // rows above it change height.
+    await restOnFirstRow(page);
+    await expect(todoRows(page).first()).toHaveAttribute("data-grown", "true");
+    // The reader scrolls before the row settles, as a wheel or a jump to a
+    // card does. The hold must not scroll back.
+    await list.evaluate((element) => (element.scrollTop = 200));
+    await page.clock.runFor(100);
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(200);
+  });
+
   test("a row with Threads grows as one card, with its Threads inside", async ({
     dashboard,
     page,

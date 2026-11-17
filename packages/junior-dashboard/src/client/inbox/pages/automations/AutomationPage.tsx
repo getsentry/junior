@@ -15,11 +15,17 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
   automationEditSchema,
+  type AutomationListItem,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 
-import { useAutomationData } from "../../../api";
+import {
+  useAutomationData,
+  useAutomationExecutionsData,
+  useAutomationVersionsData,
+  useCachedAutomationListItem,
+} from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
 import { FormNotice } from "../../../components/FormNotice";
 import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
@@ -83,6 +89,18 @@ export function AutomationPage(props: {
   const { automationId } = useParams();
   const location = useLocation();
   const summary = useAutomationData(props.enabled, automationId);
+  // Start the reads that the tab needs with the summary, not after it.
+  const overview = props.tab === "overview";
+  useAutomationExecutionsData(
+    props.enabled && (overview || props.tab === "runs"),
+    automationId,
+  );
+  useAutomationVersionsData(
+    props.enabled && (overview || props.tab === "versions"),
+    automationId,
+  );
+  // A row the list loaded paints the header while the summary loads.
+  const listed = useCachedAutomationListItem(automationId);
   const [rangeParam, setRangeParam] = useSearchParamEnum(
     "range",
     "30",
@@ -133,9 +151,15 @@ export function AutomationPage(props: {
       ) : (
         <PageLayout>
           <AutomationHeader
-            description="Settings, runs, and versions for one automation."
+            description={
+              listed && !summary.error ? (
+                <AutomationHeaderLine automation={listed} />
+              ) : (
+                "Settings, runs, and versions for one automation."
+              )
+            }
             listPath={listPath}
-            title="Automation"
+            title={listed?.title ?? "Automation"}
           />
           {summary.error ? (
             <FormNotice tone="error" title="Automation could not be loaded.">
@@ -298,7 +322,7 @@ function AutomationEditMode(props: { automation: AutomationSummary }) {
 }
 
 /** State, trigger, Destination, and creator in one line under the title. */
-function AutomationHeaderLine(props: { automation: AutomationSummary }) {
+function AutomationHeaderLine(props: { automation: AutomationListItem }) {
   const { automation } = props;
   const trigger =
     automation.kind === "scheduled"

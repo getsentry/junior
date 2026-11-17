@@ -1,10 +1,10 @@
 import { memo, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
-import { useAutomationsData } from "../../../api";
+import { useAutomationPagesData } from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
 import {
   ActiveFilterChips,
@@ -21,7 +21,6 @@ import { HeaderBar } from "../../../components/layout/HeaderBar";
 import { usePaneRowScroll } from "../../../components/layout/PaneNav";
 import { useDocumentTitle } from "../../../documentTitle";
 import { automationPath } from "../../../format";
-import { COMMAND_PALETTE_SHORTCUT } from "../../components/CommandPalette";
 import { InboxAutomationRow } from "../../../review-desk/InboxAutomationRow";
 import type { useAutomationAlerts } from "../../../review-desk/automationAlerts";
 import { useInboxData } from "../../../review-desk/inboxData";
@@ -36,25 +35,30 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "../../../review-desk/inboxFocus";
+import { timeGroups } from "../../../review-desk/inboxModel";
+import { scrollPages } from "../../../review-desk/inboxQueries";
+import { PageEnd } from "../../../review-desk/PageEnd";
 import { pathWithSearch } from "../../../searchParams";
 import { AutomationRow } from "./AutomationRow";
+import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
 
-const EMPTY: AutomationSummary[] = [];
+const EMPTY: AutomationListItem[] = [];
 
-// Groups need every visible Automation at once. The server caps a page at 100.
-const LANDING_PAGE_SIZE = "100";
+// One page of rows. More load as the list scrolls.
+const LANDING_PAGE_SIZE = "50";
 
-// Groups set the order and show every Automation, so the page reads only
-// the filters it shows. Old search, scope, sort, and page links fall back
-// to all; the command palette finds an Automation by name.
+// The list orders by latest activity, so the page reads only the filters
+// it shows and the scope. Old search, sort, and page links fall back to
+// the default; the command palette finds an Automation by name.
 const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 /**
  * Landing page for Automations, in the Inbox's style: To do first, the
  * viewer's Automations that need attention as the Inbox lists them, then
- * what runs, then what is stopped. Each card shows recent runs and the next
- * run, so the page answers "is my work healthy" without opening each
- * Automation.
+ * the rest by latest run, grouped as Today, This week, and Earlier. Mine
+ * shows the viewer's own; All shows every visible one. Each card shows
+ * recent runs and the next run, and opens in place for more, so the page
+ * answers "is my work healthy" without opening each Automation.
  */
 export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
@@ -75,12 +79,15 @@ export function AutomationsPage(props: { enabled: boolean }) {
       }),
     ),
   );
+  const scope = automationScopeOf(searchParams);
   const request = new URLSearchParams(
-    Object.entries({ ...filters, pageSize: LANDING_PAGE_SIZE }).map(
+    Object.entries({ ...filters, pageSize: LANDING_PAGE_SIZE, scope }).map(
       ([key, value]) => [key, String(value)],
     ),
   );
-  const query = useAutomationsData(props.enabled, request.toString());
+  const pages = useAutomationPagesData(props.enabled, request.toString());
+  const { query } = pages;
+  const more = scrollPages(query);
   const setFilter = (key: string, value: string) => {
     // Consecutive control events can precede the router's next render.
     const next = new URLSearchParams(window.location.search);
@@ -93,21 +100,23 @@ export function AutomationsPage(props: { enabled: boolean }) {
     for (const key of LANDING_FILTERS) next.delete(key);
     setSearchParams(next, { replace: true });
   };
+  // The first page carries the filter options and counts.
+  const list = pages.first;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtered = LANDING_FILTERS.some((key) => searchParams.has(key));
   // To do is the Inbox's own list, so its count matches the Automations
   // row. Filters narrow the whole list instead.
   const inbox = useInboxData();
   const todo = filtered ? EMPTY : inbox.todoAutomations;
-  const automations = query.data?.automations ?? EMPTY;
-  const loading = !query.data && !query.error;
-  const scroll = usePaneRowScroll("automations", Boolean(query.data));
+  const automations = pages.automations;
+  const loading = !list && !query.error;
+  const scroll = usePaneRowScroll("automations", Boolean(list));
   // The Inbox's one pointer driver moves these cards too.
   const [expanded, setExpanded] = useState<string>();
   const focus = useInboxFocus(scroll.ref, expanded ?? "");
   useCollapseOutside(expanded ?? "", () => setExpanded(undefined));
   const toolbar = {
-    active: activeAutomationFilters({ data: query.data, filters }),
+    active: activeAutomationFilters({ data: list, filters }),
     onRemove: (key: string) => setFilter(key, ""),
     onToggle: () => setFiltersOpen((open) => !open),
     open: filtersOpen,
@@ -121,6 +130,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
       <HeaderBar
         actions={
           <>
+            <AutomationScopeTabs scope={scope} search={location.search} />
             <Link
               className={buttonVariants({ variant: "ghost" })}
               to="/automations/runs"
@@ -147,7 +157,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             filters={
               filtersOpen ? (
                 <AutomationFilterPanel
-                  data={query.data}
+                  data={list}
                   filters={filters}
                   onChange={setFilter}
                   onClear={clearFilters}
@@ -167,21 +177,23 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </Button>
               </InlineError>
             ) : null}
-            {query.data && automations.length === 0 && todo.length === 0 ? (
+            {list && automations.length === 0 && todo.length === 0 ? (
               <InboxEmptyState
                 label={
                   filtered
                     ? "No automations matched these filters."
-                    : "No automations yet"
+                    : scope === "mine"
+                      ? "You have no automations yet"
+                      : "No automations yet"
                 }
               />
             ) : null}
-            {query.isFetching && query.data ? (
+            {query.isFetching && !query.isFetchingNextPage && list ? (
               <span className="sr-only" role="status">
                 Updating results…
               </span>
             ) : null}
-            {query.data ? (
+            {list ? (
               <InboxFocusProvider focus={focus.focus}>
                 <InboxPreviewGate>
                   <AutomationGroups
@@ -195,11 +207,15 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </InboxPreviewGate>
               </InboxFocusProvider>
             ) : null}
-            {query.data && query.data.total > automations.length ? (
-              <p className="m-0 text-xs text-dashboard-text-muted">
-                Showing {automations.length} of {query.data.total}. Filter, or
-                search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.
-              </p>
+            {list ? (
+              <PageEnd
+                failed={more.failed}
+                loading={more.loadingMore}
+                more={more.hasMore}
+                onRetry={more.retry}
+                onShow={more.loadMore}
+                progress={[automations.length, more.loadingMore].join()}
+              />
             ) : null}
           </FilteredList>
         </div>
@@ -216,28 +232,27 @@ export function AutomationsPage(props: { enabled: boolean }) {
 const AutomationGroups = memo(function AutomationGroups(props: {
   /** Puts To do alerts away, as the Inbox does. */
   alerts: ReturnType<typeof useAutomationAlerts>;
-  automations: AutomationSummary[];
-  /** The To do card open in place, if any. */
+  automations: AutomationListItem[];
+  /** The card open in place, if any. */
   expanded?: string;
   onExpand(id: string | undefined): void;
   search: string;
-  todo: AutomationSummary[];
+  todo: AutomationListItem[];
 }) {
-  const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
-    completed: true,
-    paused: true,
-  });
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [snoozeId, setSnoozeId] = useState<string>();
   // The Automation page keeps the list query, so its back link restores it.
   const pagePath = (id: string) =>
     pathWithSearch(automationPath(id), props.search);
   const todoIds = new Set(props.todo.map((automation) => automation.id));
-  const sorted = props.automations
-    .filter((automation) => !todoIds.has(automation.id))
-    .sort(byLatestRun);
+  // The server orders rows by latest activity, so groups keep its order.
+  const rest = props.automations.filter(
+    (automation) => !todoIds.has(automation.id),
+  );
   const toggle = (key: string) =>
     setCollapsed((current) => ({ ...current, [key]: !current[key] }));
+  const toggleRow = (id: string) =>
+    props.onExpand(props.expanded === id ? undefined : id);
   return (
     <div>
       {/* To do is the Inbox's section, so its cards open in place. */}
@@ -252,11 +267,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
             automation={automation}
             expanded={props.expanded === automation.id}
             key={automation.id}
-            onToggle={() =>
-              props.onExpand(
-                props.expanded === automation.id ? undefined : automation.id,
-              )
-            }
+            onToggle={() => toggleRow(automation.id)}
             putAway={{
               menuOpen: snoozeId === automation.id,
               onDismiss: () => props.alerts.dismiss(automation),
@@ -270,52 +281,30 @@ const AutomationGroups = memo(function AutomationGroups(props: {
           />
         ))}
       </InboxSection>
-      {GROUPS.map((group) => {
-        const rows = sorted.filter((automation) =>
-          group.statuses.includes(automation.status),
-        );
-        return (
-          <InboxSection
-            collapsed={Boolean(collapsed[group.key])}
-            count={rows.length}
-            key={group.key}
-            label={group.label}
-            onToggle={() => toggle(group.key)}
-          >
-            {rows.map((automation) => (
-              <AutomationRow
-                automation={automation}
-                key={`${automation.kind}:${automation.id}`}
-                onSelect={() => navigate(pagePath(automation.id))}
-                to={pagePath(automation.id)}
-              />
-            ))}
-          </InboxSection>
-        );
-      })}
+      {timeGroups(rest, activityAt, Date.now()).map((group) => (
+        <InboxSection
+          collapsed={Boolean(collapsed[group.key])}
+          count={group.rows.length}
+          key={group.key}
+          label={group.label}
+          onToggle={() => toggle(group.key)}
+        >
+          {group.rows.map((automation) => (
+            <AutomationRow
+              automation={automation}
+              expanded={props.expanded === automation.id}
+              key={`${automation.kind}:${automation.id}`}
+              onToggle={() => toggleRow(automation.id)}
+              to={pagePath(automation.id)}
+            />
+          ))}
+        </InboxSection>
+      ))}
     </div>
   );
 });
 
-/**
- * The sections after To do. A blocked Automation still runs once fixed, so
- * it stays with the active ones and shows its problem.
- */
-const GROUPS: readonly {
-  key: string;
-  label: string;
-  statuses: readonly AutomationSummary["status"][];
-}[] = [
-  { key: "active", label: "Active", statuses: ["active", "blocked"] },
-  { key: "paused", label: "Paused", statuses: ["paused"] },
-  { key: "completed", label: "Completed", statuses: ["completed"] },
-];
-
-/** Latest run first. Automations that never ran follow, newest first. */
-function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
-  return (
-    (b.lastRunAt ?? "").localeCompare(a.lastRunAt ?? "") ||
-    b.createdAt.localeCompare(a.createdAt) ||
-    a.title.localeCompare(b.title)
-  );
+/** When the last run ended, or else when the Automation was created. */
+function activityAt(automation: AutomationListItem): string {
+  return automation.lastRunAt ?? automation.createdAt;
 }

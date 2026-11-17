@@ -108,13 +108,13 @@ function mergeAnimatedItems<T>(
     } satisfies AnimatedItem<T>;
   });
 
-  current.forEach((item, index) => {
-    if (nextKeys.has(item.key)) return;
+  for (const [index, item] of current.entries()) {
+    if (nextKeys.has(item.key)) continue;
     next.splice(Math.min(index, next.length), 0, {
       ...item,
       state: "exiting",
     });
-  });
+  }
   return next;
 }
 

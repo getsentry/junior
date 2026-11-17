@@ -415,6 +415,8 @@ function stableActivityGroupKey(args: {
     knownKey ?? `${args.keyPrefix}:activity:${args.entries[0]!.key}`;
 
   args.claimedKeys.add(groupKey);
-  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, groupKey));
+  for (const entryKey of entryKeys) {
+    args.knownKeys.set(entryKey, groupKey);
+  }
   return groupKey;
 }

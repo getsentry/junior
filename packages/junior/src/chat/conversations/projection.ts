@@ -207,11 +207,11 @@ function resolveCommitProvenance(args: {
     // input keeps its committed provenance; only new messages take the
     // trailing provenance.
     const start = provenance.length - args.trailingMessageProvenance.length;
-    args.trailingMessageProvenance.forEach((entry, offset) => {
+    for (const [offset, entry] of args.trailingMessageProvenance.entries()) {
       if (start + offset >= matchingPrefix) {
         provenance[start + offset] = entry;
       }
-    });
+    }
   }
   return provenance;
 }

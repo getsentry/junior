@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import type {
   PluginReviewItems,
   PluginReviewNotice,
@@ -16,6 +17,9 @@ import {
   type ReviewItemContent,
 } from "./store";
 
+// Assignees whose access one plugin change reads at once.
+const ASSIGNEE_READ_CONCURRENCY = 8;
+
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
  * Conversation, public or private. Junior leaves out an Identity without a
@@ -26,16 +30,20 @@ async function assigneeUserIds(
   identityIds: readonly string[],
   conversationId: string,
 ): Promise<string[]> {
-  const userIds: string[] = [];
-  for (const identityId of new Set(identityIds)) {
-    const user = (await readIdentityByIdFromSql(db, identityId))?.user;
-    if (!user) continue;
-    const access = (
-      await readConversationAccessFromSql(db, [conversationId], user)
-    ).get(conversationId);
-    if (access?.isParticipant) userIds.push(user.id);
-  }
-  return userIds;
+  const limit = pLimit(ASSIGNEE_READ_CONCURRENCY);
+  const userIds = await Promise.all(
+    [...new Set(identityIds)].map((identityId) =>
+      limit(async () => {
+        const user = (await readIdentityByIdFromSql(db, identityId))?.user;
+        if (!user) return [];
+        const access = (
+          await readConversationAccessFromSql(db, [conversationId], user)
+        ).get(conversationId);
+        return access?.isParticipant ? [user.id] : [];
+      }),
+    ),
+  );
+  return userIds.flat();
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "id": "8aaadd2c-2a51-442b-862c-02b1ac7876ad",
+  "id": "2975fcbf-7615-4d37-b9ee-aa182fc7fbb4",
   "prevId": "b43de5d9-64b5-4909-9bec-8731f09505af",
   "version": "7",
   "dialect": "postgresql",
@@ -1290,6 +1290,28 @@
           "method": "btree",
           "with": {}
         },
+        "junior_automations_creator_slack_idx": {
+          "name": "junior_automations_creator_slack_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "creator_slack_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_automations_run_now_due_idx": {
           "name": "junior_automations_run_now_due_idx",
           "columns": [
@@ -2143,169 +2165,6 @@
           "value": "vector_dims(\"junior_conversation_embeddings\".\"embedding\") = \"junior_conversation_embeddings\".\"dimensions\""
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.junior_conversation_event_embeddings": {
-      "name": "junior_conversation_event_embeddings",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dimensions": {
-          "name": "dimensions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "embedding": {
-          "name": "embedding",
-          "type": "halfvec",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_conversation_event_embeddings_event_fk": {
-          "name": "junior_conversation_event_embeddings_event_fk",
-          "tableFrom": "junior_conversation_event_embeddings",
-          "tableTo": "junior_conversation_events",
-          "columnsFrom": [
-            "conversation_id",
-            "seq"
-          ],
-          "columnsTo": [
-            "conversation_id",
-            "seq"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_event_embeddings_pk": {
-          "name": "junior_conversation_event_embeddings_pk",
-          "columns": [
-            "conversation_id",
-            "seq"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_conversation_event_embeddings_dimensions_check": {
-          "name": "junior_conversation_event_embeddings_dimensions_check",
-          "value": "vector_dims(\"junior_conversation_event_embeddings\".\"embedding\") = \"junior_conversation_event_embeddings\".\"dimensions\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.junior_conversation_event_lexemes": {
-      "name": "junior_conversation_event_lexemes",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lexemes": {
-          "name": "lexemes",
-          "type": "tsvector",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "junior_conversation_event_lexemes_lexemes_idx": {
-          "name": "junior_conversation_event_lexemes_lexemes_idx",
-          "columns": [
-            {
-              "expression": "lexemes",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_conversation_event_lexemes_event_fk": {
-          "name": "junior_conversation_event_lexemes_event_fk",
-          "tableFrom": "junior_conversation_event_lexemes",
-          "tableTo": "junior_conversation_events",
-          "columnsFrom": [
-            "conversation_id",
-            "seq"
-          ],
-          "columnsTo": [
-            "conversation_id",
-            "seq"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_event_lexemes_pk": {
-          "name": "junior_conversation_event_lexemes_pk",
-          "columns": [
-            "conversation_id",
-            "seq"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.junior_conversation_events": {

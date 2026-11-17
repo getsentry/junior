@@ -1,9 +1,13 @@
+import pLimit from "p-limit";
 import type { PluginLogger } from "@sentry/junior-plugin-api";
 import {
   configuredRepository,
   type Repository,
 } from "./configured-repository.js";
 import { isRecord } from "./credential-support.js";
+
+// GitHub objects that one title read loads at once.
+const REFERENCE_LOAD_CONCURRENCY = 5;
 
 // Name a Conversation from its main objects, not from every reference it has.
 const MAX_REFERENCES = 3;
@@ -192,28 +196,31 @@ export async function loadGitHubConversationTitleContext(args: {
   log: PluginLogger;
   text: string;
 }): Promise<string[]> {
+  const limit = pLimit(REFERENCE_LOAD_CONCURRENCY);
   const lines = await Promise.all(
-    parseGitHubReferences(args.text, args.config).map(async (reference) => {
-      try {
-        const title = objectTitle(
-          reference.kind,
-          await args.loadObject(reference),
-        );
-        if (!title) return undefined;
-        const label =
-          reference.kind === "commit"
-            ? `${reference.owner}/${reference.name}@${reference.id.slice(0, 7)}`
-            : `${reference.owner}/${reference.name}#${reference.id}`;
-        return `${label}: ${title.slice(0, TITLE_MAX_LENGTH)}`;
-      } catch (error) {
-        args.log.warn("github.conversation_title_context.load_failed", {
-          "app.github.object_kind": reference.kind,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-        return undefined;
-      }
-    }),
+    parseGitHubReferences(args.text, args.config).map((reference) =>
+      limit(async () => {
+        try {
+          const title = objectTitle(
+            reference.kind,
+            await args.loadObject(reference),
+          );
+          if (!title) return undefined;
+          const label =
+            reference.kind === "commit"
+              ? `${reference.owner}/${reference.name}@${reference.id.slice(0, 7)}`
+              : `${reference.owner}/${reference.name}#${reference.id}`;
+          return `${label}: ${title.slice(0, TITLE_MAX_LENGTH)}`;
+        } catch (error) {
+          args.log.warn("github.conversation_title_context.load_failed", {
+            "app.github.object_kind": reference.kind,
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
+          return undefined;
+        }
+      }),
+    ),
   );
   return lines.filter((line): line is string => Boolean(line));
 }

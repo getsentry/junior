@@ -48,7 +48,7 @@ export function ExperimentalUiSetting(props: { identity: DashboardIdentity }) {
           </FieldLabel>
           <FieldDescription id="experimental-ui-help">
             Use the new dashboard, with an Inbox for what needs you. Turn this
-            off to go back. This choice applies to your account.
+            off to go back.
           </FieldDescription>
         </FieldContent>
       </Field>

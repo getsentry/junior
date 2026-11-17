@@ -89,7 +89,7 @@
   "packages/junior/src/chat/agent/tools.ts": 1,
   "packages/junior/src/chat/artifacts/store.ts": 1,
   "packages/junior/src/chat/attachments/storage.ts": 1,
-  "packages/junior/src/chat/automations/execution-stats.ts": 3,
+  "packages/junior/src/chat/automations/execution-stats.ts": 2,
   "packages/junior/src/chat/automations/tools/create.ts": 1,
   "packages/junior/src/chat/automations/tools/update.ts": 3,
   "packages/junior/src/chat/briefs/task.ts": 2,
