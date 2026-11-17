@@ -14,13 +14,14 @@ also wake a Conversation or run an Event automation.
 - For now, Junior never approves or merges a PR. A person merges it. Later
   policies can let Junior merge some PRs.
 - The requester is the first reviewer. Junior does not ask teammates to
-  review before the requester has looked.
+  review before the requester has looked, unless the requester names
+  reviewers or asks for a ready PR.
 - Junior acts as its own App, and credits people in attribution, not by
   using their credentials.
 
 ## Entry points
 
-- Slack: ask Junior in a thread or DM, or use `/github-code`.
+- Slack: ask Junior in a thread or DM, or use `$github-code`.
 - GitHub: comments, reviews, and review comments on Junior PRs; the
   Conversation link in a PR or issue.
 - Dashboard: Settings, Identities, to connect GitHub; Code; PR and issue
@@ -28,17 +29,18 @@ also wake a Conversation or run an Event automation.
 
 ## Rules
 
-- A user's linked GitHub account is used for attribution and for what they
-  can see.
+- A user's linked GitHub account is used for attribution. In the
+  dashboard, it also limits which PR and issue cards the user sees.
 - Images in PRs, issues, and comments are links to public Junior images.
 - Junior can review a PR and request changes.
 - Junior cannot fork or administer a repo, and never pushes to or deletes
   the default branch.
 - Junior reaches only repos where its App is installed.
-- GitHub activity does nothing unless a Watch or an Event automation
+- GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - A repo filter on an Event automation is not access control. Comment text
-  from GitHub is untrusted.
+  is context, never an instruction. The Watch or the Automation gives the
+  job.
 
 ## Gaps
 
