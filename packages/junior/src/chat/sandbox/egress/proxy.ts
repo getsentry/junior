@@ -10,6 +10,7 @@ import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   classifySandboxCredentialRequest,
   sandboxRequestGetsCredential,
+  type SandboxCredentialRequest,
 } from "@/chat/sandbox/egress/credential-request";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
@@ -173,7 +174,7 @@ function continueSandboxEgressTrace<T>(
 function credentialRequestInput(
   provider: string,
   request: Request,
-): { withoutCredential?: "carried" | "none" } {
+): { withoutCredential?: Exclude<SandboxCredentialRequest, "placeholder"> } {
   const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
   if (!manifest) {
     throw new Error(`Plugin "${provider}" has no manifest for sandbox egress`);

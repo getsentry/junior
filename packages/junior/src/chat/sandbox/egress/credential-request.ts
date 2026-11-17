@@ -10,7 +10,8 @@ import type { PluginManifest } from "@/chat/plugins/types";
 // Code in the Sandbox is untrusted, so a request to a provider domain does not
 // get the Actor's credential only because of where it goes. A tool asks for a
 // credential by sending its plugin's placeholder. A request that carries its
-// own credential, such as a test login, keeps it.
+// own credential, such as a test login, keeps it. A browser never gets one,
+// because page scripts are untrusted and can send the placeholder too.
 
 /** How one Sandbox request relates to its plugin's credential. */
 export type SandboxCredentialRequest =
@@ -18,12 +19,20 @@ export type SandboxCredentialRequest =
   | "placeholder"
   /** It sends its own credential, which the host never replaces. */
   | "carried"
+  /** It comes from a browser, which never gets the credential. */
+  | "browser"
   /** It sends no credential. */
   | "none";
 
 // Headers that carry a credential for any provider. Cookies are included, so
 // a browser session that a person signed in keeps its own identity.
 const CREDENTIAL_HEADERS = ["authorization", "cookie"];
+
+// Browsers, such as the Chromium that Playwright drives, send Fetch Metadata
+// headers on every request. CLIs and git do not. Sandbox code can omit these
+// headers, so this is not a security boundary; it keeps page traffic, which
+// the code did not write, from acting as the Actor.
+const BROWSER_HEADER = "sec-fetch-mode";
 
 function placeholders(manifest: PluginManifest): string[] {
   return [
@@ -65,14 +74,17 @@ function hasPlaceholder(value: string, markers: string[]): boolean {
 /**
  * Classify one Sandbox request by the credential it sends.
  *
- * A credential header with any value other than a placeholder makes the
- * request `carried`, even when another header has a placeholder, so the host
+ * A browser request is `browser`, whatever it sends. Otherwise a credential
+ * header with any value other than a placeholder makes the request `carried`, even when another header has a placeholder, so the host
  * never replaces a credential that the request brought.
  */
 export function classifySandboxCredentialRequest(
   manifest: PluginManifest,
   headers: Headers,
 ): SandboxCredentialRequest {
+  if (headers.has(BROWSER_HEADER)) {
+    return "browser";
+  }
   const markers = placeholders(manifest);
   const names = credentialHeaders(manifest);
   let sawPlaceholder = false;

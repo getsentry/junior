@@ -2209,6 +2209,28 @@ describe("sandbox egress proxy integration", () => {
     expect(strict.upstream[0]?.get("authorization")).toBeNull();
   });
 
+  it("sandbox-credentials#browser-none: adds no credential to a browser request", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    // A page script can send the placeholder too.
+    const placeholder = await sendFromSandbox({
+      headers: { "sec-fetch-mode": "cors" },
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(placeholder.response.status).toBe(200);
+    expect(placeholder.upstream[0]?.get("authorization")).toBe(
+      "Bearer host_managed_credential",
+    );
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      headers: { "sec-fetch-mode": "navigate" },
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+  });
+
   it("sandbox-credentials#policy-any-credential: applies the plugin's egress policy to a request that carries its own credential", async () => {
     const grantForEgress = vi.fn<NonNullable<PluginHooks["grantForEgress"]>>(
       (ctx) => {
