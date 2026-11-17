@@ -163,8 +163,20 @@ async function annotateSavedIssue(
   };
 }
 
+/** Install options for the Linear plugin. */
+export interface LinearPluginOptions {
+  /**
+   * Facts for action review about where Linear writes go. For example, say
+   * which teams sync issues to public GitHub repositories. Only Guardian sees
+   * it.
+   */
+  reviewContext?: string;
+}
+
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
-export function linearPlugin(): PluginRegistration {
+export function linearPlugin(
+  options: LinearPluginOptions = {},
+): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
     events: {
@@ -210,6 +222,9 @@ export function linearPlugin(): PluginRegistration {
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
+        ...(options.reviewContext
+          ? { reviewContext: options.reviewContext }
+          : undefined),
       },
       name: "linear",
     },

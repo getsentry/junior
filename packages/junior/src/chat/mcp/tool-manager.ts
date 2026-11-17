@@ -346,6 +346,8 @@ export interface ManagedMcpToolDescriptor {
 }
 
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
+  /** The plugin's `mcp.reviewContext`. Only action review reads it. */
+  reviewContext?: string;
   execute: (
     args: Record<string, unknown>,
     options?: {
@@ -666,6 +668,7 @@ export class McpToolManager {
   ): ManagedMcpTool {
     const outputSchema = toOptionalRecord(tool.outputSchema);
     const annotations = tool.annotations;
+    const reviewContext = plugin.manifest.mcp?.reviewContext;
     const missingAnnotationKeys = missingToolAnnotationKeys(annotations);
     if (missingAnnotationKeys.length > 0) {
       logWarn("mcp.tool_annotations.missing", {
@@ -683,6 +686,7 @@ export class McpToolManager {
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),
       ...(outputSchema ? { outputSchema } : undefined),
       ...(annotations ? { annotations } : undefined),
+      ...(reviewContext ? { reviewContext } : undefined),
       execute: async (args, options) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};

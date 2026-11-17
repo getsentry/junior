@@ -275,6 +275,7 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
+    "review-context": nonEmptyTrimmedString.optional(),
   })
   .passthrough();
 
@@ -414,6 +415,7 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
+      setDefined(mcp, "review-context", config.mcp.reviewContext);
       result["mcp"] = mcp;
     }
   }
@@ -1106,6 +1108,9 @@ function normalizeMcp(
       : undefined),
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
+      : undefined),
+    ...(result.data["review-context"]
+      ? { reviewContext: result.data["review-context"] }
       : undefined),
   } satisfies PluginMcpConfig;
 }

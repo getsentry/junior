@@ -66,6 +66,7 @@ function buildPlugin(
   name = "demo",
   options: {
     allowedTools?: string[];
+    reviewContext?: string;
     wrappedTools?: string[];
   } = {},
 ): PluginDefinition {
@@ -85,6 +86,9 @@ function buildPlugin(
           : undefined),
         ...(options.wrappedTools
           ? { wrappedTools: options.wrappedTools }
+          : undefined),
+        ...(options.reviewContext
+          ? { reviewContext: options.reviewContext }
           : undefined),
       },
     },
@@ -160,6 +164,21 @@ describe("McpToolManager", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(manager.getActiveToolCatalog()).toEqual([]);
+  });
+
+  it("keeps review context for action review out of the model catalog", async () => {
+    const manager = new McpToolManager([
+      buildPlugin("demo", { reviewContext: "Writes are public." }),
+    ]);
+
+    await manager.activateProvider("demo");
+
+    expect(manager.getResolvedActiveTools()[0]?.reviewContext).toBe(
+      "Writes are public.",
+    );
+    expect(manager.getActiveToolCatalog()[0]).not.toHaveProperty(
+      "reviewContext",
+    );
   });
 
   it("creates one provider client across concurrent activations", async () => {

@@ -81,6 +81,12 @@ export interface PluginMcpConfig {
   auth?: PluginMcpAuthConfig;
   /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */
   headers?: Record<string, string>;
+  /**
+   * Facts for action review about where this provider's writes go, such as
+   * whether other people or systems can read them. Only Guardian sees it. It
+   * never grants authority.
+   */
+  reviewContext?: string;
   /** Per-actor OAuth with a pre-registered client instead of dynamic client registration. */
   oauthClient?: PluginMcpOAuthClientConfig;
   transport: "http";

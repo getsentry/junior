@@ -171,6 +171,22 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
+### Review context
+
+Use `mcp.review-context` to tell action review where the provider's writes go.
+For example, say that some content is public. Only action review reads this
+text. It is not in the agent prompt or the tool catalog, and it never grants
+authority.
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  review-context: Pages in the Docs space are published on the public website.
+```
+
+An install can set or change it with
+`defineJuniorPlugins(..., { manifests: { "my-provider": { mcp: { reviewContext } } } })`.
+
 ### Audit events
 
 Each successful MCP tool call emits the `mcp.tool_call.completed` audit event.
