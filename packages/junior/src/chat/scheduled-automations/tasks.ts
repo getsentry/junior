@@ -1,6 +1,7 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
+import { refreshAutomationLastRun } from "@/chat/automations/execution-stats";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -216,6 +217,7 @@ async function writeScheduledAutomation(
           eq(juniorAutomationRuns.status, "blocked"),
         ),
       );
+    await refreshAutomationLastRun(db, task.id);
   }
   // A deleted task must not start another occurrence. Skip pending claims now;
   // already-running dispatches finish and then stop because due times are cleared.

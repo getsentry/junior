@@ -28,7 +28,7 @@ import {
   scheduleDraft,
   type AutomationDraft,
 } from "../../../pages/automations/automationDraft";
-import { invalidateAutomationReads } from "../../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../../review-desk/inboxQueries";
 import { getDashboardAgentName } from "../../../agentName";
 
 /** Keep edits until the user saves or discards them. */
@@ -82,9 +82,9 @@ export function AutomationEditor(props: {
     );
   const save = useMutation({
     mutationFn: () => patch(automationEditSchema, url, update),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
       allowLeave.current = true;
-      await invalidateAutomationReads(queryClient);
+      await refreshChangedAutomation(queryClient, updated);
       toast.add({
         title: "Automation saved",
         description: "Changes apply to future work.",

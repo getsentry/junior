@@ -824,15 +824,29 @@
     {
       "idx": 117,
       "version": "7",
-      "when": 1794928798329,
-      "tag": "0117_wake_automations",
+      "when": 1794933607046,
+      "tag": "0117_automation_last_run",
       "breakpoints": true
     },
     {
       "idx": 118,
       "version": "7",
-      "when": 1794928799740,
-      "tag": "0118_wake_automation_indexes",
+      "when": 1794933647013,
+      "tag": "0118_automation_last_run_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794948871594,
+      "tag": "0119_wake_automations",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1794948873079,
+      "tag": "0120_wake_automation_indexes",
       "breakpoints": true
     }
   ]

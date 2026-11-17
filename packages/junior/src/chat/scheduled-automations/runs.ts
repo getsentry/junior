@@ -12,7 +12,11 @@ import {
 } from "drizzle-orm";
 import { getNextRunAtMs } from "./cadence";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
-import { existingConversationId } from "@/chat/automations/execution-stats";
+import {
+  existingConversationId,
+  refreshAutomationLastRun,
+} from "@/chat/automations/execution-stats";
+import { conversationCostOf } from "@/chat/automations/run-cost";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -88,16 +92,20 @@ async function writeRun(
   automationVersion?: SQL,
 ): Promise<void> {
   const stored = scheduledRunSchema.parse(run);
+  const dispatchConversationId = stored.dispatchId
+    ? getDispatchConversationId({ id: stored.dispatchId })
+    : undefined;
   const columns = {
     ...(automationVersion ? { automationVersion } : undefined),
     attempt: stored.attempt,
     automationId: stored.taskId,
     claimedAtMs: stored.claimedAtMs,
     completedAtMs: stored.completedAtMs ?? null,
-    conversationId: stored.dispatchId
-      ? existingConversationId(
-          getDispatchConversationId({ id: stored.dispatchId }),
-        )
+    conversationId: dispatchConversationId
+      ? existingConversationId(dispatchConversationId)
+      : null,
+    costMicroUsd: dispatchConversationId
+      ? conversationCostOf(dispatchConversationId)
       : null,
     dispatchId: stored.dispatchId ?? null,
     errorMessage: stored.errorMessage ?? null,
@@ -110,6 +118,9 @@ async function writeRun(
     .insert(juniorAutomationRuns)
     .values({ id: stored.id, ...columns })
     .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
+  if (stored.completedAtMs !== undefined) {
+    await refreshAutomationLastRun(db, stored.taskId);
+  }
 }
 
 /**

@@ -13,6 +13,7 @@ import {
 import { FormNotice } from "../../components/FormNotice";
 import { useToastManager } from "../../components/ui/toast";
 import { deleteDashboardResource } from "../../http";
+import { refreshDeletedAutomation } from "../../review-desk/inboxQueries";
 
 /** Confirm deletion by name and keep a failed request available for retry. */
 export function AutomationDeleteDialog(props: {
@@ -30,9 +31,7 @@ export function AutomationDeleteDialog(props: {
         `/api/automations/${encodeURIComponent(props.automation.id)}`,
       ),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await refreshDeletedAutomation(queryClient, props.automation.id);
       props.onDeleted();
       toast.add({
         title: "Automation deleted",

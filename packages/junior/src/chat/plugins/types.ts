@@ -60,6 +60,8 @@ export interface PluginManifest {
   name: string;
   displayName: string;
   description: string;
+  /** Destination facts for action review. Only Guardian reads them. */
+  reviewContext?: string;
   configKeys: string[];
   domains?: string[];
   apiHeaders?: Record<string, string>;
@@ -117,6 +119,7 @@ type PluginCredentialConfig = PluginCredentialConfigBase & {
 export interface PluginManifestConfig {
   displayName?: string;
   description?: string;
+  reviewContext?: string | null;
   configKeys?: string[];
   domains?: string[] | null;
   apiHeaders?: Record<string, string | null> | null;

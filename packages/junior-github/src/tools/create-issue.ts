@@ -315,7 +315,7 @@ export const gitHubIssueTool = definePluginTool({
     const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
     const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
     const key = `createIssue:${conversationId}:${toolCallId}`;
-    return await ctx.state.withLock(
+    const attempt = await ctx.state.withLock(
       `${key}:lock`,
       GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
       async () => {
@@ -386,5 +386,11 @@ export const gitHubIssueTool = definePluginTool({
         }
       },
     );
+    if (!attempt.acquired) {
+      throw new Error(
+        "GitHub issue creation for this tool call is already running; refusing to create a duplicate issue.",
+      );
+    }
+    return attempt.value;
   },
 });

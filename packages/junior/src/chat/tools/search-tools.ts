@@ -1,5 +1,10 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import * as z from "zod";
+import {
+  bm25InverseDocumentFrequency,
+  bm25NormalizedFrequency,
+  bm25Saturation,
+} from "@sentry/junior-search";
 import type { ConversationModelCost } from "@/chat/core-model";
 import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
@@ -18,7 +23,6 @@ const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
 // Drop matches that score below this share of the best match, so a query
 // returns the tools that fit it instead of every tool that shares one word.
 const MIN_RELATIVE_SCORE = 0.3;
-const BM25_K1 = 1.2;
 // Length normalization per field. Long tool descriptions add usage guidance,
 // not more topics, so they get a weaker length penalty than the other fields.
 const BM25_B = [0.75, 0.3, 0.75] as const;
@@ -414,10 +418,9 @@ function scoreQueryTerms(
     ).length;
     return {
       weights,
-      inverseDocumentFrequency: Math.log(
-        1 +
-          (documents.length - documentFrequency + 0.5) /
-            (documentFrequency + 0.5),
+      inverseDocumentFrequency: bm25InverseDocumentFrequency(
+        documents.length,
+        documentFrequency,
       ),
     };
   });
@@ -435,13 +438,15 @@ function weightedTermFrequency(
     if (termFrequency === 0) {
       return weighted;
     }
-    const averageLength = averageLengths[fieldIndex] ?? 0;
-    const lengthRatio = averageLength === 0 ? 1 : field.length / averageLength;
     return (
       weighted +
       SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-        (termFrequency /
-          (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
+        bm25NormalizedFrequency(
+          termFrequency,
+          field.length,
+          averageLengths[fieldIndex] ?? 0,
+          BM25_B[fieldIndex]!,
+        )
     );
   }, 0);
 }
@@ -458,10 +463,7 @@ function scoreSearchDocument(
     let best = 0;
     for (const [term, weight] of weights) {
       const frequency = weightedTermFrequency(document, term, averageLengths);
-      best = Math.max(
-        best,
-        (weight * frequency * (BM25_K1 + 1)) / (frequency + BM25_K1),
-      );
+      best = Math.max(best, weight * bm25Saturation(frequency));
     }
     return score + inverseDocumentFrequency * best;
   }, 0);

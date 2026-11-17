@@ -38,7 +38,12 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { SubqueryWithSelection } from "drizzle-orm/pg-core";
-import { fuseRankedLists } from "@sentry/junior-plugin-api";
+import {
+  bm25InverseDocumentFrequency,
+  bm25NormalizedFrequency,
+  bm25Saturation,
+  fuseRankedLists,
+} from "@sentry/junior-search";
 import type { JuniorDatabase } from "@/db/db";
 import { setSpanAttributes } from "@/chat/logging";
 import {
@@ -64,7 +69,6 @@ import { eventFromRow } from "./sql/history";
 // the same searches take about 0.2 s and 1.2 s when every event matches.
 const MAX_COMPUTED_EVENTS = 20_000;
 const CANDIDATES_PER_LEG = 100;
-const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
 /** One event search. The bounds and types only make the result smaller. */
@@ -117,12 +121,17 @@ export function rankKeywordCandidates(
     candidates.length;
   const score = (candidate: KeywordCandidate) =>
     Object.entries(candidate.termFrequencies).reduce((sum, [term, tf]) => {
-      const df = documentFrequency.get(term) ?? 0;
-      const idf = Math.log(1 + (total - df + 0.5) / (df + 0.5));
-      const norm =
-        BM25_K1 *
-        (1 - BM25_B + (BM25_B * candidate.length) / (meanLength || 1));
-      return sum + (idf * tf * (BM25_K1 + 1)) / (tf + norm);
+      const idf = bm25InverseDocumentFrequency(
+        total,
+        documentFrequency.get(term) ?? 0,
+      );
+      const frequency = bm25NormalizedFrequency(
+        tf,
+        candidate.length,
+        meanLength,
+        BM25_B,
+      );
+      return sum + idf * bm25Saturation(frequency);
     }, 0);
   return candidates
     .map((candidate) => ({ seq: candidate.seq, score: score(candidate) }))

@@ -49,6 +49,7 @@ jobs:
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
+              - packages/junior-search/**
               - packages/junior-testing/**
               - policies/**
             dashboard:
@@ -65,6 +66,7 @@ jobs:
               - apps/example/**
               - packages/junior/**
               - packages/junior-plugin-api/**
+              - packages/junior-search/**
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -87,6 +89,7 @@ jobs:
               - packages/junior-octolens/**
               - packages/junior-pagerduty/**
               - packages/junior-restream/**
+              - packages/junior-search/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
               - packages/junior-xdotcom/**
@@ -470,6 +473,14 @@ jobs:
           name: dashboard-screenshots-${{ matrix.project }}
           path: .playwright/junior-dashboard/screenshots
           if-no-files-found: error
+          retention-days: 7
+      # Playwright keeps a trace only for a failed test.
+      - name: Upload failed test traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dashboard-e2e-traces-${{ matrix.project }}
+          path: .playwright/junior-dashboard/*/trace.zip
           retention-days: 7
 
   # Frameshift saves or compares one screenshot set per run, so it runs once,

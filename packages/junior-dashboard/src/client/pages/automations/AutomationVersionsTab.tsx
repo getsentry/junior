@@ -33,6 +33,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { DisplayText } from "../../display-text/DisplayText";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
+import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 import { automationOutcomeLabel } from "./automationOutcomes";
@@ -112,11 +113,9 @@ function AutomationVersionsView(props: {
       );
     },
     onMutate: () => setActivated(undefined),
-    onSuccess: async (_, version) => {
+    onSuccess: async (updated, version) => {
       setActivated(version);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await refreshChangedAutomation(queryClient, updated);
     },
   });
   if (!selected) {

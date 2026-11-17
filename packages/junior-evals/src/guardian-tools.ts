@@ -88,9 +88,13 @@ const context: ToolRuntimeContext = {
     },
   },
   // Guardian evals never run a tool, so no tool touches the sandbox or
-  // storage. Storage is set so the agent's attachment tools exist.
+  // storage. Storage and `createPreview` are set so the agent's attachment
+  // and preview tools exist.
   attachmentStorage: {} as ToolRuntimeContext["attachmentStorage"],
-  workspace: {} as ToolRuntimeContext["workspace"],
+  workspace: {
+    ...({} as ToolRuntimeContext["workspace"]),
+    createPreview: unavailable,
+  },
   // A root Run can start and message child agents.
   messageAgent: unavailable,
   spawnAgent: unavailable,

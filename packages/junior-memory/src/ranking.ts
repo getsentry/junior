@@ -1,4 +1,4 @@
-import { fuseRankedLists } from "@sentry/junior-plugin-api";
+import { fuseRankedLists } from "@sentry/junior-search";
 import type { MemoryRecord } from "./store";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

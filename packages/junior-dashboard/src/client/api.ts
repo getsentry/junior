@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -30,6 +30,7 @@ import {
   locationDirectoryReportSchema,
   personalSpendReportSchema,
   automationExecutionListSchema,
+  automationListPageSchema,
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
@@ -220,11 +221,33 @@ export function useCodeRepositoryConversationsData(
   });
 }
 
+/**
+ * Query keys for Automation reads. Every list shares one prefix and every
+ * read of one Automation shares another, so a change refreshes the lists and
+ * only the Automation that it changed.
+ */
+export const automationKeys = {
+  lists: () => ["dashboard", "automations", "list"] as const,
+  list: (search: string) => [...automationKeys.lists(), search] as const,
+  activityPages: (search: string) =>
+    [...automationKeys.lists(), "activity-pages", search] as const,
+  runs: () => ["dashboard", "automations", "runs"] as const,
+  one: (id: string | undefined) =>
+    ["dashboard", "automations", "one", id] as const,
+  detail: (id: string | undefined) =>
+    [...automationKeys.one(id), "detail"] as const,
+  edit: (id: string) => [...automationKeys.one(id), "edit"] as const,
+  executions: (id: string | undefined) =>
+    [...automationKeys.one(id), "executions"] as const,
+  versions: (id: string | undefined) =>
+    [...automationKeys.one(id), "versions"] as const,
+};
+
 /** Fetch the signed-in viewer's scheduled and event automations. */
 export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", search],
+    queryKey: automationKeys.list(search),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
@@ -244,13 +267,13 @@ export function useAutomationPagesData(enabled: boolean, search: string) {
   const query = useInfiniteQuery({
     enabled,
     initialPageParam: "",
-    queryKey: ["dashboard", "automations", "activity-pages", search],
+    queryKey: automationKeys.activityPages(search),
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams(search);
       params.set("sort", "activity");
       if (pageParam) params.set("cursor", pageParam);
       return fetchDashboardJson(
-        automationListSchema,
+        automationListPageSchema,
         `/api/automations?${params.toString()}`,
         signal,
       );
@@ -278,7 +301,7 @@ export function useCachedAutomationListItem(
   if (!id) return undefined;
   for (const [, data] of queryClient.getQueriesData<
     AutomationList | InfiniteData<AutomationList>
-  >({ queryKey: ["dashboard", "automations"] })) {
+  >({ queryKey: automationKeys.lists() })) {
     const lists = data && "pages" in data ? data.pages : data ? [data] : [];
     for (const list of lists) {
       const found = list.automations?.find(
@@ -290,11 +313,9 @@ export function useCachedAutomationListItem(
   return undefined;
 }
 
-/** Load details by ID, independent of list filters and pagination. */
-export function useAutomationData(enabled: boolean, id: string | undefined) {
-  return useQuery({
-    enabled: enabled && Boolean(id),
-    queryKey: ["dashboard", "automations", "detail", id],
+function automationDetailQuery(id: string | undefined) {
+  return queryOptions({
+    queryKey: automationKeys.detail(id),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationSummarySchema,
@@ -305,11 +326,19 @@ export function useAutomationData(enabled: boolean, id: string | undefined) {
   });
 }
 
+/** Load details by ID, independent of list filters and pagination. */
+export function useAutomationData(enabled: boolean, id: string | undefined) {
+  return useQuery({
+    ...automationDetailQuery(id),
+    enabled: enabled && Boolean(id),
+  });
+}
+
 /** Fetch newest runs across all viewer-visible automations. */
 export function useAutomationRunsData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "runs"],
+    queryKey: automationKeys.runs(),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationRunListSchema,
@@ -326,8 +355,14 @@ export function useAutomationExecutionsData(
   automationId: string | undefined,
 ) {
   return useQuery({
+    ...automationExecutionsQuery(automationId),
     enabled: enabled && Boolean(automationId),
-    queryKey: ["dashboard", "automations", automationId, "executions"],
+  });
+}
+
+function automationExecutionsQuery(automationId: string | undefined) {
+  return queryOptions({
+    queryKey: automationKeys.executions(automationId),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationExecutionListSchema,
@@ -338,6 +373,37 @@ export function useAutomationExecutionsData(
   });
 }
 
+// Long enough that a pointer moving across the list fetches nothing.
+const HOVER_INTENT_MS = 150;
+
+/**
+ * Prefetch an Automation's summary and runs when the pointer rests on its
+ * row or the row gets focus, so its page opens with data. Fresh reads are
+ * not fetched again.
+ */
+export function usePrefetchAutomation(id: string) {
+  const queryClient = useQueryClient();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const start = () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void queryClient.prefetchQuery(automationDetailQuery(id));
+      void queryClient.prefetchQuery(automationExecutionsQuery(id));
+    }, HOVER_INTENT_MS);
+  };
+  const cancel = () => clearTimeout(timer.current);
+  return {
+    onBlur: cancel,
+    onFocus: start,
+    // A tap opens the row at once, so a touch gives no time to prefetch.
+    onPointerEnter: (event: { pointerType: string }) => {
+      if (event.pointerType !== "touch") start();
+    },
+    onPointerLeave: cancel,
+  };
+}
+
 /** Fetch saved definitions for one viewer-visible Automation, newest first. */
 export function useAutomationVersionsData(
   enabled: boolean,
@@ -345,7 +411,7 @@ export function useAutomationVersionsData(
 ) {
   return useQuery({
     enabled: enabled && Boolean(automationId),
-    queryKey: ["dashboard", "automations", automationId, "versions"],
+    queryKey: automationKeys.versions(automationId),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationVersionListSchema,

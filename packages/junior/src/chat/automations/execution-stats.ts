@@ -11,9 +11,10 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
+import { conversationCostOf, microUsdToUsd } from "./run-cost";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   automationTaskDescription,
@@ -142,9 +143,30 @@ export function existingConversationId(conversationId: string): SQL {
 }
 
 /**
+ * Copy when an Automation's latest execution ended, and its outcome, to the
+ * Automation row. Call it after each write that adds, settles, or removes an
+ * execution. It reads the runs again, so a late or out-of-order write cannot
+ * leave an older run.
+ */
+export async function refreshAutomationLastRun(
+  db: JuniorDatabase,
+  automationId: string,
+): Promise<void> {
+  const latest = (column: SQL) =>
+    sql`(select ${column} from ${juniorAutomationRuns} where ${juniorAutomationRuns.automationId} = ${automationId} and ${isExecution()} order by ${juniorAutomationRuns.completedAtMs} desc, ${juniorAutomationRuns.id} desc limit 1)`;
+  await db
+    .update(juniorAutomations)
+    .set({
+      lastRunId: latest(sql`${juniorAutomationRuns.id}`),
+    })
+    .where(eq(juniorAutomations.id, automationId));
+}
+
+/**
  * Record the outcome of one Automation run. A run that already has an outcome
- * keeps it. A failed write is logged, and the heartbeat settles a started
- * event run later.
+ * keeps it. The run and the Automation's last run commit together, so the
+ * list never misses a stored outcome. A failed write is logged, and the
+ * heartbeat settles a started event run later.
  */
 export async function recordAutomationExecution(
   automationId: string,
@@ -164,24 +186,36 @@ export async function recordAutomationExecution(
     status,
   };
   try {
-    await getDb()
-      .insert(juniorAutomationRuns)
-      .values({
-        id: options.executionId,
-        automationId,
-        conversationId: options.conversationId
-          ? existingConversationId(options.conversationId)
-          : null,
-        ...outcome,
-      })
-      .onConflictDoUpdate({
-        target: juniorAutomationRuns.id,
-        set: {
+    await getDb().transaction(async (tx) => {
+      await tx
+        .insert(juniorAutomationRuns)
+        .values({
+          id: options.executionId,
+          automationId,
+          conversationId: options.conversationId
+            ? existingConversationId(options.conversationId)
+            : null,
+          costMicroUsd: options.conversationId
+            ? conversationCostOf(options.conversationId)
+            : null,
           ...outcome,
-          conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
-        },
-        setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
-      });
+        })
+        .onConflictDoUpdate({
+          target: juniorAutomationRuns.id,
+          set: {
+            ...outcome,
+            conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+            costMicroUsd: conversationCostOf(
+              sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+            ),
+          },
+          setWhere: inArray(juniorAutomationRuns.status, [
+            "pending",
+            "running",
+          ]),
+        });
+      await refreshAutomationLastRun(tx, automationId);
+    });
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
@@ -204,9 +238,10 @@ export async function readAutomationExecutionSummaries(
   const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
   const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   const costSince = (sinceMs: number) =>
-    sql<number>`coalesce(sum(${conversationCost}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
+    sql<number>`coalesce(sum(${juniorAutomationRuns.costMicroUsd}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::bigint`.mapWith(
+      Number,
+    );
   const summaryRows = db
     .select({
       costLast1Day: costSince(oneDayAgoMs),
@@ -218,11 +253,13 @@ export async function readAutomationExecutionSummaries(
       runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${thirtyDaysAgoMs})::int`,
       runsLast90Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${ninetyDaysAgoMs})::int`,
       automationId: juniorAutomationRuns.automationId,
-      totalCostUsd: sql<number>`coalesce(sum(${conversationCost}), 0)::double precision`,
+      totalCostMicroUsd:
+        sql<number>`coalesce(sum(${juniorAutomationRuns.costMicroUsd}), 0)::bigint`.mapWith(
+          Number,
+        ),
       totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorAutomationRuns)
-    .leftJoin(juniorConversations, executionConversation())
     .where(
       and(
         isExecution(),
@@ -240,10 +277,10 @@ export async function readAutomationExecutionSummaries(
       {
         ...rowStats.get(row.automationId)!,
         costUsd: {
-          1: addUsd(0, row.costLast1Day),
-          7: addUsd(0, row.costLast7Days),
-          30: addUsd(0, row.costLast30Days),
-          90: addUsd(0, row.costLast90Days),
+          1: microUsdToUsd(row.costLast1Day),
+          7: microUsdToUsd(row.costLast7Days),
+          30: microUsdToUsd(row.costLast30Days),
+          90: microUsdToUsd(row.costLast90Days),
         },
         runs: {
           1: row.runsLast1Day,
@@ -251,7 +288,7 @@ export async function readAutomationExecutionSummaries(
           30: row.runsLast30Days,
           90: row.runsLast90Days,
         },
-        totalCostUsd: addUsd(0, row.totalCostUsd),
+        totalCostUsd: microUsdToUsd(row.totalCostMicroUsd),
         totalRuns: row.totalRuns,
       },
     ]),
@@ -582,8 +619,8 @@ export async function readAutomationExecutionStatusDays(args: {
     if (row.status === "completed") day.completed = row.count;
     else if (row.status === "failed") day.failed = row.count;
     else if (row.status === "blocked") day.blocked = row.count;
-    if (row.costUsd !== null && row.costUsd > 0) {
-      day.costUsd = addUsd(day.costUsd, row.costUsd);
+    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
+      day.costUsd = addUsd(day.costUsd, microUsdToUsd(row.costMicroUsd));
     }
   }
   return [...byDate.values()];
@@ -622,8 +659,8 @@ export async function readAutomationExecutionStatusHours(args: {
     if (row.status === "completed") hour.completed = row.count;
     else if (row.status === "failed") hour.failed = row.count;
     else if (row.status === "blocked") hour.blocked = row.count;
-    if (row.costUsd !== null && row.costUsd > 0) {
-      hour.costUsd = addUsd(hour.costUsd, row.costUsd);
+    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
+      hour.costUsd = addUsd(hour.costUsd, microUsdToUsd(row.costMicroUsd));
     }
   }
   return [...byHour.values()];
@@ -636,16 +673,16 @@ async function readExecutionStatusBuckets(args: {
   endMs: number;
   startMs: number;
 }) {
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   return await getDb()
     .select({
       count: count(),
-      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
+      costMicroUsd: sql<
+        number | null
+      >`SUM(${juniorAutomationRuns.costMicroUsd})::bigint`.mapWith(Number),
       date: args.bucket,
       status: juniorAutomationRuns.status,
     })
     .from(juniorAutomationRuns)
-    .leftJoin(juniorConversations, executionConversation())
     .where(
       and(
         isExecution(),
