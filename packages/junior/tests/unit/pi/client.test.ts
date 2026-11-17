@@ -209,21 +209,23 @@ describe("completeText", () => {
   });
 
   it("uses AI SDK structured output for object completions", async () => {
-    mocks.generateText.mockResolvedValue({
-      output: { ok: true },
-      finishReason: "stop",
-      usage: {
-        inputTokens: 10,
-        inputTokenDetails: {
-          noCacheTokens: 8,
-          cacheReadTokens: 2,
-          cacheWriteTokens: 0,
+    mocks.generateText.mockImplementation(
+      resolveWithCallbacks({
+        output: { ok: true },
+        finishReason: "stop",
+        usage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 8,
+            cacheReadTokens: 2,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 3,
+          outputTokenDetails: { textTokens: 3, reasoningTokens: 1 },
+          totalTokens: 13,
         },
-        outputTokens: 3,
-        outputTokenDetails: { textTokens: 3, reasoningTokens: 1 },
-        totalTokens: 13,
-      },
-    });
+      }),
+    );
 
     const { completeObject } = await import("@/chat/pi/client");
     const schema = z.object({ ok: z.boolean() });
@@ -249,6 +251,9 @@ describe("completeText", () => {
         telemetry: { functionId: "classifier" },
       }),
     );
+    expect(mocks.setSpanAttributes).toHaveBeenLastCalledWith({
+      "app.cost.total_usd": 0.003,
+    });
   });
 
   it("keeps a successful object when cost estimation fails", async () => {

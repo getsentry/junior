@@ -519,18 +519,29 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.promptName
             ? { telemetry: { functionId: params.promptName } }
             : undefined),
-          ...aiSdkSpanCallbacks({
-            ...(params.promptName
-              ? { "gen_ai.prompt.name": params.promptName }
-              : undefined),
-            "gen_ai.provider.auth_mode": credential.mode,
-            ...(params.thinkingLevel
-              ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-              : undefined),
-            ...(maxOutputTokens !== undefined
-              ? { "gen_ai.request.max_tokens": maxOutputTokens }
-              : undefined),
-          }),
+          ...aiSdkSpanCallbacks(
+            {
+              ...(params.promptName
+                ? { "gen_ai.prompt.name": params.promptName }
+                : undefined),
+              "gen_ai.provider.auth_mode": credential.mode,
+              ...(params.thinkingLevel
+                ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
+                : undefined),
+              ...(maxOutputTokens !== undefined
+                ? { "gen_ai.request.max_tokens": maxOutputTokens }
+                : undefined),
+            },
+            (event: { usage: LanguageModelUsage }) =>
+              extractGenAiUsageAttributes({
+                cost: {
+                  total: bestEffortObjectCompletionCost(
+                    params.modelId,
+                    event.usage,
+                  ),
+                },
+              }),
+          ),
         }),
     );
     const object = result.output as z.infer<TSchema>;
