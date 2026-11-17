@@ -9,6 +9,7 @@
 import type {
   AssistantMessage,
   ToolResultMessage,
+  UserMessage,
 } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
@@ -24,32 +25,39 @@ export const RUNTIME_CONTEXT_TEXT_STARTS = [
   AGENTS_INSTRUCTIONS_START,
 ] as const;
 
-function userMessageContent(message: PiMessage): unknown[] | undefined {
-  const record = message as { role?: unknown; content?: unknown };
-  return record.role === "user" && Array.isArray(record.content)
-    ? record.content
+type UserContentPart = Exclude<UserMessage["content"], string>[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function userMessageContent(message: PiMessage): UserContentPart[] | undefined {
+  return message.role === "user" && Array.isArray(message.content)
+    ? message.content
     : undefined;
 }
 
-function isRuntimeTurnContextPart(part: unknown): boolean {
+/** The message with other content parts, if it is a user message. */
+function withUserContent(
+  message: PiMessage,
+  content: UserContentPart[],
+): PiMessage {
+  return message.role === "user" ? { ...message, content } : message;
+}
+
+// Stored history is parsed only by role, so a part's text is still checked.
+function textPartValue(part: UserContentPart): string | undefined {
+  return part.type === "text" && typeof part.text === "string"
+    ? part.text
+    : undefined;
+}
+
+function isRuntimeTurnContextPart(part: UserContentPart): boolean {
+  const text = textPartValue(part);
   return (
-    part !== null &&
-    typeof part === "object" &&
-    (part as { type?: unknown }).type === "text" &&
-    typeof (part as { text?: unknown }).text === "string" &&
-    RUNTIME_CONTEXT_TEXT_STARTS.some((start) =>
-      (part as { text: string }).text.startsWith(start),
-    )
+    text !== undefined &&
+    RUNTIME_CONTEXT_TEXT_STARTS.some((start) => text.startsWith(start))
   );
-}
-
-function textPartValue(part: unknown): string | undefined {
-  return part !== null &&
-    typeof part === "object" &&
-    (part as { type?: unknown }).type === "text" &&
-    typeof (part as { text?: unknown }).text === "string"
-    ? (part as { text: string }).text
-    : undefined;
 }
 
 /**
@@ -68,10 +76,6 @@ export function hasTurnInput(message: PiMessage): boolean {
   );
 }
 
-function messageTimestamp(message: PiMessage): unknown {
-  return (message as { timestamp?: unknown }).timestamp;
-}
-
 /** Return whether the message is a Turn's context, paired with the instruction after it. */
 export function isStandaloneRuntimeContextMessage(
   messages: PiMessage[],
@@ -84,7 +88,7 @@ export function isStandaloneRuntimeContextMessage(
     next &&
     userMessageContent(message) &&
     userMessageContent(next) &&
-    messageTimestamp(message) === messageTimestamp(next) &&
+    message.timestamp === next.timestamp &&
     !hasTurnInput(message) &&
     hasTurnInput(next),
   );
@@ -112,52 +116,37 @@ const EMBEDDED_THREAD_CONTEXT_PATTERN = new RegExp(
 
 /** Type guard for Pi SDK assistant messages. */
 export function isAssistantMessage(value: unknown): value is AssistantMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "assistant"
-  );
+  return isRecord(value) && value["role"] === "assistant";
 }
 
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
 ): value is ToolResultMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "toolResult"
-  );
+  return isRecord(value) && value["role"] === "toolResult";
 }
 
 /** Check whether a tool result carries an error flag. */
 export function isToolResultError(result: unknown): boolean {
-  if (!result || typeof result !== "object") return false;
-  return Boolean((result as { isError?: unknown }).isError);
+  return isRecord(result) && Boolean(result["isError"]);
 }
 
 /** Extract the tool name from a raw tool result message. */
 export function normalizeToolNameFromResult(
   result: unknown,
 ): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const record = result as { toolName?: unknown; name?: unknown };
-  if (typeof record.toolName === "string" && record.toolName.length > 0) {
-    return record.toolName;
-  }
-  if (typeof record.name === "string" && record.name.length > 0) {
-    return record.name;
-  }
+  if (!isRecord(result)) return undefined;
+  const { name, toolName } = result;
+  if (typeof toolName === "string" && toolName.length > 0) return toolName;
+  if (typeof name === "string" && name.length > 0) return name;
   return undefined;
 }
 
 /** Extract role string from a raw Pi message. */
 export function getPiMessageRole(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const role = (value as { role?: unknown }).role;
-  return typeof role === "string" ? role : undefined;
+  return isRecord(value) && typeof value["role"] === "string"
+    ? value["role"]
+    : undefined;
 }
 
 /** Return whether Pi can continue directly from the current history tail. */
@@ -176,15 +165,10 @@ export function isContinuablePiBoundary(
 
 /** Concatenate text content parts from an assistant message. */
 export function extractAssistantText(message: AssistantMessage): string {
-  const content =
-    (message as { content?: Array<{ type?: unknown; text?: unknown }> })
-      .content ?? [];
-  return content
-    .filter(
-      (part): part is { type: "text"; text: string } =>
-        part.type === "text" && typeof part.text === "string",
+  return (message.content ?? [])
+    .flatMap((part) =>
+      part.type === "text" && typeof part.text === "string" ? [part.text] : [],
     )
-    .map((part) => part.text)
     .join("\n");
 }
 
@@ -232,7 +216,7 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
     const runtimeContent =
       userMessageContent(message)?.filter(isRuntimeTurnContextPart) ?? [];
     return runtimeContent.length > 0
-      ? [{ ...message, content: runtimeContent } as PiMessage]
+      ? [withUserContent(message, runtimeContent)]
       : [];
   });
 }
@@ -269,16 +253,13 @@ export function instructionTextForProjection(text: string): string {
  * text.
  */
 export function getUserMessageInstructionText(message: PiMessage): string {
-  if (getPiMessageRole(message) !== "user") {
+  if (message.role !== "user") {
     return "";
   }
-  const content = (message as { content?: unknown }).content;
   const texts =
-    typeof content === "string"
-      ? [content]
-      : Array.isArray(content)
-        ? content.flatMap((part) => textPartValue(part) ?? [])
-        : [];
+    typeof message.content === "string"
+      ? [message.content]
+      : message.content.flatMap((part) => textPartValue(part) ?? []);
   const inputs = texts.flatMap((text) => {
     const withoutContext = text
       .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
@@ -309,6 +290,6 @@ export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
     );
     if (nextContent.length === content.length) return [message];
     if (nextContent.length === 0) return [];
-    return [{ ...message, content: nextContent } as PiMessage];
+    return [withUserContent(message, nextContent)];
   });
 }
