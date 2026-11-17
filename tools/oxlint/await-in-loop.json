@@ -37,7 +37,6 @@
         "packages/junior-google/src/tools/read-meeting-transcript.ts",
         "packages/junior-linear/src/webhooks/handler.ts",
         "packages/junior-memory/src/process-session.ts",
-        "packages/junior-memory/src/reembed.ts",
         "packages/junior-memory/src/store.ts",
         "packages/junior-sentry/src/webhooks/handler.ts",
         "packages/junior-testing/src/http/intercept.ts",

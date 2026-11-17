@@ -58,7 +58,7 @@
   "packages/junior-google/src/tools/shared.ts": 1,
   "packages/junior-memory/src/cli/search.ts": 3,
   "packages/junior-memory/src/cli/show.ts": 2,
-  "packages/junior-memory/src/embedding.ts": 3,
+  "packages/junior-memory/src/embedding.ts": 2,
   "packages/junior-memory/src/plugin.ts": 5,
   "packages/junior-memory/src/process-session.ts": 1,
   "packages/junior-memory/src/user-pages.ts": 1,

@@ -1,7 +1,10 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import {
+  createWebSource,
+  type PluginEmbedder,
+} from "@sentry/junior-plugin-api";
 import {
   recordWebConversationActivity,
   webActorFromUser,
@@ -12,11 +15,7 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
-import type { ConversationEmbedder } from "@/chat/conversations/embedding";
-import {
-  embedConversationEvents,
-  type ConversationEventEmbedder,
-} from "@/chat/conversations/event-embedding";
+import { embedConversationEvents } from "@/chat/conversations/event-embedding";
 import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -73,7 +72,7 @@ function webContext(conversationId: string): ToolRuntimeContext {
 async function executeTool(
   input: Record<string, unknown>,
   toolContext: ToolRuntimeContext = context(),
-  options: { embedder?: ConversationEmbedder } = {},
+  options: { embedder?: PluginEmbedder } = {},
 ) {
   const tool = createSearchConversationEventsTool(toolContext, options);
   if (!tool.execute) throw new Error("tool execute function missing");
@@ -105,25 +104,22 @@ const TOPICS = [/pull request|getsentry\/junior#\d+/i, /lease/i];
 function topicVector(text: string): number[] {
   return [...TOPICS.map((topic) => (topic.test(text) ? 1 : 0)), 0.01];
 }
-const eventEmbedder: ConversationEventEmbedder = {
+const embedder: PluginEmbedder = {
   model: "test-embedding",
-  async embedDocuments(texts) {
+  provider: "test",
+  async embedTexts({ texts }) {
     // Like the real embedder, which trims each text.
     if (texts.some((text) => text.trim() === "")) {
       throw new Error("Embedding input is empty");
     }
     return {
+      dimensions: TOPICS.length + 1,
       model: "test-embedding",
       provider: "test",
       vectors: texts.map(topicVector),
     };
   },
 };
-const queryEmbedder: ConversationEmbedder = async ({ text }) => ({
-  model: "test-embedding",
-  provider: "test",
-  vector: topicVector(text),
-});
 
 describe("searchConversationEvents", () => {
   afterEach(async () => {
@@ -408,17 +404,17 @@ describe("searchConversationEvents", () => {
     // Without vectors, a query with no shared word finds nothing.
     await expect(
       executeTool({ query: "pull request" }, context(), {
-        embedder: queryEmbedder,
+        embedder,
       }),
     ).resolves.toMatchObject({ events: [] });
     await expect(
-      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
     ).resolves.toBe(4);
     await expect(
-      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
     ).resolves.toBe(0);
     const byMeaning = await executeTool({ query: "pull request" }, context(), {
-      embedder: queryEmbedder,
+      embedder,
     });
     expect(byMeaning.events[0]).toMatchObject({ seq: 3 });
     // A vector of another model and size does not break the search.
@@ -427,11 +423,11 @@ describe("searchConversationEvents", () => {
       .set({ dimensions: 2, embedding: [1, 0], model: "other-embedding" })
       .where(eq(juniorConversationEventEmbeddings.seq, 1));
     const mixedSizes = await executeTool({ query: "pull request" }, context(), {
-      embedder: queryEmbedder,
+      embedder,
     });
     expect(mixedSizes.events[0]).toMatchObject({ seq: 3 });
     await expect(
-      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
     ).resolves.toBe(1);
 
     // Stored lexemes give the same matches. Newer events without stored
@@ -487,7 +483,7 @@ describe("searchConversationEvents", () => {
     ]);
     // Text that trims to nothing is not embedded and does not stop the rest.
     await expect(
-      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
     ).resolves.toBe(1);
     await expect(executeTool({ query: "lease.ts" })).resolves.toMatchObject({
       events: [{ seq: 2 }],

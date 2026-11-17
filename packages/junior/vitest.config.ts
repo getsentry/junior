@@ -22,6 +22,11 @@ export default defineConfig({
         __dirname,
         "tests/fixtures/virtual-config.ts",
       ),
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        __dirname,
+        "../junior-plugin-api/src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",

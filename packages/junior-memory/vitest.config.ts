@@ -4,6 +4,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        __dirname,
+        "../junior-plugin-api/src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",
