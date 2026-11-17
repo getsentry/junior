@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -59,7 +60,6 @@ const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
 
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
-const CONVERSATION_LOOP_CHECK_CONCURRENCY = 8;
 
 /** Return whether a child's session stopped after its latest agent invocation. */
 export function isChildAgentSessionStopped(
@@ -228,7 +228,7 @@ async function listChildAgentsFromInvocations(
     getConversationWorkStates(activeIds),
     listActiveMailboxTurnSources(activeIds),
   ]);
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const onConversationLoop = new Set(
     (
       await Promise.all(
@@ -348,7 +348,7 @@ async function listChildAgentsWithoutAgentInvocations(
     getConversationWorkStates(ids),
     listActiveMailboxTurnSources(ids),
   ]);
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   return await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // A spawn without an agent invocation always stores the kind.
@@ -449,7 +449,7 @@ async function listAnsweredLoopChildren(
   if (children.length === 0 || parentMessages.length === 0) {
     return [];
   }
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const answered = await Promise.all(
     children.map(({ childConversationId }) =>
       limit(async () => {

@@ -15,9 +15,10 @@ each rule, so new code cannot drift from it.
 - Bound fan-out over a list. Read many rows in one batched call first, such as
   one SQL query with `inArray` or `getStateValues` for state. When each item
   needs its own call, run the calls through a `p-limit` limiter:
-  `const limit = pLimit(N)` and `list.map((item) => limit(() => work(item)))`.
-  Use about 5 for provider APIs and about 8 for internal storage. Check: oxlint
-  `junior/bounded-fan-out`.
+  `const limit = pLimit(FAN_OUT_CONCURRENCY)` and
+  `list.map((item) => limit(() => work(item)))`. `FAN_OUT_CONCURRENCY` is in
+  `packages/junior/src/chat/fan-out.ts`. Use a lower cap only for a provider
+  rate limit, and name its reason. Check: oxlint `junior/bounded-fan-out`.
 - Use `for…of`, not `forEach`. A `forEach` callback hides `await`, `return`,
   and `break` from the loop. Check: oxlint `unicorn/no-array-for-each`.
 - In the dashboard, refresh only the queries that a change touched. Build query
