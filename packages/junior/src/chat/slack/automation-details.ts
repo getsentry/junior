@@ -10,6 +10,7 @@ import {
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import {
   slackEntitySchema,
+  slackExternalRefIdSchema,
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
@@ -156,7 +157,7 @@ const detailsEventSchema = z.object({
   trigger_id: z.string().min(1),
   user: z.string().min(1),
   external_ref: z.object({
-    id: z.string().min(1),
+    id: slackExternalRefIdSchema,
     type: z.literal("automation"),
   }),
 }) satisfies z.ZodType<

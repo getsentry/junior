@@ -69,9 +69,9 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    // Each provider delivery is its own host request. The Vercel local-dev
+    // Each provider call is its own host request. The Vercel local-dev
     // consumer runs inside the sender's async context, so without a new
-    // deadline every delivery inherits the sender's spent deadline.
+    // deadline every call inherits the sender's spent deadline.
     await runWithNewTurnRequestDeadline(() =>
       consume(checked.message, metadata),
     );
