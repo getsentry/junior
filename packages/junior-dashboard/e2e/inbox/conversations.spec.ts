@@ -1,6 +1,6 @@
 import { withRequestedMailbox } from "../harness";
 import { expect, test } from "../test";
-import { mobile, screenshot } from "../screenshot";
+import { desktop, mobile, screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -200,10 +200,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ has: page.locator('img[alt="chart.png"]') })
       .first();
     await image.waitFor({ state: "visible" });
-    await image.evaluate((element) =>
-      element.scrollIntoView({ block: "center", inline: "nearest" }),
-    );
-    await screenshot(page, "conversation-attachment");
+    // A resize keeps another scroll position, so center the image in each view.
+    for (const view of [desktop, mobile]) {
+      await page.setViewportSize(view);
+      await image.evaluate((element) =>
+        element.scrollIntoView({ block: "center", inline: "nearest" }),
+      );
+      await screenshot(page, "conversation-attachment", { view: view.name });
+    }
 
     await image.click();
     const preview = page.getByRole("dialog", { name: "chart.png" });

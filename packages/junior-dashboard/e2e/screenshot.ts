@@ -24,7 +24,17 @@ const SCREENSHOT_DIR = path.resolve(".playwright/junior-dashboard/screenshots");
 
 // The full-screen noise texture rasterizes slightly differently on each run.
 // Hide it so visual review only reports real changes.
-const SCREENSHOT_STYLE = "[data-dashboard-noise] { display: none !important; }";
+const SCREENSHOT_STYLE = [
+  "[data-dashboard-noise] { display: none !important; }",
+  // Native video controls are browser UI. Their loading spinner fades out on
+  // its own clock after the video loads, so each run caught it at another
+  // angle.
+  "video::-webkit-media-controls { display: none !important; }",
+].join("\n");
+
+// Each worker's dashboard server listens on a random port. Pages that show
+// the dashboard URL, such as the MCP settings, show this origin instead.
+const SCREENSHOT_ORIGIN = "http://127.0.0.1:3000";
 
 type ScreenshotOptions = {
   clip?: {
@@ -68,6 +78,12 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   const views = options.view ? [VIEWS[options.view]] : [desktop, mobile];
 
   for (const view of views) {
+    const size = page.viewportSize();
+    if (size?.width !== view.width || size.height !== view.height) {
+      // A resize moves the page under the pointer, so whichever element
+      // lands there shows its hover state or tooltip. Park the pointer.
+      await page.mouse.move(0, 0);
+    }
     await page.setViewportSize({
       height: view.height,
       width: view.width,
@@ -97,6 +113,22 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
           };
         })
       : options.clip;
+    const restoreOrigin = await page.evaluateHandle((origin) => {
+      const changed: Array<[Text, string]> = [];
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = node.nodeValue ?? "";
+        if (!text.includes(location.origin)) continue;
+        changed.push([node as Text, text]);
+        node.nodeValue = text.replaceAll(location.origin, origin);
+      }
+      return () => {
+        for (const [node, text] of changed) node.nodeValue = text;
+      };
+    }, SCREENSHOT_ORIGIN);
     await page.screenshot({
       animations: "disabled",
       clip,
@@ -104,12 +136,17 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       style: SCREENSHOT_STYLE,
       path: path.join(SCREENSHOT_DIR, `${name}__${view.name}.png`),
     });
+    // Later steps of the spec read the real URL.
+    await restoreOrigin.evaluate((restore) => restore());
   }
 
   if (previous) await page.setViewportSize(previous);
 }
 
-/** Wait for network, fonts, images, and two frames so the page stops moving. */
+/**
+ * Wait for network, fonts, images, first video frames, and two frames so the
+ * page stops moving.
+ */
 async function settle(page: Page) {
   await page.waitForLoadState("networkidle");
   await page.evaluate(async () => {
@@ -125,6 +162,26 @@ async function settle(page: Page) {
         return image.decode();
       }),
     );
+    // A video without its first frame is an empty box. Stop waiting after
+    // a few seconds, as the browser may load only the metadata.
+    await Promise.race([
+      Promise.allSettled(
+        [...document.querySelectorAll("video")]
+          .filter(
+            (video) =>
+              video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA &&
+              !video.error,
+          )
+          .map(
+            (video) =>
+              new Promise((resolve) => {
+                video.addEventListener("loadeddata", resolve, { once: true });
+                video.addEventListener("error", resolve, { once: true });
+              }),
+          ),
+      ),
+      new Promise((resolve) => setTimeout(resolve, 5_000)),
+    ]);
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
