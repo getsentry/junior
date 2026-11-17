@@ -51,7 +51,8 @@ export function conversationOutlineItems(
 
 /**
  * Join the outline of the whole Conversation with the items of the loaded
- * rows, in seq order. A loaded item wins: it has the whole message and the
+ * rows, in seq order. A loaded item wins: it has the whole message. When its
+ * reply is not loaded, such as at a page boundary, it keeps the outline's
  * reply. Loaded items also add messages newer than the outline, because the
  * outline is read once per visit and live polls bring only the transcript.
  */
@@ -73,7 +74,10 @@ export function mergeConversationOutlineItems(
       ...(reply ? { reply } : undefined),
     });
   }
-  for (const item of loaded) bySeq.set(item.seq, item);
+  for (const item of loaded) {
+    const reply = item.reply ?? bySeq.get(item.seq)?.reply;
+    bySeq.set(item.seq, reply ? { ...item, reply } : item);
+  }
   return [...bySeq.values()].sort((left, right) => left.seq - right.seq);
 }
 

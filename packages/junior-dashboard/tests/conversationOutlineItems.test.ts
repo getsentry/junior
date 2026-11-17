@@ -60,6 +60,12 @@ describe("conversation outline", () => {
           seq: 7,
           text: "loaded question cut",
         },
+        {
+          createdAt: "2026-01-01T00:02:00.000Z",
+          seq: 9,
+          text: "question at a page edge",
+          reply: "Reply on the next page.",
+        },
       ],
     };
 
@@ -71,6 +77,8 @@ describe("conversation outline", () => {
           title: "loaded question in full",
           reply: "Done.",
         },
+        // Its reply is on a page that is not loaded.
+        { author: {}, seq: 9, title: "question at a page edge" },
         // Newer than the outline, from a live poll.
         { author: {}, seq: 12, title: "new question" },
       ]),
@@ -90,6 +98,12 @@ describe("conversation outline", () => {
         seq: 7,
         title: "loaded question in full",
         reply: "Done.",
+      },
+      {
+        author: {},
+        seq: 9,
+        title: "question at a page edge",
+        reply: "Reply on the next page.",
       },
       { author: {}, seq: 12, title: "new question" },
     ]);
