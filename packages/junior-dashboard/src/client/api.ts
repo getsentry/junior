@@ -243,7 +243,7 @@ export function useAutomationsData(enabled: boolean, search: string) {
 export function useAutomationPagesData(enabled: boolean, search: string) {
   const query = useInfiniteQuery({
     enabled,
-    initialPageParam: undefined as string | undefined,
+    initialPageParam: "",
     queryKey: ["dashboard", "automations", "activity-pages", search],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams(search);

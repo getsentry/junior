@@ -10,7 +10,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.clock.setFixedTime(LIST_NOW);
-    const [weekly] = automationReport.automations;
+    const weekly = automationReport.automations[0]!;
     const collection = {
       ...automationReport,
       automations: [
