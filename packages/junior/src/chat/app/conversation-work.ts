@@ -24,7 +24,6 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -38,10 +37,7 @@ import {
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
-import {
-  scheduleSessionCompletedPluginTasks,
-  type ScheduleSessionCompletedPluginTasksOptions,
-} from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 
 type SlackRuntime = ReturnType<typeof createSlackRuntime>;
 
@@ -50,13 +46,7 @@ interface ConversationWorkOptions {
   conversationStore: ConversationStore;
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
-  /**
-   * Optional plugin-task send path for completed Turns.
-   * Production omits this and uses the default Vercel queue sender.
-   */
-  sendPluginTask?:
-    | ScheduleSessionCompletedPluginTasksOptions["send"]
-    | undefined;
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides | undefined;
   state?: StateAdapter;
   /** Keeps background work started by turns, such as titles, alive. */
@@ -88,9 +78,7 @@ export function createConversationWork(
   const baseRuntime = createSlackRuntime({
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns,
-    ...(options.sendPluginTask
-      ? { sendPluginTask: options.sendPluginTask }
-      : undefined),
+    sendPluginTask: options.sendPluginTask,
     services: {
       ...options.services,
       agentRunner: options.agentRunner,
@@ -98,14 +86,6 @@ export function createConversationWork(
     waitUntil: options.waitUntil,
   });
   const runtime = options.wrapRuntime?.(baseRuntime) ?? baseRuntime;
-  const scheduleCompletedPluginTasks = options.sendPluginTask
-    ? async (
-        params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
-      ) =>
-        await scheduleSessionCompletedPluginTasks(params, {
-          send: options.sendPluginTask,
-        })
-    : undefined;
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: options.getSlackAdapter,
     runNextPausedTurn: async (conversationId, runOptions) =>
@@ -113,13 +93,8 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         runOptions,
       ),
@@ -134,13 +109,8 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
@@ -164,7 +134,6 @@ export function createConversationWork(
   );
   const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     runTurn: conversationTurnWorker,
     state: options.state,

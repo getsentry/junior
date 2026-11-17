@@ -34,6 +34,7 @@ const {
   resumeTurnContextCounts,
   searchMcpToolNames,
   turnContextInputs,
+  capabilitySectionInputs,
 } = vi.hoisted(() => ({
   DEMO_SKILL: {
     name: "demo-skill",
@@ -66,13 +67,13 @@ const {
   resumeMessages: [] as unknown[][],
   resumeTurnContextCounts: [] as number[],
   searchMcpToolNames: [] as string[][],
-  turnContextInputs: [] as Array<{
-    availableSkills?: Array<{ name: string }>;
-    activeMcpCatalogs?: Array<{
+  turnContextInputs: [] as Array<{ includeSessionContext?: boolean }>,
+  capabilitySectionInputs: [] as Array<{
+    availableSkills: Array<{ name: string }>;
+    activeMcpCatalogs: Array<{
       provider: string;
       available_tool_count: number;
     }>;
-    includeSessionContext?: boolean;
   }>,
 }));
 
@@ -178,7 +179,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -236,7 +244,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       promptCallCount.value += 1;
       this.aborted = false;
       promptMessages.push(message);
-      promptSeedMessages.push([...this.state.messages]);
+      promptSeedMessages.push(this.state.messages.slice(1));
       this.state.messages.push(message);
 
       if (directMcpProviderFailure.value) {
@@ -331,7 +339,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async continue() {
       continueCallCount.value += 1;
-      resumeMessages.push([...this.state.messages]);
+      resumeMessages.push(this.state.messages.slice(1));
       resumeTurnContextCounts.push(
         this.state.messages.filter((message) => {
           const candidate = message as { role?: unknown; content?: unknown };
@@ -505,14 +513,13 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   return {
     ...actual,
     buildSystemPrompt: () => "System prompt",
-    buildTurnContextPrompt: (input: {
-      availableSkills?: Array<{ name: string }>;
-      activeMcpCatalogs?: Array<{
-        provider: string;
-        available_tool_count: number;
-      }>;
-      includeSessionContext?: boolean;
-    }) => {
+    buildCapabilitySections: (
+      input: Parameters<typeof actual.buildCapabilitySections>[0],
+    ) => {
+      capabilitySectionInputs.push(input);
+      return actual.buildCapabilitySections(input);
+    },
+    buildTurnContextPrompt: (input: { includeSessionContext?: boolean }) => {
       turnContextInputs.push(input);
       if (input.includeSessionContext === false) {
         return null;
@@ -798,6 +805,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     resumeMessages.length = 0;
     resumeTurnContextCounts.length = 0;
     turnContextInputs.length = 0;
+    capabilitySectionInputs.length = 0;
 
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
@@ -954,7 +962,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
     expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
-    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([]);
+    expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1152,7 +1160,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
+    expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([
       { provider: "demo", available_tool_count: 1 },
     ]);
     expect(listToolsMock).toHaveBeenCalledTimes(1);
@@ -1197,7 +1205,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
+    expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([
       { provider: "demo", available_tool_count: 1 },
     ]);
     expect(listToolsMock).toHaveBeenCalledTimes(1);
@@ -1327,7 +1335,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(reply.text).toBe("resumed reply");
     expect(resumeMessages).toHaveLength(0);
-    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual(priorMessages);
+    expect(promptSeedMessages.at(-1)?.slice(0, -2)).toEqual(priorMessages);
     expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
       "Turn context",
     );
@@ -1378,7 +1386,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(priorMessages);
+    expect(promptSeedMessages[0]?.slice(0, -2)).toEqual(priorMessages);
     expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
       "Turn context",
     );
@@ -1389,7 +1397,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "<thread-background>",
     );
     expect(JSON.stringify(promptMessages[0])).not.toContain("Turn context");
-    expect(turnContextInputs.at(-1)?.availableSkills).toEqual([
+    expect(capabilitySectionInputs.at(-1)?.availableSkills).toEqual([
       expect.objectContaining({ name: "demo-skill" }),
     ]);
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
@@ -1445,7 +1453,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual([
+    expect(promptSeedMessages.at(-1)?.slice(0, -2)).toEqual([
       storedMessages[0],
     ]);
     expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
@@ -1501,7 +1509,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(strippedHistory);
+    expect(promptSeedMessages[0]?.slice(0, -2)).toEqual(strippedHistory);
     expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
       "Turn context",
     );
@@ -1546,7 +1554,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]).toEqual(priorMessages);
+    // The Turn adds only the capability sections.
+    expect(promptSeedMessages[0]).toEqual([
+      ...priorMessages,
+      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
+    ]);
     // Request-scoped context, such as disabled tools, may still build a Turn
     // context. Session context must not repeat.
     expect(

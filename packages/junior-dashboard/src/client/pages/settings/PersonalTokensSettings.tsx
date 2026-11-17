@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -16,6 +16,7 @@ import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsSection } from "./SettingsPageLayout";
 import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
+import { formatTime } from "../../time";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 // Matches `createPersonalTokenBodySchema`.
@@ -23,10 +24,7 @@ const MAX_TOKEN_NAME_LENGTH = 80;
 
 // A blank name gets the creation time, so tokens stay distinguishable.
 function defaultTokenName(now = new Date()): string {
-  return `Token from ${now.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })}`;
+  return `Token from ${formatTime(now, { dateStyle: "medium", timeStyle: "short" })}`;
 }
 
 /**
@@ -37,7 +35,9 @@ function defaultTokenName(now = new Date()): string {
 export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const previewOrigin = parsePreviewOrigin(searchParams.get("preview"));
   const [name, setName] = useState(
     () =>
@@ -144,7 +144,10 @@ export function PersonalTokensSettings() {
     >
       {previewOrigin ? (
         <PreviewTokenHandoff
-          onCancel={() => setSearchParams({}, { replace: true })}
+          onCancel={() =>
+            // Keep the hash, so the page stays on this section.
+            navigate({ hash: location.hash, search: "" }, { replace: true })
+          }
           previewOrigin={previewOrigin}
         />
       ) : createdToken ? (
@@ -218,7 +221,11 @@ export function PersonalTokensSettings() {
                   </p>
                   <p className="mt-1 mb-0 text-xs text-dashboard-text-muted">
                     Ends in {token.tokenSuffix} · Expires{" "}
-                    {new Date(token.expiresAt).toLocaleDateString()}
+                    {formatTime(token.expiresAt, {
+                      day: "numeric",
+                      month: "numeric",
+                      year: "numeric",
+                    })}
                   </p>
                 </div>
                 <Button

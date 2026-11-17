@@ -19,7 +19,6 @@ import {
   ChildConversationStatusIcon,
   childConversationStatus,
 } from "./ChildConversationStatus";
-import { formatCompactAge } from "./conversationAge";
 import { useArchiveConversation } from "./conversationArchive";
 import {
   prefetchConversationDetail,
@@ -35,6 +34,7 @@ import {
   ROW_ACTIONS_FADE_CLASS,
   ROW_ACTIONS_REVEAL_CLASS,
 } from "./sidebarRowActions";
+import { formatCompactAge } from "../time";
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.

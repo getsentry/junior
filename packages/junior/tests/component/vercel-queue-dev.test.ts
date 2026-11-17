@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { QueueConsumer } from "@/chat/queue/provider";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 type PluginQueueCall =
@@ -380,6 +381,78 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       topic: "local_work",
       visibilityTimeoutSeconds: 45,
     });
+  });
+
+  it("gives each local delivery its own request deadline", async () => {
+    const registerDevConsumer = vi.fn(
+      (_input: Pick<QueueConsumer, "handler">) => vi.fn(),
+    );
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback: vi.fn(),
+      registerDevConsumer,
+    }));
+
+    process.env["NODE_ENV"] = "development";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
+
+    const [
+      { registerVercelConversationWorkDevConsumer },
+      { getTurnRequestDeadline, runWithTurnRequestDeadline },
+      { appendInboundMessage },
+      { signConversationQueueMessage },
+    ] = await Promise.all([
+      import("@/chat/task-execution/vercel-callback"),
+      import("@/chat/runtime/request-deadline"),
+      import("@/chat/task-execution/store"),
+      import("@/chat/task-execution/queue-signing"),
+    ]);
+
+    let deliveryDeadlineAtMs: number | undefined;
+    registerVercelConversationWorkDevConsumer({
+      run: async (context: ConversationWorkerContext) => {
+        deliveryDeadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
+        await context.attempt.ack();
+        return { status: "completed" as const };
+      },
+    });
+    const handler = registerDevConsumer.mock.calls[0]?.[0].handler;
+    if (!handler) throw new Error("Expected conversation dev consumer");
+
+    const conversationId = "slack:C123:1712345.0002";
+    await appendInboundMessage({
+      message: {
+        conversationId,
+        inboundMessageId: "m1",
+        delivery: "defer",
+        destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+        source: "slack",
+        createdAtMs: 1_000,
+        receivedAtMs: 1_100,
+        input: { authorId: "U123", text: "message m1" },
+      },
+      nowMs: 1_200,
+    });
+
+    // The Queue SDK calls dev consumers inside the sender's async context.
+    // Here that sender's request deadline passed an hour ago.
+    await runWithTurnRequestDeadline(
+      () =>
+        handler(
+          signConversationQueueMessage({ schemaVersion: 2, conversationId }),
+          {
+            consumerGroup: "consumer",
+            createdAt: new Date(),
+            deliveryCount: 1,
+            messageId: "msg_dev",
+            topicName: "topic",
+          },
+        ),
+      Date.now() - 3_600_000,
+    );
+
+    expect(deliveryDeadlineAtMs).toBeGreaterThan(Date.now());
   });
 
   it("handles rejected and versioned conversation queue messages", async () => {

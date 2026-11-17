@@ -154,7 +154,7 @@ async function linkOAuthAccountIdentity(args: {
   );
   const userId = actorUserId ?? emailMatch?.userId;
   if (!userId) {
-    throw new Error("OAuth account has no Junior user to link");
+    throw new Error("OAuth account has no User to link");
   }
   const email = emailMatch?.userId === userId ? emailMatch.email : undefined;
   await upsertLinkedIdentity(executor, userId, {

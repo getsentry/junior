@@ -177,7 +177,6 @@ describe("attach a linked object", () => {
     const notes = await nextTurnNotes("next-turn");
     expect(notes).toHaveLength(1);
     const context = buildTurnContextPrompt({
-      availableSkills: [],
       conversationNotes: notes,
       includeSessionContext: false,
     });

@@ -47,8 +47,9 @@ describe("automated turn limit", () => {
       maxTurns: 10,
     });
     expect(response).toContain(
-      "stopped automatic updates after 10 replies without a new message from you",
+      "stopped automatic updates after 10 automated turns without a new message from you",
     );
+    expect(response).toContain("Turns with no reply also count.");
     expect(response).toContain("Send a message or @mention me in this thread");
     expect(response).not.toContain("event-driven");
     expect(response).not.toContain("event");

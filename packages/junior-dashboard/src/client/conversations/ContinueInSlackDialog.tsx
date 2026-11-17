@@ -30,6 +30,7 @@ import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
 import { OutboundLink } from "../components/OutboundLink";
+import { getDashboardAgentName } from "../agentName";
 
 /**
  * Move a public dashboard conversation to a thread in a public Slack channel
@@ -112,7 +113,7 @@ export function ContinueInSlackDialog(props: {
           <>
             <DialogTitle>Moved to Slack</DialogTitle>
             <p className="m-0 text-dashboard-text-muted">
-              Mention Junior in the{" "}
+              Mention {getDashboardAgentName()} in the{" "}
               {move.data.channelName ? `#${move.data.channelName} ` : ""}
               thread to continue. Replies to dashboard messages stay here.
             </p>
@@ -204,8 +205,8 @@ export function ContinueInSlackDialog(props: {
                 ) : null}
               </Command>
               <FieldDescription>
-                Junior starts a thread there with this conversation. You can
-                move a conversation once.
+                {getDashboardAgentName()} starts a thread there with this
+                conversation. You can move a conversation once.
               </FieldDescription>
               <FieldError id={errorId}>{error}</FieldError>
             </Field>

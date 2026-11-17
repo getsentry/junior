@@ -41,6 +41,28 @@ describe("catalog tool calls", () => {
     });
   });
 
+  it("accepts a top-level intent like callMcpTool and drops it", () => {
+    const definition = tool({
+      description: "Catalog demo",
+      inputSchema: Type.Object({ query: Type.String() }),
+    });
+
+    expect(
+      resolveCatalogToolCall(
+        {
+          tool_name: "catalogDemo",
+          arguments: { query: "standup" },
+          intent: "find a slot for the standup",
+        },
+        { catalogDemo: definition },
+      ),
+    ).toEqual({
+      definition,
+      toolName: "catalogDemo",
+      arguments: { query: "standup" },
+    });
+  });
+
   it("rejects non-catalog names and malformed dispatcher arguments", () => {
     const definition = tool({
       description: "Catalog demo",

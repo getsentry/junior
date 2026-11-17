@@ -67,10 +67,11 @@ function parseRangeHeader(
 }
 
 /**
- * Stream a large Slack file that Junior never stored, from Slack through the
- * host, with the conversation's Slack installation. A HEAD request checks
- * that Slack still has the file without downloading it. Ranges are not
- * supported, so media players cannot seek in these files.
+ * Stream a large Slack file that Junior has not stored yet, from Slack
+ * through the host, with the conversation's Slack installation. This read
+ * does not store it. A HEAD request checks that Slack still has the file
+ * without downloading it. Ranges are not supported, so media players cannot
+ * seek in these files.
  */
 async function slackFileResponse(args: {
   attachment: AttachmentRecord;
@@ -129,9 +130,9 @@ async function slackFileResponse(args: {
  *
  * Missing conversations, missing attachments, purge-marked rows, and viewers
  * without private-content access all answer 404. A large Slack file that
- * Junior never stored also needs a signed-in viewer. The row lookup is scoped to
- * the conversation, so a Slack download only ever starts from a row that
- * ingest created there.
+ * Junior has not stored yet also needs a signed-in viewer. The row lookup is
+ * scoped to the conversation, so a Slack download only ever starts from a
+ * row that ingest created there.
  */
 export async function conversationAttachmentResponse(args: {
   attachmentId: string;

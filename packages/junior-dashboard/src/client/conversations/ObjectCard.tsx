@@ -4,7 +4,6 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
 import { cn } from "@dashboard/lib/utils";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
@@ -21,56 +20,18 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
-import { formatRelativeTime, formatTime } from "../format";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
+import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
+import { formatRelativeTime, formatTime } from "../time";
 
-// A thumbnail that fails to load does not render.
-function Thumbnail({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt=""
-      className="aspect-video max-h-44 w-full rounded-md border border-dashboard-border object-cover"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={src}
-    />
-  );
-}
-
-// The image route answers 404 to a viewer who cannot see the source, so a
-// preview image that fails to load does not render.
-function PreviewImage({
-  alt,
-  image,
-}: {
-  alt: string;
-  image: { src: string; srcSet: string };
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt={alt}
-      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
-      decoding="async"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={image.src}
-      srcSet={image.srcSet}
-    />
-  );
-}
-
-// A web page names its site, then its author, such as "YouTube · Sentry".
-// Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event or a release ends with when it happened, and a
-// monitor with when it last checked, in the viewer's time.
+// Its type and its core plugin tell the viewer nothing, and the label of a
+// web page is its title. An event or a release ends with when it happened,
+// and a monitor with when it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  if (card.objectType === "web_page") return webPageMeta(card) ?? type;
   const time =
     card.facts?.type === "event"
       ? card.facts.occurredAt
@@ -79,25 +40,26 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
         : card.facts?.type === "monitor"
           ? card.facts.lastCheckedAt
           : undefined;
-  const parts =
-    card.objectType === "web_page"
-      ? [
-          webPageSite(card),
-          card.facts?.type === "web_page" ? card.facts.author : undefined,
-        ]
-      : [
-          type,
-          objectSource(card.plugin),
-          // A label that repeats the title or the type says nothing new.
-          [card.title, type].includes(card.label) ? "" : card.label,
-          time
-            ? new Date(time).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : undefined,
-        ];
-  return parts.filter(Boolean).join(" · ") || type;
+  return (
+    [
+      type,
+      objectSource(card.plugin),
+      // A label that repeats the title or the type says nothing new.
+      [card.title, type].includes(card.label) ? "" : card.label,
+      time
+        ? formatTime(time, { dateStyle: "medium", timeStyle: "short" })
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ") || type
+  );
+}
+
+/** Name a web page by its site, then its author, such as "YouTube · Sentry". */
+export function webPageMeta(card: OwnedObjectAnnotation): string | undefined {
+  const author =
+    card.facts?.type === "web_page" ? card.facts.author : undefined;
+  return [webPageSite(card), author].filter(Boolean).join(" · ") || undefined;
 }
 
 function webPageSite(card: OwnedObjectAnnotation): string | undefined {
@@ -109,11 +71,12 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 }
 
 /**
- * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit. A live card can attach
- * its object to the Conversation. A saved card tells when Junior fetched its
- * facts. With `fill`, the card fills the height of its container and its body
- * scrolls.
+ * Show the full card of the latest saved annotation, or a `live` card that
+ * the API resolved for a link: images, facts, and details. A link preview
+ * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
+ * A live card can attach its object to the Conversation. A saved card tells
+ * when Junior fetched its facts. With `fill`, the card fills the height of
+ * its container and its body scrolls.
  */
 export function ObjectCard({
   card,
@@ -195,16 +158,21 @@ export function ObjectCard({
       >
         {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
           card.facts.thumbnailUrl && (
-            <Thumbnail src={card.facts.thumbnailUrl} />
+            <ObjectImage
+              className="aspect-video max-h-44 w-full"
+              src={card.facts.thumbnailUrl}
+            />
           )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
             {images.map((image, index) => (
-              <PreviewImage
+              <ObjectImage
                 key={image.src}
                 alt={`Description image ${index + 1}`}
-                image={image}
+                className="aspect-video w-full"
+                src={image.src}
+                srcSet={image.srcSet}
               />
             ))}
           </div>

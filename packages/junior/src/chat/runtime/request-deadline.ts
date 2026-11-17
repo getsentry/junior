@@ -35,6 +35,14 @@ export function runWithTurnRequestDeadline<T>(
     return callback();
   }
 
+  return runWithNewTurnRequestDeadline(callback, startedAtMs);
+}
+
+/** Run work that a new host request owns, even inside another request. */
+export function runWithNewTurnRequestDeadline<T>(
+  callback: () => T,
+  startedAtMs = Date.now(),
+): T {
   return requestDeadlineStorage.run(
     createTurnRequestDeadline(startedAtMs),
     callback,

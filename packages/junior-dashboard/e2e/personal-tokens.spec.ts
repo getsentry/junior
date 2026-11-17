@@ -205,7 +205,7 @@ test("explains when Junior did not make the Preview", async ({
   await page.route("**/api/personal-tokens", async (route) => {
     if (route.request().method() === "POST") {
       await route.fulfill({
-        json: { error: "Junior did not make this Preview for you." },
+        json: { error: "This Preview was not made for you." },
         status: 403,
       });
       return;
@@ -223,4 +223,6 @@ test("explains when Junior did not make the Preview", async ({
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Token name")).toBeVisible();
+  // The page stays on the API Tokens section.
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#api-tokens`);
 });

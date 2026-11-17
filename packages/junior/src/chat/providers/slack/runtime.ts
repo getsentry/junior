@@ -480,7 +480,9 @@ export function createSlackTurnRuntime<
     message: Message;
     eventId: string;
     error?: unknown;
-    postFailureEventName: string;
+    postFailureEventName:
+      | "mention.handler.failure_reply_post.failed"
+      | "subscribed_message.handler.failure_reply_post.failed";
   }): Promise<void> => {
     try {
       const channelId = getChannelId(args.thread, args.message);

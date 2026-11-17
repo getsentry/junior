@@ -91,7 +91,7 @@ describe("buildUserTurnText", () => {
         text: "what now?",
         context: [
           '<thread-context authority="evidence-only">',
-          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author_id="U_DAVID" author_name="David" slack_ts="1712345.000200">',
           "[user] David: add customer impact",
           "  </message>",
           "</thread-context>",
@@ -104,7 +104,7 @@ describe("buildUserTurnText", () => {
         type: "text",
         text: [
           '<thread-context authority="evidence-only">',
-          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author_id="U_DAVID" author_name="David" slack_ts="1712345.000200">',
           "[user] David: add customer impact",
           "  </message>",
           "</thread-context>",

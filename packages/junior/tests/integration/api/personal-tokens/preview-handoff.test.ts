@@ -97,7 +97,7 @@ describe("personal token handoff to a Preview", () => {
     );
     expect(other.status).toBe(403);
     expect(apiErrorSchema.parse(await other.json())).toEqual({
-      error: "Junior did not make this Preview for you.",
+      error: "This Preview was not made for you.",
     });
   });
 

@@ -89,7 +89,7 @@ function surfaceExpression(table: typeof turnRoot) {
   return sql<string>`CASE
     WHEN ${table.source} IN ('api', 'scheduler', 'slack')
       THEN ${table.source}
-    -- Dashboard web conversations share the product api surface label.
+    -- Dashboard Conversations share the product api surface label.
     WHEN ${table.source} = 'web' THEN 'api'
     WHEN ${table.conversationId} LIKE 'slack:%' THEN 'slack'
     WHEN ${table.conversationId} LIKE 'scheduler:%' THEN 'scheduler'

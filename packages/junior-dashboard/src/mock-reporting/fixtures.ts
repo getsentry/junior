@@ -141,7 +141,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   };
 }
 
-const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+export const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
@@ -155,7 +155,7 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
-const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
+export const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
 const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";
@@ -362,7 +362,7 @@ function mockBrief(
         ],
       },
       summary: live
-        ? "Checkout p95 rose after payments-v42. Junior linked the spike to the slow serializer path and is comparing deployment spans before a rollback decision."
+        ? "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision."
         : "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
       intent: live
         ? "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans."
@@ -385,7 +385,6 @@ function mockBrief(
             },
             {
               text: "Use checkout.complete p95 as the primary comparison signal.",
-              by: "Junior",
               kind: "assumed",
             },
           ]
@@ -847,7 +846,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             contentType: "image/png",
             bytes: 6400,
           },
-          // Large Slack files that Junior never stores.
+          // Large Slack files that Junior has not stored yet.
           {
             id: "qa-recording-pending",
             filename: "standup-recording.mp4",
@@ -2771,7 +2770,7 @@ export function readMockConversationPendingMessages(
             receivedAt: iso(nowMs, -3_500),
             role: "user" as const,
             source: "web" as const,
-            text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            text: "Keep the reply here. I will paste the dashboard link next.",
             attachments: [
               {
                 id: "qa-chart-png",

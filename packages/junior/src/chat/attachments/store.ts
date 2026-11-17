@@ -1,13 +1,31 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notExists,
+  or,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorAttachments, juniorConversations } from "@/db/schema";
+import {
+  juniorAttachments,
+  juniorConversations,
+  juniorMessageAttachments,
+} from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
-import type { AttachmentSource } from "./source";
+import {
+  AttachmentSourceUnavailableError,
+  type AttachmentSource,
+  type AttachmentSourceFile,
+} from "./source";
 import { bufferBody, type AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,9 +47,44 @@ export interface AttachmentRecord {
   id: string;
   /** Where the file came from, when a provider supplied it. */
   source: AttachmentSource | null;
-  /** Null for a large Slack file, which Junior never stores. */
+  /**
+   * Null for a large Slack file that no read has needed yet. The first read
+   * that needs its bytes stores it with `storeDeferredAttachment`.
+   */
   storageKey: string | null;
   storageProvider: string;
+}
+
+/** A row whose bytes are in storage. */
+export type StoredAttachmentRecord = AttachmentRecord & { storageKey: string };
+
+/** Only `file` rows: a `url` row has no storage or file fields. */
+export const isFileAttachment = eq(juniorAttachments.kind, "file");
+
+/**
+ * The storage and file fields of a `file` row. Every `file` row has them, so
+ * a missing one is a broken row.
+ */
+export function fileFields(row: {
+  bytes: number | null;
+  contentType: string | null;
+  id: string;
+  storageProvider: string | null;
+  title: string | null;
+}): Pick<
+  AttachmentRecord,
+  "bytes" | "contentType" | "filename" | "storageProvider"
+> {
+  const { bytes, contentType, storageProvider, title } = row;
+  if (
+    bytes === null ||
+    contentType === null ||
+    storageProvider === null ||
+    title === null
+  ) {
+    throw new Error(`Attachment ${row.id} has no file fields`);
+  }
+  return { bytes, contentType, filename: title, storageProvider };
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -43,7 +96,7 @@ export interface AttachmentGarbageCollectionResult {
  *
  * A file with a source can stream. Its id comes from the source, so a retry
  * finds the stored copy before `open` downloads anything. A deferred file is
- * recorded without its bytes, and each read downloads it from its source. A
+ * recorded without its bytes. The first read that needs them stores it. A
  * file without a source must be in memory, because its id comes from its
  * digest.
  */
@@ -172,7 +225,11 @@ async function writeAttachmentObject(args: {
     try {
       return await writeAttachmentObjectOnce(args);
     } catch (error) {
-      if (error instanceof AttachmentSizeError || attempt >= WRITE_ATTEMPTS) {
+      if (
+        error instanceof AttachmentSizeError ||
+        error instanceof AttachmentSourceUnavailableError ||
+        attempt >= WRITE_ATTEMPTS
+      ) {
         // A write that committed before it failed leaves an object no row
         // points to.
         await bestEffortDelete(args.storage, args.key);
@@ -326,7 +383,7 @@ export async function storeAttachment(args: {
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
+      filename: juniorAttachments.title,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
       providerId: juniorAttachments.providerId,
@@ -356,7 +413,8 @@ export async function storeAttachment(args: {
 
   await assertConversationNotPurged(args.db, args.conversationId);
 
-  // A deferred file gets a row with no object. Each read downloads it.
+  // A deferred file gets a row with no object. The first read that needs
+  // its bytes stores it.
   const { file } = args;
   let storageKey: string | null = null;
   let written: { bytes: number; sha256: string | null };
@@ -447,7 +505,7 @@ export async function storeAttachment(args: {
         storageKey,
         provider: source?.provider,
         providerId: source?.id,
-        filename: args.file.filename,
+        title: args.file.filename,
         contentType: args.file.mimeType,
         ...written,
         createdAt: now,
@@ -584,9 +642,15 @@ export async function recordUploadedAttachment(args: {
     .with(conversationDetailTouch(args.db.db(), [attachment.conversationId]))
     .insert(juniorAttachments)
     .values({
-      ...attachment,
-      storageProvider: args.storage.provider,
+      bytes: attachment.bytes,
+      contentType: attachment.contentType,
+      conversationId: attachment.conversationId,
       createdAt: now,
+      id: attachment.id,
+      sha256: attachment.sha256,
+      storageKey: attachment.storageKey,
+      storageProvider: args.storage.provider,
+      title: attachment.filename,
     })
     .onConflictDoNothing({ target: juniorAttachments.id })
     .returning({ id: juniorAttachments.id });
@@ -605,6 +669,83 @@ export async function recordUploadedAttachment(args: {
   }
 }
 
+/**
+ * Store a file that Junior recorded without its bytes, on its first read.
+ *
+ * The bytes stream from the source to a fresh key. The row then takes that
+ * key only while it is still unstored, live, and in a conversation that is
+ * not purged. Purge marks rows in the transaction that purges the
+ * conversation, so this update cannot revive a purged row. When the update
+ * misses, the new object is deleted: return the row that another writer
+ * stored, or null when the row is no longer live.
+ */
+export async function storeDeferredAttachment(args: {
+  attachment: AttachmentRecord & { source: AttachmentSource };
+  db: JuniorSqlDatabase;
+  file: AttachmentSourceFile;
+  storage: AttachmentStorage;
+}): Promise<StoredAttachmentRecord | null> {
+  const { attachment, storage } = args;
+  const storageKey = attachmentKey({
+    attachmentId: attachment.id,
+    conversationId: attachment.conversationId,
+    filename: attachment.filename,
+    writeId: randomUUID(),
+  });
+  const written = await writeAttachmentObject({
+    file: {
+      bytes: args.file.bytes,
+      filename: attachment.filename,
+      mimeType: attachment.contentType,
+      open: args.file.open,
+      source: attachment.source,
+    },
+    key: storageKey,
+    storage,
+  });
+  const db = args.db.db();
+  const updated = await db
+    .with(conversationDetailTouch(db, [attachment.conversationId]))
+    .update(juniorAttachments)
+    .set({ ...written, storageKey })
+    .where(
+      and(
+        eq(juniorAttachments.id, attachment.id),
+        eq(juniorAttachments.conversationId, attachment.conversationId),
+        eq(juniorAttachments.storageProvider, storage.provider),
+        isNull(juniorAttachments.storageKey),
+        isNull(juniorAttachments.deleteRequestedAt),
+        notExists(
+          db
+            .select({ id: juniorConversations.conversationId })
+            .from(juniorConversations)
+            .where(
+              and(
+                eq(
+                  juniorConversations.conversationId,
+                  attachment.conversationId,
+                ),
+                isNotNull(juniorConversations.transcriptPurgedAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: juniorAttachments.id });
+  if (updated.length > 0) {
+    return { ...attachment, bytes: written.bytes, storageKey };
+  }
+  await bestEffortDelete(storage, storageKey);
+  const current = await readLiveAttachment({
+    attachmentId: attachment.id,
+    conversationId: attachment.conversationId,
+    db: args.db,
+  });
+  return current?.storageKey
+    ? { ...current, storageKey: current.storageKey }
+    : null;
+}
+
 /** Load one live attachment owned by a conversation. */
 export async function readLiveAttachment(args: {
   attachmentId: string;
@@ -618,17 +759,18 @@ export async function readLiveAttachment(args: {
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
       providerId: juniorAttachments.providerId,
       storageProvider: juniorAttachments.storageProvider,
       storageKey: juniorAttachments.storageKey,
+      title: juniorAttachments.title,
     })
     .from(juniorAttachments)
     .where(
       and(
         eq(juniorAttachments.id, args.attachmentId),
+        isFileAttachment,
         eq(juniorAttachments.conversationId, args.conversationId),
         isNull(juniorAttachments.deleteRequestedAt),
       ),
@@ -638,17 +780,14 @@ export async function readLiveAttachment(args: {
     return null;
   }
   return {
-    bytes: row.bytes,
-    contentType: row.contentType,
+    ...fileFields(row),
     conversationId: row.conversationId,
-    filename: row.filename,
     id: row.id,
     source:
       row.provider && row.providerId
         ? { id: row.providerId, provider: row.provider }
         : null,
     storageKey: row.storageKey,
-    storageProvider: row.storageProvider,
   };
 }
 
@@ -702,10 +841,11 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Eligible rows are 30 days old, explicitly purge-marked, or owned by a
- * conversation whose transcript is already purged. Delete object keys first,
- * then remove rows that are still eligible so a failed blob delete remains
- * retryable.
+ * Eligible files are 30 days old, explicitly purge-marked, or owned by a
+ * conversation whose transcript is already purged. A `url` row has no bytes,
+ * so it lives as long as its message: it is eligible only when purge-marked
+ * or purged. Delete object keys first, then remove rows that are still
+ * eligible so a failed blob delete remains retryable.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -714,6 +854,12 @@ export async function collectAttachmentGarbage(args: {
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
   const expiresBefore = new Date(args.nowMs - ATTACHMENT_RETENTION_MS);
+  const purged = or(
+    isNotNull(juniorAttachments.deleteRequestedAt),
+    isNotNull(juniorConversations.transcriptPurgedAt),
+  );
+  const eligible = or(lte(juniorAttachments.createdAt, expiresBefore), purged);
+  const isUrl = eq(juniorAttachments.kind, "url");
   const rows = await args.db
     .db()
     .select({
@@ -726,13 +872,12 @@ export async function collectAttachmentGarbage(args: {
       eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
-      and(
-        eq(juniorAttachments.storageProvider, args.storage.provider),
-        or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          isNotNull(juniorConversations.transcriptPurgedAt),
+      or(
+        and(
+          eq(juniorAttachments.storageProvider, args.storage.provider),
+          eligible,
         ),
+        and(isUrl, purged),
       ),
     )
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
@@ -756,11 +901,7 @@ export async function collectAttachmentGarbage(args: {
           juniorAttachments.id,
           rows.map((row) => row.id),
         ),
-        or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          isNotNull(juniorConversations.transcriptPurgedAt),
-        ),
+        or(and(isFileAttachment, eligible), and(isUrl, purged)),
       ),
     );
   if (stillEligible.length === 0) return { deleted: 0 };
@@ -775,7 +916,29 @@ export async function collectAttachmentGarbage(args: {
     )
     .returning({
       conversationId: juniorAttachments.conversationId,
+      id: juniorAttachments.id,
+      kind: juniorAttachments.kind,
     });
+  // Purge deletes where messages use links. A purge by a worker from before
+  // `url` rows existed did not.
+  const urls = removed.filter((row) => row.kind === "url");
+  if (urls.length > 0) {
+    await args.db
+      .db()
+      .delete(juniorMessageAttachments)
+      .where(
+        and(
+          inArray(
+            juniorMessageAttachments.conversationId,
+            urls.map((row) => row.conversationId),
+          ),
+          inArray(
+            juniorMessageAttachments.attachmentId,
+            urls.map((row) => row.id),
+          ),
+        ),
+      );
+  }
   await touchConversationDetail(
     args.db.db(),
     removed.map((row) => row.conversationId),

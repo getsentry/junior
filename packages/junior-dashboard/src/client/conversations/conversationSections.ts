@@ -1,5 +1,11 @@
 import type { WaitingConversation } from "../review-desk/queries";
 import type { Conversation } from "../types";
+import {
+  calendarDay,
+  calendarDaysAgo,
+  dateTimeFormat,
+  formatTime,
+} from "../time";
 
 export type ConversationSection = {
   conversations: Conversation[];
@@ -7,7 +13,6 @@ export type ConversationSection = {
   label: string;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 // Pinned sorts first, then Needs you, then every time section.
 const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
 const NEEDS_YOU_SECTION = { key: "needs-you", label: "Needs you", order: -1 };
@@ -191,11 +196,11 @@ function conversationSection(
   const nowMonth = yearMonth(nowMs, timeZone);
   return {
     key: `month-${month.year}-${month.month}`,
-    label: new Intl.DateTimeFormat("en-US", {
+    label: formatTime(time, {
       month: "long",
       timeZone,
       ...(month.year === nowMonth.year ? undefined : { year: "numeric" }),
-    }).format(time),
+    }),
     // Month sections follow the rolling windows, newest month first.
     order:
       4 + (nowMonth.year - month.year) * 12 + (nowMonth.month - month.month),
@@ -206,36 +211,11 @@ function yearMonth(
   time: number,
   timeZone: string,
 ): { month: number; year: number } {
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = dateTimeFormat({
     month: "numeric",
     timeZone,
     year: "numeric",
   }).formatToParts(time);
   const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
   return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
-}
-
-/** Count the calendar days from `time` to `nowDay` (a `calendarDay` value). */
-export function calendarDaysAgo(
-  time: number,
-  nowDay: number,
-  timeZone: string,
-): number {
-  return Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS);
-}
-
-/** Return the UTC midnight of the calendar day that holds `time` in `timeZone`. */
-export function calendarDay(time: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "numeric",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(time);
-  const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
-  return Date.UTC(
-    values.get("year") ?? 0,
-    (values.get("month") ?? 1) - 1,
-    values.get("day") ?? 1,
-  );
 }

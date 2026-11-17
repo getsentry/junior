@@ -85,7 +85,6 @@ export {
   conversationEventPageSchema,
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -116,7 +115,10 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
-export { conversationFeedSchema } from "./schema/conversation-feed";
+export {
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
@@ -248,6 +250,16 @@ export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
 } from "./schema/watch";
+export {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
+} from "./schema/plan";
+export type {
+  ConversationPlanItem,
+  ConversationPlanReport,
+  PlanItemStatusBody,
+} from "./schema/plan";
 export type {
   ConversationWatch,
   ConversationWatchesReport,

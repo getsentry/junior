@@ -271,8 +271,8 @@ describe("buildConversationContext", () => {
 
     const context = buildConversationContext(conversation).text;
 
-    expect(context).toContain('author="user"');
-    expect(context).toContain('actor_id="U039RR91S"');
+    expect(context).toContain('author_name="user"');
+    expect(context).toContain('author_id="U039RR91S"');
     expect(context).toContain("[user] user: hello");
     expect(context).not.toContain("@U039RR91S");
   });

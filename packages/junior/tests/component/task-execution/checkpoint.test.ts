@@ -8,6 +8,8 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
+// Warm the module cache so the first test's timeout doesn't include the cold load.
+import "@/chat/task-execution/checkpoint";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {

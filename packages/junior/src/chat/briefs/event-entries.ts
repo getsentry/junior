@@ -1,5 +1,5 @@
 import type { ConversationReportEvent } from "@/api/schema/conversation";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { isEventAuthorId } from "@/chat/events/actor";
 import type { BriefEntry } from "./schema";
 
 const TOOL_TEXT_LIMIT = 1_500;
@@ -112,7 +112,7 @@ export function briefEntriesFromReportEvents(
       const role =
         data.role === "user" &&
         (Boolean(data.eventType) ||
-          data.actorIdentity?.slackUserId === EVENT_AUTHOR_ID)
+          isEventAuthorId(data.actorIdentity?.slackUserId))
           ? "event"
           : data.role;
       entries.push({

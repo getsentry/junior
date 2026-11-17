@@ -45,6 +45,8 @@ const subscriptionSchema = z
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
+    /** Event types that this Watch delivers as a Quiet Event. */
+    quietEvents: z.array(eventTypeSchema).min(1).optional(),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
@@ -63,6 +65,7 @@ export interface CreateWatchInput {
   match?: EventMatch;
   namespace: string;
   identifier: string;
+  quietEvents?: readonly string[] | undefined;
   resourceType: string;
 }
 
@@ -313,6 +316,23 @@ function watchGuidance(
   return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
+/** Whether a Watch delivers this event type as a Quiet Event. */
+export function isQuietEvent(
+  subscription: Pick<Watch, "quietEvents">,
+  eventType: string,
+): boolean {
+  return subscription.quietEvents?.includes(eventType) === true;
+}
+
+/** The event types of a Watch that start a Turn. */
+export function turnEvents(
+  subscription: Pick<Watch, "events" | "quietEvents">,
+): string[] {
+  return subscription.events.filter(
+    (eventType) => !isQuietEvent(subscription, eventType),
+  );
+}
+
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,
@@ -342,6 +362,14 @@ export async function createWatch(
     identifier: input.identifier,
   });
   const guidance = watchGuidance(input.guidance, events);
+  // Quiet is not part of the Watch id: a Watch for the same events from
+  // watchEvents replaces this one, and its Events start Turns.
+  const quietEvents = events.filter((event) =>
+    input.quietEvents?.includes(event),
+  );
+  if (quietEvents.length === events.length) {
+    throw new Error("Watch requires at least one event that starts a Turn");
+  }
   const record: Watch = {
     conversationId: input.conversationId,
     createdAtMs: nowMs,
@@ -354,6 +382,7 @@ export async function createWatch(
     ...(match ? { match } : undefined),
     namespace: input.namespace,
     identifier: input.identifier,
+    ...(quietEvents.length > 0 ? { quietEvents } : undefined),
     resourceType: input.resourceType,
     status: "active",
     updatedAtMs: nowMs,

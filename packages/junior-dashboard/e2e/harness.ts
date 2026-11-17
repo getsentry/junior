@@ -113,6 +113,7 @@ export async function startDashboardE2eServer(
     "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["example.com"],
     auth: {
       async getSession() {

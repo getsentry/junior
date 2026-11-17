@@ -90,7 +90,7 @@ function writePnpmWorkspace(targetDir: string): void {
 minimumReleaseAgeExclude:
   - "@sentry/*"
 # pnpm fails the install when a dependency has an unreviewed build script.
-# These are the Junior runtime dependencies that have one.
+# These are the @sentry/junior runtime dependencies that have one.
 allowBuilds:
   "@google/genai": true
   "@mongodb-js/zstd": true
