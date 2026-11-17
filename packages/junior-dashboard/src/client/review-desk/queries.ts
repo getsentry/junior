@@ -19,6 +19,10 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import {
+  conversationDetailQueryKey,
+  type ConversationSnapshot,
+} from "../conversations/queries";
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
@@ -168,17 +172,36 @@ export function useConversationReviewItemData(
 export function useLinkedConversationTitles(
   conversationIds: readonly string[],
 ): (string | undefined)[] {
+  const queryClient = useQueryClient();
   return useQueries({
     queries: conversationIds.map((conversationId) => ({
       queryKey: ["dashboard", "conversation-title", conversationId],
-      queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        conversationDetailTitle(
-          await fetchDashboardJson(
-            conversationDetailReportSchema,
-            `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
-            signal,
-          ),
-        ) ?? null,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        // An open Conversation reads its full detail. Take the title from
+        // that read, cached or in flight, and do not read it a second time.
+        const detailKey = conversationDetailQueryKey(conversationId);
+        const cached =
+          queryClient.getQueryData<ConversationSnapshot>(detailKey);
+        if (cached) return conversationDetailTitle(cached) ?? null;
+        if (queryClient.getQueryState(detailKey)?.fetchStatus === "fetching") {
+          return (
+            conversationDetailTitle(
+              await queryClient.fetchQuery<ConversationSnapshot>({
+                queryKey: detailKey,
+              }),
+            ) ?? null
+          );
+        }
+        return (
+          conversationDetailTitle(
+            await fetchDashboardJson(
+              conversationDetailReportSchema,
+              `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
+              signal,
+            ),
+          ) ?? null
+        );
+      },
       retry: false,
       staleTime: 5 * 60_000,
     })),

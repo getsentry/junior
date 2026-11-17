@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadJuniorTestEnvFiles } from "./tests/fixtures/env";
 
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -47,6 +48,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Inject the `pg` tracing channels that SQL budget tests count.
+    execArgv: [
+      "--import",
+      pathToFileURL(
+        path.resolve(__dirname, "tests/fixtures/pg-tracing-hook.ts"),
+      ).href,
+    ],
     include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",

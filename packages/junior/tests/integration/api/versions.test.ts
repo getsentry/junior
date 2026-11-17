@@ -1,4 +1,5 @@
 import { and, eq, max } from "drizzle-orm";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -113,7 +114,10 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await read();
+    const first = await expectSqlBudget(() => read(), {
+      statements: 1,
+      serialRounds: 1,
+    });
     expect(await read()).toEqual(first);
     expect(await detailVersion()).toBe(first.conversation);
     // A Conversation that does not exist has no token.

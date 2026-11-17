@@ -28,6 +28,19 @@ each rule, so new code cannot drift from it.
   such as `invalidateConversationFeeds` or `invalidateReviewItemCollections`.
   Do not invalidate, refetch, reset, or remove a key with two or fewer parts,
   unless you pass `exact: true`. Check: dashboard oxlint `query-invalidation/no-broad-query-invalidation`.
+- Keep the SQL work of hot API routes inside a budget. A budget counts the
+  statements of one request, and its serial rounds: the longest chain of
+  statements where each one waits on the one before. Integration tests measure
+  it with `expectSqlBudget` from `packages/junior/tests/fixtures/sql-budget.ts`.
+  The helper reads the `orchestrion:pg:*` tracing channels. These are the
+  channels that Sentry's Postgres spans use. Tests inject them into `pg` with
+  `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
+  extra wrapper.
+- Keep the API requests of the main dashboard pages inside a budget. Dashboard
+  e2e specs measure a first page load with `expectRequestBudget` from
+  `packages/junior-dashboard/e2e/request-budget.ts`.
+- Set a new budget to the measured value. When a change uses less, lower the
+  budget in the same change. Do not raise a budget to pass. Fix the code.
 
 ## Exceptions
 
