@@ -16,6 +16,8 @@ child chooses to report reaches the parent.
   and a grandchild never borrow the authority of a different Actor.
 - A parent can plan around its child agents. It knows which ones still
   work, and it learns when one fails or stops.
+- A parent manages the lifecycle of its child agents. It starts, steers,
+  stops, and archives them, so finished children do not pile up.
 
 ## Entry points
 
@@ -70,5 +72,9 @@ child chooses to report reaches the parent.
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
+- A parent does not archive its child agents when their work is done. Only
+  `archiveAgent` can do it, for a Thread only, and no instruction tells the
+  agent to use it. This breaks "a parent manages the lifecycle of its child
+  agents".
 - For some child messages, Junior reads the sender from the message id.
   This breaks "a message id is an opaque key".
