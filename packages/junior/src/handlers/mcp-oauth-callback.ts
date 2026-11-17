@@ -30,6 +30,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { botConfig } from "@/chat/config";
+import { authorizationId } from "@/chat/oauth-authorization";
 import { formatProviderLabel } from "@/chat/oauth-flow";
 
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -96,13 +97,6 @@ class McpOAuthAttemptExpiredError extends Error {
   }
 }
 
-function mcpAuthorizationId(args: {
-  provider: string;
-  sessionId: string;
-}): string {
-  return `${args.sessionId}:mcp:${args.provider}`;
-}
-
 function htmlResponse(
   kind: keyof ReturnType<typeof callbackPages>,
   options?: { local?: boolean },
@@ -145,7 +139,8 @@ async function wakeAuthorizedMcpTurn(args: {
       authSessionId: authSession.authSessionId,
       configuration: authSession.configuration,
       toolChannelId: authSession.toolChannelId,
-      authorizationId: mcpAuthorizationId({
+      authorizationId: authorizationId({
+        kind: "mcp",
         provider,
         sessionId: authSession.sessionId,
       }),
@@ -346,7 +341,8 @@ export async function GET(
         conversationId: authSession.conversationId,
         provider,
         actorId: authSession.userId,
-        authorizationId: mcpAuthorizationId({
+        authorizationId: authorizationId({
+          kind: "mcp",
           provider,
           sessionId: authSession.sessionId,
         }),
@@ -386,7 +382,8 @@ export async function GET(
           kind: "mcp",
           provider,
           actorId: authSession.userId,
-          authorizationId: mcpAuthorizationId({
+          authorizationId: authorizationId({
+            kind: "mcp",
             provider,
             sessionId: authSession.sessionId,
           }),
