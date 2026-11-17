@@ -365,6 +365,7 @@ async function runInteractive(
     terminal: true,
   });
   try {
+    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
     while (true) {
       const message = (await rl.question("junior> ")).trim();
       if (!message) {
@@ -388,6 +389,7 @@ async function runInteractive(
         await reportStatus(io, errorMessage(error));
       }
     }
+    /* oxlint-enable no-await-in-loop */
   } finally {
     rl.close();
     await close();

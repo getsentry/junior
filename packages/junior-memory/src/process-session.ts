@@ -297,10 +297,12 @@ export async function processMemorySession(
     }
     const input = passiveInput(run.runId, memory, sourceKey, target);
     if (target === "conversation") {
+      // oxlint-disable-next-line no-await-in-loop -- Write in order, so a later memory dedupes against an earlier one.
       const result = await store.createConversationMemory(input);
       recordCapturedMemory(captured, result);
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Write in order, so a later memory dedupes against an earlier one.
     const result = await store.createMemory(input);
     recordCapturedMemory(captured, result);
   }

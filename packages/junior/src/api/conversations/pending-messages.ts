@@ -213,14 +213,13 @@ async function findViewerWebAuthorization(
   conversationId: string,
   viewer: User,
 ) {
-  for (const actorId of webActorUserIds(viewer)) {
-    const authorization = await getWebAuthorization({
-      actorId,
-      conversationId,
-    });
-    if (authorization) return authorization;
-  }
-  return undefined;
+  // The viewer has two actor ids, so read both at once. The current id wins.
+  const authorizations = await Promise.all(
+    webActorUserIds(viewer).map((actorId) =>
+      getWebAuthorization({ actorId, conversationId }),
+    ),
+  );
+  return authorizations.find((authorization) => authorization !== undefined);
 }
 
 /**

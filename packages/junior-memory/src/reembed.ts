@@ -83,6 +83,7 @@ export async function reembedMemories(args: {
     if (args.deadlineMs !== undefined && now() >= args.deadlineMs) {
       return embedded;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
     const missing = await listMissingVectors({
       afterId,
       db: args.db,
@@ -97,6 +98,7 @@ export async function reembedMemories(args: {
     afterId = last.id;
 
     const batch = parseEmbeddingBatch(
+      // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
       await args.embedder.embedTexts({
         inputType: "document",
         texts: missing.map((memory) => normalizeContent(memory.content)),
@@ -111,6 +113,7 @@ export async function reembedMemories(args: {
     }
 
     const createdAtMs = now();
+    // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
     await args.db
       .insert(juniorMemoryEmbeddings)
       .values(

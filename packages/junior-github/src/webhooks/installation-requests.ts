@@ -445,6 +445,7 @@ export async function loadPullRequestMergeState(
   const reviews: z.infer<typeof reviewsSchema> = [];
   for (let page = 1; ; page++) {
     const batch = reviewsSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first short page.
       await read(`/reviews?per_page=100&page=${page}`),
     );
     reviews.push(...batch);

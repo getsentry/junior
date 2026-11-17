@@ -27,6 +27,7 @@ import type {
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequests } from "../db/schema.js";
@@ -37,6 +38,9 @@ import type {
   GitHubMergeConflict,
   GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
+
+// Notices that one change closes at once.
+const NOTICE_CLOSE_CONCURRENCY = 8;
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -331,10 +335,10 @@ export async function closeGitHubConflictNotices(args: {
     numbers: args.numbers,
     repositoryFullName,
   });
-  for (const [number, opener] of openers) {
-    if (!opener.conversationId) continue;
+  const limit = pLimit(NOTICE_CLOSE_CONCURRENCY);
+  const close = async (number: number, conversationId: string) => {
     try {
-      await args.reviewItems.forConversation(opener.conversationId).close({
+      await args.reviewItems.forConversation(conversationId).close({
         dedupeKey: gitHubConflictNoticeKey({ number, repositoryFullName }),
         reason: args.reason,
         status: args.status,
@@ -347,5 +351,10 @@ export async function closeGitHubConflictNotices(args: {
         { number, repository: repositoryFullName },
       );
     }
-  }
+  };
+  await Promise.all(
+    [...openers].flatMap(([number, { conversationId }]) =>
+      conversationId ? [limit(() => close(number, conversationId))] : [],
+    ),
+  );
 }

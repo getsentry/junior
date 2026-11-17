@@ -768,6 +768,7 @@ async function loadAllCheckSuitesPassed(args: {
   let totalCount = 0;
   for (let page = 1; page <= MAX_CHECK_SUITE_PAGES; page += 1) {
     const response = checkSuitesListResponseSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging once every check suite is read.
       await githubRequest(
         "https://api.github.com",
         `/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repoName)}/commits/${args.headSha}/check-suites?per_page=100&page=${page}`,

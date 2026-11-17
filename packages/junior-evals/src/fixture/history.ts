@@ -485,6 +485,7 @@ export async function loadHistory(args: {
   const agentHistory: PiMessage[] = [];
   const agentProvenance: ConversationMessageProvenance[] = [];
 
+  /* oxlint-disable no-await-in-loop -- History replays each Turn in order, like a real Conversation. */
   for (const [index, turn] of turns.entries()) {
     const message = await historyUserMessage({
       conversation,
@@ -629,6 +630,7 @@ export async function loadHistory(args: {
       turnId,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   if (
     conversation.surface === "slack" &&
