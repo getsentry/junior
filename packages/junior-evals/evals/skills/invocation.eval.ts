@@ -31,10 +31,11 @@ describe("Skills", () => {
     expect(second.replies).toHaveLength(1);
   });
 
-  test("when an invoked skill names manual-only skills, load each one it names", async ({
+  test("when an invoked skill references manual-only skills, load each one it references", async ({
     run,
   }) => {
-    // `launch-review` names `launch-checks`, which names `launch-signoff`.
+    // `launch-review` references `launch-checks`, which references
+    // `launch-signoff`.
     // Only `launch-signoff` has the code, and it becomes loadable only after
     // `launch-checks` loads.
     const result = await run(slackMention("/launch-review Atlas"));

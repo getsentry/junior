@@ -6,5 +6,5 @@ disable-model-invocation: true
 
 # Launch Checks
 
-1. Get the sign-off code from the `launch-signoff` skill.
+1. Get the sign-off code from the $launch-signoff skill.
 2. Report the checks as passed, with that sign-off code.

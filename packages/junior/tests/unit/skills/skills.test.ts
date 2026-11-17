@@ -213,20 +213,24 @@ describe("skills", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
-  it("lets the model load a manual-only skill only when invoked or named by a loaded skill", () => {
+  it("lets the model load a manual-only skill only when invoked or referenced by a loaded skill", () => {
     const names = (invoked: string | undefined, loaded: Skill[] = []) =>
       loadableSkills(stubSkills, invoked, loaded).map((skill) => skill.name);
     const loaded = (body: string): Skill => ({ ...stubSkills[0]!, body });
 
     expect(names(undefined)).toEqual(["brief", "sum"]);
     expect(names("weather-lookup")).toEqual(["brief", "sum", "weather-lookup"]);
-    expect(names(undefined, [loaded("Run **weather-lookup**.")])).toEqual([
+    expect(names(undefined, [loaded("Then run $weather-lookup.")])).toEqual([
       "brief",
       "sum",
       "weather-lookup",
     ]);
     expect(
-      names(undefined, [loaded("Use weather-lookup-v2 or my-weather-lookup.")]),
+      names(undefined, [
+        loaded(
+          "Use **weather-lookup**, `weather-lookup`, or $weather-lookup-v2.",
+        ),
+      ]),
     ).toEqual(["brief", "sum"]);
   });
 

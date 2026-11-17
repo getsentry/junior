@@ -563,7 +563,7 @@ export async function wireAgentTools(
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
         // `loadSkill` reads `skills` on each call, so the manual-only skills
-        // that this skill names become loadable for the rest of the Turn.
+        // that this skill references become loadable for the rest of the Turn.
         skills.splice(
           0,
           skills.length,

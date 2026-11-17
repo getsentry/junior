@@ -1,6 +1,11 @@
 /** Run-scoped skill discovery and explicit invocation. */
 import { logInfo } from "@/chat/logging";
-import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
+import {
+  discoverSkills,
+  skillReferences,
+  type Skill,
+  type SkillMetadata,
+} from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -22,35 +27,29 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   activeSkills.push(next);
 }
 
-// A skill names another skill only with its exact name as a whole token, such
-// as `**release-notes**`, `/release-notes`, or `` `release-notes` ``.
-// `release-notes-v2` does not name `release-notes`. Skill names use only
-// lowercase letters, digits, and `-`.
-function namesSkill(instructions: string, skillName: string): boolean {
-  return new RegExp(`(?<![a-z0-9-])${skillName}(?![a-z0-9-])`).test(
-    instructions,
-  );
-}
-
 /**
  * Return the skills that the model can load with `loadSkill`. A manual-only
  * skill is loadable only in a Turn where the user invoked it, or where a
- * skill loaded in that Turn names it in its SKILL.md instructions. No other
- * text, such as memory, thread messages, or tool results, unlocks one.
+ * skill loaded in that Turn references it as `$name` or `/name` in its
+ * SKILL.md instructions. No other text, such as memory, thread messages, or
+ * tool results, unlocks one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
   invokedSkillName: string | undefined,
   loadedSkills: readonly Skill[],
 ): SkillMetadata[] {
+  const referenced = new Set(
+    loadedSkills.flatMap((loaded) => [
+      loaded.name,
+      ...skillReferences(loaded.body, availableSkills),
+    ]),
+  );
   return availableSkills.filter(
     (skill) =>
       skill.disableModelInvocation !== true ||
       skill.name === invokedSkillName ||
-      loadedSkills.some(
-        (loaded) =>
-          loaded.name === skill.name || namesSkill(loaded.body, skill.name),
-      ),
+      referenced.has(skill.name),
   );
 }
 
