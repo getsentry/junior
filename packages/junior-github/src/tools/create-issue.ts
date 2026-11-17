@@ -23,6 +23,7 @@ import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   resolveGitHubRequester,
+  startedByPerson,
 } from "../tool-support/attribution.js";
 import {
   githubApi,
@@ -120,6 +121,7 @@ interface GitHubIssueResult {
 }
 
 interface GitHubIssueData extends GitHubIssueResult {
+  note?: string;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
 }
@@ -129,6 +131,7 @@ interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
 }
 
 const gitHubIssueDataSchema = z.object({
+  note: z.string().optional(),
   number: z.number(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),
@@ -141,17 +144,30 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
+/**
+ * Next step after an issue is created. Whether Junior does the work is the
+ * requester's decision, so the note asks for a Review item. Only a Turn that
+ * a person started gets it: no one can answer the item in other runs.
+ */
+function implementIssueNote(issue: string): string {
+  return `If the requester may want you to do the work in ${issue} and has not asked yet, that decision is theirs: ask with addReviewItem, question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now", dedupe_key "github-issue-implement:${issue}". If they already asked you to fix or implement it, start the Thread now without asking. Do neither when the issue hands work to another team or is a security, feedback, or tracking report. To start the Thread, call spawnAgent with kind thread and a brief to read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references the issue.`;
+}
+
 async function gitHubIssueToolResult(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
 ): Promise<GitHubIssueToolResult> {
   const repo = parseRepo(input.repo);
+  const repoName = `${repo.owner}/${repo.name}`;
   const watch = await watchGitHubIssue(ctx, {
     number: result.number,
-    repo: `${repo.owner}/${repo.name}`,
+    repo: repoName,
   });
   const data = {
+    ...(startedByPerson(ctx)
+      ? { note: implementIssueNote(`${repoName}#${result.number}`) }
+      : undefined),
     number: result.number,
     url: result.url,
     ...watch,

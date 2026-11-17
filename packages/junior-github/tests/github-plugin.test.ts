@@ -979,6 +979,11 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
+      // A person started the Turn, so the result names the Review item that
+      // asks whether to implement the issue.
+      note: expect.stringContaining(
+        '"github-issue-implement:getsentry/junior#660"',
+      ),
       number: 660,
       subscribable: {
         namespace: "github",
@@ -1179,9 +1184,11 @@ describe("github plugin", () => {
       { toolCallId: "call-create-issue-automation" },
     );
 
-    // No person started the run, so the issue gets no Watch.
+    // No person started the run, so the issue gets no Watch, and no one
+    // could answer a Review item about implementing it.
     expect(subscribe).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("subscription");
+    expect(result).not.toHaveProperty("note");
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",

@@ -337,6 +337,10 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
+- After it files an issue for a person, ask them with a Review item whether
+  to start a Thread that implements it. When they already asked for the fix,
+  start the Thread without asking. Automation runs, events, and child agents
+  do not ask
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
