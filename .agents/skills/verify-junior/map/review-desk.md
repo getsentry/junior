@@ -47,4 +47,4 @@ Preconditions:
 ## Gaps
 
 - `desk-groups`: no drive, test, or e2e spec shows a notice under "FYI". The mock seeds no notice.
-- `blocked-group` The Inbox lists blocked Automations under "Blocked automations". No e2e spec or drive covers it, and the mock seeds no blocked Automation item.
+- `blocked-group`: the Inbox lists blocked Automations under "Blocked automations". No e2e spec or drive covers it, and the mock seeds no blocked Automation item.
