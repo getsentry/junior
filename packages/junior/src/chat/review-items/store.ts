@@ -567,6 +567,8 @@ export interface ReviewItemFilters {
   forUserId?: string;
   /** Drop the items in Inbox rows that this User snoozed. */
   awakeForUserId?: string;
+  /** Keep only the items in Inbox rows that this User snoozed. */
+  snoozedForUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
@@ -652,6 +654,9 @@ function searchConditions(
       not(reviewItemSnoozedBy(filters.awakeForUserId, Date.now())),
     );
   }
+  if (filters.snoozedForUserId) {
+    conditions.push(reviewItemSnoozedBy(filters.snoozedForUserId, Date.now()));
+  }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
@@ -697,31 +702,6 @@ export async function countReviewItemsNeedingUserBySubject(
     .from(juniorReviewItems)
     .where(reviewItemNeedsUserNow(userId, nowMs))
     .groupBy(juniorReviewItems.subjectUrl);
-}
-
-/**
- * Count the items in `ids` that are still open and that the reader's Inbox
- * lists (`reviewItemForUser`). Snoozes live in the browser, so the
- * dashboard names the newest item of each snoozed row.
- */
-export async function countOpenReviewItemsForUser(
-  db: JuniorDatabase,
-  reader: ReviewItemReader & { userId: string },
-  ids: readonly string[],
-): Promise<number> {
-  if (ids.length === 0) return 0;
-  const rows = await db
-    .select({ count: count() })
-    .from(juniorReviewItems)
-    .where(
-      and(
-        inArray(juniorReviewItems.id, [...ids]),
-        eq(juniorReviewItems.status, "open"),
-        reviewItemVisibleTo(reader),
-        reviewItemForUser(reader.userId),
-      ),
-    );
-  return rows[0]?.count ?? 0;
 }
 
 /**

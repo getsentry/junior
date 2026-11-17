@@ -81,6 +81,11 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /**
+     * `true` lists only the open items in Inbox rows that the viewer
+     * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
+     */
+    snoozed: z.enum(["true"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /** Also list the newest done and dismissed items, with the first page. */
@@ -131,15 +136,6 @@ export const reviewItemCountQuerySchema = z
   .object({
     /** `automations` also counts the viewer's Automations that need attention. */
     include: z.enum(["automations"]).optional(),
-    /**
-     * The newest item of each snoozed Inbox row, comma separated. Snoozes
-     * live in the browser, so the server counts only the ids it is given.
-     */
-    snoozed: z
-      .string()
-      .default("")
-      .transform((value) => [...new Set(value.split(",").filter(Boolean))])
-      .pipe(z.array(z.string().min(1).max(200)).max(100)),
   })
   .strict();
 
@@ -163,7 +159,10 @@ export const reviewItemCountSchema = z
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
      */
     needsViewer: z.number().int().nonnegative(),
-    /** The `snoozed` ids that are open and listed for the viewer. */
+    /**
+     * The Inbox rows that the viewer snoozed and that still have an open
+     * item for them, as Snoozed lists them.
+     */
     snoozed: z.number().int().nonnegative(),
   })
   .strict();

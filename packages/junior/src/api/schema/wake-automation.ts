@@ -24,3 +24,22 @@ export const wakeAutomationSchema = z
     triggers: wakeTriggersSchema,
   })
   .strict();
+
+/**
+ * The viewer's Snoozes that hide an Inbox row now, newest first. `title` is
+ * the snoozed item's, or the Conversation's when it has one.
+ */
+export const wakeAutomationListSchema = z
+  .object({
+    snoozes: z.array(
+      wakeAutomationSchema.extend({ title: z.string().min(1).optional() }),
+    ),
+  })
+  .strict();
+
+export type WakeAutomationCreateBody = z.input<
+  typeof wakeAutomationCreateSchema
+>;
+export type WakeAutomationPayload = z.output<
+  typeof wakeAutomationListSchema
+>["snoozes"][number];

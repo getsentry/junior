@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq, exists, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   automationEventCatalog,
@@ -8,16 +8,22 @@ import {
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   canUserReadReviewItem,
+  reviewItemForUser,
+  reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
   reviewItemVisibleTo,
 } from "@/chat/review-items/access";
 import { getReviewItem } from "@/chat/review-items/store";
 import { SLACK_EVENT_NAMESPACE } from "@/chat/slack/channel-message-events";
+import { juniorAutomations } from "@/db/schema/automations";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorReviewItems } from "@/db/schema/review-items";
 import {
   createWakeAutomation,
+  parseWakeAutomationRow,
   reviewItemInRow,
+  reviewItemInWakeRow,
+  snoozeOfUserAsleep,
   unsnoozeWakeAutomation,
 } from "./store";
 import {
@@ -160,5 +166,77 @@ export async function unsnoozeViewerSnooze(
   return unsnoozeWakeAutomation(getDb(), {
     id,
     identityIds: identityIds(user),
+  });
+}
+
+/**
+ * SQL: the viewer's snoozes that have not woken and that still hide an open
+ * Review item the viewer's Inbox lists. A snooze on a row the viewer can no
+ * longer see does not show.
+ */
+function viewerSnoozesAsleep(user: User, nowMs: number): SQL {
+  const db = getDb();
+  return and(
+    snoozeOfUserAsleep(user.id, nowMs),
+    exists(
+      db
+        .select({ id: juniorReviewItems.id })
+        .from(juniorReviewItems)
+        .where(
+          and(
+            eq(juniorReviewItems.status, "open"),
+            reviewItemVisibleTo(reviewItemReaderForUser(user)),
+            reviewItemForUser(user.id),
+            reviewItemInWakeRow(),
+          ),
+        ),
+    ),
+  )!;
+}
+
+/** Count the Inbox rows that the viewer snoozed, as Snoozed lists them. */
+export async function countViewerSnoozes(
+  user: User,
+  nowMs = Date.now(),
+): Promise<number> {
+  const [row] = await getDb()
+    .select({ count: count() })
+    .from(juniorAutomations)
+    .where(viewerSnoozesAsleep(user, nowMs));
+  return row?.count ?? 0;
+}
+
+/**
+ * List the viewer's snoozes that hide a row now, newest first. The title is
+ * the snoozed item's, or the Conversation's.
+ */
+export async function listViewerSnoozes(
+  user: User,
+  nowMs = Date.now(),
+): Promise<Array<WakeAutomation & { title?: string }>> {
+  const itemTitle = sql<
+    string | null
+  >`(select ${juniorReviewItems.title} from ${juniorReviewItems} where ${juniorReviewItems.id} = ${juniorAutomations.subjectReviewItemId})`;
+  const rows = await getDb()
+    .select({
+      automation: juniorAutomations,
+      title: sql<
+        string | null
+      >`coalesce(${itemTitle}, nullif(trim(${juniorConversations.title}), ''))`,
+    })
+    .from(juniorAutomations)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorAutomations.subjectConversationId,
+      ),
+    )
+    .where(viewerSnoozesAsleep(user, nowMs))
+    .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id));
+  return rows.flatMap((row) => {
+    const wake = parseWakeAutomationRow(row.automation);
+    if (!wake) return [];
+    return [{ ...wake, ...(row.title ? { title: row.title } : undefined) }];
   });
 }

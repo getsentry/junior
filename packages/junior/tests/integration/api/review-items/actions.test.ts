@@ -579,8 +579,8 @@ describe("review item actions API", () => {
     await item(27, { kind: "pr" });
     await item(28, { kind: "pr" });
     // A notice and Ben's pull request do not wait on Ana.
-    const notice = await item(29, { kind: "notice" });
-    const bens = await item(30, { assignee: ben, kind: "pr" });
+    await item(29, { kind: "notice" });
+    await item(30, { assignee: ben, kind: "pr" });
     const closed = await item(31, { kind: "decision" });
     await closeReviewItem(getDb(), {
       id: closed,
@@ -603,16 +603,12 @@ describe("review item actions API", () => {
       undefined,
     ]);
 
-    // The counts cover every page. Of the snoozed rows, only open items
-    // that Ana's Inbox lists count.
-    const snoozed = [notice, bens, closed, "missing"].join(",");
-    expect(
-      await (await api(fixture, ana).get(`/count?snoozed=${snoozed}`)).json(),
-    ).toEqual({
+    // The counts cover every page.
+    expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
       decisions: 27,
       needsViewer: 29,
       codeChanges: 2,
-      snoozed: 1,
+      snoozed: 0,
     });
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
       decisions: 0,

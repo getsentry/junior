@@ -111,12 +111,33 @@ export function api(fixture: ConversationFixture, viewer: User) {
         }
       ).conversations.map((row) => row.conversationId),
     }),
+    /** What Snoozed shows: its count, its items, and the snoozes. */
+    snoozed: async () => ({
+      count: ((await json("/review-items/count")) as { snoozed: number })
+        .snoozed,
+      items: (
+        (await json("/review-items?for=viewer&snoozed=true")) as {
+          items: { title: string }[];
+        }
+      ).items.map((item) => item.title),
+      snoozes: (
+        (await json("/automations/snoozes")) as {
+          snoozes: { subject: unknown; title?: string }[];
+        }
+      ).snoozes.map((snooze) => ({
+        subject: snooze.subject,
+        title: snooze.title,
+      })),
+    }),
     versions: async () =>
       ((await json("/versions")) as { reviewItems: string }).reviewItems,
   };
 }
 
 export const NEW_ITEM = { kind: "new_item" } as const;
+
+/** What Snoozed shows when nothing is snoozed. */
+export const NOTHING_SNOOZED = { count: 0, items: [], snoozes: [] };
 
 /** A timer trigger that fires at this time. */
 export function timer(firesAtMs: number) {

@@ -36,11 +36,13 @@ import {
 } from "@/api/schema/automation";
 import {
   wakeAutomationCreateSchema,
+  wakeAutomationListSchema,
   wakeAutomationSchema,
 } from "@/api/schema/wake-automation";
 import { validateRequest } from "@/api/validation";
 import {
   createViewerSnooze,
+  listViewerSnoozes,
   unsnoozeViewerSnooze,
   WakeAutomationInputError,
   WakeSubjectNotFoundError,
@@ -152,6 +154,20 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       }
     },
   );
+  app.get("/snoozes", requireViewer, async (context) => {
+    const snoozes = await listViewerSnoozes(context.get("viewer"));
+    return jsonResponse(wakeAutomationListSchema, {
+      snoozes: snoozes.map((wake) => ({
+        action: wake.action,
+        createdAt: new Date(wake.createdAtMs).toISOString(),
+        id: wake.id,
+        status: wake.status,
+        subject: wake.subject,
+        triggers: wake.triggers,
+        ...(wake.title ? { title: wake.title } : undefined),
+      })),
+    });
+  });
   app.get("/event-catalog", requireViewer, () => {
     return jsonResponse(
       automationEventCatalogSchema,

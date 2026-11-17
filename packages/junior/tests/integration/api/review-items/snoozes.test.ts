@@ -7,7 +7,7 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { juniorAutomations } from "@/db/schema";
+import { juniorAutomations, juniorReviewItemAssignees } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -19,6 +19,7 @@ import {
   api,
   conversation,
   NEW_ITEM,
+  NOTHING_SNOOZED,
   NOW_MS,
   PRIVATE_ROOT,
   PULL_REQUEST_REVIEW_WAKES,
@@ -66,14 +67,22 @@ describe("snoozes", () => {
     const snooze = (await created.json()) as { id: string };
 
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    // Snoozed shows the row, from the server.
+    expect(await asAna.snoozed()).toEqual({
+      count: 1,
+      items: ["Review acme entry"],
+      snoozes: [{ subject: { conversationId: ROOT }, title: undefined }],
+    });
     expect(await asAna.versions()).not.toBe(versionBefore);
     // Each snooze has its own User.
     expect(await asBob.inbox()).toEqual(awake);
+    expect(await asBob.snoozed()).toEqual(NOTHING_SNOOZED);
 
     // Only its creator can undo it.
     expect((await asBob.unsnooze(snooze.id)).status).toBe(404);
     expect((await asAna.unsnooze(snooze.id)).status).toBe(204);
     expect(await asAna.inbox()).toEqual(awake);
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
   });
 
   it("wakes on the first trigger: a due timer, or a new item", async () => {
@@ -240,6 +249,39 @@ describe("snoozes", () => {
         .from(juniorAutomations)
         .where(eq(juniorAutomations.action, "wake")),
     ).toEqual([]);
+  });
+
+  it("shows nothing in Snoozed once the viewer loses access to the row", async () => {
+    const ana = await user("ana@example.com");
+    await conversation(PRIVATE_ROOT, "private");
+    const itemId = await addItem(
+      PRIVATE_ROOT,
+      [ana],
+      "Review private entry",
+      "private",
+    );
+    const asAna = api(fixture, ana);
+    const subject = { conversationId: PRIVATE_ROOT, reviewItemId: itemId };
+    expect(
+      (
+        await asAna.snooze({
+          action: "wake",
+          subject,
+          triggers: [NEW_ITEM, timer(NOW_MS + 60_000)],
+        })
+      ).status,
+    ).toBe(201);
+    expect(await asAna.snoozed()).toEqual({
+      count: 1,
+      items: ["Review private entry"],
+      snoozes: [{ subject, title: "Review private entry" }],
+    });
+
+    // A private item is for its assignees only.
+    await getDb()
+      .delete(juniorReviewItemAssignees)
+      .where(eq(juniorReviewItemAssignees.itemId, itemId));
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
   });
 
   it("does not let a viewer snooze a row they cannot see", async () => {

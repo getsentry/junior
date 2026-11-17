@@ -32,7 +32,6 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
-  countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
@@ -42,6 +41,7 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { countViewerSnoozes } from "@/chat/wake-automations/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 
 // A list of open items shows at most this many archived matches, with the
@@ -62,7 +62,7 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   ReviewItemFilters,
-  "conversationId" | "forUserId" | "query"
+  "conversationId" | "forUserId" | "query" | "snoozedForUserId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -74,6 +74,7 @@ const cursorSchema = z
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
     query: z.string().min(1).optional(),
+    snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
@@ -115,6 +116,7 @@ function decodeCursor(
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
     parsed.query !== filters.query ||
+    parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
     parsed.status !== filters.status ||
     (filters.status !== undefined && parsed.closedAtMs === undefined) ||
@@ -212,6 +214,7 @@ export function createReviewItemRoutes(services: {
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
         ...(query.status[0] === "open"
           ? query.sort
             ? { sort: query.sort }
@@ -258,7 +261,8 @@ export function createReviewItemRoutes(services: {
           // Conversation's own list and a search still show them.
           ...(query.for === "viewer" &&
           !filters.conversationId &&
-          !filters.query
+          !filters.query &&
+          !filters.snoozedForUserId
             ? { awakeForUserId: viewer.id }
             : undefined),
           limit: query.limit + 1,
@@ -313,16 +317,11 @@ export function createReviewItemRoutes(services: {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
       const db = getDb();
-      // One query counts the badge and both bundles. The snoozed and
-      // Automation counts run only when the request asks for them, so the
-      // current dashboard pays for one query.
+      // One query counts the badge and both bundles, and one the snoozed
+      // rows. The Automation count runs only when the request asks for it.
       const [subjects, snoozed, automations] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countOpenReviewItemsForUser(
-          db,
-          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          query.snoozed,
-        ),
+        countViewerSnoozes(viewer),
         query.include === "automations"
           ? countOwnedAutomationsNeedingAttention(viewer)
           : undefined,

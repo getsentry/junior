@@ -441,5 +441,14 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export {
+  wakeAutomationCreateSchema,
+  wakeAutomationListSchema,
+  wakeAutomationSchema,
+} from "./schema/wake-automation";
+export type {
+  WakeAutomationCreateBody,
+  WakeAutomationPayload,
+} from "./schema/wake-automation";
 export { versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";
