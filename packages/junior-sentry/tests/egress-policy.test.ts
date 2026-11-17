@@ -61,6 +61,10 @@ describe("sentry egress policy", () => {
       ],
       ["POST", "https://sentry.io/api/0/issues/123/notes/"],
       ["POST", "https://sentry.io/api/0/groups/123/comments/"],
+      [
+        "POST",
+        "https://sentry.io/api/0/organizations/sentry/issues/123/summarize/",
+      ],
     ] as const) {
       expect(() => grantFor(method, url)).not.toThrow();
     }

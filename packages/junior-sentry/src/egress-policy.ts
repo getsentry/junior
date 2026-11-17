@@ -59,6 +59,8 @@ const KNOWN_WRITES: ReadonlyArray<{ methods: string[]; path: string }> = [
   { methods: ["POST"], path: "issues|groups/*/notes|comments" },
   { methods: ["POST"], path: "organizations/*/issues|groups/*/autofix" },
   { methods: ["POST"], path: "issues|groups/*/autofix" },
+  { methods: ["POST"], path: "organizations/*/issues|groups/*/summarize" },
+  { methods: ["POST"], path: "issues|groups/*/summarize" },
   { methods: ["POST"], path: "organizations/*/search-agent/start" },
 ];
 
