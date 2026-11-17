@@ -27,6 +27,9 @@ const DRAG_START_PX = 4;
 /** The first and last index of the items on screen, like a scrollbar thumb. */
 type MessageOutlineRange = { from: number; to: number };
 
+/** The edge of the content that the rail sits on. */
+type MessageOutlineSide = "left" | "right";
+
 type MessageOutlineContextValue = {
   activeIndex: number;
   inView: MessageOutlineRange | undefined;
@@ -37,6 +40,7 @@ type MessageOutlineContextValue = {
   pointerRef: RefObject<number | undefined>;
   previewIndex: number | undefined;
   registerBar(index: number, bar: HTMLSpanElement | null): void;
+  side: MessageOutlineSide;
 };
 
 const MessageOutlineContext = createContext<
@@ -59,6 +63,8 @@ function useMessageOutline(): MessageOutlineContextValue {
  *
  * To stand in for a scrollbar, `inView` marks the items on screen like a
  * thumb, and `onScrub` gets the item under a press that drags along the list.
+ * On the `right` side, bars grow to the left and the preview opens to the
+ * left.
  */
 function MessageOutline({
   activeIndex,
@@ -67,12 +73,14 @@ function MessageOutline({
   inView,
   itemCount,
   onScrub,
+  side = "left",
   ...props
 }: ComponentProps<"nav"> & {
   activeIndex: number;
   inView?: MessageOutlineRange | undefined;
   itemCount: number;
   onScrub?: ((index: number) => void) | undefined;
+  side?: MessageOutlineSide;
 }) {
   const listRef = useRef<HTMLOListElement>(null);
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -121,12 +129,14 @@ function MessageOutline({
       registerBar: (index, bar) => {
         barRefs.current[index] = bar;
       },
+      side,
     };
-  }, [activeIndex, inView, itemCount, onScrub, previewIndex]);
+  }, [activeIndex, inView, itemCount, onScrub, previewIndex, side]);
 
   return (
     <MessageOutlineContext.Provider value={context}>
       <nav
+        data-side={side}
         data-slot="message-outline"
         className={cn("pointer-events-none flex items-center", className)}
         {...props}
@@ -149,6 +159,7 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
     movePointer,
     onScrub,
     previewIndex,
+    side,
   } = useMessageOutline();
 
   useEffect(() => {
@@ -225,7 +236,9 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
     <ol
       data-slot="message-outline-list"
       className={cn(
-        "pointer-events-auto m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0 pr-2 [scrollbar-width:none]",
+        "pointer-events-auto m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0 [scrollbar-width:none]",
+        // The padding keeps the bars off the content beside the rail.
+        side === "left" ? "pr-2" : "pl-2",
         className,
       )}
       onBlur={(event) => {
@@ -282,6 +295,7 @@ function MessageOutlineItem({
     pointerRef,
     previewIndex,
     registerBar,
+    side,
   } = useMessageOutline();
   const active = index === activeIndex;
   const shown = inView && index >= inView.from && index <= inView.to;
@@ -308,7 +322,9 @@ function MessageOutlineItem({
           data-slot="message-outline-bar"
           className={cn(
             // Scale, not width, so a grow skips layout.
-            "block h-0.5 origin-left rounded-full bg-input transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-[background-color] group-data-highlighted/message-outline-item:bg-dashboard-border-heavy",
+            "block h-0.5 rounded-full bg-input transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-[background-color] group-data-highlighted/message-outline-item:bg-dashboard-border-heavy",
+            // Bars grow away from the edge that the rail sits on.
+            side === "left" ? "origin-left" : "origin-right",
             active && "bg-dashboard-text-faint",
           )}
           ref={(bar) => registerBar(index, bar)}
@@ -328,7 +344,7 @@ function MessageOutlineItem({
 
 /** Show a card beside the pointed item. It renders nothing without one. */
 function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
-  const { listRef, previewIndex } = useMessageOutline();
+  const { listRef, previewIndex, side } = useMessageOutline();
   if (previewIndex === undefined) return null;
   const list = listRef.current;
   const offset = previewIndex * ITEM_PX + ITEM_PX / 2 - (list?.scrollTop ?? 0);
@@ -347,7 +363,11 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
       data-slot="message-outline-preview"
       // It glides between items, and grows in from the rail when it opens.
       className={cn(
-        "pointer-events-none absolute top-0 left-full ml-2 grid w-96 origin-left gap-1.5 rounded-xl border border-input bg-secondary px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
+        // It opens toward the content, away from the edge.
+        side === "left"
+          ? "left-full ml-2 origin-left"
+          : "right-full mr-2 origin-right",
+        "pointer-events-none absolute top-0 grid w-96 gap-1.5 rounded-xl border border-input bg-secondary px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
         className,
       )}
       style={{ translate: `0 ${translate}` }}

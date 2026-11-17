@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "@dashboard/lib/utils";
 import {
   conversationOutlineSchema,
   type ConversationReportEvent,
@@ -117,6 +118,8 @@ export function ConversationOutline(props: {
   }, [events, jumpSeq, scrollRef]);
 
   if (items.length < 2) return null;
+  // In place of the scrollbar, the rail sits where the scrollbar would.
+  const side = scrollsWithOutline ? "right" : "left";
   return (
     <MessageOutline
       // `ChatLayout` hides the scrollbar beside this attribute.
@@ -125,7 +128,12 @@ export function ConversationOutline(props: {
       aria-label="Conversation outline"
       // From `md`, the transcript has side padding that holds the rail, so
       // it shows beside narrow transcripts too.
-      className="absolute inset-y-8 left-1 z-20 hidden md:flex @min-[62rem]/chat:left-3"
+      className={cn(
+        "absolute inset-y-8 z-20 hidden md:flex",
+        side === "left"
+          ? "left-1 @min-[62rem]/chat:left-3"
+          : "right-1 @min-[62rem]/chat:right-3",
+      )}
       itemCount={items.length}
       inView={inView}
       onScrub={
@@ -137,9 +145,14 @@ export function ConversationOutline(props: {
           : undefined
       }
       ref={navRef}
+      side={side}
     >
-      {/* The list's right padding would cover text in a narrow transcript. */}
-      <MessageOutlineList className="@max-[62rem]/chat:pr-0">
+      {/* The list's inner padding would cover text in a narrow transcript. */}
+      <MessageOutlineList
+        className={
+          side === "left" ? "@max-[62rem]/chat:pr-0" : "@max-[62rem]/chat:pl-0"
+        }
+      >
         {items.map((item, index) => (
           <MessageOutlineItem
             aria-label={item.title}
