@@ -2,20 +2,14 @@ import { sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { juniorConversations } from "@/db/schema";
+import { usdToMicroUsdSql } from "@/db/micro-usd";
 
 /**
- * SQL for a Conversation's cost in whole micro-USD, the unit of a run's
- * `cost_micro_usd`. Integer sums are exact and do not depend on row order.
+ * SQL for a Conversation's usage cost in whole micro-USD, the unit of a run's
+ * `cost_micro_usd`.
  */
 export function costMicroUsdExpr(usage: AnyPgColumn): SQL<number | null> {
-  return sql<
-    number | null
-  >`round(${conversationUsageCostExpr(usage)} * 1000000)::bigint`;
-}
-
-/** Convert a sum of `cost_micro_usd` to USD for the API. */
-export function microUsdToUsd(microUsd: number): number {
-  return microUsd / 1_000_000;
+  return usdToMicroUsdSql(conversationUsageCostExpr(usage));
 }
 
 /**

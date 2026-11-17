@@ -183,6 +183,18 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     lastCheckedAt: z.iso.datetime({ offset: true }).optional(),
     trend: trend.optional(),
   }),
+  // Alerts: a rule that notifies people when something happens, such as a
+  // new issue. `trigger` says when and on what, in plain words. `notifies`
+  // names each channel and its target, never an email address.
+  z.strictObject({
+    type: z.literal("alert"),
+    summary: summary.optional(),
+    enabled: z.boolean(),
+    projects: z.array(text).max(5),
+    trigger: text.optional(),
+    notifies: z.array(text).max(5),
+    lastTriggeredAt: z.iso.datetime({ offset: true }).optional(),
+  }),
   // Traces: the root span, totals, and the first top-level spans, which
   // the card draws as a small waterfall. Times are milliseconds from the
   // trace start.
@@ -431,6 +443,24 @@ export function objectFactFields(
       add("project", "Project", facts.project);
       add("environment", "Environment", facts.environment);
       add("detail", MONITOR_DETAILS[facts.kind], facts.detail);
+      break;
+    case "alert":
+      add(
+        "projects",
+        facts.projects.length === 1 ? "Project" : "Projects",
+        list(facts.projects),
+      );
+      add("trigger", "When", facts.trigger);
+      add("notifies", "Notifies", list(facts.notifies));
+      add(
+        "lastTriggeredAt",
+        "Last triggered",
+        facts.lastTriggeredAt &&
+          new Date(facts.lastTriggeredAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
       break;
     case "trace":
       add("duration", "Duration", formatDuration(facts.durationMs));

@@ -1,5 +1,6 @@
 import { and, desc, eq, lte, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
+import { microUsdToUsd, usdToMicroUsd } from "@/db/micro-usd";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
@@ -34,7 +35,9 @@ function briefVersionFromRow(
     content: parseStoredBrief(row.content),
     searchText: row.searchText,
     modelId: row.modelId,
-    ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
+    ...(row.costMicroUsd !== null
+      ? { costUsd: microUsdToUsd(row.costMicroUsd) }
+      : undefined),
     createdAt: row.createdAt,
   };
 }
@@ -107,7 +110,8 @@ export async function appendConversationBrief(
         content: conversationBriefSchema.parse(input.content),
         searchText: input.searchText,
         modelId: input.modelId,
-        costUsd: input.costUsd ?? null,
+        costMicroUsd:
+          input.costUsd === undefined ? null : usdToMicroUsd(input.costUsd),
       })
       .onConflictDoNothing({
         target: [
