@@ -47,6 +47,7 @@ jobs:
               - 'packages/junior/src/chat/prompt.ts'
               - 'packages/junior/src/chat/system-prompt-rules.ts'
               - 'packages/junior/src/chat/discovery.ts'
+              - 'packages/junior/src/chat/services/context-compaction.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
