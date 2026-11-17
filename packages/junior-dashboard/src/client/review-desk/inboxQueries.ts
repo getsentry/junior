@@ -8,6 +8,7 @@ import {
   reviewItemCountSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
+import pLimit from "p-limit";
 
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
@@ -152,19 +153,18 @@ export function useAutomationAttentionData(enabled: boolean) {
           signal,
         );
       const first = await readPage(1);
-      const automations = [...first.automations];
       const pageCount = Math.ceil(first.total / first.pageSize);
       // Read the other pages at the same time, at most a few at once.
-      for (let start = 2; start <= pageCount; start += ATTENTION_PAGE_READS) {
-        const batch = await Promise.all(
-          Array.from(
-            { length: Math.min(ATTENTION_PAGE_READS, pageCount - start + 1) },
-            (_, index) => readPage(start + index),
-          ),
-        );
-        for (const page of batch) automations.push(...page.automations);
-      }
-      return { ...first, automations };
+      const limit = pLimit(ATTENTION_PAGE_READS);
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(pageCount - 1, 0) }, (_, index) =>
+          limit(() => readPage(index + 2)),
+        ),
+      );
+      return {
+        ...first,
+        automations: [first, ...rest].flatMap((page) => page.automations),
+      };
     },
     retry: false,
   });
