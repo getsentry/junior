@@ -306,6 +306,11 @@ function eventAutomationSummary(
   stats: AutomationExecutionSummary | undefined,
   creator: CreatorProfile | undefined,
 ): AutomationSummary {
+  if (task.status === "deleted") {
+    throw new Error(
+      "Deleted event automations cannot enter the Automations view",
+    );
+  }
   const description = automationTaskDescription(task.task);
   const catalog = getEventCatalog();
   return {
@@ -335,7 +340,7 @@ function eventAutomationSummary(
       description,
       "Untitled event automation",
     ),
-    status: task.status === "deleted" ? "active" : task.status,
+    status: task.status,
     statusReason: task.statusReason,
     trigger: describeEventAutomationTrigger(task.trigger, catalog),
   };

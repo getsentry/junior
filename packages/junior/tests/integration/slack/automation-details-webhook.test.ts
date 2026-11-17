@@ -4,7 +4,10 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createEventAutomation } from "@/chat/event-automations/store";
+import {
+  blockEventAutomation,
+  createEventAutomation,
+} from "@/chat/event-automations/store";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
@@ -366,6 +369,10 @@ describe("Slack Work Object details", () => {
               value: "Updated instruction.",
             }),
             expect.objectContaining({ key: "next_run", value: "None" }),
+            expect.objectContaining({
+              key: "warning",
+              value: "This automation is blocked.",
+            }),
             expect.objectContaining({ key: "outcomes", value: "1 message" }),
             expect.objectContaining({
               key: "executions",
@@ -377,6 +384,27 @@ describe("Slack Work Object details", () => {
               value: Math.floor(executedAtMs / 1000),
               link: "https://junior.example.com/conversations/agent-dispatch%3Areminder-run",
             }),
+          ]),
+        },
+      },
+    });
+    // A completed Automation does not need attention.
+    await saveScheduledAutomation(getDb(), { ...task, status: "completed" });
+    const completed = await requestDetails(task.id);
+    expect(completed).toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "status", value: "completed" }),
+          ]),
+        },
+      },
+    });
+    expect(completed).not.toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "warning" }),
           ]),
         },
       },
@@ -460,6 +488,21 @@ describe("Slack Work Object details", () => {
               // Linear is not enabled here, so the saved trigger has a problem.
               value:
                 "Trigger unavailable. The plugin for this source is not enabled.",
+            }),
+          ]),
+        },
+      },
+    });
+    const reason = "This run needs a connected Linear account.";
+    await blockEventAutomation(getDb(), "event_public", reason);
+    expect(await requestDetails("event_public")).toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "status", value: "blocked" }),
+            expect.objectContaining({
+              key: "warning",
+              value: `${reason} Trigger unavailable. The plugin for this source is not enabled.`,
             }),
           ]),
         },

@@ -93,7 +93,6 @@
   "packages/junior/src/chat/automations/tools/create.ts": 1,
   "packages/junior/src/chat/automations/tools/update.ts": 3,
   "packages/junior/src/chat/briefs/task.ts": 2,
-  "packages/junior/src/chat/cache-warming/backfill.ts": 2,
   "packages/junior/src/chat/cache-warming/request.ts": 1,
   "packages/junior/src/chat/cache-warming/savings.ts": 2,
   "packages/junior/src/chat/cache-warming/snapshot.ts": 1,
@@ -123,7 +122,6 @@
   "packages/junior/src/chat/guardian/history.ts": 1,
   "packages/junior/src/chat/guardian/policy.ts": 1,
   "packages/junior/src/chat/identities/slack-mention-text.ts": 2,
-  "packages/junior/src/chat/ingress/junior-chat.ts": 7,
   "packages/junior/src/chat/ingress/message-router.ts": 1,
   "packages/junior/src/chat/local/oauth-callback-server.ts": 1,
   "packages/junior/src/chat/log-context.ts": 1,
@@ -219,7 +217,6 @@
   "packages/junior/src/chat/tools/watch-events.ts": 1,
   "packages/junior/src/chat/tools/web/network.ts": 1,
   "packages/junior/src/chat/tools/web/search.ts": 2,
-  "packages/junior/src/chat/workspaces/store.ts": 2,
   "packages/junior/src/chat/workspaces/tools.ts": 3,
   "packages/junior/src/cli/check.ts": 3,
   "packages/junior/src/cli/service-account.ts": 1,
@@ -229,7 +226,6 @@
   "packages/junior/src/db/postgres-json.ts": 3,
   "packages/junior/src/db/postgres.ts": 3,
   "packages/junior/src/handlers/oauth-callback.ts": 1,
-  "packages/junior/src/handlers/webhooks.ts": 2,
   "packages/junior/src/nitro.ts": 1,
   "packages/junior/src/plugin-module.ts": 5
 }
