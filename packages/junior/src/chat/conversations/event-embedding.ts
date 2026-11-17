@@ -98,6 +98,13 @@ export async function embedConversationEvents(
   for (let start = 0; start < rows.length; start += EMBEDDING_BATCH_SIZE) {
     const batch = rows.slice(start, start + EMBEDDING_BATCH_SIZE);
     const result = await embedder.embedDocuments(batch.map((row) => row.text));
+    // The query above finds unembedded events by the embedder's model, so a
+    // row of another model would look unembedded on every run.
+    if (result.model !== embedder.model) {
+      throw new Error(
+        `Embedding provider used model ${result.model}, not ${embedder.model}`,
+      );
+    }
     const values = batch.map((row, index) => {
       const vector = result.vectors[index];
       if (!vector) {
