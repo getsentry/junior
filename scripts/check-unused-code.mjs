@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Unused code ratchet. Knip finds files that nothing imports and exports that
- * no other file imports. `knip.json` names the entry files: package exports,
+ * no other file imports. `knip.jsonc` names the entry files: package exports,
  * scripts, tests, and evals, so public package API is never reported. The
  * baseline lists the unused code that existed when this check was added. A
  * new finding fails, and a fixed finding must leave the baseline.
@@ -96,7 +96,7 @@ function main() {
     [
       "Unused code check failed:",
       ...errors,
-      `Do not add entries to ${BASELINE_PATH} to pass. When a script, test, or package export loads a file that knip cannot see, add it as an entry in knip.json.`,
+      `Do not add entries to ${BASELINE_PATH} to pass. When a script, test, or package export loads a file that knip cannot see, add it as an entry in knip.jsonc.`,
     ].join("\n"),
   );
   process.exitCode = 1;
