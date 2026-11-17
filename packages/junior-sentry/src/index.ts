@@ -20,6 +20,7 @@ import {
   SENTRY_METRIC_ALERT_MATCH_FIELDS,
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
+import { sentryAlertLinks } from "./links/alerts.js";
 import { sentryChartLinks } from "./links/charts.js";
 import {
   sentryDashboardLinks,
@@ -96,6 +97,7 @@ export function sentryPlugin(): PluginRegistration {
       sentryDashboardLinks,
       sentryDashboardWidgetLinks,
       sentryMonitorLinks,
+      sentryAlertLinks,
     ],
     manifest: {
       commandEnv: {

@@ -269,6 +269,27 @@ const SENTRY_MONITOR: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "sentry",
 };
 const SENTRY_MONITOR_PATH = "/monitors/4021/";
+// The mock release thread links to the alert that told the team about
+// feedback on the new checkout.
+const SENTRY_ALERT: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "alert",
+  key: "alert:acme:6363564",
+  label: "New checkout feedback",
+  title: "New checkout feedback",
+  status: "Enabled",
+  displayType: "Sentry alert",
+  facts: {
+    type: "alert",
+    enabled: true,
+    projects: ["junior"],
+    trigger: "First seen · Feedback · app.feedback.topic is new_checkout",
+    notifies: ["Email member", "Slack #checkout-feedback"],
+    lastTriggeredAt: new Date(1770021500_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_ALERT_PATH = "/monitors/alerts/6363564/";
 // The mock release thread links to one Sentry trace: a checkout request
 // whose payment call failed.
 const SENTRY_TRACE_ID = "a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4";
@@ -414,6 +435,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url.pathname === SENTRY_MONITOR_PATH
   ) {
     return [{ object: { ...SENTRY_MONITOR, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ALERT_PATH) {
+    return [{ object: { ...SENTRY_ALERT, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
     return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
