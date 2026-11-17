@@ -34,7 +34,7 @@ const BRIEF_LOCK_TTL_MS = 10 * 60 * 1_000;
 // finds the lock held can skip. The wait only covers the gap between the
 // holder's last check and its release.
 const BRIEF_LOCK_WAIT_MS = 5_000;
-// Bounds how many newer Turns one holder catches up before it releases.
+// Bounds how many Briefs one holder stores before it releases the lock.
 const BRIEF_MAX_PASSES = 3;
 
 function hasUserInstruction(run: PluginRunContext): boolean {
@@ -173,8 +173,12 @@ export async function updateConversationBrief(
         const latest = await readLatestCompletedTurn(db, run.conversationId);
         if (!latest || latest.seq <= throughSeq) return;
         if (pass >= BRIEF_MAX_PASSES) {
-          logSkip(context, run.conversationId, "catch_up_limit");
-          return;
+          // That Turn's own task already skipped. Fail so the queue retries
+          // this task: the retry finds its Brief stored and goes straight to
+          // the newest Turn.
+          throw new Error(
+            `Brief catch-up stopped after ${BRIEF_MAX_PASSES} passes with Turn ${latest.turnId} uncovered in Conversation ${run.conversationId}`,
+          );
         }
         turn = {
           events: await briefTaskEvents(run.conversationId, latest.turnId),
