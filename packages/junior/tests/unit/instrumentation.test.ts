@@ -102,13 +102,14 @@ describe("initSentry", () => {
     expect(options?.beforeSendLog).toEqual(expect.any(Function));
     expect(options?.beforeSendSpan).toEqual(expect.any(Function));
     const http = { name: "Http", setupOnce: () => {} };
+    const anthropic = { name: "Anthropic_AI", setupOnce: () => {} };
     expect(
       options?.integrations?.([
         http,
-        { name: "Anthropic_AI", setupOnce: () => {} },
+        anthropic,
         { name: "VercelAI", setupOnce: () => {} },
       ]),
-    ).toEqual([http]);
+    ).toEqual([http, anthropic]);
     const span: {
       attributes: Record<string, unknown>;
       end_timestamp: number;

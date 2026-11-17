@@ -45,10 +45,14 @@ import {
 // registration relies on opaque dynamic import() calls that break under
 // Nitro's rolldown bundler (the lazy import paths resolve relative to the
 // bundled chunk, not the original module).
+// Pi calls `streamSimple` inside the `gen_ai.chat` span of the SDK's
+// `piAiIntegration`, which adds Junior attributes to that span.
 registerApiProvider({
   api: "anthropic-messages",
   stream: withEnabledGatewayProviders(streamAnthropic),
-  streamSimple: withEnabledGatewayProviders(streamSimpleAnthropic),
+  streamSimple: withChatSpanAttributes(
+    withEnabledGatewayProviders(streamSimpleAnthropic),
+  ),
 });
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
@@ -57,30 +61,22 @@ import {
   structuredOutputErrorCause,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
-import {
-  extractGenAiUsageAttributes,
-  normalizeGenAiFinishReason,
-  serializeGenAiAttribute,
-} from "@/chat/logging";
+import { extractGenAiUsageAttributes } from "@/chat/logging";
 import {
   logException,
   logWarn,
+  withLogContext,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
 import {
-  getCurrentConversationPrivacy,
-  toCanonicalInputMessage,
-  toCanonicalOutputMessage,
-  toGenAiMessagesTraceAttributes,
-} from "@/chat/conversation-privacy";
-import {
   createProviderError,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
-import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
-import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
-import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
+import {
+  withChatRequestTelemetry,
+  withChatSpanAttributes,
+} from "@/chat/pi/chat-span";
 import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
@@ -289,14 +285,16 @@ export function resolveGatewayModel(modelId: string): Model<Api> {
   };
 }
 
-/** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
+/**
+ * Execute a direct chat completion. The SDK's `piAiIntegration` records its
+ * `gen_ai.chat` span.
+ */
 export async function completeText(params: {
   modelId: string;
   system?: string | undefined;
   messages: Message[];
   /** Tool definitions to send. They are part of the cached prompt prefix. */
   tools?: Tool[];
-  messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
@@ -308,151 +306,61 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
-  const apiKey = credential.token;
-  const authMode = credential.mode;
-  const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
-  const messageAttributeMode =
-    params.messageAttributeMode ??
-    (effectivePrivacy === "public" ? "content" : "metadata");
-  const requestMessagesAttribute =
-    messageAttributeMode === "content"
-      ? serializeGenAiAttribute(params.messages.map(toCanonicalInputMessage))
-      : undefined;
-  const systemInstructionsAttribute =
-    params.system && messageAttributeMode === "content"
-      ? serializeGenAiAttribute([{ type: "text", content: params.system }])
-      : undefined;
-  const baseAttributes = {
-    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-    "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-    "gen_ai.request.model": params.modelId,
-    "gen_ai.output.type": "text",
-    ...(params.promptName
-      ? { "gen_ai.prompt.name": params.promptName }
-      : undefined),
-    "server.address": GEN_AI_SERVER_ADDRESS,
-    "server.port": GEN_AI_SERVER_PORT,
-    ...(hasCompactedConversationContext(params.messages)
-      ? { "gen_ai.conversation.compacted": true }
-      : undefined),
-    "app.conversation.privacy": effectivePrivacy,
-    ...(params.thinkingLevel
-      ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-      : undefined),
-    ...(params.maxTokens !== undefined
-      ? { "gen_ai.request.max_tokens": params.maxTokens }
-      : undefined),
-  };
-  const startAttributes = {
-    ...baseAttributes,
-    ...toGenAiMessagesTraceAttributes("gen_ai.input", params.messages),
-    ...(params.system
-      ? { "gen_ai.system_instructions.content_chars": params.system.length }
-      : undefined),
-    ...(systemInstructionsAttribute
-      ? { "gen_ai.system_instructions": systemInstructionsAttribute }
-      : undefined),
-    ...(requestMessagesAttribute
-      ? { "gen_ai.input.messages": requestMessagesAttribute }
-      : undefined),
-    "gen_ai.provider.auth_mode": authMode,
-  };
-  return withSpan(
-    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
-    "gen_ai.chat",
-    logContextFromMetadata(params.modelId, params.metadata),
-    async (setSpanAttributes) => {
-      let message: Awaited<ReturnType<typeof completeSimple>>;
-      try {
-        message = await completeSimple(
-          model,
+  const promptAttributes = params.promptName
+    ? { "gen_ai.prompt.name": params.promptName }
+    : undefined;
+  let message: Awaited<ReturnType<typeof completeSimple>>;
+  try {
+    message = await withLogContext(
+      logContextFromMetadata(params.modelId, params.metadata),
+      () =>
+        withChatRequestTelemetry(
           {
-            systemPrompt: params.system,
-            messages: params.messages,
-            ...(params.tools ? { tools: params.tools } : undefined),
-          },
-          {
-            apiKey,
-            maxTokens: params.maxTokens,
-            reasoning: params.thinkingLevel,
-            cacheRetention: params.cacheRetention,
-            signal: params.signal,
-            metadata: params.metadata,
-            sessionId: params.sessionId,
-            onPayload: (payload) => {
-              setSpanAttributes(requestPrefixAttributes(payload));
-              return undefined;
-            },
-            // The edge request id lets Vercel trace how the gateway routed
-            // the call, for example when a cache warmup misses.
-            onResponse: (response) => {
-              const vercelId = response.headers["x-vercel-id"];
-              if (vercelId) {
-                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
-              }
-            },
-            onProviderStreamEvent: (event) => {
-              const routing = gatewayRoutingAttributes(event);
-              if (routing) {
-                setSpanAttributes(routing);
-              }
+            attributes: {
+              ...promptAttributes,
+              "gen_ai.provider.auth_mode": credential.mode,
             },
           },
-        );
-      } catch (error) {
-        throw createProviderError(error, { modelId: params.modelId });
-      }
-      const outputText = extractText(message);
-      const outputMessagesAttribute = serializeGenAiAttribute(
-        messageAttributeMode === "content"
-          ? [toCanonicalOutputMessage(message)]
-          : undefined,
-      );
-      const usageAttributes = extractGenAiUsageAttributes(message);
-      const endAttributes = {
-        ...baseAttributes,
-        ...toGenAiMessagesTraceAttributes("gen_ai.output", [
-          {
-            role: "assistant",
-            content: outputText ? [{ type: "text", text: outputText }] : [],
-          },
-        ]),
-        ...(outputMessagesAttribute
-          ? { "gen_ai.output.messages": outputMessagesAttribute }
-          : undefined),
-        ...usageAttributes,
-        ...(message.stopReason
-          ? {
-              "gen_ai.response.finish_reasons": [
-                normalizeGenAiFinishReason(message.stopReason),
-              ],
-            }
-          : undefined),
-        ...(message.model
-          ? { "gen_ai.response.model": message.model }
-          : undefined),
-        ...(message.responseId
-          ? { "gen_ai.response.id": message.responseId }
-          : undefined),
-      };
-      setSpanAttributes(endAttributes);
-      if (message.stopReason === "error") {
-        const providerMessage =
-          message.errorMessage?.trim() || "Unknown provider error";
-        logWarn("ai.completion.provider_error", {
-          ...baseAttributes,
-          "exception.message": providerMessage,
-        });
-        throw createProviderError(providerMessage, { modelId: params.modelId });
-      }
+          () =>
+            completeSimple(
+              model,
+              {
+                systemPrompt: params.system,
+                messages: params.messages,
+                ...(params.tools ? { tools: params.tools } : undefined),
+              },
+              {
+                apiKey: credential.token,
+                maxTokens: params.maxTokens,
+                reasoning: params.thinkingLevel,
+                cacheRetention: params.cacheRetention,
+                signal: params.signal,
+                metadata: params.metadata,
+                sessionId: params.sessionId,
+              },
+            ),
+        ),
+    );
+  } catch (error) {
+    throw createProviderError(error, { modelId: params.modelId });
+  }
+  if (message.stopReason === "error") {
+    const providerMessage =
+      message.errorMessage?.trim() || "Unknown provider error";
+    logWarn("ai.completion.provider_error", {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+      "gen_ai.request.model": params.modelId,
+      ...promptAttributes,
+      "exception.message": providerMessage,
+    });
+    throw createProviderError(providerMessage, { modelId: params.modelId });
+  }
 
-      return {
-        message,
-        text: outputText,
-      };
-    },
-    startAttributes,
-  );
+  return {
+    message,
+    text: extractText(message),
+  };
 }
 
 function logContextFromMetadata(

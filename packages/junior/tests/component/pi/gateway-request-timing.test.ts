@@ -4,12 +4,14 @@ import {
   createAssistantMessageEventStream,
   type AssistantMessage,
   type Model,
+  type SimpleStreamOptions,
+  type StreamFunction,
 } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Sentry from "@/chat/sentry";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
-import { createTracedStreamFn } from "@/chat/pi/traced-stream";
-import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
+import { withChatSpanAttributes } from "@/chat/pi/chat-span";
 
 const VERCEL_ID = "iad1::iad1::abcde-1-test";
 const RESPONSE_ID = "gen_01TESTRESPONSEID";
@@ -82,11 +84,11 @@ describe("gateway request timing", () => {
 
   // Stands in for Pi: sends `attempts` requests, then reports the last
   // response headers like Pi does before it reads the stream.
-  function gatewayStream(attempts: number): AgentRequestStreamFn {
+  function gatewayStream(
+    attempts: number,
+  ): StreamFunction<"anthropic-messages", SimpleStreamOptions> {
     return (model, _context, options) => {
       const stream = createAssistantMessageEventStream();
-      // The test server is local, so the chat span names it as the gateway.
-      Sentry.getActiveSpan()?.setAttribute("server.address", "127.0.0.1");
       void (async () => {
         let response: Response | undefined;
         for (let i = 0; i < attempts; i++) {
@@ -106,12 +108,31 @@ describe("gateway request timing", () => {
     };
   }
 
+  // Stands in for the SDK's `piAiIntegration`: Pi calls the provider inside
+  // a `gen_ai.chat` span, which ends when the returned stream settles.
   async function runChat(attempts: number) {
-    const traced = createTracedStreamFn(gatewayStream(attempts));
-    const stream = await traced(
-      { id: "anthropic/claude-test" } as Model<"anthropic-messages">,
-      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
-      undefined,
+    const stream = Sentry.startSpanManual(
+      {
+        name: "chat anthropic/claude-test",
+        op: "gen_ai.chat",
+        attributes: {
+          "sentry.origin": "auto.ai.pi_ai",
+          // The test server is local, so the chat span names it as the
+          // gateway.
+          "server.address": "127.0.0.1",
+        },
+      },
+      (span) => {
+        const result = withChatSpanAttributes(gatewayStream(attempts))(
+          { id: "anthropic/claude-test" } as Model<"anthropic-messages">,
+          normalizeContext({
+            messages: [{ role: "user", content: "hi", timestamp: 0 }],
+          }),
+          undefined,
+        );
+        void result.result().then(() => span.end());
+        return result;
+      },
     );
     await stream.result();
     await expect.poll(() => spans.length).toBeGreaterThan(0);
@@ -130,7 +151,6 @@ describe("gateway request timing", () => {
       "http.request.body.size": Buffer.byteLength(BODY),
       "app.ai.event_loop.utilization": expect.any(Number),
       "app.ai.gateway.vercel_id": VERCEL_ID,
-      "gen_ai.response.id": RESPONSE_ID,
     });
 
     // A retry keeps only the last attempt, which reuses the open socket.

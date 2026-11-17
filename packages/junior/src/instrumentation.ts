@@ -15,19 +15,6 @@ export {
   routeNameMiddleware,
 } from "@/chat/sentry-route-name";
 
-// Junior records its own gen_ai spans with usage and cost. These SDK spans
-// would duplicate them, and Pi reads provider streams itself, so they have no
-// usage. Remove this filter after getsentry/sentry-javascript#25869.
-const MANUAL_GEN_AI_INTEGRATIONS = new Set([
-  "Anthropic_AI",
-  "Google_GenAI",
-  "Groq",
-  "Mistral",
-  "OpenAI",
-  "TogetherAI",
-  "VercelAI",
-]);
-
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
@@ -141,9 +128,12 @@ export function initSentry(): void {
     beforeSend: scrubPrivateSentryEvent,
     beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
     beforeSendSpan: scrubPrivateSentrySpan,
+    // Junior records its own gen_ai spans for AI SDK calls, such as
+    // embeddings, reranking, and structured output. The SDK's spans would
+    // duplicate them. `piAiIntegration` records the requests that Pi sends.
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
-        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+        (integration) => integration.name !== "VercelAI",
       ),
   });
 

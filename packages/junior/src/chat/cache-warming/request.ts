@@ -294,7 +294,6 @@ export async function sendWarmup(
     cacheRetention: CACHE_RETENTION,
     // The output is not used.
     maxTokens: 1,
-    messageAttributeMode: "metadata",
     metadata: { conversationId },
     operation: "cache_warmup",
     cost: { conversationId },

@@ -592,8 +592,9 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 // MockAgent never streams. Only the capacity compaction summary does.
-vi.mock("@/chat/pi/traced-stream", () => ({
-  createTracedStreamFn: () => async () => {
+vi.mock("@/chat/pi/chat-span", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/chat-span")>()),
+  withChatStreamTelemetry: () => async () => {
     compactionState.summaryCalls += 1;
     const text =
       agentMode.value === "activeCompaction"

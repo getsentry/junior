@@ -31,6 +31,9 @@ const PAYLOAD_ATTRIBUTE_KEYS = new Set([
   "gen_ai.system_instructions",
   "gen_ai.tool.call.arguments",
   "gen_ai.tool.call.result",
+  // The SDK's `piAiIntegration` records the tools that each request offers.
+  // MCP and plugin tools describe what a private Conversation connected.
+  "gen_ai.tool.definitions",
 ]);
 const URL_ATTRIBUTE_KEYS = new Set([
   "http.target",
