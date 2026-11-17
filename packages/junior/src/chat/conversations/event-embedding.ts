@@ -162,18 +162,17 @@ export const eventSearchTaskRegistration: PluginRegistration = {
           `event-search:${run.conversationId}`,
           EMBEDDING_LOCK_TTL_MS,
           async () => {
-            const lexemes = await storeConversationEventLexemes(
-              getDb(),
-              run.conversationId,
-            );
-            const embedded = await embedConversationEvents(
-              getDb(),
-              createConversationEventEmbedder({
-                conversationId: run.conversationId,
-                turnId: run.runId,
-              }),
-              run.conversationId,
-            );
+            const [lexemes, embedded] = await Promise.all([
+              storeConversationEventLexemes(getDb(), run.conversationId),
+              embedConversationEvents(
+                getDb(),
+                createConversationEventEmbedder({
+                  conversationId: run.conversationId,
+                  turnId: run.runId,
+                }),
+                run.conversationId,
+              ),
+            ]);
             context.log.info("Conversation events indexed", {
               conversationId: run.conversationId,
               embedded,

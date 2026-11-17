@@ -11,6 +11,19 @@
  * needs a score threshold.
  *
  * The caller checks access to the Conversation first.
+ *
+ * Attributes on the `searchConversationEvents` `gen_ai.execute_tool` span:
+ * - `app.event_search.keyword.candidate.count`: events with a query lexeme.
+ * - `app.event_search.keyword.computed.count`: events whose lexemes were
+ *   computed for this query because none were stored yet.
+ * - `app.event_search.keyword_ms`, `app.event_search.meaning_ms`: time of
+ *   each leg, which run at the same time.
+ * - `app.event_search.meaning.candidate.count`: events with a vector.
+ * - `app.event_search.meaning.top_distance`: cosine distance of the nearest
+ *   event, to tune a similarity floor.
+ * - `app.event_search.result.count`: events returned.
+ * Without an embedder, the meaning attributes are not set.
+ * Policy: policies/observability.md.
  */
 import {
   and,
@@ -26,6 +39,7 @@ import {
 } from "drizzle-orm";
 import type { SubqueryWithSelection } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import { setSpanAttributes } from "@/chat/logging";
 import {
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
@@ -154,7 +168,7 @@ async function keywordRanks(
   db: JuniorDatabase,
   search: ConversationEventTextSearch,
   bounds: SQL | undefined,
-): Promise<number[]> {
+): Promise<{ candidates: number; computed: number; seqs: number[] }> {
   const events = juniorConversationEvents;
   const stored = juniorConversationEventLexemes;
   const storedRow = and(
@@ -210,10 +224,15 @@ async function keywordRanks(
       : keywordCandidates(db, computedDocuments, queryVector, tsquery),
     db.select({ total: count() }).from(events).where(bounds),
   ]);
-  return rankKeywordCandidates(
-    [...storedCandidates, ...computedCandidates],
-    searched?.total ?? 0,
-  ).slice(0, CANDIDATES_PER_LEG);
+  const candidates = [...storedCandidates, ...computedCandidates];
+  return {
+    candidates: candidates.length,
+    computed: unstored.length,
+    seqs: rankKeywordCandidates(candidates, searched?.total ?? 0).slice(
+      0,
+      CANDIDATES_PER_LEG,
+    ),
+  };
 }
 
 async function keywordCandidates(
@@ -248,16 +267,19 @@ async function meaningRanks(
   db: JuniorDatabase,
   search: ConversationEventTextSearch,
   bounds: SQL | undefined,
-): Promise<number[]> {
-  if (!search.embedder) return [];
+): Promise<{ seqs: number[]; topDistance?: number }> {
+  if (!search.embedder) return { seqs: [] };
   const query = await search.embedder({
     inputType: "query",
     text: search.query,
   });
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
+  // Postgres can order before it filters, and pgvector fails on vectors of
+  // two sizes. The CASE keeps a vector of another size from the operator.
+  const distance = sql<number>`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::halfvec END`;
   const rows = await db
-    .select({ seq: embeddings.seq })
+    .select({ seq: embeddings.seq, distance })
     .from(embeddings)
     .innerJoin(
       events,
@@ -274,13 +296,13 @@ async function meaningRanks(
         eq(embeddings.dimensions, query.vector.length),
       ),
     )
-    // Postgres can order before it filters, and pgvector fails on vectors of
-    // two sizes. The CASE keeps a vector of another size from the operator.
-    .orderBy(
-      sql`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::halfvec END`,
-    )
+    .orderBy(distance)
     .limit(CANDIDATES_PER_LEG);
-  return rows.map((row) => row.seq);
+  const top = rows[0];
+  return {
+    seqs: rows.map((row) => row.seq),
+    ...(top ? { topDistance: Number(top.distance) } : undefined),
+  };
 }
 
 /** Search the event text of one Conversation. Best match first. */
@@ -293,11 +315,32 @@ export async function searchConversationEventText(
   );
   if (types.length === 0) return [];
   const bounds = searchBounds(search, types);
-  const ranks = await Promise.all([
-    keywordRanks(db, search, bounds),
-    meaningRanks(db, search, bounds),
+  const timed = async <T>(work: Promise<T>) => {
+    const startedAt = Date.now();
+    const result = await work;
+    return { ...result, ms: Date.now() - startedAt };
+  };
+  const [keyword, meaning] = await Promise.all([
+    timed(keywordRanks(db, search, bounds)),
+    timed(meaningRanks(db, search, bounds)),
   ]);
-  const seqs = fuseEventRanks(ranks).slice(0, search.limit);
+  const seqs = fuseEventRanks([keyword.seqs, meaning.seqs]).slice(
+    0,
+    search.limit,
+  );
+  setSpanAttributes({
+    "app.event_search.keyword.candidate.count": keyword.candidates,
+    "app.event_search.keyword.computed.count": keyword.computed,
+    "app.event_search.keyword_ms": keyword.ms,
+    "app.event_search.result.count": seqs.length,
+    ...(search.embedder
+      ? {
+          "app.event_search.meaning.candidate.count": meaning.seqs.length,
+          "app.event_search.meaning.top_distance": meaning.topDistance,
+          "app.event_search.meaning_ms": meaning.ms,
+        }
+      : undefined),
+  });
   if (seqs.length === 0) return [];
   const events = juniorConversationEvents;
   const rows = await db
