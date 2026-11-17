@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import {
+  pauseConversationDelivery,
+  resumeConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import {
   closeDb,
@@ -529,6 +533,37 @@ describe("Slack webhook: Review item cards", () => {
     });
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
+  });
+
+  it("posts no card in a detached thread until it attaches again", async () => {
+    harness();
+    await slackThread(THREAD, "public");
+    // A child agent's item reads the detach of its root.
+    const child = "agent:detached-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    await pauseConversationDelivery(THREAD);
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    await addItem(ana, input, child);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+
+    await resumeConversationDelivery(THREAD);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
   it("names the recommended option of a form in the card text", async () => {
