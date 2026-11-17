@@ -1,69 +1,11 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
-import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import {
   createRequestContext,
   logException,
   logWarn,
   withContext,
 } from "@/chat/logging";
-import type { WaitUntilFn } from "@/handlers/types";
-
-type ChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
 
 type WebhookRunner = () => Promise<Response>;
-
-function getSlackPayloadTeamId(body: unknown): string | undefined {
-  if (!body || typeof body !== "object") {
-    return undefined;
-  }
-
-  const teamId = (body as Record<string, unknown>)["team_id"];
-  return typeof teamId === "string" && teamId.length > 0 ? teamId : undefined;
-}
-
-async function handleChatSdkWebhook(args: {
-  bot: ChatSdkBot;
-  platform: string;
-  request: Request;
-  waitUntil: WaitUntilFn;
-}): Promise<Response> {
-  const handler =
-    args.bot.webhooks[args.platform as keyof typeof args.bot.webhooks];
-  if (!handler) {
-    return new Response(`Unknown platform: ${args.platform}`, { status: 404 });
-  }
-
-  let request = args.request;
-  let slackWorkspaceTeamId: string | undefined;
-  if (args.platform === "slack") {
-    // Do not intercept message_changed events. Slack edits cannot create or
-    // change a Conversation Message or Turn after the original event.
-    const rawBody = await args.request.text();
-    const parsedBody = parseJson(rawBody);
-    slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
-
-    request = new Request(args.request.url, {
-      method: args.request.method,
-      headers: args.request.headers,
-      body: rawBody,
-    });
-  }
-
-  return await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
-    handler(request, {
-      waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
-    }),
-  );
-}
-
-function parseJson(body: string): unknown {
-  try {
-    return JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-}
 
 /** Run a platform webhook with shared request log context and error logging. */
 export async function handleWebhookRequest(
@@ -100,21 +42,4 @@ export async function handleWebhookRequest(
       throw error;
     }
   });
-}
-
-/** Handle a Chat SDK webhook fixture through the shared webhook wrapper. */
-export async function handleChatSdkPlatformWebhook(
-  request: Request,
-  platform: string,
-  waitUntil: WaitUntilFn,
-  chat: ChatSdkBot,
-): Promise<Response> {
-  return handleWebhookRequest(request, platform, () =>
-    handleChatSdkWebhook({
-      bot: chat,
-      platform,
-      request,
-      waitUntil,
-    }),
-  );
 }

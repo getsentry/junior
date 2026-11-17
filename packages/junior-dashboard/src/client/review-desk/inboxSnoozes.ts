@@ -13,7 +13,10 @@ import {
 import { useEffect, useState } from "react";
 
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
-import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
+import {
+  invalidateReviewItemCollections,
+  REVIEW_ITEMS_QUERY_KEY,
+} from "./queries";
 import type { InboxBundle } from "./reviewItemFormat";
 import type { SnoozeChoice } from "./snoozeChoices";
 
@@ -50,8 +53,12 @@ export function useSnoozesData(enabled: boolean) {
   });
 }
 
+/** Refresh what a snooze change moves: the snoozes, the lists and counts. */
 function refreshInbox(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: SNOOZES_QUERY_KEY }),
+    invalidateReviewItemCollections(queryClient),
+  ]);
 }
 
 /** Wake snoozed rows now: delete their snoozes, then refresh the Inbox. */

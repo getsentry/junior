@@ -4,6 +4,7 @@ import { conversationSubscriptionResponseSchema } from "@sentry/junior/api/schem
 
 import { patch } from "../http";
 import { conversationDetailQueryKey } from "./queries";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
  * Subscribe the viewer to one conversation, or unsubscribe them. An
@@ -43,9 +44,6 @@ export function useConversationSubscription(
           : detail,
       );
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSettled: () => invalidateConversationFeeds(queryClient),
   });
 }

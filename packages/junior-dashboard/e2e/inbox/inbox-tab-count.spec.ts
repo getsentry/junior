@@ -40,7 +40,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   /** The titles written since the page loaded. */
   function recordedTitles(page: Page): Promise<string[]> {
     return page.evaluate(
-      () => (window as Window & { __titles: string[] }).__titles,
+      () => (window as Window & { __titles?: string[] }).__titles ?? [],
     );
   }
 
@@ -82,7 +82,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
   });
 
-  test("turning off the tab icon count keeps the title count", async ({
+  test("turning off the tab count hides it in the title and on the icon", async ({
     dashboard,
     page,
   }) => {
@@ -90,19 +90,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/settings`);
     const icon = page.locator('link[rel="icon"]');
     const showCount = page.getByRole("checkbox", {
-      name: "Show Inbox count on the tab icon",
+      name: "Show the Inbox count in the tab",
     });
     await expect(showCount).toBeChecked();
+    await expect(page).toHaveTitle("(1) Settings - Junior");
     await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
 
     await showCount.click();
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
-    await expect(page).toHaveTitle("(1) Settings - Junior");
+    await expect(page).toHaveTitle("Settings - Junior");
 
     // The choice stays on this browser.
     await page.reload();
     await expect(showCount).not.toBeChecked();
-    await expect(page).toHaveTitle("(1) Settings - Junior");
+    await expect(page).toHaveTitle("Settings - Junior");
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
   });
 

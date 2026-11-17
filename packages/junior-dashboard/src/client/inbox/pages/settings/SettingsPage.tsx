@@ -25,7 +25,7 @@ import {
   type ConversationStartPosition,
 } from "../../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../../conversations/composerAutocorrect";
-import { useInboxTabIconCount } from "../../../review-desk/inboxTabIcon";
+import { useInboxTabCountSetting } from "../../../review-desk/inboxTabIcon";
 import { useInboxMagnify } from "../../../review-desk/inboxFocus";
 import { InlineError } from "../../../components/InlineError";
 import { AnchorHeading } from "../../../components/layout/AnchorHeading";
@@ -43,6 +43,7 @@ import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings
 import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
+import { TranscriptScrollerSetting } from "../../../pages/settings/TranscriptScrollerSetting";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
 import { getDashboardAgentName } from "../../../agentName";
 
@@ -62,6 +63,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
+      <InterfaceSettings identity={identity} />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -146,14 +148,27 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
-      <ExperimentalUiSetting identity={identity} />
-      <ConversationStartSetting />
-      <ComposerAutocorrectSetting />
-      <InboxTabIconSetting />
-      <InboxMagnifySetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
+    </SettingsSection>
+  );
+}
+
+/** Group the choices for how the dashboard looks and works. */
+function InterfaceSettings({ identity }: SettingsPageProps) {
+  return (
+    <SettingsSection
+      anchor="interface"
+      description="The new dashboard applies to your account. The other choices apply to this browser."
+      title="Interface"
+    >
+      <ExperimentalUiSetting identity={identity} />
+      <ConversationStartSetting />
+      <TranscriptScrollerSetting />
+      <ComposerAutocorrectSetting />
+      <InboxTabCountSetting />
+      <InboxMagnifySetting />
     </SettingsSection>
   );
 }
@@ -187,7 +202,7 @@ function ConversationStartSetting() {
       />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
         {getDashboardAgentName()} keeps your place in each conversation on all
-        your devices. This choice applies to this browser.
+        your devices.
       </p>
       <RadioGroup<ConversationStartPosition>
         aria-label="Open conversations at"
@@ -238,8 +253,7 @@ function ComposerAutocorrectSetting() {
           <FieldLabel htmlFor="composer-autocorrect">Autocorrect</FieldLabel>
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
-            type. This can change ids, paths, and code. This choice applies to
-            this browser.
+            type. This can change ids, paths, and code.
           </FieldDescription>
         </FieldContent>
       </Field>
@@ -247,9 +261,9 @@ function ComposerAutocorrectSetting() {
   );
 }
 
-/** Let the user hide the Inbox count on this browser's tab icon. */
-function InboxTabIconSetting() {
-  const [showCount, setShowCount] = useInboxTabIconCount();
+/** Let the user hide the Inbox count in this browser's tab. */
+function InboxTabCountSetting() {
+  const [showCount, setShowCount] = useInboxTabCountSetting();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
       <AnchorHeading
@@ -259,18 +273,17 @@ function InboxTabIconSetting() {
       />
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
-          aria-describedby="inbox-tab-icon-count-help"
+          aria-describedby="inbox-tab-count-help"
           checked={showCount}
-          id="inbox-tab-icon-count"
+          id="inbox-tab-count"
           onCheckedChange={setShowCount}
         />
         <FieldContent>
-          <FieldLabel htmlFor="inbox-tab-icon-count">
-            Show Inbox count on the tab icon
+          <FieldLabel htmlFor="inbox-tab-count">
+            Show the Inbox count in the tab
           </FieldLabel>
-          <FieldDescription id="inbox-tab-icon-count-help">
-            The tab title shows the count either way. This choice applies to
-            this browser.
+          <FieldDescription id="inbox-tab-count-help">
+            In the tab title and on the tab icon.
           </FieldDescription>
         </FieldContent>
       </Field>
@@ -301,7 +314,7 @@ function InboxMagnifySetting() {
           </FieldLabel>
           <FieldDescription id="inbox-magnify-help">
             Applies to compact and comfortable rows. Reduced motion turns it off
-            either way. This choice applies to this browser.
+            either way.
           </FieldDescription>
         </FieldContent>
       </Field>

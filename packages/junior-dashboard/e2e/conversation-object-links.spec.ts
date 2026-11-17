@@ -59,6 +59,9 @@ test("links to saved objects show as a titled link, a hover card, and a row", as
   page,
   dashboard,
 }) => {
+  // The screenshot uses this size. A resize would move the link from under
+  // the pointer and close the hover card.
+  await page.setViewportSize(desktop);
   await page.route("**/api/images/payments-91-after**", (route) =>
     route.fulfill({ status: 404 }),
   );

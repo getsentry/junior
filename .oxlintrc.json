@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "extends": ["./tools/oxlint/type-aware.json"],
+  "extends": [
+    "./tools/oxlint/type-aware.json",
+    "./tools/oxlint/await-in-loop.json"
+  ],
   "plugins": [
     "eslint",
     "typescript",
@@ -85,6 +88,7 @@
       }
     ],
     "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
@@ -124,6 +128,7 @@
     {
       "files": ["packages/*/src/**"],
       "rules": {
+        "junior/bounded-fan-out": "error",
         "junior/no-service-fallback": "error"
       }
     },

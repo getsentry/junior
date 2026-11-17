@@ -596,20 +596,20 @@ export function createToolActionReview(options: {
       }
       return state;
     });
-    states.forEach((state, index) => {
+    for (const [index, state] of states.entries()) {
       const step = steps[index]!;
       if (step.kind !== "reviewed" || state.rejected) {
-        return;
+        continue;
       }
       if (step.decision.decision === "allow") {
         // A later action of the same attempt can still add one.
         consecutiveRejections = 0;
-        return;
+        continue;
       }
       state.rejected = true;
       consecutiveRejections = state.before + 1;
       if (consecutiveRejections < MAX_CONSECUTIVE_REJECTIONS) {
-        return;
+        continue;
       }
       state.exhausted = true;
       // Keep Sentry visibility for the limit without aborting the run.
@@ -624,7 +624,7 @@ export function createToolActionReview(options: {
           "gen_ai.tool.call.id": actions[index]!.toolCallId,
         },
       );
-    });
+    }
     return states;
   };
 

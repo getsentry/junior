@@ -1,4 +1,4 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { useNavigate } from "react-router";
 
 import type { PaneNewAction } from "../../components/layout/PaneNav";
@@ -40,7 +40,7 @@ export function useNewAutomationAction(): PaneNewAction {
 }
 
 /** Where the palette opens an Automation: its editor, unless it cannot change. */
-export function automationSelectPath(automation: AutomationSummary): string {
+export function automationSelectPath(automation: AutomationListItem): string {
   return automation.status === "completed"
     ? automationPath(automation.id)
     : automationPath(automation.id, "edit");

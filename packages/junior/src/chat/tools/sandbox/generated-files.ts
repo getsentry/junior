@@ -1,8 +1,12 @@
+import pLimit from "p-limit";
 import type { FileUpload } from "chat";
 import {
   sandboxGeneratedFilePath,
   type GeneratedFileRef,
 } from "@/chat/tools/sandbox/file-uploads";
+
+// Generated files that one tool result reads at once.
+const GENERATED_FILE_READ_CONCURRENCY = 8;
 
 /** Workspace operations needed to make generated files visible to later tools. */
 export interface GeneratedFileWorkspace {
@@ -31,19 +35,22 @@ export async function writeSandboxGeneratedFiles(
   workspace: GeneratedFileWorkspace,
   files: FileUpload[],
 ): Promise<GeneratedFileRef[]> {
+  const limit = pLimit(GENERATED_FILE_READ_CONCURRENCY);
   const generated = await Promise.all(
-    files.map(async (file) => {
-      const content = await fileUploadDataToBuffer(file.data);
-      return {
-        content,
-        ref: {
-          bytes: content.byteLength,
-          filename: file.filename,
-          mime_type: file.mimeType,
-          path: sandboxGeneratedFilePath(content, file.filename),
-        },
-      };
-    }),
+    files.map((file) =>
+      limit(async () => {
+        const content = await fileUploadDataToBuffer(file.data);
+        return {
+          content,
+          ref: {
+            bytes: content.byteLength,
+            filename: file.filename,
+            mime_type: file.mimeType,
+            path: sandboxGeneratedFilePath(content, file.filename),
+          },
+        };
+      }),
+    ),
   );
 
   // Sandbox writes create missing parent directories.

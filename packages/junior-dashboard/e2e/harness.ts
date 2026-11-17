@@ -8,6 +8,11 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { Page, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+import type * as DashboardApp from "../src/app";
+
+// The built dashboard. A plain string keeps the type check from needing a
+// build; `DashboardApp` gives it the source's types.
+const BUILT_APP = "../dist/app.js";
 
 /**
  * Add the mailbox that a first detail read asks for, so a mocked detail report
@@ -67,7 +72,9 @@ export async function resetDashboardMockState(): Promise<void> {
   process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
   process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
     "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
-  const { resetMockDashboardState } = await import("../dist/app.js");
+  const { resetMockDashboardState }: typeof DashboardApp = await import(
+    BUILT_APP
+  );
   resetMockDashboardState();
 }
 
@@ -85,7 +92,8 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   }
 
   const method = req.method ?? "GET";
-  return new Request(url, {
+  // Node needs `duplex` to stream a request body; the DOM types lack it.
+  const init: RequestInit & { duplex?: "half" } = {
     body:
       method === "GET" || method === "HEAD"
         ? undefined
@@ -93,14 +101,15 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
     duplex: method === "GET" || method === "HEAD" ? undefined : "half",
     headers,
     method,
-  });
+  };
+  return new Request(url, init);
 }
 
 async function writeResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     res.setHeader(name, value);
-  });
+  }
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
@@ -111,7 +120,7 @@ export async function startDashboardE2eServer(
   process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
   process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
     "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
-  const { createDashboardApp } = await import("../dist/app.js");
+  const { createDashboardApp }: typeof DashboardApp = await import(BUILT_APP);
   const app = createDashboardApp({
     agentName: "Junior",
     allowedDomains: ["example.com"],
@@ -139,8 +148,7 @@ export async function startDashboardE2eServer(
 
   let baseURL = "http://127.0.0.1";
   const server = createServer((req, res) => {
-    void app
-      .fetch(requestFromNode(req, baseURL))
+    void Promise.resolve(app.fetch(requestFromNode(req, baseURL)))
       .then((response) => writeResponse(res, response))
       .catch((error) => {
         res.statusCode = 500;

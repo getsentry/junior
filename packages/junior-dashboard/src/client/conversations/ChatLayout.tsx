@@ -83,6 +83,9 @@ export function ChatLayout(props: {
           aria-label={props.scrollAriaLabel}
           className={cn(
             "min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:not-data-pointer-focus:ring-1 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+            // An overlay with `data-replaces-scrollbar` stands in for the
+            // scrollbar. The region still scrolls by wheel, keys, and touch.
+            "[&:has(~[data-replaces-scrollbar])]:[scrollbar-width:none] [&:has(~[data-replaces-scrollbar])::-webkit-scrollbar]:hidden",
             props.scrollClassName,
           )}
           data-chat-scroll=""

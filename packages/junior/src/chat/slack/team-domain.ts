@@ -128,6 +128,7 @@ export async function resolveSlackTeamDomains(
     ),
   ];
   const resolved = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One lookup per Slack workspace.
     uniqueTeamIds.map(async (teamId) => {
       const domain = await resolveSlackTeamDomain(teamId);
       return domain ? ([teamId, domain] as const) : undefined;

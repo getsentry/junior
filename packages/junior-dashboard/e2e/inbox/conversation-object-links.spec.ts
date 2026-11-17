@@ -61,6 +61,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
+    // The screenshot uses this size. A resize would move the link from under
+    // the pointer and close the hover card.
+    await page.setViewportSize(desktop);
     await page.route("**/api/images/payments-91-after**", (route) =>
       route.fulfill({ status: 404 }),
     );
@@ -818,7 +821,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .some((link) => link === personUrl || link === conversationUrl),
     );
     expect(asked).toHaveLength(1);
-    expect(asked[0].searchParams.getAll("url")).toEqual(
+    expect(asked[0]!.searchParams.getAll("url")).toEqual(
       expect.arrayContaining([personUrl, conversationUrl]),
     );
   });

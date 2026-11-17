@@ -488,7 +488,7 @@ export async function runCodeModeScript(
     // Each waiting call gets this failure through its own review.
     void reviews.catch(() => undefined);
 
-    accepted.forEach(({ call, host, tool }, index) => {
+    for (const [index, { call, host, tool }] of accepted.entries()) {
       const submission = submissions[index]!;
       track(
         runCall(host, call, tool, async (action) => {
@@ -496,7 +496,7 @@ export async function runCodeModeScript(
           return (await reviews).get(action.toolCallId)!;
         }).finally(() => submission.resolve(undefined)),
       );
-    });
+    }
   };
 
   const sandbox = new CodemodeSandbox();

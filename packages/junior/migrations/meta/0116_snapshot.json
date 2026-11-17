@@ -1,6 +1,6 @@
 {
-  "id": "03f5ce44-3614-489d-87a0-59ef2e416bba",
-  "prevId": "26d876c0-1ece-4014-8371-9699f9fdb18c",
+  "id": "901b5ab9-7066-4ab7-a86f-4e8563d12618",
+  "prevId": "2975fcbf-7615-4d37-b9ee-aa182fc7fbb4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1309,6 +1309,28 @@
           "method": "btree",
           "with": {}
         },
+        "junior_automations_creator_slack_idx": {
+          "name": "junior_automations_creator_slack_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "creator_slack_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_automations_run_now_due_idx": {
           "name": "junior_automations_run_now_due_idx",
           "columns": [
@@ -1389,56 +1411,6 @@
           ],
           "isUnique": false,
           "where": "\"junior_automations\".\"status\" <> 'deleted' AND \"junior_automations\".\"skill\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_wake_subject_idx": {
-          "name": "junior_automations_wake_subject_idx",
-          "columns": [
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_one_wake_idx": {
-          "name": "junior_automations_one_wake_idx",
-          "columns": [
-            {
-              "expression": "creator_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "coalesce(\"subject_review_item_id\", '')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
           "concurrently": false,
           "method": "btree",
           "with": {}

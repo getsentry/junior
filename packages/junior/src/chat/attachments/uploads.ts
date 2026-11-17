@@ -233,6 +233,7 @@ export async function verifyAttachmentUploads(args: {
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- The send schema allows at most MAX_INPUT_ATTACHMENTS uploads.
     args.uploadIds.map(async (uploadId) => {
       const row = byId.get(uploadId);
       if (!row) {

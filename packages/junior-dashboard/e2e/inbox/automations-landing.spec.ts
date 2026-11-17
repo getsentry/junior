@@ -1,7 +1,7 @@
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { mockReviewItems, rollout } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -53,7 +53,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).not.toHaveURL(/[?&]action=/);
   });
 
-  test("groups automations into To do, then by state, on the landing page", async ({
+  test("groups automations into To do, then by latest run, on the landing page", async ({
     page,
     dashboard,
   }) => {
@@ -86,6 +86,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("button", { name: "Expand instruction", exact: true }),
     ).toBeVisible();
+    // The screenshot uses this size. A resize would move the pointer off the
+    // chart and close its tooltip.
+    await page.setViewportSize(desktop);
     await page
       .getByRole("region", { name: "Recent runs" })
       .getByRole("img")

@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
 import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
@@ -23,6 +24,9 @@ import {
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { juniorReviewItemSlackCards } from "@/db/schema";
+
+// Threads whose delivery state one sync reads at once.
+const DELIVERY_PAUSE_READ_CONCURRENCY = 8;
 
 type CardRow = typeof juniorReviewItemSlackCards.$inferSelect;
 
@@ -206,12 +210,15 @@ export async function syncReviewItemSlackCards(args: {
               : [];
           // A detached thread gets no new card. A card that it already has
           // still changes in place, so it does not show a stale state.
+          const limit = pLimit(DELIVERY_PAUSE_READ_CONCURRENCY);
           const missing = (
             await Promise.all(
-              uncarded.map(async (thread) =>
-                (await isConversationDeliveryPaused(thread.conversationId))
-                  ? []
-                  : [thread],
+              uncarded.map((thread) =>
+                limit(async () =>
+                  (await isConversationDeliveryPaused(thread.conversationId))
+                    ? []
+                    : [thread],
+                ),
               ),
             )
           ).flat();

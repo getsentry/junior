@@ -1,5 +1,6 @@
 import { definePlugin } from "@oxlint/plugins";
 
+import { boundedFanOutRule } from "./rules/bounded-fan-out.ts";
 import { githubGraphqlSchemaRule } from "./rules/github-graphql-schema.ts";
 import { noRawSqlQueriesRule } from "./rules/no-raw-sql-queries.ts";
 import { noReadOnlyObjectAnnotationsRule } from "./rules/no-read-only-object-annotations.ts";
@@ -13,6 +14,7 @@ import { zodNamespaceImportRule } from "./rules/zod-namespace-import.ts";
 const juniorPlugin = definePlugin({
   meta: { name: "junior" },
   rules: {
+    "bounded-fan-out": boundedFanOutRule,
     "github-graphql-schema": githubGraphqlSchemaRule,
     "no-raw-sql-queries": noRawSqlQueriesRule,
     "no-read-only-object-annotations": noReadOnlyObjectAnnotationsRule,
