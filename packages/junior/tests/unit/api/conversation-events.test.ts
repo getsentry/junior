@@ -337,7 +337,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("projects turn input message ids across report pages", () => {
+  it("projects turn input and thread context message ids across report pages", () => {
     const events = [
       event(1, {
         type: "message",
@@ -351,6 +351,8 @@ describe("conversation report event projection", () => {
         turnId: "turn-1",
         inputMessageIds: ["context-1", "earlier-page-input-id"],
         surface: "slack",
+        threadContextMessageIds: ["earlier-page-skipped-id"],
+        threadContextThroughSeq: 1,
       }),
     ];
 
@@ -372,6 +374,7 @@ describe("conversation report event projection", () => {
         turnId: "turn-1",
         state: "started",
         inputMessageIds: ["context-1", "earlier-page-input-id"],
+        threadContextMessageIds: ["earlier-page-skipped-id"],
       },
     ]);
   });

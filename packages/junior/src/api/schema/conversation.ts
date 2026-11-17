@@ -500,6 +500,8 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         turnId: z.string().min(1),
         state: z.literal("started"),
         inputMessageIds: z.array(z.string().min(1)).min(1).optional(),
+        /** Skipped Messages that the Turn showed as thread context. */
+        threadContextMessageIds: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
     z

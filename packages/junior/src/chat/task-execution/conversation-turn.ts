@@ -30,7 +30,10 @@ import {
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import {
+  buildTurnThreadContext,
+  startTurnThreadContext,
+} from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -61,7 +64,6 @@ import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
-  latestConversationMessageSeq,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
@@ -374,10 +376,8 @@ export function createConversationTurnWorker(
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
     // Only an Event Turn delivers here, and an Event has no person.
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
-    const behavior = turnBehavior({
-      kind,
-      personInput: isPersonInput(source.kind),
-    });
+    const personInput = isPersonInput(source.kind);
+    const behavior = turnBehavior({ kind, personInput });
     const webActor = actor.platform === "web" ? actor : undefined;
     const signInActor = behavior.waitsForSignIn ? webActor : undefined;
     const disabledFeatures: AgentFeature[] = signInActor
@@ -514,7 +514,13 @@ export function createConversationTurnWorker(
             createdAtMs: Date.now(),
             inputMessageIds,
             surface,
-            threadContextThroughSeq: latestConversationMessageSeq(conversation),
+            ...(await startTurnThreadContext({
+              conversation,
+              conversationId: context.conversationId,
+              excludeMessageIds: inputMessageIds,
+              personStarted: personInput,
+              turnId,
+            })),
             turnId,
           });
           if (stopSignal?.aborted) {
@@ -644,6 +650,7 @@ export function createConversationTurnWorker(
                   conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
                   hasHistory: piMessages.length > 0,
+                  personStarted: personInput,
                   turnId,
                 }),
               },
