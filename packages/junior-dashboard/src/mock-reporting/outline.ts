@@ -30,6 +30,12 @@ export function readMockConversationOutline(
         createdAt,
         seq,
         text,
+        ...(data.actorIdentityId
+          ? { actorIdentityId: data.actorIdentityId }
+          : undefined),
+        ...(data.agentInvocationId
+          ? { agentInvocationId: data.agentInvocationId }
+          : undefined),
         ...(mentions ? { mentions } : undefined),
       });
     }

@@ -1789,11 +1789,22 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA456",
     startedAt,
     actorIdentity: actor("jordan@example.com", "Jordan Blake", "jordan"),
+    // Two people ask, so the outline previews show who asked each question.
+    authors: {
+      "many-turns-jordan": actor(
+        "jordan@example.com",
+        "Jordan Blake",
+        "jordan",
+      ),
+      "many-turns-riley": actor("riley@example.com", "Riley Chen", "riley"),
+    },
     events: Array.from({ length: 24 }, (_, turn) => [
       reportEvent(turn * 2, iso(Date.parse(startedAt), turn * 60_000), {
         type: "message" as const,
         messageId: `many-turns-user-${turn}`,
         role: "user" as const,
+        actorIdentityId:
+          turn % 3 === 2 ? "many-turns-riley" : "many-turns-jordan",
         text:
           turn % 2 === 0
             ? `Question ${turn + 1}: review ${topics[turn % topics.length]}.`
@@ -2143,6 +2154,7 @@ function summaryFromConversation(
         }
       : undefined;
   const {
+    authors: _authors,
     brief: _brief,
     eventHistory: _eventHistory,
     events: _events,

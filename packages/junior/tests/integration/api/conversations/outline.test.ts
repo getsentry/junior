@@ -7,13 +7,16 @@ import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
+  getSqlExecutor,
 } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 
 function message(
   messageId: string,
   role: "assistant" | "user",
   text: string,
   meta?: Record<string, unknown>,
+  authorIdentityId?: string,
 ) {
   return {
     data: {
@@ -22,6 +25,7 @@ function message(
       role,
       text,
       ...(meta ? { meta } : undefined),
+      ...(authorIdentityId ? { authorIdentityId } : undefined),
     },
     createdAtMs: 1,
   };
@@ -58,8 +62,13 @@ describe("conversation outline API", () => {
     // The mention starts before the cut and ends after it.
     const long = `${"a".repeat(195)} <@U123456789> rest`;
     const link = `https://example.com/${"b".repeat(300)}`;
+    const askerIdentityId = await resolveActorIdentityId(getSqlExecutor(), {
+      platform: "slack",
+      userId: "U-asker",
+      teamId: "TOUTLINE",
+    });
     await getConversationEventStore().append(conversationId, [
-      message("first", "user", "  first question  "),
+      message("first", "user", "  first question  ", {}, askerIdentityId),
       // More events than one default detail page.
       ...Array.from({ length: 200 }, (_, index) =>
         message(`reply-${index}`, "assistant", `reply ${index}`),
@@ -67,7 +76,10 @@ describe("conversation outline API", () => {
       message("event", "user", "issue created", { eventType: "issue.created" }),
       message("context", "user", "thread chatter", { explicitMention: false }),
       message("empty", "user", "   "),
-      message("mention", "user", "hi <@U1>", { explicitMention: true }),
+      message("mention", "user", "hi <@U1>", {
+        agentInvocationId: "invocation-1",
+        explicitMention: true,
+      }),
       message("answer", "assistant", "  done  "),
       message("long", "user", long),
       message("link", "user", `<${link}>`),
@@ -84,6 +96,8 @@ describe("conversation outline API", () => {
     ]);
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
     expect(outline.items[0]?.createdAt).toBe(new Date(1).toISOString());
+    expect(outline.items[0]?.actorIdentityId).toBe(askerIdentityId);
+    expect(outline.items[1]?.agentInvocationId).toBe("invocation-1");
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {

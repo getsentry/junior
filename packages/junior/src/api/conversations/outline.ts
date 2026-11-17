@@ -2,6 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { juniorConversationEvents } from "@/db/schema";
 import { resolveMentions } from "../mentions";
 import {
@@ -13,8 +14,8 @@ import { readConversationAccessFromSql } from "./access";
 const payload = juniorConversationEvents.payload;
 
 /**
- * List the person messages of a whole Conversation, each with the start of
- * Junior's reply, for the dashboard outline. The dashboard transcript loads
+ * List the person messages of a whole Conversation, each with its author and
+ * the start of Junior's reply, for the dashboard outline. The dashboard transcript loads
  * only the latest pages, so the outline cannot build its items from the
  * loaded rows alone.
  *
@@ -47,9 +48,21 @@ export async function readConversationOutline(
   ]);
   const items: ConversationOutline["items"] = rows.flatMap((row) => {
     const text = withoutCutToken(row.text).trim();
-    return text
-      ? [{ createdAt: row.createdAt.toISOString(), seq: row.seq, text }]
-      : [];
+    if (!text) return [];
+    return [
+      {
+        createdAt: row.createdAt.toISOString(),
+        seq: row.seq,
+        text,
+        // The same author rule as the transcript events.
+        ...(row.authorIdentityId && row.authorIdentityId !== SYSTEM_IDENTITY_ID
+          ? { actorIdentityId: row.authorIdentityId }
+          : undefined),
+        ...(row.agentInvocationId
+          ? { agentInvocationId: row.agentInvocationId }
+          : undefined),
+      },
+    ];
   });
   // Like the transcript, an item's reply is the last Junior text before
   // the next item.
@@ -89,6 +102,12 @@ function readMessages(
 ) {
   return getDb()
     .select({
+      agentInvocationId: sql<
+        string | null
+      >`${payload}->'meta'->>'agentInvocationId'`,
+      authorIdentityId: sql<
+        string | null
+      >`coalesce(${payload}->>'authorIdentityId', ${juniorConversationEvents.actorIdentityId})`,
       createdAt: juniorConversationEvents.createdAt,
       seq: juniorConversationEvents.seq,
       text: sql<string>`coalesce(left(${payload}->>'text', ${CONVERSATION_OUTLINE_TEXT_LENGTH}), '')`,

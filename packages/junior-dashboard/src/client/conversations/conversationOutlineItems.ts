@@ -2,8 +2,15 @@ import type { ConversationOutline } from "@sentry/junior/api/schema";
 import { displayPlainText } from "../display-text/plainText";
 import type { TranscriptViewMessage } from "../types";
 
+/** The fields that name the author of a transcript message. */
+export type ConversationOutlineAuthor = Pick<
+  TranscriptViewMessage,
+  "actorIdentity" | "actorIdentityId" | "agentInvocationId"
+>;
+
 /** One person message in the outline, with Junior's reply to it. */
 export type ConversationOutlineItem = {
+  author: ConversationOutlineAuthor;
   /** Event seq of the message. Its transcript row carries the same seq. */
   seq: number;
   /** When the person sent the message, in epoch ms. */
@@ -28,6 +35,7 @@ export function conversationOutlineItems(
     if (!text) continue;
     if (message.role === "user" && !message.eventType && !message.context) {
       items.push({
+        author: outlineAuthor(message),
         seq: message.sourceSeq,
         title: text,
         ...(message.timestamp === undefined
@@ -58,6 +66,7 @@ export function mergeConversationOutlineItems(
     if (!title) continue;
     const reply = item.reply && displayPlainText(item.reply, item.mentions);
     bySeq.set(item.seq, {
+      author: outlineAuthor(item),
       seq: item.seq,
       timestamp: Date.parse(item.createdAt),
       title,
@@ -66,6 +75,22 @@ export function mergeConversationOutlineItems(
   }
   for (const item of loaded) bySeq.set(item.seq, item);
   return [...bySeq.values()].sort((left, right) => left.seq - right.seq);
+}
+
+function outlineAuthor(
+  source: ConversationOutlineAuthor,
+): ConversationOutlineAuthor {
+  return {
+    ...(source.actorIdentity
+      ? { actorIdentity: source.actorIdentity }
+      : undefined),
+    ...(source.actorIdentityId
+      ? { actorIdentityId: source.actorIdentityId }
+      : undefined),
+    ...(source.agentInvocationId
+      ? { agentInvocationId: source.agentInvocationId }
+      : undefined),
+  };
 }
 
 function messageText(message: TranscriptViewMessage): string {

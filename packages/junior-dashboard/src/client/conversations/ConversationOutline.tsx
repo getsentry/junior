@@ -18,12 +18,14 @@ import {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
-  MessageOutlinePreviewTime,
+  MessageOutlinePreviewMeta,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 } from "../components/ui/message-outline";
 import { fetchDashboardJson } from "../http";
+import { transcriptMessageActorLabel } from "../format";
 import { formatTranscriptMessageTime } from "../time";
+import type { ConversationTranscript } from "../types";
 import {
   conversationOutlineItems,
   mergeConversationOutlineItems,
@@ -49,6 +51,8 @@ const JUMP_MARGIN_PX = 12;
  * mounts only the rows near the viewport.
  */
 export function ConversationOutline(props: {
+  /** Names the authors. Previews show no author before it loads. */
+  conversation: ConversationTranscript | undefined;
   conversationId: string;
   events: ConversationReportEvent[];
   onSelect(seq: number): void;
@@ -111,7 +115,10 @@ export function ConversationOutline(props: {
           />
         ))}
       </MessageOutlineList>
-      <ConversationOutlinePreview items={items} />
+      <ConversationOutlinePreview
+        conversation={props.conversation}
+        items={items}
+      />
     </MessageOutline>
   );
 }
@@ -137,21 +144,37 @@ function useConversationOutline(conversationId: string) {
   });
 }
 
-/** Preview the pointed message, when it was sent, and Junior's reply. */
+/**
+ * Preview the pointed message, who sent it and when, and Junior's reply.
+ * The author has the same name as on the message's transcript row.
+ */
 function ConversationOutlinePreview(props: {
+  conversation: ConversationTranscript | undefined;
   items: readonly ConversationOutlineItem[];
 }) {
   const { previewIndex } = useMessageOutline();
   const item =
     previewIndex === undefined ? undefined : props.items[previewIndex];
   if (!item) return null;
+  const meta = [
+    props.conversation &&
+      transcriptMessageActorLabel(props.conversation, {
+        ...item.author,
+        parts: [],
+        role: "user",
+        sourceSeq: item.seq,
+      }),
+    item.timestamp === undefined
+      ? undefined
+      : formatTranscriptMessageTime(item.timestamp),
+  ].filter(Boolean);
   return (
     <MessageOutlinePreview>
-      {item.timestamp === undefined ? null : (
-        <MessageOutlinePreviewTime>
-          {formatTranscriptMessageTime(item.timestamp)}
-        </MessageOutlinePreviewTime>
-      )}
+      {meta.length > 0 ? (
+        <MessageOutlinePreviewMeta>
+          {meta.join(" · ")}
+        </MessageOutlinePreviewMeta>
+      ) : null}
       <MessageOutlinePreviewTitle>{item.title}</MessageOutlinePreviewTitle>
       {item.reply ? (
         <MessageOutlinePreviewDescription>

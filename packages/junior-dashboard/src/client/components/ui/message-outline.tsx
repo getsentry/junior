@@ -280,15 +280,18 @@ function MessageOutlinePreviewTitle({
   );
 }
 
-/** Show when the previewed message was sent, above its title. */
-function MessageOutlinePreviewTime({
+/** Show who sent the previewed message and when, above its title. */
+function MessageOutlinePreviewMeta({
   className,
   ...props
 }: ComponentProps<"p">) {
   return (
     <p
-      data-slot="message-outline-preview-time"
-      className={cn("m-0 text-xs text-dashboard-text-faint", className)}
+      data-slot="message-outline-preview-meta"
+      className={cn(
+        "m-0 truncate text-xs text-dashboard-text-faint",
+        className,
+      )}
       {...props}
     />
   );
@@ -336,7 +339,7 @@ export {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
-  MessageOutlinePreviewTime,
+  MessageOutlinePreviewMeta,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 };

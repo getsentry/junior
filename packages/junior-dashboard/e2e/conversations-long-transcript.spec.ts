@@ -134,6 +134,7 @@ async function mockLongConversation(
             data.type === "message" && data.role === "user"
               ? [
                   {
+                    actorIdentityId: "identity-asker",
                     createdAt,
                     seq,
                     text: data.text,
@@ -192,6 +193,7 @@ async function mockLongConversation(
     await route.fulfill({
       json: withRequestedMailbox(route, {
         ...conversation,
+        authors: { "identity-asker": { fullName: "Andrew Asker" } },
         eventHistory: { status: "available" },
         events: events(firstSeq, lastSeq),
         generatedAt,
@@ -389,8 +391,8 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
     page.locator('[data-slot="message-outline-preview-description"]'),
   ).toHaveText(/^Transcript message 1235 /);
   await expect(
-    page.locator('[data-slot="message-outline-preview-time"]'),
-  ).toBeVisible();
+    page.locator('[data-slot="message-outline-preview-meta"]'),
+  ).toHaveText(/^Andrew Asker · /);
   await item.click();
   // The message starts at the top of the viewport.
   await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });
