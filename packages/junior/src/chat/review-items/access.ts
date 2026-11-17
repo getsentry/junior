@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -19,9 +20,6 @@ import {
   type ResolvedAssignees,
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
-
-// Conversations whose participants one check reads at once.
-const PARTICIPANT_READ_CONCURRENCY = 8;
 
 // Every Review item access rule lives in this file. Callers must not copy a
 // rule.
@@ -367,7 +365,7 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const limit = pLimit(PARTICIPANT_READ_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const participants = await Promise.all(
     [...new Set(args.conversationIds)].map((conversationId) =>
       limit(() =>
