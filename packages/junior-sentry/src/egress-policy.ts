@@ -45,7 +45,7 @@ export function enforceSentryEgressPolicy(
 ): void {
   if (isProtectedDeletion(request)) {
     throw new EgressPolicyDenied(
-      "Junior does not delete Sentry organizations, projects, or users. A person must do this in Sentry. This is a Junior policy, not a Sentry permission failure; do not ask for more Sentry permissions.",
+      "Deleting a Sentry organization, project, or user is blocked here. A person must do this in Sentry. This is a runtime policy, not a Sentry permission failure; do not ask for more Sentry permissions.",
     );
   }
 }
