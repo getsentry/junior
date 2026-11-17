@@ -8,6 +8,8 @@ struct DashboardButtonStyle: ButtonStyle {
     /// 36 by 36 square for an icon.
     case icon
     case ghostIcon
+    /// Destructive icon button; the web drops its border (`border-0`).
+    case destructiveIcon
   }
 
   let variant: Variant
@@ -32,13 +34,13 @@ struct DashboardButtonStyle: ButtonStyle {
       .contentShape(RoundedRectangle(cornerRadius: 6))
   }
 
-  private var isSquare: Bool { variant == .icon || variant == .ghostIcon }
+  private var isSquare: Bool { variant == .icon || variant == .ghostIcon || variant == .destructiveIcon }
 
   private var foreground: Color {
     switch variant {
     case .primary: Tokens.textInverse
     case .outline, .icon: Tokens.text
-    case .ghost, .ghostIcon, .destructive: Tokens.textMuted
+    case .ghost, .ghostIcon, .destructive, .destructiveIcon: Tokens.textMuted
     }
   }
 
@@ -46,7 +48,7 @@ struct DashboardButtonStyle: ButtonStyle {
     switch variant {
     case .primary: pressed ? Tokens.textSolid.opacity(0.85) : Tokens.textSolid
     case .outline, .icon: pressed ? Tokens.surfaceHover : Tokens.surfaceRaised
-    case .ghost, .ghostIcon, .destructive: pressed ? Tokens.fillHover : .clear
+    case .ghost, .ghostIcon, .destructive, .destructiveIcon: pressed ? Tokens.fillHover : .clear
     }
   }
 
@@ -54,7 +56,7 @@ struct DashboardButtonStyle: ButtonStyle {
     switch variant {
     case .outline, .icon: Tokens.borderEmphasis
     case .destructive: Tokens.borderStrong
-    case .primary, .ghost, .ghostIcon: nil
+    case .primary, .ghost, .ghostIcon, .destructiveIcon: nil
     }
   }
 }

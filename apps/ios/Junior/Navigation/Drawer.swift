@@ -11,7 +11,7 @@ struct Drawer: View {
     VStack(spacing: 0) {
       HStack {
         Text(app.agentName)
-          .font(.dashboard(.sm, .semibold))
+          .type(.sm, .semibold)
           .foregroundStyle(Tokens.textSolid)
         Spacer()
         Button {
@@ -52,7 +52,8 @@ struct Drawer: View {
             .padding(.bottom, 8)
           if let email = app.viewer?.user.email {
             NavRow(label: "My profile", active: false) {
-              app.openOnWeb("/system/people/\(email.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? email)")
+              app.openOnWeb(
+                "/system/people/\(email.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? email)")
             }
           }
           NavRow(label: "Settings", active: app.path.last == .settings) {
@@ -81,7 +82,7 @@ private struct SpendCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Spend").font(.dashboard(.xs, .medium))
+      Text("Spend").type(.xs, .medium)
       line("7d", spend?.sevenDaysUsd)
       line("30d", spend?.thirtyDaysUsd)
     }
@@ -96,7 +97,7 @@ private struct SpendCard: View {
 
   private func line(_ label: String, _ value: Double?) -> some View {
     (Text(label + " ") + Text(value.map(usd) ?? "—").font(.dashboard(.xs, .semibold)).foregroundStyle(Tokens.text))
-      .font(.dashboard(.xs))
+      .type(.xs)
       .monospacedDigit()
   }
 
@@ -119,7 +120,7 @@ private struct NavRow: View {
         Text(label)
         if count > 0 {
           Text(count.formatted())
-            .font(.dashboard(.xs))
+            .type(.xs)
             .monospacedDigit()
             .foregroundStyle(Color.palette(.violet, 200))
             .padding(.horizontal, 6)
@@ -129,7 +130,7 @@ private struct NavRow: View {
         }
         Spacer(minLength: 0)
       }
-      .font(.dashboard(.sm, .medium))
+      .type(.sm, .medium)
       .foregroundStyle(active ? Tokens.accentText : Tokens.textMuted)
       .padding(12)
       .frame(minHeight: 44)
@@ -149,7 +150,7 @@ struct ThemeRow: View {
   var body: some View {
     HStack {
       Text("Theme")
-        .font(.dashboard(.sm, .semibold))
+        .type(.sm, .semibold)
         .foregroundStyle(Tokens.text)
       Spacer()
       HStack(spacing: 2) {
@@ -176,6 +177,7 @@ struct ThemeRow: View {
         .overlay {
           if selected { RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderInteractive) }
         }
+        .hitArea()
     }
     .buttonStyle(.plain)
     .accessibilityLabel("\(label) theme")
@@ -194,18 +196,18 @@ private struct ProfileFooter: View {
         HStack(spacing: 10) {
           Circle().fill(Tokens.accent).frame(width: 28, height: 28)
             .overlay(
-              Text(identity.initials).font(.dashboard(.xs, .bold)).foregroundStyle(Tokens.textInverse))
+              Text(identity.initials).type(.xs, .bold).foregroundStyle(Tokens.textInverse))
           VStack(alignment: .leading, spacing: 2) {
-            Text(identity.displayName).font(.dashboard(.xs, .semibold)).foregroundStyle(Tokens.text)
+            Text(identity.displayName).type(.xs, .semibold).foregroundStyle(Tokens.text)
             if user.email != identity.displayName {
-              Text(user.email).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+              Text(user.email).type(.xs).foregroundStyle(Tokens.textMuted)
             }
           }
         }
         .accessibilityElement(children: .combine)
       }
       if let version {
-        Text("junior version \(version)").font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+        Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)

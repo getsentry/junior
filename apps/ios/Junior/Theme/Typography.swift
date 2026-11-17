@@ -108,30 +108,35 @@ private struct TypeStyle: ViewModifier {
   let family: Family
   let step: TextStep
   let weight: UIFont.Weight
-  let tight: Bool
+  let lineHeight: CGFloat?
 
   func body(content: Content) -> some View {
     let font = Typography.uiFont(family, step, weight: weight)
-    let lineHeight = font.pointSize * (tight ? 1.15 : step.lineHeight)
+    let target = font.pointSize * (lineHeight ?? step.lineHeight)
     let natural = font.pointSize * Typography.naturalLineHeight(family)
-    let extra = max(0, lineHeight - natural)
+    // Half the leading goes above the first line and below the last, as in
+    // CSS. A line height under the font's own (`leading-none`) pulls the box
+    // in; line spacing cannot go below zero.
+    let extra = target - natural
     return
       content
       .font(Font(font))
-      .lineSpacing(extra)
+      .lineSpacing(max(0, extra))
       .padding(.vertical, extra / 2)
   }
 }
 
 extension View {
   /// Apply one step of the dashboard type scale, with its CSS line height.
+  /// `lineHeight` overrides the step's ratio, like `leading-none` (1) or
+  /// `leading-relaxed` (1.625).
   func type(
     _ step: TextStep,
     _ weight: UIFont.Weight = .regular,
     family: Family = .sans,
-    tight: Bool = false
+    lineHeight: CGFloat? = nil
   ) -> some View {
-    modifier(TypeStyle(family: family, step: step, weight: weight, tight: tight))
+    modifier(TypeStyle(family: family, step: step, weight: weight, lineHeight: lineHeight))
   }
 }
 

@@ -28,7 +28,9 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(card.waitForExistence(timeout: 10))
     card.tap()
     XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Working for'")).firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Working for'")).firstMatch.waitForExistence(
+        timeout: 10))
   }
 
   func testDrawerNavigatesToInbox() {

@@ -13,6 +13,7 @@ struct ReviewItemScreen: View {
   @State private var dividerIndex: Int?
   @State private var error: JuniorAPIError?
   @State private var showDetails = false
+  @State private var forkFrom: String?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -22,7 +23,7 @@ struct ReviewItemScreen: View {
         ScrollViewReader { proxy in
           ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-              ExcerptView(messages: excerpt, dividerIndex: dividerIndex)
+              ExcerptView(messages: excerpt, dividerIndex: dividerIndex) { forkFrom = $0 }
               QuestionCard(item: item) { updated in
                 self.item = updated
                 app.didWrite()
@@ -37,7 +38,7 @@ struct ReviewItemScreen: View {
                     Text("Next: \(next.title)").lineLimit(1)
                     Icon("arrow-right", size: 14)
                   }
-                  .font(.dashboard(.sm, .medium))
+                  .type(.sm, .medium)
                   .foregroundStyle(Tokens.text)
                 }
                 .buttonStyle(.plain)
@@ -49,7 +50,7 @@ struct ReviewItemScreen: View {
             .padding(.bottom, 24)
           }
           .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
+          .defaultScrollAnchor(.top, for: .alignment)
           .onChange(of: excerpt.count) { proxy.scrollTo("card", anchor: .bottom) }
         }
       } else if let error {
@@ -69,6 +70,13 @@ struct ReviewItemScreen: View {
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
     .task(id: itemId) { await load() }
+    .sheet(item: Binding(get: { forkFrom.map(ForkTarget.init) }, set: { forkFrom = $0?.id })) { target in
+      if let id = item?.addedByConversationId {
+        ForkSheet(conversationId: id, messageId: target.id)
+          .presentationDetents([.height(260)])
+          .presentationBackground(Tokens.bgElevated)
+      }
+    }
     .sheet(isPresented: $showDetails) {
       if let item {
         ReviewItemDetails(item: item, source: inbox.source(of: item))
@@ -89,28 +97,32 @@ struct ReviewItemScreen: View {
             Icon("chevron-left", size: 14)
             Text("Inbox")
           }
-          .font(.dashboard(.xs))
+          .type(.xs)
           .foregroundStyle(Tokens.textMuted)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Back to Inbox")
         Text(item.title)
-          .font(.dashboard(.xl, .medium, family: .display))
+          .type(.xl, .medium, family: .display)
           .tracking(-0.5)
           .foregroundStyle(Tokens.text)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityAddTraits(.isHeader)
         let status = HStack(spacing: 6) {
           Dot(color: item.isOpen ? Tokens.accent : Tokens.textMuted)
-          Text(item.statusLabel).font(.dashboard(.xs, .medium))
+          Text(item.statusLabel).type(.xs, .medium)
         }
         .foregroundStyle(item.isOpen ? Tokens.accent : Tokens.textMuted)
         .fixedSize()
-        let meta = Text(meta(item)).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+        let meta = Text(meta(item)).type(.xs).foregroundStyle(Tokens.textMuted)
         // The status and the source share a line when they fit, as flex-wrap does.
         ViewThatFits(in: .horizontal) {
-          HStack(spacing: 8) { status; meta.fixedSize() }
-          VStack(alignment: .leading, spacing: 2) { status; meta.fixedSize(horizontal: false, vertical: true) }
+          HStack(spacing: 8) {
+            status; meta.fixedSize()
+          }
+          VStack(alignment: .leading, spacing: 2) {
+            status; meta.fixedSize(horizontal: false, vertical: true)
+          }
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -173,6 +185,7 @@ struct ReviewItemScreen: View {
 private struct ExcerptView: View {
   let messages: [TranscriptMessage]
   let dividerIndex: Int?
+  let onFork: (String) -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -181,14 +194,14 @@ private struct ExcerptView: View {
           HStack(spacing: 12) {
             Rectangle().fill(Tokens.accent.opacity(0.3)).frame(height: 1)
             Text("New since Junior asked")
-              .font(.dashboard(.xs, .medium))
+              .type(.xs, .medium)
               .foregroundStyle(Tokens.accentText)
               .fixedSize()
             Rectangle().fill(Tokens.accent.opacity(0.3)).frame(height: 1)
           }
           .padding(.vertical, 4)
         }
-        MessageRow(message: message, slackSurface: false)
+        MessageRow(message: message, slackSurface: false) { onFork(message.id) }
       }
     }
   }
@@ -204,7 +217,7 @@ private struct ReviewItemDetails: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack {
-        Text("Review item details").font(.dashboard(.base, .semibold)).foregroundStyle(Tokens.text)
+        Text("Review item details").type(.base, .semibold).foregroundStyle(Tokens.text)
         Spacer()
         Button {
           dismiss()
@@ -221,15 +234,15 @@ private struct ReviewItemDetails: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
           if let body = item.body, !body.isEmpty {
-            Text(body).font(.dashboard(.sm)).lineSpacing(8).foregroundStyle(Tokens.textMuted)
+            Text(body).type(.sm).lineSpacing(8).foregroundStyle(Tokens.textMuted)
           }
           card("Assignees") {
             if assignees.isEmpty {
               Text("Unassigned")
-                .font(.dashboard(.xs, .medium))
+                .type(.xs, .medium)
                 .foregroundStyle(Color.palette(.amber, 300))
             } else {
-              Text(assignees).font(.dashboard(.sm)).foregroundStyle(Tokens.text)
+              Text(assignees).type(.sm).foregroundStyle(Tokens.text)
             }
           }
           card(nil) {
@@ -248,7 +261,7 @@ private struct ReviewItemDetails: View {
                   app.path.append(.conversation(id))
                 } label: {
                   Text(id == item.addedByConversationId ? source : id)
-                    .font(.dashboard(.sm))
+                    .type(.sm)
                     .underline()
                     .foregroundStyle(Tokens.text)
                 }
@@ -275,8 +288,8 @@ private struct ReviewItemDetails: View {
     VStack(alignment: .leading, spacing: 6) {
       if let title {
         HStack(spacing: 6) {
-          Text(title).font(.dashboard(.xs, .medium)).foregroundStyle(Tokens.textMuted)
-          if let count { Text("\(count)").font(.dashboard(.xs)).foregroundStyle(Tokens.textFaint) }
+          Text(title).type(.xs, .medium).foregroundStyle(Tokens.textMuted)
+          if let count { Text("\(count)").type(.xs).foregroundStyle(Tokens.textFaint) }
         }
       }
       content()
@@ -292,6 +305,6 @@ private struct ReviewItemDetails: View {
       Text(value).foregroundStyle(Tokens.text)
       Spacer(minLength: 0)
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
   }
 }

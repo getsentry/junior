@@ -18,7 +18,7 @@ struct MessageRow: View {
         header
         if message.redacted {
           Text("This message is hidden.")
-            .font(.dashboard(.sm))
+            .type(.sm)
             .italic()
             .foregroundStyle(Tokens.textMuted)
         } else if !message.text.isEmpty {
@@ -53,12 +53,12 @@ struct MessageRow: View {
           copied = false
         }
       } label: {
-        Icon(copied ? "check" : "copy", size: 14).frame(width: 32, height: 32)
+        Icon(copied ? "check" : "copy", size: 14).frame(width: 32, height: 32).hitArea()
       }
       .accessibilityLabel(copied ? "Copied" : "Copy message")
       if let onFork {
         Button(action: onFork) {
-          Icon("git-fork", size: 14).frame(width: 32, height: 32)
+          Icon("git-fork", size: 14).frame(width: 32, height: 32).hitArea()
         }
         .accessibilityLabel("Fork after this message")
       }
@@ -75,6 +75,7 @@ struct MessageRow: View {
     case .parentAgent: Avatar(kind: .parentAgent)
     case .person(let identity): Avatar(kind: .person(identity))
     case .system: Avatar(kind: .person(ActorIdentity(fullName: "System")))
+    case .event: Avatar(kind: .event)
     }
   }
 
@@ -84,13 +85,14 @@ struct MessageRow: View {
     case .parentAgent: ("Parent agent", Tokens.text)
     case .person(let identity): (identity?.displayName ?? "User", Tokens.text)
     case .system: ("System", Color.palette(.amber, 200))
+    case .event(let type): (type.contains("automation") ? "Automation" : "Event", Tokens.text)
     }
   }
 
   private var header: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text(name.0)
-        .font(.dashboard(.sm, .semibold))
+        .type(.sm, .semibold)
         .foregroundStyle(name.1)
       HStack(spacing: 6) {
         if slackSurface, message.fromSlack {
@@ -100,8 +102,11 @@ struct MessageRow: View {
         if let date = message.createdAt {
           Text(app.clock.messageTime(date))
         }
+        if let postedTo = message.postedTo {
+          Text("· posted to \(postedTo.capitalized)")
+        }
       }
-      .font(.dashboard(.xs))
+      .type(.xs)
       .foregroundStyle(Tokens.textMuted)
     }
     .frame(minHeight: 24)
@@ -119,10 +124,10 @@ struct MemoryChip: View {
       Icon("history", size: 14).foregroundStyle(Tokens.textFaint)
       Text("Recalled \(count) \(count == 1 ? "memory" : "memories")")
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
     .foregroundStyle(Tokens.textMuted)
     .padding(.horizontal, 8)
-    .frame(height: 24)
+    .frame(minHeight: 24)
     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.border))
   }
 }
@@ -145,7 +150,7 @@ struct ActivityRow: View {
             .opacity(0.55)
             .rotationEffect(.degrees(open ? 90 : 0))
         }
-        .font(.dashboard(.xs))
+        .type(.xs)
         .foregroundStyle(Tokens.textMuted)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -205,13 +210,13 @@ private struct LiveStatusLine: View {
       if case .tool(let name, let preview, _)? = tool?.kind {
         let verb = liveToolVerb(name)
         Icon(verb.symbol, size: 14).foregroundStyle(Tokens.textFaint)
-        Text(verb.verb).font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted).opacity(shimmerOpacity)
+        Text(verb.verb).type(.sm).foregroundStyle(Tokens.textMuted).opacity(shimmerOpacity)
         Text(preview)
-          .font(.dashboard(.xs, family: .mono))
+          .type(.xs, family: .mono)
           .foregroundStyle(Tokens.textMuted)
           .lineLimit(1)
       } else {
-        Text("Thinking").font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted).opacity(shimmerOpacity)
+        Text("Thinking").type(.sm).foregroundStyle(Tokens.textMuted).opacity(shimmerOpacity)
       }
     }
     .onAppear { shimmer = true }
@@ -237,9 +242,12 @@ private struct EntryLine: View {
           .foregroundStyle(state == .error ? Color.palette(.rose, 300) : Tokens.text)
           + Text(preview.isEmpty ? "" : " (\(preview))").foregroundStyle(Tokens.textMuted))
           .lineLimit(1)
+      case .note(let text):
+        Icon("message-square", size: 13).foregroundStyle(Tokens.textFaint)
+        Text(plainText(fromMarkdown: text)).lineLimit(1).foregroundStyle(Tokens.textMuted)
       }
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
   }
 }
 
@@ -251,9 +259,9 @@ struct FailureRow: View {
     HStack(alignment: .top, spacing: 10) {
       Icon("circle-alert", size: 16).foregroundStyle(Color.palette(.rose, 300))
       VStack(alignment: .leading, spacing: 4) {
-        Text(failure.title).font(.dashboard(.base, .semibold, family: .display)).foregroundStyle(Tokens.text)
+        Text(failure.title).type(.base, .semibold, family: .display).foregroundStyle(Tokens.text)
         if let detail = failure.detail {
-          Text(detail).font(.dashboard(.sm)).foregroundStyle(Color.palette(.rose, 100).opacity(0.7))
+          Text(detail).type(.sm).foregroundStyle(Color.palette(.rose, 100).opacity(0.7))
         }
       }
     }
@@ -276,10 +284,10 @@ struct ThreadCard: View {
       if let id = thread.conversationId { app.path.append(.conversation(id)) }
     } label: {
       HStack(spacing: 8) {
-        Text(thread.title).font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text).lineLimit(1)
+        Text(thread.title).type(.sm, .medium).foregroundStyle(Tokens.text).lineLimit(1)
         if let status = thread.status {
           Text(status.capitalized)
-            .font(.dashboard(.xxs, .medium))
+            .type(.xxs, .medium)
             .foregroundStyle(Tokens.textMuted)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -304,7 +312,7 @@ struct ThinkingRow: View {
 
   var body: some View {
     Text("\(app.agentName) is thinking…")
-      .font(.dashboard(.sm))
+      .type(.sm)
       .foregroundStyle(Tokens.textMuted)
       .padding(.leading, 32)
       .padding(.vertical, 8)
@@ -325,6 +333,7 @@ struct FlowRow<Item: Hashable, Content: View>: View {
 
 struct FlowLayout: Layout {
   var spacing: CGFloat
+  var lineSpacing: CGFloat?
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     let width = proposal.width ?? .infinity
@@ -332,9 +341,9 @@ struct FlowLayout: Layout {
     var y: CGFloat = 0
     var row: CGFloat = 0
     for view in subviews {
-      let size = view.sizeThatFits(.unspecified)
+      let size = Self.size(of: view, width: width)
       if x > 0, x + size.width > width {
-        y += row + spacing
+        y += row + (lineSpacing ?? spacing)
         x = 0
         row = 0
       }
@@ -349,9 +358,9 @@ struct FlowLayout: Layout {
     var y = bounds.minY
     var row: CGFloat = 0
     for view in subviews {
-      let size = view.sizeThatFits(.unspecified)
+      let size = Self.size(of: view, width: bounds.width)
       if x > bounds.minX, x + size.width > bounds.maxX {
-        y += row + spacing
+        y += row + (lineSpacing ?? spacing)
         x = bounds.minX
         row = 0
       }
@@ -359,5 +368,30 @@ struct FlowLayout: Layout {
       x += size.width + spacing
       row = max(row, size.height)
     }
+  }
+
+  /// An item's natural size, wrapped to the row when it is wider.
+  private static func size(of view: LayoutSubview, width: CGFloat) -> CGSize {
+    let ideal = view.sizeThatFits(.unspecified)
+    guard width.isFinite, ideal.width > width else { return ideal }
+    return view.sizeThatFits(ProposedViewSize(width: width, height: nil))
+  }
+}
+
+/// Files Junior delivered to the Location.
+struct DeliveredRow: View {
+  let delivery: TranscriptDelivery
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Delivered \(delivery.filenames.count == 1 ? "1 file" : "\(delivery.filenames.count) files")")
+        .type(.xs)
+        .foregroundStyle(Tokens.textMuted)
+      FlowRow(items: delivery.filenames) { name in
+        TagChip(label: name, maxWidth: 220) { Icon("file-text", size: 12).foregroundStyle(Tokens.textMuted) }
+      }
+    }
+    .padding(.leading, 32)
+    .padding(.vertical, 6)
   }
 }

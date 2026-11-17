@@ -16,6 +16,7 @@ struct JuniorApp: App {
         .preferredColorScheme(app.theme.colorScheme)
         .task { await app.refreshShell() }
         .onChange(of: scenePhase, initial: true) { _, phase in
+          app.isActive = phase == .active
           if phase == .active { app.startPolling() } else { app.stopPolling() }
         }
     }
@@ -31,6 +32,7 @@ struct RootView: View {
     ZStack {
       NavigationStack(path: $app.path) {
         placeRoot
+          .background(SwipeBackEnabler().frame(width: 0, height: 0))
           .navigationDestination(for: Route.self) { route in
             switch route {
             case .conversation(let id): ConversationScreen(conversationId: id)
@@ -81,15 +83,20 @@ struct SafariView: UIViewControllerRepresentable {
   func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }
 
-/// Keep the edge swipe back working while screens draw their own header.
-extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
-  override open func viewDidLoad() {
-    super.viewDidLoad()
-    navigationBar.isHidden = true
-    interactivePopGestureRecognizer?.delegate = self
-  }
+/// Keeps the edge swipe back working while screens hide the navigation bar
+/// and draw their own header. Scoped to this app's stack.
+struct SwipeBackEnabler: UIViewControllerRepresentable {
+  func makeUIViewController(context: Context) -> Controller { Controller() }
+  func updateUIViewController(_ controller: Controller, context: Context) {}
 
-  public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-    viewControllers.count > 1
+  final class Controller: UIViewController, UIGestureRecognizerDelegate {
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      navigationController?.interactivePopGestureRecognizer?.delegate = self
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+      (navigationController?.viewControllers.count ?? 0) > 1
+    }
   }
 }

@@ -28,6 +28,15 @@ public struct ConversationDetail: Decodable, Sendable {
 
   public struct Mailbox: Decodable, Sendable {
     public var messages: [PendingMessage]?
+    /// A parked Turn waits for the viewer to connect an account.
+    public var authorization: Authorization?
+  }
+
+  /// Connect prompt for a parked Turn (participants only).
+  public struct Authorization: Decodable, Sendable, Hashable {
+    public var authorizationUrl: String
+    public var completionText: String
+    public var label: String
   }
 
   public var conversationId: String
@@ -37,7 +46,7 @@ public struct ConversationDetail: Decodable, Sendable {
   public var surface: String?
   public var visibility: ConversationVisibility?
   public var startedAt: Date?
-  public var lastSeenAt: Date?
+  public var lastSeenAt: Timestamp?
   public var lastProgressAt: Date?
   public var cumulativeDurationMs: Double?
   public var cumulativeUsage: Usage?
@@ -51,6 +60,7 @@ public struct ConversationDetail: Decodable, Sendable {
   public var authors: [String: ActorIdentity]?
   public var pinnedAt: Date?
   public var archivedAt: Date?
+  public var parentConversationId: String?
   public var isParticipant: Bool?
   public var subscribed: Bool?
   public var deliveryPaused: Bool?
@@ -60,6 +70,10 @@ public struct ConversationDetail: Decodable, Sendable {
   public var autoArchive: Bool?
   public var brief: Brief?
   public var events: [TranscriptEvent]
+  /// How far the viewer has read; absent until they read.
+  public var readPosition: ReadPosition?
+  /// The page around the first unread event, when asked for with `unreadPage`.
+  public var unreadPage: TranscriptEventPage?
   public var previousCursor: String?
   public var appendCursor: String?
   public var mailbox: Mailbox?
@@ -73,8 +87,9 @@ public struct ConversationDetail: Decodable, Sendable {
     case conversationId, displayTitle, kind, status, surface, visibility, startedAt, lastSeenAt
     case lastProgressAt, cumulativeDurationMs, cumulativeUsage, channel, channelName
     case channelNameRedacted, locationUrl, annotations, participants, actorIdentity, authors
-    case pinnedAt, archivedAt, isParticipant, subscribed, deliveryPaused, canFork
+    case pinnedAt, archivedAt, parentConversationId, isParticipant, subscribed, deliveryPaused, canFork
     case sentryConversationUrl, autoArchive, brief, events, previousCursor, appendCursor, mailbox
+    case readPosition, unreadPage
   }
 
   public init(from decoder: Decoder) throws {
@@ -86,7 +101,7 @@ public struct ConversationDetail: Decodable, Sendable {
     surface = try c.decodeIfPresent(String.self, forKey: .surface)
     visibility = try c.decodeIfPresent(ConversationVisibility.self, forKey: .visibility)
     startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
-    lastSeenAt = try c.decodeIfPresent(Date.self, forKey: .lastSeenAt)
+    lastSeenAt = try c.decodeIfPresent(Timestamp.self, forKey: .lastSeenAt)
     lastProgressAt = try c.decodeIfPresent(Date.self, forKey: .lastProgressAt)
     cumulativeDurationMs = try c.decodeIfPresent(Double.self, forKey: .cumulativeDurationMs)
     cumulativeUsage = try c.decodeIfPresent(Usage.self, forKey: .cumulativeUsage)
@@ -100,6 +115,7 @@ public struct ConversationDetail: Decodable, Sendable {
     authors = try? c.decodeIfPresent([String: ActorIdentity].self, forKey: .authors)
     pinnedAt = try c.decodeIfPresent(Date.self, forKey: .pinnedAt)
     archivedAt = try c.decodeIfPresent(Date.self, forKey: .archivedAt)
+    parentConversationId = try c.decodeIfPresent(String.self, forKey: .parentConversationId)
     isParticipant = try c.decodeIfPresent(Bool.self, forKey: .isParticipant)
     subscribed = try c.decodeIfPresent(Bool.self, forKey: .subscribed)
     deliveryPaused = try c.decodeIfPresent(Bool.self, forKey: .deliveryPaused)
@@ -108,10 +124,19 @@ public struct ConversationDetail: Decodable, Sendable {
     autoArchive = try? c.decodeIfPresent(Bool.self, forKey: .autoArchive)
     brief = try? c.decodeIfPresent(Brief.self, forKey: .brief)
     events = try c.decodeIfPresent([TranscriptEvent].self, forKey: .events) ?? []
+    readPosition = try? c.decodeIfPresent(ReadPosition.self, forKey: .readPosition)
+    unreadPage = try? c.decodeIfPresent(TranscriptEventPage.self, forKey: .unreadPage)
     previousCursor = try c.decodeIfPresent(String.self, forKey: .previousCursor)
     appendCursor = try c.decodeIfPresent(String.self, forKey: .appendCursor)
     mailbox = try? c.decodeIfPresent(Mailbox.self, forKey: .mailbox)
   }
+}
+
+/// How far the signed-in viewer has read one transcript.
+public struct ReadPosition: Codable, Sendable, Hashable {
+  public var lastReadSeq: Int
+
+  public init(lastReadSeq: Int) { self.lastReadSeq = lastReadSeq }
 }
 
 /// A message waiting in the Conversation's mailbox for the next safe point.
@@ -125,6 +150,7 @@ public struct PendingMessage: Decodable, Sendable, Hashable, Identifiable {
   public var messageId: String
   public var inboundMessageId: String?
   public var text: String?
+  public var redacted: Bool?
   public var delivery: String?
   public var source: String?
   public var createdAt: Date?
@@ -171,6 +197,10 @@ public enum EventData: Decodable, Sendable, Hashable {
   case turnLifecycle(turnId: String?, state: String, failureCode: String?, failureReason: String?)
   case turnContext(turnId: String?, pluginName: String?, kind: String?, memoryCount: Int)
   case subagent(SubagentEvent)
+  /// Junior's text posted to another tool, such as a GitHub comment.
+  case replyPosted(text: String, plugin: String?)
+  /// Files Junior delivered to the Location.
+  case attachmentsDelivered(filenames: [String])
   case other(String)
 
   public struct MessageEvent: Decodable, Sendable, Hashable {
@@ -200,14 +230,17 @@ public enum EventData: Decodable, Sendable, Hashable {
     public var status: String?
     public var title: String?
     public var agentName: String?
+    public var startedSeq: Int?
+    public var parentToolCallId: String?
   }
 
   enum Keys: String, CodingKey {
     case type, parts, calls, assistant, turnId, state, failureCode, failureReason, pluginName, kind
-    case content
+    case content, text, plugin, attachments
   }
 
   private struct Assistant: Decodable { var parts: [AssistantPart]? }
+  private struct Delivered: Decodable { var filename: String? }
   private struct ContextContent: Decodable { var memories: [JSONValue]? }
 
   public init(from decoder: Decoder) throws {
@@ -237,6 +270,13 @@ public enum EventData: Decodable, Sendable, Hashable {
         memoryCount: content?.memories?.count ?? 0)
     case "subagent":
       self = .subagent(try SubagentEvent(from: decoder))
+    case "reply_posted":
+      self = .replyPosted(
+        text: try c.decodeIfPresent(String.self, forKey: .text) ?? "",
+        plugin: try? c.decodeIfPresent(String.self, forKey: .plugin))
+    case "attachments_delivered":
+      let delivered = (try? c.decodeIfPresent([Delivered].self, forKey: .attachments)) ?? []
+      self = .attachmentsDelivered(filenames: delivered.compactMap(\.filename))
     default:
       self = .other(type)
     }
@@ -252,7 +292,8 @@ public struct ConversationPlan: Decodable, Sendable {
     }
 
     public var id: Int
-    public var title: String
+    /// Absent when the viewer may not read the item.
+    public var title: String?
     public var notes: String?
     public var status: String
     public var assignee: Assignee?

@@ -19,7 +19,8 @@ func styledInline(
       foreground = Tokens.text
     }
     if intent.contains(.emphasized) {
-      font = UIFont(descriptor: font.fontDescriptor.withSymbolicTraits(.traitItalic) ?? font.fontDescriptor, size: font.pointSize)
+      font = UIFont(
+        descriptor: font.fontDescriptor.withSymbolicTraits(.traitItalic) ?? font.fontDescriptor, size: font.pointSize)
     }
     if intent.contains(.code) {
       font = UIFont.monospacedSystemFont(ofSize: font.pointSize * 0.9, weight: .regular)

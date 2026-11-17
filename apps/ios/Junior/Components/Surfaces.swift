@@ -3,14 +3,17 @@ import SwiftUI
 
 extension View {
   /// List card: radius 8, `border-subtle`, `fill-faint`.
+  /// The 1pt inset matches CSS, where a border adds to the box.
   func listCard(radius: CGFloat = 8) -> some View {
-    background(Tokens.fillFaint, in: RoundedRectangle(cornerRadius: radius))
+    padding(1)
+      .background(Tokens.fillFaint, in: RoundedRectangle(cornerRadius: radius))
       .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.borderSubtle))
   }
 
   /// Panel card: radius 8, `border-subtle`, `surface-panel`.
   func panelCard(radius: CGFloat = 8) -> some View {
-    background(Tokens.surfacePanel, in: RoundedRectangle(cornerRadius: radius))
+    padding(1)
+      .background(Tokens.surfacePanel, in: RoundedRectangle(cornerRadius: radius))
       .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.borderSubtle))
   }
 
@@ -67,14 +70,14 @@ struct SearchField: View {
   @Binding var text: String
 
   var body: some View {
-    HStack(spacing: 6) {
-      Icon("search", size: 13)
+    HStack(spacing: 10) {
+      Icon("search", size: 13, stroke: 2.5)
         .foregroundStyle(Tokens.textMuted)
       TextField(
         "", text: $text,
         prompt: Text(placeholder).foregroundStyle(Tokens.textMuted.opacity(0.7))
       )
-      .font(.dashboard(.sm))
+      .type(.sm)
       .foregroundStyle(Tokens.text)
       .textInputAutocapitalization(.never)
       .autocorrectionDisabled()
@@ -85,6 +88,7 @@ struct SearchField: View {
         Icon("x", size: 14)
           .foregroundStyle(Tokens.textMuted)
           .frame(width: 24, height: 24)
+          .hitArea()
       }
       .buttonStyle(.plain)
       .opacity(text.isEmpty ? 0 : 1)
@@ -122,7 +126,7 @@ struct TagChip<Leading: View>: View {
         }
       }
       .padding(.horizontal, 6)
-      .frame(height: 24)
+      .frame(minHeight: 24)
       .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.border))
     }
   }
@@ -173,6 +177,8 @@ struct Avatar: View {
     case person(ActorIdentity?)
     case agent
     case parentAgent
+    /// An Event or Automation that started a Turn.
+    case event
   }
 
   let kind: Kind
@@ -186,7 +192,10 @@ struct Avatar: View {
         .interpolation(.high)
         .scaledToFit()
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
+        .accessibilityHidden(true)
+    case .event:
+      Circle().fill(Tokens.surfaceHover).frame(width: size, height: size)
+        .overlay(Icon("zap", size: 14).foregroundStyle(Color.palette(.amber, 300)))
         .accessibilityHidden(true)
     case .parentAgent:
       Circle().fill(Tokens.surfaceHover).frame(width: size, height: size)
@@ -196,7 +205,7 @@ struct Avatar: View {
       Circle().fill(Color.palette(.violet, 300)).frame(width: size, height: size)
         .overlay(
           Text(identity?.initials ?? "?")
-            .font(.dashboard(.xs, .semibold))
+            .type(.xs, .semibold)
             .foregroundStyle(Tokens.textInverse)
             .minimumScaleFactor(0.5)
             .padding(2)

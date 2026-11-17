@@ -2,17 +2,29 @@ import JuniorKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The docked composer frame (`ComposerDock.tsx`).
-struct ComposerDock<Content: View>: View {
+/// The docked composer frame (`ComposerDock.tsx`). `above` (queued
+/// messages) sits flush on the composer, inside the dock, with no hairline.
+struct ComposerDock<Above: View, Content: View>: View {
+  var hasAbove = false
+  @ViewBuilder var above: Above
   @ViewBuilder var content: Content
 
   var body: some View {
-    content
-      .padding(.horizontal, 8)
-      .padding(.top, 6)
-      .padding(.bottom, 6)
-      .background(Tokens.bg)
-      .hairline(.top, Tokens.borderSubtle)
+    VStack(spacing: 0) {
+      above
+      content
+        .padding(.horizontal, 8)
+        .padding(.top, hasAbove ? 0 : 6)
+        .padding(.bottom, 6)
+    }
+    .background(Tokens.bg)
+    .hairline(.top, hasAbove ? .clear : Tokens.borderSubtle)
+  }
+}
+
+extension ComposerDock where Above == EmptyView {
+  init(@ViewBuilder content: () -> Content) {
+    self.init(hasAbove: false, above: { EmptyView() }, content: content)
   }
 }
 
@@ -48,7 +60,7 @@ struct ComposerField: View {
     TextField(
       "", text: $text, prompt: Text(placeholder).foregroundStyle(Tokens.textFaint), axis: .vertical
     )
-    .font(.dashboard(.base))
+    .type(.base)
     .lineSpacing(6)
     .foregroundStyle(Tokens.text)
     .lineLimit(1...4)
@@ -71,10 +83,27 @@ struct SendButton: View {
         .foregroundStyle(enabled ? Tokens.textInverse : Tokens.textMuted)
         .frame(width: 40, height: 36)
         .background(enabled ? Tokens.textSolid : Tokens.fillHover, in: RoundedRectangle(cornerRadius: 6))
+        .hitArea()
     }
-    .buttonStyle(.plain)
+    // The label shows its own disabled colors; `.plain` would dim them again
+    // (`disabled:!opacity-100` on the web).
+    .buttonStyle(UndimmedButtonStyle())
     .disabled(!enabled)
     .accessibilityLabel("Send")
+  }
+}
+
+/// Press feedback only: no system dimming when disabled.
+struct UndimmedButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
+  }
+}
+
+extension View {
+  /// Grow the touch target to 44pt without changing the drawn size.
+  func hitArea(_ size: CGFloat = 44) -> some View {
+    background(Color.clear.frame(width: size, height: size).contentShape(Rectangle()))
   }
 }
 
@@ -90,6 +119,7 @@ struct AttachButton: View {
       Icon("paperclip", size: 16)
         .foregroundStyle(Tokens.textMuted)
         .frame(width: 36, height: 36)
+        .hitArea()
     }
     .buttonStyle(PressableStyle(radius: 6))
     .accessibilityLabel("Attach files")
@@ -130,10 +160,10 @@ struct UploadChips: View {
               .buttonStyle(.plain)
               .accessibilityLabel("Remove \(file.filename)")
             }
-            .font(.dashboard(.xxs, .medium))
+            .type(.xxs, .medium)
             .foregroundStyle(Tokens.textMuted)
             .padding(.horizontal, 6)
-            .frame(height: 24)
+            .frame(minHeight: 24)
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.border))
           }
         }
@@ -146,8 +176,13 @@ struct UploadChips: View {
 
 /// Upload picked files the dashboard way: ask for a signed target, then send
 /// the bytes there. Returns the upload ids for the message.
-func uploadFiles(_ files: [PendingUpload], client: JuniorClient) async throws -> [String] {
+/// The server binds each upload to the viewer, the Conversation, and the
+/// message's idempotency key, and checks all three when the message arrives.
+func uploadFiles(
+  _ files: [PendingUpload], messageKey: String, conversationId: String?, client: JuniorClient
+) async throws -> [String] {
   struct Ask: Encodable {
+    var conversationId: String?
     var idempotencyKey: String
     var bytes: Int
     var contentType: String
@@ -170,14 +205,17 @@ func uploadFiles(_ files: [PendingUpload], client: JuniorClient) async throws ->
     let type = UTType(filenameExtension: file.url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
     let answer: Answer = try await client.send(
       "POST", "/api/conversations/attachment-uploads",
-      body: Ask(idempotencyKey: file.id.uuidString, bytes: data.count, contentType: type, filename: file.filename))
+      body: Ask(
+        conversationId: conversationId, idempotencyKey: messageKey, bytes: data.count, contentType: type,
+        filename: file.filename))
     guard let url = URL(string: answer.target.url, relativeTo: client.server.baseURL) else { continue }
     var request = URLRequest(url: url)
     request.httpMethod = answer.target.method ?? "PUT"
     for (name, value) in answer.target.headers ?? [:] { request.setValue(value, forHTTPHeaderField: name) }
     let (_, response) = try await URLSession.shared.upload(for: request, from: data)
     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-      throw JuniorAPIError.server(status: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Could not upload \(file.filename).")
+      throw JuniorAPIError.server(
+        status: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Could not upload \(file.filename).")
     }
     ids.append(answer.uploadId)
   }
@@ -207,7 +245,7 @@ struct NewConversationComposer: View {
           VStack(alignment: .leading, spacing: 0) {
             UploadChips(files: $files)
             ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
               AttachButton(files: $files)
               VisibilityMenu(visibility: $visibility)
               Spacer()
@@ -235,7 +273,8 @@ struct NewConversationComposer: View {
       }
       struct Accepted: Decodable { var conversationId: String }
       do {
-        let uploads = try await uploadFiles(files, client: app.client)
+        let uploads = try await uploadFiles(
+          files, messageKey: idempotencyKey.uuidString, conversationId: nil, client: app.client)
         let accepted: Accepted = try await app.client.send(
           "POST", "/api/conversations",
           body: Body(
@@ -284,7 +323,7 @@ private struct VisibilityMenu: View {
         Text(visibility == .private ? "Private" : "Public")
         Icon("chevron-down", size: 14)
       }
-      .font(.dashboard(.xs, .medium))
+      .type(.xs, .medium)
       .foregroundStyle(Tokens.textMuted)
       .padding(.leading, 10)
       .padding(.trailing, 8)
@@ -292,6 +331,6 @@ private struct VisibilityMenu: View {
       .background(Tokens.surfacePanel, in: RoundedRectangle(cornerRadius: 8))
       .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Tokens.borderEmphasis))
     }
-    .accessibilityLabel("ConversationVisibility, \(visibility == .private ? "Private" : "Public")")
+    .accessibilityLabel("Visibility, \(visibility == .private ? "Private" : "Public")")
   }
 }

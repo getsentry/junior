@@ -33,7 +33,7 @@ public func parseMarkdown(_ source: String) -> [MarkdownBlock] {
     .split(separator: "\n", omittingEmptySubsequences: false)
     .map(String.init)
   var parser = BlockParser(lines: lines)
-  return parser.parse()
+  return splitBoldLead(parser.parse())
 }
 
 private struct BlockParser {
@@ -61,7 +61,8 @@ private struct BlockParser {
       } else if Self.listMarker(line) != nil {
         blocks.append(parseList())
       } else if index + 1 < lines.count, line.contains("|"),
-        let alignments = Self.tableSeparator(lines[index + 1])
+        let alignments = Self.tableSeparator(lines[index + 1]),
+        alignments.count == Self.splitRow(line).count
       {
         blocks.append(parseTable(alignments))
       } else {
@@ -122,7 +123,13 @@ private struct BlockParser {
     let rest = trimmed.dropFirst(hashes)
     guard rest.isEmpty || rest.first == " " else { return nil }
     var text = rest.trimmingCharacters(in: .whitespaces)
-    while text.hasSuffix("#") { text.removeLast() }
+    // A closing run of `#` counts only after a space (`## Using C#` keeps it).
+    let closing = text.reversed().prefix { $0 == "#" }.count
+    if closing == text.count {
+      text = ""
+    } else if closing > 0, text.dropLast(closing).last == " " {
+      text = String(text.dropLast(closing))
+    }
     return .heading(level: hashes, text: text.trimmingCharacters(in: .whitespaces))
   }
 
@@ -174,7 +181,7 @@ private struct BlockParser {
     let indent = line.prefix { $0 == " " }.count
     let rest = Array(line.dropFirst(indent))
     guard let first = rest.first else { return nil }
-    if "-*+".contains(first) {
+    if "-*+•◦".contains(first) {
       guard rest.count == 1 || rest[1] == " " else { return nil }
       if isRule(line) { return nil }
       let spaces = rest.dropFirst().prefix { $0 == " " }.count
@@ -298,18 +305,49 @@ private struct BlockParser {
       || listMarker(line) != nil
   }
 
+  /// A paragraph, or a setext heading (`Title` over `===` or `---`).
   mutating func parseParagraph() -> MarkdownBlock {
     var text: [String] = []
     while index < lines.count {
       let line = lines[index]
-      if line.trimmingCharacters(in: .whitespaces).isEmpty { break }
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.isEmpty { break }
       if !text.isEmpty {
+        if trimmed.allSatisfy({ $0 == "=" }) || (trimmed.allSatisfy({ $0 == "-" }) && trimmed.count >= 2) {
+          index += 1
+          return .heading(level: trimmed.first == "=" ? 1 : 2, text: text.joined(separator: " "))
+        }
+        // Only an ordered list that starts at 1 may interrupt a paragraph.
+        if let marker = Self.listMarker(line), marker.ordered, marker.number != 1 {
+          text.append(trimmed)
+          index += 1
+          continue
+        }
         if Self.startsBlock(line) { break }
-        if line.contains("|"), index + 1 < lines.count, Self.tableSeparator(lines[index + 1]) != nil { break }
+        if line.contains("|"), index + 1 < lines.count,
+          let alignments = Self.tableSeparator(lines[index + 1]), alignments.count == Self.splitRow(line).count
+        {
+          break
+        }
       }
-      text.append(line.trimmingCharacters(in: .whitespaces))
+      text.append(trimmed)
       index += 1
     }
     return .paragraph(text.joined(separator: "\n"))
+  }
+}
+
+/// A paragraph that leads with a line of only bold text reads as a heading
+/// (`display-text/markdown.tsx`); the rest stays a paragraph.
+func splitBoldLead(_ blocks: [MarkdownBlock]) -> [MarkdownBlock] {
+  blocks.flatMap { block -> [MarkdownBlock] in
+    guard case .paragraph(let text) = block else { return [block] }
+    let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+    let head = String(lines[0])
+    guard head.hasPrefix("**"), head.hasSuffix("**"), head.count > 4,
+      !head.dropFirst(2).dropLast(2).contains("**")
+    else { return [block] }
+    let heading = MarkdownBlock.heading(level: 3, text: String(head.dropFirst(2).dropLast(2)))
+    return lines.count > 1 ? [heading, .paragraph(String(lines[1]))] : [heading]
   }
 }

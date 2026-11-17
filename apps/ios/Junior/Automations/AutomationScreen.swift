@@ -31,7 +31,7 @@ struct AutomationScreen: View {
               Icon("arrow-left", size: 15)
               Text("Automations")
             }
-            .font(.dashboard(.sm, .medium, family: .display))
+            .type(.sm, .medium, family: .display)
             .foregroundStyle(Tokens.textMuted)
           }
           .buttonStyle(.plain)
@@ -77,7 +77,7 @@ struct AutomationScreen: View {
   @ViewBuilder private func overview(_ automation: Automation) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(automation.title)
-        .font(.dashboard(.xxxl, .light, family: .display))
+        .type(.xxxl, .light, family: .display)
         .tracking(-0.9)
         .foregroundStyle(Tokens.text)
         .fixedSize(horizontal: false, vertical: true)
@@ -91,8 +91,8 @@ struct AutomationScreen: View {
     RecentRunsCard(automation: automation, runs: runs) { tab = .runs }
     if let instruction = automation.task?.instruction {
       VStack(alignment: .leading, spacing: 12) {
-        Text("Instruction").font(.dashboard(.sm, .semibold)).foregroundStyle(Tokens.text)
-        Text(instruction).font(.dashboard(.sm)).lineSpacing(8).foregroundStyle(Tokens.text)
+        Text("Instruction").type(.sm, .semibold).foregroundStyle(Tokens.text)
+        Text(instruction).type(.sm).lineSpacing(8).foregroundStyle(Tokens.text)
           .lineLimit(8)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -100,10 +100,12 @@ struct AutomationScreen: View {
       .listCard()
     }
     VStack(alignment: .leading, spacing: 8) {
-      Text("Settings").font(.dashboard(.sm, .semibold)).foregroundStyle(Tokens.text)
+      Text("Settings").type(.sm, .semibold).foregroundStyle(Tokens.text)
       setting("When", whenText(automation))
       if let destination = automation.destination?.label { setting("Posts to", destination) }
-      setting("Accounts", automation.ownedByViewer == true ? "Connected by you" : "Connected by \(automation.createdBy ?? "the creator")")
+      setting(
+        "Accounts",
+        automation.ownedByViewer == true ? "Connected by you" : "Connected by \(automation.createdBy ?? "the creator")")
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
@@ -117,9 +119,12 @@ struct AutomationScreen: View {
       case .blocked: .palette(.amber, 300)
       default: Tokens.textMuted
       }
-    var parts: [String] = [automation.kind == .scheduled ? (automation.schedule ?? "Scheduled") : automation.triggerSummary]
+    var parts: [String] = [
+      automation.kind == .scheduled ? (automation.schedule ?? "Scheduled") : automation.triggerSummary
+    ]
     if let destination = automation.destination?.label { parts.append(destination) }
-    parts.append(automation.ownedByViewer == true ? "Created by you" : "Created by \(automation.createdBy ?? "someone")")
+    parts.append(
+      automation.ownedByViewer == true ? "Created by you" : "Created by \(automation.createdBy ?? "someone")")
     return SeparatedFlow {
       HStack(spacing: 6) {
         Dot(color: color)
@@ -133,7 +138,7 @@ struct AutomationScreen: View {
         Text(part)
       }
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
     .foregroundStyle(Tokens.textMuted)
     .accessibilityElement(children: .combine)
   }
@@ -148,9 +153,11 @@ struct AutomationScreen: View {
           Text("Edit automation")
         }
       }
-      .buttonStyle(.dashboard(automation.problem == nil ? .primary : .outline))
+      .buttonStyle(.dashboard(automation.problem(clock: app.clock) == nil ? .primary : .outline))
       if automation.status != .completed {
-        Button(updating ? "Updating…" : (automation.status == .paused || automation.status == .blocked ? "Resume" : "Pause")) {
+        Button(
+          updating ? "Updating…" : (automation.status == .paused || automation.status == .blocked ? "Resume" : "Pause")
+        ) {
           Task { await toggleLifecycle(automation) }
         }
         .buttonStyle(.dashboard(.outline))
@@ -168,7 +175,7 @@ struct AutomationScreen: View {
       } label: {
         Icon("trash-2", size: 16)
       }
-      .buttonStyle(.dashboard(.destructive))
+      .buttonStyle(.dashboard(.destructiveIcon))
       .accessibilityLabel("Delete automation")
     }
   }
@@ -197,7 +204,7 @@ struct AutomationScreen: View {
       Spacer(minLength: 12)
       Text(value).foregroundStyle(Tokens.text).multilineTextAlignment(.trailing)
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
     .accessibilityElement(children: .combine)
   }
 
@@ -263,10 +270,10 @@ private struct RecentRunsCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
-        Text("Recent runs").font(.dashboard(.sm, .semibold)).foregroundStyle(Tokens.text)
+        Text("Recent runs").type(.sm, .semibold).foregroundStyle(Tokens.text)
         Spacer()
         Button("View all runs", action: viewAll)
-          .font(.dashboard(.xs))
+          .type(.xs)
           .underline()
           .foregroundStyle(Tokens.text)
           .buttonStyle(.plain)
@@ -278,8 +285,8 @@ private struct RecentRunsCard: View {
         .padding(.top, 12)
       if let next = automation.nextRunAt {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Next \(app.clock.relative(next))").font(.dashboard(.sm)).foregroundStyle(Tokens.text)
-          Text(app.clock.dateTimeWithZone(next)).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+          Text("Next \(app.clock.relative(next))").type(.sm).foregroundStyle(Tokens.text)
+          Text(app.clock.dateTimeWithZone(next)).type(.xs).foregroundStyle(Tokens.textMuted)
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -319,8 +326,8 @@ private struct RecentRunsCard: View {
         .fixedSize()
       }
       .clipped()
-    .accessibilityElement()
-    .accessibilityLabel("Last \(recent.count) runs")
+      .accessibilityElement()
+      .accessibilityLabel("Last \(recent.count) runs")
   }
 
   private func row(_ run: AutomationRun) -> some View {
@@ -330,16 +337,17 @@ private struct RecentRunsCard: View {
           Dot(color: runColor(run.status))
           Text(run.executedAt.map { app.clock.relative($0) } ?? "").foregroundStyle(Tokens.text)
         }
-        if let error = run.error, run.status == .failed {
+        // Any run error reads in rose, blocked or failed (`AutomationOverview`).
+        if let error = run.error, run.status != .completed {
           Text(error).foregroundStyle(Color.palette(.rose, 300)).lineLimit(2).padding(.leading, 18)
         } else if run.status == .blocked {
-          Text(run.error ?? "Blocked").foregroundStyle(Color.palette(.amber, 300)).lineLimit(2).padding(.leading, 18)
+          Text("Blocked").foregroundStyle(Color.palette(.amber, 300)).padding(.leading, 18)
         } else if let title = run.title, title != automation.title {
           Text(title).foregroundStyle(Tokens.textMuted).lineLimit(1).padding(.leading, 18)
         }
       }
+      .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
       .padding(.vertical, 10)
-      Spacer(minLength: 0)
       Text(
         [run.durationMs.map { formatEventDuration($0) }, run.costUsd.map { formatCost($0) }]
           .compactMap { $0 }.joined(separator: " · ")
@@ -356,7 +364,6 @@ private struct RecentRunsCard: View {
     }
     .font(.dashboard(.xs))
     .padding(.leading, 16)
-    .padding(.trailing, 8)
     .hairline(.top, Tokens.borderSubtle)
   }
 }

@@ -80,7 +80,10 @@ public func highlightCode(_ code: String, language: String?) -> [CodeToken] {
     // Numbers
     if c.isNumber, i == 0 || !(chars[i - 1].isLetter || chars[i - 1] == "_") {
       var j = i
-      while j < chars.count, chars[j].isNumber || chars[j] == "." || chars[j] == "_" || chars[j].isLetter && "xabcdefABCDEF".contains(chars[j]) { j += 1 }
+      while j < chars.count,
+        chars[j].isNumber || chars[j] == "." || chars[j] == "_"
+          || chars[j].isLetter && "xabcdefABCDEF".contains(chars[j])
+      { j += 1 }
       append(String(chars[i..<j]), .number)
       i = j
       continue

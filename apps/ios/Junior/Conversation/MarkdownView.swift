@@ -65,7 +65,7 @@ private struct BlockView: View {
 
   private func prose(_ text: String) -> some View {
     Text(styledInline(text, step: step, color: color))
-      .lineSpacing(step.size * 0.415)
+      .type(step, lineHeight: 1.625)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
   }
@@ -73,7 +73,7 @@ private struct BlockView: View {
   private func heading(_ text: String, level: Int) -> some View {
     let size: TextStep = level <= 2 ? .lg : step
     return Text(styledInline(text, step: size, color: Tokens.text))
-      .font(.dashboard(size, .semibold))
+      .type(size, .semibold)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityAddTraits(.isHeader)
   }
@@ -106,12 +106,12 @@ private struct ListBlockView: View {
         .foregroundStyle(checked ? Tokens.accent : Tokens.textMuted)
     } else if ordered {
       Text("\(start + index).")
-        .font(.dashboard(step))
+        .type(step)
         .monospacedDigit()
         .foregroundStyle(Tokens.textMuted)
     } else {
       Text("•")
-        .font(.dashboard(step))
+        .type(step)
         .foregroundStyle(Tokens.textMuted)
     }
   }
@@ -125,7 +125,7 @@ struct CodeBlockView: View {
 
   var body: some View {
     Text(highlighted)
-      .font(.dashboard(.sm, family: .mono))
+      .type(.sm, family: .mono)
       .lineSpacing(14 * 0.43)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
@@ -188,7 +188,7 @@ private struct TableBlockView: View {
         GridRow {
           ForEach(Array(table.header.enumerated()), id: \.offset) { column, cell in
             Text(styledInline(cell, step: .xs, color: Tokens.textMuted))
-              .font(.dashboard(.xs, .medium))
+              .type(.xs, .medium)
               .lineLimit(1)
               .fixedSize()
               .padding(.horizontal, 10)

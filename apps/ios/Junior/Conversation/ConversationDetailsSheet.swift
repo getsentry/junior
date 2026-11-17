@@ -9,8 +9,9 @@ struct ConversationDetailsSheet: View {
   let detail: ConversationDetail
   @State private var plan: [ConversationPlan.Item] = []
   @State private var showClosedPlan = false
+  @State private var planError: String?
   @State private var autoArchive: Bool
-  @State private var autoArchiveError = false
+  @State private var autoArchiveError: String?
   @State private var showAutoArchiveHelp = false
   @State private var usageOpen = false
 
@@ -25,7 +26,7 @@ struct ConversationDetailsSheet: View {
     VStack(spacing: 0) {
       HStack {
         Text("Conversation details")
-          .font(.dashboard(.lg, .semibold))
+          .type(.lg, .semibold)
           .foregroundStyle(Tokens.text)
           .accessibilityAddTraits(.isHeader)
         Spacer()
@@ -46,7 +47,7 @@ struct ConversationDetailsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
           if let summary = detail.brief?.content?.summary {
             Text(summary)
-              .font(.dashboard(.sm))
+              .type(.sm)
               .lineSpacing(9)
               .foregroundStyle(Tokens.text)
               .padding(.bottom, 4)
@@ -80,25 +81,12 @@ struct ConversationDetailsSheet: View {
     let closed = plan.filter { !$0.isOpen }
     return section("Plan", count: open.count) {
       ForEach(open + (showClosedPlan ? closed : [])) { item in
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          planIcon(item.status)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(item.title)
-              .font(.dashboard(.sm, .medium))
-              .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
-              .strikethrough(!item.isOpen)
-            if let notes = item.notes {
-              Text(notes).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
-            }
-          }
-          Spacer(minLength: 8)
-          Text(assignee(item.assignee))
-            .font(.dashboard(.xs, family: item.assignee?.kind == "agent" ? .mono : .sans))
-            .foregroundStyle(Tokens.textMuted)
-            .lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
+        PlanRow(
+          item: item, assignee: assignee(item.assignee), canEdit: detail.isParticipant == true,
+          icon: AnyView(planIcon(item.status))
+        ) { status in setPlan(item, status) }
       }
+      if let planError { InlineError(text: planError) }
       if !closed.isEmpty {
         Button {
           showClosedPlan.toggle()
@@ -107,10 +95,25 @@ struct ConversationDetailsSheet: View {
             Icon("chevron-right", size: 14).rotationEffect(.degrees(showClosedPlan ? 90 : 0))
             Text(showClosedPlan ? "Show less" : "Show \(closed.count) more")
           }
-          .font(.dashboard(.sm, .medium))
+          .type(.sm, .medium)
           .foregroundStyle(Tokens.textMuted)
         }
         .buttonStyle(.plain)
+      }
+    }
+  }
+
+  /// Mark done, cancel, or reopen one Plan item (`PATCH …/plan/{id}`).
+  private func setPlan(_ item: ConversationPlan.Item, _ status: String) {
+    struct Body: Encodable { var status: String }
+    Task {
+      do {
+        try await app.client.perform("PATCH", "\(path)/plan/\(item.id)", body: Body(status: status))
+        let loaded: ConversationPlan? = try? await app.client.get("\(path)/plan")
+        plan = loaded?.items ?? plan
+        planError = nil
+      } catch {
+        planError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not update the plan."
       }
     }
   }
@@ -144,11 +147,11 @@ struct ConversationDetailsSheet: View {
               PathIcon.octicon(presentation.icon, size: 16).foregroundStyle(presentation.color)
               VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                  Text(annotation.label).font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
+                  Text(annotation.label).type(.sm, .medium).foregroundStyle(Tokens.text)
                   Icon("external-link", size: 11).foregroundStyle(Tokens.textMuted).opacity(0.6)
                 }
                 if let title = annotation.title, title != annotation.label {
-                  Text(title).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+                  Text(title).type(.xs).foregroundStyle(Tokens.textMuted)
                 }
               }
             }
@@ -168,10 +171,13 @@ struct ConversationDetailsSheet: View {
             struct Body: Encodable { var autoArchive: Bool }
             do {
               try await app.client.perform("PATCH", "\(path)/auto-archive", body: Body(autoArchive: next))
-              autoArchiveError = false
+              autoArchiveError = nil
             } catch {
               autoArchive = !next
-              autoArchiveError = true
+              let failure = error as? JuniorAPIError
+              autoArchiveError =
+                failure == .readOnlyToken
+                ? failure?.localizedDescription : "Could not save auto-archive. Try again."
             }
           }
         } label: {
@@ -181,7 +187,7 @@ struct ConversationDetailsSheet: View {
               .background(autoArchive ? Tokens.accent : .clear, in: RoundedRectangle(cornerRadius: 4))
               .overlay { if autoArchive { Icon("check", size: 12, stroke: 3).foregroundStyle(Tokens.textInverse) } }
               .frame(width: 16, height: 16)
-            Text("Auto archive").font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
+            Text("Auto archive").type(.sm, .medium).foregroundStyle(Tokens.text)
           }
         }
         .buttonStyle(.plain)
@@ -194,7 +200,7 @@ struct ConversationDetailsSheet: View {
         .buttonStyle(.plain)
         .accessibilityLabel("About auto archive")
       }
-      if autoArchiveError { InlineError(text: "Could not save auto-archive. Try again.") }
+      if let autoArchiveError { InlineError(text: autoArchiveError) }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
@@ -208,9 +214,24 @@ struct ConversationDetailsSheet: View {
         if let location = slackLocationLabel(
           channel: detail.channel, name: detail.channelName, redacted: detail.channelNameRedacted)
         {
-          stat("Location", location)
+          if let url = detail.locationUrl.flatMap(URL.init(string:)) {
+            HStack {
+              Text("Location").foregroundStyle(Tokens.textMuted)
+              Spacer()
+              Link(destination: url) {
+                HStack(spacing: 4) {
+                  Text(location).underline(color: Tokens.borderHeavy)
+                  Icon("external-link", size: 10.4).opacity(0.6)
+                }
+                .foregroundStyle(Tokens.text)
+              }
+            }
+            .type(.xs)
+          } else {
+            stat("Location", location)
+          }
         }
-        if let seen = detail.lastSeenAt { stat("Last activity", app.clock.relative(seen)) }
+        if let seen = detail.lastSeenAt?.date { stat("Last activity", app.clock.relative(seen)) }
         if let runtime = detail.cumulativeDurationMs { stat("Runtime", formatEventDuration(runtime)) }
       }
       if let usage = detail.cumulativeUsage {
@@ -220,9 +241,9 @@ struct ConversationDetailsSheet: View {
         } label: {
           HStack(spacing: 8) {
             Icon("chevron-right", size: 14).rotationEffect(.degrees(usageOpen ? 90 : 0))
-            Text("Usage").font(.dashboard(.sm, .semibold)).foregroundStyle(Tokens.text)
+            Text("Usage").type(.sm, .semibold).foregroundStyle(Tokens.text)
             Spacer()
-            Text(usageSummary(usage)).font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted)
+            Text(usageSummary(usage)).type(.sm).foregroundStyle(Tokens.textMuted)
           }
           .foregroundStyle(Tokens.textMuted)
         }
@@ -250,14 +271,14 @@ struct ConversationDetailsSheet: View {
       section("Participants") {
         HStack(spacing: -4) {
           ForEach(Array(people.prefix(3).enumerated()), id: \.offset) { _, person in
-            Avatar(kind: .person(person), size: 24)
+            Avatar(kind: .person(person), size: 28)
               .overlay(Circle().strokeBorder(Tokens.bgElevated, lineWidth: 2))
           }
           if people.count > 3 {
             Text("+\(people.count - 3)")
               .font(.dashboard(.xxs, .semibold))
-              .foregroundStyle(Tokens.text)
-              .frame(width: 24, height: 24)
+              .foregroundStyle(Tokens.textMuted)
+              .frame(width: 28, height: 28)
               .background(Tokens.surfaceActive, in: Circle())
               .overlay(Circle().strokeBorder(Tokens.bgElevated, lineWidth: 2))
           }
@@ -274,8 +295,8 @@ struct ConversationDetailsSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       if let title {
         HStack(spacing: 6) {
-          Text(title).font(.dashboard(.xs, .semibold)).foregroundStyle(Tokens.text)
-          if let count { Text("\(count)").font(.dashboard(.xs)).foregroundStyle(Tokens.textFaint) }
+          Text(title).type(.xs, .semibold).foregroundStyle(Tokens.text)
+          if let count { Text("\(count)").type(.xs).foregroundStyle(Tokens.textFaint) }
         }
         .accessibilityAddTraits(.isHeader)
       }
@@ -292,7 +313,50 @@ struct ConversationDetailsSheet: View {
       Spacer()
       Text(value).foregroundStyle(Tokens.text).monospacedDigit()
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
     .accessibilityElement(children: .combine)
+  }
+}
+
+/// One Plan item: status icon, title, assignee, and its menu; notes span the
+/// row under the title.
+private struct PlanRow: View {
+  let item: ConversationPlan.Item
+  let assignee: String
+  let canEdit: Bool
+  let icon: AnyView
+  let setStatus: (String) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        icon
+        Text(item.title ?? "Hidden item")
+          .type(.sm, .medium)
+          .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
+          .strikethrough(!item.isOpen)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        Text(assignee).type(.xs).foregroundStyle(Tokens.textMuted).lineLimit(1)
+        if canEdit { menu }
+      }
+      if let notes = item.notes {
+        Text(notes).type(.xs).foregroundStyle(Tokens.textMuted).padding(.leading, 24)
+      }
+    }
+    .accessibilityElement(children: .contain)
+  }
+
+  private var menu: some View {
+    Menu {
+      if item.isOpen {
+        Button("Mark done", systemImage: "checkmark.circle") { setStatus("done") }
+        Button("Cancel", systemImage: "xmark.circle") { setStatus("cancelled") }
+      } else {
+        Button("Reopen", systemImage: "arrow.uturn.backward.circle") { setStatus("pending") }
+      }
+    } label: {
+      Icon("ellipsis", size: 16).foregroundStyle(Tokens.textMuted).frame(width: 32, height: 32).hitArea()
+    }
+    .accessibilityLabel("Plan item actions")
   }
 }

@@ -10,9 +10,9 @@ cache_dir="${JUNIOR_IOS_CACHE:-$HOME/Library/Caches/ios-agent-build.noindex}"
 derived="$ios_dir/.build.noindex/DerivedData"
 mkdir -p "$cache_dir/cas" "$derived"
 
-if [[ ! -d "$ios_dir/Junior.xcodeproj" || "$ios_dir/project.yml" -nt "$ios_dir/Junior.xcodeproj/project.pbxproj" ]]; then
-  (cd "$ios_dir" && xcodegen generate --quiet)
-fi
+# The project lists files explicitly. `--use-cache` regenerates whenever the
+# spec or the set of source files changes, and skips it otherwise.
+(cd "$ios_dir" && xcodegen generate --quiet --use-cache --cache-path "$ios_dir/.build.noindex/xcodegen-cache")
 
 exec xcodebuild \
   -project "$ios_dir/Junior.xcodeproj" \

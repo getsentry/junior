@@ -23,15 +23,18 @@ struct QuestionCard: View {
         actions(showOther: false)
       } else {
         if let question = item.request?.question {
-          MarkdownView(question, step: .sm).font(.dashboard(.sm, .medium))
+          MarkdownView(question, step: .sm).type(.sm, .medium)
         }
         if item.canAct == false {
-          Text("Only an assignee can act on this item.").font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+          Text("Only an assignee can act on this item.").type(.xs).foregroundStyle(Tokens.textMuted)
         } else if let field = item.quickChoiceField, !formOpen,
           field.options?.contains(where: { $0.description != nil }) == true
         {
-          quickOptions(field)
-          actions(showOther: true)
+          // Options, then the actions 12pt below (`mt-3`).
+          VStack(alignment: .leading, spacing: 12) {
+            quickOptions(field)
+            actions(showOther: true)
+          }
         } else if let field = item.quickChoiceField, !formOpen {
           FlowLayout(spacing: 8) {
             ForEach(field.options ?? [], id: \.label) { option in
@@ -41,7 +44,7 @@ struct QuestionCard: View {
                 HStack(spacing: 8) {
                   Text(option.label)
                   if option.recommended == true {
-                    Text("Suggested").font(.dashboard(.xs)).foregroundStyle(Tokens.accentText.opacity(0.8))
+                    Text("Suggested").type(.xs).foregroundStyle(Tokens.accentText.opacity(0.8))
                   }
                 }
               }
@@ -73,13 +76,13 @@ struct QuestionCard: View {
           HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
               HStack(spacing: 8) {
-                Text(option.label).font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
+                Text(option.label).type(.sm, .medium).foregroundStyle(Tokens.text)
                 if option.recommended == true {
-                  Text("Suggested").font(.dashboard(.xs)).foregroundStyle(Tokens.accentText.opacity(0.8))
+                  Text("Suggested").type(.xs).foregroundStyle(Tokens.accentText.opacity(0.8))
                 }
               }
               if let description = option.description {
-                Text(description).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+                Text(description).type(.xs).foregroundStyle(Tokens.textMuted)
               }
             }
             Spacer(minLength: 0)
@@ -88,9 +91,12 @@ struct QuestionCard: View {
           .padding(.horizontal, 12)
           .padding(.vertical, 10)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(isPicked ? Tokens.accent.opacity(0.1) : Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
+          .background(
+            isPicked ? Tokens.accent.opacity(0.1) : Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6)
+          )
           .overlay(
-            RoundedRectangle(cornerRadius: 6).strokeBorder(isPicked ? Tokens.accent.opacity(0.6) : Tokens.border))
+            RoundedRectangle(cornerRadius: 6).strokeBorder(isPicked ? Tokens.accent.opacity(0.6) : Tokens.border)
+          )
           .opacity(sending && !isPicked ? 0.6 : 1)
           .contentShape(RoundedRectangle(cornerRadius: 6))
         }
@@ -100,7 +106,6 @@ struct QuestionCard: View {
         .accessibilityIdentifier("review-option")
       }
     }
-    .padding(.top, -4)
   }
 
   private func actions(showOther: Bool) -> some View {
@@ -122,12 +127,12 @@ struct QuestionCard: View {
       VStack(alignment: .leading, spacing: 8) {
         if fields.count > 1 || field.kind != .choice, let label = field.label {
           Text(field.kind == .multiChoice ? "\(label) · Pick any" : label)
-            .font(.dashboard(.xs, .medium))
+            .type(.xs, .medium)
             .foregroundStyle(Tokens.textMuted)
         }
         if field.kind == .text {
           TextField("", text: textBinding(field.id), axis: .vertical)
-            .font(.dashboard(.sm))
+            .type(.sm)
             .padding(10)
             .background(Tokens.control, in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
@@ -140,26 +145,30 @@ struct QuestionCard: View {
               HStack(alignment: .top, spacing: 10) {
                 Icon(
                   field.kind == .multiChoice
-                    ? (selected ? "checkmark.square.fill" : "square") : (selected ? "largecircle.fill.circle" : "circle"),
+                    ? (selected ? "checkmark.square.fill" : "square")
+                    : (selected ? "largecircle.fill.circle" : "circle"),
                   size: 16
                 )
                 .foregroundStyle(selected ? Tokens.accent : Tokens.textMuted)
                 VStack(alignment: .leading, spacing: 2) {
                   HStack(spacing: 8) {
-                    Text(option.label).font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
+                    Text(option.label).type(.sm, .medium).foregroundStyle(Tokens.text)
                     if option.recommended == true {
-                      Text("Suggested").font(.dashboard(.xs)).foregroundStyle(Tokens.accentText.opacity(0.8))
+                      Text("Suggested").type(.xs).foregroundStyle(Tokens.accentText.opacity(0.8))
                     }
                   }
                   if let description = option.description {
-                    Text(description).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+                    Text(description).type(.xs).foregroundStyle(Tokens.textMuted)
                   }
                 }
                 Spacer(minLength: 0)
               }
               .padding(10)
-              .background(selected ? Tokens.accent.opacity(0.1) : Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
-              .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Tokens.accent.opacity(0.6) : Tokens.border))
+              .background(
+                selected ? Tokens.accent.opacity(0.1) : Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6)
+              )
+              .overlay(
+                RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Tokens.accent.opacity(0.6) : Tokens.border))
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(selected ? .isSelected : [])
@@ -168,24 +177,25 @@ struct QuestionCard: View {
       }
     }
     VStack(alignment: .leading, spacing: 6) {
-      Text("Anything else?").font(.dashboard(.xs, .medium)).foregroundStyle(Tokens.textMuted)
+      Text("Anything else?").type(.xs, .medium).foregroundStyle(Tokens.textMuted)
       TextField("", text: $other, axis: .vertical)
-        .font(.dashboard(.sm))
+        .type(.sm)
         .lineLimit(2...6)
         .padding(10)
         .background(Tokens.control, in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
       Text("Optional. This note is sent together with your answers above.")
-        .font(.dashboard(.xs))
+        .type(.xs)
         .foregroundStyle(Tokens.textFaint)
     }
     HStack(spacing: 8) {
       Button("Send") { submitForm() }
         .buttonStyle(.dashboard(.primary))
-        .disabled(sending || (selections.values.allSatisfy(\.isEmpty) && other.trimmingCharacters(in: .whitespaces).isEmpty))
+        .disabled(
+          sending || (selections.values.allSatisfy(\.isEmpty) && other.trimmingCharacters(in: .whitespaces).isEmpty))
       if fields.count > 1 {
         let answered = fields.filter { !(selections[$0.id] ?? []).isEmpty }.count
-        Text("\(answered) of \(fields.count) answered").font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+        Text("\(answered) of \(fields.count) answered").type(.xs).foregroundStyle(Tokens.textMuted)
       }
       Spacer(minLength: 0)
       if item.quickChoiceField != nil {
@@ -198,20 +208,20 @@ struct QuestionCard: View {
     let verb = item.status == .dismissed ? "dismissed" : "closed"
     let when = (item.closedAt ?? item.updatedAt).map { " \(app.clock.relative($0))" } ?? ""
     Text("\(item.closedBy?.displayName ?? item.closedBy?.email ?? "An agent") \(verb) this\(when).")
-      .font(.dashboard(.sm))
+      .type(.sm)
       .foregroundStyle(Tokens.textMuted)
-    if let reason = item.closeReason { Text(reason).font(.dashboard(.sm)).foregroundStyle(Tokens.text) }
+    if let reason = item.closeReason { Text(reason).type(.sm).foregroundStyle(Tokens.text) }
     if let values = item.answer?.values, !values.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
         ForEach(values.keys.sorted(), id: \.self) { key in
           let label = item.request?.fields?.first { $0.id == key }?.label ?? key
           VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.dashboard(.xs, .medium)).foregroundStyle(Tokens.textMuted)
-            Text(values[key]!.texts.joined(separator: ", ")).font(.dashboard(.sm)).foregroundStyle(Tokens.text)
+            Text(label).type(.xs, .medium).foregroundStyle(Tokens.textMuted)
+            Text(values[key]!.texts.joined(separator: ", ")).type(.sm).foregroundStyle(Tokens.text)
           }
         }
         if let other = item.answer?.other {
-          Text(other).font(.dashboard(.sm)).foregroundStyle(Tokens.text)
+          Text(other).type(.sm).foregroundStyle(Tokens.text)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)

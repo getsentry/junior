@@ -32,9 +32,15 @@ acquire_lock() {
   until mkdir "$lock_dir" 2>/dev/null; do
     local owner
     owner="$(cat "$lock_dir/pid" 2>/dev/null || true)"
-    if [[ -n "$owner" ]] && ! kill -0 "$owner" 2>/dev/null; then
-      log "taking over stale lock from dead pid $owner"
-      rm -rf "$lock_dir"
+    # A dead owner, or no pid a minute after the lock appeared (the owner died
+    # between mkdir and writing it), means the lock is stale. Rename it first:
+    # only one waiter's rename succeeds, so two cannot both take over.
+    if { [[ -n "$owner" ]] && ! kill -0 "$owner" 2>/dev/null; } ||
+      { [[ -z "$owner" ]] && (($(date +%s) - $(stat -f %m "$lock_dir" 2>/dev/null || date +%s) > 60)); }; then
+      if mv "$lock_dir" "$lock_dir.stale.$$" 2>/dev/null; then
+        log "took over a stale lock from ${owner:-an unknown run}"
+        rm -rf "$lock_dir.stale.$$"
+      fi
       continue
     fi
     ((waited % 30 == 0)) && log "waiting for simulator lock (held by ${owner:-unknown})"
@@ -59,7 +65,8 @@ release() {
     rm -rf "$lock_dir"
   fi
 }
-trap release EXIT INT TERM
+trap release EXIT
+trap 'exit 130' INT TERM
 
 delete_leftovers() {
   xcrun simctl list devices -j |

@@ -84,19 +84,7 @@ public struct JuniorClient: Sendable {
   private func request<Body: Encodable & Sendable, Response: Decodable>(
     _ method: String, _ path: String, query: [URLQueryItem], body: Body?
   ) async throws -> Response {
-    // Callers escape path segments (`encodeURIComponent` style), so join
-    // strings instead of `appending(path:)`, which would escape them again.
-    var base = server.baseURL.absoluteString
-    if base.hasSuffix("/") { base.removeLast() }
-    guard var components = URLComponents(string: base + path) else {
-      throw JuniorAPIError.server(status: 0, message: "Invalid path \(path)")
-    }
-    if !query.isEmpty {
-      components.queryItems = (components.queryItems ?? []) + query
-    }
-    guard let url = components.url else {
-      throw JuniorAPIError.server(status: 0, message: "Invalid path \(path)")
-    }
+    let url = try requestURL(path, query: query)
     var request = URLRequest(url: url)
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -128,6 +116,32 @@ public struct JuniorClient: Sendable {
     } catch {
       throw JuniorAPIError.decoding(Self.describe(error))
     }
+  }
+
+  /// The URL for a path and query. Callers escape path segments
+  /// (`encodeURIComponent` style), so join strings instead of
+  /// `appending(path:)`, which would escape them again.
+  func requestURL(_ path: String, query: [URLQueryItem]) throws -> URL {
+    var base = server.baseURL.absoluteString
+    if base.hasSuffix("/") { base.removeLast() }
+    guard var components = URLComponents(string: base + path) else {
+      throw JuniorAPIError.server(status: 0, message: "Invalid path \(path)")
+    }
+    if !query.isEmpty {
+      // Encode `+` too: the server reads a bare `+` as a space.
+      let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&=#"))
+      components.percentEncodedQueryItems =
+        (components.percentEncodedQueryItems ?? [])
+        + query.map {
+          URLQueryItem(
+            name: $0.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? $0.name,
+            value: $0.value?.addingPercentEncoding(withAllowedCharacters: allowed))
+        }
+    }
+    guard let url = components.url else {
+      throw JuniorAPIError.server(status: 0, message: "Invalid path \(path)")
+    }
+    return url
   }
 
   static func error(status: Int, method: String, hasToken: Bool, data: Data) -> JuniorAPIError {

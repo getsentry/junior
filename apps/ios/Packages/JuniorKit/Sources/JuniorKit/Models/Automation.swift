@@ -40,12 +40,6 @@ public struct Automation: Codable, Hashable, Sendable, Identifiable {
     public var status: RunStatus
   }
 
-  public struct LastRun: Codable, Hashable, Sendable {
-    public var status: RunStatus?
-    public var error: String?
-    public var executedAt: Date?
-  }
-
   public var id: String
   public var title: String
   public var kind: Kind
@@ -64,7 +58,7 @@ public struct Automation: Codable, Hashable, Sendable, Identifiable {
   public var ownedByViewer: Bool?
   public var nextRunAt: Date?
   public var lastRunAt: Date?
-  public var lastRun: LastRun?
+  public var lastRunStatus: RunStatus?
   public var lastConversationId: String?
   public var recentRuns: [RecentRun]?
   public var totalRuns: Int?
@@ -85,18 +79,20 @@ public struct Automation: Codable, Hashable, Sendable, Identifiable {
 
   public var hasTriggerProblems: Bool { !(trigger?.problems ?? []).isEmpty }
 
-  /// What needs the viewer's attention, if anything, with the link label the
-  /// dashboard offers next to it.
-  public var problem: (message: String, failed: Bool, action: String)? {
-    guard status != .completed else { return nil }
-    if let problem = trigger?.problems?.first, kind == .event {
-      return (capitalizedFirst(problem), false, "Change trigger")
+  /// The one problem that needs the viewer, with the dashboard's message,
+  /// tone, and link label (`automationProblemSummary`).
+  public func problem(clock: DisplayClock) -> (message: String, failed: Bool, action: String)? {
+    let triggerProblem = kind == .event ? trigger?.problems?.first : nil
+    let action = triggerProblem != nil ? "Change trigger" : lastConversationId != nil ? "Open last run" : "Open runs"
+    if status == .blocked || (status == .paused && statusReason != nil) {
+      return (capitalizedFirst(statusReason ?? "\(status.rawValue) until fixed"), false, action)
     }
-    if status == .blocked { return (capitalizedFirst(statusReason ?? "Blocked"), false, "Open runs") }
-    if status == .paused, let reason = statusReason { return (capitalizedFirst(reason), false, "Open runs") }
-    if let last = lastRun, last.status == .failed || last.status == .blocked {
-      return (capitalizedFirst(last.error ?? (last.status == .failed ? "Last run failed" : "Blocked")),
-        last.status == .failed, "Open last run")
+    if let triggerProblem {
+      return (capitalizedFirst(triggerProblem), false, action)
+    }
+    if lastRunStatus == .failed || lastRunStatus == .blocked {
+      let when = lastRunAt.map { " \(clock.relative($0))" } ?? ""
+      return ("Last run \(lastRunStatus!.rawValue)\(when)", lastRunStatus == .failed, action)
     }
     return nil
   }
@@ -145,7 +141,9 @@ public struct AutomationExecutions: Codable, Sendable {
 
 /// Sections of the automations list, in order. Paused and Completed start
 /// collapsed.
-public func automationSections(_ automations: [Automation]) -> [(id: String, title: String, items: [Automation])] {
+public func automationSections(
+  _ automations: [Automation], clock: DisplayClock
+) -> [(id: String, title: String, items: [Automation])] {
   let sorted = automations.sorted { lhs, rhs in
     switch (lhs.lastRunAt, rhs.lastRunAt) {
     case (let l?, let r?) where l != r: return l > r
@@ -162,7 +160,7 @@ public func automationSections(_ automations: [Automation]) -> [(id: String, tit
   var paused: [Automation] = []
   var completed: [Automation] = []
   for automation in sorted {
-    if automation.problem != nil {
+    if automation.problem(clock: clock) != nil {
       attention.append(automation)
     } else if automation.status == .completed {
       completed.append(automation)

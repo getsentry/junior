@@ -12,20 +12,51 @@ final class InboxModel {
   var error: JuniorAPIError?
   var query = ""
 
-  func load(_ client: JuniorClient) async {
-    loading = items.isEmpty
-    defer { loading = false }
+  var nextCursor: String?
+  var loadingMore = false
+  private var startedLoads = 0
+  private var appliedLoad = 0
+
+  var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+  private func params(cursor: String?) -> [URLQueryItem] {
     var query = [URLQueryItem(name: "for", value: "viewer")]
     let trimmed = self.query.trimmingCharacters(in: .whitespaces)
     if !trimmed.isEmpty { query.append(URLQueryItem(name: "q", value: trimmed)) }
+    if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+    return query
+  }
+
+  /// Load the first page; out-of-order responses (an older search) are dropped.
+  func load(_ client: JuniorClient) async {
+    startedLoads += 1
+    let ticket = startedLoads
+    loading = items.isEmpty
+    defer { loading = false }
     do {
-      let page: ReviewItemPage = try await client.get("/api/review-items", query: query)
+      let page: ReviewItemPage = try await client.get("/api/review-items", query: params(cursor: nil))
+      guard ticket > appliedLoad else { return }
+      appliedLoad = ticket
       items = page.items
+      nextCursor = page.nextCursor
       error = nil
       await loadSourceTitles(client)
     } catch let error as JuniorAPIError {
       self.error = error
     } catch {}
+  }
+
+  /// The next page, from the "Load more" button (pages hold 50 items).
+  func loadMore(_ client: JuniorClient) async {
+    guard let cursor = nextCursor, !loadingMore else { return }
+    loadingMore = true
+    defer { loadingMore = false }
+    guard let page: ReviewItemPage = try? await client.get("/api/review-items", query: params(cursor: cursor))
+    else { return }
+    let known = Set(items.map(\.id))
+    items += page.items.filter { !known.contains($0.id) }
+    nextCursor = page.nextCursor
+    await loadSourceTitles(client)
   }
 
   /// Title of each source Conversation, read once (`?limit=1`).
@@ -72,7 +103,7 @@ struct InboxScreen: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
           Text("Inbox")
-            .font(.dashboard(.lg, .medium, family: .display))
+            .type(.lg, .medium, family: .display)
             .foregroundStyle(Tokens.text)
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -110,10 +141,16 @@ struct InboxScreen: View {
     } else if let error = model.error, model.items.isEmpty {
       EmptyBox(text: error.localizedDescription) { Task { await model.load(app.client) } }
     } else {
-      let groups = inboxGroups(model.items)
+      // A search lists every match: open items first, then closed ones.
+      let groups =
+        model.searching
+        ? [
+          (id: "results", title: "Results", items: model.items.filter(\.isOpen) + model.items.filter { !$0.isOpen })
+        ].filter { !$0.items.isEmpty }
+        : inboxGroups(model.items)
       if groups.isEmpty {
-        Text("Nothing needs you")
-          .font(.dashboard(.lg, .medium, family: .display))
+        Text(model.searching ? "No items match" : "Nothing needs you")
+          .type(.lg, .medium, family: .display)
           .foregroundStyle(Tokens.textMuted)
           .frame(maxWidth: .infinity)
           .padding(.vertical, 48)
@@ -132,6 +169,13 @@ struct InboxScreen: View {
           }
         }
       }
+      if model.nextCursor != nil {
+        Button(model.loadingMore ? "Loading…" : "Load more") { Task { await model.loadMore(app.client) } }
+          .buttonStyle(.dashboard(.ghost))
+          .disabled(model.loadingMore)
+          .frame(maxWidth: .infinity)
+          .padding(.vertical, 8)
+      }
     }
   }
 }
@@ -149,11 +193,11 @@ private struct InboxRow: View {
         dot.frame(width: 14).padding(.top, 6)
         VStack(alignment: .leading, spacing: 4) {
           Text(item.title)
-            .font(.dashboard(.sm, .medium))
+            .type(.sm, .medium)
             .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
             .lineLimit(1)
           Text(subtitle)
-            .font(.dashboard(.xs))
+            .type(.xs)
             .foregroundStyle(Tokens.textMuted)
             .lineLimit(1)
         }

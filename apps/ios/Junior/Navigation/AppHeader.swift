@@ -50,7 +50,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
 
         Text(title)
           .font(displayTitle ? .dashboard(.sm, .medium, family: .display) : .dashboard(.sm, .semibold))
-          .foregroundStyle(Tokens.textSolid)
+          .foregroundStyle(Tokens.text)
           .lineLimit(1)
           .frame(maxWidth: .infinity, alignment: titleAlignment)
           .accessibilityAddTraits(.isHeader)

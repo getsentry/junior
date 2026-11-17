@@ -33,6 +33,25 @@ public struct ConversationVisibility: OpenEnum {
   public static let `private` = Self(rawValue: "private")
 }
 
+/// A timestamp that keeps the server's exact text. Writes such as archive
+/// compare it to the millisecond, and a round trip through `Date` loses that.
+public struct Timestamp: Codable, Hashable, Sendable {
+  public let raw: String
+
+  public init(raw: String) { self.raw = raw }
+
+  public init(from decoder: Decoder) throws {
+    raw = try decoder.singleValueContainer().decode(String.self)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(raw)
+  }
+
+  public var date: Date? { Date.junior(raw) }
+}
+
 /// A person as the dashboard shows them (Actor or Participant).
 public struct ActorIdentity: Codable, Hashable, Sendable {
   public var email: String?
@@ -97,7 +116,7 @@ public struct ConversationSummary: Codable, Hashable, Sendable, Identifiable {
   public var isParticipant: Bool?
   public var status: ConversationStatus?
   public var startedAt: Date?
-  public var lastSeenAt: Date?
+  public var lastSeenAt: Timestamp?
   public var lastMessageAt: Date?
   public var lastProgressAt: Date?
   public var surface: String?
@@ -125,7 +144,7 @@ public struct ConversationSummary: Codable, Hashable, Sendable, Identifiable {
   }
 
   /// Time the list sorts and groups by.
-  public var activityAt: Date? { lastMessageAt ?? lastSeenAt }
+  public var activityAt: Date? { lastMessageAt ?? lastSeenAt?.date }
 
   public var isPrivate: Bool { visibility == .private }
 }

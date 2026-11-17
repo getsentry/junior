@@ -14,9 +14,10 @@ struct HomeScreen: View {
     VStack(spacing: 0) {
       AppHeader(title: app.agentName)
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
           SearchField(placeholder: "Search conversations…", text: $model.query)
             .focused($searchFocused)
+            .padding(.bottom, 12)
           content
         }
         .padding(.horizontal, 16)
@@ -70,11 +71,14 @@ struct HomeScreen: View {
                   onArchive: { archive(row) })
               }
             }
-            .padding(.bottom, 8)
           }
         } header: {
           SectionHeading(title: section.title, count: section.rows.count, collapsed: collapsed)
+            .padding(.bottom, collapsed.wrappedValue ? 0 : 2)
             .background(Tokens.bg)
+        } footer: {
+          // Sections sit 20pt apart (`gap-5`).
+          Color.clear.frame(height: 20)
         }
       }
       if model.nextCursor != nil {
@@ -88,14 +92,20 @@ struct HomeScreen: View {
     if let undo {
       HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Conversation archived").font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
-          Text(undo.title).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted).lineLimit(1)
+          Text("Conversation archived").type(.sm, .medium).foregroundStyle(Tokens.text)
+          Text(undo.title).type(.xs).foregroundStyle(Tokens.textMuted).lineLimit(1)
         }
         Spacer()
         Button("Undo") {
           let row = undo
           self.undo = nil
-          Task { try? await model.setArchived(row, archived: false, client: app.client) }
+          Task {
+            do {
+              try await model.setArchived(row, archived: false, client: app.client)
+            } catch {
+              archiveError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not restore."
+            }
+          }
         }
         .buttonStyle(.dashboard(.outline))
       }
@@ -120,15 +130,19 @@ struct HomeScreen: View {
     }
   }
 
+  /// Archive a row, or restore one that a search shows archived.
   private func archive(_ row: ConversationSummary) {
+    let archiving = row.archivedAt == nil
     Task {
       do {
-        withAnimation { undo = row }
-        try await model.setArchived(row, archived: true, client: app.client)
+        if archiving { withAnimation { undo = row } }
+        try await model.setArchived(row, archived: archiving, client: app.client)
       } catch {
         withAnimation {
           undo = nil
-          archiveError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not archive."
+          archiveError =
+            (error as? JuniorAPIError)?.localizedDescription
+            ?? (archiving ? "Could not archive." : "Could not restore.")
         }
       }
     }
@@ -151,10 +165,10 @@ struct ConversationCard: View {
         VStack(alignment: .leading, spacing: 0) {
           HStack(spacing: 12) {
             Text(row.title)
-              .font(.dashboard(.sm, .medium, family: .display))
+              .type(.sm, .medium, family: .display)
               .foregroundStyle(Tokens.text)
               .lineLimit(1)
-              .frame(height: 24)
+              .frame(minHeight: 24)
               .frame(maxWidth: .infinity, alignment: .leading)
             trailing
           }
@@ -223,13 +237,13 @@ struct ConversationCard: View {
     } else {
       HStack(spacing: 12) {
         if row.status == .failed {
-          Text("Failed").font(.dashboard(.xs)).foregroundStyle(Color.palette(.rose, 400))
+          Text("Failed").type(.xs).foregroundStyle(Color.palette(.rose, 400))
         } else if row.status == .stopped {
-          Text("Stopped").font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+          Text("Stopped").type(.xs).foregroundStyle(Tokens.textMuted)
         }
         if let date = row.activityAt {
           Text(app.clock.activityDay(date))
-            .font(.dashboard(.xs))
+            .type(.xs)
             .monospacedDigit()
             .foregroundStyle(Tokens.textMuted)
             .frame(minWidth: 56, alignment: .trailing)
@@ -240,7 +254,7 @@ struct ConversationCard: View {
       Icon(row.archivedAt == nil ? "archive" : "archive-restore", size: 15)
         .foregroundStyle(Tokens.textMuted)
         .padding(8)
-        .contentShape(Rectangle())
+        .hitArea()
     }
     .buttonStyle(.plain)
     .padding(-8)
@@ -251,9 +265,9 @@ struct ConversationCard: View {
     if let preview = row.activityPreview {
       Text(styledInline(plainBlocks(preview.text), step: .sm, color: Tokens.textSubtle, singleLine: true))
         .lineLimit(1)
-        .frame(height: 20)
+        .frame(minHeight: 20)
     } else if row.status == .active {
-      Text("Working…").font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted).frame(height: 20)
+      Text("Working…").type(.sm).foregroundStyle(Tokens.textMuted).frame(minHeight: 20)
     }
   }
 
@@ -273,7 +287,7 @@ struct ConversationCard: View {
           LinkedWorkChip(annotation: link, shortLabel: shortLabel(for: link))
         }
         if links.count > 1 {
-          Text("+\(links.count - 1)").font(.dashboard(.xxs)).monospacedDigit().foregroundStyle(Tokens.textMuted)
+          Text("+\(links.count - 1)").type(.xxs).monospacedDigit().foregroundStyle(Tokens.textMuted)
             .layoutPriority(1)
         }
       }
@@ -323,7 +337,7 @@ private struct LoadMoreRow: View {
   var body: some View {
     HStack(spacing: 8) {
       if failed {
-        Text("Could not load more.").font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted)
+        Text("Could not load more.").type(.sm).foregroundStyle(Tokens.textMuted)
         Button("Retry", action: retry).buttonStyle(.dashboard(.ghost))
       } else {
         ProgressView().controlSize(.small).tint(Tokens.textFaint)

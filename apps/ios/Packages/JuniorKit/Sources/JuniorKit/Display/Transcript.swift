@@ -19,6 +19,7 @@ public enum TranscriptRow: Identifiable, Sendable, Hashable {
   case activity(TranscriptActivity)
   case failure(TranscriptFailure)
   case thread(TranscriptThread)
+  case delivered(TranscriptDelivery)
   /// The agent responds but has shown no activity yet.
   case thinking
 
@@ -28,7 +29,20 @@ public enum TranscriptRow: Identifiable, Sendable, Hashable {
     case .activity(let activity): activity.id
     case .failure(let failure): "failure-\(failure.seq)"
     case .thread(let thread): "thread-\(thread.seq)"
+    case .delivered(let delivery): "delivered-\(delivery.seq)"
     case .thinking: "thinking"
+    }
+  }
+
+  /// The newest event sequence the row shows, for read positions.
+  public var seq: Int? {
+    switch self {
+    case .message(let message): message.seq
+    case .activity(let activity): activity.lastSeq
+    case .failure(let failure): failure.seq
+    case .thread(let thread): thread.seq
+    case .delivered(let delivery): delivery.seq
+    case .thinking: nil
     }
   }
 }
@@ -39,6 +53,8 @@ public struct TranscriptMessage: Sendable, Hashable, Identifiable {
     case person(ActorIdentity?)
     case parentAgent
     case system
+    /// An Event or Automation trigger that started a Turn.
+    case event(String)
   }
 
   public var id: String
@@ -51,11 +67,14 @@ public struct TranscriptMessage: Sendable, Hashable, Identifiable {
   public var attachments: [String]
   /// "Recalled N memories" chip count on the reply that ends a Turn.
   public var recalledMemories: Int
+  /// The tool Junior posted this reply to, such as `github`.
+  public var postedTo: String? = nil
 }
 
 public struct TranscriptActivity: Sendable, Hashable, Identifiable {
   public var id: String
   public var entries: [ActivityEntry]
+  public var lastSeq: Int
   public var startedAt: Date?
   public var endedAt: Date?
   public var isLive: Bool
@@ -63,7 +82,7 @@ public struct TranscriptActivity: Sendable, Hashable, Identifiable {
   /// "2 events · 5.0s".
   public var summary: String {
     let count = entries.count == 1 ? "1 event" : "\(entries.count) events"
-    guard let startedAt, let endedAt, endedAt >= startedAt else { return count }
+    guard let startedAt, let endedAt, endedAt > startedAt else { return count }
     return "\(count) · \(formatEventDuration(endedAt.timeIntervalSince(startedAt) * 1000))"
   }
 
@@ -87,12 +106,17 @@ public struct ActivityEntry: Sendable, Hashable, Identifiable {
   public enum Kind: Sendable, Hashable {
     case reasoning(String)
     case tool(name: String, preview: String, state: ToolState)
+    /// A message that informed the Turn without addressing the agent, or a
+    /// quiet reply that was stored but not delivered.
+    case note(String)
   }
 
   public var id: String
   public var kind: Kind
   public var startedAt: Date?
   public var endedAt: Date?
+  /// The newest event that changed this entry.
+  public var seq: Int = 0
 }
 
 public struct TranscriptFailure: Sendable, Hashable {
@@ -101,18 +125,27 @@ public struct TranscriptFailure: Sendable, Hashable {
   public var detail: String?
 }
 
+/// Files Junior delivered to the Location.
+public struct TranscriptDelivery: Sendable, Hashable {
+  public var seq: Int
+  public var filenames: [String]
+}
+
 public struct TranscriptThread: Sendable, Hashable {
   public var seq: Int
   public var conversationId: String?
   public var title: String
   public var status: String?
   public var startedAt: Date?
+  /// A Task only its parent messages; people can still open it.
+  public var isTask: Bool = false
 }
 
 /// Build transcript rows from stored events, in `seq` order.
 public func buildTranscript(
   events: [TranscriptEvent], status: ConversationStatus?, fallbackAuthor: ActorIdentity?,
-  authors: [String: ActorIdentity] = [:], argumentOrder: [String: [String]] = [:]
+  authors: [String: ActorIdentity] = [:], argumentOrder: [String: [String]] = [:],
+  agentName: String = "Junior", hasEarlierHistory: Bool = false
 ) -> TranscriptModel {
   let sorted = events.sorted { $0.seq < $1.seq }
   let timeBySeq = Dictionary(sorted.map { ($0.seq, $0.createdAt) }, uniquingKeysWith: { a, _ in a })
@@ -122,6 +155,7 @@ public func buildTranscript(
     case activity(ActivityEntry, seq: Int)
     case failure(TranscriptFailure)
     case thread(TranscriptThread)
+    case delivered(TranscriptDelivery)
   }
 
   var entries: [(seq: Int, entry: Entry)] = []
@@ -130,6 +164,8 @@ public func buildTranscript(
   var recalledByMessage: [String: Int] = [:]
   var lastUserMessageId: String?
   var lastLifecycle: String?
+  var threadIndex: [String: Int] = [:]
+  var spawnToolIds: Set<String> = []
 
   func toolEntry(_ call: ToolCall, seq: Int, at time: Date?) -> ActivityEntry {
     let state: ActivityEntry.ToolState =
@@ -152,10 +188,21 @@ public func buildTranscript(
     let time = event.createdAt
     switch event.data {
     case .message(let message):
-      if message.role == "user", message.explicitMention == false, message.eventType == nil { continue }
+      // Context for a Turn that did not address the agent, and quiet replies,
+      // fold into activity like the web's collapsible rows.
+      if (message.role == "user" && message.explicitMention == false && message.eventType == nil)
+        || (message.role == "assistant" && message.quiet == true)
+      {
+        let note = ActivityEntry(
+          id: "note-\(message.messageId)", kind: .note(message.text ?? ""), startedAt: time, endedAt: time)
+        entries.append((event.seq, .activity(note, seq: event.seq)))
+        continue
+      }
       let speaker: TranscriptMessage.Speaker
       if message.agentInvocationId != nil {
         speaker = .parentAgent
+      } else if let eventType = message.eventType {
+        speaker = .event(eventType)
       } else if message.role == "assistant" {
         speaker = .agent
       } else if message.role == "system" {
@@ -175,6 +222,17 @@ public func buildTranscript(
               fromSlack: message.source == "slack",
               attachments: message.attachments?.compactMap(\.filename) ?? [], recalledMemories: 0))
         ))
+    case .replyPosted(let text, let plugin):
+      entries.append(
+        (
+          event.seq,
+          .message(
+            TranscriptMessage(
+              id: "posted-\(event.seq)", seq: event.seq, speaker: .agent, createdAt: time, text: text,
+              redacted: false, fromSlack: false, attachments: [], recalledMemories: 0, postedTo: plugin))
+        ))
+    case .attachmentsDelivered(let filenames):
+      entries.append((event.seq, .delivered(TranscriptDelivery(seq: event.seq, filenames: filenames))))
     case .assistantMessage(let parts):
       for (index, part) in parts.enumerated() where part.type == "reasoning" {
         let reasoning = ActivityEntry(
@@ -196,7 +254,13 @@ public func buildTranscript(
         if let index = toolIndex[call.toolCallId], case .activity(let existing, let seq) = entries[index].entry {
           var updated = entry
           updated.startedAt = existing.startedAt ?? entry.startedAt
-          entries[index] = (entries[index].seq, .activity(updated, seq: seq))
+          // Only the first event of a call carries its input; keep that preview.
+          if call.input == nil, case .tool(let name, let preview, _) = existing.kind,
+            case .tool(_, _, let state) = entry.kind
+          {
+            updated.kind = .tool(name: name, preview: preview, state: state)
+          }
+          entries[index] = (entries[index].seq, .activity(updated, seq: max(seq, event.seq)))
         } else {
           toolIndex[call.toolCallId] = entries.count
           entries.append((call.startedSeq ?? event.seq, .activity(entry, seq: event.seq)))
@@ -206,28 +270,42 @@ public func buildTranscript(
       lastLifecycle = state
       if state == "started", let turnId, let lastUserMessageId { turnMessage[turnId] = lastUserMessageId }
       if state == "failed" {
+        let copy = transcriptFailureCopy(code: code, reason: reason, agentName: agentName)
         entries.append(
-          (event.seq, .failure(TranscriptFailure(seq: event.seq, title: failureTitle(code), detail: reason))))
+          (event.seq, .failure(TranscriptFailure(seq: event.seq, title: copy.title, detail: copy.description))))
       }
     case .turnContext(let turnId, let plugin, let kind, let count):
       if plugin == "memory", kind == "recall", count > 0, let turnId, let messageId = turnMessage[turnId] {
         recalledByMessage[messageId, default: 0] += count
       }
     case .subagent(let subagent):
-      entries.append(
-        (
-          event.seq,
-          .thread(
-            TranscriptThread(
-              seq: event.seq, conversationId: subagent.childConversationId,
-              title: subagent.title ?? subagent.agentName ?? "Thread", status: subagent.status,
-              startedAt: time))
-        ))
+      if let tool = subagent.parentToolCallId { spawnToolIds.insert(tool) }
+      // One card per child, at its start, with the latest status.
+      let key = subagent.childConversationId ?? "seq-\(event.seq)"
+      let thread = TranscriptThread(
+        seq: subagent.startedSeq ?? event.seq, conversationId: subagent.childConversationId,
+        title: subagent.title ?? subagent.agentName ?? "Thread", status: subagent.status, startedAt: time,
+        isTask: subagent.childKind == "task")
+      if let index = threadIndex[key], case .thread(var existing) = entries[index].entry {
+        existing.status = subagent.status ?? existing.status
+        existing.title = subagent.title ?? existing.title
+        entries[index] = (entries[index].seq, .thread(existing))
+      } else {
+        threadIndex[key] = entries.count
+        entries.append((subagent.startedSeq ?? event.seq, .thread(thread)))
+      }
     case .other:
       continue
     }
   }
 
+  // The card stands for the call that started the child.
+  entries.removeAll { item in
+    if case .activity(let entry, _) = item.entry, entry.id.hasPrefix("tool-") {
+      return spawnToolIds.contains(String(entry.id.dropFirst(5)))
+    }
+    return false
+  }
   entries.sort { $0.seq < $1.seq }
 
   // Group consecutive activity into rows.
@@ -239,15 +317,16 @@ public func buildTranscript(
     rows.append(
       .activity(
         TranscriptActivity(
-          id: "activity-\(pendingSeq)", entries: pending,
+          id: "activity-\(pendingSeq)", entries: pending, lastSeq: pending.map(\.seq).max() ?? pendingSeq,
           startedAt: pending.compactMap(\.startedAt).min(),
           endedAt: pending.compactMap { $0.endedAt ?? $0.startedAt }.max(), isLive: false)))
     pending = []
   }
   for (seq, entry) in entries {
     switch entry {
-    case .activity(let activity, _):
+    case .activity(var activity, let eventSeq):
       if pending.isEmpty { pendingSeq = seq }
+      activity.seq = max(eventSeq, seq)
       pending.append(activity)
     case .message(let message):
       flush()
@@ -258,6 +337,9 @@ public func buildTranscript(
     case .thread(let thread):
       flush()
       rows.append(.thread(thread))
+    case .delivered(let delivery):
+      flush()
+      rows.append(.delivered(delivery))
     }
   }
   flush()
@@ -284,7 +366,9 @@ public func buildTranscript(
   }
   attachChip()
 
-  let responding = status == .active && lastLifecycle == "started"
+  // A Turn that started before the loaded window is still live while the
+  // Conversation is active.
+  let responding = status == .active && (lastLifecycle == "started" || (lastLifecycle == nil && hasEarlierHistory))
   if responding {
     let lastMessage = rows.lastIndex { if case .message = $0 { return true } else { return false } }
     if let liveIndex = rows.lastIndex(where: { if case .activity = $0 { return true } else { return false } }),
@@ -343,7 +427,7 @@ public func liveToolVerb(_ name: String) -> (verb: String, symbol: String) {
 
 /// Event-group duration: "999ms", "5.0s", "15s", "5m 15s", "2h 5m".
 public func formatEventDuration(_ milliseconds: Double) -> String {
-  if milliseconds < 1000 { return "\(Int(milliseconds.rounded()))ms" }
+  if milliseconds < 1000 { return "\(Int(milliseconds))ms" }
   let seconds = milliseconds / 1000
   if seconds < 10 { return String(format: "%.1fs", seconds) }
   if seconds < 60 { return "\(Int(seconds.rounded()))s" }
@@ -374,13 +458,4 @@ private func twoLargestUnits(_ seconds: Int) -> String {
     }
   }
   return parts.joined(separator: " ")
-}
-
-private func failureTitle(_ code: String?) -> String {
-  switch code {
-  case "rate_limited", "model_rate_limited": "Model rate limited"
-  case "context_overflow": "Conversation too long"
-  case "timeout": "Timed out"
-  default: "Internal error"
-  }
 }

@@ -90,3 +90,50 @@ import Testing
     #expect(tokens.last == CodeToken(text: "-- note", kind: .comment))
   }
 }
+
+@Suite struct MarkdownEdgeTests {
+  @Test func keepsHashInHeading() {
+    #expect(parseMarkdown("## Using C#") == [.heading(level: 2, text: "Using C#")])
+    #expect(parseMarkdown("## Done ##") == [.heading(level: 2, text: "Done")])
+  }
+
+  @Test func readsSetextHeadings() {
+    #expect(parseMarkdown("Title\n===") == [.heading(level: 1, text: "Title")])
+    #expect(parseMarkdown("Sub\n---") == [.heading(level: 2, text: "Sub")])
+  }
+
+  @Test func needsMatchingTableColumns() {
+    #expect(parseMarkdown("a | b\n---") == [.heading(level: 2, text: "a | b")])
+  }
+
+  @Test func onlyOneInterruptsParagraph() {
+    #expect(parseMarkdown("Shipped in\n2024. It worked.") == [.paragraph("Shipped in\n2024. It worked.")])
+  }
+
+  @Test func readsBulletDots() {
+    guard case .list(false, _, let items) = parseMarkdown("• one\n• two").first else {
+      Issue.record("expected a list")
+      return
+    }
+    #expect(items.count == 2)
+  }
+
+  @Test func boldLeadBecomesHeading() {
+    #expect(parseMarkdown("**Summary**\nAll good.") == [.heading(level: 3, text: "Summary"), .paragraph("All good.")])
+  }
+
+  @Test func readsSlackLinks() {
+    let text = parseInlineMarkdown("see <https://x.dev/a|the PR> and <https://y.dev>")
+    #expect(String(text.characters) == "see the PR and https://y.dev")
+    #expect(text.runs.contains { $0.link?.absoluteString == "https://x.dev/a" })
+  }
+}
+
+@Suite struct ClientTests {
+  @Test func encodesPlusAndKeepsEscapedPaths() throws {
+    let client = JuniorClient(server: JuniorServer(baseURL: URL(string: "http://h/")!))
+    let url = try client.requestURL(
+      "/api/conversations/slack%3AC1%3A1.2", query: [URLQueryItem(name: "q", value: "C++ a&b")])
+    #expect(url.absoluteString == "http://h/api/conversations/slack%3AC1%3A1.2?q=C%2B%2B%20a%26b")
+  }
+}

@@ -5,6 +5,7 @@ import Foundation
 /// and `link` attributes; the app maps them to dashboard fonts and colors.
 /// Newlines stay as hard breaks, as `remark-breaks` renders them.
 public func parseInlineMarkdown(_ source: String) -> AttributedString {
+  let source = normalizeSlackLinks(source)
   let options = AttributedString.MarkdownParsingOptions(
     allowsExtendedAttributes: false,
     interpretedSyntax: .inlineOnlyPreservingWhitespace,
@@ -36,4 +37,16 @@ public func plainText(fromMarkdown source: String) -> String {
   }
   walk(parseMarkdown(source))
   return parts.joined(separator: "\n")
+}
+
+/// Turn Slack links (`<url|label>`, `<url>`) into Markdown links, as the
+/// dashboard renders text that came from Slack.
+func normalizeSlackLinks(_ text: String) -> String {
+  guard text.contains("<") else { return text }
+  var output = text
+  let labeled = /<((?:https?|mailto):[^|>\s]+)\|([^>]+)>/
+  output = output.replacing(labeled) { match in "[\(match.2)](\(match.1))" }
+  let bare = /<((?:https?|mailto):[^>\s]+)>/
+  output = output.replacing(bare) { match in String(match.1) }
+  return output
 }

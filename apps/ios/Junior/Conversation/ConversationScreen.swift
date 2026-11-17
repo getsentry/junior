@@ -11,6 +11,7 @@ struct ConversationScreen: View {
   @State private var newTitle = ""
   @State private var shareURL: URL?
   @State private var forkFrom: String?
+  @State private var atBottom = true
 
   init(conversationId: String) {
     _model = State(initialValue: ConversationModel(conversationId: conversationId))
@@ -20,18 +21,17 @@ struct ConversationScreen: View {
     VStack(spacing: 0) {
       header
       transcript
-      VStack(spacing: 0) {
-        QueuedStack(messages: model.queued)
-        ConversationComposer(model: model)
-      }
+      ConversationComposer(model: model)
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
-    .task(id: app.conversationVersion) { await model.load(app.client) }
-    .task(id: model.isLive) {
-      // Poll every 2s while the agent works or messages wait.
-      while model.isLive, !Task.isCancelled {
+    .task(id: app.conversationVersion) { await model.load(app.client, openAtUnread: !app.openAtLatest) }
+    .task(id: model.isLive && app.isActive) {
+      // Poll every 2s while the agent works or messages wait, and only while
+      // the app is in front.
+      while model.isLive, app.isActive, !Task.isCancelled {
         try? await Task.sleep(for: .seconds(2))
+        guard !Task.isCancelled else { return }
         await model.load(app.client)
       }
     }
@@ -86,8 +86,9 @@ struct ConversationScreen: View {
     Menu {
       Button("Conversation details", systemImage: "info.circle") { showDetails = true }
       Button("Share", systemImage: "square.and.arrow.up") {
-        shareURL = URL(
-          string: "/conversations/\(model.conversationId.pathEscaped)", relativeTo: app.server.baseURL)?
+        shareURL =
+          URL(
+            string: "/conversations/\(model.conversationId.pathEscaped)", relativeTo: app.server.baseURL)?
           .absoluteURL
       }
       Button("Copy as Markdown", systemImage: "doc.on.doc") {
@@ -113,26 +114,35 @@ struct ConversationScreen: View {
               app.didWrite()
             }
           }
-          .disabled(detail.isParticipant == false)
+          .disabled(detail.isParticipant != true || detail.parentConversationId != nil)
         }
-        Button("Rename", systemImage: "pencil") {
-          newTitle = detail.title
-          renaming = true
-        }
-        let subscribed = detail.subscribed ?? true
-        Button(subscribed ? "Unsubscribe" : "Subscribe", systemImage: subscribed ? "bell.slash" : "bell") {
-          struct Body: Encodable { var subscribed: Bool }
-          Task { await model.patch("subscription", Body(subscribed: !subscribed), client: app.client) }
-        }
-        let archived = detail.archivedAt != nil
-        Button(archived ? "Restore" : "Archive", systemImage: archived ? "arrow.uturn.backward" : "archivebox") {
-          struct Body: Encodable {
-            var archived: Bool
-            var applyToChildren = true
+        if detail.isParticipant == true {
+          Button("Rename", systemImage: "pencil") {
+            newTitle = detail.title
+            renaming = true
           }
-          Task {
-            await model.patch("archive", Body(archived: !archived), client: app.client)
-            app.didWrite()
+        }
+        // Participants only; the field is absent for anyone else.
+        if let subscribed = detail.subscribed {
+          Button(subscribed ? "Unsubscribe" : "Subscribe", systemImage: subscribed ? "bell.slash" : "bell") {
+            struct Body: Encodable { var subscribed: Bool }
+            Task { await model.patch("subscription", Body(subscribed: !subscribed), client: app.client) }
+          }
+        }
+        if detail.isParticipant == true {
+          let archived = detail.archivedAt != nil
+          Button(archived ? "Restore" : "Archive", systemImage: archived ? "arrow.uturn.backward" : "archivebox") {
+            struct Body: Encodable {
+              var archived: Bool
+              /// The exact `lastSeenAt` the viewer saw; newer activity wins.
+              var lastSeenAt: String?
+              var applyToChildren = true
+            }
+            Task {
+              await model.patch(
+                "archive", Body(archived: !archived, lastSeenAt: detail.lastSeenAt?.raw), client: app.client)
+              app.didWrite()
+            }
           }
         }
       }
@@ -160,27 +170,59 @@ struct ConversationScreen: View {
     } else {
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 4) {
+          // A plain stack: a lazy one estimates row heights and opens past
+          // the end of a transcript with tall rows.
+          VStack(alignment: .leading, spacing: 4) {
             if model.previousCursor != nil {
               EarlierButton(loading: model.loadingEarlier) { Task { await model.loadEarlier(app.client) } }
             }
             ForEach(model.transcript.rows) { row in
-              rowView(row).id(row.id)
+              if row.id == model.firstUnreadRowId {
+                NewDivider().id("new")
+              }
+              rowView(row)
+                .id(row.id)
+                .onScrollVisibilityChange(threshold: 0.5) { visible in
+                  if visible, let seq = row.seq { model.noteSeen(seq, client: app.client) }
+                }
             }
             if let actionError = model.actionError {
               InlineError(text: actionError).padding(.leading, 32)
             }
+            if model.refreshFailed {
+              Text("Could not refresh. Retrying…").type(.xs).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
+            }
             Color.clear.frame(height: 8).id("bottom")
+              .onScrollVisibilityChange { atBottom = $0 }
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
         .scrollDismissesKeyboard(.interactively)
-        .onChange(of: model.transcript.rows.last?.id) {
-          withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+        .onAppear { scrollToStart(proxy) }
+        .onChange(of: model.transcript.rows.last?.id) { old, _ in
+          if old == nil {
+            scrollToStart(proxy)
+          } else if atBottom {
+            // Follow new rows only for a reader at the end, not one reading back.
+            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+          }
         }
+      }
+    }
+  }
+
+  /// Open at the first unread row ("Where I left off") or at the latest.
+  private func scrollToStart(_ proxy: ScrollViewProxy) {
+    guard !model.transcript.rows.isEmpty else { return }
+    Task { @MainActor in
+      // Let the rows lay out first.
+      try? await Task.sleep(for: .milliseconds(50))
+      if !app.openAtLatest, model.firstUnreadRowId != nil {
+        proxy.scrollTo("new", anchor: .top)
+      } else {
+        proxy.scrollTo("bottom", anchor: .bottom)
       }
     }
   }
@@ -194,6 +236,7 @@ struct ConversationScreen: View {
     case .activity(let activity): ActivityRow(activity: activity)
     case .failure(let failure): FailureRow(failure: failure)
     case .thread(let thread): ThreadCard(thread: thread)
+    case .delivered(let delivery): DeliveredRow(delivery: delivery)
     case .thinking: ThinkingRow()
     }
   }
@@ -230,16 +273,19 @@ private struct ContextTags: View {
             link(annotation.url) {
               HStack(spacing: 8) {
                 PathIcon.octicon(presentation.icon, size: 16).foregroundStyle(presentation.color)
-                Text(annotation.label).font(.dashboard(.xs)).foregroundStyle(Tokens.text)
+                Text(annotation.label).type(.xs).foregroundStyle(Tokens.text)
               }
-              .frame(height: 24)
+              .frame(minHeight: 24)
             }
           }
         }
         .padding(.leading, 60)
         .padding(.trailing, 12)
       }
-      .padding(.bottom, 8)
+      // The web pulls the tags up under the title (`-mt-1.5 pb-0.5` in a
+      // single `py-2` header).
+      .padding(.top, -14)
+      .padding(.bottom, 10)
     }
   }
 
@@ -270,7 +316,7 @@ private struct EarlierButton: View {
     HStack(spacing: 12) {
       Rectangle().fill(Tokens.border).frame(height: 1)
       Button(loading ? "Loading earlier messages…" : "Show earlier messages", action: action)
-        .font(.dashboard(.xs, .medium))
+        .type(.xs, .medium)
         .foregroundStyle(Tokens.textMuted)
         .disabled(loading)
         .fixedSize()
@@ -294,15 +340,15 @@ private struct QueuedStack: View {
             withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
           } label: {
             HStack(spacing: 6) {
-              Icon("chevron-right", size: 12)
+              Icon("chevron-right", size: 14)
                 .rotationEffect(.degrees(expanded ? 90 : 0))
               Text(expanded ? "Show fewer queued messages" : "\(messages.count) queued messages")
             }
-            .font(.dashboard(.xs, .medium))
+            .type(.xs, .medium)
             .foregroundStyle(Color.palette(.amber, 100).opacity(0.8))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
@@ -311,8 +357,9 @@ private struct QueuedStack: View {
           ForEach(messages) { message in
             HStack(spacing: 8) {
               Avatar(kind: .person(message.actorIdentity))
-              Text(message.text ?? "")
-                .font(.dashboard(.sm))
+              Text(message.redacted == true ? "Hidden message" : (message.text ?? ""))
+                .type(.sm)
+                .italic(message.redacted == true)
                 .foregroundStyle(Tokens.textSubtle)
                 .lineLimit(1)
               Spacer(minLength: 0)
@@ -355,7 +402,12 @@ private struct ConversationComposer: View {
   }
 
   var body: some View {
-    ComposerDock {
+    ComposerDock(hasAbove: !model.queued.isEmpty || model.detail?.mailbox?.authorization != nil) {
+      if let authorization = model.detail?.mailbox?.authorization {
+        AuthorizationPrompt(authorization: authorization)
+      }
+      QueuedStack(messages: model.queued)
+    } content: {
       ComposerSurface(focused: focused) {
         VStack(alignment: .leading, spacing: 0) {
           UploadChips(files: $files)
@@ -380,6 +432,7 @@ private struct ConversationComposer: View {
                   .frame(width: 36, height: 36)
                   .background(Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
                   .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
+                  .hitArea()
                 }
                 .buttonStyle(.plain)
                 .disabled(model.stopping)
@@ -397,14 +450,16 @@ private struct ConversationComposer: View {
   private func send() {
     let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let picked = files
+    // Block a second tap before the task starts.
+    model.sending = true
     Task {
-      let uploads = (try? await uploadFiles(picked, client: app.client)) ?? []
-      if await model.send(message, uploads: uploads, client: app.client) {
+      if await model.send(message, files: picked, client: app.client) {
         text = ""
         files = []
       }
     }
   }
+
 }
 
 private struct TranscriptSkeleton: View {
@@ -438,13 +493,13 @@ struct ShareSheet: UIViewControllerRepresentable {
   func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
-private struct ForkTarget: Identifiable {
+struct ForkTarget: Identifiable {
   let id: String
 }
 
 /// "Fork Conversation" (`ForkConversationButton.tsx`): start a new
 /// Conversation from one reply with a first message.
-private struct ForkSheet: View {
+struct ForkSheet: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
   let conversationId: String
@@ -457,8 +512,8 @@ private struct ForkSheet: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Fork Conversation").font(.dashboard(.lg, .semibold)).foregroundStyle(Tokens.text)
-      Text("Message").font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text)
+      Text("Fork Conversation").type(.lg, .semibold).foregroundStyle(Tokens.text)
+      Text("Message").type(.sm, .medium).foregroundStyle(Tokens.text)
       ComposerField(text: $message, placeholder: "Message \(app.agentName)…", focused: $focused)
         .background(Tokens.control, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Tokens.borderEmphasis))
@@ -502,5 +557,44 @@ private struct ForkSheet: View {
         self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Could not fork. Try again."
       }
     }
+  }
+}
+
+/// The "New" line before the first row that was unread when the
+/// Conversation opened (`TranscriptRows.tsx`).
+private struct NewDivider: View {
+  var body: some View {
+    HStack(spacing: 12) {
+      Rectangle().fill(Tokens.accent.opacity(0.5)).frame(height: 1)
+      Text("New").type(.xs, .semibold).foregroundStyle(Tokens.accentText).fixedSize()
+      Rectangle().fill(Tokens.accent.opacity(0.5)).frame(height: 1)
+    }
+    .padding(.vertical, 4)
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// A parked Turn waits for the viewer to connect an account.
+private struct AuthorizationPrompt: View {
+  let authorization: ConversationDetail.Authorization
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Icon("lock-keyhole", size: 14).foregroundStyle(Tokens.accentText)
+      Text("Connect to continue this conversation.")
+        .type(.xs)
+        .foregroundStyle(Tokens.text)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      if let url = URL(string: authorization.authorizationUrl) {
+        Link(destination: url) {
+          Text(authorization.label)
+        }
+        .buttonStyle(.dashboard(.outline))
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(Tokens.accent.opacity(0.08), in: UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8))
+    .padding(.horizontal, 16)
   }
 }

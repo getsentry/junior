@@ -108,8 +108,9 @@ private struct OrderedJSONReader {
       return string().map { .scalar($0) }
     default:
       // Numbers, booleans, and null: skip to the next delimiter.
-      while index < bytes.count, ![UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]"), 32, 9, 10, 13]
-        .contains(bytes[index])
+      while index < bytes.count,
+        ![UInt8(ascii: ","), UInt8(ascii: "}"), UInt8(ascii: "]"), 32, 9, 10, 13]
+          .contains(bytes[index])
       {
         index += 1
       }

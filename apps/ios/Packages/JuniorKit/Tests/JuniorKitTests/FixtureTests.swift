@@ -66,6 +66,7 @@ let pacific = TimeZone(identifier: "America/Los_Angeles")!
       case .activity(let a): a.isLive ? "live" : "activity"
       case .failure: "failure"
       case .thread: "thread"
+      case .delivered: "delivered"
       case .thinking: "thinking"
       }
     }
@@ -92,7 +93,7 @@ let pacific = TimeZone(identifier: "America/Los_Angeles")!
 
   @Test func sectionsAutomations() throws {
     let list = try fixture("automations", as: AutomationList.self)
-    let sections = automationSections(list.automations)
+    let sections = automationSections(list.automations, clock: DisplayClock(now: mockNow, timeZone: pacific))
     #expect(sections.map(\.title) == ["Needs attention", "Active"])
     #expect(sections[0].items.first?.title == "Incident change alerts")
     #expect(sections[1].items.map(\.title) == ["Weekly project summary", "Closed issue summary"])
@@ -124,5 +125,60 @@ let pacific = TimeZone(identifier: "America/Los_Angeles")!
       return
     }
     #expect(preview == #"github_getPullRequest, repo: "getsentry/payments", number: 42"#)
+  }
+}
+
+@Suite struct TranscriptRegressionTests {
+  private func events(_ json: String) throws -> [TranscriptEvent] {
+    try JSONDecoder.junior.decode([TranscriptEvent].self, from: Data(json.utf8))
+  }
+
+  /// Only the first event of a call carries its input (server `events.ts`).
+  @Test func keepsToolPreviewAfterUpdate() throws {
+    let model = buildTranscript(
+      events: try events(
+        """
+        [{"seq":1,"createdAt":"2026-08-07T11:00:00.000Z","data":{"type":"tool_calls","calls":[{"toolCallId":"t1","name":"bash","status":"running","input":{"command":"ls -la"}}]}},
+         {"seq":2,"createdAt":"2026-08-07T11:00:03.000Z","data":{"type":"tool_calls","calls":[{"toolCallId":"t1","name":"bash","status":"completed"}]}}]
+        """), status: .completed, fallbackAuthor: nil)
+    guard case .activity(let activity) = model.rows.first,
+      case .tool(_, let preview, let state) = activity.entries.first?.kind
+    else {
+      Issue.record("expected one tool row")
+      return
+    }
+    #expect(preview == "ls -la")
+    #expect(state == .completed)
+    #expect(activity.summary == "1 event · 3.0s")
+  }
+
+  /// A child's start and end events make one card, and its spawn call hides.
+  @Test func mergesSubagentEvents() throws {
+    let model = buildTranscript(
+      events: try events(
+        """
+        [{"seq":1,"createdAt":"2026-08-07T11:00:00.000Z","data":{"type":"tool_calls","calls":[{"toolCallId":"spawn","name":"spawnAgent","status":"running"}]}},
+         {"seq":2,"createdAt":"2026-08-07T11:00:01.000Z","data":{"type":"subagent","childConversationId":"c1","childKind":"thread","status":"running","title":"Check","startedSeq":2,"parentToolCallId":"spawn"}},
+         {"seq":5,"createdAt":"2026-08-07T11:01:00.000Z","data":{"type":"subagent","childConversationId":"c1","childKind":"thread","status":"completed","title":"Check","startedSeq":2,"parentToolCallId":"spawn"}}]
+        """), status: .completed, fallbackAuthor: nil)
+    #expect(model.rows.count == 1)
+    guard case .thread(let thread) = model.rows.first else {
+      Issue.record("expected one thread card")
+      return
+    }
+    #expect(thread.status == "completed")
+  }
+
+  @Test func namesFailuresLikeTheWeb() throws {
+    let model = buildTranscript(
+      events: try events(
+        """
+        [{"seq":1,"createdAt":"2026-08-07T11:00:00.000Z","data":{"type":"turn_lifecycle","turnId":"t","state":"failed","failureCode":"model_execution_failed","failureReason":"rate_limit"}}]
+        """), status: .failed, fallbackAuthor: nil)
+    guard case .failure(let failure) = model.rows.first else {
+      Issue.record("expected a failure row")
+      return
+    }
+    #expect(failure.title == "Model rate limited")
   }
 }

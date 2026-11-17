@@ -29,8 +29,15 @@ final class HomeModel {
     return conversationSections(visible, waiting: waiting, clock: clock)
   }
 
+  /// A load started for an older query or poll can finish last; apply only
+  /// responses newer than the last applied one.
+  private var startedLoads = 0
+  private var appliedLoad = 0
+
   /// Load the first page (and refresh the waiting map) for the current query.
   func load(_ client: JuniorClient) async {
+    startedLoads += 1
+    let ticket = startedLoads
     loading = rows.isEmpty
     defer { loading = false }
     let trimmed = String(query.trimmingCharacters(in: .whitespaces).prefix(200))
@@ -39,9 +46,12 @@ final class HomeModel {
       async let feed: ConversationFeed = client.get("/api/conversations", query: query)
       async let waiting: WaitingConversations? = try? client.get("/api/review-items/waiting-conversations")
       let page = try await feed
+      let waitingPage = await waiting
+      guard ticket > appliedLoad else { return }
+      appliedLoad = ticket
       rows = page.conversations
       nextCursor = page.nextCursor
-      if let waiting = await waiting {
+      if let waiting = waitingPage {
         self.waiting = Dictionary(
           waiting.conversations.map { ($0.conversationId, $0.waitingSince) }, uniquingKeysWith: { a, _ in a })
       }
@@ -70,21 +80,28 @@ final class HomeModel {
     }
   }
 
-  /// Archive or restore one row, optimistically.
+  /// Archive or restore one row, optimistically. On failure the row goes
+  /// back to how it was, found again by id since a load may have replaced
+  /// the list meanwhile.
   func setArchived(_ row: ConversationSummary, archived: Bool, client: JuniorClient) async throws {
-    let index = rows.firstIndex { $0.conversationId == row.conversationId }
-    if let index { rows[index].archivedAt = archived ? Date() : nil }
+    func update(_ archivedAt: Date?) {
+      if let index = rows.firstIndex(where: { $0.conversationId == row.conversationId }) {
+        rows[index].archivedAt = archivedAt
+      }
+    }
+    update(archived ? Date() : nil)
     struct Body: Encodable {
       var archived: Bool
+      /// The exact text the server sent; it compares to the millisecond.
       var lastSeenAt: String?
       var applyToChildren = true
     }
     do {
       try await client.perform(
         "PATCH", "/api/conversations/\(row.conversationId.pathEscaped)/archive",
-        body: Body(archived: archived, lastSeenAt: row.lastSeenAt.map { $0.ISO8601Format() }))
+        body: Body(archived: archived, lastSeenAt: row.lastSeenAt?.raw))
     } catch {
-      if let index { rows[index].archivedAt = row.archivedAt }
+      update(row.archivedAt)
       throw error
     }
   }

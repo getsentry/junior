@@ -30,12 +30,12 @@ struct PageTitle: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title)
-        .font(.dashboard(.xxxl, .light, family: .display))
+        .type(.xxxl, .light, family: .display, lineHeight: 1)
         .tracking(-0.9)
         .foregroundStyle(Tokens.text)
         .accessibilityAddTraits(.isHeader)
       if let description {
-        Text(description).font(.dashboard(.sm)).foregroundStyle(Tokens.textMuted)
+        Text(description).type(.xs, lineHeight: 1.625).foregroundStyle(Tokens.textMuted)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -57,22 +57,24 @@ private struct AutomationListView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        PageTitle(title: "Automations")
-        HStack(spacing: 8) {
-          SearchField(placeholder: "Search automations", text: $query)
-          FilterMenu(active: !type.isEmpty || !state.isEmpty) {
-            Picker("Type", selection: $type) {
-              Text("Any type").tag("")
-              Text("Scheduled").tag("scheduled")
-              Text("Event").tag("event")
-            }
-            Picker("State", selection: $state) {
-              Text("Any state").tag("")
-              Text("Active").tag("active")
-              Text("Paused").tag("paused")
-              Text("Blocked").tag("blocked")
-              Text("Completed").tag("completed")
+      VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
+          PageTitle(title: "Automations")
+          HStack(spacing: 8) {
+            SearchField(placeholder: "Search automations", text: $query)
+            FilterMenu(active: !type.isEmpty || !state.isEmpty) {
+              Picker("Type", selection: $type) {
+                Text("Any type").tag("")
+                Text("Scheduled").tag("scheduled")
+                Text("Event").tag("event")
+              }
+              Picker("State", selection: $state) {
+                Text("Any state").tag("")
+                Text("Active").tag("active")
+                Text("Paused").tag("paused")
+                Text("Blocked").tag("blocked")
+                Text("Completed").tag("completed")
+              }
             }
           }
         }
@@ -111,7 +113,7 @@ private struct AutomationListView: View {
         text: query.isEmpty && type.isEmpty && state.isEmpty
           ? "No automations yet. Ask \(app.agentName) to schedule one." : "No automations match.")
     } else {
-      ForEach(automationSections(automations), id: \.id) { section in
+      ForEach(automationSections(automations, clock: app.clock), id: \.id) { section in
         let foldable = section.id == "paused" || section.id == "completed"
         let open = !foldable || openSections.contains(section.id)
         VStack(alignment: .leading, spacing: 10) {
@@ -123,14 +125,14 @@ private struct AutomationListView: View {
                 Icon("chevron-right", size: 14).rotationEffect(.degrees(open ? 90 : 0))
                 Text("\(section.title) \(section.items.count)")
               }
-              .font(.dashboard(.xs, .medium))
+              .type(.xs, .medium)
               .foregroundStyle(Tokens.textMuted)
             }
             .buttonStyle(.plain)
           } else {
             HStack(spacing: 8) {
-              Text(section.title).font(.dashboard(.sm, .semibold)).foregroundStyle(Tokens.text)
-              Text("\(section.items.count)").font(.dashboard(.sm)).foregroundStyle(Tokens.textFaint)
+              Text(section.title).type(.sm, .semibold).foregroundStyle(Tokens.text)
+              Text("\(section.items.count)").type(.sm).foregroundStyle(Tokens.textFaint)
             }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
@@ -173,20 +175,23 @@ private struct AutomationRow: View {
     Button {
       app.path.append(.automation(automation.id))
     } label: {
-      HStack(alignment: .top, spacing: 24) {
+      HStack(alignment: .center, spacing: 24) {
         VStack(alignment: .leading, spacing: 4) {
           Text(automation.title)
-            .font(.dashboard(.base, .medium, family: .display))
+            .type(.base, .medium, family: .display)
             .foregroundStyle(Tokens.text)
             .lineLimit(1)
           TriggerLine(automation: automation)
-          if let problem = automation.problem {
-            (Text(problem.message + " ")
-              .foregroundStyle(problem.failed ? Color.palette(.rose, 300) : Color.palette(.amber, 300))
-              + Text(problem.action).font(.dashboard(.sm, .medium)).foregroundStyle(Tokens.text))
-              .font(.dashboard(.xs))
-              .padding(.top, 2)
-              .fixedSize(horizontal: false, vertical: true)
+          if let problem = automation.problem(clock: app.clock) {
+            // The message and its link are separate items that wrap, as on the web.
+            FlowLayout(spacing: 8, lineSpacing: 4) {
+              Text(problem.message)
+                .type(.xs)
+                .foregroundStyle(problem.failed ? Color.palette(.rose, 300) : Color.palette(.amber, 300))
+                .fixedSize(horizontal: false, vertical: true)
+              Text(problem.action).type(.xs, .medium).foregroundStyle(Tokens.text)
+            }
+            .padding(.top, 2)
           }
         }
         .opacity(automation.status == .paused || automation.status == .completed ? 0.6 : 1)
@@ -196,7 +201,7 @@ private struct AutomationRow: View {
           Text(automation.lastRunAt.map { "Ran \(app.clock.relative($0))" } ?? "Never run")
             .foregroundStyle(Tokens.textMuted)
         }
-        .font(.dashboard(.xs))
+        .type(.xs)
         .multilineTextAlignment(.trailing)
       }
       .padding(.horizontal, 16)
@@ -233,7 +238,7 @@ struct TriggerLine: View {
         Text(destination).lineLimit(1)
       }
     }
-    .font(.dashboard(.xs))
+    .type(.xs)
     .foregroundStyle(Tokens.textMuted)
   }
 }
@@ -249,23 +254,25 @@ private struct RunListView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        PageTitle(
-          title: "Runs",
-          description: "Newest runs across your automations and automations in public destinations.")
-        HStack(spacing: 8) {
-          SearchField(placeholder: "Automation, conversation, or status", text: $query)
-          FilterMenu(active: !status.isEmpty || !kind.isEmpty) {
-            Picker("Status", selection: $status) {
-              Text("Any status").tag("")
-              Text("Completed").tag("completed")
-              Text("Failed").tag("failed")
-              Text("Blocked").tag("blocked")
-            }
-            Picker("Trigger", selection: $kind) {
-              Text("Any trigger").tag("")
-              Text("Scheduled").tag("scheduled")
-              Text("Event").tag("event")
+      VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
+          PageTitle(
+            title: "Runs",
+            description: "Newest runs across your automations and automations in public destinations.")
+          HStack(spacing: 8) {
+            SearchField(placeholder: "Automation, conversation, or status", text: $query)
+            FilterMenu(active: !status.isEmpty || !kind.isEmpty) {
+              Picker("Status", selection: $status) {
+                Text("Any status").tag("")
+                Text("Completed").tag("completed")
+                Text("Failed").tag("failed")
+                Text("Blocked").tag("blocked")
+              }
+              Picker("Trigger", selection: $kind) {
+                Text("Any trigger").tag("")
+                Text("Scheduled").tag("scheduled")
+                Text("Event").tag("event")
+              }
             }
           }
         }
@@ -276,7 +283,7 @@ private struct RunListView: View {
         } else {
           let visible = filtered
           (Text("\(visible.count) runs") + Text(" · newest first").foregroundStyle(Tokens.textMuted.opacity(0.7)))
-            .font(.dashboard(.sm))
+            .type(.sm)
             .foregroundStyle(Tokens.textMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 12)
@@ -329,22 +336,22 @@ struct RunRow: View {
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 4) {
           Text(run.title ?? run.automationTitle ?? "No conversation")
-            .font(.dashboard(.sm, .medium))
+            .type(.sm, .medium)
             .foregroundStyle(Tokens.text)
             .lineLimit(1)
           if let date = run.executedAt {
-            Text(app.clock.dateTimeWithZone(date)).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+            Text(app.clock.dateTimeWithZone(date)).type(.xs).foregroundStyle(Tokens.textMuted)
           }
         }
         VStack(alignment: .leading, spacing: 4) {
           if let title = run.automationTitle {
-            Text(title).font(.dashboard(.sm)).foregroundStyle(Tokens.text)
+            Text(title).type(.sm).foregroundStyle(Tokens.text)
           }
           HStack(spacing: 6) {
             Icon(run.kind == .event ? "zap" : "calendar-clock", size: 14)
               .foregroundStyle(Tokens.accent.opacity(0.8))
             Dot(color: runColor(run.status))
-            Text(run.status.rawValue).font(.dashboard(.xs)).foregroundStyle(Tokens.textMuted)
+            Text(run.status.rawValue).type(.xs).foregroundStyle(Tokens.textMuted)
           }
         }
         metric("Duration", run.durationMs.map { formatEventDuration($0) })
@@ -362,8 +369,8 @@ struct RunRow: View {
 
   private func metric(_ label: String, _ value: String?) -> some View {
     HStack(spacing: 8) {
-      Text(label).font(.dashboard(.xxs, .medium)).foregroundStyle(Tokens.textMuted)
-      Text(value ?? "—").font(.dashboard(.xs, family: .mono)).foregroundStyle(Tokens.textMuted)
+      Text(label).type(.xxs, .medium).foregroundStyle(Tokens.textMuted)
+      Text(value ?? "—").type(.xs, family: .mono).foregroundStyle(Tokens.textMuted)
     }
   }
 }

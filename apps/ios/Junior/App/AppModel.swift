@@ -1,5 +1,6 @@
 import JuniorKit
 import Observation
+import Security
 import SwiftUI
 
 /// Theme the app shows: the saved choice, or the system appearance.
@@ -64,6 +65,8 @@ final class AppModel {
   var showRuns = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
+  /// The app is in front; polling stops otherwise.
+  var isActive = true
 
   /// Bumps when the versions poll sees new data, per area.
   private(set) var conversationsVersion = 0
@@ -82,10 +85,9 @@ final class AppModel {
 
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
-    let saved = defaults.data(forKey: "server").flatMap { try? JSONDecoder().decode(JuniorServer.self, from: $0) }
-    let server =
-      launch.server.map { JuniorServer(baseURL: $0, token: saved?.token) } ?? saved
-      ?? JuniorServer(baseURL: URL(string: "http://127.0.0.1:4317")!)
+    let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
+    let baseURL = launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!
+    let server = JuniorServer(baseURL: baseURL, token: TokenStore.read())
     self.server = server
     self.client = JuniorClient(server: server)
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
@@ -207,10 +209,41 @@ final class AppModel {
     Task { await refreshSpendAndCount() }
   }
 
+  /// The URL goes to defaults; the token goes to the Keychain.
   private func saveServer() {
-    if let data = try? JSONEncoder().encode(server) {
-      UserDefaults.standard.set(data, forKey: "server")
+    UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
+    TokenStore.write(server.token)
+  }
+}
+
+/// The personal token, kept in the Keychain for this device only.
+enum TokenStore {
+  private static var query: [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "io.sentry.junior",
+      kSecAttrAccount as String: "personal-token",
+    ]
+  }
+
+  static func read() -> String? {
+    var request = query
+    request[kSecReturnData as String] = true
+    request[kSecMatchLimit as String] = kSecMatchLimitOne
+    var item: CFTypeRef?
+    guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
+      return nil
     }
+    return String(data: data, encoding: .utf8)
+  }
+
+  static func write(_ token: String?) {
+    SecItemDelete(query as CFDictionary)
+    guard let token, let data = token.data(using: .utf8) else { return }
+    var item = query
+    item[kSecValueData as String] = data
+    item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    SecItemAdd(item as CFDictionary, nil)
   }
 }
 
