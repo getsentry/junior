@@ -125,10 +125,10 @@ export async function cleanupPostgresWorkerDatabases(): Promise<void> {
   }
   const pending = [...databases.values()];
   globalThis.__juniorPostgresWorkerDatabases = undefined;
-  for (const database of pending) {
-    const resolved = await database;
-    await resolved.pool.end();
-  }
+  // One database per test worker, so close them all at once.
+  await Promise.all(
+    pending.map((database) => database.then(({ pool }) => pool.end())),
+  );
 }
 
 /** Create a committed empty database for migration contract tests. */

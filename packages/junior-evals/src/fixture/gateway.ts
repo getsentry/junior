@@ -206,6 +206,7 @@ export function installGatewayObserver(): GatewayObserver {
       const body = await response.text();
       if (response.ok) {
         for (const toolRequest of toolRequests(body)) {
+          // oxlint-disable-next-line no-await-in-loop -- The hook sees tool requests in order.
           await hook({ type: "tool_request", ...toolRequest });
         }
       }

@@ -56,12 +56,18 @@ export async function completeAuthorization(args: {
  */
 export async function forgetAuthorizations(userIds: string[]): Promise<void> {
   const tokens = createUserTokenStore();
-  for (const { manifest } of pluginCatalogRuntime.getProviders()) {
-    for (const userId of userIds) {
-      await tokens.delete(userId, manifest.name);
-      await deleteMcpAuthSessionsForUserProvider(userId, manifest.name);
-      await deleteMcpStoredOAuthCredentials(userId, manifest.name);
-      await deleteMcpServerSessionId(userId, manifest.name);
-    }
-  }
+  // The eval app has few providers and a test has few people, so delete
+  // all of their data at once.
+  await Promise.all(
+    pluginCatalogRuntime
+      .getProviders()
+      .flatMap(({ manifest }) =>
+        userIds.flatMap((userId) => [
+          tokens.delete(userId, manifest.name),
+          deleteMcpAuthSessionsForUserProvider(userId, manifest.name),
+          deleteMcpStoredOAuthCredentials(userId, manifest.name),
+          deleteMcpServerSessionId(userId, manifest.name),
+        ]),
+      ),
+  );
 }

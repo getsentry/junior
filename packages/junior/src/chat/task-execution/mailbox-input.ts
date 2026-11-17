@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type {
@@ -10,9 +11,6 @@ import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { loadReviewItemInput } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
-
-// Messages whose Review item input one Turn loads at once.
-const REVIEW_ITEM_INPUT_CONCURRENCY = 8;
 
 /**
  * Return the Turn inputs of web Messages, one per non-empty Message, in
@@ -26,7 +24,7 @@ export async function webTurnInputs(
     text: string;
   }[],
 ): Promise<AgentInstructionInput[]> {
-  const limit = pLimit(REVIEW_ITEM_INPUT_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const inputs = await Promise.all(
     messages.map((message) =>
       limit(async (): Promise<AgentInstructionInput[]> => {

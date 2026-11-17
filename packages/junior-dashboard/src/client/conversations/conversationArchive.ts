@@ -28,8 +28,8 @@ import {
   type ConversationSnapshot,
 } from "./queries";
 
-/** Apply archive marks to one feed row, at any depth of nested Threads. */
-function markFeedConversation(
+/** Apply a patch to one feed row, at any depth of nested Threads. */
+export function patchFeedConversation(
   items: ConversationFeedItem[],
   conversationId: string,
   marks: Partial<ConversationFeedItem>,
@@ -40,7 +40,7 @@ function markFeedConversation(
       : item.threads
         ? {
             ...item,
-            threads: markFeedConversation(item.threads, conversationId, marks),
+            threads: patchFeedConversation(item.threads, conversationId, marks),
           }
         : item,
   );
@@ -306,7 +306,7 @@ export function archiveConversationMutationOptions(
           queryKey,
           mapConversationFeedCache(feed, (pageRows, first) => {
             const conversations = !shouldRestore
-              ? markFeedConversation(pageRows, conversationId, viewerMarks)
+              ? patchFeedConversation(pageRows, conversationId, viewerMarks)
               : restoreParentId
                 ? withRestoredThread(pageRows, restoreParentId, {
                     ...archivedSnapshot.conversation,

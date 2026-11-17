@@ -6,6 +6,7 @@
  * tags.
  */
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstruction } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
@@ -14,9 +15,6 @@ import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ReviewItemChangeRecord } from "./change-record";
 import { getReviewItem, type ReviewItem } from "./store";
-
-// Messages whose Review item input one Turn loads at once.
-const REVIEW_ITEM_INPUT_CONCURRENCY = 8;
 
 const QUESTION_MAX_LENGTH = 512;
 
@@ -82,7 +80,7 @@ export async function savedInputInstruction(args: {
 export async function eventReviewItemInputs(
   messages: readonly InboundMessage[],
 ): Promise<Map<string, string>> {
-  const limit = pLimit(REVIEW_ITEM_INPUT_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const rendered = await Promise.all(
     messages.map((message) =>
       limit(

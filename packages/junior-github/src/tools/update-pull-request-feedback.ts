@@ -446,9 +446,13 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         .botReactions(listPayload)
         .filter((reaction) => FEEDBACK_REACTION_CONTENTS.has(reaction.content));
 
-      for (const stale of botReactions) {
-        if (stale.content === targetContent) continue;
-        const deleteResponse = await reactions.remove(stale);
+      // Feedback reactions are a small fixed set, so remove them at once.
+      const deleteResponses = await Promise.all(
+        botReactions
+          .filter((stale) => stale.content !== targetContent)
+          .map((stale) => reactions.remove(stale)),
+      );
+      for (const deleteResponse of deleteResponses) {
         if (failed(deleteResponse) && deleteResponse.status !== 404) {
           throw new Error(
             `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubErrorMessage(deleteResponse.body)}`,

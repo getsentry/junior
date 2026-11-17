@@ -26,7 +26,7 @@ const THREAD_CONTEXT_MAX_CHARS = 60_000;
 const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
 const THREAD_CONTEXT_CLOSE = "</thread-context>";
 const THREAD_CONTEXT_OMITTED_NOTE =
-  "Older Messages of this thread are not shown. Find them with the searchConversationEvents and readConversationEvent tools.";
+  "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 /** Normalize message boundaries without changing transcript formatting. */

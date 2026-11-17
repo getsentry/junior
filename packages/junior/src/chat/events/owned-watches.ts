@@ -6,6 +6,7 @@
  * that created it.
  */
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   listDescendantAgents,
   type DescendantAgent,
@@ -17,9 +18,6 @@ import {
   listWatches,
   type Watch,
 } from "@/chat/events/store";
-
-// Child agents whose watches one listing reads at once.
-const CHILD_WATCH_READ_CONCURRENCY = 8;
 
 /** An active watch and the child agent that created it, if not the owner. */
 export type OwnedWatch = {
@@ -36,7 +34,7 @@ export async function listOwnedWatches(
     listWatches({ conversationId }),
     listDescendantAgents(conversationId),
   ]);
-  const limit = pLimit(CHILD_WATCH_READ_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const childWatches = await Promise.all(
     childAgents.map((childAgent) =>
       limit(async () =>

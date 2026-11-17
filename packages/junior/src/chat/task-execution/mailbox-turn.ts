@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   createEventSource,
   createLocalSource,
@@ -34,8 +35,6 @@ import { AGENT_PARENT_MESSAGE_EVENT_TYPE } from "@/chat/agent-invocations/result
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
-
-const MAILBOX_TURN_READ_CONCURRENCY = 8;
 
 /** Mailbox Message with the Actor and Source facts needed to start a Turn. */
 export type MailboxTurnInput = {
@@ -187,7 +186,7 @@ export async function listActiveMailboxTurns(
 export async function listActiveMailboxTurnSources(
   conversationIds: readonly string[],
 ): Promise<Map<string, Array<Source | undefined>>> {
-  const limit = pLimit(MAILBOX_TURN_READ_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const summaries = (
     await Promise.all(
       conversationIds.map((conversationId) =>

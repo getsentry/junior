@@ -524,7 +524,7 @@ async function loadRetainedUserMessages(
 }
 
 const COMPACTION_READ_BACK_NOTE =
-  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, find it with a searchConversationEvents query, then read the full text with readConversationEvent.";
 
 /**
  * Keep generated text inside the existing evidence-only prompt boundary. The

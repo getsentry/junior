@@ -135,36 +135,43 @@ export async function resolveSlackMessageLink(
 ): Promise<ObjectAnnotation | undefined> {
   const parsed = parseSlackMessageReference(url.href);
   if (!parsed.ok) return undefined;
-  for (const identity of viewer.identities) {
-    const teamId = parseSlackTeamId(identity.providerTenantId);
-    if (identity.provider !== "slack" || !teamId) continue;
-    const run = <T>(task: () => Promise<T>) =>
-      runWithSlackInstallation({
-        adapter: getProductionSlackAdapter(),
-        installation: { teamId },
-        task,
-      });
-    let domain: string | undefined;
-    try {
-      domain = await run(() => resolveSlackTeamDomain(teamId));
-    } catch (error) {
-      // A workspace that removed Junior has no token. Check the next one.
-      logWarn("object_link.slack_team.unavailable", {
-        "app.slack.team_id": teamId,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-      continue;
-    }
-    if (!domain || url.hostname !== `${domain}.slack.com`) continue;
-    return await run(() =>
-      readMessageCard({
-        reference: parsed.reference,
-        slackUserId: identity.providerSubjectId,
-        teamId,
-        url,
-      }),
-    );
-  }
-  return undefined;
+  // Look up the domain of each linked Slack workspace at once.
+  const workspaces = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- A viewer links few Slack workspaces.
+    viewer.identities.map(async (identity) => {
+      const teamId = parseSlackTeamId(identity.providerTenantId);
+      if (identity.provider !== "slack" || !teamId) return undefined;
+      const run = <T>(task: () => Promise<T>) =>
+        runWithSlackInstallation({
+          adapter: getProductionSlackAdapter(),
+          installation: { teamId },
+          task,
+        });
+      try {
+        const domain = await run(() => resolveSlackTeamDomain(teamId));
+        return { domain, identity, run, teamId };
+      } catch (error) {
+        // A workspace that removed Junior has no token. Check the next one.
+        logWarn("object_link.slack_team.unavailable", {
+          "app.slack.team_id": teamId,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+      }
+    }),
+  );
+  const workspace = workspaces.find(
+    (candidate) =>
+      candidate?.domain && url.hostname === `${candidate.domain}.slack.com`,
+  );
+  if (!workspace) return undefined;
+  return await workspace.run(() =>
+    readMessageCard({
+      reference: parsed.reference,
+      slackUserId: workspace.identity.providerSubjectId,
+      teamId: workspace.teamId,
+      url,
+    }),
+  );
 }
