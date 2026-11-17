@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { keywordSearchEvents } from "@junior-evals/fixture/event-search";
+import { logEventRanking } from "@junior-evals/fixture/event-ranking-diagnostic";
 import { toolCallsOf, type ToolCall } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -225,6 +226,16 @@ describe("Thread Continuity", () => {
       slackMention("When does the certificate on our mail server expire?"),
       { history: hostChecks(HOSTS.slice(37)) },
     );
+    // DIAGNOSTIC ONLY: the agent's two queries from the failed run.
+    await logEventRanking({
+      conversationId: conversation.conversationId,
+      isNeedle: (text) =>
+        text.includes(MAIL_HOST) || text.includes("/var/spool/postfix/"),
+      queries: [
+        "mail server certificate expiration",
+        "mail server /etc/pki certificate",
+      ],
+    });
 
     expect(first.compactions).toBeGreaterThan(0);
     // The case proves nothing when a summary still holds the answer.
