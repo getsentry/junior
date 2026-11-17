@@ -8,6 +8,8 @@ import UIKit
 /// `127.0.0.1` for the one redirect (RFC 8252), as desktop MCP clients do.
 @MainActor
 final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
+  private var session: ASWebAuthenticationSession?
+
   func run(_ oauth: OAuthClient) async throws -> OAuthCredentials {
     let receiver = try await LoopbackReceiver.start()
     defer { receiver.stop() }
@@ -21,14 +23,14 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
       }
       session.prefersEphemeralWebBrowserSession = true
       session.presentationContextProvider = self
-      receiver.onCallback = { url in
-        Task { @MainActor in
-          once.resume(returning: url)
-          session.cancel()
-        }
+      self.session = session
+      receiver.onCallback = { [weak self] url in
+        once.resume(returning: url)
+        Task { @MainActor in self?.session?.cancel() }
       }
       if !session.start() { once.resume(throwing: JuniorAPIError.signIn("The browser did not open.")) }
     }
+    session = nil
     return try await oauth.finish(signIn, callback: callback)
   }
 
@@ -40,17 +42,17 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
   }
 }
 
-/// Resumes a continuation at most once; the receiver and the sheet race.
-private final class ResumeOnce: @unchecked Sendable {
+/// Resumes a continuation at most once, for callbacks that race.
+private final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
-  private var continuation: CheckedContinuation<URL, Error>?
+  private var continuation: CheckedContinuation<Value, Error>?
 
-  init(_ continuation: CheckedContinuation<URL, Error>) { self.continuation = continuation }
+  init(_ continuation: CheckedContinuation<Value, Error>) { self.continuation = continuation }
 
-  func resume(returning url: URL) { take()?.resume(returning: url) }
+  func resume(returning value: Value) { take()?.resume(returning: value) }
   func resume(throwing error: Error) { take()?.resume(throwing: error) }
 
-  private func take() -> CheckedContinuation<URL, Error>? {
+  private func take() -> CheckedContinuation<Value, Error>? {
     lock.withLock {
       defer { continuation = nil }
       return continuation
@@ -72,21 +74,13 @@ final class LoopbackReceiver: @unchecked Sendable {
     parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
     let receiver = LoopbackReceiver(listener: try NWListener(using: parameters))
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      let lock = NSLock()
-      var pending: CheckedContinuation<Void, Error>? = continuation
-      func finish(_ error: Error?) {
-        let waiting = lock.withLock {
-          defer { pending = nil }
-          return pending
-        }
-        if let error { waiting?.resume(throwing: error) } else { waiting?.resume() }
-      }
+      let once = ResumeOnce(continuation)
       receiver.listener.stateUpdateHandler = { state in
         switch state {
         case .ready:
           receiver.port = receiver.listener.port?.rawValue ?? 0
-          finish(nil)
-        case .failed(let error): finish(error)
+          once.resume(returning: ())
+        case .failed(let error): once.resume(throwing: error)
         default: break
         }
       }

@@ -9,6 +9,6 @@ let package = Package(
   products: [.library(name: "JuniorKit", targets: ["JuniorKit"])],
   targets: [
     .target(name: "JuniorKit"),
-    .testTarget(name: "JuniorKitTests", dependencies: ["JuniorKit"]),
+    .testTarget(name: "JuniorKitTests", dependencies: ["JuniorKit"], resources: [.copy("Fixtures")]),
   ]
 )
