@@ -432,11 +432,16 @@ describe("cache warming savings re-fill", () => {
     const person = authenticatedApi(PERSON);
     // The first idle period ends with a read of the cache 7 minutes later,
     // the second with a write, and the third within the cache TTL.
-    // Postgres jsonb rejects the `\u0000` escape that a NUL character in a
-    // stored message gets.
+    // Postgres jsonb rejects the escapes that a stored message gets for a NUL
+    // character and for a lone surrogate.
     await storeCalls("local:test:savings-refill-idle", [
       { atMs: DAY_1, cacheRead: 60_000, text: "Read \0 from the file." },
-      { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
+      {
+        atMs: DAY_1 + 7 * MINUTE,
+        cacheRead: 60_000,
+        // Text cut inside an emoji keeps half of its surrogate pair.
+        text: "Done \u{1F600}".slice(0, -1),
+      },
       { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
       { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
     ]);
