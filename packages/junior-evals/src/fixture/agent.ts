@@ -11,7 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
+import { type HarnessRun } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -61,6 +61,7 @@ import {
   readAuthorizationPrompt,
   readCallEvents,
   readFailedCallRun,
+  type ReportCall,
   readConversationDetail,
   readWatchIds,
   participantSlackUserIds,
@@ -308,8 +309,7 @@ export async function createFixtureAgent(
 
   const replyMessages = new WeakMap<HistoryReply, string>();
   const knownConversationIds = new Set<string>();
-  const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
-    [];
+  const calls: ReportCall[] = [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
   const currentUsage = (): FixtureUsage => ({
@@ -763,6 +763,7 @@ export async function createFixtureAgent(
     calls.push({
       conversationId: record.conversationId,
       events: callRun.session.events,
+      turns: events.turns,
     });
     context.task.meta.harness = {
       name: "junior",
