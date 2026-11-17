@@ -175,6 +175,9 @@ export function createSearchConversationEventsTool(
           conversationId,
           limit,
           query,
+          ...(conversationId === currentConversationId && context.turnId
+            ? { currentTurnId: context.turnId }
+            : undefined),
           ...(afterSeq === undefined ? undefined : { afterSeq }),
           ...(beforeSeq === undefined ? undefined : { beforeSeq }),
           ...(types === undefined ? undefined : { types }),
