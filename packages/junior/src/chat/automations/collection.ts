@@ -218,40 +218,17 @@ export async function countOwnedAutomationsNeedingAttention(
 /** Where a page of `sort=activity` ends: its last row's activity and ID. */
 export type AutomationActivityPosition = { activityAtMs: number; id: string };
 
-type AutomationFacets = Awaited<ReturnType<typeof readAutomationFacets>>;
-type AutomationCollectionPage = Awaited<
-  ReturnType<typeof readAutomationCollectionPage>
->;
+/** A viewer's access-scoped collection and the filters of one list query. */
+export type AutomationListSelection = {
+  collection: ReturnType<typeof viewerAutomationCollection>;
+  where: SQL | undefined;
+};
 
-/**
- * Read an SQL page and complete, access-scoped counts and filter options.
- * `sort=activity` pages by position: it reads the rows after `after`, and
- * `next` is set when more rows follow. A page after `after` has no counts or
- * filter options.
- */
-export function readAutomationCollection(
+/** Build the access-scoped collection and the filters of one list query. */
+export async function selectViewerAutomations(
   viewer: AutomationViewer,
   input: AutomationListQuery,
-): Promise<AutomationCollectionPage & AutomationFacets>;
-export function readAutomationCollection(
-  viewer: AutomationViewer,
-  input: AutomationListQuery,
-  after: AutomationActivityPosition | undefined,
-): Promise<AutomationCollectionPage>;
-export function readAutomationCollection(
-  viewer: AutomationViewer,
-  input: AutomationListQuery,
-  after?: AutomationActivityPosition,
-): Promise<AutomationCollectionPage> {
-  return readAutomationCollectionPage(viewer, input, after);
-}
-
-async function readAutomationCollectionPage(
-  viewer: AutomationViewer,
-  input: AutomationListQuery,
-  after?: AutomationActivityPosition,
-) {
-  const db = getDb();
+): Promise<AutomationListSelection> {
   const collection = viewerAutomationCollection(viewer);
   // The trigger check reads every accessible event Automation, so only the
   // filters that use it pay for it.
@@ -284,47 +261,57 @@ async function readAutomationCollectionPage(
       ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.skill}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
-  // A page by activity does not depend on the total, so it reads alongside
-  // the facets. One extra row tells whether more follow. Later pages skip
-  // the facets: the first page already has them.
-  if (input.sort === "activity") {
-    const [activityRows, facets] = await Promise.all([
-      db
-        .select({
-          activityAtMs: collection.activityAtMs,
-          id: collection.id,
-          kind: collection.kind,
-        })
-        .from(collection)
-        .where(
-          and(
-            where,
-            after
-              ? sql`(${collection.activityAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
-              : undefined,
-          ),
-        )
-        .orderBy(desc(collection.activityAtMs), desc(collection.id))
-        .limit(input.pageSize + 1),
-      after ? undefined : readAutomationFacets(collection, where),
-    ]);
-    const pageRows = activityRows.slice(0, input.pageSize);
-    const last = pageRows.at(-1);
-    return {
-      rows: pageRows,
-      page: 1,
-      pageSize: input.pageSize,
-      ...facets,
-      ...(activityRows.length > input.pageSize && last
-        ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
-        : undefined),
-    };
-  }
-  const facets = await readAutomationFacets(collection, where);
-  const { total } = facets;
+  return { collection, where };
+}
+
+/**
+ * Read one `sort=activity` page: the rows after `after`, newest activity
+ * first. `next` is set when more rows follow.
+ */
+export async function readAutomationActivityPage(
+  { collection, where }: AutomationListSelection,
+  pageSize: number,
+  after?: AutomationActivityPosition,
+) {
+  // One extra row tells whether more follow.
+  const rows = await getDb()
+    .select({
+      activityAtMs: collection.activityAtMs,
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(collection)
+    .where(
+      and(
+        where,
+        after
+          ? sql`(${collection.activityAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(collection.activityAtMs), desc(collection.id))
+    .limit(pageSize + 1);
+  const pageRows = rows.slice(0, pageSize);
+  const last = pageRows.at(-1);
+  return {
+    rows: pageRows,
+    ...(rows.length > pageSize && last
+      ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
+      : undefined),
+  };
+}
+
+/** Read an SQL page by offset and complete, access-scoped counts and filter options. */
+export async function readAutomationCollection(
+  viewer: AutomationViewer,
+  input: AutomationListQuery,
+) {
+  const selection = await selectViewerAutomations(viewer, input);
+  const { collection, where } = selection;
+  const facets = await readAutomationFacets(selection);
   const page = Math.min(
     input.page,
-    Math.max(1, Math.ceil(total / input.pageSize)),
+    Math.max(1, Math.ceil(facets.total / input.pageSize)),
   );
   const order =
     input.sort === "oldest"
@@ -333,8 +320,10 @@ async function readAutomationCollectionPage(
         ? asc(
             sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}, ${collection.skill}))`,
           )
-        : desc(collection.createdAtMs);
-  const rows = await db
+        : input.sort === "activity"
+          ? desc(collection.activityAtMs)
+          : desc(collection.createdAtMs);
+  const rows = await getDb()
     .select({ id: collection.id, kind: collection.kind })
     .from(collection)
     .where(where)
@@ -349,10 +338,10 @@ async function readAutomationCollectionPage(
  * options. Separate statements run in parallel on their own connections,
  * which measured faster than one grouped statement.
  */
-async function readAutomationFacets(
-  collection: ReturnType<typeof viewerAutomationCollection>,
-  where: SQL | undefined,
-) {
+export async function readAutomationFacets({
+  collection,
+  where,
+}: AutomationListSelection) {
   const db = getDb();
   const [totals, counts, creators, destinations] = await Promise.all([
     db.select({ total: count() }).from(collection).where(where),
