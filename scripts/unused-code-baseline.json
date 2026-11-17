@@ -218,12 +218,6 @@
     "packages/junior/tests/fixtures/slack-api-outbox.ts: SlackApiOutbox",
     "packages/junior/tests/fixtures/slack-harness.ts: TEST_SLACK_TEAM_ID",
     "packages/junior/tests/fixtures/slack-harness.ts: createTestAuthor",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackAssistantContextChangedEvent",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackAssistantThreadStartedEvent",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackEventMessage",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackEventThread",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackMentionEvent",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: slackSubscribedMessageEvent",
     "packages/junior/tests/fixtures/slack/factories/ids.ts: TEST_THREAD_ID",
     "packages/junior/tests/fixtures/slack/factories/ids.ts: slackId",
     "packages/junior/tests/msw/handlers/eval-mcp-auth.ts: EVAL_MCP_AUTHORIZATION_ENDPOINT",
@@ -329,14 +323,6 @@
     "packages/junior/src/reporting.ts: PluginPackageContentReport",
     "packages/junior/src/reporting.ts: Plugins",
     "packages/junior/src/reporting.ts: SkillReports",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackAssistantContextChangedBehaviorEventFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackAssistantThreadStartedBehaviorEventFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackBehaviorEventFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackEventMessageFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackEventThreadFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackEventUser",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackMentionBehaviorEventFixture",
-    "packages/junior/tests/fixtures/slack/factories/events.ts: SlackSubscribedMessageBehaviorEventFixture",
     "tools/oxlint/anti-slop/shared/dictionary-types.ts: WideningTargetKind"
   ]
 }
