@@ -38,6 +38,15 @@ const AGENT_HISTORY_TEXT_PATHS = [
   'lax $.content[*] ? (@.type == "toolCall").arguments.** ? (@.type() == "string" || @.type() == "number")',
 ];
 
+/** SQL condition: the row is an agent message that calls a tool. */
+export function callsToolSql(): SQL<boolean> {
+  const { payload, type } = juniorConversationEvents;
+  return sql<boolean>`(${type} = 'assistant_message' AND jsonb_path_exists(
+    coalesce(${storedMessageJson(sql`${payload}->>'message'`)}, ${payload}),
+    'lax $.content[*] ? (@.type == "toolCall")'
+  ))`;
+}
+
 /**
  * SQL expression for the searchable text of a `junior_conversation_events`
  * row. Null for an event without searchable text.
