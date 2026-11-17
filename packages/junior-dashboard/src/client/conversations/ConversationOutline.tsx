@@ -18,10 +18,14 @@ import {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
+  MessageOutlinePreviewMeta,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 } from "../components/ui/message-outline";
 import { fetchDashboardJson } from "../http";
+import { transcriptMessageActorLabel } from "../format";
+import { formatTranscriptMessageTime } from "../time";
+import type { ConversationTranscript } from "../types";
 import {
   conversationOutlineItems,
   mergeConversationOutlineItems,
@@ -47,6 +51,8 @@ const JUMP_MARGIN_PX = 12;
  * mounts only the rows near the viewport.
  */
 export function ConversationOutline(props: {
+  /** Names the authors. Previews show no author before it loads. */
+  conversation: ConversationTranscript | undefined;
   conversationId: string;
   events: ConversationReportEvent[];
   onSelect(seq: number): void;
@@ -90,10 +96,13 @@ export function ConversationOutline(props: {
     <MessageOutline
       activeIndex={items.findIndex((item) => item.seq === activeSeq)}
       aria-label="Conversation outline"
-      className="absolute inset-y-8 left-3 z-20 hidden @min-[62rem]/chat:flex"
+      // From `md`, the transcript has side padding that holds the rail, so
+      // it shows beside narrow transcripts too.
+      className="absolute inset-y-8 left-1 z-20 hidden md:flex @min-[62rem]/chat:left-3"
       itemCount={items.length}
     >
-      <MessageOutlineList>
+      {/* The list's right padding would cover text in a narrow transcript. */}
+      <MessageOutlineList className="@max-[62rem]/chat:pr-0">
         {items.map((item, index) => (
           <MessageOutlineItem
             aria-label={item.title}
@@ -106,7 +115,10 @@ export function ConversationOutline(props: {
           />
         ))}
       </MessageOutlineList>
-      <ConversationOutlinePreview items={items} />
+      <ConversationOutlinePreview
+        conversation={props.conversation}
+        items={items}
+      />
     </MessageOutline>
   );
 }
@@ -132,16 +144,37 @@ function useConversationOutline(conversationId: string) {
   });
 }
 
-/** Preview the pointed message with the last Junior reply to it. */
+/**
+ * Preview the pointed message, who sent it and when, and Junior's reply.
+ * The author has the same name as on the message's transcript row.
+ */
 function ConversationOutlinePreview(props: {
+  conversation: ConversationTranscript | undefined;
   items: readonly ConversationOutlineItem[];
 }) {
   const { previewIndex } = useMessageOutline();
   const item =
     previewIndex === undefined ? undefined : props.items[previewIndex];
   if (!item) return null;
+  const meta = [
+    props.conversation &&
+      transcriptMessageActorLabel(props.conversation, {
+        ...item.author,
+        parts: [],
+        role: "user",
+        sourceSeq: item.seq,
+      }),
+    item.timestamp === undefined
+      ? undefined
+      : formatTranscriptMessageTime(item.timestamp),
+  ].filter(Boolean);
   return (
     <MessageOutlinePreview>
+      {meta.length > 0 ? (
+        <MessageOutlinePreviewMeta>
+          {meta.join(" · ")}
+        </MessageOutlinePreviewMeta>
+      ) : null}
       <MessageOutlinePreviewTitle>{item.title}</MessageOutlinePreviewTitle>
       {item.reply ? (
         <MessageOutlinePreviewDescription>
