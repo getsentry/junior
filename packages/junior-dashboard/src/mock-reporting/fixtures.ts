@@ -4643,7 +4643,6 @@ export function readMockAutomationExecutions(
         (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
       ),
       executions: [],
-      automation: task,
       truncated: false,
     };
   }
@@ -4722,7 +4721,6 @@ export function readMockAutomationExecutions(
       (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
     ),
     executions,
-    automation: task,
     truncated: task.totalRuns > executions.length,
   };
 }

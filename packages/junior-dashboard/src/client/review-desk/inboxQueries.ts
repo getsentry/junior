@@ -6,8 +6,11 @@ import {
 import {
   automationListSchema,
   reviewItemCountSchema,
+  type AutomationEdit,
 } from "@sentry/junior/api/schema";
+import pLimit from "p-limit";
 
+import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useSnoozedItemIds } from "./inboxSnooze";
@@ -17,6 +20,7 @@ import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 // attention. The current UI does not load them.
 
 const REVIEW_ITEM_COUNT_QUERY_KEY = [...REVIEW_ITEMS_QUERY_KEY, "count"];
+const ATTENTION_PAGE_READS = 8;
 
 /**
  * Count To do: the asks and the Automations that wait on the viewer, as the
@@ -66,14 +70,41 @@ export function useInboxCountData(enabled: boolean) {
 }
 
 /**
- * Refresh the Automation reads after an Automation changes. The Inbox count
- * refreshes too, because it counts the Automations that need attention.
+ * Refresh the reads that one Automation change can affect: every list, the
+ * runs list, which shows titles, and the Inbox count, which counts the
+ * Automations that need attention.
  */
-export function invalidateAutomationReads(queryClient: QueryClient) {
+function invalidateAutomationListReads(queryClient: QueryClient) {
   return Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["dashboard", "automations"] }),
+    queryClient.invalidateQueries({ queryKey: automationKeys.lists() }),
+    queryClient.invalidateQueries({ queryKey: automationKeys.runs() }),
     queryClient.invalidateQueries({ queryKey: REVIEW_ITEM_COUNT_QUERY_KEY }),
   ]);
+}
+
+/**
+ * Refresh reads after one Automation changes. The change returns the new
+ * edit read, so that read is written, not fetched again.
+ */
+export function refreshChangedAutomation(
+  queryClient: QueryClient,
+  updated: AutomationEdit,
+) {
+  queryClient.setQueryData(automationKeys.edit(updated.id), updated);
+  return Promise.all([
+    invalidateAutomationListReads(queryClient),
+    queryClient.invalidateQueries({
+      queryKey: automationKeys.one(updated.id),
+      // The edit read is already current.
+      predicate: (query) => query.queryKey.at(-1) !== "edit",
+    }),
+  ]);
+}
+
+/** Refresh reads after one Automation is deleted, and drop its own reads. */
+export function refreshDeletedAutomation(queryClient: QueryClient, id: string) {
+  queryClient.removeQueries({ queryKey: automationKeys.one(id) });
+  return invalidateAutomationListReads(queryClient);
 }
 
 /**
@@ -111,7 +142,7 @@ export function scrollPages(query: {
 export function useAutomationAttentionData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "scope=attention&owner=me"],
+    queryKey: [...automationKeys.lists(), "scope=attention&owner=me"],
     // The Inbox count is not capped, so read every page: the list then
     // shows each Automation that the count counts.
     queryFn: async ({ signal }) => {
@@ -122,11 +153,18 @@ export function useAutomationAttentionData(enabled: boolean) {
           signal,
         );
       const first = await readPage(1);
-      const automations = [...first.automations];
-      const pages = Math.ceil(first.total / first.pageSize);
-      for (let page = 2; page <= pages; page += 1)
-        automations.push(...(await readPage(page)).automations);
-      return { ...first, automations };
+      const pageCount = Math.ceil(first.total / first.pageSize);
+      // Read the other pages at the same time, at most a few at once.
+      const limit = pLimit(ATTENTION_PAGE_READS);
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(pageCount - 1, 0) }, (_, index) =>
+          limit(() => readPage(index + 2)),
+        ),
+      );
+      return {
+        ...first,
+        automations: [first, ...rest].flatMap((page) => page.automations),
+      };
     },
     retry: false,
   });

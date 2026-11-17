@@ -21,6 +21,7 @@ import {
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 
 import {
+  automationKeys,
   useAutomationData,
   useAutomationExecutionsData,
   useAutomationVersionsData,
@@ -288,7 +289,7 @@ function AutomationEditMode(props: { automation: AutomationSummary }) {
   const { automation } = props;
   const location = useLocation();
   const edit = useQuery({
-    queryKey: ["dashboard", "automations", "edit", automation.id],
+    queryKey: automationKeys.edit(automation.id),
     retry: false,
     queryFn: ({ signal }) =>
       fetchDashboardJson(

@@ -12,6 +12,8 @@ import {
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
 import { nextDetailVersion } from "./sql/detail-version";
+import { costMicroUsdExpr } from "@/chat/automations/run-cost";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 
 function finite(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value >= 0
@@ -167,12 +169,16 @@ export async function replaceConversationMetrics(
   `;
   const cost = sql`case when ${metric("cost_usd")} is null then null
     else jsonb_build_object('total', ${metric("cost_usd")}) end`;
-  await executor
-    .db()
-    .update(juniorConversations)
-    .set({
-      durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
-      usage: sql`case
+  const db = executor.db();
+  // The usage update and the copy of its cost to the Conversation's run are
+  // one statement, so they commit together. RETURNING gives the new usage; the
+  // outer update cannot read it from the table in the same statement.
+  const usageUpdate = db.$with("conversation_usage_update").as(
+    db
+      .update(juniorConversations)
+      .set({
+        durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
+        usage: sql`case
         when ${totalTokens} is not null
           and (${hasComponents})
           and ${totalTokens} <> ${componentTokens}
@@ -191,7 +197,20 @@ export async function replaceConversationMetrics(
           'cost', ${cost}
         ))
       end`,
-      detailVersion: nextDetailVersion,
+        detailVersion: nextDetailVersion,
+      })
+      .where(eq(juniorConversations.conversationId, args.conversationId))
+      .returning({
+        costMicroUsd: costMicroUsdExpr(juniorConversations.usage).as(
+          "cost_micro_usd",
+        ),
+      }),
+  );
+  await db
+    .with(usageUpdate)
+    .update(juniorAutomationRuns)
+    .set({
+      costMicroUsd: sql`(select ${usageUpdate.costMicroUsd} from ${usageUpdate})`,
     })
-    .where(eq(juniorConversations.conversationId, args.conversationId));
+    .where(eq(juniorAutomationRuns.conversationId, args.conversationId));
 }

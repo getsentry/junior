@@ -532,6 +532,13 @@ export async function wireAgentTools(
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
+      destinationFacts: pluginCatalogRuntime
+        .getProviders()
+        .flatMap(({ manifest }) =>
+          manifest.reviewContext
+            ? [{ plugin: manifest.name, text: manifest.reviewContext }]
+            : [],
+        ),
       modelId: botConfig.guardianModelId,
     }),
   });

@@ -683,10 +683,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The card is not part of the clamped prose, and only one shows.
     await expect(clamp.getByRole("region", { name: card })).toHaveCount(0);
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
-    await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
-    await expect(page.getByRole("region", { name: card })).toBeInViewport({
-      ratio: 1,
-    });
+    // In full means nothing clips it once it is scrolled to. On a slow CI
+    // runner the list can still move after one scroll, so scroll again
+    // until the card shows.
+    await expect(async () => {
+      await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
+      await expect(page.getByRole("region", { name: card })).toBeInViewport({
+        ratio: 1,
+        timeout: 1000,
+      });
+    }).toPass();
   });
 
   test("an item's subject card hides when its text already shows that card", async ({

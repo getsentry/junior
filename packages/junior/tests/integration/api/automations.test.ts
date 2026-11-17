@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
   automationExecutionListSchema,
+  automationListPageSchema,
   automationListSchema,
   automationRunListSchema,
   automationSummarySchema,
@@ -543,7 +544,7 @@ describe("Automations API", () => {
           "viewer@example.com",
         ).request(`http://localhost/api/automations?sort=activity&${query}`);
         expect(pageResponse.status).toBe(200);
-        return automationListSchema.parse(await pageResponse.json());
+        return automationListPageSchema.parse(await pageResponse.json());
       };
       const ids = (page: { automations: Array<{ id: string }> }) =>
         page.automations.map((automation) => automation.id);
@@ -560,6 +561,9 @@ describe("Automations API", () => {
       );
       expect(ids(secondPage)).toEqual(["event_automations_api"]);
       expect(secondPage.nextCursor).toBeUndefined();
+      // Later pages skip the counts and options that the first page has.
+      expect(secondPage.total).toBeUndefined();
+      expect(secondPage.creators).toBeUndefined();
       const mineFirst = await activityPage("scope=mine&pageSize=1");
       expect(ids(mineFirst)).toEqual(["sched_tasks_api"]);
       expect(mineFirst.total).toBe(2);
@@ -653,11 +657,6 @@ describe("Automations API", () => {
             totalTokens: 400,
           },
         ],
-        automation: expect.objectContaining({
-          id: "sched_tasks_api",
-          kind: "scheduled",
-          totalRuns: 2,
-        }),
         truncated: false,
       });
       expect(executionList.executionDays).toHaveLength(90);

@@ -37,7 +37,7 @@ import { cn } from "../../../styles";
 import { formatAutomationRunTime } from "../../../pages/automations/automationFormat";
 import { automationOutcomeLabel } from "../../../pages/automations/automationOutcomes";
 import { TriggerFilters } from "../../../pages/automations/TriggerFilters";
-import { invalidateAutomationReads } from "../../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../../review-desk/inboxQueries";
 import { formatRelativeTime } from "../../../time";
 import { getDashboardAgentName } from "../../../agentName";
 
@@ -113,9 +113,9 @@ function AutomationVersionsView(props: {
       );
     },
     onMutate: () => setActivated(undefined),
-    onSuccess: async (_, version) => {
+    onSuccess: async (updated, version) => {
       setActivated(version);
-      await invalidateAutomationReads(queryClient);
+      await refreshChangedAutomation(queryClient, updated);
     },
   });
   if (!selected) {

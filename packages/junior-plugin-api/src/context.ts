@@ -69,6 +69,7 @@ export interface PluginLogger {
 export interface PluginModel {
   /** Run a host-owned structured model call without exposing provider credentials. */
   completeObject<TSchema extends ZodTypeAny>(input: {
+    /** Tokens for the object itself. The host adds room for reasoning. */
     maxTokens?: number;
     prompt: string;
     schema: TSchema;

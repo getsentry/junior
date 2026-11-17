@@ -136,6 +136,13 @@ export interface PluginManifest {
   mcp?: PluginMcpConfig;
   name: string;
   oauth?: PluginOAuthConfig;
+  /**
+   * Facts for action review about where this plugin's writes go, such as
+   * which of them people outside the organization can read. Guardian reads
+   * it in its system prompt. The agent never sees it, and it never grants
+   * authority.
+   */
+  reviewContext?: string;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   target?: {
