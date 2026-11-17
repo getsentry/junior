@@ -8,6 +8,7 @@ import {
   text,
 } from "drizzle-orm/pg-core";
 import { juniorIdentities } from "./identities";
+import type { AutomationExecutionStatus } from "@/chat/automations/execution-stats";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
 
@@ -47,11 +48,13 @@ export const juniorAutomations = pgTable(
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
     /**
-     * When the latest run with an outcome ended, copied from
-     * `junior_automation_runs` so the list can order by activity without a
-     * read per row. `refreshAutomationLastRun` sets it after each run write.
+     * When the latest run with an outcome ended, and that outcome, copied
+     * from `junior_automation_runs` so the list can order by activity and
+     * find failed last runs without a read per row.
+     * `refreshAutomationLastRun` sets both after each run write.
      */
     lastRunAtMs: bigint("last_run_at_ms", { mode: "number" }),
+    lastRunStatus: text("last_run_status").$type<AutomationExecutionStatus>(),
     namespace: text("namespace"),
     identifier: text("identifier"),
     record: jsonb("record")

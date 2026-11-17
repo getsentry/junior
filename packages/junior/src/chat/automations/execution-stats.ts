@@ -143,19 +143,22 @@ export function existingConversationId(conversationId: string): SQL {
 }
 
 /**
- * Copy when an Automation's latest execution ended to `last_run_at_ms`.
- * Call it after each write that adds, settles, or removes an execution. It
- * reads the runs again, so a late or out-of-order write cannot leave an older
- * time.
+ * Copy when an Automation's latest execution ended, and its outcome, to the
+ * Automation row. Call it after each write that adds, settles, or removes an
+ * execution. It reads the runs again, so a late or out-of-order write cannot
+ * leave an older run.
  */
 export async function refreshAutomationLastRun(
   db: JuniorDatabase,
   automationId: string,
 ): Promise<void> {
+  const latest = (column: SQL) =>
+    sql`(select ${column} from ${juniorAutomationRuns} where ${juniorAutomationRuns.automationId} = ${automationId} and ${isExecution()} order by ${juniorAutomationRuns.completedAtMs} desc, ${juniorAutomationRuns.id} desc limit 1)`;
   await db
     .update(juniorAutomations)
     .set({
-      lastRunAtMs: sql`(select max(${juniorAutomationRuns.completedAtMs}) from ${juniorAutomationRuns} where ${juniorAutomationRuns.automationId} = ${automationId} and ${isExecution()})`,
+      lastRunAtMs: latest(sql`${juniorAutomationRuns.completedAtMs}`),
+      lastRunStatus: latest(sql`${juniorAutomationRuns.status}`),
     })
     .where(eq(juniorAutomations.id, automationId));
 }

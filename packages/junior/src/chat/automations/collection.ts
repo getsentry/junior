@@ -20,11 +20,7 @@ import {
 } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
-import {
-  juniorAutomationRuns,
-  juniorAutomations,
-  juniorDestinations,
-} from "@/db/schema";
+import { juniorAutomations, juniorDestinations } from "@/db/schema";
 
 /**
  * The collection applies access before counts, filter options, and paging.
@@ -67,10 +63,7 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         : undefined,
     ),
   )!;
-  const runs = juniorAutomationRuns;
-  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
-      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
-      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
+  const lastRunNeedsAttention = sql<boolean>`coalesce(${automation.lastRunStatus} in ('failed', 'blocked'), false)`;
   // When the last run ended, or else when the Automation was created.
   const activityAtMs = sql<number>`coalesce(${automation.lastRunAtMs}, ${automation.createdAtMs})`;
   return db

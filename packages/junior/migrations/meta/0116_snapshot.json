@@ -1,5 +1,5 @@
 {
-  "id": "7314e3a0-291e-432f-96c4-d716c1281231",
+  "id": "2eb10129-a170-426e-95c3-fb59c3d8911e",
   "prevId": "2975fcbf-7615-4d37-b9ee-aa182fc7fbb4",
   "version": "7",
   "dialect": "postgresql",
@@ -1218,6 +1218,12 @@
         "last_run_at_ms": {
           "name": "last_run_at_ms",
           "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_run_status": {
+          "name": "last_run_status",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
