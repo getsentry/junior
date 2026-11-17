@@ -50,6 +50,7 @@ Doctor cannot see a wedged page or a stuck Turn on a healthy process. Then open 
 `node $S/browse.mjs --out DIR [--timeout MS] STEP...` drives the dashboard with Playwright. Steps run in order:
 
 - `--goto PATH_OR_URL`, `--back NAME` (the URL that an earlier `--snap NAME` saved), `--click SELECTOR`, `--fill SELECTOR=TEXT`, `--press KEY`.
+- `--upload SELECTOR=PATH[,PATH]` sets the files of a file input, such as `role=button[name="Choose files"]`. `--select SELECTOR` selects the text of the element, as a mouse drag does.
 - `--expect SELECTOR` waits until it is visible. `--absent SELECTOR` waits until none is visible, and it also passes when the element never showed.
 - `--title PREFIX` waits for the tab title. `--order A|B|C` waits for the texts in that order.
 - `--idle` waits until the open Conversation has no running Turn for 3 seconds.
