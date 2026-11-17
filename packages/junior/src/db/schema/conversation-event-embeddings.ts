@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { juniorConversationEvents } from "./conversation-events";
 import { timestamptz } from "./timestamps";
-import { vector } from "./vector";
+import { halfvec } from "./vector";
 
 /**
  * One embedding per searchable Conversation event, for semantic search of the
@@ -24,7 +24,10 @@ export const juniorConversationEventEmbeddings = pgTable(
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     dimensions: integer("dimensions").notNull(),
-    embedding: vector("embedding").notNull(),
+    // Half precision keeps the ranking and halves the size of the table. The
+    // migration also sets STORAGE MAIN, so a vector stays in its row and the
+    // exact scan of a Conversation reads no TOAST.
+    embedding: halfvec("embedding").notNull(),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [

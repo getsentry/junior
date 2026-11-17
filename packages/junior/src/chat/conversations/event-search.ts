@@ -163,10 +163,11 @@ async function keywordRanks(
   );
   const queryVector = lexemesSql(search.query);
   // Any query lexeme matches. BM25 ranks events with more and rarer ones first.
-  const tsquery = sql`(
-    SELECT coalesce(string_agg(quote_literal(term), ' | ')::tsquery, ''::tsquery)
-    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
-  )`;
+  // The text form of a stripped tsvector is its quoted lexemes with one space
+  // between them, so joining them with ` | ` gives an OR query. Each function
+  // is immutable, so Postgres folds the query to a constant at plan time and
+  // can choose the GIN index for rare words. A subquery would hide it.
+  const tsquery = sql`regexp_replace(strip(${queryVector})::text, ''' ''', ''' | ''', 'g')::tsquery`;
   const storedDocuments = db
     .select({
       seq: events.seq,
@@ -276,7 +277,7 @@ async function meaningRanks(
     // Postgres can order before it filters, and pgvector fails on vectors of
     // two sizes. The CASE keeps a vector of another size from the operator.
     .orderBy(
-      sql`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::vector END`,
+      sql`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::halfvec END`,
     )
     .limit(CANDIDATES_PER_LEG);
   return rows.map((row) => row.seq);
