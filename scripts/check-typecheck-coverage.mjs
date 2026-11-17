@@ -7,6 +7,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  typecheckProjects,
+  workspaceDirectories,
+} from "./lib/typecheck-projects.mjs";
 
 const root = process.cwd();
 const tsc = path.join(root, "node_modules/.bin/tsc");
@@ -39,31 +43,14 @@ function readJson(file) {
 
 /** Project directories that the root typecheck and the docs check run. */
 function runProjects() {
-  const projects = new Set();
-  const errors = [];
-  const rootScript = readJson("package.json").scripts?.typecheck ?? "";
-  const [first, ...rest] = rootScript.split(" && ");
-  if (first !== "pnpm -r run typecheck") {
-    errors.push(`Unknown root typecheck script: ${rootScript}`);
-  }
-  for (const command of rest) {
-    const project = /^tsc --noEmit -p (\S+)$/.exec(command)?.[1];
-    if (project) projects.add(project);
-    else errors.push(`Unknown root typecheck command: ${command}`);
-  }
-  // The workspace packages, as pnpm-workspace.yaml lists them.
-  const directories = ["apps", "packages"].flatMap((group) =>
-    fs.readdirSync(path.join(root, group)).map((name) => `${group}/${name}`),
-  );
-  for (const directory of directories) {
-    const manifest = `${directory}/package.json`;
-    if (!fs.existsSync(path.join(root, manifest))) continue;
-    const scripts = readJson(manifest).scripts ?? {};
-    if (scripts.typecheck === "tsc --noEmit") {
-      projects.add(directory);
-    } else if (scripts.typecheck !== undefined) {
-      errors.push(`Unknown typecheck script in ${manifest}`);
-    } else if (scripts.check?.startsWith("astro check")) {
+  const { projects: tscProjects, errors } = typecheckProjects(root);
+  const projects = new Set(tscProjects);
+  for (const directory of workspaceDirectories(root)) {
+    const scripts = readJson(`${directory}/package.json`).scripts ?? {};
+    if (
+      scripts.typecheck === undefined &&
+      scripts.check?.startsWith("astro check")
+    ) {
       projects.add(directory);
     }
   }
