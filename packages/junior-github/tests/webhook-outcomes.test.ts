@@ -287,6 +287,10 @@ function webhookRoute(
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
   codeChanges: CodeChangeInput[] = [],
+  warn: (
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) => void = () => {},
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -315,7 +319,7 @@ function webhookRoute(
     db: fixture.db(),
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
-    log: { error },
+    log: { error, warn },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     events: {
@@ -1949,7 +1953,24 @@ describe("GitHub-owned issue outcomes", () => {
   it("records an issue close without a terminal time at its update time", async () => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture);
+      const warnings: Array<{
+        message: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (message, metadata) => {
+          warnings.push({ message, metadata });
+        },
+      );
       await route.handler(
         signedRequest(
           issueLifecyclePayload({
@@ -1975,6 +1996,17 @@ describe("GitHub-owned issue outcomes", () => {
         ),
       );
       expect(closed.status).toBe(202);
+      expect(warnings).toEqual([
+        {
+          message: "GitHub issue close has no valid terminal timestamp",
+          metadata: {
+            closedAt: null,
+            number: 990,
+            repository: "getsentry/junior",
+            updatedAt: "2026-07-03T12:05:00.000Z",
+          },
+        },
+      ]);
 
       await expect(
         fixture.db().select().from(juniorGitHubIssues),
