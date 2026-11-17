@@ -1,9 +1,9 @@
 /**
  * Sentry egress policy.
  *
- * Junior never deletes a Sentry organization or project, whatever the
- * credential, grant, or Actor role. Deletion is irreversible for the people
- * who own the data, so a person does it in Sentry.
+ * Junior never deletes a Sentry organization, project, or user, whatever
+ * the credential, grant, or Actor role. Deletion is irreversible for the
+ * people who own the data, so a person does it in Sentry.
  */
 import { EgressPolicyDenied } from "@sentry/junior-plugin-api";
 import type { EgressHookContext } from "@sentry/junior-plugin-api";
@@ -19,11 +19,10 @@ function apiPathSegments(url: URL): string[] {
   return pathname.split("/").filter(Boolean);
 }
 
-// `DELETE /api/0/organizations/{org}/` and
-// `DELETE /api/0/projects/{org}/{project}/`.
-function isOrganizationOrProjectDeletion(
-  request: EgressHookContext["request"],
-): boolean {
+// `DELETE /api/0/organizations/{org}/`,
+// `DELETE /api/0/projects/{org}/{project}/`, and
+// `DELETE /api/0/users/{user}/`.
+function isProtectedDeletion(request: EgressHookContext["request"]): boolean {
   if (request.method.toUpperCase() !== "DELETE") {
     return false;
   }
@@ -35,17 +34,18 @@ function isOrganizationOrProjectDeletion(
   }
   return (
     (resource === "organizations" && rest.length === 1) ||
-    (resource === "projects" && rest.length === 2)
+    (resource === "projects" && rest.length === 2) ||
+    (resource === "users" && rest.length === 1)
   );
 }
 
-/** Deny Sentry organization and project deletion from the Sandbox. */
+/** Deny Sentry organization, project, and user deletion from the Sandbox. */
 export function enforceSentryEgressPolicy(
   request: EgressHookContext["request"],
 ): void {
-  if (isOrganizationOrProjectDeletion(request)) {
+  if (isProtectedDeletion(request)) {
     throw new EgressPolicyDenied(
-      "Junior does not delete Sentry organizations or projects. A person must do this in Sentry. This is a Junior policy, not a Sentry permission failure; do not ask for more Sentry permissions.",
+      "Junior does not delete Sentry organizations, projects, or users. A person must do this in Sentry. This is a Junior policy, not a Sentry permission failure; do not ask for more Sentry permissions.",
     );
   }
 }

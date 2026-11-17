@@ -26,6 +26,8 @@ describe("sentry egress policy", () => {
     "https://de.sentry.io/api/0/projects/sentry/junior/",
     "https://sentry.io/api/0//projects/sentry/junior",
     "https://sentry.io/api/0/projects/sentry/%6Aunior/",
+    "https://sentry.io/api/0/users/me/",
+    "https://us.sentry.io/api/0/users/123",
   ])("denies DELETE %s", (url) => {
     expect(() => grantFor("DELETE", url)).toThrow(EgressPolicyDenied);
     expect(() => grantFor("delete", url)).toThrow(EgressPolicyDenied);
@@ -49,6 +51,9 @@ describe("sentry egress policy", () => {
         "DELETE",
         "https://sentry.io/api/0/organizations/sentry/issues/",
       ),
+    ).toBeUndefined();
+    expect(
+      grantFor("DELETE", "https://sentry.io/api/0/users/me/emails/"),
     ).toBeUndefined();
   });
 });
