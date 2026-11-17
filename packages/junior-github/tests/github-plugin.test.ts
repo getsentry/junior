@@ -2152,6 +2152,25 @@ Conversation: \`local:test:old-conversation\`
 
   it("returns the reviewers GitHub would not ask", async () => {
     const ctx = githubToolsContext({
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      resolveActor: async () => ({
+        identity: {
+          id: "slack-id",
+          provider: "slack",
+          providerSubjectId: "U1",
+        },
+        user: {
+          id: "user-1",
+          identities: [
+            {
+              id: "github-id",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
+        },
+      }),
       egressFetch: async ({ operation }) =>
         operation === "github.pull.create"
           ? Response.json(
