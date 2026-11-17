@@ -323,7 +323,7 @@ describe("searchConversationEvents", () => {
               type: "toolCall",
               id: "call-1",
               name: "bash",
-              arguments: { command: "cat logs/ci-7421.log" },
+              arguments: { command: "cat logs/ci-7421.log", attempt: 7733 },
             },
           ],
           timestamp: 2,
@@ -377,6 +377,9 @@ describe("searchConversationEvents", () => {
     await expect(executeTool({ query: "ci-7421.log" })).resolves.toMatchObject({
       events: [{ seq: 1, data: { type: "assistant_message" } }],
     });
+    await expect(executeTool({ query: "7733" })).resolves.toMatchObject({
+      events: [{ seq: 1, data: { type: "assistant_message" } }],
+    });
     await expect(executeTool({ query: "4821" })).resolves.toMatchObject({
       events: [
         { seq: 3, excerpt: "Opened getsentry/junior#4821 with the fix." },
@@ -407,8 +410,8 @@ describe("searchConversationEvents", () => {
     });
     expect(byMeaning.events[0]).toMatchObject({ seq: 3 });
 
-    // Stored lexemes give the same matches. A newer event without stored
-    // lexemes stays searchable.
+    // Stored lexemes give the same matches. Newer events without stored
+    // lexemes stay searchable, and an event without text gets empty ones.
     await expect(
       storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
     ).resolves.toBe(4);
@@ -418,6 +421,20 @@ describe("searchConversationEvents", () => {
     await events.append(CURRENT_CONVERSATION_ID, [
       {
         createdAtMs: 6,
+        data: {
+          type: "user_message",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>queue</runtime-turn-context>",
+            },
+          ],
+          timestamp: 6,
+          provenance: { authority: "instruction" },
+        },
+      },
+      {
+        createdAtMs: 7,
         data: {
           type: "message",
           messageId: "m-retry",
@@ -433,7 +450,13 @@ describe("searchConversationEvents", () => {
       events: [],
     });
     await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
-      events: [{ seq: 5 }],
+      events: [{ seq: 6 }],
+    });
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(2);
+    await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
+      events: [{ seq: 6 }],
     });
   });
 

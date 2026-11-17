@@ -28,9 +28,12 @@ const MAX_EVENTS_PER_RUN = 2_000;
 const LEXEME_SEPARATORS = "/#\\:@?&=";
 const LEXEME_SEPARATOR_SPACES = " ".repeat(LEXEME_SEPARATORS.length);
 
-/** Lexemes of query or event text, split the same way for both. */
+/**
+ * Lexemes of query or event text, split the same way for both. Text that is
+ * null gives no lexemes, so an event without text is still stored once.
+ */
 export function lexemesSql(text: SQL | string): SQL {
-  return sql`to_tsvector('english', translate(${text}, ${LEXEME_SEPARATORS}, ${LEXEME_SEPARATOR_SPACES}))`;
+  return sql`to_tsvector('english', translate(coalesce(${text}, ''), ${LEXEME_SEPARATORS}, ${LEXEME_SEPARATOR_SPACES}))`;
 }
 
 /** Match event seqs against one array parameter, however many there are. */

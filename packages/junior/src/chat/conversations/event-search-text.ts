@@ -35,7 +35,7 @@ const AGENT_HISTORY_TEXT_PATHS = [
   'lax $.toolName ? (@.type() == "string")',
   `lax $.content[*] ? (@.type == "text" && ${runtimeContextFilter}).text`,
   'lax $.content[*] ? (@.type == "toolCall").name',
-  'lax $.content[*] ? (@.type == "toolCall").arguments.** ? (@.type() == "string")',
+  'lax $.content[*] ? (@.type == "toolCall").arguments.** ? (@.type() == "string" || @.type() == "number")',
 ];
 
 /**
