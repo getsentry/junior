@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { keywordSearchEvents } from "@junior-evals/fixture/event-search";
+import { logEventRanking } from "@junior-evals/fixture/event-ranking-diagnostic";
 import { toolCallsOf, type ToolCall } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -225,6 +226,24 @@ describe("Thread Continuity", () => {
       slackMention("When does the certificate on our mail server expire?"),
       { history: hostChecks(HOSTS.slice(37)) },
     );
+    // DIAGNOSTIC ONLY: needle ranks for the earlier runs' and this run's queries.
+    await logEventRanking({
+      conversationId: conversation.conversationId,
+      isNeedle: (text) => text.includes("/var/spool/postfix/"),
+      queries: [
+        "mail server certificate expiration",
+        "mail server /etc/pki certificate",
+        "mail server certificate expiry certificate expiration",
+        "mail server",
+        ...toolCallsOf("searchConversationEvents", conversation).flatMap(
+          (call) => {
+            const query = (call.input as { query?: unknown } | undefined)
+              ?.query;
+            return typeof query === "string" ? [query] : [];
+          },
+        ),
+      ],
+    });
 
     expect(first.compactions).toBeGreaterThan(0);
     // The case proves nothing when a summary still holds the answer.
