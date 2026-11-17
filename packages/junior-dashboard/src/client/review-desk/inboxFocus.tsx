@@ -288,10 +288,22 @@ export function useInboxFocus(
       // anchoring already undid scrolls nothing.
       const top = shownTop(card, area);
       const until = performance.now() + SETTLE_MS;
+      let scrolled = area.scrollTop;
+      let shown = top;
       const hold = () => {
         if (!card.isConnected) return;
-        const drift = shownTop(card, area) - top;
+        const now = shownTop(card, area);
+        const before = area.scrollTop;
+        // A scroll moves the card on screen by as much as the area scrolled.
+        // Someone else scrolled, such as the reader's wheel or a scroll to
+        // a card, so the hold lets go instead of scrolling back.
+        const scroll = before - scrolled;
+        if (Math.abs(scroll) >= 0.5 && Math.abs(now - shown + scroll) < 0.5)
+          return;
+        const drift = now - top;
         if (Math.abs(drift) >= 0.5) area.scrollTop += drift;
+        shown = now - (area.scrollTop - before);
+        scrolled = area.scrollTop;
         if (performance.now() < until || cardsMoving(area))
           frame.current = requestAnimationFrame(hold);
       };
