@@ -86,7 +86,7 @@ function PersonActivity(props: { activity: PersonCardReport["activity"] }) {
       <p className={SECTION_TITLE_CLASS}>
         {activity.lastActiveAt ? (
           <>
-            Last active on Junior{" "}
+            Last active{" "}
             <time
               dateTime={activity.lastActiveAt}
               title={formatTime(activity.lastActiveAt)}
@@ -95,7 +95,7 @@ function PersonActivity(props: { activity: PersonCardReport["activity"] }) {
             </time>
           </>
         ) : (
-          "No recent activity on Junior"
+          "No recent activity"
         )}
       </p>
       {activity.recentConversations.length > 0 && (

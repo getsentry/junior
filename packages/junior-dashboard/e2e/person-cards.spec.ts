@@ -57,7 +57,7 @@ test("a message header name opens the person card", async ({
   // Each one names its repository and number, and when it merged.
   await expect(shipped).toContainText(/\S+\/\S+#\d+ · merged /);
   const activity = card.getByRole("region", { name: "Recent activity" });
-  await expect(activity).toContainText("Last active on Junior");
+  await expect(activity).toContainText("Last active");
   await expect(activity.getByRole("link").first()).toHaveAttribute(
     "href",
     /^\/conversations\//,
@@ -114,7 +114,7 @@ test("a Slack mention shows the photo and name, and opens the person card", asyn
   // Avery's one Conversation is a private one the viewer is not in: it
   // sets "Last active", but it does not show.
   const activity = card.getByRole("region", { name: "Recent activity" });
-  await expect(activity).toContainText("Last active on Junior");
+  await expect(activity).toContainText("Last active");
   await expect(activity.getByRole("link")).toHaveCount(0);
 });
 
