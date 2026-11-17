@@ -725,6 +725,12 @@ export interface PluginEventToolContext {
      * resource type guidance when a matching Event arrives.
      */
     guidance?: Partial<Record<string, string>>;
+    /**
+     * Event types, from `events`, that this Watch delivers quietly: core
+     * saves each one as a Conversation note and starts no Turn. Use it for
+     * outcomes that a later Turn must know but that need no action.
+     */
+    quietEvents?: string[];
   }): Promise<WatchResult>;
 }
 

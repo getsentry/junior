@@ -3,7 +3,11 @@ import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException, logInfo } from "@/chat/logging";
 import { resolveEventAuthor } from "@/chat/identities/trust";
-import { enqueueEventNotification } from "@/chat/events/notification";
+import {
+  addQuietEventNote,
+  enqueueEventNotification,
+  isQuietEvent,
+} from "@/chat/events/notification";
 import { resolveEventMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 import { slackMention } from "@/chat/slack/mrkdwn";
@@ -61,6 +65,8 @@ export async function ingestEvent(
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
   for (const subscription of subscriptions) {
+    // A Quiet Event is delivered, but it is not enqueued: it starts no Turn.
+    let quiet = false;
     try {
       const delivered = await deliverWatch({
         data: event.data,
@@ -73,6 +79,11 @@ export async function ingestEvent(
         subscription,
         waitDeadlineMs,
         deliver: async (current) => {
+          if (isQuietEvent(current, event.eventType)) {
+            quiet = true;
+            await addQuietEventNote({ event, subscription: current });
+            return true;
+          }
           const result = await enqueueEventNotification({
             author,
             doneBy,
@@ -85,7 +96,7 @@ export async function ingestEvent(
           return result.status === "appended";
         },
       });
-      if (delivered) {
+      if (delivered && !quiet) {
         enqueued += 1;
       }
     } catch (error) {

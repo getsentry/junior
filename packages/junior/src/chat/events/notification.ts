@@ -31,6 +31,7 @@ import {
   type CredentialSubject,
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { addConversationNote } from "@/chat/conversations/notes";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -409,6 +410,33 @@ export function createEventInboundMessage(input: {
       metadata,
     },
   };
+}
+
+/** Whether a Watch delivers this event type as a Quiet Event. */
+export function isQuietEvent(
+  subscription: Pick<Watch, "quietEvents">,
+  eventType: string,
+): boolean {
+  return subscription.quietEvents?.includes(eventType) === true;
+}
+
+/**
+ * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
+ * automated-turn limit does not apply. The next Turn sees the note as
+ * runtime context. Core writes how to use it before the Event facts, so a
+ * long summary that the note limit cuts never loses that rule.
+ */
+export async function addQuietEventNote(args: {
+  event: EventNotification;
+  subscription: Pick<Watch, "conversationId" | "id" | "label">;
+}): Promise<void> {
+  const { event, subscription } = args;
+  await addConversationNote({
+    conversationId: subscription.conversationId,
+    createdAtMs: event.occurredAtMs,
+    key: `quiet_event:${subscription.id}:${event.eventKey}`,
+    text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
+  });
 }
 
 /**

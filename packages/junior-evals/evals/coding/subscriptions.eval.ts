@@ -474,6 +474,37 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
+  test("when a Junior PR merges quietly, the next Turn does not announce it", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`What does ${pullRequest} change?`),
+    );
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // The merge is a Quiet Event: it starts no Turn and posts nothing.
+    const merged = await conversation.continue(mergedWebhook());
+    expect(merged.turns).toEqual([]);
+    expect(merged.replies).toEqual([]);
+
+    const followUp = await merged.continue(
+      slackMention(
+        "Thanks. Unrelated: what is a good name for a cache TTL constant?",
+      ),
+    );
+    await expect(followUp).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply answers the naming question."],
+        fail: [`Do not tell the person that GitHub PR ${pullRequest} merged.`],
+      }),
+    );
+  });
+
   test("when a watched PR merges after an Automation run, post with reply", async ({
     run,
   }) => {

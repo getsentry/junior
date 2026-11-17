@@ -507,11 +507,13 @@ async function gitHubPullRequestStructuredResult(
       ...watch,
       resource: base.subscribable,
     });
+    // Quiet Events stay suggested, so the agent can still watch a merge
+    // when a person asks to hear about it.
     const data = gitHubPullRequestToolResult(
       input,
       result,
       ctx.events.canSubscribe,
-      watch.events,
+      subscription.events,
     );
     return {
       objectAnnotations,

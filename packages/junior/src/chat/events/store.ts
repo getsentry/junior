@@ -45,6 +45,8 @@ const subscriptionSchema = z
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
+    /** Event types that this Watch delivers as a Quiet Event. */
+    quietEvents: z.array(eventTypeSchema).min(1).optional(),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
@@ -63,6 +65,7 @@ export interface CreateWatchInput {
   match?: EventMatch;
   namespace: string;
   identifier: string;
+  quietEvents?: readonly string[] | undefined;
   resourceType: string;
 }
 
@@ -342,6 +345,14 @@ export async function createWatch(
     identifier: input.identifier,
   });
   const guidance = watchGuidance(input.guidance, events);
+  // Quiet is not part of the Watch id: a Watch for the same events from
+  // watchEvents replaces this one, and its Events start Turns.
+  const quietEvents = events.filter((event) =>
+    input.quietEvents?.includes(event),
+  );
+  if (quietEvents.length === events.length) {
+    throw new Error("Watch requires at least one event that starts a Turn");
+  }
   const record: Watch = {
     conversationId: input.conversationId,
     createdAtMs: nowMs,
@@ -354,6 +365,7 @@ export async function createWatch(
     ...(match ? { match } : undefined),
     namespace: input.namespace,
     identifier: input.identifier,
+    ...(quietEvents.length > 0 ? { quietEvents } : undefined),
     resourceType: input.resourceType,
     status: "active",
     updatedAtMs: nowMs,

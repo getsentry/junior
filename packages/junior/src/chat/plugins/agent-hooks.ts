@@ -851,10 +851,15 @@ export function getPluginTools(
             registration,
             input.resource.identifier,
           ),
+          quietEvents: input.quietEvents,
           resourceType: input.resource.type,
         });
+        // Quiet Events never wake the Conversation, so the agent does not
+        // count on them. It can still watch them with watchEvents.
         return {
-          events: subscription.events,
+          events: subscription.events.filter(
+            (eventType) => !subscription.quietEvents?.includes(eventType),
+          ),
           id: subscription.id,
         };
       },

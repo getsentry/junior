@@ -348,6 +348,7 @@ export async function insertWatch(args: {
   intent: string;
   label: string;
   namespace?: string;
+  quietEvents?: string[];
   resourceType: string;
 }): Promise<{ id: string }> {
   const nowMs = Date.now();
@@ -361,6 +362,7 @@ export async function insertWatch(args: {
       intent: args.intent,
       label: args.label,
       namespace: args.namespace ?? "github",
+      quietEvents: args.quietEvents,
       resourceType: args.resourceType,
     },
     { nowMs },
