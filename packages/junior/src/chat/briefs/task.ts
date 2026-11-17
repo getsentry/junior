@@ -122,7 +122,7 @@ export async function updateConversationBrief(
     return;
   }
 
-  await context.state.withLock(
+  const attempt = await context.state.withLock(
     `brief:${run.conversationId}`,
     BRIEF_LOCK_TTL_MS,
     async () => {
@@ -202,6 +202,11 @@ export async function updateConversationBrief(
       }
     },
   );
+  if (!attempt.acquired) {
+    // Another Turn's Brief is in progress. The next Brief reads every event
+    // through its own Turn, so it also covers this one.
+    logSkip(context, run.conversationId, "brief_in_progress");
+  }
 }
 
 /** Core task registration kept outside the installed plugin catalog. */

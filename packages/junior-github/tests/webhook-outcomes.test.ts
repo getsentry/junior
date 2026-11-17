@@ -3108,7 +3108,7 @@ describe("GitHub-owned pull request outcomes", () => {
           state.set(key, value);
         },
         async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
-          return await run();
+          return { acquired: true, value: await run() };
         },
       },
     } as any;
