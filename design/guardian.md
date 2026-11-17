@@ -52,6 +52,8 @@ data, does not run.
   proves that each effect is safe. A core tool is reviewed only when it opts
   in, such as Automation and Workspace changes, `spawnAgent`, and
   `messageAgent`.
+- A public URL for a Sandbox server (`createPreview`) always goes through
+  Guardian review, and the normal rules, such as `data_exposure`, decide.
 - A confirmation rule asks. The person clears it when they confirm the exact
   action. A hard rule denies, and no confirmation clears it. Examples are
   `data_exposure`, `credential_probing`, `security_weakening`, and
@@ -100,6 +102,9 @@ data, does not run.
   [Sandbox credentials](./sandbox-credentials.md) limits them. This breaks
   "a block holds for the outcome, not for the tool": a write that Guardian
   blocks as a tool call can run as a command.
+- `createPreview` skips review, so a Sandbox server gets a public URL that
+  Guardian never sees. This breaks "a public URL for a Sandbox server always
+  goes through Guardian review". getsentry/junior#3601 makes it reviewed.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".
