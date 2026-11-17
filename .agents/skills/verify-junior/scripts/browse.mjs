@@ -102,6 +102,9 @@ try {
           );
         }, value.split("|"));
       else if (step === "idle") {
+        // Each --idle starts its own 3-second window. A mark from an earlier
+        // --idle on this page would pass before the next Turn shows as busy.
+        await page.evaluate(() => delete window.__idleSince);
         await page.waitForFunction(
           () => {
             const busy =
