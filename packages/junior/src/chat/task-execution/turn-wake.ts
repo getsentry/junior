@@ -18,6 +18,7 @@ import {
 import {
   failTurnRecord,
   loadTurnCheckpoint,
+  pausedTurnReason,
 } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { TraceContext } from "@/chat/task-execution/state";
@@ -63,14 +64,12 @@ export async function getPausedTurnRequest(args: {
     turnId: args.turnId,
   });
   const turn = checkpoint.record;
+  const reason = turn ? pausedTurnReason(turn) : undefined;
   if (
     !turn ||
-    turn.state !== "paused" ||
-    (turn.resumeReason !== "timeout" &&
-      turn.resumeReason !== "yield" &&
-      turn.resumeReason !== "retry" &&
-      !(turn.resumeReason === "auth" && (await getTurnAuthorization(turn)))) ||
-    (turn.resumeReason === "timeout" && turn.sliceId < 2)
+    !reason ||
+    (reason === "auth" && !(await getTurnAuthorization(turn))) ||
+    (reason === "timeout" && turn.sliceId < 2)
   ) {
     return undefined;
   }
