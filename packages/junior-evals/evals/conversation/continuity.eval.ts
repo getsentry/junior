@@ -123,18 +123,21 @@ const hostChecks = (hosts: readonly string[]) =>
       ],
     }),
   ]);
+// An event of the mail host's check: it names the host or lists its queue.
+const isMailHostEvent = (event: unknown) => {
+  const text = JSON.stringify(event);
+  return text.includes(MAIL_HOST) || text.includes("/var/spool/postfix/");
+};
 // Forms of the mail host's end date that a summary could hold.
 const holdsMailHostDate = (summaries: readonly string[]) =>
   /\bApr(il)?\.?\s+0?2\b|2026-04-02|\b0?4\/0?2\b/i.test(summaries.join("\n"));
 const historyReads = (conversation: { toolCalls: ToolCall[] }) =>
   toolCallsOf("searchConversationEvents", conversation).length +
   toolCallsOf("readConversationEvent", conversation).length;
+const hasQuery = (call: ToolCall) =>
+  typeof (call.input as { query?: unknown } | undefined)?.query === "string";
 const searchedWithQuery = (conversation: { toolCalls: ToolCall[] }) =>
-  toolCallsOf("searchConversationEvents", conversation).some(
-    (call) =>
-      typeof (call.input as { query?: unknown } | undefined)?.query ===
-      "string",
-  );
+  toolCallsOf("searchConversationEvents", conversation).some(hasQuery);
 // This CI log is about 51,000 tokens. The answer must come from the summary.
 const CI_LOG = Array.from(
   { length: 1_800 },
@@ -237,16 +240,17 @@ describe("Thread Continuity", () => {
         pass: ["The reply says the certificate expires on April 2, 2026."],
       }),
     );
-    const [firstSearch] = toolCallsOf("searchConversationEvents", conversation);
-    expect(searchedWithQuery(conversation)).toBe(true);
+    const firstQuerySearch = toolCallsOf(
+      "searchConversationEvents",
+      conversation,
+    ).find(hasQuery);
+    expect(firstQuerySearch).toBeDefined();
     // Keyword search alone does not find the mail host for that search.
     const keywordEvents = await keywordSearchEvents(
       conversation.conversationId,
-      firstSearch?.input,
+      firstQuerySearch?.input,
     );
-    expect(
-      keywordEvents.some((event) => JSON.stringify(event).includes(MAIL_HOST)),
-    ).toBe(false);
+    expect(keywordEvents.some(isMailHostEvent)).toBe(false);
     expect(historyReads(conversation)).toBeLessThanOrEqual(8);
   });
 
