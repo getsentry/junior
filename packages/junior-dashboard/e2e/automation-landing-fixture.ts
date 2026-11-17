@@ -408,7 +408,6 @@ export async function mockLandingAutomationApis(page: Page) {
     });
     return route.fulfill({
       json: {
-        automation: entry.summary,
         executionDays: days,
         executions: [...entry.runs].reverse(),
         truncated: false,

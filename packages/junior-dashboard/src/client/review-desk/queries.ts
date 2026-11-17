@@ -25,6 +25,7 @@ import {
 } from "../conversations/queries";
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
+import { automationKeys } from "../api";
 
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
@@ -236,7 +237,7 @@ export function useReviewItemCountData(enabled: boolean) {
 export function useBlockedAutomationsData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "scope=mine&state=blocked"],
+    queryKey: [...automationKeys.lists(), "scope=mine&state=blocked"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,

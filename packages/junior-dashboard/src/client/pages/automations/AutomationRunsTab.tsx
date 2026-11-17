@@ -94,6 +94,7 @@ export function AutomationRunsTab(props: {
       {props.header}
       {query.data ? (
         <AutomationRunsView
+          automation={automation}
           data={query.data}
           executions={executions}
           onResultChange={setResult}
@@ -117,6 +118,7 @@ export function AutomationRunsTab(props: {
 }
 
 function AutomationRunsView(props: {
+  automation: AutomationSummary;
   data: AutomationExecutionList;
   executions: AutomationExecution[];
   onResultChange(value: (typeof RESULT_OPTIONS)[number]): void;
@@ -168,7 +170,7 @@ function AutomationRunsView(props: {
           value={props.result}
         />
         <p className="m-0 text-xs text-dashboard-text-muted">
-          {data.automation.totalRuns} total · newest first
+          {props.automation.totalRuns} total · newest first
         </p>
       </div>
 
@@ -200,7 +202,7 @@ function AutomationRunsView(props: {
                 {props.executions.map((execution) => (
                   <ExecutionRow
                     execution={execution}
-                    fallbackTitle={data.automation.title}
+                    fallbackTitle={props.automation.title}
                     key={execution.executionId}
                     onSelect={() => props.onSelect(execution.executionId)}
                     selected={props.selectedRunId === execution.executionId}

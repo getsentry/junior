@@ -28,7 +28,7 @@ import {
   automationUpdateSchema,
   automationExecutionListSchema,
   automationListQuerySchema,
-  automationListSchema,
+  automationListPageSchema,
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
@@ -126,7 +126,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           )
         : undefined;
       const { next, ...list } = await readViewerAutomations(user, query, after);
-      return jsonResponse(automationListSchema, {
+      return jsonResponse(automationListPageSchema, {
         ...list,
         automations: await attachAutomationMentions(
           getSqlExecutor(),
@@ -236,14 +236,10 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       const user = context.get("viewer");
       const params = context.req.valid("param");
       try {
-        const list = await readViewerAutomationExecutions(user, params.id);
-        const [automation] = await attachAutomationMentions(getSqlExecutor(), [
-          list.automation,
-        ]);
-        return jsonResponse(automationExecutionListSchema, {
-          ...list,
-          automation: automation!,
-        });
+        return jsonResponse(
+          automationExecutionListSchema,
+          await readViewerAutomationExecutions(user, params.id),
+        );
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
           return jsonResponse(

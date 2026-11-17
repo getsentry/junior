@@ -151,17 +151,6 @@
       }
     },
     {
-      "files": [
-        "src/client/pages/automations/**",
-        "src/client/inbox/pages/automations/**",
-        "src/client/review-desk/inboxQueries.ts"
-      ],
-      "rules": {
-        "no-await-in-loop": "off",
-        "query-invalidation/no-broad-query-invalidation": "off"
-      }
-    },
-    {
       "files": ["src/client/time.ts"],
       "rules": {
         "time-format/no-raw-time-format": "off"

@@ -873,7 +873,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await page.route("**/api/automations/event-2/executions", (route) =>
     route.fulfill({
       json: {
-        automation: report.automations.find((item) => item.id === "event-2"),
         executions: [],
         executionDays: [],
         truncated: false,

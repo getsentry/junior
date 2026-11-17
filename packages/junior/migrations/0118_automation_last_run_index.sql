@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_automations_last_run_idx" ON "junior_automations" USING btree ("last_run_id");
