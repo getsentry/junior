@@ -4,6 +4,7 @@ import {
   license,
   mockReviewItems,
   prReady,
+  prReview,
   rollout,
   rowHead,
 } from "./inbox-fixture";
@@ -55,6 +56,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     await rowHead(page, checkout).click();
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
+  });
+
+  test("a pull request row leaves the list as soon as it is snoozed", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    const row = page
+      .locator("[data-inbox-row]")
+      .filter({ hasText: "Review requested · #91" });
+    await row.getByRole("link").first().click();
+    // Hold the reads that follow the snooze, so only the page hides the row.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/review-items?**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(row).toHaveCount(0);
+    release();
+    await expect(row).toHaveCount(0);
   });
 
   test("a row snoozed in another browser loads asleep", async ({

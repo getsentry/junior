@@ -155,7 +155,7 @@ export function useInboxSnoozes(enabled: boolean) {
     return snoozesHiding(fresh.snoozes, itemIds);
   };
   const snooze = async (bundle: InboxBundle, choice: SnoozeChoice) => {
-    mark(setHidden, bundle.key, true);
+    mark(setHidden, bundle.conversationId, true);
     try {
       const body: WakeAutomationCreateBody = {
         action: "wake",
@@ -174,7 +174,7 @@ export function useInboxSnoozes(enabled: boolean) {
       await post(wakeAutomationSchema, "/api/automations", body);
       await refreshInbox(queryClient);
     } finally {
-      mark(setHidden, bundle.key, false);
+      mark(setHidden, bundle.conversationId, false);
     }
   };
   const wake = async (bundle: InboxBundle) => {
@@ -187,8 +187,11 @@ export function useInboxSnoozes(enabled: boolean) {
     }
   };
   return {
-    /** The row was just snoozed, and the lists have not refreshed yet. */
-    hides: (key: string) => hidden.has(key),
+    /**
+     * The Conversation was just snoozed, and the lists have not refreshed
+     * yet. A snooze hides every row of its Conversation.
+     */
+    hides: (conversationId: string) => hidden.has(conversationId),
     /**
      * A snooze hides this item from the viewer. Undefined until the snoozes
      * load; false when they fail, so the item still shows.
