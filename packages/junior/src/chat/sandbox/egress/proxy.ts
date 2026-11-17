@@ -10,6 +10,7 @@ import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/polic
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   parseSandboxEgressCredentialToken,
+  setSandboxEgressAuthRequiredSignal,
   type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
@@ -222,14 +223,23 @@ export async function executeSandboxEgressRequest(
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
     credentialContext,
-    async () =>
-      await executeCredentialedEgressRequest({
+    async () => {
+      const result = await executeCredentialedEgressRequest({
         activeEgressId,
         credentialContext,
         deps,
         provider,
         request,
         upstreamUrl,
-      }),
+      });
+      // The sandbox command reads this signal to ask the person to connect.
+      if (result.authRequired) {
+        await setSandboxEgressAuthRequiredSignal(
+          credentialContext,
+          result.authRequired,
+        );
+      }
+      return result.response;
+    },
   );
 }

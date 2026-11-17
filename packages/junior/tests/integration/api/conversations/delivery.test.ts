@@ -8,6 +8,9 @@ import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-paus
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationParticipants } from "@/db/schema";
+import { slackApiOutbox } from "../../../fixtures/slack-api-outbox";
+import { chatPostMessageOk } from "../../../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -95,6 +98,9 @@ describe("conversation delivery API", () => {
       readConversationDetail(conversationId, { viewer: owner.viewer }),
     ).resolves.toMatchObject({ deliveryPaused: false });
 
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ channel: "C123", ts: "1700000000.000200" }),
+    });
     const detached = await setDelivery(owner.app, conversationId, true);
     expect(detached.status).toBe(200);
     expect(
@@ -106,6 +112,17 @@ describe("conversation delivery API", () => {
     await expect(
       readConversationDetail(conversationId, { viewer: owner.viewer }),
     ).resolves.toMatchObject({ deliveryPaused: true });
+
+    // The thread hears about the detach once, not on a repeat request.
+    expect((await setDelivery(owner.app, conversationId, true)).status).toBe(
+      200,
+    );
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: "C123",
+      text: expect.stringContaining("detached this conversation from Slack"),
+      thread_ts: "1700000000.000100",
+    });
 
     expect((await setDelivery(owner.app, conversationId, false)).status).toBe(
       200,

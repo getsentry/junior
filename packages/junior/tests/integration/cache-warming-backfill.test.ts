@@ -10,7 +10,6 @@ import {
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   backfillCacheWarmingGaps,
   scanIdlePeriods,
@@ -36,7 +35,10 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorAgentInvocations, juniorConversationEvents } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  runTestHeartbeat,
+} from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
@@ -111,10 +113,7 @@ const gaps = (segment: string) =>
 
 async function heartbeat(nowMs: number) {
   vi.setSystemTime(nowMs);
-  await runHeartbeat({
-    conversationWorkQueue: createConversationWorkQueueTestAdapter(),
-    nowMs,
-  });
+  await runTestHeartbeat(createConversationWorkQueueTestAdapter(), nowMs);
 }
 
 describe("cache warming gap backfill", () => {
@@ -433,11 +432,16 @@ describe("cache warming savings re-fill", () => {
     const person = authenticatedApi(PERSON);
     // The first idle period ends with a read of the cache 7 minutes later,
     // the second with a write, and the third within the cache TTL.
-    // Postgres jsonb rejects the `\u0000` escape that a NUL character in a
-    // stored message gets.
+    // Postgres jsonb rejects the escapes that a stored message gets for a NUL
+    // character and for a lone surrogate.
     await storeCalls("local:test:savings-refill-idle", [
       { atMs: DAY_1, cacheRead: 60_000, text: "Read \0 from the file." },
-      { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
+      {
+        atMs: DAY_1 + 7 * MINUTE,
+        cacheRead: 60_000,
+        // Text cut inside an emoji keeps half of its surrogate pair.
+        text: "Done \u{1F600}".slice(0, -1),
+      },
       { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
       { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
     ]);

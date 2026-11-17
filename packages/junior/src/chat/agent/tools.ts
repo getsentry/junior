@@ -538,8 +538,8 @@ export async function wireAgentTools(
   const tools = createTools(
     loadableSkills(args.availableSkills, args.invokedSkill?.name),
     {
-      writeGeneratedArtifacts: async (files) => {
-        const refs = await agentSandbox.writeGeneratedArtifacts(files);
+      writeGeneratedFiles: async (files) => {
+        const refs = await agentSandbox.writeGeneratedFiles(files);
         args.generatedFiles.push(...files);
         return refs;
       },

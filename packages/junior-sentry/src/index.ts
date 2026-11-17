@@ -36,6 +36,7 @@ import {
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { enforceSentryEgressPolicy } from "./egress-policy.js";
 import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookSecret } from "./webhooks/secret.js";
@@ -135,7 +136,10 @@ export function sentryPlugin(): PluginRegistration {
     },
     hooks: {
       formatMarkdown: ({ config, text }) => linkifySentryShortIds(text, config),
-      grantForEgress: sentryGrantForEgress,
+      grantForEgress(ctx) {
+        enforceSentryEgressPolicy(ctx.request);
+        return sentryGrantForEgress(ctx);
+      },
       issueCredential: issueSentryCredential,
       resolveOAuthAccount: resolveSentryOAuthAccount,
       routes(ctx) {

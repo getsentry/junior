@@ -146,7 +146,7 @@ import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import {
   scheduleSessionCompletedPluginTasks,
-  type ScheduleSessionCompletedPluginTasksOptions,
+  type SendPluginTask,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
@@ -245,9 +245,7 @@ interface SlackTurnDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  sendPluginTask?:
-    | ScheduleSessionCompletedPluginTasksOptions["send"]
-    | undefined;
+  sendPluginTask: SendPluginTask;
 }
 
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
@@ -1429,7 +1427,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   conversationId,
                   sessionId: turnId,
                 },
-                deps.sendPluginTask ? { send: deps.sendPluginTask } : undefined,
+                deps.sendPluginTask,
               );
             } catch (error) {
               logException(

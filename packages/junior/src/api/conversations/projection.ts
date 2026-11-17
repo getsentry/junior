@@ -75,7 +75,7 @@ function surfaceFromSource(
     source === "web" ||
     source === "scheduler"
   ) {
-    // Dashboard web conversations share the product api surface label.
+    // Dashboard Conversations share the product api surface label.
     return source === "web" ? "api" : source;
   }
   return surfaceFromConversationId(conversationId);

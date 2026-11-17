@@ -264,6 +264,10 @@ export async function proxyVercelSandboxEgressRequest(
 
   let oidcPayload: JWTPayload;
   try {
+    // Lint exception (.oxlintrc.json): the eval egress process replaces
+    // `Date` to check tokens that eval workers make with the eval clock.
+    // Vercel signs this token with real time, so evals pass a verifier with
+    // the real clock. Production never passes one.
     oidcPayload = await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
       oidcToken,
     );

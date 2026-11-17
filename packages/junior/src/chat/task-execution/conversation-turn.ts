@@ -848,23 +848,21 @@ export function createConversationTurnWorker(
                   conversationId: context.conversationId,
                   sessionId: turnId,
                 },
-                {
-                  send: async (message) => {
-                    try {
-                      await processPluginTask(message);
-                    } catch (error) {
-                      logException(
-                        error,
-                        "conversation.plugin.session_completion_task.failed",
-                        {
-                          conversationId: context.conversationId,
-                          pluginName: message.plugin,
-                          taskName: message.name,
-                          turnId,
-                        },
-                      );
-                    }
-                  },
+                async (message) => {
+                  try {
+                    await processPluginTask(message);
+                  } catch (error) {
+                    logException(
+                      error,
+                      "conversation.plugin.session_completion_task.failed",
+                      {
+                        conversationId: context.conversationId,
+                        pluginName: message.plugin,
+                        taskName: message.name,
+                        turnId,
+                      },
+                    );
+                  }
                 },
               );
             } catch (error) {

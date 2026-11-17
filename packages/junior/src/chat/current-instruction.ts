@@ -1,3 +1,4 @@
+import { authorAttrs, renderTag, type TagAuthor } from "@/chat/input-tags";
 import { escapeXml, unescapeXml } from "@/chat/xml";
 
 const CURRENT_INSTRUCTION_TAG = "current-instruction";
@@ -38,29 +39,13 @@ function readCurrentInstructionBody(text: string): string | undefined {
 /** Render the active user task in a stable prompt boundary. */
 export function renderCurrentInstruction(
   instruction: string,
-  attrs?: {
-    authorId?: string;
-    authorName?: string;
-    slackTs?: string;
-  },
+  attrs?: TagAuthor & { slackTs?: string },
 ): string {
-  const renderedAttrs = [
-    attrs?.authorId ? `author_id="${escapeXml(attrs.authorId)}"` : undefined,
-    attrs?.authorName
-      ? `author_name="${escapeXml(attrs.authorName)}"`
-      : undefined,
-    attrs?.slackTs ? `slack_ts="${escapeXml(attrs.slackTs)}"` : undefined,
-  ]
-    .filter((attr): attr is string => Boolean(attr))
-    .join(" ");
-  const openingTag = renderedAttrs
-    ? `<${CURRENT_INSTRUCTION_TAG} ${renderedAttrs}>`
-    : `<${CURRENT_INSTRUCTION_TAG}>`;
-  return [
-    openingTag,
-    escapeXml(instruction),
-    `</${CURRENT_INSTRUCTION_TAG}>`,
-  ].join("\n");
+  return renderTag(
+    CURRENT_INSTRUCTION_TAG,
+    { ...authorAttrs(attrs), slack_ts: attrs?.slackTs },
+    [escapeXml(instruction)],
+  );
 }
 
 /** Recover display text from the internal current-task prompt boundary. */

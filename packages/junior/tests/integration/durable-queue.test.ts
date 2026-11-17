@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -114,6 +115,7 @@ async function slack(options: { modelStream?: AgentRequestStreamFn } = {}) {
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner },
     state,
   });

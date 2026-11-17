@@ -42,6 +42,11 @@ import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  eventAuthorText,
+  resolveEventAuthor,
+  type AuthorTrust,
+} from "@/chat/identities/trust";
 import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
@@ -63,6 +68,7 @@ function eventInput(
   event: Event,
   outcomes: TaskOutcome[],
   catalog: EventCatalog,
+  author: AuthorTrust,
 ): string {
   const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
@@ -77,6 +83,7 @@ function eventInput(
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
+    authorText: eventAuthorText(author),
     externalText: event.untrustedText,
     externalTextMaxLength: EVENT_TEXT_MAX_LENGTH,
   });
@@ -111,6 +118,8 @@ export async function ingestEventAutomations(
   const tasks = matches.filter((task) =>
     slackChannelMessageRunsAutomation(event, task),
   );
+  if (tasks.length === 0) return { dispatched: 0 };
+  const author = await resolveEventAuthor(event);
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {
@@ -194,7 +203,7 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes, catalog),
+          input: eventInput(task, event, outcomes, catalog, author),
           ...(skill ? { skill } : undefined),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
