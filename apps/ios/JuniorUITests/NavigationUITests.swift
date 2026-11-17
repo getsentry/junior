@@ -1,12 +1,12 @@
 import XCTest
 
 /// Journeys through the app against the mock dashboard
-/// (`scripts/mock-server.mts`). Run one suite at a time with
+/// (`scripts/mock-server.mjs`). Run one suite at a time with
 /// `scripts/sim.sh ui-test NavigationUITests`.
 @MainActor
 final class NavigationUITests: XCTestCase {
   override func setUp() async throws {
-    // Undo writes from earlier journeys (`scripts/mock-server.mts`).
+    // Undo writes from earlier journeys (`scripts/mock-server.mjs`).
     var request = URLRequest(url: URL(string: "http://127.0.0.1:4317/__reset")!)
     request.httpMethod = "POST"
     _ = try await URLSession.shared.data(for: request)

@@ -9,16 +9,9 @@ process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
 
 const port = Number(process.env["PORT"] ?? 4317);
 // The built dashboard: run `pnpm --filter "@sentry/junior-dashboard..." build`
-// first. This script needs only these two exports.
-type DashboardModule = {
-  createDashboardApp(options: Record<string, unknown>): {
-    fetch(request: Request): Promise<Response>;
-  };
-  resetMockDashboardState(): void;
-};
-const dashboard: DashboardModule =
+// first.
+const { createDashboardApp, resetMockDashboardState } =
   await import("../../../packages/junior-dashboard/dist/app.js");
-const { createDashboardApp, resetMockDashboardState } = dashboard;
 const app = createDashboardApp({
   agentName: "Junior",
   allowedDomains: ["example.com"],
@@ -60,17 +53,17 @@ createServer((req, res) => {
   const request = new Request(new URL(req.url ?? "/", baseURL), {
     method: req.method,
     headers,
-    body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
+    body: hasBody ? Readable.toWeb(req) : undefined,
     duplex: hasBody ? "half" : undefined,
-  } as RequestInit);
+  });
   void app
     .fetch(request)
-    .then(async (response: Response) => {
+    .then(async (response) => {
       res.statusCode = response.status;
       response.headers.forEach((value, name) => res.setHeader(name, value));
       res.end(Buffer.from(await response.arrayBuffer()));
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       res.statusCode = 500;
       res.end(error instanceof Error ? error.stack : String(error));
     });

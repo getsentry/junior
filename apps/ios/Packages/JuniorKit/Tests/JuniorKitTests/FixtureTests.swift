@@ -4,7 +4,7 @@ import Testing
 @testable import JuniorKit
 
 /// Fixtures are real responses from the dashboard's mock reporting
-/// (`apps/ios/scripts/mock-server.mts`), pinned to 2026-08-07T12:00:00Z.
+/// (`apps/ios/scripts/mock-server.mjs`), pinned to 2026-08-07T12:00:00Z.
 func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T {
   let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")!
   return try JSONDecoder.junior.decode(T.self, from: Data(contentsOf: url))

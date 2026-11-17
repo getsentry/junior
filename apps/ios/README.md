@@ -12,7 +12,7 @@ the Inbox, Automations, and the navigation drawer, in dark and light themes.
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
 | `JuniorUITests`         | UI journeys against the mock dashboard.                                                                        |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
-| `scripts/`              | `mock-server.mts`, `xcbuild.sh`, `sim.sh`, `device.sh`, and `generate-icons.mjs`.                              |
+| `scripts/`              | `mock-server.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, and `generate-icons.mjs`.                              |
 
 The app reads the same `/api/*` routes as the web dashboard. JuniorKit tests
 decode fixtures that are real responses from the mock dashboard.
@@ -24,7 +24,7 @@ decode fixtures that are real responses from the mock dashboard.
 
    ```bash
    pnpm --filter "@sentry/junior-dashboard..." run build
-   node apps/ios/scripts/mock-server.mts
+   node apps/ios/scripts/mock-server.mjs
    ```
 
 2. Run the logic tests on macOS. They need no simulator:
