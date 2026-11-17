@@ -173,19 +173,19 @@ them may have.
 
 ### Review context
 
-Use `mcp.review-context` to tell action review where the provider's writes go.
-For example, say that some content is public. Only action review reads this
-text. It is not in the agent prompt or the tool catalog, and it never grants
-authority.
+Use `review-context` to tell action review where the plugin's writes go. For
+example, say which content people outside the organization can read. Junior
+adds the review context of each plugin to the action review system prompt,
+sorted by plugin name, so the prompt stays the same between reviews. The agent
+does not see it, and it never grants authority.
 
 ```yaml title="plugin.yaml"
-mcp:
-  url: https://api.my-provider.example/mcp
-  review-context: Pages in the Docs space are published on the public website.
+name: my-provider
+review-context: Pages in the Docs space are published on the public website.
 ```
 
 An install can set or change it with
-`defineJuniorPlugins(..., { manifests: { "my-provider": { mcp: { reviewContext } } } })`.
+`defineJuniorPlugins(..., { manifests: { "my-provider": { reviewContext } } })`.
 
 ### Audit events
 

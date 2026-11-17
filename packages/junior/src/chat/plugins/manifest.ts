@@ -275,7 +275,6 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
-    "review-context": nonEmptyTrimmedString.optional(),
   })
   .passthrough();
 
@@ -296,6 +295,7 @@ const manifestSourceSchema = z
     }),
     "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
+    "review-context": nonEmptyTrimmedString.optional(),
     "config-keys": z
       .array(z.string(), {
         error: "must be an array when provided",
@@ -365,6 +365,7 @@ function manifestConfigPatch(
   const result: Record<string, unknown> = {};
   setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
+  setDefined(result, "review-context", config.reviewContext);
   setDefined(result, "config-keys", config.configKeys);
   setDefined(result, "domains", config.domains);
   setDefined(result, "api-headers", config.apiHeaders);
@@ -415,7 +416,6 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
-      setDefined(mcp, "review-context", config.mcp.reviewContext);
       result["mcp"] = mcp;
     }
   }
@@ -1109,9 +1109,6 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
-    ...(result.data["review-context"]
-      ? { reviewContext: result.data["review-context"] }
-      : undefined),
   } satisfies PluginMcpConfig;
 }
 
@@ -1315,6 +1312,9 @@ function parseManifestSource(
     name: data.name,
     displayName: data["display-name"],
     description: data.description,
+    ...(data["review-context"]
+      ? { reviewContext: data["review-context"] }
+      : undefined),
     configKeys,
     ...(domains ? { domains } : undefined),
     ...(apiHeaders ? { apiHeaders } : undefined),

@@ -23,7 +23,7 @@ describe("Linear plugin package", () => {
     expect(serviceAccountAllows(manifest, { tool: "save_issue" })).toBe(false);
   });
 
-  it("passes install review context to the MCP manifest", () => {
+  it("passes install review context to the manifest", () => {
     const registration = linearPlugin({
       reviewContext: "Issues in team PY sync to a public GitHub repository.",
     });
@@ -35,7 +35,7 @@ describe("Linear plugin package", () => {
       "/plugins/linear",
     );
 
-    expect(manifest.mcp?.reviewContext).toBe(
+    expect(manifest.reviewContext).toBe(
       "Issues in team PY sync to a public GitHub repository.",
     );
   });

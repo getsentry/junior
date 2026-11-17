@@ -118,35 +118,6 @@ describe("callMcpTool", () => {
     expect(manager.activateProvider).not.toHaveBeenCalled();
   });
 
-  it("adds the plugin's review context to the review source", async () => {
-    const manager = {
-      activateProvider: vi.fn(async () => true),
-      getResolvedActiveTools: vi.fn(() => [
-        {
-          name: "mcp__linear__save_issue",
-          rawName: "save_issue",
-          provider: "linear",
-          description: "Create or update an issue.",
-          parameters: {},
-          reviewContext:
-            "Issues in team PY sync to a public GitHub repository.",
-          execute: vi.fn(),
-        },
-      ]),
-    };
-    const callMcpTool = createCallMcpToolTool(manager);
-
-    const resolved = await callMcpTool.resolveApprovalMetadata?.({
-      tool_name: "mcp__linear__save_issue",
-      arguments: { team: "PY" },
-    });
-    expect(resolved?.source).toEqual({
-      id: "linear",
-      description:
-        "MCP provider linear. Issues in team PY sync to a public GitHub repository.",
-    });
-  });
-
   it("preserves native MCP content from the managed tool", async () => {
     const nativeContent = [
       { type: "text" as const, text: "image generated" },

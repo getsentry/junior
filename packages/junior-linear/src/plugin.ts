@@ -167,7 +167,7 @@ async function annotateSavedIssue(
 export interface LinearPluginOptions {
   /**
    * Facts for action review about where Linear writes go. For example, say
-   * which teams sync issues to public GitHub repositories. Only Guardian sees
+   * which teams sync issues to public GitHub repositories. Only Guardian reads
    * it.
    */
   reviewContext?: string;
@@ -222,11 +222,11 @@ export function linearPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
-        ...(options.reviewContext
-          ? { reviewContext: options.reviewContext }
-          : undefined),
       },
       name: "linear",
+      ...(options.reviewContext
+        ? { reviewContext: options.reviewContext }
+        : undefined),
     },
     hooks: {
       afterMcpTool: annotateSavedIssue,

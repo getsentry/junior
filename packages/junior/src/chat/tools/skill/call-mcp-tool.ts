@@ -85,9 +85,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         name: tool_name,
         source: {
           id: activeTool.provider,
-          description: activeTool.reviewContext
-            ? `MCP provider ${activeTool.provider}. ${activeTool.reviewContext}`
-            : `MCP provider ${activeTool.provider}`,
+          description: `MCP provider ${activeTool.provider}`,
         },
       };
     },

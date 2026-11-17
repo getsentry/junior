@@ -100,8 +100,8 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-Only action review reads this text. Without it, action review treats Linear as
-an internal destination.
+Action review reads this text in its system prompt. The agent does not see
+it. Without it, action review treats Linear as an internal destination.
 
 ## Config
 
