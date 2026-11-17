@@ -28,7 +28,7 @@ import { useComposerAutocorrect } from "../../conversations/composerAutocorrect"
 import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
 import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
-import { useInboxTabIconCount } from "../../review-desk/inboxTabIcon";
+import { useInboxTabCountSetting } from "../../review-desk/inboxTabIcon";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
 import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
@@ -143,7 +143,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
       <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
-      <InboxTabIconSetting />
+      <InboxTabCountSetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
@@ -281,9 +281,9 @@ function ComposerAutocorrectSetting() {
   );
 }
 
-/** Let the user hide the Inbox count on this browser's tab icon. */
-function InboxTabIconSetting() {
-  const [showCount, setShowCount] = useInboxTabIconCount();
+/** Let the user hide the Inbox count in this browser's tab. */
+function InboxTabCountSetting() {
+  const [showCount, setShowCount] = useInboxTabCountSetting();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
       <AnchorHeading
@@ -293,18 +293,18 @@ function InboxTabIconSetting() {
       />
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
-          aria-describedby="inbox-tab-icon-count-help"
+          aria-describedby="inbox-tab-count-help"
           checked={showCount}
-          id="inbox-tab-icon-count"
+          id="inbox-tab-count"
           onCheckedChange={setShowCount}
         />
         <FieldContent>
-          <FieldLabel htmlFor="inbox-tab-icon-count">
-            Show Inbox count on the tab icon
+          <FieldLabel htmlFor="inbox-tab-count">
+            Show the Inbox count in the tab
           </FieldLabel>
-          <FieldDescription id="inbox-tab-icon-count-help">
-            The tab title shows the count either way. This choice applies to
-            this browser.
+          <FieldDescription id="inbox-tab-count-help">
+            In the tab title and on the tab icon. This choice applies to this
+            browser.
           </FieldDescription>
         </FieldContent>
       </Field>

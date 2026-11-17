@@ -894,7 +894,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       .poll(() =>
         page.evaluate(
           () =>
-            (window as Window & { askMarks: { count: number } }).askMarks.count,
+            (window as Window & { askMarks?: { count: number } }).askMarks
+              ?.count ?? 0,
         ),
       )
       .toBeGreaterThan(0);

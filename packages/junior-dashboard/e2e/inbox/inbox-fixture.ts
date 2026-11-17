@@ -14,7 +14,7 @@ const base = {
   assignees: [viewer],
   canAct: true,
   canTake: false,
-  conversationIds: [],
+  conversationIds: [] as string[],
   createdAt: "2026-08-07T08:00:00.000Z",
   kind: "action" as const,
   status: "open" as const,
@@ -198,6 +198,12 @@ export const grab = {
   title: "Cover the Friday deploy",
 };
 
+/** The fields of an item that the mock reads or changes. */
+type MockItem = Omit<typeof license, "status"> & {
+  status: string;
+  subject?: { objectType?: string };
+};
+
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
@@ -224,10 +230,10 @@ export async function mockReviewItems(
     audit,
     prReady,
     migration,
-  ]) as (typeof license)[];
+  ]) as MockItem[];
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
-  const closedNow: (typeof license)[] = [];
+  const closedNow: MockItem[] = [];
   await page.route("**/api/review-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");

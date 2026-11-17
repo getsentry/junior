@@ -818,7 +818,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .some((link) => link === personUrl || link === conversationUrl),
     );
     expect(asked).toHaveLength(1);
-    expect(asked[0].searchParams.getAll("url")).toEqual(
+    expect(asked[0]!.searchParams.getAll("url")).toEqual(
       expect.arrayContaining([personUrl, conversationUrl]),
     );
   });

@@ -1,6 +1,8 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { useDocumentTitleCount } from "../documentTitle";
+
 // The same image the server sends as `/favicon.ico`. The badge draws on this
 // copy because headless Chromium blocks page reads of `/favicon.ico`.
 import faviconUrl from "../../assets/junior-favicon.png";
@@ -16,27 +18,37 @@ const BADGE_PILL = 0.44;
 const BADGE_PILL_WIDTH = 0.66;
 
 /**
- * Edit the browser-only choice to show the Inbox count on the tab icon. On
- * by default, so people opt out. The tab title shows the count either way.
+ * Edit the browser-only choice to show the Inbox count in the tab title and
+ * on the tab icon. On by default, so people opt out. The key predates the
+ * title part, so an earlier opt-out still holds.
  */
-export function useInboxTabIconCount() {
+export function useInboxTabCountSetting() {
   return useLocalStorage<boolean>(TAB_ICON_COUNT_STORAGE_KEY, true);
 }
 
 /**
- * Badge the top-left corner of the browser tab icon with the Inbox count,
- * in the theme's accent. Above 9 it shows `9+`. At zero, or with the choice off,
- * the original icon comes back.
+ * Show the Inbox count in the tab title and on the tab icon, unless this
+ * browser turned it off.
  */
-export function useInboxTabIcon(count: number | undefined): void {
-  const [enabled] = useInboxTabIconCount();
+export function useInboxTabCount(count: number | undefined): void {
+  const [enabled] = useInboxTabCountSetting();
+  const shown = enabled ? count : undefined;
+  useDocumentTitleCount(shown);
+  useInboxTabIcon(shown);
+}
+
+/**
+ * Badge the top-left corner of the browser tab icon with the Inbox count,
+ * in the theme's accent. Above 9 it shows `9+`. At zero the original icon
+ * comes back.
+ */
+function useInboxTabIcon(count: number | undefined): void {
   // The shell's icon, read before this hook changes it.
   const [original] = useState(
     () => iconLink()?.getAttribute("href") ?? undefined,
   );
   const theme = useSyncExternalStore(subscribeTheme, readTheme);
-  const label =
-    !enabled || !count ? undefined : count > 9 ? "9+" : String(count);
+  const label = !count ? undefined : count > 9 ? "9+" : String(count);
 
   useEffect(() => {
     const link = iconLink();
