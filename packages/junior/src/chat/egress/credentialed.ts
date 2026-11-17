@@ -830,10 +830,14 @@ export async function executeCredentialedEgressRequest(input: {
         "error.type": `http_${upstream.status}`,
       });
     }
+    // A workload identity token always acts as the same service account or
+    // app, so a new token cannot fix an HTTP 403. Google APIs also use 403 for
+    // resource access and quota errors, so egress forwards the 403 body and
+    // keeps the shared lease.
+    const workloadIdentity = isWorkloadIdentityProvider(provider);
     if (
-      (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
-        upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) &&
-      isWorkloadIdentityProvider(provider)
+      upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS &&
+      workloadIdentity
     ) {
       // A federated bot credential has no account that a person can connect,
       // so report it as unavailable instead of starting an auth flow.
@@ -887,7 +891,8 @@ export async function executeCredentialedEgressRequest(input: {
     }
     if (
       upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
-      !retriedAfter403
+      !retriedAfter403 &&
+      !workloadIdentity
     ) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
@@ -913,11 +918,13 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearSandboxEgressCredentialLease(
-        provider,
-        lease.grant,
-        credentialContext,
-      );
+      if (!workloadIdentity) {
+        await clearSandboxEgressCredentialLease(
+          provider,
+          lease.grant,
+          credentialContext,
+        );
+      }
       await recordSandboxPermissionDenied({
         credentialContext,
         provider,

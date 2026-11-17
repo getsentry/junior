@@ -81,6 +81,7 @@ async function startApp() {
             domains: [GOOGLE_API_HOST],
             gcp: {
               ...gcp,
+              vercelOidcAudience: "https://vercel.com/acme",
               token: "access-token",
               scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
             },
@@ -273,6 +274,14 @@ describe("sandbox egress workload identity credentials", () => {
     const requests = workloadIdentityRequests();
     expect(
       requests
+        .filter((request) => request.step === "gcp-sts")
+        .map((request) => jwtClaims(String(request.body.subject_token)).aud),
+    ).toEqual([
+      `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
+      "https://vercel.com/acme",
+    ]);
+    expect(
+      requests
         .filter((request) => request.step === "gcp-iam-credentials")
         .map((request) => [request.url.split(":").at(-1), request.body]),
     ).toEqual([
@@ -319,24 +328,49 @@ describe("sandbox egress workload identity credentials", () => {
     expect(signal?.authorization).toBeUndefined();
   });
 
-  it.each([401, 403])(
-    "reports an upstream HTTP %i as unavailable, without an auth flow",
-    async (status) => {
-      // Injected fault: the upstream rejects the federated credential.
-      upstreamFetch.mockResolvedValueOnce(new Response("denied", { status }));
+  it("reports an upstream HTTP 401 as unavailable, without an auth flow", async () => {
+    // Injected fault: the upstream rejects the federated credential.
+    upstreamFetch.mockResolvedValueOnce(
+      new Response("denied", { status: 401 }),
+    );
 
-      const response = await sendFromSandbox(IAP_HOST);
+    const response = await sendFromSandbox(IAP_HOST);
 
-      expect(response.status).toBe(401);
-      expect(upstreamFetch).toHaveBeenCalledTimes(1);
-      const signal = await consumeSandboxEgressAuthRequiredSignal(EGRESS_ID);
-      expect(signal).toMatchObject({
-        kind: "unavailable",
-        provider: "iap-app",
-        message: `Upstream rejected the iap-app workload identity credential with HTTP ${status}.`,
-      });
-      expect(signal?.authorization).toBeUndefined();
-      expect(signal?.message).not.toContain(GCP_SIGNED_JWT);
-    },
-  );
+    expect(response.status).toBe(401);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    const signal = await consumeSandboxEgressAuthRequiredSignal(EGRESS_ID);
+    expect(signal).toMatchObject({
+      kind: "unavailable",
+      provider: "iap-app",
+      message:
+        "Upstream rejected the iap-app workload identity credential with HTTP 401.",
+    });
+    expect(signal?.authorization).toBeUndefined();
+    expect(signal?.message).not.toContain(GCP_SIGNED_JWT);
+  });
+
+  it("forwards an upstream HTTP 403 body and keeps the shared lease", async () => {
+    // Injected fault: the service account cannot read one resource.
+    upstreamFetch.mockResolvedValueOnce(
+      new Response('{"error":{"status":"PERMISSION_DENIED"}}', { status: 403 }),
+    );
+
+    const denied = await sendFromSandbox(GOOGLE_API_HOST);
+
+    expect(denied.status).toBe(403);
+    expect(await denied.text()).toBe(
+      '{"error":{"status":"PERMISSION_DENIED"}}',
+    );
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(
+      await consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).toBeUndefined();
+
+    expect((await sendFromSandbox(GOOGLE_API_HOST)).status).toBe(200);
+    expect(
+      workloadIdentityRequests().filter(
+        (request) => request.step === "gcp-iam-credentials",
+      ),
+    ).toHaveLength(1);
+  });
 });

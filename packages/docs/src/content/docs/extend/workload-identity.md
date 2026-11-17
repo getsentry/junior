@@ -66,8 +66,9 @@ Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to decl
 | `token`                      | `service-account-jwt`, `id-token`, or `access-token`.                                                          |
 | `audience`                   | For `service-account-jwt` and `id-token`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
 | `scopes`                     | For `access-token`. A list of Google API scopes.                                                               |
+| `vercel-oidc-audience`       | Optional. Audience of the Vercel OIDC token. Set it when the provider lists allowed audiences.                 |
 
-Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
+Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs such as BigQuery. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
 
 ### Azure fields
 
@@ -86,7 +87,7 @@ credentials:
 
 ## Set up Google Cloud
 
-1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. A token with a custom audience always comes from the team issuer. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp). Select **Default audience**. Junior asks Vercel for a token with that audience.
+1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. A token with a custom audience always comes from the team issuer. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp). Select **Default audience**. Junior asks Vercel for a token with that audience. If the provider lists allowed audiences instead, set `vercel-oidc-audience` to one of them.
 2. Map `google.subject` to `assertion.sub`.
 3. Add an attribute condition that trusts only production:
 
@@ -129,7 +130,7 @@ Run `junior check` to validate the manifest. Then ask Junior to call the service
 
 If a token exchange fails, the command fails with a message such as `Could not mint the redash workload identity credential: Google IAM Credentials returned HTTP 403.` The message names the failing step: Vercel OIDC, Google STS, Google IAM Credentials, or Microsoft Entra ID. Junior does not ask anyone to connect an account. Fix the trust or role setup for that step.
 
-If the token is minted but the service returns HTTP 401 or 403, the message is `Upstream rejected the redash workload identity credential with HTTP 403.` Check the role that the service account or app has on that service. For a plugin that also sends static `api-headers`, also check those values.
+If the token is minted but the service returns HTTP 401, the message is `Upstream rejected the redash workload identity credential with HTTP 401.` Junior mints a new token on the next request. An HTTP 403 goes back to the command with the service's own body, because a new token cannot change it. Check the role that the service account or app has on that resource. For a plugin that also sends static `api-headers`, also check those values.
 
 ## Next step
 
