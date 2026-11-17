@@ -14,7 +14,7 @@ import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
-  getMcpStoredOAuthCredentials,
+  getMcpConnectionStatus,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
 import {
@@ -153,7 +153,7 @@ export function createMcpAuthOrchestration(
     if (
       !serviceAccountOnly(plugin.manifest) &&
       input.actorId &&
-      (await getMcpStoredOAuthCredentials(input.actorId, provider))?.tokens
+      (await getMcpConnectionStatus(input.actorId, provider)) === "connected"
     ) {
       return undefined;
     }

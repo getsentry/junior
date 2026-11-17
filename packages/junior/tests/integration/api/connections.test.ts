@@ -9,7 +9,7 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import {
   getMcpStoredOAuthCredentials,
-  putMcpStoredOAuthCredentials,
+  updateMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
@@ -200,9 +200,9 @@ describe("connections API", () => {
       refreshToken: "old-instance-refresh",
       scope: "read",
     });
-    await putMcpStoredOAuthCredentials(legacyUserId, "eval-oauth", {
+    await updateMcpStoredOAuthCredentials(legacyUserId, "eval-oauth", () => ({
       tokens: { access_token: "legacy-mcp-access", token_type: "Bearer" },
-    });
+    }));
 
     const disconnectResponse = await app.request(
       "http://localhost/api/connections/eval-oauth",

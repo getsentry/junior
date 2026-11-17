@@ -7,7 +7,7 @@ import type {
   StoredTokens,
 } from "@/chat/credentials/user-token-store";
 import { discoverSkills } from "@/chat/skills";
-import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import { getMcpConnectionStatus } from "@/chat/mcp/auth-store";
 import type { PluginCatalogRuntime } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
@@ -85,7 +85,7 @@ vi.mock("@/chat/discovery", () => ({
 }));
 
 vi.mock("@/chat/mcp/auth-store", () => ({
-  getMcpStoredOAuthCredentials: vi.fn(async () => undefined),
+  getMcpConnectionStatus: vi.fn(async () => "none"),
 }));
 
 vi.mock("@/chat/skills", () => ({
@@ -151,8 +151,8 @@ describe("buildHomeView", () => {
 
   beforeEach(() => {
     readFileSpy = vi.spyOn(fs, "readFileSync").mockReturnValue("About text");
-    vi.mocked(getMcpStoredOAuthCredentials).mockReset();
-    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue(undefined);
+    vi.mocked(getMcpConnectionStatus).mockReset();
+    vi.mocked(getMcpConnectionStatus).mockResolvedValue("none");
   });
 
   afterEach(() => {
@@ -196,12 +196,7 @@ describe("buildHomeView", () => {
   });
 
   it("shows connected MCP provider with Unlink button", async () => {
-    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
-      tokens: {
-        access_token: "token",
-        token_type: "bearer",
-      },
-    });
+    vi.mocked(getMcpConnectionStatus).mockResolvedValue("connected");
 
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
@@ -220,11 +215,8 @@ describe("buildHomeView", () => {
     expect(accessory.value).toBe("notion");
   });
 
-  it("shows MCP provider Unlink when only DCR client/discovery state exists", async () => {
-    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
-      clientInformation: { client_id: "stale-client" },
-      discoveryState: { authorizationServerUrl: "https://old.example.com" },
-    });
+  it("shows MCP provider Unlink for a sign-in that never finished", async () => {
+    vi.mocked(getMcpConnectionStatus).mockResolvedValue("started");
 
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
@@ -238,6 +230,7 @@ describe("buildHomeView", () => {
       throw new Error("Expected connected account section for notion");
     }
 
+    expect(section.text?.text).toContain("Sign-in not finished");
     const accessory = section.accessory as { action_id: string; value: string };
     expect(accessory.action_id).toBe("app_home_disconnect");
     expect(accessory.value).toBe("notion");
@@ -289,11 +282,8 @@ describe("buildHomeView", () => {
     );
     expect(store.get).toHaveBeenCalledWith("U123", "github");
     expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");
-    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
-      "U123",
-      "github",
-    );
-    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
+    expect(getMcpConnectionStatus).not.toHaveBeenCalledWith("U123", "github");
+    expect(getMcpConnectionStatus).not.toHaveBeenCalledWith(
       "U123",
       "example-bundle",
     );
