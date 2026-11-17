@@ -75,6 +75,27 @@ export async function addItem(
   return item!.id;
 }
 
+/** Add an open notice for these Users. A notice waits on nobody. */
+export async function addNotice(
+  conversationId: string,
+  assignees: User[],
+  title: string,
+): Promise<string> {
+  const item = await insertReviewItem(getDb(), {
+    addedByConversationId: conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: assignees.map((assignee) => assignee.id),
+    body: title,
+    conversationIds: [conversationId],
+    dedupeKey: title,
+    kind: "notice",
+    nowMs: Date.now(),
+    title,
+    visibility: "public",
+  });
+  return item!.id;
+}
+
 /** Call the dashboard API as one viewer. */
 export function api(fixture: ConversationFixture, viewer: User) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();

@@ -87,10 +87,14 @@ export function reviewItemSnoozedBy(userId: string, nowMs: number): SQL {
 
 /**
  * SQL for the Inbox versions token: it changes when this User snoozes a row,
- * or when one of their snoozes wakes or is undone.
+ * or when one of their snoozes wakes or is undone. A due timer counts as
+ * woken, as Inbox reads treat it, before the heartbeat settles it.
  */
-export function wakeAutomationsVersion(userId: string): SQL<string> {
-  return sql<string>`(select concat_ws(':', count(*) filter (where ${juniorAutomations.status} = 'active'), max(${juniorAutomations.createdAtMs})) from ${juniorAutomations} inner join ${juniorIdentities} on ${juniorIdentities.id} = ${juniorAutomations.creatorIdentityId} where ${juniorIdentities.userId} = ${userId} and ${juniorAutomations.action} = 'wake')`;
+export function wakeAutomationsVersion(
+  userId: string,
+  nowMs: number,
+): SQL<string> {
+  return sql<string>`(select concat_ws(':', count(*) filter (where ${asleepAt(nowMs)}), max(${juniorAutomations.createdAtMs})) from ${juniorAutomations} inner join ${juniorIdentities} on ${juniorIdentities.id} = ${juniorAutomations.creatorIdentityId} where ${juniorIdentities.userId} = ${userId} and ${juniorAutomations.action} = 'wake')`;
 }
 
 /** Decode a wake row. Log and skip a row that does not parse. */

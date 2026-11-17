@@ -16,6 +16,7 @@ import {
 import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
   addItem,
+  addNotice,
   api,
   conversation,
   NEW_ITEM,
@@ -122,6 +123,24 @@ describe("snoozes", () => {
       inbox: ["Review acme entry"],
       waiting: [ROOT],
     });
+  });
+
+  it("changes the versions token when a snooze timer is due, before the heartbeat", async () => {
+    const ana = await user("ana@example.com");
+    // A notice waits on nobody, so no count moves when it wakes.
+    await addNotice(ROOT, [ana], "Acme entry merged");
+    const asAna = api(fixture, ana);
+    const created = await asAna.snooze({
+      action: "wake",
+      subject: { conversationId: ROOT },
+      triggers: [NEW_ITEM, timer(NOW_MS + 60_000)],
+    });
+    expect(created.status).toBe(201);
+    const asleep = await asAna.versions();
+    vi.setSystemTime(NOW_MS + 59_000);
+    expect(await asAna.versions()).toBe(asleep);
+    vi.setSystemTime(NOW_MS + 60_000);
+    expect(await asAna.versions()).not.toBe(asleep);
   });
 
   it("keeps one active snooze per row: a second one replaces the first", async () => {
