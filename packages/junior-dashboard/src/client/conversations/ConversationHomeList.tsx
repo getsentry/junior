@@ -259,7 +259,6 @@ function ConversationCard(props: ConversationCardProps) {
   // The API takes row actions only from participants.
   const participant = conversation.isParticipant;
   const swipe = useCardSwipe({
-    disabled: Boolean(drag?.dragging),
     leading:
       canPinConversation(conversation, participant) && !pin.pending
         ? { icon: pinned ? PinOff : Pin, run: () => pin.set(!pinned) }
@@ -295,7 +294,7 @@ function ConversationCard(props: ConversationCardProps) {
         />
       ) : null}
       <ConversationRowContextMenu
-        dragging={drag?.dragging}
+        move={drag?.move}
         {...prefetch}
         {...drag?.listeners}
         archive={archive}

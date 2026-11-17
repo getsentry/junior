@@ -17,7 +17,11 @@ import {
   type AgentTool,
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { Tool } from "@earendil-works/pi-ai";
+import {
+  getInitialSystemMessage,
+  getSystemMessageText,
+  type Tool,
+} from "@earendil-works/pi-ai";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -262,13 +266,16 @@ async function requestAboveMark(args: {
     historyVersion,
     markSeq,
   };
-  const { systemPrompt, thinkingLevel, tools } = args.agent.state;
+  const { messages, thinkingLevel, tools } = args.agent.state;
+  // Not `agent.state.systemPrompt`: it also folds in saved system messages,
+  // and the job folds them again from the projection.
+  const leading = getInitialSystemMessage(messages);
   const snapshot: RequestSnapshot = {
     // Unknown privacy is private, as in the Turn.
     conversationPrivacy: args.conversationPrivacy ?? "private",
     inputSize: args.inputSize,
     modelId: args.modelId,
-    systemPrompt,
+    systemPrompt: leading ? getSystemMessageText(leading) : "",
     thinkingLevel,
     // The provider request reads only these fields of a tool.
     tools: tools.map((tool) => ({

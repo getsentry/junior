@@ -282,6 +282,7 @@ describe("context compaction projection reset", () => {
       2,
     )!;
     const earlierRequestContext = buildTurnContextPrompt({
+      askerTimezone: "America/New_York",
       includeSessionContext: false,
       disabledTools: [
         { name: "createAutomation", reason: "No person started it." },
@@ -395,6 +396,7 @@ describe("context compaction projection reset", () => {
     expect(context).not.toContain("firstTurnTool");
     expect(context).not.toContain("createAutomation");
     expect(context).not.toContain("Earlier memory.");
+    expect(context).not.toContain("America/New_York");
     expect(context).not.toContain("<script-tools>");
     expect(context).toContain("Use the repository formatter.");
     expect(context).toContain("Keep the API stable.");

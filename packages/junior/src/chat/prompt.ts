@@ -41,7 +41,12 @@ import type {
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
-import { buildRuleBlocks, type PromptMode } from "@/chat/system-prompt-rules";
+import {
+  buildRuleBlocks,
+  SLACK_MENTION_FORMAT_RULE,
+  type PromptMode,
+  type TurnInputSender,
+} from "@/chat/system-prompt-rules";
 
 const DEFAULT_SOUL = "You are a practical and concise assistant.";
 
@@ -319,7 +324,7 @@ function buildIdentitySection(platform: PromptPlatform): string {
   return [
     "# Identity",
     `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
-    "Slack text shows people as `<@U…>` and channels as `<#C…>`. A mention of your own user ID means you.",
+    `${SLACK_MENTION_FORMAT_RULE} A mention of your own user ID means you.`,
   ].join("\n");
 }
 
@@ -627,6 +632,24 @@ export interface DisabledToolPromptContext {
   reason: string;
 }
 
+const TURN_INPUT_FACTS: Record<TurnInputSender, string> = {
+  person: "A person sent the input of this Turn.",
+  agent: "An agent sent the input of this Turn.",
+  automation: "The automation sent the input of this Turn.",
+};
+
+// The `thread` and `automation` system prompts hold rules for each sender.
+// This fact says which of them apply to this Turn.
+function buildTurnInputSection(
+  sender: TurnInputSender | undefined,
+): string | null {
+  if (!sender) return null;
+  return renderTagBlock(
+    REQUEST_CONTEXT_SECTION_TAG.turnInput,
+    TURN_INPUT_FACTS[sender],
+  );
+}
+
 function buildDisabledToolsSection(
   tools: DisabledToolPromptContext[] | undefined,
 ): string | null {
@@ -715,12 +738,18 @@ export function buildPluginSystemPromptContributions(
 }
 
 type TurnContextPromptInput = {
+  /** IANA timezone of the person who asked. */
+  askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
+  /** From `renderPlanDelta`: plan changes that others made. */
+  planDelta?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
+  /** Who sent the input of a Turn with two senders, from `turnBehavior`. */
+  turnInput?: TurnInputSender;
   runtime?: {
     conversationId?: string | undefined;
     slackConversation?: SlackConversationContext | undefined;
@@ -772,6 +801,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
     local: buildStaticSystemPrompt("local", "conversation"),
     slack: buildStaticSystemPrompt("slack", "conversation"),
   },
+  thread: {
+    local: buildStaticSystemPrompt("local", "thread"),
+    slack: buildStaticSystemPrompt("slack", "thread"),
+  },
 };
 
 /** Return the fixed instructions for one platform and prompt mode. */
@@ -797,6 +830,13 @@ export function buildTurnContextPrompt(
   const userCustomization = buildUserCustomizationSection(
     params.userCustomization,
   );
+  const askerTimezone = params.askerTimezone
+    ? renderTagBlock(
+        REQUEST_CONTEXT_SECTION_TAG.askerTimezone,
+        escapeXml(params.askerTimezone),
+      )
+    : null;
+  const turnInput = buildTurnInputSection(params.turnInput);
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
   // carry only the user's input and request-scoped context.
@@ -804,8 +844,11 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
+    !params.planDelta &&
     !disabledTools &&
-    !userCustomization
+    !userCustomization &&
+    !askerTimezone &&
+    !turnInput
   ) {
     return null;
   }
@@ -813,8 +856,11 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
+    params.planDelta,
     disabledTools,
     userCustomization,
+    askerTimezone,
+    turnInput,
     includeSessionContext
       ? buildContextSection({
           actor: params.actor,

@@ -83,6 +83,14 @@ const CONVERSATION_BATCH_SIZE = 10;
 const CONVERSATION_PAGE_SIZE = 500;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
+// Agent history is stored with JSON.stringify, so its text is valid JSON.
+// jsonb rejects only some `\uXXXX` escapes, such as a NUL character or a
+// lone surrogate from text cut inside an emoji. This regex finds each
+// `\uXXXX` escape that is not itself escaped: it follows an even number of
+// backslashes.
+const UNICODE_ESCAPE = String.raw`\u`;
+const UNICODE_ESCAPE_PATTERN = String.raw`(?<!\\)((?:\\\\)*)\\u[0-9a-fA-F]{4}`;
+const UNICODE_ESCAPE_REPLACEMENT = String.raw`\1`;
 /**
  * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
  * most of its function time for the writes and the other heartbeat work.
@@ -229,10 +237,17 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
+  const messageText = sql`${events.payload}->>'message'`;
+  // Newer rows keep the fields that replay reads as payload keys. Older rows
+  // keep them only in the message string. One message that jsonb rejects
+  // would fail the query of its whole batch, so the cast drops every Unicode
+  // escape. The fields that replay reads have none.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
-    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
-    ELSE ${events.payload}
+    WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
+    WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
+    WHEN strpos(${messageText}, ${UNICODE_ESCAPE}) = 0 THEN (${messageText})::jsonb
+    ELSE regexp_replace(${messageText}, ${UNICODE_ESCAPE_PATTERN}, ${UNICODE_ESCAPE_REPLACEMENT}, 'g')::jsonb
   END`;
   return await getDb()
     .select({
@@ -244,7 +259,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
       toolName: sql<string | null>`(${message})->>'toolName'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
-      modelId: sql<string | null>`(${message})->>'model'`,
+      modelId: sql<string | null>`${events.payload}->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
     })
@@ -426,9 +441,10 @@ function replayConversation(
     }
     lastCallMs = startedAtMs;
     if (turnEnding) {
-      const waitsOnPendingWork =
-        turnBehavior({ kind, personInput: userActor }).promptMode ===
-        "automation";
+      const waitsOnPendingWork = turnBehavior({
+        kind,
+        personInput: userActor,
+      }).idleNeedsPendingWork;
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),

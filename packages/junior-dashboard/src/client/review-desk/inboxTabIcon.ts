@@ -8,6 +8,12 @@ import faviconUrl from "../../assets/junior-favicon.png";
 const TAB_ICON_COUNT_STORAGE_KEY = "junior:inbox:tab-icon-count";
 /** Canvas size. Browsers scale it down, so a large canvas stays sharp. */
 const ICON_SIZE = 64;
+// Badge sizes as fractions of the icon. The one-digit circle is the largest
+// that stays clear of Junior's eye. The wider `9+` pill is a little lower and
+// touches the top edge of the eye, which keeps its digits as large.
+const BADGE_CIRCLE = 0.48;
+const BADGE_PILL = 0.44;
+const BADGE_PILL_WIDTH = 0.66;
 
 /**
  * Edit the browser-only choice to show the Inbox count on the tab icon. On
@@ -89,17 +95,37 @@ async function drawBadgedIcon(src: string, label: string): Promise<string> {
   const tokens = getComputedStyle(document.documentElement);
   const fill = tokens.getPropertyValue("--color-dashboard-accent").trim();
   const ink = tokens.getPropertyValue("--color-dashboard-ink").trim();
-  // The badge sits in the empty top-left corner, clear of Junior's eye.
-  const height = ICON_SIZE * 0.38;
-  const width = label.length > 1 ? ICON_SIZE * 0.54 : height;
+  // The badge sits in the top-left corner, as large as it fits, so the count
+  // stays readable at tab sizes.
+  const height = ICON_SIZE * (label.length > 1 ? BADGE_PILL : BADGE_CIRCLE);
+  const width = label.length > 1 ? ICON_SIZE * BADGE_PILL_WIDTH : height;
   context.beginPath();
   context.roundRect(0, 0, width, height, height / 2);
   context.fillStyle = fill;
   context.fill();
+
+  // The largest heavy count that fits inside the badge's rounded ends.
+  const family = getComputedStyle(document.body).fontFamily;
+  const maxWidth = width - height * 0.3;
+  let size = height * 0.9;
+  context.font = `800 ${size}px ${family}`;
+  const labelWidth = context.measureText(label).width;
+  if (labelWidth > maxWidth) {
+    size *= maxWidth / labelWidth;
+    context.font = `800 ${size}px ${family}`;
+  }
+  // Center the drawn glyphs, not the font's line box.
+  const glyphs = context.measureText(label);
   context.fillStyle = ink;
-  context.font = `700 ${Math.round(height * 0.7)}px ${getComputedStyle(document.body).fontFamily}`;
   context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(label, width / 2, height / 2 + ICON_SIZE * 0.02);
+  context.textBaseline = "alphabetic";
+  context.fillText(
+    label,
+    width / 2,
+    (height +
+      glyphs.actualBoundingBoxAscent -
+      glyphs.actualBoundingBoxDescent) /
+      2,
+  );
   return canvas.toDataURL("image/png");
 }

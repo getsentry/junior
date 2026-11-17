@@ -44,6 +44,9 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -75,6 +78,7 @@ import {
   conversationCatchUpSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
   type ConversationFeed,
+  type ConversationFeedItem,
   notificationScheduleSchema,
   notificationSettingsSchema,
   type NotificationSchedule,
@@ -92,6 +96,7 @@ import {
   actOnMockReviewItem,
   answerMockReviewItemByReply,
   readMockReviewItem,
+  readMockReviewItemCounts,
   readMockReviewItems,
   readMockWaitingConversations,
 } from "./review-items";
@@ -132,6 +137,7 @@ import {
   setMockConversationTitle,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
+  withMockImageOrigin,
 } from "./fixtures";
 import {
   createMockConversation,
@@ -141,6 +147,23 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
+
+/** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
+function withMockFeedIncludes(
+  feed: ConversationFeed,
+  include: readonly ("links" | "media")[],
+): ConversationFeed {
+  const strip = (item: ConversationFeedItem): ConversationFeedItem => {
+    const { links, media, threads, ...row }: ConversationFeedItem = item;
+    const kept: ConversationFeedItem = row;
+    if (links && include.includes("links")) kept.links = links;
+    if (media && include.includes("media")) kept.media = media;
+    if (threads) kept.threads = threads.map(strip);
+    return kept;
+  };
+  return { ...feed, conversations: feed.conversations.map(strip) };
+}
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -339,7 +362,13 @@ export function createMockReportingApi(): Hono<{
           !query.data.q && !repositoryId && query.data.status === "active",
       });
       return page
-        ? jsonResponse(conversationFeedSchema, page)
+        ? jsonResponse(
+            conversationFeedSchema,
+            withMockImageOrigin(
+              withMockFeedIncludes(page, query.data.include),
+              new URL(c.req.url).origin,
+            ),
+          )
         : errorResponse("Invalid conversation feed cursor.", 400);
     };
     if (!query.data.q) return respond(report);
@@ -517,6 +546,37 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.get("/conversations/:conversationId/plan", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationPlan(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationPlanReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/plan/:itemId", async (c) => {
+    const params = conversationParamsSchema.safeParse({
+      conversationId: c.req.param("conversationId"),
+    });
+    const itemId = Number(c.req.param("itemId"));
+    if (!params.success || !Number.isInteger(itemId)) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = planItemStatusBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const item = setMockPlanItemStatus(
+      params.data.conversationId,
+      itemId,
+      body.data,
+    );
+    return item
+      ? jsonResponse(conversationPlanItemSchema, item)
+      : errorResponse("Plan item not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -770,7 +830,10 @@ export function createMockReportingApi(): Hono<{
         409,
       );
     }
-    if (attachmentId === "qa-chart-png") {
+    if (
+      attachmentId === "qa-chart-png" ||
+      attachmentId.startsWith("busy-image-")
+    ) {
       return new Response(mockChartPng, {
         headers: {
           "cache-control": "private, no-store",
@@ -833,21 +896,31 @@ export function createMockReportingApi(): Hono<{
   // Answer Review item reads and actions from the mock items, so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", (c) => {
-    const { conversationId, q } = c.req.query();
+    const { conversationId, q, status } = c.req.query();
     return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
+      items: readMockReviewItems(NOW_MS, {
+        closed: Boolean(status && status !== "open"),
+        conversationId,
+        q: q || undefined,
+      }),
     });
   });
-  app.get("/review-items/count", () => {
-    const open = readMockReviewItems(NOW_MS, {});
-    return jsonResponse(reviewItemCountSchema, {
-      // Mock items have no subjects, so none is a code change.
-      codeChanges: 0,
-      decisions: open.filter((item) => item.request).length,
-      needsViewer: open.length,
-      snoozed: 0,
-    });
-  });
+  app.get("/review-items/count", (c) =>
+    jsonResponse(reviewItemCountSchema, {
+      ...(c.req.query("include") === "automations"
+        ? {
+            automations: mockAutomationCollection(
+              readMockAutomationList(),
+              new URLSearchParams({ owner: "me", scope: "attention" }),
+            ).total,
+          }
+        : undefined),
+      ...readMockReviewItemCounts(
+        NOW_MS,
+        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
+      ),
+    }),
+  );
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,

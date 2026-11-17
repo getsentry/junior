@@ -315,7 +315,7 @@ export function userLookupToolDefinition(providers: [string, ...string[]]) {
           .trim()
           .min(1)
           .describe(
-            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. Search by name only with no known ID.",
+            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as an `author_id` or a `<@U…>` mention. Search by name only with no known ID.",
           ),
       })
       .strict(),

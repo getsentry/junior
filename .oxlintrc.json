@@ -124,6 +124,22 @@
     {
       "files": ["packages/*/src/**"],
       "rules": {
+        "junior/no-service-fallback": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/chat/cache-warming/warmup.ts",
+        "packages/junior/src/chat/pi/traced-stream.ts",
+        "packages/junior/src/chat/sandbox/egress/vercel.ts"
+      ],
+      "rules": {
+        "junior/no-service-fallback": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
         "no-restricted-imports": [
           "error",
           {
@@ -358,7 +374,8 @@
       "files": ["packages/junior-evals/**", "packages/junior-testing/**"],
       "rules": {
         "junior/no-raw-sql-queries": "off",
-        "junior/no-regex-url-parsing": "off"
+        "junior/no-regex-url-parsing": "off",
+        "junior/no-service-fallback": "off"
       }
     }
   ],

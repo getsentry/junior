@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.306.0
+
+Junior now supports broader workflows, clearer operations, stronger automation handling, better documentation, and more compatible internals, with one plugin migration required.
+
+### Breaking Changes 🛠
+
+- (github) Reject pull requests that name no requester by @dcramer with @sentry-junior in [#3531](https://github.com/getsentry/junior/pull/3531)
+
+### New Features ✨
+
+GitHub issue workflows, timezone-aware prompts, quieter Slack detachment, durable conversation plans, unified trust checks, and project verification now improve Junior.
+
+#### Github
+
+- Ask whether to implement an issue after createIssue by @dcramer with @sentry-junior in [#3540](https://github.com/getsentry/junior/pull/3540)
+- Watch issues after createIssue and updateIssue by @dcramer with @sentry-junior in [#3533](https://github.com/getsentry/junior/pull/3533)
+
+#### Prompt
+
+- Give the asker's timezone on web Turns too by @thomasjiangcy with @sentry-junior in [#3510](https://github.com/getsentry/junior/pull/3510)
+- Give clock times in UTC and the asker's timezone by @lcian with @sentry-junior in [#3508](https://github.com/getsentry/junior/pull/3508)
+
+#### Other
+
+- (conversations) Tell the Slack thread when a conversation detaches by @dcramer with @sentry-junior in [#3536](https://github.com/getsentry/junior/pull/3536)
+- (events) Deliver Quiet Watch Events as Conversation notes by @dcramer with @sentry-junior in [#3539](https://github.com/getsentry/junior/pull/3539)
+- (lint) Reject optional services that fall back to the production function by @dcramer with @sentry-junior in [#3523](https://github.com/getsentry/junior/pull/3523)
+- (plan) Keep a durable plan per Conversation with delta updates by @BYK with @sentry-junior in [#3457](https://github.com/getsentry/junior/pull/3457)
+- (skills) Add verify-junior verification skill by @dcramer with @sentry-junior in [#3541](https://github.com/getsentry/junior/pull/3541)
+- (trust) One identity and trust layer for Slack, Identity dispatch, and Event authors by @dcramer with @sentry-junior in [#3404](https://github.com/getsentry/junior/pull/3404)
+
+### Bug Fixes 🐛
+
+Sandbox retries and diagnostics, clearer dashboard interactions, and unified conversation prompts improve automation handling, sender context, caching, and no-outcome behavior.
+
+#### Agent
+
+- Retry a Turn after a transient sandbox failure between steps by @thomasjiangcy with @sentry-junior in [#3515](https://github.com/getsentry/junior/pull/3515)
+- Report a failed run once, from the agent run by @thomasjiangcy with @sentry-junior in [#3511](https://github.com/getsentry/junior/pull/3511)
+
+#### Dashboard
+
+- Merge repeated Event lines in a batched Event message by @lcian with @sentry-junior in [#3512](https://github.com/getsentry/junior/pull/3512)
+- Make the tab icon count larger and easier to read by @BYK with @sentry-junior in [#3505](https://github.com/getsentry/junior/pull/3505)
+- Open the row sheet on a long press of a pinned card by @betegon with @sentry-junior in [#3509](https://github.com/getsentry/junior/pull/3509)
+
+#### Other
+
+- (agents) Give a Thread one system prompt and tool list by @sentry-junior in [#3500](https://github.com/getsentry/junior/pull/3500)
+- (automations) Keep a non-creator requester's "me" as their mention by @BYK with @sentry-junior in [#3501](https://github.com/getsentry/junior/pull/3501)
+- (cache-warming) Skip NUL escapes when the history scan reads a message by @BYK with @sentry-junior in [#3528](https://github.com/getsentry/junior/pull/3528)
+- (prompt) Send one system prompt per Automation Conversation by @BYK with @sentry-junior in [#3513](https://github.com/getsentry/junior/pull/3513)
+
+### Documentation 📚
+
+- (design) Add design docs for Automations, GitHub, and the Review desk by @dcramer with @sentry-junior in [#3521](https://github.com/getsentry/junior/pull/3521)
+
+### Internal Changes 🔧
+
+- (cache-warming) Read replay fields from payload keys by @sentry-junior in [#3529](https://github.com/getsentry/junior/pull/3529)
+- (checkpoint) Load the runtime graph before the first test runs by @thomasjiangcy with @sentry-junior in [#3516](https://github.com/getsentry/junior/pull/3516)
+- (tools) Check dispatcher input with its zod schema by @MathurAditya724 with @sentry-junior in [#3507](https://github.com/getsentry/junior/pull/3507)
+
+## 0.305.0
+
+Junior users get clearer search results, more dependable automation and dashboard state, and cleaner mobile status display.
+
+### New Features ✨
+
+- (tools) Return a params summary instead of full schemas from searchTools by @MathurAditya724 with @sentry-junior in [#3496](https://github.com/getsentry/junior/pull/3496)
+
+### Bug Fixes 🐛
+
+Child agents, automation counts, live prompts, dashboard state/version notices, Datadog distributions, queue deadlines, Slack references, and executeTool intent handling improve correctness.
+
+- (agents) Give child Turns one system prompt and tool set on every path by @BYK with @sentry-junior in [#3315](https://github.com/getsentry/junior/pull/3315)
+- (automations) Count automated turns, not replies, in the limit notice by @MathurAditya724 with @sentry-junior in [#3493](https://github.com/getsentry/junior/pull/3493)
+- (compaction) Send the live system prompt in background summaries by @thomasjiangcy with @sentry-junior in [#3499](https://github.com/getsentry/junior/pull/3499)
+- (dashboard) Keep the sidebar when a newer server adds response fields by @MathurAditya724 with @sentry-junior in [#3502](https://github.com/getsentry/junior/pull/3502)
+- (datadog) Count distribution events with count:, not sum: by @lcian with @sentry-junior in [#3504](https://github.com/getsentry/junior/pull/3504)
+- (queue) Give each queue delivery its own request deadline by @MathurAditya724 with @sentry-junior in [#3494](https://github.com/getsentry/junior/pull/3494)
+- (slack) Keep annotation Work Object references within Slack's limit by @MathurAditya724 with @sentry-junior in [#3497](https://github.com/getsentry/junior/pull/3497)
+- (tools) Accept top-level intent on executeTool like callMcpTool by @MathurAditya724 with @sentry-junior in [#3495](https://github.com/getsentry/junior/pull/3495)
+
+### Internal Changes 🔧
+
+- (dashboard) Keep the home card status badge inside its tile by @betegon with @sentry-junior in [#3077](https://github.com/getsentry/junior/pull/3077)
+
 ## 0.304.0
 
 Users gain richer content and clearer operations, while navigation, reporting, continuation, validation, and review workflows become more dependable.

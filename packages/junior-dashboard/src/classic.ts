@@ -2,4 +2,4 @@
 import { startDashboard } from "./client";
 import { ClassicShell } from "./client/classic/ClassicShell";
 
-startDashboard(ClassicShell);
+startDashboard(ClassicShell, "classic");

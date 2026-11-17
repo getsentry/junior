@@ -12,7 +12,7 @@ import {
   type SystemMessage,
 } from "@earendil-works/pi-ai";
 import type { Platform } from "@sentry/junior-plugin-api";
-import type { PromptMode } from "@/chat/system-prompt-rules";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   sandboxSkillDir,
@@ -27,8 +27,11 @@ import {
 import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { latestSeenPlanVersion, renderPlanDelta } from "@/chat/plan/prompt";
+import { listPlanItems } from "@/chat/plan/store";
+import type { PlanItem } from "@/chat/plan/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -50,6 +53,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
@@ -108,8 +112,12 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
+  /** Every item of the Conversation's plan, for the `<plan-delta>`. */
+  planItems?: PlanItem[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
+  /** IANA timezone of the person who asked, from `findActorTimezone`. */
+  askerTimezone?: string | undefined;
 }
 
 interface PromptReplayArgs {
@@ -445,6 +453,21 @@ async function loadUserCustomization(
   return user ? await readUserCustomization(user.id) : undefined;
 }
 
+// Turn context is not part of the prompt identity that replay compares, so a
+// lookup that fails on one slice does not duplicate the instruction.
+async function loadAskerTimezone(
+  actor: Actor | undefined,
+  context: Pick<PromptHookContext, "resolveActorIdentity">,
+): Promise<string | undefined> {
+  return await findActorTimezone({
+    actor,
+    db: getDb(),
+    nowMs: Date.now(),
+    resolveUserId: async () =>
+      (await context.resolveActorIdentity?.())?.user?.id,
+  });
+}
+
 // Record the customization with the Turn input, so the dashboard can show it
 // beside plugin context such as recalled memories.
 function userCustomizationTurnContext(text: string): PluginTurnContext {
@@ -552,6 +575,8 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
+    planItems,
+    askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
@@ -565,13 +590,37 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
+    listPlanItems(getSqlExecutor(), args.context.conversationId),
+    loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
+    askerTimezone,
     conversationNotes,
+    planItems,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
   };
+}
+
+/** Choose the platform whose system prompt a Turn gets. */
+export function promptPlatform(
+  run: Pick<AgentRun, "delivery" | "location">,
+  promptMode: PromptMode,
+): Platform {
+  // A child agent's final text goes to its parent, not to Slack. So every
+  // child Turn is local, also on a path that has a Delivery, and its system
+  // prompt stays the same on every path.
+  if (promptMode === "child_agent") return "local";
+  // Every Turn of a Thread or an Automation Conversation has one system
+  // prompt, so its Location picks the platform. A person's Turn in a
+  // Slack-located one keeps the Slack rules that it had. The other Turns have
+  // no Delivery: an agent's Turn on its Agent invocation, and an Automation
+  // run, whose `reply` text still goes to Slack. They get the same prompt.
+  if (promptMode === "thread" || promptMode === "automation") {
+    return run.location?.provider === "slack" ? "slack" : "local";
+  }
+  return run.delivery && run.location?.provider === "slack" ? "slack" : "local";
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
@@ -588,6 +637,8 @@ export async function assemblePrompt(args: {
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
+  /** From `turnBehavior`. */
+  sender?: TurnInputSender | undefined;
   /** AGENTS.md read from the sandbox when this slice started. */
   repositoryInstructions?: RepositoryInstructions | undefined;
   resumedFromSessionRecord: boolean;
@@ -632,13 +683,7 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  // Automation runs have no Delivery port. Their `reply` text still goes to
-  // Slack, so they keep Slack formatting rules.
-  const platform =
-    (args.run.delivery || args.promptMode === "automation") &&
-    args.run.location?.provider === "slack"
-      ? "slack"
-      : "local";
+  const platform = promptPlatform(args.run, args.promptMode);
   const baseInstructions = await buildDeploymentSystemPrompt(
     platform,
     args.promptMode,
@@ -646,7 +691,9 @@ export async function assemblePrompt(args: {
   // A replayed or checkpointed prompt already holds the context of this Turn,
   // so `loadPromptTurnContext` returns nothing for it.
   const {
+    askerTimezone,
     conversationNotes,
+    planItems,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -671,10 +718,20 @@ export async function assemblePrompt(args: {
   // It returns nothing when no section has news for this Turn.
   const turnContextPrompt = loadsTurnContext
     ? buildTurnContextPrompt({
+        askerTimezone,
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
+        // Only changes that others made after the plan version that history
+        // shows. The model's own changes are in its tool results.
+        planDelta: planItems
+          ? renderPlanDelta(
+              planItems,
+              latestSeenPlanVersion(promptHistoryMessages),
+            )
+          : null,
         pluginPromptContributions: pluginUserPromptContributions,
+        ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,
         runtime: {
           conversationId: args.spanContext.conversationId,

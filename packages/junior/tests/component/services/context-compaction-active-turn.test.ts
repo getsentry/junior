@@ -148,6 +148,28 @@ describe("active-turn context compaction", () => {
       conversationId,
       messages: [user("Make the requested edit.", 1)],
     });
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { changePlan } = await import("@/chat/plan/store");
+    const self = { conversationId };
+    const {
+      items: [edit, test],
+    } = await changePlan(getSqlExecutor(), {
+      conversationId,
+      nowMs: 1,
+      change: {
+        add: [
+          {
+            title: "Apply requested edit",
+            status: "in_progress",
+            assignee: self,
+          },
+          { title: "Run focused test", status: "pending", assignee: self },
+          { title: "Read the file", status: "done", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
+    });
     const activeMessages = [
       user(
         "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
@@ -165,9 +187,10 @@ describe("active-turn context compaction", () => {
             id: "plan-active",
             name: "updatePlan",
             arguments: {
-              plan: [
-                { step: "Apply requested edit", status: "in_progress" },
-                { step: "Run focused test", status: "pending" },
+              add: [
+                { title: "Apply requested edit", status: "in_progress" },
+                { title: "Run focused test" },
+                { title: "Read the file", status: "done" },
               ],
             },
           },
@@ -230,9 +253,17 @@ describe("active-turn context compaction", () => {
       "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
-    expect(textOf(result.piMessages![2]!)).toContain(
-      '<open-plan>\n[{"step":"Apply requested edit","status":"in_progress"},{"step":"Run focused test","status":"pending"}]\n</open-plan>',
+    // One snapshot of the open items replaces the plan in summarized history.
+    const summary = textOf(result.piMessages![2]!);
+    expect(summary.split("<plan>").length - 1).toBe(1);
+    expect(summary).toContain(
+      [
+        `- #${edit!.id} (in_progress, assignee self): Apply requested edit`,
+        `- #${test!.id} (pending, assignee self): Run focused test`,
+        "</plan>",
+      ].join("\n"),
     );
+    expect(summary).not.toContain("Read the file");
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<runtime-turn-context>",
     );

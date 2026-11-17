@@ -60,13 +60,29 @@ function escapeAttr(value: string): string {
   return escapeTagText(value).replaceAll('"', "&quot;");
 }
 
-function openingTag(name: string, attrs: TagAttrs): string {
+/** Render the opening tag of a block whose lines the caller writes. */
+export function openingTag(name: string, attrs: TagAttrs): string {
   const rendered = Object.entries(attrs).flatMap(([key, value]) =>
     value === undefined || value === ""
       ? []
       : [`${key}="${escapeAttr(String(value))}"`],
   );
   return rendered.length ? `<${name} ${rendered.join(" ")}>` : `<${name}>`;
+}
+
+/** Who wrote a block: a usable ID when there is one, and a display name. */
+export interface TagAuthor {
+  authorId?: string;
+  authorName?: string;
+}
+
+/**
+ * Return the author attributes of a tag. Every block that shows who wrote
+ * it, such as a person's message, a thread Message, or an Event author's
+ * text, uses these, so one author always looks the same to the model.
+ */
+export function authorAttrs(author: TagAuthor | undefined): TagAttrs {
+  return { author_id: author?.authorId, author_name: author?.authorName };
 }
 
 /**

@@ -17,10 +17,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import {
-  buildPlanStatus,
-  buildReportedProgressStatus,
-} from "@/chat/runtime/report-progress";
+import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -485,11 +482,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     params: Record<string, unknown>,
   ) => {
     const status =
-      executionToolName === "updatePlan"
-        ? buildPlanStatus(params)
-        : executionToolName === "reportProgress"
-          ? buildReportedProgressStatus(params)
-          : undefined;
+      executionToolName === "reportProgress"
+        ? buildReportedProgressStatus(params)
+        : undefined;
     if (status) {
       await onStatus?.(status);
     }

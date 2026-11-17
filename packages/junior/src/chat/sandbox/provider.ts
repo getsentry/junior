@@ -8,6 +8,10 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
 import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
+import {
+  SandboxCallTimeoutError,
+  findInErrorChain,
+} from "@/chat/sandbox/errors";
 import { vercelSandboxProvider } from "@/chat/sandbox/vercel/provider";
 import type {
   CreateSandboxSessionInput,
@@ -77,4 +81,21 @@ export function getSandboxProvider(): SandboxProvider {
   return getChatConfig().sandbox.provider === "docker"
     ? dockerSandboxProvider
     : vercelSandboxProvider;
+}
+
+/**
+ * True when a sandbox call failed for a short time or lost its VM session, so
+ * the work can retry from a saved point and reacquire the sandbox.
+ */
+export function isRetryableSandboxFailure(error: unknown): boolean {
+  const errors = getSandboxProvider().errors;
+  return (
+    findInErrorChain(
+      error,
+      (candidate) => candidate instanceof SandboxCallTimeoutError,
+    ) ||
+    errors.isTransient(error) ||
+    errors.isUnavailable(error) ||
+    errors.isCommandStreamInterrupted(error)
+  );
 }

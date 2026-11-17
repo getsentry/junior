@@ -36,6 +36,7 @@ import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
 import type { DashboardCoreData } from "../../types";
 import { AutoArchiveSettings } from "./AutoArchiveSettings";
 import { ConnectionsSettings } from "./ConnectionsSettings";
+import { ExperimentalUiSetting } from "./ExperimentalUiSetting";
 import { McpSettings } from "./McpSettings";
 import { PersonalTokensSettings } from "./PersonalTokensSettings";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
@@ -138,6 +139,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <ExperimentalUiSetting identity={identity} />
       <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
