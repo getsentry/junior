@@ -164,8 +164,9 @@ export async function refreshAutomationLastRun(
 
 /**
  * Record the outcome of one Automation run. A run that already has an outcome
- * keeps it. A failed write is logged, and the heartbeat settles a started
- * event run later.
+ * keeps it. The run and the Automation's last run commit together, so the
+ * list never misses a stored outcome. A failed write is logged, and the
+ * heartbeat settles a started event run later.
  */
 export async function recordAutomationExecution(
   automationId: string,
@@ -185,31 +186,36 @@ export async function recordAutomationExecution(
     status,
   };
   try {
-    await getDb()
-      .insert(juniorAutomationRuns)
-      .values({
-        id: options.executionId,
-        automationId,
-        conversationId: options.conversationId
-          ? existingConversationId(options.conversationId)
-          : null,
-        costMicroUsd: options.conversationId
-          ? conversationCostOf(options.conversationId)
-          : null,
-        ...outcome,
-      })
-      .onConflictDoUpdate({
-        target: juniorAutomationRuns.id,
-        set: {
+    await getDb().transaction(async (tx) => {
+      await tx
+        .insert(juniorAutomationRuns)
+        .values({
+          id: options.executionId,
+          automationId,
+          conversationId: options.conversationId
+            ? existingConversationId(options.conversationId)
+            : null,
+          costMicroUsd: options.conversationId
+            ? conversationCostOf(options.conversationId)
+            : null,
           ...outcome,
-          conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
-          costMicroUsd: conversationCostOf(
-            sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
-          ),
-        },
-        setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
-      });
-    await refreshAutomationLastRun(getDb(), automationId);
+        })
+        .onConflictDoUpdate({
+          target: juniorAutomationRuns.id,
+          set: {
+            ...outcome,
+            conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+            costMicroUsd: conversationCostOf(
+              sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+            ),
+          },
+          setWhere: inArray(juniorAutomationRuns.status, [
+            "pending",
+            "running",
+          ]),
+        });
+      await refreshAutomationLastRun(tx, automationId);
+    });
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
