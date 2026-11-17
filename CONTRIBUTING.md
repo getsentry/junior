@@ -76,8 +76,6 @@ Write docs in ASD-STE100 English and use the words in `TERMINOLOGY.md`.
 - Internal docs: follow `policies/documentation.md`.
 - Public docs: follow `contribute/documentation-guidelines.md` and the `public-docs`
   skill.
-- `openspec/changes/` holds temporary plans. Plans cannot override policy.
-  Delete a plan when its work is complete.
 
 ## Slack Tunnel
 
