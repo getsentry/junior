@@ -32,6 +32,8 @@ const TEST = vi.hoisted(() => ({
   calls: [] as Array<{ modelId: string; prompt: string }>,
   embedCalls: [] as Array<{ inputType?: string | undefined; texts: string[] }>,
   failNextEmbed: false,
+  /** Holds the next Brief generation until it resolves. */
+  heldGeneration: undefined as Promise<void> | undefined,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
   originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
@@ -60,6 +62,9 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   completeObject: vi.fn(async (input: { modelId: string; prompt: string }) => {
     TEST.calls.push(input);
+    const held = TEST.heldGeneration;
+    TEST.heldGeneration = undefined;
+    await held;
     return {
       costUsd: 0.0042,
       object: {
@@ -218,6 +223,7 @@ describe("Conversation Brief task", () => {
     TEST.calls.length = 0;
     TEST.embedCalls.length = 0;
     TEST.failNextEmbed = false;
+    TEST.heldGeneration = undefined;
     await migrateSchema(fixture.sql);
   });
 
@@ -469,34 +475,11 @@ describe("Conversation Brief task", () => {
       previousPiMessages: thirdTurn.piMessages,
       turnId: "turn-4",
     });
-    // While an older Turn's Brief holds the lock, the turn-4 task waits for
-    // it instead of skipping, so the newest Turn still gets a Brief.
-    const { createPluginState } = await import("@/chat/plugins/state");
-    let release!: () => void;
-    let holding!: () => void;
-    const held = new Promise<void>((resolve) => {
-      holding = resolve;
-    });
-    const holder = createPluginState("briefs").withLock(
-      `brief:${conversationId}`,
-      60_000,
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-          holding();
-        }),
-    );
-    await held;
-    const fourthTask = processPluginTask({
+    await processPluginTask({
       plugin: "briefs",
       name: "updateBrief",
       params: { conversationId, sessionId: "turn-4" },
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(TEST.calls).toHaveLength(2);
-    release();
-    await holder;
-    await fourthTask;
     await processPluginTask({
       plugin: "briefs",
       name: "updateBrief",
@@ -590,5 +573,74 @@ describe("Conversation Brief task", () => {
           eq(juniorConversationBriefs.conversationId, childConversationId),
         ),
     ).toEqual([]);
+  }, 30_000);
+
+  it("covers the last Turn when its task skipped behind an older Brief", async () => {
+    const conversationId = `local:briefs-catch-up:${randomUUID()}`;
+    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      nowMs: 1,
+      source: "local",
+      title: "Brief catch-up",
+      visibility: "private",
+    });
+    const firstTurn = await recordCompletedTurn({
+      conversationId,
+      instruction: "Write the first Brief.",
+      turnId: "turn-1",
+    });
+    const task = (sessionId: string) => ({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId, sessionId },
+    });
+
+    // turn-2 completes while the turn-1 Brief is still being generated, so
+    // the turn-2 task finds the lock held and skips. turn-2 is the last Turn.
+    let finishGeneration!: () => void;
+    TEST.heldGeneration = new Promise<void>((resolve) => {
+      finishGeneration = resolve;
+    });
+    const firstTask = processPluginTask(task("turn-1"));
+    await vi.waitFor(() => expect(TEST.calls).toHaveLength(1));
+    await recordCompletedTurn({
+      conversationId,
+      instruction: "Write the second Brief.",
+      previousPiMessages: firstTurn.piMessages,
+      turnId: "turn-2",
+    });
+    await processPluginTask(task("turn-2"));
+    expect(TEST.calls).toHaveLength(1);
+    finishGeneration();
+    await firstTask;
+
+    const briefs = () =>
+      getDb()
+        .select()
+        .from(juniorConversationBriefs)
+        .where(eq(juniorConversationBriefs.conversationId, conversationId))
+        .orderBy(juniorConversationBriefs.version);
+    expect((await briefs()).map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
+    ]);
+
+    // A later delivery of the turn-2 task reuses that Brief and its event.
+    await processPluginTask(task("turn-2"));
+    expect(TEST.calls).toHaveLength(2);
+    expect(
+      await getDb()
+        .select()
+        .from(juniorConversationEvents)
+        .where(
+          and(
+            eq(juniorConversationEvents.conversationId, conversationId),
+            eq(juniorConversationEvents.type, "structured_event"),
+          ),
+        ),
+    ).toHaveLength(2);
   }, 30_000);
 });
