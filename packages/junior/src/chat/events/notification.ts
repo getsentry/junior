@@ -449,7 +449,7 @@ export async function enqueueEventNotification(args: {
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const decision = await admitAutomatedTurn({
     conversationId: args.subscription.conversationId,
@@ -475,7 +475,7 @@ export async function enqueueEventNotification(args: {
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "duplicate" };
+    return { status: "paused" };
   }
 
   const task = eventTaskFacts(

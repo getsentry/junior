@@ -264,6 +264,27 @@ describe("Quiet Events from GitHub", () => {
     expect(context).not.toContain(QUIET_NOTE_RULE);
   });
 
+  it("adds no note when a retried approval reaches a Watch that already started a Turn", async () => {
+    await watchJuniorPullRequest();
+    const reported = await watchPullRequest({
+      events: ["pull_request.review.approved"],
+      intent: "Tell the person when the pull request is approved.",
+    });
+
+    // GitHub redelivers a webhook with the same delivery id.
+    await approve();
+    await approve();
+
+    expect(conversationWakes()).toEqual([
+      expect.objectContaining({
+        idempotencyKey: `event:${reported.id}:github:delivery-approval:pull_request.review.approved`,
+      }),
+    ]);
+    await expect(nextTurnContext("turn-for-approval")).resolves.not.toContain(
+      QUIET_NOTE_RULE,
+    );
+  });
+
   it("adds the note when the other Watch starts no Turn", async () => {
     await watchJuniorPullRequest();
     await watchPullRequest({

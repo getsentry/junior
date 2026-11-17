@@ -66,8 +66,9 @@ export async function ingestEvent(
       : undefined;
   // A Conversation whose Turn got this Event from another Watch needs no
   // note that says nobody was told. Watches that start a Turn go first, so
-  // the set is complete before any Quiet Event. A Watch that the
-  // automated-turn limit pauses, or that fails, adds nothing to it.
+  // the set is complete before any Quiet Event. A duplicate means an earlier
+  // delivery already gave the Turn this Event. A Watch that the
+  // automated-turn limit pauses, or that fails, adds nothing.
   const turnConversations = new Set<string>();
   const ordered = [...subscriptions].sort(
     (left, right) =>
@@ -108,9 +109,9 @@ export async function ingestEvent(
             state: options.state,
             subscription: current,
           });
-          if (result.status !== "appended") return false;
+          if (result.status === "paused") return false;
           turnConversations.add(current.conversationId);
-          return true;
+          return result.status === "appended";
         },
       });
       if (delivered && !quiet) {
