@@ -388,6 +388,27 @@ describe("Slack Work Object details", () => {
         },
       },
     });
+    // A completed Automation does not need attention.
+    await saveScheduledAutomation(getDb(), { ...task, status: "completed" });
+    const completed = await requestDetails(task.id);
+    expect(completed).toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "status", value: "completed" }),
+          ]),
+        },
+      },
+    });
+    expect(completed).not.toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "warning" }),
+          ]),
+        },
+      },
+    });
   });
 
   it("loads public event Automations for another user in the same workspace", async () => {
