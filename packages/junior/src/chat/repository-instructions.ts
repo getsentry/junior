@@ -695,8 +695,3 @@ export function renderAgentsInstructionsForPrompt(
         : instructions.text,
   });
 }
-
-/** Whether one message is a generated AGENTS.md context update. */
-export function isAgentsInstructionsMessage(message: PiMessage): boolean {
-  return Boolean(findVisibleAgentsInstructions([message]));
-}

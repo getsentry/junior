@@ -1,0 +1,33 @@
+// Entry files for `pnpm unused-code:check`. Knip also reads each package's
+// `exports`, `bin`, and test and build configs, so public package API is
+// never reported. Add a file here when a script or test loads it by path.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.mjs",
+        "scripts/release-consumer/*.ts",
+        "tools/oxlint/*/index.ts",
+        ".agents/skills/*/scripts/*.mjs",
+      ],
+    },
+    "apps/example": {
+      // Loading nitro.config.ts needs DATABASE_URL and built packages.
+      "nitro": false,
+      "entry": ["nitro.config.ts", "server.ts", "plugins.ts", "scripts/*.mjs"],
+    },
+    "packages/junior": {
+      "entry": ["scripts/*.{mjs,ts}", "tests/**/*.types.ts"],
+    },
+    "packages/junior-evals": {
+      "entry": [
+        "vitest.evals.config.ts",
+        "src/suites/*-agent-options.ts",
+        "scripts/*.mjs",
+      ],
+      // Fixture projects and plugins that evals load as test data.
+      "ignore": ["fixtures/**"],
+    },
+  },
+}
