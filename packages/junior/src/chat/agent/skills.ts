@@ -1,11 +1,7 @@
 /** Run-scoped skill discovery and explicit invocation. */
 import { logInfo } from "@/chat/logging";
-import {
-  discoverSkills,
-  skillReferences,
-  type Skill,
-  type SkillMetadata,
-} from "@/chat/skills";
+import { skillReferences } from "@/chat/skill-references";
+import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
