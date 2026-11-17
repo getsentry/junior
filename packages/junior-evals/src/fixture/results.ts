@@ -170,6 +170,8 @@ export type TurnStatus =
 export interface Turn {
   replies: Reply[];
   status: TurnStatus;
+  /** Ids of the skipped thread Messages that the Turn showed as context. */
+  threadContextMessageIds: string[];
   toolCalls: ToolCall[];
   turnId: string;
 }
@@ -350,10 +352,14 @@ export function readCallEvents(args: {
       const turn = turns.get(data.turnId) ?? {
         replies: [],
         status: data.state,
+        threadContextMessageIds: [],
         toolCalls: [],
         turnId: data.turnId,
       };
       turn.status = data.state;
+      if (data.state === "started" && data.threadContextMessageIds) {
+        turn.threadContextMessageIds = data.threadContextMessageIds;
+      }
       turns.set(data.turnId, turn);
       if (!turnToolCallIds.has(turn)) turnToolCallIds.set(turn, []);
       if (data.state === "started") {
