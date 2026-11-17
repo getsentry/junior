@@ -31,6 +31,7 @@ import {
   type CredentialSubject,
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { addConversationNote } from "@/chat/conversations/notes";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -412,6 +413,25 @@ export function createEventInboundMessage(input: {
 }
 
 /**
+ * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
+ * automated-turn limit does not apply. The next Turn sees the note as
+ * runtime context. Core writes how to use it before the Event facts, so a
+ * long summary that the note limit cuts never loses that rule.
+ */
+export async function addQuietEventNote(args: {
+  event: EventNotification;
+  subscription: Pick<Watch, "conversationId" | "id" | "label">;
+}): Promise<void> {
+  const { event, subscription } = args;
+  await addConversationNote({
+    conversationId: subscription.conversationId,
+    createdAtMs: event.occurredAtMs,
+    key: `quiet_event:${subscription.id}:${event.eventKey}`,
+    text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
+  });
+}
+
+/**
  * Enqueue a event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
@@ -429,7 +449,7 @@ export async function enqueueEventNotification(args: {
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const decision = await admitAutomatedTurn({
     conversationId: args.subscription.conversationId,
@@ -455,7 +475,7 @@ export async function enqueueEventNotification(args: {
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "duplicate" };
+    return { status: "paused" };
   }
 
   const task = eventTaskFacts(

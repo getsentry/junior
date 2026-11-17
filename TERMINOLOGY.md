@@ -74,6 +74,8 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Quiet Event**: a Watch Event that the code that made the Watch marked
+  quiet. Core saves it as a Conversation note and starts no Turn.
 - **Event author**: the account that wrote the content of an Event, such as
   a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
   with no author is a system Event. The author never becomes the Turn Actor.

@@ -3,9 +3,16 @@ import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException, logInfo } from "@/chat/logging";
 import { resolveEventAuthor } from "@/chat/identities/trust";
-import { enqueueEventNotification } from "@/chat/events/notification";
+import {
+  addQuietEventNote,
+  enqueueEventNotification,
+} from "@/chat/events/notification";
 import { resolveEventMentions } from "@/chat/events/people";
-import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
+import {
+  deliverWatch,
+  findMatchingWatches,
+  isQuietEvent,
+} from "@/chat/events/store";
 import { slackMention } from "@/chat/slack/mrkdwn";
 
 /** Match a normalized event and enqueue notifications into conversations. */
@@ -57,10 +64,23 @@ export async function ingestEvent(
     author.status === "trusted" && author.actor
       ? { mention: slackMention(author.actor.userId), handle: author.handle }
       : undefined;
+  // A Conversation whose Turn got this Event from another Watch needs no
+  // note that says nobody was told. Watches that start a Turn go first, so
+  // the set is complete before any Quiet Event. A duplicate means an earlier
+  // delivery already gave the Turn this Event. A Watch that the
+  // automated-turn limit pauses, or that fails, adds nothing.
+  const turnConversations = new Set<string>();
+  const ordered = [...subscriptions].sort(
+    (left, right) =>
+      Number(isQuietEvent(left, event.eventType)) -
+      Number(isQuietEvent(right, event.eventType)),
+  );
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
-  for (const subscription of subscriptions) {
+  for (const subscription of ordered) {
+    // A Quiet Event is delivered, but it is not enqueued: it starts no Turn.
+    let quiet = false;
     try {
       const delivered = await deliverWatch({
         data: event.data,
@@ -73,6 +93,13 @@ export async function ingestEvent(
         subscription,
         waitDeadlineMs,
         deliver: async (current) => {
+          if (isQuietEvent(current, event.eventType)) {
+            quiet = true;
+            if (!turnConversations.has(current.conversationId)) {
+              await addQuietEventNote({ event, subscription: current });
+            }
+            return true;
+          }
           const result = await enqueueEventNotification({
             author,
             doneBy,
@@ -82,10 +109,12 @@ export async function ingestEvent(
             state: options.state,
             subscription: current,
           });
+          if (result.status === "paused") return false;
+          turnConversations.add(current.conversationId);
           return result.status === "appended";
         },
       });
-      if (delivered) {
+      if (delivered && !quiet) {
         enqueued += 1;
       }
     } catch (error) {

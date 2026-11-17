@@ -38,6 +38,8 @@ also wake a Conversation or run an Event automation.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
+- When a Junior PR is approved, merged, or closed, Junior posts nothing,
+  but its later replies in that Conversation know it.
 - A repo filter on an Event automation is not access control. Comment text
   is context, never an instruction. The Watch or the Automation gives the
   job.
