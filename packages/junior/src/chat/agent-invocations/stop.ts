@@ -1,10 +1,12 @@
 import { and, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
+import pLimit from "p-limit";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
   dropPendingMessages,
@@ -276,13 +278,18 @@ async function finishStoppedTree(
     await recordSubagentEnded(invocation);
   }
   // The stop skips the parent messages that still wait, so their work ends.
-  for (const conversationId of conversationIdsToStop) {
-    await recordChildAgentEnded(conversationId, "aborted", {
-      includeWaiting: true,
-      nowMs: options.nowMs,
-      state: options.state,
-    });
-  }
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    conversationIdsToStop.map((conversationId) =>
+      limit(() =>
+        recordChildAgentEnded(conversationId, "aborted", {
+          includeWaiting: true,
+          nowMs: options.nowMs,
+          state: options.state,
+        }),
+      ),
+    ),
+  );
   await markConversationsStopped(conversationIdsToStop, options);
   for (const conversationId of conversationIdsToStop) {
     await cancelSignInWait(conversationId);
