@@ -1,3 +1,4 @@
+import type { PluginLogger } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubIssueStateReasonSchema } from "../db/schema.js";
 import type {
@@ -92,6 +93,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 export function normalizeGitHubIssueOutcome(args: {
   body: unknown;
   botEmail?: string | undefined;
+  log?: Pick<PluginLogger, "warn"> | undefined;
 }): GitHubIssueOutcomeInput | undefined {
   const lifecycle = issueLifecycleActionSchema.safeParse(args.body);
   if (
@@ -119,10 +121,19 @@ export function normalizeGitHubIssueOutcome(args: {
   const candidateOwned =
     hasOwnershipMarker &&
     (parsed.action === "opened" || parsed.action === "closed");
-  const closedAt = timestamp(issue.closed_at);
-  if (parsed.action === "closed" && !closedAt) {
-    throw new Error("GitHub issue terminal timestamp is invalid");
+  // A close without a valid terminal time is still a close. Use the update
+  // time, so the issue does not stay open in Junior.
+  const closed = parsed.action === "closed";
+  const providerClosedAt = timestamp(issue.closed_at);
+  if (closed && !providerClosedAt) {
+    args.log?.warn("GitHub issue close has no valid terminal timestamp", {
+      closedAt: issue.closed_at ?? null,
+      number: issue.number,
+      repository: parsed.repository.full_name,
+      updatedAt: issue.updated_at,
+    });
   }
+  const closedAt = providerClosedAt ?? (closed ? updatedAt : undefined);
   return {
     candidateOwned,
     closedAt,

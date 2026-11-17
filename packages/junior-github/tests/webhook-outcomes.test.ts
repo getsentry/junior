@@ -1946,6 +1946,52 @@ describe("GitHub-owned issue outcomes", () => {
     }
   });
 
+  it("records an issue close without a terminal time at its update time", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3020,
+            number: 990,
+          }),
+          "issues",
+        ),
+      );
+      const closed = await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "closed",
+            closedAt: null,
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3020,
+            number: 990,
+            stateReason: "completed",
+            updatedAt: "2026-07-03T12:05:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      expect(closed.status).toBe(202);
+
+      await expect(
+        fixture.db().select().from(juniorGitHubIssues),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          closedAt: new Date("2026-07-03T12:05:00.000Z"),
+          issueId: "3020",
+          state: "closed",
+          stateReason: "completed",
+          updatedAt: new Date("2026-07-03T12:05:00.000Z"),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("marks associated conversation resource annotations closed", async () => {
     const fixture = await createGitHubFixture();
     try {

@@ -225,7 +225,7 @@ export function createGitHubWebhookRoute(args: {
           : undefined;
       const issueOutcome =
         eventName === "issues"
-          ? normalizeGitHubIssueOutcome({ body, botEmail })
+          ? normalizeGitHubIssueOutcome({ body, botEmail, log: args.log })
           : undefined;
       const issueConversations =
         eventName === "issues"
