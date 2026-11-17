@@ -36,7 +36,7 @@ If a skill needs a CLI, system package, MCP server, or credential flow, declare 
 
 Write `$skill-name` in a message or an automation instruction to run that skill, for example `$weekly-report getsentry/junior`. Junior also accepts `/skill-name` for older messages. Do not describe invocation syntax inside a skill. Junior handles invocation.
 
-Set `disable-model-invocation: true` in the skill frontmatter when only a person should start the skill. Junior then loads the skill only in a Turn whose own message names it.
+Set `disable-model-invocation: true` in the skill frontmatter when only a person should start the skill. Junior then loads the skill only in a Turn whose own message names it, or in a Turn where a loaded skill references it as `$skill-name` or `/skill-name` in its `SKILL.md`. Other mentions of the name, and references in `references/` files, do not count.
 
 ## Plugins
 

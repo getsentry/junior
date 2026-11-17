@@ -910,6 +910,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
+      p-limit:
+        specifier: ^7.3.3
+        version: 7.3.3
       parse5:
         specifier: ^7.3.0
         version: 7.3.0

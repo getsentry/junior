@@ -9,7 +9,7 @@ import {
   parseSkillInvocation,
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
-import type { SkillMetadata } from "@/chat/skills";
+import type { Skill, SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
 import { renderTaskInput } from "@/chat/task-input";
 
@@ -213,12 +213,25 @@ describe("skills", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
-  it("lets the model load a user-callable skill only when the user invoked it", () => {
-    const names = (invoked: string | undefined) =>
-      loadableSkills(stubSkills, invoked).map((skill) => skill.name);
+  it("lets the model load a manual-only skill only when invoked or referenced by a loaded skill", () => {
+    const names = (invoked: string | undefined, loaded: Skill[] = []) =>
+      loadableSkills(stubSkills, invoked, loaded).map((skill) => skill.name);
+    const loaded = (body: string): Skill => ({ ...stubSkills[0]!, body });
 
     expect(names(undefined)).toEqual(["brief", "sum"]);
     expect(names("weather-lookup")).toEqual(["brief", "sum", "weather-lookup"]);
+    expect(names(undefined, [loaded("Then run $weather-lookup.")])).toEqual([
+      "brief",
+      "sum",
+      "weather-lookup",
+    ]);
+    expect(
+      names(undefined, [
+        loaded(
+          "Use **weather-lookup**, `weather-lookup`, or $weather-lookup-v2.",
+        ),
+      ]),
+    ).toEqual(["brief", "sum"]);
   });
 
   it("skips skills with unsupported capability metadata", async () => {
