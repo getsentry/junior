@@ -184,7 +184,8 @@ struct Dot: View {
 /// Person avatar: violet-300 circle with initials; Junior shows its avatar.
 struct Avatar: View {
   enum Kind {
-    case person(ActorIdentity?)
+    /// A person, by display name.
+    case person(String?)
     case agent
     case parentAgent
     /// An Event or Automation that started a Turn.
@@ -211,10 +212,10 @@ struct Avatar: View {
       Circle().fill(Tokens.surfaceHover).frame(width: size, height: size)
         .overlay(Icon("bot", size: 15).foregroundStyle(Color.palette(.cyan, 200)))
         .accessibilityHidden(true)
-    case .person(let identity):
+    case .person(let name):
       Circle().fill(Color.palette(.violet, 300)).frame(width: size, height: size)
         .overlay(
-          Text(identity?.initials ?? "?")
+          Text(Self.initials(name))
             .type(.xs, .semibold)
             .foregroundStyle(Tokens.textInverse)
             .minimumScaleFactor(0.5)
@@ -222,6 +223,13 @@ struct Avatar: View {
         )
         .accessibilityHidden(true)
     }
+  }
+
+  /// Up to two initials, as the dashboard avatar shows them.
+  static func initials(_ name: String?) -> String {
+    let words = (name ?? "").split(whereSeparator: { " ._-@".contains($0) })
+    let letters = words.prefix(2).compactMap { $0.first.map { String($0).uppercased() } }
+    return letters.isEmpty ? "?" : letters.joined()
   }
 }
 

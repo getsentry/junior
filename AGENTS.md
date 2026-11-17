@@ -70,8 +70,9 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 
 ## iOS app
 
-`apps/ios` is the native client. Read `apps/ios/README.md` first. One
-simulator can use about 10 GB of memory, so:
+`apps/ios` is the native client. Read `apps/ios/README.md` first. It uses
+only the public MCP server (`/api/mcp`), never dashboard `/api/*` routes.
+One simulator can use about 10 GB of memory, so:
 
 - Test logic with `swift test` in `apps/ios/Packages/JuniorKit`. It needs no
   simulator.

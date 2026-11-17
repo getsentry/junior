@@ -1,59 +1,51 @@
 import JuniorKit
 import SwiftUI
 
-/// Route `/review?item=…` on a phone (`ReviewItemView.tsx`): the item's
-/// header, the Conversation around it, and the question card.
+/// Route `/review?item=…` on a phone (`ReviewItemView.tsx`): the item, its
+/// question, and the Conversations it came from. The public API reads Review
+/// items; answering one happens on the web.
 struct ReviewItemScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(InboxModel.self) private var inbox
   @Environment(\.dismiss) private var dismiss
   let itemId: String
   @State private var item: ReviewItem?
-  @State private var excerpt: [TranscriptMessage] = []
-  @State private var dividerIndex: Int?
+  @State private var titles: [String: String] = [:]
   @State private var error: JuniorAPIError?
-  @State private var showDetails = false
-  @State private var forkFrom: String?
-  @State private var excerptCanFork = false
 
   var body: some View {
     VStack(spacing: 0) {
       AppHeader(title: app.agentName)
       if let item {
-        itemHeader(item)
-        ScrollViewReader { proxy in
-          ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-              ExcerptView(messages: excerpt, dividerIndex: dividerIndex, canFork: excerptCanFork) { forkFrom = $0 }
-              QuestionCard(item: item) { updated in
-                self.item = updated
-                app.didWrite()
-              }
-              .id("card")
-              if let next = inbox.next(after: item.id) {
-                Button {
-                  app.path.removeLast()
-                  app.path.append(.reviewItem(next.id))
-                } label: {
-                  HStack(spacing: 6) {
-                    Text("Next: \(next.title)").lineLimit(1)
-                    Icon("arrow-right", size: 14)
-                  }
-                  .type(.sm, .medium)
-                  .foregroundStyle(Tokens.text)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-              }
+        ScrollView {
+          VStack(alignment: .leading, spacing: 20) {
+            itemHeader(item)
+            if !item.body.isEmpty {
+              MarkdownView(blocks: parseMarkdown(item.body), step: .sm, color: Tokens.text)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 20)
-            .padding(.bottom, 24)
+            card(item)
+            if !item.conversationIds.isEmpty { conversations(item) }
+            if let next = inbox.next(after: item.id) {
+              Button {
+                app.path.removeLast()
+                app.path.append(.reviewItem(next.id))
+              } label: {
+                HStack(spacing: 6) {
+                  Text("Next: \(next.title)").lineLimit(1)
+                  Icon("arrow-right", size: 14)
+                }
+                .type(.sm, .medium)
+                .foregroundStyle(Tokens.text)
+              }
+              .buttonStyle(.plain)
+              .frame(maxWidth: .infinity, alignment: .trailing)
+            }
           }
-          .defaultScrollAnchor(.bottom, for: .initialOffset)
-          .defaultScrollAnchor(.top, for: .alignment)
-          .onChange(of: excerpt.count) { proxy.scrollTo("card", anchor: .bottom) }
+          .padding(.horizontal, 16)
+          .padding(.top, 16)
+          .padding(.bottom, 24)
         }
+        .refreshable { await load() }
       } else if let error {
         EmptyBox(text: error.localizedDescription) { Task { await load() } }.padding(16)
         Spacer()
@@ -71,245 +63,122 @@ struct ReviewItemScreen: View {
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
     .task(id: itemId) { await load() }
-    .sheet(item: Binding(get: { forkFrom.map(ForkTarget.init) }, set: { forkFrom = $0?.id })) { target in
-      if let id = item?.addedByConversationId {
-        ForkSheet(conversationId: id, messageId: target.id)
-          .presentationDetents([.height(260)])
-          .presentationBackground(Tokens.bgElevated)
-      }
-    }
-    .sheet(isPresented: $showDetails) {
-      if let item {
-        ReviewItemDetails(item: item, source: inbox.source(of: item))
-          .presentationDetents([.fraction(0.85)])
-          .presentationCornerRadius(16)
-          .presentationBackground(Tokens.bgElevated)
+  }
+
+  private func load() async {
+    do {
+      let loaded = try await app.call("getReviewItem", ["id": .string(itemId)], as: ReviewItemResult.self).item
+      item = loaded
+      error = nil
+      await loadTitles(loaded.conversationIds)
+    } catch let failure as JuniorAPIError {
+      if item == nil { error = failure }
+    } catch {}
+  }
+
+  /// Titles of the linked Conversations that the viewer takes part in.
+  private func loadTitles(_ ids: [String]) async {
+    for id in ids.prefix(5) where titles[id] == nil {
+      if let state = try? await app.call("getConversation", ["conversationId": .string(id)], as: ConversationState.self)
+      {
+        titles[id] = state.conversation.title
       }
     }
   }
 
   private func itemHeader(_ item: ReviewItem) -> some View {
-    HStack(alignment: .top, spacing: 16) {
-      VStack(alignment: .leading, spacing: 6) {
-        Button {
-          dismiss()
-        } label: {
-          HStack(spacing: 4) {
-            Icon("chevron-left", size: 14)
-            Text("Inbox")
-          }
-          .type(.xs)
-          .foregroundStyle(Tokens.textMuted)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Back to Inbox")
-        Text(item.title)
-          .type(.xl, .medium, family: .display)
-          .tracking(-0.5)
-          .foregroundStyle(Tokens.text)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityAddTraits(.isHeader)
-        let status = HStack(spacing: 6) {
-          Dot(color: item.isOpen ? Tokens.accent : Tokens.textMuted)
-          Text(item.statusLabel).type(.xs, .medium)
-        }
-        .foregroundStyle(item.isOpen ? Tokens.accent : Tokens.textMuted)
-        .fixedSize()
-        let meta = Text(meta(item)).type(.xs).foregroundStyle(Tokens.textMuted)
-        // The status and the source share a line when they fit, as flex-wrap does.
-        ViewThatFits(in: .horizontal) {
-          HStack(spacing: 8) {
-            status; meta.fixedSize()
-          }
-          VStack(alignment: .leading, spacing: 2) {
-            status; meta.fixedSize(horizontal: false, vertical: true)
-          }
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      Button {
-        showDetails = true
-      } label: {
-        HStack(spacing: 8) {
-          Icon("panel-right", size: 15)
-          Text("Details")
-        }
-      }
-      .buttonStyle(.dashboard(.outline))
-    }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 12)
-    .background(Tokens.bg)
-    .hairline(.bottom)
-  }
-
-  private func meta(_ item: ReviewItem) -> String {
-    var parts = [inbox.source(of: item)]
-    if let created = item.createdAt { parts.append(app.clock.relative(created)) }
-    if item.visibility == .private { parts.append("Private") }
-    return parts.joined(separator: " · ")
-  }
-
-  private func load() async {
-    do {
-      let item: ReviewItem = try await app.client.get("/api/review-items/\(itemId.pathEscaped)")
-      self.item = item
-      error = nil
-      if inbox.sourceTitles.isEmpty { await inbox.load(app.client) }
-      await loadExcerpt(item)
-    } catch let error as JuniorAPIError {
-      self.error = error
-    } catch {}
-  }
-
-  /// The last three messages up to the item, then the first three after it.
-  private func loadExcerpt(_ item: ReviewItem) async {
-    guard let id = item.addedByConversationId else { return }
-    guard let detail: ConversationDetail = try? await app.client.get("/api/conversations/\(id.pathEscaped)")
-    else { return }
-    excerptCanFork = detail.canFork == true
-    let model = buildTranscript(events: detail.events, status: nil, fallbackAuthor: detail.actorIdentity)
-    let messages = model.rows.compactMap { row -> TranscriptMessage? in
-      if case .message(let message) = row, message.speaker != .system { return message }
-      return nil
-    }
-    let created = item.createdAt ?? .distantFuture
-    let before = messages.filter { ($0.createdAt ?? .distantPast) <= created }.suffix(3)
-    let after = messages.filter {
-      let date = $0.createdAt ?? .distantPast
-      return date > created && date < (item.closedAt ?? .distantFuture)
-    }.prefix(3)
-    excerpt = Array(before) + Array(after)
-    dividerIndex = after.isEmpty ? nil : before.count
-  }
-}
-
-private struct ExcerptView: View {
-  let messages: [TranscriptMessage]
-  let dividerIndex: Int?
-  let canFork: Bool
-  let onFork: (String) -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-        if index == dividerIndex {
-          HStack(spacing: 12) {
-            Rectangle().fill(Tokens.accent.opacity(0.3)).frame(height: 1)
-            Text("New since Junior asked")
-              .type(.xs, .medium)
-              .foregroundStyle(Tokens.accentText)
-              .fixedSize()
-            Rectangle().fill(Tokens.accent.opacity(0.3)).frame(height: 1)
-          }
-          .padding(.vertical, 4)
-        }
-        MessageRow(
-          message: message, slackSurface: false,
-          onFork: canFork && message.forkable ? { onFork(message.id) } : nil)
-      }
-    }
-  }
-}
-
-/// Item details sheet (`ReviewItemDetails.tsx`).
-private struct ReviewItemDetails: View {
-  @Environment(AppModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
-  let item: ReviewItem
-  let source: String
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack {
-        Text("Review item details").type(.base, .semibold).foregroundStyle(Tokens.text)
-        Spacer()
-        Button {
-          dismiss()
-        } label: {
-          Icon("x", size: 16).foregroundStyle(Tokens.textMuted).frame(width: 36, height: 36)
-        }
-        .buttonStyle(PressableStyle(radius: 6))
-        .accessibilityLabel("Close details")
-      }
-      .padding(.leading, 16)
-      .padding(.trailing, 8)
-      .padding(.vertical, 8)
-      .hairline(.bottom, Tokens.borderSubtle)
-      ScrollView {
-        VStack(alignment: .leading, spacing: 12) {
-          if let body = item.body, !body.isEmpty {
-            Text(body).type(.sm, lineHeight: 1.625).foregroundStyle(Tokens.textMuted)
-          }
-          card("Assignees") {
-            if assignees.isEmpty {
-              Text("Unassigned")
-                .type(.xs, .medium)
-                .foregroundStyle(Color.palette(.amber, 300))
-            } else {
-              Text(assignees).type(.sm).foregroundStyle(Tokens.text)
-            }
-          }
-          card(nil) {
-            VStack(spacing: 8) {
-              row("Status", item.statusLabel)
-              if let created = item.createdAt { row("Added", app.clock.relative(created)) }
-              row("Added by", item.automationId == nil ? source : "\(source) · Automation")
-              row("Visibility", item.visibility == .private ? "Private" : "Public")
-            }
-          }
-          if let ids = item.conversationIds, !ids.isEmpty {
-            card("Linked conversations", count: ids.count) {
-              ForEach(ids, id: \.self) { id in
-                Button {
-                  dismiss()
-                  app.path.append(.conversation(id))
-                } label: {
-                  Text(id == item.addedByConversationId ? source : id)
-                    .type(.sm)
-                    .underline()
-                    .foregroundStyle(Tokens.text)
-                }
-                .buttonStyle(.plain)
-              }
-            }
-          }
-        }
-        .padding(16)
-      }
-    }
-    .background(Tokens.bgElevated)
-  }
-
-  private var assignees: String {
-    var names = item.assignedToEveryone == true ? ["Everyone"] : []
-    names += (item.assignees ?? []).compactMap { $0.displayName ?? $0.email }
-    return names.joined(separator: ", ")
-  }
-
-  private func card<Content: View>(_ title: String?, count: Int? = nil, @ViewBuilder _ content: () -> Content)
-    -> some View
-  {
     VStack(alignment: .leading, spacing: 6) {
-      if let title {
+      Button {
+        dismiss()
+      } label: {
+        HStack(spacing: 4) {
+          Icon("chevron-left", size: 14)
+          Text("Inbox")
+        }
+        .type(.xs)
+        .foregroundStyle(Tokens.textMuted)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Back to Inbox")
+      Text(item.title)
+        .type(.xl, .medium, family: .display)
+        .tracking(-0.5)
+        .foregroundStyle(Tokens.text)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+      HStack(spacing: 8) {
         HStack(spacing: 6) {
-          Text(title).type(.xs, .medium).foregroundStyle(Tokens.textMuted)
-          if let count { Text("\(count)").type(.xs).foregroundStyle(Tokens.textFaint) }
+          Dot(color: item.status == "open" ? Tokens.accent : Tokens.textMuted)
+          Text(item.status == "open" ? (item.kind == "notice" ? "Notice" : "Needs an answer") : item.status.capitalized)
+            .type(.xs, .medium)
+        }
+        .foregroundStyle(item.status == "open" ? Tokens.accent : Tokens.textMuted)
+        if let date = item.createdAt.date {
+          Text(app.clock.relative(date)).type(.xs).foregroundStyle(Tokens.textMuted)
         }
       }
-      content()
+    }
+  }
+
+  /// The question and where to answer it.
+  private func card(_ item: ReviewItem) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+      if let question = item.question {
+        Text(question).type(.base, .medium).foregroundStyle(Tokens.text).fixedSize(horizontal: false, vertical: true)
+      }
+      if let subject = item.subject {
+        let label = subject.title ?? subject.id
+        if let url = subject.url {
+          Button {
+            app.openLink(url)
+          } label: {
+            TagChip(label: label, maxWidth: 300, outbound: true) {
+              Icon("link", size: 12).foregroundStyle(Tokens.textMuted)
+            }
+          }
+          .buttonStyle(.plain)
+        } else {
+          TagChip(label: label, maxWidth: 300) { Icon("link", size: 12).foregroundStyle(Tokens.textMuted) }
+        }
+      }
+      Text(assignees(item)).type(.xs).foregroundStyle(Tokens.textMuted)
+      if let url = item.url {
+        Button(item.canAct ? (item.kind == "notice" ? "Dismiss on the web" : "Answer on the web") : "Open on the web") {
+          app.openLink(url)
+        }
+        .buttonStyle(.dashboard(item.canAct ? .primary : .outline))
+        .accessibilityIdentifier("answer-on-web")
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(12)
-    .panelCard()
+    .padding(16)
+    .panelCard(radius: 10)
   }
 
-  private func row(_ label: String, _ value: String) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
-      Text(label).foregroundStyle(Tokens.textMuted).frame(width: 75, alignment: .leading)
-      Text(value).foregroundStyle(Tokens.text)
-      Spacer(minLength: 0)
+  private func assignees(_ item: ReviewItem) -> String {
+    if item.assignees.isEmpty { return "Anyone can answer." }
+    return "For " + ListFormatter.localizedString(byJoining: item.assignees) + "."
+  }
+
+  private func conversations(_ item: ReviewItem) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("From").type(.xs, .semibold).foregroundStyle(Tokens.text).accessibilityAddTraits(.isHeader)
+      ForEach(item.conversationIds, id: \.self) { id in
+        Button {
+          app.path.append(.conversation(id))
+        } label: {
+          HStack(spacing: 8) {
+            Icon("message-square", size: 14).foregroundStyle(Tokens.textMuted)
+            Text(titles[id] ?? "Conversation").type(.sm, .medium).foregroundStyle(Tokens.text).lineLimit(1)
+            Spacer(minLength: 0)
+            Icon("chevron-right", size: 14).foregroundStyle(Tokens.textMuted)
+          }
+          .padding(12)
+          .listCard()
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft))
+      }
     }
-    .type(.xs)
   }
 }

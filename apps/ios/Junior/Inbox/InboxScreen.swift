@@ -1,100 +1,54 @@
 import JuniorKit
 import SwiftUI
 
-/// Shared Inbox data: open items and the titles of the Conversations that
-/// added them.
+/// Shared Inbox data (`searchReviewItems`): open Review items, 50 at most.
 @MainActor
 @Observable
 final class InboxModel {
   var items: [ReviewItem] = []
-  var sourceTitles: [String: String] = [:]
+  /// More items match than the list holds.
+  var truncated = false
   var loading = false
   var error: JuniorAPIError?
   var query = ""
 
-  var nextCursor: String?
-  var loadingMore = false
-  var loadMoreError: String?
   private var startedLoads = 0
   private var appliedLoad = 0
 
   var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
-  private func params(cursor: String?) -> [URLQueryItem] {
-    var query = [URLQueryItem(name: "for", value: "viewer")]
-    let trimmed = self.query.trimmingCharacters(in: .whitespaces)
-    if !trimmed.isEmpty { query.append(URLQueryItem(name: "q", value: trimmed)) }
-    if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
-    return query
-  }
-
-  /// Load the first page; out-of-order responses (an older search) are dropped.
-  func load(_ client: JuniorClient) async {
+  /// Load the list; out-of-order responses (an older search) are dropped.
+  func load(_ app: AppModel) async {
     startedLoads += 1
     let ticket = startedLoads
     loading = items.isEmpty
     defer { loading = false }
+    var arguments: [String: JSONValue] = ["limit": 50]
+    let trimmed = String(query.trimmingCharacters(in: .whitespaces).prefix(200))
+    if !trimmed.isEmpty { arguments["q"] = .string(trimmed) }
     do {
-      let page: ReviewItemPage = try await client.get("/api/review-items", query: params(cursor: nil))
+      let list = try await app.call("searchReviewItems", arguments, as: ReviewItemList.self)
       guard ticket > appliedLoad else { return }
       appliedLoad = ticket
-      items = page.items
-      nextCursor = page.nextCursor
+      items = list.items
+      truncated = list.truncated
       error = nil
-      await loadSourceTitles(client)
     } catch let error as JuniorAPIError {
       self.error = error
     } catch {}
   }
 
-  /// The next page, from the "Load more" button (pages hold 50 items).
-  func loadMore(_ client: JuniorClient) async {
-    guard let cursor = nextCursor, !loadingMore else { return }
-    let ticket = startedLoads
-    loadingMore = true
-    defer { loadingMore = false }
-    let page: ReviewItemPage
-    do {
-      page = try await client.get("/api/review-items", query: params(cursor: cursor))
-    } catch {
-      loadMoreError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not load more."
-      return
-    }
-    // A new search since this started makes its page stale.
-    guard ticket == startedLoads else { return }
-    loadMoreError = nil
-    let known = Set(items.map(\.id))
-    items += page.items.filter { !known.contains($0.id) }
-    nextCursor = page.nextCursor
-    await loadSourceTitles(client)
+  /// "Needs you" (questions the viewer can answer) and "FYI", newest first.
+  var groups: [(id: String, title: String, items: [ReviewItem])] {
+    let newest = items.sorted { ($0.createdAt.date ?? .distantPast) > ($1.createdAt.date ?? .distantPast) }
+    let needsYou = newest.filter { $0.canAct && $0.kind == "action" }
+    let fyi = newest.filter { !($0.canAct && $0.kind == "action") }
+    return [("needs-you", "Needs you", needsYou), ("fyi", "FYI", fyi)].filter { !$0.items.isEmpty }
   }
 
-  /// Title of each source Conversation, read once (`?limit=1`).
-  func loadSourceTitles(_ client: JuniorClient) async {
-    let ids = Set(items.compactMap(\.addedByConversationId)).subtracting(sourceTitles.keys)
-    await withTaskGroup(of: (String, String?).self) { group in
-      for id in ids {
-        group.addTask {
-          struct Header: Decodable { var displayTitle: String? }
-          let header: Header? = try? await client.get(
-            "/api/conversations/\(id.pathEscaped)", query: [URLQueryItem(name: "limit", value: "1")])
-          return (id, header?.displayTitle)
-        }
-      }
-      for await (id, title) in group {
-        if let title { sourceTitles[id] = title }
-      }
-    }
-  }
-
-  func source(of item: ReviewItem) -> String {
-    if item.automationId != nil { return "Automation" }
-    return item.addedByConversationId.flatMap { sourceTitles[$0] } ?? "Conversation"
-  }
-
-  /// The next open item after this one, in Inbox order.
+  /// The next item after this one, in Inbox order.
   func next(after id: String) -> ReviewItem? {
-    let ordered = inboxGroups(items).flatMap(\.items)
+    let ordered = groups.flatMap(\.items)
     guard let index = ordered.firstIndex(where: { $0.id == id }) else { return ordered.first }
     return ordered.dropFirst(index + 1).first
   }
@@ -125,14 +79,14 @@ struct InboxScreen: View {
           list.padding(.horizontal, 12)
         }
       }
-      .refreshable { await model.load(app.client) }
+      .refreshable { await model.load(app) }
     }
     .background(Tokens.surfacePanel)
     .toolbar(.hidden, for: .navigationBar)
-    .task(id: app.reviewItemsVersion) { await model.load(app.client) }
+    .task(id: app.reviewItemsVersion) { await model.load(app) }
     .task(id: model.query) {
       try? await Task.sleep(for: .milliseconds(250))
-      if !Task.isCancelled { await model.load(app.client) }
+      if !Task.isCancelled { await model.load(app) }
     }
   }
 
@@ -149,15 +103,9 @@ struct InboxScreen: View {
       }
       .padding(.top, 12)
     } else if let error = model.error, model.items.isEmpty {
-      EmptyBox(text: error.localizedDescription) { Task { await model.load(app.client) } }
+      EmptyBox(text: error.localizedDescription) { Task { await model.load(app) } }
     } else {
-      // A search lists every match: open items first, then closed ones.
-      let groups =
-        model.searching
-        ? [
-          (id: "results", title: "Results", items: model.items.filter(\.isOpen) + model.items.filter { !$0.isOpen })
-        ].filter { !$0.items.isEmpty }
-        : inboxGroups(model.items)
+      let groups = model.groups
       if groups.isEmpty {
         Text(model.searching ? "No items match" : "Nothing needs you")
           .type(.lg, .medium, family: .display)
@@ -174,20 +122,17 @@ struct InboxScreen: View {
         if !binding.wrappedValue {
           VStack(spacing: 2) {
             ForEach(group.items) { item in
-              InboxRow(item: item, source: model.source(of: item))
+              InboxRow(item: item)
             }
           }
         }
       }
-      if let loadMoreError = model.loadMoreError { InlineError(text: loadMoreError) }
       if model.error != nil, !model.items.isEmpty {
         Text("Could not refresh. Pull to try again.").type(.xs).foregroundStyle(Tokens.textMuted)
       }
-      if model.nextCursor != nil {
-        Button(model.loadingMore ? "Loading…" : "Load more") { Task { await model.loadMore(app.client) } }
-          .buttonStyle(.dashboard(.ghost))
-          .disabled(model.loadingMore)
-          .frame(maxWidth: .infinity)
+      if model.truncated {
+        Text("More items match. Search to find the rest.").type(.xs).foregroundStyle(Tokens.textMuted)
+          .padding(.horizontal, 12)
           .padding(.vertical, 8)
       }
     }
@@ -197,18 +142,19 @@ struct InboxScreen: View {
 private struct InboxRow: View {
   @Environment(AppModel.self) private var app
   let item: ReviewItem
-  let source: String
 
   var body: some View {
     Button {
       app.path.append(.reviewItem(item.id))
     } label: {
       HStack(alignment: .top, spacing: 8) {
-        dot.frame(width: 14).padding(.top, 6)
+        Dot(color: item.kind == "notice" ? Tokens.textFaint : Tokens.accent, size: 8)
+          .frame(width: 14)
+          .padding(.top, 6)
         VStack(alignment: .leading, spacing: 4) {
           Text(item.title)
             .type(.sm, .medium)
-            .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
+            .foregroundStyle(Tokens.text)
             .lineLimit(1)
           Text(subtitle)
             .type(.xs)
@@ -227,20 +173,9 @@ private struct InboxRow: View {
   }
 
   private var subtitle: String {
-    var parts: [String] = []
-    if !item.isOpen { parts.append(item.statusLabel) }
-    parts.append(source)
-    if let date = item.isOpen ? item.createdAt : (item.closedAt ?? item.createdAt) {
-      parts.append(app.clock.relative(date))
-    }
+    var parts = [item.kind == "notice" ? "Notice" : "Question"]
+    if let subject = item.subject?.title { parts.append(subject) }
+    if let date = item.createdAt.date { parts.append(app.clock.relative(date)) }
     return parts.joined(separator: " · ")
-  }
-
-  @ViewBuilder private var dot: some View {
-    if !item.isOpen {
-      Circle().strokeBorder(Tokens.textFaint, lineWidth: 1).frame(width: 8, height: 8)
-    } else {
-      Dot(color: item.kind == .notice ? Tokens.textFaint : Tokens.accent, size: 8)
-    }
   }
 }

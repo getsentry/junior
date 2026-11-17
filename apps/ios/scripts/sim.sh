@@ -153,7 +153,7 @@ cmd_shots() {
     [[ -n "$reused" ]] || xcrun simctl ui "$udid" appearance "${theme:-dark}"
     xcrun simctl launch "$udid" io.sentry.junior \
       -JuniorServer "$server" -JuniorFixedNow "$fixed_now" \
-      -JuniorOpen "$path" -JuniorTheme "${theme:-dark}" >/dev/null
+      -JuniorOpen "$path" -JuniorTheme "${theme:-dark}" -JuniorAccessToken mock-access-token >/dev/null
     sleep "${JUNIOR_IOS_SHOT_DELAY:-3}"
     xcrun simctl io "$udid" screenshot "$out/$name.png" >/dev/null
     log "saved $out/$name.png"

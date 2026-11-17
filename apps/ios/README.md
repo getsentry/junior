@@ -1,26 +1,31 @@
 # Junior for iOS
 
-A native SwiftUI client for the Junior dashboard. It matches the mobile
-layout of the current dashboard UI (the `classic` shell): Conversations,
-the Inbox, Automations, and the navigation drawer, in dark and light themes.
+A native SwiftUI client for Junior. It matches the mobile layout of the
+dashboard (the `classic` shell): Conversations, the Inbox, Automations, and the
+navigation drawer, in dark and light themes. It uses only Junior's public API,
+the MCP server at `/api/mcp`, and signs in with its OAuth flow.
 
 ## Layout
 
 | Path                    | What it holds                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Packages/JuniorKit`    | Logic with no UI: API models, the dashboard API client, Markdown, the transcript builder, and display rules.   |
+| `Packages/JuniorKit`    | Logic with no UI: the MCP client and OAuth, tool result models, Markdown, and display rules.                  |
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
-| `JuniorUITests`         | UI journeys against the mock dashboard.                                                                        |
+| `JuniorUITests`         | UI journeys against the mock MCP server.                                                                       |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
 | `scripts/`              | `mock-server.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, and `generate-icons.mjs`.                              |
 
-The app reads the same `/api/*` routes as the web dashboard. JuniorKit tests
-decode fixtures that are real responses from the mock dashboard.
+Each screen calls MCP tools (`searchConversations`, `getConversation`,
+`sendMessage`, …); their result types mirror the tool schemas in
+`packages/junior/src/api/mcp`. What MCP lacks (answering a Review item,
+changing an Automation, the event log) opens the dashboard in the in-app
+browser.
 
 ## Run it
 
-1. Build the dashboard once, then start the mock server. It serves the
-   dashboard's mock data on `http://127.0.0.1:4317` with auth off:
+1. Build the dashboard once, then start the mock server. It serves a mock of
+   the MCP server and its OAuth endpoints on `http://127.0.0.1:4317`, backed
+   by the dashboard's mock data:
 
    ```bash
    pnpm --filter "@sentry/junior-dashboard..." run build
@@ -81,17 +86,21 @@ a new worktree reuses compiled work.
 | `-JuniorOpen`     | A dashboard path to open, such as `/review?item=qa-rollout`.  |
 | `-JuniorTheme`    | `dark`, `light`, or `system`.                                 |
 | `-JuniorFixedNow` | An ISO time used as "now", for screenshots of the mock data.  |
+| `-JuniorAccessToken` | Debug builds: start signed in with this token (the mock takes `mock-access-token`). |
+| `-JuniorSignOut`  | Debug builds: start signed out.                               |
 
 ## Sign-in
 
-When the dashboard rejects the app (no token, or an expired one), the app
-shows Connect. It opens the dashboard's API Tokens page in an in-app browser,
-where you sign in with Google and copy a new token, and then you paste it.
+Sign-in is Junior's MCP OAuth flow: authorization code with PKCE, Google
+sign-in and the consent page in a browser sheet, and tokens in the Keychain
+(an access token lasts an hour; refresh tokens rotate; a sign-in lasts 30
+days). Junior registers no clients: the app's `client_id` is the URL of
+`oauth-client.json` (a Client ID Metadata Document). Junior accepts only
+`https` and loopback redirect URIs, so the app takes the redirect on
+`http://127.0.0.1:<port>/callback`, as desktop MCP clients do.
 
-The app sends that personal token (`jr_pat_…`) as a Bearer token. The dashboard accepts personal tokens only for `GET`
-requests. Writes (send a message, answer a Review item, pause an Automation)
-work against the mock server, but a real deployment rejects them, and the app
-says so. A native sign-in or a write scope for tokens needs a server change.
+`AppModel.oauthClientID` points at this branch's copy on GitHub; point it at a
+stable published URL before release. Junior caches the document for 5 minutes.
 
 ## Design sources
 
@@ -102,9 +111,9 @@ says so. A native sign-in or a write scope for tokens needs a server change.
   marks. Regenerate `Theme/IconPaths.swift` with
   `node apps/ios/scripts/generate-icons.mjs` after you add an icon name.
 
-## Not in the app yet
+## Not in the public API
 
-The app opens these dashboard pages in the in-app browser: Code, System,
-people profiles, Automation editing, and the event log. Also not in the app:
-Quick questions, Thread lists in Conversation details, Automation versions,
-and queued-message edit or steer.
+MCP has user and assistant messages but no tool calls, so transcripts show no
+activity rows. It has no read position (the app opens at the latest message),
+no attachments, no spend, and no way to answer a Review item or change an
+Automation; those open on the web.

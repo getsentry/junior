@@ -129,15 +129,6 @@ import Testing
   }
 }
 
-@Suite struct ClientTests {
-  @Test func encodesPlusAndKeepsEscapedPaths() throws {
-    let client = JuniorClient(server: JuniorServer(baseURL: URL(string: "http://h/")!))
-    let url = try client.requestURL(
-      "/api/conversations/slack%3AC1%3A1.2", query: [URLQueryItem(name: "q", value: "C++ a&b")])
-    #expect(url.absoluteString == "http://h/api/conversations/slack%3AC1%3A1.2?q=C%2B%2B%20a%26b")
-  }
-}
-
 @Suite struct MarkdownSecondPassTests {
   @Test func sectionLabelOnlyAtTopLevel() {
     #expect(parseMarkdown("**Gaps**:\nNone left.") == [.heading(level: 3, text: "Gaps:"), .paragraph("None left.")])

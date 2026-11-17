@@ -1,16 +1,13 @@
 import JuniorKit
 import SwiftUI
 
-/// Route `/conversations/:id`: header with context tags and the menu, the
-/// transcript pinned to the latest row, queued messages, and the composer.
+/// Route `/conversations/:id`: header with its location and the menu, the
+/// transcript pinned to the latest message, queued messages, and the composer.
 struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
   @State private var model: ConversationModel
   @State private var showDetails = false
-  @State private var renaming = false
-  @State private var newTitle = ""
   @State private var shareURL: URL?
-  @State private var forkFrom: String?
   @State private var atBottom = true
 
   init(conversationId: String) {
@@ -25,46 +22,29 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
-    .task(id: app.conversationVersion) { await model.load(app.client, openAtUnread: !app.openAtLatest) }
-    .task(id: model.isLive && app.isActive) {
-      // Poll every 2s while the agent works or messages wait, and only while
-      // the app is in front.
-      while model.isLive, app.isActive, !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(2))
-        guard !Task.isCancelled else { return }
-        await model.load(app.client)
+    .task { await model.open(app) }
+    .task(id: app.isActive) {
+      // Follow every 2s while a Turn runs or messages wait, and every 15s
+      // otherwise, only while the app is in front.
+      while app.isActive, !Task.isCancelled {
+        try? await Task.sleep(for: .seconds(model.isLive ? 2 : 15))
+        guard !Task.isCancelled, model.state != nil else { continue }
+        await model.refresh(app)
       }
     }
-    .onAppear { app.openConversationId = model.conversationId }
-    .onChange(of: model.detail != nil) { _, loaded in
+    .onChange(of: model.state != nil) { _, loaded in
       if loaded, app.openDetails {
         app.openDetails = false
         showDetails = true
       }
     }
-    .onDisappear {
-      if app.openConversationId == model.conversationId { app.openConversationId = nil }
-    }
     .sheet(isPresented: $showDetails) {
-      if let detail = model.detail {
-        ConversationDetailsSheet(detail: detail)
+      if let state = model.state {
+        ConversationDetailsSheet(state: state)
           .presentationDetents([.fraction(0.85), .large])
           .presentationDragIndicator(.visible)
           .presentationBackground(Tokens.bgElevated)
       }
-    }
-    .alert("Rename conversation", isPresented: $renaming) {
-      TextField("Title", text: $newTitle)
-      Button("Cancel", role: .cancel) {}
-      Button("Save") {
-        struct Body: Encodable { var title: String }
-        Task { await model.patch("title", Body(title: newTitle), client: app.client) }
-      }
-    }
-    .sheet(item: Binding(get: { forkFrom.map(ForkTarget.init) }, set: { forkFrom = $0?.id })) { target in
-      ForkSheet(conversationId: model.conversationId, messageId: target.id)
-        .presentationDetents([.height(260)])
-        .presentationBackground(Tokens.bgElevated)
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
@@ -73,76 +53,55 @@ struct ConversationScreen: View {
 
   private var header: some View {
     AppHeader(
-      title: model.detail?.title ?? "Conversation", leading: .back, displayTitle: true,
+      title: model.conversation?.title ?? "Conversation", leading: .back, displayTitle: true,
       titleAlignment: .leading
     ) {
       menu
     } below: {
-      ContextTags(detail: model.detail)
+      LocationTag(conversation: model.conversation)
     }
   }
 
   private var menu: some View {
     Menu {
       Button("Conversation details", systemImage: "info.circle") { showDetails = true }
-      Button("Share", systemImage: "square.and.arrow.up") {
-        shareURL =
-          URL(
-            string: "/conversations/\(model.conversationId.pathEscaped)", relativeTo: app.server.baseURL)?
-          .absoluteURL
+      if let url = model.conversation?.url.flatMap(URL.init(string:)) {
+        Button("Share", systemImage: "square.and.arrow.up") { shareURL = url }
+        Button("Open on the web", systemImage: "safari") { app.openLink(url.absoluteString) }
       }
       Button("Copy as Markdown", systemImage: "doc.on.doc") {
-        UIPasteboard.general.string = model.markdown
+        UIPasteboard.general.string = model.markdown(agentName: app.agentName)
       }
-      if let url = model.detail?.locationUrl.flatMap(URL.init(string:)) {
+      if let url = model.conversation?.locationUrl.flatMap(URL.init(string:)) {
         Link(destination: url) { Label("Open in Slack", systemImage: "arrow.up.right.square") }
       }
-      Button("Open event log", systemImage: "scroll") {
-        app.openOnWeb("/conversations/\(model.conversationId.pathEscaped)/events")
-      }
-      if let sentry = model.detail?.sentryConversationUrl.flatMap(URL.init(string:)) {
-        Link(destination: sentry) { Label("Open in Sentry", systemImage: "arrow.up.right.square") }
-      }
       Divider()
-      if let detail = model.detail {
-        if detail.archivedAt == nil {
-          let pinned = detail.pinnedAt != nil
+      if let conversation = model.conversation {
+        let pinned = conversation.pinnedAt != nil
+        if conversation.archivedAt == nil {
           Button(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin") {
-            struct Body: Encodable { var pinned: Bool }
-            Task {
-              await model.patch("pin", Body(pinned: !pinned), client: app.client)
-              app.didWrite()
-            }
-          }
-          .disabled(detail.isParticipant != true || detail.parentConversationId != nil)
-        }
-        if detail.isParticipant == true {
-          Button("Rename", systemImage: "pencil") {
-            newTitle = detail.title
-            renaming = true
+            Task { await model.write("pinConversation", ["pinned": .bool(!pinned)], as: PinResult.self, app: app) }
           }
         }
-        // Participants only; the field is absent for anyone else.
-        if let subscribed = detail.subscribed {
-          Button(subscribed ? "Unsubscribe" : "Subscribe", systemImage: subscribed ? "bell.slash" : "bell") {
-            struct Body: Encodable { var subscribed: Bool }
-            Task { await model.patch("subscription", Body(subscribed: !subscribed), client: app.client) }
+        Button("Unfollow", systemImage: "bell.slash") {
+          Task {
+            if await model.write(
+              "setConversationSubscription", ["subscribed": false], as: SubscriptionResult.self, app: app)
+            {
+              app.path.removeLast()
+            }
           }
         }
-        if detail.isParticipant == true {
-          let archived = detail.archivedAt != nil
-          Button(archived ? "Restore" : "Archive", systemImage: archived ? "arrow.uturn.backward" : "archivebox") {
-            struct Body: Encodable {
-              var archived: Bool
-              /// The exact `lastSeenAt` the viewer saw; newer activity wins.
-              var lastSeenAt: String?
-              var applyToChildren = true
-            }
-            Task {
-              await model.patch(
-                "archive", Body(archived: !archived, lastSeenAt: detail.lastSeenAt?.raw), client: app.client)
-              app.didWrite()
-            }
+        let archived = conversation.archivedAt != nil
+        Button(archived ? "Restore" : "Archive", systemImage: archived ? "arrow.uturn.backward" : "archivebox") {
+          Task {
+            // `lastSeenAt` is the exact value the viewer saw; newer activity wins.
+            await model.write(
+              "archiveConversation",
+              [
+                "archived": .bool(!archived), "lastSeenAt": .string(conversation.lastSeenAt.raw),
+                "applyToChildren": true,
+              ], as: ArchiveResult.self, app: app)
           }
         }
       }
@@ -159,13 +118,13 @@ struct ConversationScreen: View {
   }
 
   @ViewBuilder private var transcript: some View {
-    if let error = model.error, model.detail == nil {
+    if let error = model.error, model.state == nil {
       ScrollView {
-        EmptyBox(text: error.localizedDescription) { Task { await model.load(app.client) } }
+        EmptyBox(text: error.localizedDescription) { Task { await model.open(app) } }
           .padding(16)
       }
       .frame(maxHeight: .infinity)
-    } else if model.detail == nil {
+    } else if model.state == nil {
       TranscriptSkeleton().frame(maxHeight: .infinity, alignment: .top)
     } else {
       ScrollViewReader { proxy in
@@ -173,20 +132,20 @@ struct ConversationScreen: View {
           // A plain stack: a lazy one estimates row heights and opens past
           // the end of a transcript with tall rows.
           VStack(alignment: .leading, spacing: 4) {
-            if model.previousCursor != nil {
-              EarlierButton(loading: model.loadingEarlier) { Task { await model.loadEarlier(app.client) } }
+            if model.olderCursor != nil {
+              EarlierButton(loading: model.loadingEarlier) { Task { await model.loadEarlier(app) } }
             }
-            ForEach(model.transcript.rows) { row in
-              if row.id == model.firstUnreadRowId {
-                NewDivider().id("new")
-              }
-              rowView(row)
-                .id(row.id)
-                // Any part on screen counts, so a reply taller than the screen
-                // is read too (the web reports rows that reach the viewport).
-                .onScrollVisibilityChange(threshold: 0.01) { visible in
-                  if let seq = row.seq { model.rowVisibility(seq, visible: visible, client: app.client) }
-                }
+            if model.messages.isEmpty, model.conversation?.status != .active {
+              Text("No messages yet.").type(.sm).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
+            }
+            ForEach(model.messages) { message in
+              MessageRow(message: message, blocks: model.messageBlocks[message.seq])
+                .id(message.seq)
+            }
+            switch model.conversation?.status {
+            case .active?: WorkingRow()
+            case let status? where status == .failed || status == .stopped: EndedRow(status: status)
+            default: EmptyView()
             }
             if let actionError = model.actionError {
               InlineError(text: actionError).padding(.leading, 32)
@@ -203,91 +162,48 @@ struct ConversationScreen: View {
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
-        .onAppear { scrollToStart(proxy) }
-        .onChange(of: model.transcript.rows.last?.id) { old, _ in
-          if old == nil {
-            scrollToStart(proxy)
-          } else if atBottom {
-            // Follow new rows only for a reader at the end, not one reading back.
-            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-          }
+        .onAppear { scrollToBottom(proxy, animated: false) }
+        .onChange(of: model.messages.last?.seq) { old, _ in
+          // Follow new messages only for a reader at the end, not one reading back.
+          if old == nil || atBottom { scrollToBottom(proxy, animated: old != nil) }
         }
       }
     }
   }
 
-  /// Open at the first unread row ("Where I left off") or at the latest.
-  private func scrollToStart(_ proxy: ScrollViewProxy) {
-    guard !model.transcript.rows.isEmpty else { return }
+  private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
     Task { @MainActor in
       // Let the rows lay out first.
       try? await Task.sleep(for: .milliseconds(50))
-      if !app.openAtLatest, model.firstUnreadRowId != nil {
-        proxy.scrollTo("new", anchor: .top)
+      if animated {
+        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
       } else {
         proxy.scrollTo("bottom", anchor: .bottom)
       }
-      // Count rows as read only once the page sits where it opens.
-      try? await Task.sleep(for: .milliseconds(400))
-      model.startTrackingReads(app.client)
-    }
-  }
-
-  @ViewBuilder private func rowView(_ row: TranscriptRow) -> some View {
-    switch row {
-    case .message(let message):
-      MessageRow(
-        message: message, slackSurface: model.detail?.surface == "slack", blocks: model.messageBlocks[message.id],
-        onFork: model.detail?.canFork == true && message.forkable ? { forkFrom = message.id } : nil)
-    case .activity(let activity): ActivityRow(activity: activity)
-    case .failure(let failure): FailureRow(failure: failure)
-    case .thread(let thread): ThreadCard(thread: thread)
-    case .delivered(let delivery): DeliveredRow(delivery: delivery)
-    case .thinking: ThinkingRow()
     }
   }
 }
 
-/// The tags under the title: Slack Location, repository, linked work.
-private struct ContextTags: View {
-  let detail: ConversationDetail?
+private struct PinResult: Decodable, Sendable { var pinnedAt: Timestamp? }
+private struct ArchiveResult: Decodable, Sendable { var archivedAt: Timestamp? }
+private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
+
+/// The Slack Location under the title, linked to the thread.
+private struct LocationTag: View {
+  let conversation: MCPConversation?
 
   var body: some View {
-    let slack = slackLocationLabel(
-      channel: detail?.channel, name: detail?.channelName, redacted: detail?.channelNameRedacted)
-    let links = (detail?.annotations ?? []).filter { $0.url != nil }
-    let repo = repository(links)
-    if slack != nil || !links.isEmpty {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
-          if let slack {
-            link(detail?.locationUrl) {
-              TagChip(label: slack, outbound: detail?.locationUrl != nil) {
-                PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
-              }
-            }
-          }
-          if let repo {
-            link("https://github.com/\(repo)") {
-              TagChip(label: repo, maxWidth: 240, outbound: true) {
-                PathIcon.github(size: 12).foregroundStyle(Tokens.textMuted)
-              }
-            }
-          }
-          ForEach(links, id: \.key) { annotation in
-            let presentation = ObjectPresentation(objectType: annotation.objectType, status: annotation.status)
-            link(annotation.url) {
-              HStack(spacing: 8) {
-                PathIcon.octicon(presentation.icon, size: 16).foregroundStyle(presentation.color)
-                Text(annotation.label).type(.xs).foregroundStyle(Tokens.text)
-              }
-              .frame(minHeight: 24)
-            }
-          }
+    if let conversation, let label = conversation.locationLabel {
+      HStack(spacing: 6) {
+        if let url = conversation.locationUrl.flatMap(URL.init(string:)) {
+          Link(destination: url) { chip(label, conversation, outbound: true) }
+        } else {
+          chip(label, conversation, outbound: false)
         }
-        .padding(.leading, 60)
-        .padding(.trailing, 12)
+        Spacer(minLength: 0)
       }
+      .padding(.leading, 60)
+      .padding(.trailing, 12)
       // The web pulls the tags up under the title (`-mt-1.5 pb-0.5` in a
       // single `py-2` header).
       .padding(.top, -14)
@@ -295,21 +211,13 @@ private struct ContextTags: View {
     }
   }
 
-  /// `owner/repo` when every GitHub link is in one repository.
-  private func repository(_ links: [Annotation]) -> String? {
-    let repos = Set(
-      links.compactMap { annotation -> String? in
-        guard annotation.plugin == "github" else { return nil }
-        return annotation.key.split(separator: "#").first.map(String.init)
-      })
-    return repos.count == 1 ? repos.first : nil
-  }
-
-  @ViewBuilder private func link<Content: View>(_ url: String?, @ViewBuilder _ content: () -> Content) -> some View {
-    if let url = url.flatMap(URL.init(string:)) {
-      Link(destination: url) { content() }
-    } else {
-      content()
+  private func chip(_ label: String, _ conversation: MCPConversation, outbound: Bool) -> some View {
+    TagChip(label: label, outbound: outbound) {
+      if conversation.surface == "slack" {
+        PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted)
+      } else {
+        Icon("clock", size: 12).foregroundStyle(Tokens.textMuted)
+      }
     }
   }
 }
@@ -332,46 +240,51 @@ private struct EarlierButton: View {
   }
 }
 
-/// Messages waiting for the next safe point (`PendingMailboxStack.tsx`).
+/// Messages that wait for a Turn (`PendingMailboxStack.tsx`), with Cancel.
 /// More than five collapse behind one row.
 private struct QueuedStack: View {
   let messages: [PendingMessage]
+  let onCancel: () -> Void
   @State private var expanded = false
 
   var body: some View {
     if !messages.isEmpty {
       VStack(alignment: .leading, spacing: 0) {
-        if messages.count > 5 {
-          Button {
-            withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
-          } label: {
-            HStack(spacing: 6) {
-              Icon("chevron-right", size: 14)
-                .rotationEffect(.degrees(expanded ? 90 : 0))
-              Text(expanded ? "Show fewer queued messages" : "\(messages.count) queued messages")
+        HStack(spacing: 6) {
+          if messages.count > 5 {
+            Button {
+              withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+            } label: {
+              HStack(spacing: 6) {
+                Icon("chevron-right", size: 14).rotationEffect(.degrees(expanded ? 90 : 0))
+                Text(expanded ? "Show fewer queued messages" : "\(messages.count) queued messages")
+              }
+              .contentShape(Rectangle())
             }
-            .type(.xs, .medium)
-            .foregroundStyle(Color.palette(.amber, 100).opacity(0.8))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+          } else {
+            Text(messages.count == 1 ? "1 queued message" : "\(messages.count) queued messages")
           }
-          .buttonStyle(.plain)
+          Spacer()
+          Button("Cancel", action: onCancel)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel queued messages")
         }
+        .type(.xs, .medium)
+        .foregroundStyle(Color.palette(.amber, 100).opacity(0.8))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         if messages.count <= 5 || expanded {
           ForEach(messages) { message in
             HStack(spacing: 8) {
-              Avatar(kind: .person(message.actorIdentity))
-              Text(message.redacted == true ? "Hidden message" : (message.text ?? ""))
+              Avatar(kind: .person(message.author))
+              Text(message.text)
                 .type(.sm)
-                .italic(message.redacted == true)
                 .foregroundStyle(Tokens.textSubtle)
                 .lineLimit(1)
               Spacer(minLength: 0)
-              if message.source == "slack" { PathIcon.slack(size: 12).foregroundStyle(Tokens.textMuted) }
-              Icon(deliveryIcon(message), size: 13).foregroundStyle(Tokens.textMuted)
-                .accessibilityLabel(message.delivery == "defer" ? "Queued" : "Steered")
+              Icon(message.delivery == "interrupt" ? "zap" : "clock-3", size: 13).foregroundStyle(Tokens.textMuted)
+                .accessibilityLabel(message.delivery == "interrupt" ? "Joins the running turn" : "Queued")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -385,89 +298,76 @@ private struct QueuedStack: View {
       .padding(.horizontal, 16)
     }
   }
-
-  private func deliveryIcon(_ message: PendingMessage) -> String {
-    switch message.delivery {
-    case "defer": "clock-3"
-    case "interrupt": message.source == "web" ? "zap" : "skip-forward"
-    default: "clock-3"
-    }
-  }
 }
 
-/// The Conversation composer: field, attach, Stop while live, Send.
+/// The Conversation composer: field, Stop while a Turn runs, Send. While a
+/// Turn runs, Send queues the message; "Send now" joins the running Turn.
 private struct ConversationComposer: View {
   @Environment(AppModel.self) private var app
   let model: ConversationModel
   @State private var text = ""
-  @State private var files: [PendingUpload] = []
   @FocusState private var focused: Bool
 
   private var canSend: Bool {
-    // Not before the page loads: a send's reload would race the first load.
-    model.detail != nil && !model.sending
-      && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
+    // Not before the page loads: the send's refresh needs the cursor.
+    model.state != nil && !model.sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  private var working: Bool { model.conversation?.status == .active }
+
   var body: some View {
-    ComposerDock(hasAbove: !model.queued.isEmpty || model.detail?.mailbox?.authorization != nil) {
-      if let authorization = model.detail?.mailbox?.authorization {
+    ComposerDock(hasAbove: !model.queued.isEmpty || model.state?.authorization != nil) {
+      if let authorization = model.state?.authorization {
         AuthorizationPrompt(authorization: authorization)
       }
-      QueuedStack(messages: model.queued)
+      QueuedStack(messages: model.queued) { Task { await model.cancelQueued(app) } }
     } content: {
       ComposerSurface(focused: focused) {
-        VStack(alignment: .leading, spacing: 0) {
-          UploadChips(files: $files)
-          HStack(alignment: .bottom, spacing: 0) {
-            ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
-            HStack(spacing: 12) {
-              AttachButton(files: $files)
-              if model.detail?.status == .active {
-                Button {
-                  Task {
-                    let restored = await model.stop(app.client)
-                    if !restored.isEmpty { text = (restored + [text]).filter { !$0.isEmpty }.joined(separator: "\n\n") }
+        HStack(alignment: .bottom, spacing: 0) {
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          HStack(spacing: 12) {
+            if working {
+              Button {
+                Task { await model.stop(app) }
+              } label: {
+                Group {
+                  if model.stopping {
+                    ProgressView().controlSize(.mini)
+                  } else {
+                    RoundedRectangle(cornerRadius: 2).fill(Tokens.text).frame(width: 11, height: 11)
                   }
-                } label: {
-                  Group {
-                    if model.stopping {
-                      ProgressView().controlSize(.mini)
-                    } else {
-                      RoundedRectangle(cornerRadius: 2).fill(Tokens.text).frame(width: 11, height: 11)
-                    }
-                  }
-                  .frame(width: 36, height: 36)
-                  .background(Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
-                  .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
-                  .hitArea()
                 }
-                .buttonStyle(.plain)
-                .disabled(model.stopping)
-                .accessibilityLabel(model.stopping ? "Stopping" : "Stop")
+                .frame(width: 36, height: 36)
+                .background(Tokens.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
+                .hitArea()
               }
-              SendButton(enabled: canSend) { send() }
+              .buttonStyle(.plain)
+              .disabled(model.stopping)
+              .accessibilityLabel(model.stopping ? "Stopping" : "Stop")
             }
-            .padding(8)
+            SendButton(enabled: canSend) { send(interrupt: false) }
+              .contextMenu {
+                if working, canSend {
+                  Button("Send now", systemImage: "bolt") { send(interrupt: true) }
+                }
+              }
+              .accessibilityAction(named: "Send now") { if working, canSend { send(interrupt: true) } }
           }
+          .padding(8)
         }
       }
     }
   }
 
-  private func send() {
+  private func send(interrupt: Bool) {
     let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let picked = files
     // Block a second tap before the task starts.
     model.sending = true
     Task {
-      if await model.send(message, files: picked, client: app.client) {
-        text = ""
-        files = []
-      }
+      if await model.send(message, interrupt: interrupt, app: app) { text = "" }
     }
   }
-
 }
 
 private struct TranscriptSkeleton: View {
@@ -501,90 +401,9 @@ struct ShareSheet: UIViewControllerRepresentable {
   func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
-struct ForkTarget: Identifiable {
-  let id: String
-}
-
-/// "Fork Conversation" (`ForkConversationButton.tsx`): start a new
-/// Conversation from one reply with a first message.
-struct ForkSheet: View {
-  @Environment(AppModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
-  let conversationId: String
-  let messageId: String
-  @State private var message = ""
-  @State private var key = UUID().uuidString
-  @State private var sending = false
-  @State private var error: String?
-  @FocusState private var focused: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Fork Conversation").type(.lg, .semibold).foregroundStyle(Tokens.text)
-      Text("Message").type(.sm, .medium).foregroundStyle(Tokens.text)
-      ComposerField(text: $message, placeholder: "Message \(app.agentName)…", focused: $focused)
-        .background(Tokens.control, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Tokens.borderEmphasis))
-      if let error { InlineError(text: error) }
-      HStack(spacing: 8) {
-        Spacer()
-        Button("Cancel") { dismiss() }.buttonStyle(.dashboard(.outline))
-        Button(sending ? "Forking…" : "Fork") { fork() }
-          .buttonStyle(.dashboard(.primary))
-          .disabled(sending || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-      }
-    }
-    .padding(16)
-    .onAppear { focused = true }
-  }
-
-  private func fork() {
-    struct Fork: Encodable {
-      var messageId: String
-      var idempotencyKey: String
-    }
-    struct Send: Encodable {
-      var idempotencyKey: String
-      var message: String
-    }
-    struct Created: Decodable { var conversationId: String }
-    sending = true
-    Task {
-      defer { sending = false }
-      do {
-        let created: Created = try await app.client.send(
-          "POST", "/api/conversations/\(conversationId.pathEscaped)/forks",
-          body: Fork(messageId: messageId, idempotencyKey: key))
-        try await app.client.perform(
-          "POST", "/api/conversations/\(created.conversationId.pathEscaped)/messages",
-          body: Send(idempotencyKey: key, message: message.trimmingCharacters(in: .whitespacesAndNewlines)))
-        dismiss()
-        app.didWrite()
-        app.path.append(.conversation(created.conversationId))
-      } catch {
-        self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Could not fork. Try again."
-      }
-    }
-  }
-}
-
-/// The "New" line before the first row that was unread when the
-/// Conversation opened (`TranscriptRows.tsx`).
-private struct NewDivider: View {
-  var body: some View {
-    HStack(spacing: 12) {
-      Rectangle().fill(Tokens.accent.opacity(0.5)).frame(height: 1)
-      Text("New").type(.xs, .semibold).foregroundStyle(Tokens.accentText).fixedSize()
-      Rectangle().fill(Tokens.accent.opacity(0.5)).frame(height: 1)
-    }
-    .padding(.vertical, 4)
-    .accessibilityElement(children: .combine)
-  }
-}
-
 /// A parked Turn waits for the viewer to connect an account.
 private struct AuthorizationPrompt: View {
-  let authorization: ConversationDetail.Authorization
+  let authorization: PendingAuthorization
 
   var body: some View {
     HStack(spacing: 12) {
@@ -593,7 +412,7 @@ private struct AuthorizationPrompt: View {
         .type(.xs)
         .foregroundStyle(Tokens.text)
         .frame(maxWidth: .infinity, alignment: .leading)
-      if let url = URL(string: authorization.authorizationUrl) {
+      if let url = URL(string: authorization.url) {
         Link(destination: url) {
           Text(authorization.label)
         }

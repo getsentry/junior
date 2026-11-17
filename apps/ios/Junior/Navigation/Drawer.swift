@@ -1,8 +1,8 @@
 import JuniorKit
 import SwiftUI
 
-/// Full-screen navigation drawer (`DashboardHeader.tsx` mobile menu): spend,
-/// primary places, account pages, theme, and the signed-in person.
+/// Full-screen navigation drawer (`DashboardHeader.tsx` mobile menu): primary
+/// places, account pages, theme, and the Junior the app is signed in to.
 struct Drawer: View {
   @Environment(AppModel.self) private var app
 
@@ -32,8 +32,6 @@ struct Drawer: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 4) {
-          SpendCard(spend: app.spend)
-            .padding(.bottom, 8)
           NavRow(label: "Go to conversation", icon: "search", active: false) {
             app.go(.conversations)
             app.focusSearch = true
@@ -50,59 +48,21 @@ struct Drawer: View {
           Rectangle().fill(Tokens.borderSubtle).frame(height: 1)
             .padding(.top, 12)
             .padding(.bottom, 8)
-          if let email = app.viewer?.user.email {
-            NavRow(label: "My profile", active: false) {
-              app.openOnWeb(
-                "/system/people/\(email.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? email)")
-            }
-          }
           NavRow(label: "Settings", active: app.path.last == .settings) {
             app.drawerOpen = false
             app.path = [.settings]
           }
           NavRow(label: "Code", active: false) { app.openOnWeb("/code") }
           NavRow(label: "System", active: false) { app.openOnWeb("/system") }
-          if app.viewer?.user.isAdmin == true {
-            NavRow(label: "Admin", active: false) { app.openOnWeb("/admin") }
-          }
           ThemeRow(theme: $app.theme)
             .padding(.top, 4)
         }
         .padding(12)
       }
 
-      ProfileFooter(viewer: app.viewer, version: app.config?.version)
+      ServerFooter(host: app.server.baseURL.host() ?? app.server.baseURL.absoluteString, version: app.serverVersion)
     }
     .background(Tokens.bgElevated)
-  }
-}
-
-private struct SpendCard: View {
-  let spend: Spend?
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text("Spend").type(.xs, .medium)
-      line("7d", spend?.sevenDaysUsd)
-      line("30d", spend?.thirtyDaysUsd)
-    }
-    .foregroundStyle(Tokens.textMuted)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
-    .background(Tokens.fillSoft, in: RoundedRectangle(cornerRadius: 8))
-    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Tokens.border))
-    .accessibilityElement(children: .combine)
-  }
-
-  private func line(_ label: String, _ value: Double?) -> some View {
-    (Text(label + " ") + Text(value.map(usd) ?? "—").font(.dashboard(.xs, .semibold)).foregroundStyle(Tokens.text))
-      .type(.xs)
-      .monospacedDigit()
-  }
-
-  private func usd(_ value: Double) -> String {
-    value > 0 && value < 0.01 ? String(format: "$%.4f", value) : String(format: "$%.2f", value)
   }
 }
 
@@ -184,35 +144,21 @@ struct ThemeRow: View {
   }
 }
 
-private struct ProfileFooter: View {
-  let viewer: Viewer?
+private struct ServerFooter: View {
+  let host: String
   let version: String?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if let user = viewer?.user {
-        let identity = ActorIdentity(email: user.email, fullName: user.name)
-        HStack(spacing: 10) {
-          Circle().fill(Tokens.accent).frame(width: 28, height: 28)
-            .overlay(
-              Text(identity.initials).type(.xs, .bold).foregroundStyle(Tokens.textInverse))
-          VStack(alignment: .leading, spacing: 2) {
-            Text(identity.displayName).type(.xs, .semibold).foregroundStyle(Tokens.text)
-            if user.email != identity.displayName {
-              Text(user.email).type(.xs).foregroundStyle(Tokens.textMuted)
-            }
-          }
-        }
-        .accessibilityElement(children: .combine)
-      }
+    VStack(alignment: .leading, spacing: 2) {
+      Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
       if let version {
         Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 16)
-    .padding(.top, 12)
-    .padding(.bottom, 12)
+    .padding(.vertical, 12)
     .hairline(.top, Tokens.borderSubtle)
+    .accessibilityElement(children: .combine)
   }
 }

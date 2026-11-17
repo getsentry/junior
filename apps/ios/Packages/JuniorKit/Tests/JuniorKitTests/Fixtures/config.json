@@ -1,8 +1,0 @@
-{
-  "allowedDomainCount": 1,
-  "authRequired": true,
-  "authPath": "/api/auth",
-  "basePath": "/",
-  "sentryConversationLinks": false,
-  "version": "0.305.0"
-}

@@ -106,134 +106,19 @@ extension View {
   }
 }
 
-/// Attach button and the uploads it starts.
-struct AttachButton: View {
-  @Binding var files: [PendingUpload]
-  @State private var picking = false
-
-  var body: some View {
-    Button {
-      picking = true
-    } label: {
-      Icon("paperclip", size: 16)
-        .foregroundStyle(Tokens.textMuted)
-        .frame(width: 36, height: 36)
-        .hitArea()
-    }
-    .buttonStyle(PressableStyle(radius: 6))
-    .accessibilityLabel("Attach files")
-    .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-      guard case .success(let urls) = result else { return }
-      for url in urls.prefix(10 - files.count) {
-        files.append(PendingUpload(url: url))
-      }
-    }
-  }
-}
-
-/// A file the person picked, before the composer sends it.
-struct PendingUpload: Identifiable, Hashable {
-  let id = UUID()
-  let url: URL
-
-  var filename: String { url.lastPathComponent }
-}
-
-/// Chips for picked files, each removable.
-struct UploadChips: View {
-  @Binding var files: [PendingUpload]
-
-  var body: some View {
-    if !files.isEmpty {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
-          ForEach(files) { file in
-            HStack(spacing: 4) {
-              Icon("file-text", size: 12)
-              Text(file.filename).lineLimit(1)
-              Button {
-                files.removeAll { $0.id == file.id }
-              } label: {
-                Icon("x", size: 12)
-              }
-              .buttonStyle(.plain)
-              .accessibilityLabel("Remove \(file.filename)")
-            }
-            .type(.xxs, .medium)
-            .foregroundStyle(Tokens.textMuted)
-            .padding(.horizontal, 6)
-            .frame(minHeight: 24)
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.border))
-          }
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-      }
-    }
-  }
-}
-
-/// Upload picked files the dashboard way: ask for a signed target, then send
-/// the bytes there. Returns the upload ids for the message.
-/// The server binds each upload to the viewer, the Conversation, and the
-/// message's idempotency key, and checks all three when the message arrives.
-func uploadFiles(
-  _ files: [PendingUpload], messageKey: String, conversationId: String?, client: JuniorClient
-) async throws -> [String] {
-  struct Ask: Encodable {
-    var conversationId: String?
-    var idempotencyKey: String
-    var bytes: Int
-    var contentType: String
-    var filename: String
-  }
-  struct Target: Decodable {
-    var url: String
-    var method: String?
-    var headers: [String: String]?
-  }
-  struct Answer: Decodable {
-    var target: Target
-    var uploadId: String
-  }
-  var ids: [String] = []
-  for file in files {
-    let scoped = file.url.startAccessingSecurityScopedResource()
-    defer { if scoped { file.url.stopAccessingSecurityScopedResource() } }
-    let data = try Data(contentsOf: file.url)
-    let type = UTType(filenameExtension: file.url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-    let answer: Answer = try await client.send(
-      "POST", "/api/conversations/attachment-uploads",
-      body: Ask(
-        conversationId: conversationId, idempotencyKey: messageKey, bytes: data.count, contentType: type,
-        filename: file.filename))
-    guard let url = URL(string: answer.target.url, relativeTo: client.server.baseURL) else { continue }
-    var request = URLRequest(url: url)
-    request.httpMethod = answer.target.method ?? "PUT"
-    for (name, value) in answer.target.headers ?? [:] { request.setValue(value, forHTTPHeaderField: name) }
-    let (_, response) = try await URLSession.shared.upload(for: request, from: data)
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-      throw JuniorAPIError.server(
-        status: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Could not upload \(file.filename).")
-    }
-    ids.append(answer.uploadId)
-  }
-  return ids
-}
-
-/// The home composer: start a new Conversation (`POST /api/conversations`).
+/// The home composer: start a new Conversation (`createConversation`).
+/// Attachments are not part of the public API.
 struct NewConversationComposer: View {
   @Environment(AppModel.self) private var app
   @State private var text = ""
-  @State private var visibility: ConversationVisibility = .public
-  @State private var files: [PendingUpload] = []
+  @State private var visibility: ConversationVisibility = .private
   @State private var sending = false
   @State private var error: String?
   @State private var idempotencyKey = UUID()
   @FocusState private var focused: Bool
 
   private var canSend: Bool {
-    !sending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
+    !sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   var body: some View {
@@ -242,10 +127,8 @@ struct NewConversationComposer: View {
         if let error { InlineError(text: error).padding(.horizontal, 4) }
         ComposerSurface(focused: focused) {
           VStack(alignment: .leading, spacing: 0) {
-            UploadChips(files: $files)
             ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
             HStack(spacing: 12) {
-              AttachButton(files: $files)
               VisibilityMenu(visibility: $visibility)
               Spacer()
               SendButton(enabled: canSend, action: send)
@@ -264,31 +147,20 @@ struct NewConversationComposer: View {
     error = nil
     Task {
       defer { sending = false }
-      struct Body: Encodable {
-        var idempotencyKey: String
-        var message: String
-        var visibility: String
-        var uploadIds: [String]?
-      }
-      struct Accepted: Decodable { var conversationId: String }
       do {
-        let uploads = try await uploadFiles(
-          files, messageKey: idempotencyKey.uuidString, conversationId: nil, client: app.client)
-        let accepted: Accepted = try await app.client.send(
-          "POST", "/api/conversations",
-          body: Body(
-            idempotencyKey: idempotencyKey.uuidString, message: String(message.prefix(32_000)),
-            visibility: visibility.rawValue, uploadIds: uploads.isEmpty ? nil : uploads))
+        let accepted = try await app.call(
+          "createConversation",
+          [
+            "message": .string(String(message.prefix(32_000))), "visibility": .string(visibility.rawValue),
+            "idempotencyKey": .string(idempotencyKey.uuidString),
+          ], as: AcceptedMessage.self)
         text = ""
-        files = []
         idempotencyKey = UUID()
         focused = false
         app.didWrite()
         app.path.append(.conversation(accepted.conversationId))
-      } catch let failure as JuniorAPIError where failure == .readOnlyToken {
-        error = failure.localizedDescription
       } catch {
-        self.error = "Message failed to send. Try again."
+        self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Message failed to send. Try again."
       }
     }
   }

@@ -1,10 +1,12 @@
 import XCTest
 
-/// Journeys through the app against the mock dashboard
+/// Journeys through the app against the mock MCP server
 /// (`scripts/mock-server.mjs`). Run one suite at a time with
 /// `scripts/sim.sh ui-test NavigationUITests`.
 @MainActor
 final class NavigationUITests: XCTestCase {
+  enum Auth { case token, signedOut, kept }
+
   override func setUp() async throws {
     // Undo writes from earlier journeys (`scripts/mock-server.mjs`).
     var request = URLRequest(url: URL(string: "http://127.0.0.1:4317/__reset")!)
@@ -12,25 +14,70 @@ final class NavigationUITests: XCTestCase {
     _ = try await URLSession.shared.data(for: request)
   }
 
-  private func launch(open path: String = "/") -> XCUIApplication {
+  private func launch(open path: String = "/", auth: Auth = .token) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
       "-JuniorServer", "http://127.0.0.1:4317", "-JuniorFixedNow", "2026-08-07T12:00:00Z",
       "-JuniorOpen", path, "-JuniorTheme", "dark",
     ]
+    switch auth {
+    case .token: app.launchArguments += ["-JuniorAccessToken", "mock-access-token"]
+    case .signedOut: app.launchArguments += ["-JuniorSignOut", "YES"]
+    case .kept: break
+    }
     app.launch()
     return app
   }
 
+  private func card(_ app: XCUIApplication, _ title: String) -> XCUIElement {
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
+  }
+
+  /// The whole OAuth flow: the browser sheet, the mock's consent, the
+  /// loopback redirect, the token exchange, and a Keychain that survives a
+  /// relaunch. Sign out returns to Sign in.
+  func testSignInAndOut() {
+    var app = launch(auth: .signedOut)
+    let signIn = app.buttons["sign-in"]
+    XCTAssertTrue(signIn.waitForExistence(timeout: 10))
+    signIn.tap()
+    XCTAssertTrue(card(app, "Investigate checkout latency").waitForExistence(timeout: 30))
+    app.terminate()
+
+    app = launch(open: "/settings", auth: .kept)
+    let signOut = app.buttons["sign-out"]
+    XCTAssertTrue(signOut.waitForExistence(timeout: 10))
+    signOut.tap()
+    XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
+  }
+
   func testHomeOpensConversation() {
     let app = launch()
-    let card = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Investigate checkout latency'")).firstMatch
-    XCTAssertTrue(card.waitForExistence(timeout: 10))
-    card.tap()
+    let row = card(app, "Investigate checkout latency")
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
     XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
-    XCTAssertTrue(
-      app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Working for'")).firstMatch.waitForExistence(
-        timeout: 10))
+    XCTAssertTrue(app.staticTexts["Junior is working…"].waitForExistence(timeout: 10))
+  }
+
+  func testSendMessage() {
+    let app = launch()
+    let row = card(app, "Investigate checkout latency")
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
+    // The Conversation's composer, not the home one under it.
+    let fields = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "label == 'Message Junior…' AND (elementType == %d OR elementType == %d)",
+        XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue))
+    XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 10))
+    let field = fields.element(boundBy: fields.count - 1)
+    field.tap()
+    field.typeText("Check the EU region too")
+    app.buttons["Send"].tap()
+    let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Check the EU region too'")).firstMatch
+    XCTAssertTrue(sent.waitForExistence(timeout: 10))
   }
 
   func testDrawerNavigatesToInbox() {
@@ -39,32 +86,18 @@ final class NavigationUITests: XCTestCase {
     let inbox = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Inbox'")).firstMatch
     XCTAssertTrue(inbox.waitForExistence(timeout: 10))
     inbox.tap()
-    XCTAssertTrue(app.staticTexts["Inbox"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.buttons.matching(identifier: "inbox-row").firstMatch.waitForExistence(timeout: 10))
+    let row = app.buttons.matching(identifier: "inbox-row").firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    XCTAssertTrue(app.buttons["answer-on-web"].waitForExistence(timeout: 10))
   }
 
-  func testAnswerQuestion() {
-    let app = launch(open: "/review?item=qa-migration-window")
-    let option = app.buttons.matching(identifier: "review-option").firstMatch
-    XCTAssertTrue(option.waitForExistence(timeout: 10))
-    option.tap()
-    let closed = NSPredicate(format: "label CONTAINS 'closed this' OR label CONTAINS 'dismissed this'")
-    XCTAssertTrue(app.staticTexts.matching(closed).firstMatch.waitForExistence(timeout: 10))
-  }
-
-  /// The token lives in the Keychain and survives a relaunch.
-  func testTokenPersists() {
-    var app = launch(open: "/settings")
-    let field = app.secureTextFields.firstMatch
-    XCTAssertTrue(field.waitForExistence(timeout: 10))
-    field.tap()
-    field.typeText("jr_pat_uitest")
-    app.buttons["save-connection"].tap()
-    XCTAssertTrue(app.buttons["Remove token"].waitForExistence(timeout: 5))
-    app.terminate()
-    app = launch(open: "/settings")
-    let remove = app.buttons["Remove token"]
-    XCTAssertTrue(remove.waitForExistence(timeout: 10))
-    remove.tap()
+  func testAutomationShowsRuns() {
+    let app = launch(open: "/automations")
+    let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Listening' OR label CONTAINS 'Next'"))
+      .firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    XCTAssertTrue(app.staticTexts["Recent runs"].waitForExistence(timeout: 10))
   }
 }

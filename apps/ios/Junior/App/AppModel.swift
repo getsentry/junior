@@ -29,35 +29,27 @@ enum Route: Hashable {
   case settings
 }
 
-/// App-wide state: the server, the signed-in viewer, shell data (spend, Inbox
-/// count), navigation, and the versions poll that tells screens to refresh.
+/// App-wide state: the server and its sign-in, the Inbox count, navigation,
+/// and the refresh tick that tells screens to reload. The app uses only
+/// Junior's public API, the MCP server at `/api/mcp`.
 @MainActor
 @Observable
 final class AppModel {
-  var server: JuniorServer {
-    didSet {
-      saveServer()
-      client = JuniorClient(server: server)
-      shellRefresh = Task { await refreshShell() }
-    }
-  }
-  private(set) var client: JuniorClient
-  /// The shell refresh a server change started, so a caller can await it.
-  private(set) var shellRefresh: Task<Void, Never>?
+  /// The app's OAuth client: the URL of its Client ID Metadata Document,
+  /// which names the app and lists its loopback redirect URI.
+  static let oauthClientID =
+    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+
+  private(set) var server: JuniorServer
+  private(set) var client: MCPClient
+  private(set) var signedIn: Bool
   var theme: ThemeChoice {
     didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
   }
-  var openAtLatest: Bool {
-    didSet { UserDefaults.standard.set(openAtLatest, forKey: "openAtLatest") }
-  }
 
-  var viewer: Viewer?
-  var config: DashboardConfig?
-  var spend: Spend?
+  var serverVersion: String?
   var inboxCount = 0
   var shellError: JuniorAPIError?
-  /// The dashboard rejected the token, or there is none and it needs one.
-  var needsConnect: Bool { shellError == .signedOut }
 
   var place: Place = .conversations
   var path: [Route] = []
@@ -65,56 +57,84 @@ final class AppModel {
   var webPage: URL?
   /// Focus the home search field ("Go to conversation").
   var focusSearch = false
-  /// The Automations page shows its Runs tab (`/automations/runs`).
-  var showRuns = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
-  /// The app is in front; polling stops otherwise.
+  /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
-  /// Bumps when the versions poll sees new data, per area.
+  /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
   private(set) var reviewItemsVersion = 0
-  private(set) var conversationVersion = 0
-  /// The Conversation on screen, for the versions poll.
-  var openConversationId: String?
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
   let agentName = "Junior"
 
-  private var versions: DataVersions?
-  private var versionsConversationId: String?
-  private var polling: Task<Void, Never>?
+  private let store = KeychainCredentialStore()
+  private var ticking: Task<Void, Never>?
   private var lastInput = Date()
 
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
-    // Builds before the Keychain kept the whole server, token included, in
-    // defaults; move the token and drop that copy.
-    var legacyToken: String?
-    if let legacy = defaults.data(forKey: "server"),
-      let old = try? JSONDecoder().decode(JuniorServer.self, from: legacy)
-    {
-      legacyToken = old.token
-      let moved = TokenStore.read() != nil || old.token == nil || TokenStore.write(old.token)
-      defaults.set(old.baseURL.absoluteString, forKey: "serverURL")
-      // Keep the old copy until the Keychain holds the token.
-      if moved { defaults.removeObject(forKey: "server") }
-    }
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
-    let baseURL = launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!
-    let server = JuniorServer(baseURL: baseURL, token: TokenStore.read() ?? legacyToken)
+    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!)
+    #if DEBUG
+      // Screenshots and UI tests start signed in to the mock server, or
+      // signed out to run the sign-in flow.
+      if launch.signOut { store.save(nil) }
+      if let token = launch.accessToken {
+        store.save(
+          OAuthCredentials(
+            server: server, clientID: Self.oauthClientID, tokenEndpoint: server.page("/api/mcp/oauth/token")!,
+            accessToken: token, refreshToken: nil, expiresAt: .distantFuture, scope: nil))
+      }
+    #endif
     self.server = server
-    self.client = JuniorClient(server: server)
+    self.client = MCPClient(server: server, store: store)
+    self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
-    self.openAtLatest = defaults.bool(forKey: "openAtLatest")
     self.fixedNow = launch.fixedNow
     if let open = launch.open { self.open(dashboardPath: open) }
   }
 
   var clock: DisplayClock {
     DisplayClock(now: fixedNow ?? Date())
+  }
+
+  /// Call one MCP tool. A call that finds the sign-in gone shows Sign in.
+  func call<Result: Decodable & Sendable>(
+    _ tool: String, _ arguments: [String: JSONValue] = [:], as type: Result.Type = Result.self
+  ) async throws -> Result {
+    do {
+      return try await client.call(tool, arguments, as: type)
+    } catch JuniorAPIError.signedOut {
+      signedIn = false
+      throw JuniorAPIError.signedOut
+    }
+  }
+
+  /// Sign in to `baseURL` in the system browser sheet, then load the shell.
+  func signIn(to baseURL: URL) async throws {
+    let server = JuniorServer(baseURL: baseURL)
+    let oauth = OAuthClient(server: server, clientID: Self.oauthClientID)
+    let credentials = try await BrowserSignIn().run(oauth)
+    UserDefaults.standard.set(baseURL.absoluteString, forKey: "serverURL")
+    self.server = server
+    client = MCPClient(server: server, store: store)
+    await client.signIn(credentials)
+    signedIn = true
+    didWrite()
+    await refreshShell()
+  }
+
+  func signOut() {
+    let client = client
+    Task { await client.signOut() }
+    signedIn = false
+    inboxCount = 0
+    serverVersion = nil
+    path = []
+    drawerOpen = false
   }
 
   /// Open a dashboard path (`/`, `/review?item=…`, `/conversations/…`,
@@ -137,7 +157,6 @@ final class AppModel {
     case "automations":
       place = .automations
       path = []
-      showRuns = parts.count > 1 && parts[1] == "runs"
     case "settings":
       path = [.settings]
     default:
@@ -155,107 +174,83 @@ final class AppModel {
     drawerOpen = false
   }
 
-  /// Open a dashboard page this app does not render, in the in-app browser.
+  /// Open a dashboard page in the in-app browser, for what the public API
+  /// cannot do (answer a Review item, change an Automation).
   func openOnWeb(_ dashboardPath: String) {
     drawerOpen = false
-    webPage = URL(string: dashboardPath, relativeTo: server.baseURL)?.absoluteURL
+    webPage = server.page(dashboardPath)
+  }
+
+  /// Open a link from a tool result, such as a dashboard or Slack URL.
+  func openLink(_ link: String?) {
+    guard let link, let url = URL(string: link) else { return }
+    drawerOpen = false
+    webPage = url
   }
 
   func refreshShell() async {
+    guard signedIn else { return }
     do {
-      viewer = try await client.get("/api/me")
+      serverVersion = try await client.serverInfo().version
       shellError = nil
+    } catch JuniorAPIError.signedOut {
+      signedIn = false
     } catch let error as JuniorAPIError {
       shellError = error
     } catch {}
-    config = try? await client.get("/api/config")
-    await refreshSpendAndCount()
+    await refreshInboxCount()
   }
 
-  func refreshSpendAndCount() async {
-    if let spend: Spend = try? await client.get("/api/people/me/spend") { self.spend = spend }
-    if let count: ReviewCount = try? await client.get("/api/review-items/count") {
-      inboxCount = count.needsViewer
+  /// Open Review items that wait on the viewer.
+  func refreshInboxCount() async {
+    if let list = try? await call("searchReviewItems", ["limit": 50], as: ReviewItemList.self) {
+      inboxCount = list.items.filter(\.canAct).count
     }
   }
 
-  /// Poll `/api/versions` every 5s (10s after 5 minutes without input) while
-  /// the app is active, like the dashboard.
-  func startPolling() {
-    polling?.cancel()
-    polling = Task { [weak self] in
+  /// Reload lists every 15s (60s after 5 minutes without input) while the
+  /// app is in front. The public API has no change feed to poll.
+  func startTicking() {
+    ticking?.cancel()
+    ticking = Task { [weak self] in
       while !Task.isCancelled {
-        guard let self else { return }
-        await self.pollOnce()
-        let idle = Date().timeIntervalSince(self.lastInput) > 300
-        try? await Task.sleep(for: .seconds(idle ? 10 : 5))
+        let idle = Date().timeIntervalSince(self?.lastInput ?? Date()) > 300
+        try? await Task.sleep(for: .seconds(idle ? 60 : 15))
+        guard let self, !Task.isCancelled, self.signedIn else { continue }
+        self.conversationsVersion += 1
+        self.reviewItemsVersion += 1
+        await self.refreshInboxCount()
       }
     }
   }
 
-  func stopPolling() {
-    polling?.cancel()
-    polling = nil
+  func stopTicking() {
+    ticking?.cancel()
+    ticking = nil
   }
 
   func noteInput() {
     lastInput = Date()
   }
 
-  private func pollOnce() async {
-    var query: [URLQueryItem] = []
-    if let openConversationId { query.append(URLQueryItem(name: "conversationId", value: openConversationId)) }
-    let polledConversation = openConversationId
-    guard let next: DataVersions = try? await client.get("/api/versions", query: query) else { return }
-    defer {
-      versions = next
-      versionsConversationId = polledConversation
-    }
-    guard let previous = versions else { return }
-    if next.conversations != previous.conversations { conversationsVersion += 1 }
-    if next.reviewItems != previous.reviewItems {
-      reviewItemsVersion += 1
-      conversationsVersion += 1
-    }
-    // The token is per Conversation; compare only tokens for the same one.
-    if next.conversation != nil, versionsConversationId == polledConversation,
-      next.conversation != previous.conversation
-    {
-      conversationVersion += 1
-    }
-    if next.spend != previous.spend || next.reviewItems != previous.reviewItems {
-      await refreshSpendAndCount()
-    }
-  }
-
   /// Tell screens that data changed after a local write.
   func didWrite() {
     conversationsVersion += 1
     reviewItemsVersion += 1
-    Task { await refreshSpendAndCount() }
   }
-
-  /// The URL goes to defaults; the token goes to the Keychain.
-  private func saveServer() {
-    UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
-    tokenSaveFailed = !TokenStore.write(server.token)
-  }
-
-  /// The Keychain refused the token; it works this session but will not last.
-  var tokenSaveFailed = false
 }
 
-/// The personal token, kept in the Keychain for this device only.
-enum TokenStore {
-  private static var query: [String: Any] {
+/// The sign-in, kept in the Keychain for this device only.
+struct KeychainCredentialStore: CredentialStore {
+  private var query: [String: Any] {
     [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: "io.sentry.junior",
-      kSecAttrAccount as String: "personal-token",
+      kSecAttrAccount as String: "mcp-credentials",
     ]
   }
 
-  static func read() -> String? {
+  func load() -> OAuthCredentials? {
     var request = query
     request[kSecReturnData as String] = true
     request[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -263,29 +258,30 @@ enum TokenStore {
     guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
       return nil
     }
-    return String(data: data, encoding: .utf8)
+    return try? JSONDecoder().decode(OAuthCredentials.self, from: data)
   }
 
-  /// Store or clear the token. Returns false when the Keychain refused.
-  @discardableResult
-  static func write(_ token: String?) -> Bool {
-    let deleted = SecItemDelete(query as CFDictionary)
-    guard deleted == errSecSuccess || deleted == errSecItemNotFound else { return false }
-    guard let token, let data = token.data(using: .utf8) else { return true }
+  func save(_ credentials: OAuthCredentials?) {
+    SecItemDelete(query as CFDictionary)
+    guard let credentials, let data = try? JSONEncoder().encode(credentials) else { return }
     var item = query
     item[kSecValueData as String] = data
     item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    SecItemAdd(item as CFDictionary, nil)
   }
 }
 
 /// Launch arguments for development and screenshots:
-/// `-JuniorServer <url> -JuniorFixedNow <iso> -JuniorOpen <path> -JuniorTheme <dark|light>`.
+/// `-JuniorServer <url> -JuniorFixedNow <iso> -JuniorOpen <path> -JuniorTheme <dark|light>`,
+/// and in debug builds `-JuniorAccessToken <token>` to start signed in or
+/// `-JuniorSignOut YES` to start signed out.
 struct LaunchOptions {
   var server: URL?
   var fixedNow: Date?
   var open: String?
   var theme: ThemeChoice?
+  var accessToken: String?
+  var signOut = false
 
   static var current: LaunchOptions {
     let defaults = UserDefaults.standard
@@ -293,6 +289,8 @@ struct LaunchOptions {
       server: defaults.string(forKey: "JuniorServer").flatMap(URL.init(string:)),
       fixedNow: defaults.string(forKey: "JuniorFixedNow").flatMap(Date.junior),
       open: defaults.string(forKey: "JuniorOpen"),
-      theme: defaults.string(forKey: "JuniorTheme").flatMap(ThemeChoice.init(rawValue:)))
+      theme: defaults.string(forKey: "JuniorTheme").flatMap(ThemeChoice.init(rawValue:)),
+      accessToken: defaults.string(forKey: "JuniorAccessToken"),
+      signOut: defaults.bool(forKey: "JuniorSignOut"))
   }
 }

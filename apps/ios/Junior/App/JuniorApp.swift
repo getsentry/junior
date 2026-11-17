@@ -17,7 +17,7 @@ struct JuniorApp: App {
         .task { await app.refreshShell() }
         .onChange(of: scenePhase, initial: true) { _, phase in
           app.isActive = phase == .active
-          if phase == .active { app.startPolling() } else { app.stopPolling() }
+          if phase == .active { app.startTicking() } else { app.stopTicking() }
         }
     }
   }
@@ -30,7 +30,7 @@ struct RootView: View {
   var body: some View {
     @Bindable var app = app
     Group {
-      if app.needsConnect {
+      if !app.signedIn {
         ConnectScreen()
       } else {
         shell
