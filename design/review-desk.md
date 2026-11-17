@@ -24,7 +24,7 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   and the question above the message box.
-- Settings: "Show Inbox count on the tab icon".
+- Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `review_items:read` scope.
 
 ## Rules
@@ -38,6 +38,7 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 - An item from a private Conversation stays private and cannot go to
   Everyone.
 - Making a Conversation public does not show its private items.
+- A Slack thread that its Conversation detached from gets no new item card.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - An item from a public Conversation is visible to the whole workspace.
@@ -49,8 +50,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   assignee" and "only an assignee answers".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
-  overwrites it.
-  This breaks "only the Conversation that added it can change it" and lets
-  a person reassign an item to themselves and answer it.
+  overwrites it. This breaks "only the Conversation or the plugin that added
+  an item can change it" and lets a person reassign an item to themselves
+  and answer it.
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
