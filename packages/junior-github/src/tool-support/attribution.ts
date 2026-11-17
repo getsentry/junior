@@ -197,8 +197,8 @@ export async function readGitHubBody(
 /**
  * Look up the requester once for one GitHub write. The attribution block,
  * the saved pull request requester, and the assignee all use this one result.
- * The host decides whose work the Turn does. A failed lookup is logged; a
- * person who runs the Turn then keeps their hydrated profile.
+ * The host decides whose work the Turn does. When the lookup fails, a person
+ * who runs the Turn keeps their hydrated profile, and a system Turn fails.
  */
 export async function resolveGitHubRequester(ctx: {
   actor?: Actor | undefined;
@@ -208,14 +208,15 @@ export async function resolveGitHubRequester(ctx: {
   try {
     return await ctx.resolveWorkOwner();
   } catch (error) {
+    const { actor } = ctx;
+    // Only a person Turn has a fallback. A system Turn rethrows, so a failed
+    // lookup is not reported as work that nobody asked for.
+    if (!actor || actor.platform === "system") throw error;
     ctx.log.warn("github.requester.resolve_work_owner.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
-    const { actor } = ctx;
-    return actor && actor.platform !== "system"
-      ? { kind: "person", actor }
-      : undefined;
+    return { kind: "person", actor };
   }
 }
 

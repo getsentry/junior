@@ -2439,6 +2439,35 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  // A failed lookup is not work that nobody asked for, so a system Turn gets
+  // the lookup error instead of the do-not-retry refusal.
+  it("fails a system Turn's pull request when work owner lookup fails", async () => {
+    const ctx = {
+      ...githubToolsContext({ actor: { platform: "system", name: "event" } }),
+      resolveWorkOwner: async () => {
+        throw new Error("identity storage unavailable");
+      },
+    };
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+      ctx as any,
+    );
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+        },
+        { toolCallId: "call-create-work-owner-lookup-failed" },
+      ),
+    ).rejects.toThrow("identity storage unavailable");
+    expect(ctx.egressRequests()).toEqual([]);
+  });
+
   it("keeps pull request annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext({
       actor: PULL_REQUEST_REQUESTER,
