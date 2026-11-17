@@ -7,6 +7,13 @@ import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import type { Page } from "@playwright/test";
 
+/** A promise that the test resolves by hand. */
+function gate() {
+  let resolve = () => {};
+  const promise = new Promise<void>((done) => (resolve = done));
+  return { promise, resolve: () => resolve() };
+}
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   /** One option in a filter of the Automations filter panel or sheet. */
@@ -423,10 +430,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: [
         ...automationReport.automations,
         ...Array.from({ length: 30 }, (_, index) => ({
-          ...automationReport.automations[0],
+          ...automationReport.automations[0]!,
           // Enough Destinations that the filter needs its search box.
           destination: {
-            ...automationReport.automations[0].destination,
+            ...automationReport.automations[0]!.destination,
             channelId: `C-extra-${index}`,
             label: `#team-${String(index).padStart(2, "0")}`,
           },
@@ -437,7 +444,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     };
     let failList = false;
     let delayList = false;
-    const pendingList = Promise.withResolvers<void>();
+    const pendingList = gate();
     await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
       if (delayList) await pendingList.promise;
       await route.fulfill(
@@ -470,7 +477,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("main")).toContainText(
       "Incident change alerts",
     );
-    const pendingDetail = Promise.withResolvers<void>();
+    const pendingDetail = gate();
     let detailRequests = 0;
     await page.route("**/api/automations/scheduled-1", async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
@@ -617,7 +624,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/automations/scheduled-1?type=scheduled`,
     );
     await expect(heading).toBeVisible();
-    const finishDelete = Promise.withResolvers<void>();
+    const finishDelete = gate();
     await page.route("**/api/automations/scheduled-1", async (route) => {
       if (route.request().method() !== "DELETE") return route.fallback();
       await finishDelete.promise;

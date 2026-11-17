@@ -868,11 +868,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await transcript.evaluate((element) => {
       const scrollTo = element.scrollTo.bind(element);
       element.dataset["scrollCorrections"] = "0";
-      element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
+      element.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
         element.dataset["scrollCorrections"] = String(
           Number(element.dataset["scrollCorrections"]) + 1,
         );
-        scrollTo(...args);
+        if (typeof options === "number") scrollTo(options, y ?? 0);
+        else scrollTo(options);
       };
     });
     await transcript.hover();

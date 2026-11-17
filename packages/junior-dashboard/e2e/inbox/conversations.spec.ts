@@ -467,7 +467,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/conversations/long-0*", async (route) => {
       await route.fulfill({
         json: withRequestedMailbox(route, {
-          ...conversations[0],
+          ...conversations[0]!,
           displayTitle: "Long transcript",
           generatedAt,
           eventHistory: { status: "available" },

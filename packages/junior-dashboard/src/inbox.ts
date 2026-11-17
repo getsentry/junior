@@ -2,4 +2,4 @@
 import { startDashboard } from "./client";
 import { InboxShell } from "./client/inbox/InboxShell";
 
-startDashboard(InboxShell);
+startDashboard(InboxShell, "inbox");

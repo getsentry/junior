@@ -3,7 +3,7 @@ import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
 import { mockReviewItems } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { mobile, screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -461,5 +461,81 @@ test.describe("new UI", { tag: "@new" }, () => {
     } finally {
       await dashboard.close();
     }
+  });
+
+  test("sends feedback about the new UI from the profile menu", async ({
+    page,
+    dashboard,
+  }) => {
+    const feedback: Record<string, unknown>[] = [];
+    await page.addInitScript(() => {
+      Object.assign(window, {
+        __JUNIOR_DASHBOARD_SENTRY__: {
+          dsn: "https://public@sentry.example/1",
+          tracesSampleRate: 0,
+        },
+      });
+    });
+    await page.route("https://sentry.example/**", async (route) => {
+      const item = route.request().postData()?.split("\n").at(-1) ?? "";
+      if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+      await route.fulfill({ json: {} });
+    });
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(dashboard.baseURL);
+
+    await page.getByRole("button", { name: /^Open profile menu/ }).click();
+    const entry = page.getByRole("menuitem", { name: "Send feedback" });
+    await expect(entry).toBeVisible();
+    await screenshot(page, "inbox-feedback-entry", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    await entry.click();
+
+    // Send waits for a topic and a comment.
+    const dialog = page.getByRole("dialog", { name: "Send feedback" });
+    const send = dialog.getByRole("button", { name: "Send" });
+    await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+    await expect(send).toBeDisabled();
+    await screenshot(page, "inbox-feedback-dialog", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    await dialog.getByRole("radio", { name: "The new UI" }).click();
+    await dialog
+      .getByRole("textbox", { name: "Comment" })
+      .fill("Snoozed rows are hard to find");
+    await send.click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText("Feedback sent")).toBeVisible();
+    await expect.poll(() => feedback.length).toBe(1);
+    expect(feedback[0]).toMatchObject({
+      contexts: {
+        feedback: {
+          contact_email: "dev@example.com",
+          message: "Snoozed rows are hard to find",
+          name: "Dashboard User",
+          source: "dashboard_feedback",
+        },
+      },
+      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+    });
+
+    // On a phone the entry is in the navigation sheet, and the dialog opens
+    // over it.
+    await page.setViewportSize(mobile);
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page
+      .getByLabel("Account menu for Dashboard User")
+      .getByRole("button", { name: "Send feedback" })
+      .click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("dialog", { name: "Navigation" }),
+    ).toBeVisible();
   });
 });

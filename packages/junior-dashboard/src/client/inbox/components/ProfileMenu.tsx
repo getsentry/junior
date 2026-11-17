@@ -1,6 +1,7 @@
 import {
   ChevronsUpDown,
   LogOut,
+  MessageSquareHeart,
   Settings,
   ShieldCheck,
   UserRound,
@@ -10,6 +11,7 @@ import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
 import { formatCostSummary, peoplePath } from "../../format";
+import { canSendFeedback } from "../../sentry";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { SIDEBAR_ROW_GRID_CLASS } from "../../components/layout/sidebarGrid";
 import type { Identity } from "../../types";
@@ -31,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
+import { FeedbackDialog } from "./FeedbackDialog";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -261,8 +264,19 @@ export function ProfileMenu({
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
+  // Without a DSN, the dashboard sends no feedback, so it offers none.
+  const feedback = canSendFeedback();
+  // The menu or the mobile sheet stays mounted under the dialog, so the
+  // dialog lives here, not in the closed menu.
+  const feedbackDialog = feedbackOpen ? (
+    <FeedbackDialog
+      onClose={() => setFeedbackOpen(false)}
+      reader={identity.user}
+    />
+  ) : null;
 
   // Plain content, not a group label: it names no menu items.
   const identityBlock = (
@@ -326,6 +340,12 @@ export function ProfileMenu({
         <Settings aria-hidden="true" />
         Settings
       </DropdownMenuLinkItem>
+      {feedback ? (
+        <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
+          <MessageSquareHeart aria-hidden="true" />
+          Send feedback
+        </DropdownMenuItem>
+      ) : null}
       <DropdownMenuItem onClick={() => void onSignOut()}>
         <LogOut aria-hidden="true" />
         Log out
@@ -381,6 +401,15 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to="/settings">
           Settings
         </Link>
+        {feedback ? (
+          <button
+            className={cn(sheetItemClass, "w-full cursor-pointer")}
+            onClick={() => setFeedbackOpen(true)}
+            type="button"
+          >
+            Send feedback
+          </button>
+        ) : null}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
@@ -394,6 +423,7 @@ export function ProfileMenu({
         <ThemeSwitcher className="px-3 py-2" />
         <DensitySwitcher className="px-3 py-2" />
         <HoverExpandSwitcher className="px-3 py-2" />
+        {feedbackDialog}
       </nav>
     );
   }
@@ -484,6 +514,7 @@ export function ProfileMenu({
         <DropdownMenuSeparator />
         {menuLinks}
       </DropdownMenuContent>
+      {feedbackDialog}
     </DropdownMenu>
   );
 }
