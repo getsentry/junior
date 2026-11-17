@@ -35,6 +35,8 @@ Do not list behaviors. The verification map in
 ## Systems
 
 - [Automations](./automations.md): saved instructions that Junior runs later.
+- [Child agents](./child-agents.md): Threads and Tasks that an agent starts
+  to do work for it.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Guardian](./guardian.md): review of each tool action before it runs.
 - [Review desk](./review-desk.md): work that waits for a person, labeled
