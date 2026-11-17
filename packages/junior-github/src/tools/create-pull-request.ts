@@ -570,7 +570,7 @@ export function createGitHubPullRequestTool(
       );
       const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
       const key = `createPullRequest:${conversationId}:${toolCallId}`;
-      return await ctx.state.withLock(
+      const attempt = await ctx.state.withLock(
         `${key}:lock`,
         GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS,
         async () => {
@@ -700,6 +700,12 @@ export function createGitHubPullRequestTool(
           );
         },
       );
+      if (!attempt.acquired) {
+        throw new Error(
+          "GitHub pull request creation for this tool call is already running; refusing to create a duplicate pull request.",
+        );
+      }
+      return attempt.value;
     },
   });
 }

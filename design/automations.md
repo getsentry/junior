@@ -39,8 +39,7 @@ Automation run posts its result to the Automation's Destination.
 - A creator can ask for runs to use their own credentials, because some
   providers have no Junior access yet. This breaks "acts as Junior": a run
   can fail when the creator is not connected, and an edit by someone else
-  switches it back to Junior's credentials. The goal is to remove creator
-  credentials.
+  switches it back to Junior's credentials.
 - A failed run shows only on the dashboard. It tells its creator nothing,
   and repeated failures alert nobody. This breaks "shows it to the creator".
 - When an Automation reaches the limit of automated Turns in a row, Junior

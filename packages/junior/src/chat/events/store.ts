@@ -10,6 +10,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
@@ -213,15 +214,17 @@ async function withIndexLock<T>(
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock = await state.acquireLock(indexLockKey(key), INDEX_LOCK_TTL_MS);
-  if (!lock) {
+  // Parallel Watch writes in one Conversation, such as watchEvents and
+  // watchTimer in one step, contend here. Each holder writes a few keys, so
+  // wait out even a crashed holder's TTL before calling it a failure.
+  const attempt = await withLock(state, indexLockKey(key), callback, {
+    ttlMs: INDEX_LOCK_TTL_MS,
+    waitMs: INDEX_LOCK_TTL_MS,
+  });
+  if (!attempt.acquired) {
     throw new Error(`Could not acquire event index lock for ${key}`);
   }
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
+  return attempt.value;
 }
 
 async function addToIndex(

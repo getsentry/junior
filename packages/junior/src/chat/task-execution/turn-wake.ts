@@ -12,12 +12,16 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import {
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
+  resolveTurnResumeRouting,
+  type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { logException } from "@/chat/logging";
 import {
   failTurnRecord,
   loadTurnCheckpoint,
+  recordTurnSummary,
+  type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { TraceContext } from "@/chat/task-execution/state";
@@ -74,19 +78,23 @@ export async function getPausedTurnRequest(args: {
   ) {
     return undefined;
   }
-  let routing: RequiredTurnSessionRouting;
+  let routing: TurnResumeRouting;
   try {
-    routing = await resolveTurnSessionRouting({
+    routing = await resolveTurnResumeRouting({
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
+      dispatchId: turn.dispatchId,
     });
   } catch (error) {
-    await failTurnRecord({
+    const failed = await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: turn.version,
       turnId: args.turnId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
+    if (failed) {
+      await recordFailedDispatchTurn(failed);
+    }
     return undefined;
   }
 
@@ -97,6 +105,39 @@ export async function getPausedTurnRequest(args: {
     expectedVersion: turn.version,
     traceContext: turn.traceContext,
   };
+}
+
+/**
+ * Record that a resume failed a dispatch turn for good. Without this outcome,
+ * the dispatch runs the turn again, so a failed write is only logged.
+ */
+export async function recordFailedDispatchTurn(
+  turn: TurnRecord,
+): Promise<void> {
+  if (!turn.dispatchId) {
+    return;
+  }
+  try {
+    // The dispatch record owns the routing of a dispatch Conversation. Its
+    // Conversation has no Slack session Source.
+    const dispatch = await getDispatchRecord(turn.dispatchId);
+    await recordTurnSummary({
+      conversationId: turn.conversationId,
+      destination: dispatch?.destination,
+      dispatchId: turn.dispatchId,
+      dispatchOutcome: "failed",
+      turnId: turn.turnId,
+      sliceId: turn.sliceId,
+      source: dispatch?.source,
+      state: "failed",
+      surface: turn.surface,
+    });
+  } catch (error) {
+    logException(error, "agent.continue.dispatch_failure_summary.failed", {
+      "app.ai.conversation_id": turn.conversationId,
+      "app.ai.session_id": turn.turnId,
+    });
+  }
 }
 
 /** Wake the conversation worker for a paused turn. */

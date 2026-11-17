@@ -263,16 +263,16 @@ export function InboxDataProvider(props: {
   signedIn: boolean;
 }) {
   const { conversations, feed } = useInboxConversations();
-  const loadMore = () => void feed.fetchNextPage({ cancelRefetch: false });
   const value = useBuildInboxData({
     conversations,
-    feed: {
-      failed: feed.isFetchNextPageError,
-      hasMore: feed.hasNextPage,
-      loadingMore: feed.isFetchingNextPage,
-      loadMore,
-      retry: loadMore,
-    },
+    // A failed feed page waits for Try again, as the other lists do. A list
+    // end can still ask for more after the failure renders.
+    feed: scrollPages({
+      fetchNextPage: () => void feed.fetchNextPage({ cancelRefetch: false }),
+      hasNextPage: feed.hasNextPage,
+      isFetchNextPageError: feed.isFetchNextPageError,
+      isFetchingNextPage: feed.isFetchingNextPage,
+    }),
     signedIn: props.signedIn,
   });
   return (

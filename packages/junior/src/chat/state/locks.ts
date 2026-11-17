@@ -83,12 +83,3 @@ export async function fenceLock(
     );
   }
 }
-
-/** Run work under the active lock, reporting contention without ambiguity. */
-export async function withActiveLock<T>(
-  state: StateAdapter,
-  key: string,
-  run: () => Promise<T>,
-): Promise<LockAttempt<T>> {
-  return await withLock(state, key, run);
-}
