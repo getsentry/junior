@@ -12,8 +12,8 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import {
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
+  resolveTurnResumeRouting,
+  type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
 import {
   failTurnRecord,
@@ -74,11 +74,12 @@ export async function getPausedTurnRequest(args: {
   ) {
     return undefined;
   }
-  let routing: RequiredTurnSessionRouting;
+  let routing: TurnResumeRouting;
   try {
-    routing = await resolveTurnSessionRouting({
+    routing = await resolveTurnResumeRouting({
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
+      dispatchId: turn.dispatchId,
     });
   } catch (error) {
     await failTurnRecord({

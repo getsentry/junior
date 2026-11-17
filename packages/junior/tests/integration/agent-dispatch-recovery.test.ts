@@ -8,6 +8,8 @@ import {
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import {
   createConversationWorkHarness,
@@ -97,7 +99,7 @@ describe("agent dispatch recovery", () => {
     });
   });
 
-  it("ends dispatch work at its reply when a yield is due", async () => {
+  it("resumes dispatch work after a timeout and ends it at its reply", async () => {
     const dispatch = await createDispatch(
       "resume",
       {
@@ -125,6 +127,9 @@ describe("agent dispatch recovery", () => {
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        // The host deadline aborts this request, so the Turn pauses.
+        { type: "text", text: "Timed out", waitFor: "abort" },
         {
           type: "toolCall",
           name: "reply",
@@ -143,6 +148,11 @@ describe("agent dispatch recovery", () => {
     const { queue, run, state } =
       await createConversationWorkHarness(agentRunner);
 
+    const requestBudgetMs =
+      (getChatConfig().functionMaxDurationSeconds -
+        FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+      1000;
+
     await enqueueAgentDispatch(dispatch, { queue, state });
     let deliveries = 0;
     while (queue.hasQueuedMessages()) {
@@ -150,14 +160,19 @@ describe("agent dispatch recovery", () => {
       if (deliveries > 5) {
         throw new Error("Dispatch continuation queue did not drain");
       }
-      await processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run,
-        // A yield is due after the `reply` result. No step follows it, so the
-        // Turn ends instead.
-        softYieldAfterMs: deliveries === 1 ? 0 : undefined,
-        state,
-      });
+      await runWithTurnRequestDeadline(
+        async () =>
+          await processConversationQueueMessage(queue.takeMessage(), {
+            queue,
+            run,
+            // In the resumed slice, a yield is due after the `reply` result.
+            // No step follows it, so the Turn ends instead.
+            softYieldAfterMs: deliveries === 2 ? 0 : undefined,
+            state,
+          }),
+        // The first slice gets only 2.5s of the host request.
+        deliveries === 1 ? Date.now() - requestBudgetMs + 2_500 : Date.now(),
+      );
     }
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
@@ -176,10 +191,11 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "completed",
     });
-    expect(deliveries).toBe(1);
-    expect(runAgent).toHaveBeenCalledTimes(1);
-    const dispatchRun = runAgent.mock.calls[0]?.[0];
-    expect(dispatchRun).toMatchObject({
+    expect(deliveries).toBe(2);
+    expect(runAgent).toHaveBeenCalledTimes(2);
+    // The resumed Run keeps the dispatch authority and thread.
+    const resumedRun = runAgent.mock.calls[1]?.[0];
+    expect(resumedRun).toMatchObject({
       actor: dispatch.actor,
       credentialContext: {
         actor: dispatch.actor,
@@ -194,8 +210,8 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
-    expect(dispatchRun?.instruction.text).toBe(dispatch.input);
-    expect(dispatchRun?.instruction.context).toBeUndefined();
+    expect(resumedRun?.instruction.text).toBe(dispatch.input);
+    expect(resumedRun?.instruction.context).toBeUndefined();
   });
 
   it("fails the dispatch when every try of its worker is killed", async () => {

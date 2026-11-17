@@ -67,8 +67,8 @@ import {
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveConversationRouting,
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
+  resolveTurnResumeRouting,
+  type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
@@ -387,8 +387,9 @@ async function failPausedTurn(args: {
 
   if (failed.dispatchId) {
     try {
-      const routing = await resolveTurnSessionRouting({
+      const routing = await resolveTurnResumeRouting({
         conversationId: args.conversationId,
+        dispatchId: failed.dispatchId,
       });
       await recordTurnSummary({
         conversationId: args.conversationId,
@@ -581,8 +582,9 @@ async function runPausedTurnInContext(
         const locationConfiguration =
           getLocationConfigurationService(destination);
         const sandboxRef = getPersistedSandboxState(currentState);
-        const routing = await resolveTurnSessionRouting({
+        const routing = await resolveTurnResumeRouting({
           conversationId: payload.conversationId,
+          dispatchId,
         });
         const source = routing.source;
         const routingDestination = routing.destination;
@@ -798,10 +800,11 @@ async function failStrandedTurnWithFallback(args: {
     }
     replyAttribution = dispatch.replyAttribution;
   }
-  let routing: RequiredTurnSessionRouting;
+  let routing: TurnResumeRouting;
   try {
-    routing = await resolveTurnSessionRouting({
+    routing = await resolveTurnResumeRouting({
       conversationId: args.conversationId,
+      dispatchId: failed.dispatchId,
     });
   } catch (error) {
     logException(error, "agent.turn.stranded_session.routing_unavailable", {
