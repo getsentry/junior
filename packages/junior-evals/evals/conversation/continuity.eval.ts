@@ -40,57 +40,48 @@ const uploadChecks = (firstBuild: number, count: number) =>
     ],
   );
 // Storage reports of about 3,500 tokens each fill the window. One check in
-// the middle read a certificate end date. No event shares a word with the
-// question about it, so only a search by meaning finds it.
+// the middle read a certificate end date above a long disk listing, so a
+// summary keeps no trace of it. No event shares a word with the question
+// about it, so only a search by meaning finds it.
 const storageReport = (shard: number) =>
   Array.from(
     { length: 300 },
     (_, index) =>
       `${(index % 97) + 1}.${index % 10}G\t/srv/data/shard-${shard}/segment-${String(index).padStart(6, "0")}.parquet`,
   ).join("\n");
-const storageChecks = Array.from(
-  { length: 14 },
-  (_, index) => index + 1,
-).flatMap((shard) => [
-  slackMention(`Do the weekly storage report for shard ${shard}.`),
-  reply(`Shard ${shard} storage looks normal.`, {
-    toolHistory: [
-      {
-        name: "bash",
-        arguments: { command: `du -ah /srv/data/shard-${shard}` },
-        result: {
-          exit_code: 0,
-          stdout: storageReport(shard),
-          stderr: "",
-          timed_out: false,
-        },
-      },
+const storageChecks = (firstShard: number, count: number) =>
+  Array.from({ length: count }, (_, index) => firstShard + index).flatMap(
+    (shard) => [
+      slackMention(`Do the weekly storage report for shard ${shard}.`),
+      reply(`Shard ${shard} storage looks normal.`, {
+        toolHistory: [
+          {
+            name: "bash",
+            arguments: { command: `du -ah /srv/data/shard-${shard}` },
+            result: {
+              exit_code: 0,
+              stdout: storageReport(shard),
+              stderr: "",
+              timed_out: false,
+            },
+          },
+        ],
+      }),
     ],
-  }),
-]);
+  );
 const EDGE_CHECK = [
   slackMention("Do the weekly checks on edge-1."),
   reply("All weekly checks on edge-1 passed.", {
     toolHistory: [
       {
         name: "bash",
-        arguments: { command: "df -h /srv/edge" },
-        result: {
-          exit_code: 0,
-          stdout:
-            "Filesystem Size Used Avail Use% Mounted on\n/dev/nvme1n1 200G 61G 139G 31% /srv/edge",
-          stderr: "",
-          timed_out: false,
-        },
-      },
-      {
-        name: "bash",
         arguments: {
-          command: "openssl x509 -enddate -noout -in /etc/edge/tls/api.pem",
+          command:
+            "openssl x509 -enddate -noout -in /etc/edge/tls/api.pem && du -ah /srv/edge",
         },
         result: {
           exit_code: 0,
-          stdout: "notAfter=Apr  2 00:00:00 2026 GMT",
+          stdout: `notAfter=Apr  2 00:00:00 2026 GMT\n${storageReport(0).replaceAll("/srv/data/shard-0", "/srv/edge")}`,
           stderr: "",
           timed_out: false,
         },
@@ -187,18 +178,16 @@ describe("Thread Continuity", () => {
       limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
     });
     const first = await run(slackMention("Thanks, that's all for this week."), {
-      history: [
-        ...storageChecks.slice(0, 10),
-        ...EDGE_CHECK,
-        ...storageChecks.slice(10),
-      ],
+      history: [...storageChecks(1, 4), ...EDGE_CHECK, ...storageChecks(5, 10)],
     });
     // The Turn stored the event vectors after it finished.
     const conversation = await first.continue(
       slackMention("When does our HTTPS certificate expire?"),
+      { history: storageChecks(15, 14) },
     );
 
     expect(first.compactions).toBeGreaterThan(0);
+    expect(conversation.compactions).toBeGreaterThan(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
