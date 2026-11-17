@@ -10,7 +10,10 @@ import type {
   SlackDestination,
   Source,
 } from "@sentry/junior-plugin-api";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchConversationId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
 import type {
   Conversation,
   ConversationStore,
@@ -172,6 +175,12 @@ export async function resolveTurnResumeRouting(args: {
   const dispatch = await getDispatchRecord(args.dispatchId);
   if (!dispatch) {
     throw new Error(`Dispatch record is missing for ${args.dispatchId}`);
+  }
+  const dispatchConversationId = getDispatchConversationId(dispatch);
+  if (dispatchConversationId !== args.conversationId) {
+    throw new Error(
+      `Dispatch ${dispatch.id} belongs to ${dispatchConversationId}, not ${args.conversationId}`,
+    );
   }
   const location = (await resolveConversationRouting(args))?.location;
   return {
