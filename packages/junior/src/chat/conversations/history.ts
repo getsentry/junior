@@ -33,8 +33,9 @@ const toolResultEventDataSchema = z
   })
   .passthrough();
 
-// A Pi system message after the leading one. The leading one is rebuilt for
-// each slice and never saved.
+// A Pi system message after the leading one: a change to the capability
+// sections. The leading one is rebuilt for each slice from the base prompt
+// and `leading_system_sections`.
 const systemMessageEventDataSchema = z
   .object({
     type: z.literal("system_message"),
@@ -141,6 +142,21 @@ const mcpProviderConnectedEventDataSchema = z
     type: z.literal("mcp_provider_connected"),
     provider: z.string().min(1),
     credentialSubjectId: z.string().min(1),
+  })
+  .strict();
+
+// The capability sections of the leading system message, as the first Turn
+// that built them saw them. Written once per Conversation and never changed,
+// so the system prompt stays the same for the provider cache. It is not agent
+// history: compaction does not replace it.
+const leadingSystemSectionsEventDataSchema = z
+  .object({
+    type: z.literal("leading_system_sections"),
+    // A list, not an object: jsonb does not keep key order, and the order
+    // sets the bytes of the system prompt.
+    sections: z.array(
+      z.object({ name: z.string().min(1), text: z.string() }).strict(),
+    ),
   })
   .strict();
 
@@ -477,6 +493,7 @@ const appendableConversationEventDataSchema = z.union([
   messageUpdatedEventDataSchema,
   agentHistoryItemSchema,
   mcpProviderConnectedEventDataSchema,
+  leadingSystemSectionsEventDataSchema,
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
@@ -522,6 +539,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "system_message",
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",
+  "leading_system_sections",
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",

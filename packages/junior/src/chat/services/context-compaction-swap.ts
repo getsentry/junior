@@ -28,7 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
-import { foldSystemMessages } from "@/chat/pi/agent-history";
+import { systemSectionsChange } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
@@ -308,9 +308,12 @@ async function applyPreparedSummary(
       : { message, provenance: contextProvenance };
   });
   const { entries: trimmedEntries, trimming } = trimToolResults(keptEntries);
-  // Kept system messages stay in place. The summarized ones fold into one
-  // that directly follows the summary, as in a full compaction.
-  const systemMessage = foldSystemMessages(summarized);
+  // Kept system messages stay in place. The changes of the summarized ones
+  // go into one that directly follows the summary, as in a full compaction.
+  const systemMessage = systemSectionsChange(
+    args.leadingSystemSections ?? {},
+    summarized,
+  );
   const replacement: ReplacementEntry[] = [
     ...(contextMessage
       ? [{ message: contextMessage, provenance: contextProvenance }]

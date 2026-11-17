@@ -9,8 +9,9 @@ import {
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
-  foldSystemMessages,
+  agentSystemPrompt,
   readAgentHistory,
+  systemSectionsChange,
   withAgentRequest,
   writeAgentHistory,
   type AgentRequestStreamFn,
@@ -81,36 +82,61 @@ describe("agent history", () => {
     expect(written).not.toBe(history);
   });
 
-  it("folds system messages into their current content and sections", () => {
+  it("puts the leading sections after the base prompt", () => {
+    expect(
+      agentSystemPrompt("You are a helper.", {
+        skills: "<skills>a</skills>",
+        workspaces: "<workspaces>w</workspaces>",
+      }),
+    ).toBe(
+      "You are a helper.\n\n<skills>a</skills>\n\n<workspaces>w</workspaces>",
+    );
+    expect(agentSystemPrompt("You are a helper.", {})).toBe(
+      "You are a helper.",
+    );
+  });
+
+  it("keeps the changes that history made to the leading sections", () => {
     const tool = {
       name: "lookup",
       description: "Look up a record.",
       parameters: Type.Object({}),
     };
+    const leading = {
+      skills: "<skills>a</skills>",
+      workspaces: "<workspaces>w</workspaces>",
+    };
 
     expect(
-      foldSystemMessages([
+      systemSectionsChange(leading, [
         user("a"),
         system("Use the rules.", {
-          sections: { skills: "<skills>a</skills>", tools: "<tools></tools>" },
+          sections: { skills: "<skills>b</skills>", tools: "<tools></tools>" },
           timestamp: 1,
         }),
         user("b"),
         system("", {
-          sections: { skills: "<skills>b</skills>", tools: null },
+          sections: { tools: null, workspaces: null },
           toolsAdded: [tool],
           timestamp: 2,
         }),
       ]),
     ).toEqual(
       system("Use the rules.", {
-        sections: { skills: "<skills>b</skills>" },
+        sections: { skills: "<skills>b</skills>", workspaces: null },
         timestamp: 1,
       }),
     );
-    expect(foldSystemMessages([user("a")])).toBeUndefined();
+    // A section that changed back to its leading text has no change.
     expect(
-      foldSystemMessages([system("", { toolsAdded: [tool] })]),
+      systemSectionsChange(leading, [
+        system("", { sections: { skills: "<skills>b</skills>" } }),
+        system("", { sections: { skills: "<skills>a</skills>" } }),
+      ]),
+    ).toBeUndefined();
+    expect(systemSectionsChange(leading, [user("a")])).toBeUndefined();
+    expect(
+      systemSectionsChange({}, [system("", { toolsAdded: [tool] })]),
     ).toBeUndefined();
   });
 
