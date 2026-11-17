@@ -12,7 +12,7 @@ import {
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
 import { nextDetailVersion } from "./sql/detail-version";
-import { refreshAutomationRunCost } from "@/chat/automations/run-cost";
+import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 
 function finite(value: number | undefined): number | undefined {
@@ -169,12 +169,16 @@ export async function replaceConversationMetrics(
   `;
   const cost = sql`case when ${metric("cost_usd")} is null then null
     else jsonb_build_object('total', ${metric("cost_usd")}) end`;
-  await executor
-    .db()
-    .update(juniorConversations)
-    .set({
-      durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
-      usage: sql`case
+  const db = executor.db();
+  // The usage update and the copy of its cost to the Conversation's run are
+  // one statement, so they commit together. RETURNING gives the new usage; the
+  // outer update cannot read it from the table in the same statement.
+  const usageUpdate = db.$with("conversation_usage_update").as(
+    db
+      .update(juniorConversations)
+      .set({
+        durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
+        usage: sql`case
         when ${totalTokens} is not null
           and (${hasComponents})
           and ${totalTokens} <> ${componentTokens}
@@ -193,11 +197,18 @@ export async function replaceConversationMetrics(
           'cost', ${cost}
         ))
       end`,
-      detailVersion: nextDetailVersion,
-    })
-    .where(eq(juniorConversations.conversationId, args.conversationId));
-  await refreshAutomationRunCost(
-    executor.db(),
-    eq(juniorAutomationRuns.conversationId, args.conversationId),
+        detailVersion: nextDetailVersion,
+      })
+      .where(eq(juniorConversations.conversationId, args.conversationId))
+      .returning({
+        costUsd: conversationUsageCostExpr(juniorConversations.usage).as(
+          "cost_usd",
+        ),
+      }),
   );
+  await db
+    .with(usageUpdate)
+    .update(juniorAutomationRuns)
+    .set({ costUsd: sql`(select ${usageUpdate.costUsd} from ${usageUpdate})` })
+    .where(eq(juniorAutomationRuns.conversationId, args.conversationId));
 }

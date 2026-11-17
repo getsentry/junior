@@ -14,7 +14,7 @@ import {
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
-import { refreshAutomationRunCost } from "./run-cost";
+import { conversationCostOf } from "./run-cost";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   automationTaskDescription,
@@ -194,6 +194,9 @@ export async function recordAutomationExecution(
         conversationId: options.conversationId
           ? existingConversationId(options.conversationId)
           : null,
+        costUsd: options.conversationId
+          ? conversationCostOf(options.conversationId)
+          : null,
         ...outcome,
       })
       .onConflictDoUpdate({
@@ -201,15 +204,12 @@ export async function recordAutomationExecution(
         set: {
           ...outcome,
           conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+          costUsd: conversationCostOf(
+            sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+          ),
         },
         setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
       });
-    if (options.conversationId) {
-      await refreshAutomationRunCost(
-        getDb(),
-        eq(juniorAutomationRuns.id, options.executionId),
-      );
-    }
     await refreshAutomationLastRun(getDb(), automationId);
   } catch (error) {
     logWarn("task.execution.stat_failed", {

@@ -7,7 +7,7 @@ import {
   existingConversationId,
   recordAutomationExecution,
 } from "@/chat/automations/execution-stats";
-import { refreshAutomationRunCost } from "@/chat/automations/run-cost";
+import { conversationCostOf } from "@/chat/automations/run-cost";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
@@ -24,24 +24,20 @@ export async function recordEventAutomationRunStarted(
   db: JuniorDatabase,
   args: { automation: EventAutomation; dispatchId: string; nowMs: number },
 ): Promise<void> {
+  const conversationId = getDispatchConversationId({ id: args.dispatchId });
   await db
     .insert(juniorAutomationRuns)
     .values({
       id: args.dispatchId,
       automationId: args.automation.id,
       automationVersion: automationVersionOf(args.automation),
-      conversationId: existingConversationId(
-        getDispatchConversationId({ id: args.dispatchId }),
-      ),
+      conversationId: existingConversationId(conversationId),
+      // The dispatch can write usage before this row exists.
+      costUsd: conversationCostOf(conversationId),
       startedAtMs: args.nowMs,
       status: "running",
     })
     .onConflictDoNothing({ target: juniorAutomationRuns.id });
-  // The dispatch can write usage before this row exists.
-  await refreshAutomationRunCost(
-    db,
-    eq(juniorAutomationRuns.id, args.dispatchId),
-  );
 }
 
 /**

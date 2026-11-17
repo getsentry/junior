@@ -1,22 +1,14 @@
 import { sql, type SQL } from "drizzle-orm";
 import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
-import type { JuniorDatabase } from "@/db/db";
-import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorConversations } from "@/db/schema";
 
 /**
- * Copy the cost of each matched run's Conversation to the run, so Automation
- * cost totals read only runs. Call it after each write that changes a
- * Conversation's usage or links a run to its Conversation.
+ * SQL that reads the cost of one Conversation, for the `cost_usd` of its run.
+ * Set it in each run write that links a run to its Conversation, because the
+ * Conversation can record usage before its run row exists.
  */
-export async function refreshAutomationRunCost(
-  db: JuniorDatabase,
-  where: SQL,
-): Promise<void> {
-  await db
-    .update(juniorAutomationRuns)
-    .set({
-      costUsd: sql`(select ${conversationUsageCostExpr(juniorConversations.usage)} from ${juniorConversations} where ${juniorConversations.conversationId} = ${juniorAutomationRuns.conversationId})`,
-    })
-    .where(where);
+export function conversationCostOf(
+  conversationId: SQL | string,
+): SQL<number | null> {
+  return sql`(select ${conversationUsageCostExpr(juniorConversations.usage)} from ${juniorConversations} where ${juniorConversations.conversationId} = ${conversationId})`;
 }

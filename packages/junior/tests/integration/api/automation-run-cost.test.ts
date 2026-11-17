@@ -19,6 +19,7 @@ import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 
 function authenticatedApi(email: string) {
   const app = new Hono<JuniorApiEnv>();
@@ -137,7 +138,12 @@ describe("Automation run cost", () => {
       expect(await readCost()).toEqual({ day: 0.2, total: 0.2, week: 0.2 });
 
       // A follow-up Turn in the run's Conversation adds usage later.
-      await recordTurn("turn-2", 0.05);
+      // The usage update carries the copy to the run: a separate copy
+      // statement goes over this budget.
+      await expectSqlBudget(() => recordTurn("turn-2", 0.05), {
+        statements: 18,
+        serialRounds: 18,
+      });
       expect(await readCost()).toEqual({ day: 0.25, total: 0.25, week: 0.25 });
 
       // Each stored run cost equals the cost of its Conversation.
