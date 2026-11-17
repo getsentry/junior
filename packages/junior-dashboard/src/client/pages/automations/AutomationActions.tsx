@@ -20,6 +20,7 @@ import {
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
+import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
 
 /**
  * Header actions for one Automation: Edit, Pause or Resume, and Delete.
@@ -63,9 +64,7 @@ export function AutomationActions({
       });
     },
     onSuccess: async (updated) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await refreshChangedAutomation(queryClient, updated);
       toast.add({
         title:
           updated.status === "blocked"

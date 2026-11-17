@@ -20,7 +20,6 @@ import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
 import { HeaderBar } from "../../../components/layout/HeaderBar";
 import { usePaneRowScroll } from "../../../components/layout/PaneNav";
 import { useDocumentTitle } from "../../../documentTitle";
-import { automationPath } from "../../../format";
 import { InboxAutomationRow } from "../../../review-desk/InboxAutomationRow";
 import type { useAutomationAlerts } from "../../../review-desk/automationAlerts";
 import { useInboxData } from "../../../review-desk/inboxData";
@@ -38,7 +37,6 @@ import {
 import { timeGroups } from "../../../review-desk/inboxModel";
 import { scrollPages } from "../../../review-desk/inboxQueries";
 import { PageEnd } from "../../../review-desk/PageEnd";
-import { pathWithSearch } from "../../../searchParams";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
 
@@ -241,9 +239,6 @@ const AutomationGroups = memo(function AutomationGroups(props: {
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [snoozeId, setSnoozeId] = useState<string>();
-  // The Automation page keeps the list query, so its back link restores it.
-  const pagePath = (id: string) =>
-    pathWithSearch(automationPath(id), props.search);
   const todoIds = new Set(props.todo.map((automation) => automation.id));
   // The server orders rows by latest activity, so groups keep its order.
   const rest = props.automations.filter(
@@ -295,7 +290,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
               expanded={props.expanded === automation.id}
               key={`${automation.kind}:${automation.id}`}
               onToggle={() => toggleRow(automation.id)}
-              to={pagePath(automation.id)}
+              search={props.search}
             />
           ))}
         </InboxSection>

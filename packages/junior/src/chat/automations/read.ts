@@ -5,6 +5,7 @@ import type {
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListPage,
   AutomationListItem,
   AutomationListQuery,
   AutomationVersionList,
@@ -13,7 +14,10 @@ import type {
 } from "@/api/schema/automation";
 import { automationListQuerySchema } from "@/api/schema/automation";
 import {
+  readAutomationActivityPage,
   readAutomationCollection,
+  readAutomationFacets,
+  selectViewerAutomations,
   viewerAutomationCollection,
   type AutomationActivityPosition,
 } from "./collection";
@@ -535,45 +539,97 @@ export async function readTaskCandidates(
   });
 }
 
+type ViewerAutomationPage<List> = Omit<List, "nextCursor"> & {
+  next?: AutomationActivityPosition;
+};
+
 /**
  * Read a page from the full accessible Automation collection. Rows carry
  * their last runs, not the totals that read every run. `next` is the
- * position after the page when `sort=activity` has more rows.
+ * position after the page when `sort=activity` has more rows. A page after
+ * `after` has no counts or filter options.
  */
+export function readViewerAutomations(
+  user: User,
+  input?: AutomationListQuery,
+): Promise<ViewerAutomationPage<AutomationList>>;
+export function readViewerAutomations(
+  user: User,
+  input: AutomationListQuery,
+  after: AutomationActivityPosition | undefined,
+): Promise<ViewerAutomationPage<AutomationListPage>>;
 export async function readViewerAutomations(
   user: User,
   input: AutomationListQuery = automationListQuerySchema.parse({}),
   after?: AutomationActivityPosition,
-): Promise<
-  Omit<AutomationList, "nextCursor"> & { next?: AutomationActivityPosition }
-> {
-  const { rows, ...page } = await readAutomationCollection(user, input, after);
-  const ids = rows.map((row) => row.id);
-  const [selected, stats] = await Promise.all([
-    readTaskCandidates(user, ids),
+): Promise<ViewerAutomationPage<AutomationListPage>> {
+  if (input.sort !== "activity") {
+    const { rows, ...page } = await readAutomationCollection(user, input);
+    return {
+      automations: await readAutomationListItems(
+        user,
+        rows.map((row) => row.id),
+      ),
+      ...page,
+    };
+  }
+  const selection = await selectViewerAutomations(user, input);
+  // The counts and options do not depend on the page, so they load while
+  // the page and its rows do. Later pages skip them.
+  const [facets, { automations, next }] = await Promise.all([
+    after ? undefined : readAutomationFacets(selection),
+    readAutomationActivityPage(selection, input.pageSize, after).then(
+      async ({ rows, next }) => ({
+        automations: await readAutomationListItems(
+          user,
+          rows.map((row) => row.id),
+        ),
+        next,
+      }),
+    ),
+  ]);
+  return {
+    automations,
+    page: 1,
+    pageSize: input.pageSize,
+    ...facets,
+    ...(next ? { next } : undefined),
+  };
+}
+
+/**
+ * Build list items for collection rows, in their order. The run stats load
+ * while the Destination and creator details do.
+ */
+async function readAutomationListItems(
+  user: User,
+  ids: string[],
+): Promise<AutomationListItem[]> {
+  const [{ selected, destinations, creators }, stats] = await Promise.all([
+    readTaskCandidates(user, ids).then(async (selected) => {
+      const [destinations, creators] = await Promise.all([
+        destinationDetails(selected.map(({ task }) => task.destination)),
+        creatorProfiles(selected),
+      ]);
+      return { selected, destinations, creators };
+    }),
     readAutomationRowStats(ids),
   ]);
-  const [destinations, creators] = await Promise.all([
-    destinationDetails(selected.map(({ task }) => task.destination)),
-    creatorProfiles(selected),
-  ]);
-  const visible = selected.filter(
-    (candidate) =>
-      candidate.ownedByViewer ||
-      destinations.get(destinationKey(candidate.task.destination))
-        ?.visibility === "public",
-  );
-  return {
-    automations: visible.map((candidate) =>
+  return selected
+    .filter(
+      (candidate) =>
+        candidate.ownedByViewer ||
+        destinations.get(destinationKey(candidate.task.destination))
+          ?.visibility === "public",
+    )
+    .map((candidate) =>
       automationListItem(
         candidate,
         destinations,
         creators,
         stats.get(candidate.task.id),
       ),
-    ),
-    ...page,
-  };
+    );
 }
 
 /** Load deleted scheduled automations the viewer still owns, newest first. */
@@ -730,22 +786,20 @@ export async function readViewerAutomationExecutions(
 ): Promise<AutomationExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [automation, executions, executionDays, executionHours] =
-    await Promise.all([
-      automationSummaryForCandidate(candidate),
-      readAutomationExecutions({
-        automationId: id,
-        limit: TASK_EXECUTION_LIST_LIMIT + 1,
-      }),
-      readAutomationExecutionStatusDays({ automationId: id }),
-      readAutomationExecutionStatusHours({ automationId: id }),
-    ]);
+  // The summary has its own request, so this one skips its totals.
+  const [executions, executionDays, executionHours] = await Promise.all([
+    readAutomationExecutions({
+      automationId: id,
+      limit: TASK_EXECUTION_LIST_LIMIT + 1,
+    }),
+    readAutomationExecutionStatusDays({ automationId: id }),
+    readAutomationExecutionStatusHours({ automationId: id }),
+  ]);
   return {
     executionDays,
     executionHours,
     executionSixHours: automationExecutionStatusSixHours(executionHours),
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
-    automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
   };
 }

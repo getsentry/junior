@@ -820,6 +820,20 @@
       "when": 1794921922374,
       "tag": "0116_conversation_event_search",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1794933607046,
+      "tag": "0117_automation_last_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1794933647013,
+      "tag": "0118_automation_last_run_index",
+      "breakpoints": true
     }
   ]
 }

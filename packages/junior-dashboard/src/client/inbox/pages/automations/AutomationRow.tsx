@@ -9,6 +9,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "react-router";
+import { usePrefetchAutomation } from "../../../api";
 import { ActorAvatar } from "../../../components/ActorAvatar";
 import { FormNotice } from "../../../components/FormNotice";
 import { statusDotToneClass } from "../../../components/StatusDot";
@@ -23,6 +24,8 @@ import {
   inboxHeadGridClass,
 } from "../../../review-desk/inboxRowStyles";
 import { useAnimatedHeight } from "../../../review-desk/rowMotion";
+import { pathWithSearch } from "../../../searchParams";
+import { automationPath } from "../../../format";
 import { cn } from "../../../styles";
 import {
   automationRunStatusTone,
@@ -59,9 +62,11 @@ export function AutomationRow(props: {
   automation: AutomationListItem;
   expanded: boolean;
   onToggle(): void;
-  to: string;
+  /** The list's query, so Back from the Automation returns to the same list. */
+  search: string;
 }) {
   const { automation } = props;
+  const to = pathWithSearch(automationPath(automation.id), props.search);
   const problem = automationProblemSummary(automation);
   const inactive =
     automation.status === "paused" || automation.status === "completed";
@@ -69,8 +74,10 @@ export function AutomationRow(props: {
   const ref = useRef<HTMLLIElement>(null);
   useAnimatedHeight(ref, String(props.expanded));
   const regionId = `automation-row-${automation.id}`;
+  const prefetch = usePrefetchAutomation(automation.id);
   return (
     <li
+      {...prefetch}
       className={cn(inboxCardClass(props.expanded), "cursor-pointer")}
       data-automation-id={automation.id}
       data-dock-key={`automation:${automation.id}`}
@@ -114,7 +121,7 @@ export function AutomationRow(props: {
             aria-label={`Open automation: ${automation.title}`}
             className="min-w-0 truncate rounded-md text-sm leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             title={automation.title}
-            to={props.to}
+            to={to}
           >
             {automation.title}
           </Link>
@@ -133,7 +140,14 @@ export function AutomationRow(props: {
               </span>
               <Link
                 className="shrink-0 font-medium text-dashboard-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                to={problem.action.to}
+                // Links into this Automation keep the list's query too.
+                to={
+                  problem.action.to.startsWith(
+                    `${automationPath(automation.id)}/`,
+                  )
+                    ? pathWithSearch(problem.action.to, props.search)
+                    : problem.action.to
+                }
               >
                 {problem.action.label}
               </Link>
@@ -185,11 +199,7 @@ export function AutomationRow(props: {
         </div>
       </div>
       {props.expanded ? (
-        <AutomationRowDetail
-          automation={automation}
-          id={regionId}
-          to={props.to}
-        />
+        <AutomationRowDetail automation={automation} id={regionId} to={to} />
       ) : null}
     </li>
   );
@@ -215,10 +225,7 @@ function AutomationRowDetail(props: {
   const trigger =
     automation.kind === "scheduled"
       ? automationScheduleLabel(automation)
-      : [
-          eventTriggerText(automation.resource, automation.trigger),
-          ...automation.trigger.filters,
-        ].join(" · ");
+      : eventTriggerText(automation.resource, automation.trigger);
   return (
     <div
       aria-label={`${automation.title}: details`}
