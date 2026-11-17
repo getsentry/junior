@@ -38,3 +38,5 @@ Do not list behaviors. The verification map in
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Review desk](./review-desk.md): work that waits for a person, labeled
   "Inbox" in the dashboard.
+- [Sandbox credentials](./sandbox-credentials.md): provider access for
+  commands in a Sandbox, with no real token inside it.
