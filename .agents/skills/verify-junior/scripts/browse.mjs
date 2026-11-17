@@ -3,9 +3,12 @@
 // time, and save evidence. Steps run in the order given.
 //
 // Usage:
-//   node browse.mjs --out DIR [--base URL] [--width PX] STEP...
+//   node browse.mjs --out DIR [--base URL] [--width PX] [--timeout MS] STEP...
+// --timeout sets the wait of each step (default 30000). A live Turn can take
+// minutes, so give drives that wait for a reply 300000 or more.
 // Steps:
 //   --goto PATH            Open PATH on the base URL (default http://localhost:3000).
+//   --back NAME            Open the URL that an earlier --snap NAME saved in DIR.
 //   --click SELECTOR       Click a Playwright selector, such as 'role=button[name="Hold"]'.
 //   --fill SELECTOR=TEXT   Type TEXT into the element.
 //   --press KEY            Press a key on the focused element, such as Enter.
@@ -13,10 +16,18 @@
 //   --absent SELECTOR      Wait until no such element is visible. Fails the run if one stays.
 //   --title TEXT           Wait until the tab title starts with TEXT.
 //   --order A|B|C          Wait until the page text has A, then B, then C.
-//   --snap NAME            Write NAME.aria.yml (ARIA snapshot), NAME.png, and NAME.title.txt to DIR.
+//   --idle                 Wait until the open Conversation has no running Turn: no
+//                          "Stop" button and no "is thinking…" status for 3 seconds.
+//                          Takes no value.
+//   --snap NAME            Write NAME.aria.yml (ARIA snapshot), NAME.png, NAME.title.txt, and NAME.url.txt to DIR.
 // Every step and its result go to DIR/steps.log. The exit code is 0 only
 // when every step passes.
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -33,13 +44,20 @@ const args = process.argv.slice(2);
 let out;
 let base = "http://localhost:3000";
 let width = 1440;
+let timeout = 30_000;
 const steps = [];
 for (let i = 0; i < args.length; i += 2) {
+  if (args[i] === "--idle") {
+    steps.push(["idle", ""]);
+    i -= 1;
+    continue;
+  }
   const [flag, value] = [args[i], args[i + 1]];
   if (value === undefined) throw new Error(`${flag} needs a value`);
   if (flag === "--out") out = value;
   else if (flag === "--base") base = value;
   else if (flag === "--width") width = Number(value);
+  else if (flag === "--timeout") timeout = Number(value);
   else steps.push([flag.slice(2), value]);
 }
 if (!out) throw new Error("--out DIR is required");
@@ -51,11 +69,14 @@ const log = (line) => {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width, height: 900 } });
+page.setDefaultTimeout(timeout);
 let failed = false;
 try {
   for (const [step, value] of steps) {
     try {
       if (step === "goto") await page.goto(new URL(value, base).href);
+      else if (step === "back")
+        await page.goto(readFileSync(join(out, `${value}.url.txt`), "utf8"));
       else if (step === "click") await page.locator(value).first().click();
       else if (step === "fill") {
         const at = value.lastIndexOf("=");
@@ -80,13 +101,32 @@ try {
             (index, i) => index >= 0 && (i === 0 || index > at[i - 1]),
           );
         }, value.split("|"));
-      else if (step === "snap") {
+      else if (step === "idle") {
+        // Each --idle starts its own 3-second window. A mark from an earlier
+        // --idle on this page would pass before the next Turn shows as busy.
+        await page.evaluate(() => delete window.__idleSince);
+        await page.waitForFunction(
+          () => {
+            const busy =
+              [...document.querySelectorAll("button")].some(
+                (b) =>
+                  b.textContent?.trim() === "Stop" || b.ariaLabel === "Stop",
+              ) || /is thinking…/.test(document.body.innerText);
+            const now = Date.now();
+            window.__idleSince = busy ? now : (window.__idleSince ?? now);
+            return !busy && now - window.__idleSince >= 3000;
+          },
+          undefined,
+          { polling: 500 },
+        );
+      } else if (step === "snap") {
         await page.waitForLoadState("networkidle");
         writeFileSync(
           join(out, `${value}.aria.yml`),
           await page.locator("body").ariaSnapshot(),
         );
         writeFileSync(join(out, `${value}.title.txt`), await page.title());
+        writeFileSync(join(out, `${value}.url.txt`), page.url());
         await page.screenshot({ path: join(out, `${value}.png`) });
       } else throw new Error(`unknown step --${step}`);
       log(`ok    --${step} ${value}`);
