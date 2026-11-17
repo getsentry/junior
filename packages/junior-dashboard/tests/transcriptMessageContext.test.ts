@@ -37,7 +37,7 @@ function conversation(
 }
 
 describe("transcript message context classification", () => {
-  it("hides unused non-mentions and marks turn inputs as context", () => {
+  it("hides unused non-mentions and marks turn inputs and thread context as context", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
@@ -47,20 +47,28 @@ describe("transcript message context classification", () => {
           text: "ambient thread chatter",
           explicitMention: false,
         }),
-        event(1, "2026-01-01T00:00:01.000Z", {
+        event(1, "2026-01-01T00:00:00.500Z", {
+          type: "message",
+          messageId: "thread-context",
+          role: "user",
+          text: "the rollback owner is Priya",
+          explicitMention: false,
+        }),
+        event(2, "2026-01-01T00:00:01.000Z", {
           type: "message",
           messageId: "used-context",
           role: "user",
           text: "can you clarify that?",
           explicitMention: false,
         }),
-        event(2, "2026-01-01T00:00:02.000Z", {
+        event(3, "2026-01-01T00:00:02.000Z", {
           type: "turn_lifecycle",
           turnId: "turn-context",
           state: "started",
           inputMessageIds: ["used-context"],
+          threadContextMessageIds: ["thread-context"],
         }),
-        event(3, "2026-01-01T00:00:03.000Z", {
+        event(4, "2026-01-01T00:00:03.000Z", {
           type: "message",
           messageId: "answer",
           role: "assistant",
@@ -69,14 +77,17 @@ describe("transcript message context classification", () => {
       ]),
     );
 
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "thread-context",
+      "used-context",
+      "answer",
+    ]);
+    expect(messages[0]).toMatchObject({ context: true });
+    expect(messages[1]).toMatchObject({
       context: true,
       explicitMention: false,
-      messageId: "used-context",
     });
-    expect(messageRawText(messages[0]!)).toBe("can you clarify that?");
-    expect(messages[1]?.messageId).toBe("answer");
+    expect(messageRawText(messages[1]!)).toBe("can you clarify that?");
   });
 
   it("keeps turn context on acted-on non-mention inputs", () => {
