@@ -56,6 +56,7 @@ import {
   locationDirectoryReportSchema,
   locationParamsSchema,
   personalSpendReportSchema,
+  personCardReportSchema,
   personParamsSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
@@ -90,6 +91,7 @@ import {
   attachMockObjectLink,
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
+  readMockPersonCard,
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
@@ -305,6 +307,16 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(
       cacheWarmingSavingsReportSchema,
       readMockCacheWarmingSavings(days),
+    );
+  });
+  app.get("/people/:email/card", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return jsonResponse(
+      personCardReportSchema,
+      readMockPersonCard(new URL(c.req.url).origin, params.data.email),
     );
   });
   app.get("/people/:email/code", (c) => {

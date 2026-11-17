@@ -287,11 +287,14 @@ describe("display text object links", () => {
     return annotations.find((annotation) => annotation.url === url)!;
   }
 
+  // A person link opens their People page in the dashboard.
   function render(text: string, viewerEmail?: string) {
     return markup(
-      <KnownObjectsProvider annotations={annotations}>
-        <DisplayText text={text} />
-      </KnownObjectsProvider>,
+      <MemoryRouter>
+        <KnownObjectsProvider annotations={annotations}>
+          <DisplayText text={text} />
+        </KnownObjectsProvider>
+      </MemoryRouter>,
       viewerEmail,
     );
   }
@@ -355,7 +358,10 @@ describe("display text object links", () => {
     );
     const [person, ...rest] = anchors(html);
     // The person is a round photo, then `@Name` as plain link text.
-    expect(person).toMatchObject({ href: PERSON, label: "@Morgan Lee" });
+    expect(person).toMatchObject({
+      href: "/people/dev%40example.com",
+      label: "@Morgan Lee",
+    });
     expect(html).toMatch(
       new RegExp(
         `<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/><a `,

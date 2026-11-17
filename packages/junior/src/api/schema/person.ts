@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import {
   actorIdentitySchema,
   conversationSummaryReportSchema,
@@ -148,3 +149,40 @@ export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;
 export type PersonalSpendReport = z.infer<typeof personalSpendReportSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
+
+/** The most recent Conversations that a person card lists. */
+export const PERSON_CARD_RECENT_LIMIT = 3;
+
+/**
+ * The person card that opens on a reference to a person: their object card,
+ * when Junior knows them, and their recent Junior activity. The activity
+ * names only Conversations that the viewer may read.
+ */
+export const personCardReportSchema = z
+  .object({
+    activity: z
+      .object({
+        /** Root Conversations with a Turn of the person in the last week. */
+        conversations: z.number().int().nonnegative(),
+        /** The last Turn of the person in the last 30 days. */
+        lastActiveAt: z.string().optional(),
+        recentConversations: z
+          .array(
+            z
+              .object({
+                conversationId: z.string(),
+                lastTurnAt: z.string(),
+                title: z.string(),
+              })
+              .strict(),
+          )
+          .max(PERSON_CARD_RECENT_LIMIT),
+        /** Turns of the person in the last week. */
+        turns: z.number().int().nonnegative(),
+      })
+      .strict(),
+    card: ownedObjectAnnotationSchema.optional(),
+  })
+  .strict();
+
+export type PersonCardReport = z.output<typeof personCardReportSchema>;

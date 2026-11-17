@@ -3,14 +3,18 @@ import {
   messageObjectCard,
   personObjectCard,
   webPageObjectCard,
+  PERSON_CARD_RECENT_LIMIT,
   type AttachObjectLinkResponse,
   type ObjectLinksReport,
+  type PersonCardReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
+  NOW_MS,
   readMockConversationDetail,
   readMockPeopleDirectory,
+  readMockPeopleProfile,
 } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
@@ -506,6 +510,44 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url: href,
   });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Build a person card like the person card API: the person link card and
+ * their recent activity. Each mock Conversation counts as one Turn.
+ */
+export function readMockPersonCard(
+  origin: string,
+  email: string,
+): PersonCardReport {
+  const card = mockObject(`${origin}/people/${encodeURIComponent(email)}`)[0]
+    ?.object;
+  const all = [
+    ...(readMockPeopleProfile(email)?.recentConversations ?? []),
+  ].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  const week = all.filter(
+    (item) => Date.parse(item.lastSeenAt) >= NOW_MS - WEEK_MS,
+  );
+  return {
+    // Counts cover every Conversation, like the API. Mocks have one viewer,
+    // who may read a private Conversation only as a participant.
+    activity: {
+      conversations: week.length,
+      ...(all[0] ? { lastActiveAt: all[0].lastSeenAt } : undefined),
+      recentConversations: all
+        .filter((item) => item.visibility !== "private" || item.isParticipant)
+        .slice(0, PERSON_CARD_RECENT_LIMIT)
+        .map((item) => ({
+          conversationId: item.conversationId,
+          lastTurnAt: item.lastSeenAt,
+          title: item.displayTitle,
+        })),
+      turns: week.length,
+    },
+    ...(card ? { card } : undefined),
+  };
 }
 
 /** Resolve mock links to the cards that the API would show. */

@@ -23,7 +23,7 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { ANCHOR_CLASS } from "./links";
-import { PersonInline } from "../components/PersonReference";
+import { PersonInline, PersonReference } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
@@ -256,7 +256,8 @@ export function ObjectThumbnailLink(props: {
 
 /**
  * Show a bare URL to a person in running text as a GitHub-style mention:
- * the photo, then `@Name` as a plain link that previews the card.
+ * the photo, then `@Name`. A person with a People page gets the person card;
+ * another account, such as a GitHub account, previews its own card.
  */
 export function PersonLink(props: {
   card: OwnedObjectAnnotation;
@@ -266,15 +267,23 @@ export function PersonLink(props: {
 }) {
   const { card } = props;
   const facts = card.facts?.type === "person" ? card.facts : undefined;
+  const person = {
+    avatarUrl: facts?.avatarUrl,
+    email: facts?.email,
+    name: card.label,
+  };
+  if (person.email) {
+    return (
+      <PersonReference
+        className={ANCHOR_CLASS}
+        highlightSelf
+        label={`@${card.label}`}
+        person={person}
+      />
+    );
+  }
   return (
-    <PersonInline
-      highlightSelf
-      person={{
-        avatarUrl: facts?.avatarUrl,
-        email: facts?.email,
-        name: card.label,
-      }}
-    >
+    <PersonInline person={person}>
       <ObjectLinkPreview
         card={card}
         className={ANCHOR_CLASS}

@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useDashboardCoreData } from "../api";
@@ -6,6 +6,7 @@ import { peoplePath } from "../format";
 import type { Person } from "../person";
 import { cn } from "../styles";
 import { HoverPreview } from "./ui/hover-preview";
+import { PersonCard } from "./PersonCard";
 
 function initial(name: string): string {
   return (name.trim()[0] ?? "?").toUpperCase();
@@ -82,49 +83,6 @@ export function PersonInline(props: {
   );
 }
 
-/**
- * The card of one person: a large photo, the name, and a link to their
- * People page. `actions` holds buttons for this person, such as an invite.
- * It shows nothing that the reference beside it does not.
- */
-export function PersonCard(props: { actions?: ReactNode; person: Person }) {
-  const titleId = useId();
-  const { email, name } = props.person;
-  return (
-    <div
-      aria-labelledby={titleId}
-      className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
-      role="dialog"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <PersonPhoto
-          className="size-12 shrink-0 text-lg"
-          person={props.person}
-        />
-        <div className="grid min-w-0 gap-0.5">
-          <p
-            className="m-0 truncate text-base font-semibold leading-snug"
-            id={titleId}
-          >
-            {name}
-          </p>
-          {email ? (
-            <Link
-              className="w-fit text-xs text-dashboard-text-muted underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text focus-visible:outline-dashboard-focus"
-              to={peoplePath(email)}
-            >
-              View profile
-            </Link>
-          ) : null}
-        </div>
-      </div>
-      {props.actions ? (
-        <div className="flex flex-wrap gap-2">{props.actions}</div>
-      ) : null}
-    </div>
-  );
-}
-
 // A name reads as plain text until the reader hovers it.
 const NAME_CLASS = "text-inherit no-underline hover:underline";
 
@@ -170,7 +128,6 @@ export function PersonReference(props: {
       person={props.person}
     >
       <HoverPreview
-        className="w-72"
         content={<PersonCard actions={props.actions} person={props.person} />}
         tapToOpen
         trigger={
