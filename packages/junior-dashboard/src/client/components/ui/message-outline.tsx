@@ -21,11 +21,19 @@ const ITEM_PX = 8;
 const BAR_PX = { base: 6, active: 14, max: 24 };
 /** Items within this distance of the pointer grow, the nearest the most. */
 const GROW_RADIUS_ITEMS = 4;
+/** A press must move this far before it drags, so a click stays a click. */
+const DRAG_START_PX = 4;
+
+/** The first and last index of the items on screen, like a scrollbar thumb. */
+type MessageOutlineRange = { from: number; to: number };
 
 type MessageOutlineContextValue = {
   activeIndex: number;
+  inView: MessageOutlineRange | undefined;
+  itemCount: number;
   listRef: RefObject<HTMLOListElement | null>;
   movePointer(pointer: number | undefined): void;
+  onScrub: ((index: number) => void) | undefined;
   pointerRef: RefObject<number | undefined>;
   previewIndex: number | undefined;
   registerBar(index: number, bar: HTMLSpanElement | null): void;
@@ -48,14 +56,24 @@ function useMessageOutline(): MessageOutlineContextValue {
  * Frame a rail of message bars. The bar at `activeIndex` stands out. Bars
  * near the pointer grow like a dock, and the pointed item shows a preview.
  * Only the list takes the pointer, so the rail can lie over content.
+ *
+ * To stand in for a scrollbar, `inView` marks the items on screen like a
+ * thumb, and `onScrub` gets the item under a press that drags along the list.
  */
 function MessageOutline({
   activeIndex,
   children,
   className,
+  inView,
   itemCount,
+  onScrub,
   ...props
-}: ComponentProps<"nav"> & { activeIndex: number; itemCount: number }) {
+}: ComponentProps<"nav"> & {
+  activeIndex: number;
+  inView?: MessageOutlineRange | undefined;
+  itemCount: number;
+  onScrub?: ((index: number) => void) | undefined;
+}) {
   const listRef = useRef<HTMLOListElement>(null);
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   // The pointer position over the list, in items. Bars follow it on each
@@ -93,15 +111,18 @@ function MessageOutline({
     };
     return {
       activeIndex,
+      inView,
+      itemCount,
       listRef,
       movePointer,
+      onScrub,
       pointerRef,
       previewIndex,
       registerBar: (index, bar) => {
         barRefs.current[index] = bar;
       },
     };
-  }, [activeIndex, itemCount, previewIndex]);
+  }, [activeIndex, inView, itemCount, onScrub, previewIndex]);
 
   return (
     <MessageOutlineContext.Provider value={context}>
@@ -121,8 +142,14 @@ function MessageOutline({
  * its view while the pointer is away.
  */
 function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
-  const { activeIndex, listRef, movePointer, previewIndex } =
-    useMessageOutline();
+  const {
+    activeIndex,
+    itemCount,
+    listRef,
+    movePointer,
+    onScrub,
+    previewIndex,
+  } = useMessageOutline();
 
   useEffect(() => {
     const list = listRef.current;
@@ -146,6 +173,46 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
     // A tap is not a hover.
     if (event.pointerType === "touch") return;
     pointAt(event.currentTarget, event.clientY);
+    scrub(event);
+  };
+
+  // A press that drags scrubs: it picks the item under the pointer, like a
+  // scrollbar thumb. Touch keeps scrolling the list instead.
+  const dragRef = useRef<{
+    dragging: boolean;
+    index?: number;
+    pointerId: number;
+    startY: number;
+  }>(undefined);
+  const scrub = (event: PointerEvent<HTMLOListElement>) => {
+    const drag = dragRef.current;
+    if (!onScrub || drag?.pointerId !== event.pointerId) return;
+    const list = event.currentTarget;
+    if (!drag.dragging) {
+      if (Math.abs(event.clientY - drag.startY) < DRAG_START_PX) return;
+      drag.dragging = true;
+      // The list keeps the pointer outside its box, and the click that
+      // ends the drag goes to the list, not to an item.
+      list.setPointerCapture(event.pointerId);
+    }
+    // Past an end, the list scrolls by the distance, so a drag reaches
+    // items that the list does not show.
+    const rect = list.getBoundingClientRect();
+    if (event.clientY < rect.top) list.scrollTop -= rect.top - event.clientY;
+    if (event.clientY > rect.bottom) {
+      list.scrollTop += event.clientY - rect.bottom;
+    }
+    const y =
+      Math.min(Math.max(event.clientY, rect.top), rect.bottom - 1) -
+      rect.top +
+      list.scrollTop;
+    const index = Math.min(itemCount - 1, Math.floor(y / ITEM_PX));
+    if (index === drag.index) return;
+    drag.index = index;
+    onScrub(index);
+  };
+  const endDrag = () => {
+    dragRef.current = undefined;
   };
 
   return (
@@ -167,11 +234,24 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
           pointerYRef.current = undefined;
         }
       }}
+      onLostPointerCapture={endDrag}
+      onPointerCancel={endDrag}
+      onPointerDown={(event) => {
+        if (!onScrub || event.button !== 0 || event.pointerType === "touch") {
+          return;
+        }
+        dragRef.current = {
+          dragging: false,
+          pointerId: event.pointerId,
+          startY: event.clientY,
+        };
+      }}
       onPointerLeave={() => {
         pointerYRef.current = undefined;
         movePointer(undefined);
       }}
       onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
       onScroll={(event) => {
         if (pointerYRef.current !== undefined) {
           pointAt(event.currentTarget, pointerYRef.current);
@@ -189,16 +269,28 @@ function MessageOutlineItem({
   index,
   ...props
 }: Omit<ComponentProps<"button">, "children"> & { index: number }) {
-  const { activeIndex, movePointer, pointerRef, previewIndex, registerBar } =
-    useMessageOutline();
+  const {
+    activeIndex,
+    inView,
+    movePointer,
+    pointerRef,
+    previewIndex,
+    registerBar,
+  } = useMessageOutline();
   const active = index === activeIndex;
+  const shown = inView && index >= inView.from && index <= inView.to;
   return (
     <li data-slot="message-outline-item">
       <button
         aria-current={active ? "location" : undefined}
         data-highlighted={!active && index === previewIndex ? "" : undefined}
+        data-in-view={shown ? "" : undefined}
         className={cn(
           "group/message-outline-item flex h-[8px] w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring/55",
+          // The items on screen join into one thumb.
+          shown && "bg-dashboard-scrollbar-thumb",
+          shown && index === inView.from && "rounded-t-sm",
+          shown && index === inView.to && "rounded-b-sm",
           className,
         )}
         onFocus={() => movePointer(index)}

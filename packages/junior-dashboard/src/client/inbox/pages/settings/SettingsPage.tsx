@@ -43,6 +43,7 @@ import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings
 import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
+import { TranscriptScrollerSetting } from "../../../pages/settings/TranscriptScrollerSetting";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
 import { getDashboardAgentName } from "../../../agentName";
 
@@ -62,6 +63,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
+      <InterfaceSettings />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -147,13 +149,26 @@ function GeneralSettings({ identity }: SettingsPageProps) {
         </Card>
       </form>
       <ExperimentalUiSetting identity={identity} />
-      <ConversationStartSetting />
-      <ComposerAutocorrectSetting />
-      <InboxTabIconSetting />
-      <InboxMagnifySetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
+    </SettingsSection>
+  );
+}
+
+/** Group the choices for how the dashboard looks and works on this browser. */
+function InterfaceSettings() {
+  return (
+    <SettingsSection
+      anchor="interface"
+      description="These choices apply to this browser."
+      title="Interface"
+    >
+      <ConversationStartSetting />
+      <TranscriptScrollerSetting />
+      <ComposerAutocorrectSetting />
+      <InboxTabIconSetting />
+      <InboxMagnifySetting />
     </SettingsSection>
   );
 }
@@ -187,7 +202,7 @@ function ConversationStartSetting() {
       />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
         {getDashboardAgentName()} keeps your place in each conversation on all
-        your devices. This choice applies to this browser.
+        your devices.
       </p>
       <RadioGroup<ConversationStartPosition>
         aria-label="Open conversations at"
@@ -238,8 +253,7 @@ function ComposerAutocorrectSetting() {
           <FieldLabel htmlFor="composer-autocorrect">Autocorrect</FieldLabel>
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
-            type. This can change ids, paths, and code. This choice applies to
-            this browser.
+            type. This can change ids, paths, and code.
           </FieldDescription>
         </FieldContent>
       </Field>
@@ -269,8 +283,7 @@ function InboxTabIconSetting() {
             Show Inbox count on the tab icon
           </FieldLabel>
           <FieldDescription id="inbox-tab-icon-count-help">
-            The tab title shows the count either way. This choice applies to
-            this browser.
+            The tab title shows the count either way.
           </FieldDescription>
         </FieldContent>
       </Field>
@@ -301,7 +314,7 @@ function InboxMagnifySetting() {
           </FieldLabel>
           <FieldDescription id="inbox-magnify-help">
             Applies to compact and comfortable rows. Reduced motion turns it off
-            either way. This choice applies to this browser.
+            either way.
           </FieldDescription>
         </FieldContent>
       </Field>

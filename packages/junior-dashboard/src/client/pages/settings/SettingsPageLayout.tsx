@@ -9,6 +9,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 /** The Settings sections in page order. */
 const settingsSections = [
   { anchor: "general", label: "General" },
+  { anchor: "interface", label: "Interface" },
   { anchor: "api-tokens", label: "API Tokens" },
   { anchor: "identities", label: "Identities" },
   { anchor: "mcp", label: "MCP" },

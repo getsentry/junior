@@ -214,6 +214,13 @@ function row(transcript: Locator, seq: number) {
   return transcript.locator(`[data-transcript-seq="${seq}"]`);
 }
 
+// Headless Chrome hides every scrollbar, so read the style that hides it.
+function scrollbarHidden(transcript: Locator): Promise<boolean> {
+  return transcript.evaluate(
+    (element) => getComputedStyle(element).scrollbarWidth === "none",
+  );
+}
+
 // Rows that load above the reader leave the content below them unchanged, so
 // a held place keeps the same distance to the bottom.
 function distanceFromBottom(transcript: Locator): Promise<number> {
@@ -381,6 +388,9 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   // The outline lists every person message, not only the loaded page.
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
+  // By default the scrollbar stays, and the outline marks no thumb.
+  expect(await scrollbarHidden(transcript)).toBe(false);
+  await expect(outline.locator("button[data-in-view]")).toHaveCount(0);
 
   const item = outline.getByRole("button", {
     name: "Transcript message 1234 with",
@@ -399,6 +409,56 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
+test("scrolls with the outline instead of the scrollbar", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/settings#scroll-conversations-with`);
+  await page.getByRole("radio", { name: "Outline" }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  await expect.poll(() => scrollbarHidden(transcript)).toBe(true);
+  // The items on screen form a thumb that holds the active item.
+  const thumb = outline.locator("button[data-in-view]");
+  await expect(thumb.first()).toHaveAttribute("aria-current", "location");
+
+  // The wheel still scrolls the transcript.
+  const before = await transcript.evaluate((element) => element.scrollTop);
+  await transcript.hover();
+  await page.mouse.wheel(0, -600);
+  await expect
+    .poll(() => transcript.evaluate((element) => element.scrollTop))
+    .toBeLessThan(before);
+
+  // A drag up the list moves the transcript to the item under the pointer,
+  // through the pages that are not loaded.
+  const active = outline.locator("button[aria-current]");
+  const startSeq = Number(
+    /message (\d+) /.exec((await active.getAttribute("aria-label"))!)![1],
+  );
+  const target = outline.getByRole("button", {
+    name: `Transcript message ${startSeq - 100} with`,
+  });
+  await active.dragTo(target, { steps: 20 });
+  await expect(target).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, startSeq - 100)).toBeInViewport();
+  expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+
+  // Where the outline hides, the scrollbar comes back.
+  await page.setViewportSize({ height: 900, width: 900 });
+  await expect(outline).toBeHidden();
+  await expect.poll(() => scrollbarHidden(transcript)).toBe(false);
 });
 
 test("points at the outline item under a still pointer while the list scrolls", async ({
