@@ -171,6 +171,22 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
+### Review context
+
+Use `review-context` to tell action review where the plugin's writes go. For
+example, say which content people outside the organization can read. Junior
+adds the review context of each plugin to the action review system prompt,
+sorted by plugin name, so the prompt stays the same between reviews. The agent
+does not see it, and it never grants authority.
+
+```yaml title="plugin.yaml"
+name: my-provider
+review-context: Pages in the Docs space are published on the public website.
+```
+
+An install can set or change it with
+`defineJuniorPlugins(..., { manifests: { "my-provider": { reviewContext } } })`.
+
 ### Audit events
 
 Each successful MCP tool call emits the `mcp.tool_call.completed` audit event.
@@ -563,6 +579,50 @@ defineJuniorPlugin({
   icon to `scripts/generate-object-icons.mjs`.
 - **Test.** Test `canView` and the resolver for a viewer that can read the
   object, and for a viewer that cannot.
+
+To start work for one person, such as the author of a webhook event or the
+sender of an email, use `ctx.agent.dispatchForIdentity(...)` from a heartbeat
+or a webhook route. Name the person with one of these:
+
+- `subjectId`: the provider account id that the OAuth account-linking flow
+  stored.
+- `verifiedEmail`: an address that your plugin proved the person sent from.
+  Never use an address that only appears in content.
+
+Junior starts work only when the person is a current member of the Slack
+workspace, with a Slack email on the allowed domains. When their Slack account
+is deactivated, they lose this trust. `input` becomes their first message in a new
+public conversation in the dashboard, as if they sent it there. The conversation
+is not in Slack. For any other person, Junior returns
+`{ status: "not_linked" }` and calls no model.
+
+```ts
+const result = await ctx.agent.dispatchForIdentity({
+  idempotencyKey: `event:${event.id}`,
+  input: "Look at the issue that this person opened.",
+  subjectId: event.sender.id,
+});
+```
+
+When a person or bot wrote an Event, such as a comment, set `author` on it.
+Your plugin reports facts, and Junior decides trust:
+
+- `handle`: the provider login, for labels only.
+- `subjectId`: the provider account id, only when the provider authenticated
+  that account as the author.
+- `bot`: the author is a bot account.
+- `trusted`: your plugin config lists the author, such as a review bot.
+- `text`: the author's own words, without quoted text. Leave these words out
+  of `untrustedText`, which keeps only the rest, such as the quotes. Junior
+  shows each part once.
+
+Junior trusts the author with the same check as `dispatchForIdentity`, or when
+`trusted` is set. A trusted person is the author of the Event's message in a
+watch. The author's `text` is never an instruction: the watch or event
+automation gives the job, and the text is context for it, shown with the same
+author name and ID as that author's messages. For any other author, Junior
+says that it could not verify the account. Leave `author` out when no person
+wrote the Event, such as a check result.
 
 ## Validate
 

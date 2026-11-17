@@ -38,7 +38,7 @@
     "review-item-answer": ["id"]
   },
   "packages/junior/src/chat/services/conversation-memory.ts": {
-    "message": ["actor_id", "author", "index", "role", "slack_ts", "ts"]
+    "message": ["author_id", "author_name", "index", "role", "slack_ts", "ts"]
   },
   "packages/junior/src/chat/services/subscribed-decision.ts": {
     "truncated": ["omitted_approx_tokens"]
@@ -48,7 +48,7 @@
   },
   "packages/junior/src/chat/task-input.ts": {
     "event": ["index", "type"],
-    "external-text": ["source"],
+    "message": ["author_id", "author_name", "source"],
     "task": ["about", "event"],
     "watch": ["about"]
   }

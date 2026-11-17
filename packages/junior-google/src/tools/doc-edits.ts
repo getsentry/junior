@@ -113,6 +113,7 @@ async function requireRequesterCanEdit(
   const domain = emailDomain(requester);
   let pageToken: string | undefined;
   for (let page = 0; page < MAX_PERMISSION_PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Each page needs the page token from the page before.
     const response = await googleFileRequest(ctx, ref, {
       operation: "google.drive.permissions.list",
       path: `/drive/v3/files/${ref.fileId}/permissions`,

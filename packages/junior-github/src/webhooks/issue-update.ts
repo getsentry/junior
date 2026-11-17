@@ -8,15 +8,14 @@ import { gitHubRepositoryResource } from "../events/repository.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import {
   definedValues,
-  gitHubDoneBy,
+  gitHubEventAuthor,
   gitHubEventKey,
-  gitHubSenderData,
   gitHubSenderSchema,
+  type GitHubAuthorOptions,
   nonBlank,
   providerTime,
   titleAndBodyText,
 } from "./event-targets.js";
-import { isBotLogin } from "./ownership.js";
 
 // Other `issues` actions, such as `opened`, fail this schema and fall through
 // to the issue lifecycle normalizer.
@@ -92,14 +91,15 @@ function describeIssueUpdate(delivery: IssueUpdateWebhook): {
 export function normalizeIssueUpdateEvents(
   deliveryId: string,
   body: unknown,
-  botEmail: string | undefined,
+  authors: GitHubAuthorOptions,
 ): EventInput[] | undefined {
   const parsed = issueUpdateWebhookSchema.safeParse(body);
   if (!parsed.success) return undefined;
   const update = describeIssueUpdate(parsed.data);
   const { action, label, sender } = parsed.data;
   const doneBy = sender?.login;
-  if (isBotLogin(doneBy, botEmail)) return [];
+  const changedBy = gitHubEventAuthor({ login: doneBy, sender }, authors);
+  if (changedBy.isSelf) return [];
 
   const input = {
     number: parsed.data.issue.number,
@@ -118,7 +118,7 @@ export function normalizeIssueUpdateEvents(
     occurredAtMs: providerTime(parsed.data.issue.updated_at) ?? Date.now(),
     identifier: resource.identifier,
     trustedSummary: `${issue.label} was ${update.change}${doneBy ? ` by ${doneBy}` : ""}.`,
-    ...gitHubDoneBy(doneBy),
+    ...(changedBy.author ? { author: changedBy.author } : undefined),
     // `change` and `label` let an automation select one label change in code,
     // so the model does not decide from untrusted text.
     data: definedValues({
@@ -126,7 +126,7 @@ export function normalizeIssueUpdateEvents(
       issue: input.number,
       change: action,
       label: label?.name.toLowerCase(),
-      ...gitHubSenderData(sender),
+      ...changedBy.data,
     }),
     ...(untrustedText ? { untrustedText } : undefined),
   }));

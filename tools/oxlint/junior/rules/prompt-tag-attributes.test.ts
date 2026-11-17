@@ -19,6 +19,7 @@ const filename = path.join(REPO_ROOT, FILE);
 const baseline = {
   [FILE]: {
     "agent-result": ["source", "status"],
+    message: ["author_id", "author_name"],
     "*": ["for"],
   },
 };
@@ -27,6 +28,8 @@ const options = [{ baseline }];
 const allWritten = [
   `renderTag("agent-result", { source: s, status: t }, lines);`,
   `renderTag(tag, { for: sender }, lines);`,
+  // A helper with fixed attributes counts as its attribute names.
+  `renderTag("message", { ...authorAttrs(author) }, lines);`,
 ].join("\n");
 
 new RuleTester({
@@ -41,6 +44,7 @@ new RuleTester({
         `renderInlineTag(RESULT_TAG, text, { status: t });`,
         `renderTag("task", {}, lines);`,
         `renderEmptyTag(name, {});`,
+        `openingTag("runtime-turn-context");`,
       ].join("\n"),
       filename,
       options,
@@ -71,13 +75,25 @@ new RuleTester({
       errors: [{ messageId: "newAttribute" }],
     },
     {
+      code: `${allWritten}\nopeningTag("plan-delta", { version: 3 });`,
+      filename,
+      options,
+      errors: [{ messageId: "newAttribute" }],
+    },
+    {
+      code: `${allWritten}\nrenderTag("task", { ...authorAttrs(author) }, lines);`,
+      filename,
+      options,
+      errors: [{ messageId: "newAttribute" }, { messageId: "newAttribute" }],
+    },
+    {
       code: `${allWritten}\nrenderTag("plan-delta", { version: 3 }, lines);`,
       filename,
       options,
       errors: [{ messageId: "newAttribute" }],
     },
     {
-      code: `renderTag("agent-result", { source: s }, lines);\nrenderTag(tag, { for: x }, lines);`,
+      code: `renderTag("agent-result", { source: s }, lines);\nrenderTag(tag, { for: x }, lines);\nrenderTag("message", { ...authorAttrs(a) }, lines);`,
       filename,
       options,
       errors: [{ messageId: "staleAttribute" }],

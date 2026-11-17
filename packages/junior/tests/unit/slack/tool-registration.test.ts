@@ -397,7 +397,7 @@ describe("Slack tool registration", () => {
     const tools = createTools(
       [],
       {
-        writeGeneratedArtifacts: async () => [],
+        writeGeneratedFiles: async () => [],
       },
       ctx(),
     );

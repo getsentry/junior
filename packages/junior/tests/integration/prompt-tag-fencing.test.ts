@@ -83,12 +83,25 @@ describe("prompt tag fencing", () => {
         ),
       ],
       [
-        "external-text",
+        "task",
         renderTaskInput({
           instructions: "Triage the issue.",
           event: "issue.created",
           source: "github",
-          externalText: payload("external-text"),
+          externalText: payload("task"),
+        }),
+      ],
+      [
+        "message",
+        renderTaskInput({
+          instructions: "Triage the issue.",
+          event: "issue.created",
+          source: "github",
+          authorText: {
+            authorName: "octocat",
+            text: payload("message"),
+            verified: false,
+          },
         }),
       ],
       [

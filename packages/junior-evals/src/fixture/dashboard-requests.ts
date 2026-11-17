@@ -25,6 +25,7 @@ export async function uploadWebFiles(
   },
 ): Promise<string[]> {
   const ids: string[] = [];
+  /* oxlint-disable no-await-in-loop -- Upload in order, so upload ids keep a stable order across recorded runs. */
   for (const file of message.files) {
     if (!file.content) throw new Error(`File ${file.name} needs content`);
     const response = await api.request(
@@ -64,6 +65,7 @@ export async function uploadWebFiles(
     if (!write.ok) throw new Error(`Upload write returned ${write.status}`);
     ids.push(uploadId);
   }
+  /* oxlint-enable no-await-in-loop */
   return ids;
 }
 

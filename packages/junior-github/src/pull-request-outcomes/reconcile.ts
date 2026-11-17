@@ -180,6 +180,7 @@ async function reconcileRepository(
   ) {
     const { databaseId, nameWithOwner, ...pullRequests } =
       lifecyclesResponseSchema.parse(
+        // oxlint-disable-next-line no-await-in-loop -- The sweep sends one GitHub query at a time, under rate limits.
         await args.loadLifecycles({
           numbers: numbers.slice(start, start + PULL_REQUESTS_PER_QUERY),
           repositoryId,
@@ -187,89 +188,103 @@ async function reconcileRepository(
       ).data.repository;
     for (const pullRequest of Object.values(pullRequests)) {
       if (!pullRequest) continue;
-      if (pullRequest.state === "OPEN") {
-        if (pullRequest.isDraft !== drafts.get(pullRequest.number)) {
-          // The draft write also records the current title.
-          await reconcileDraft(
-            args,
-            { databaseId, nameWithOwner },
-            pullRequest,
-          );
-          continue;
-        }
-        // Rows from before the code index stored titles have none, and no
-        // lifecycle webhook arrives for a title edit. Write the title from
-        // this read. No conversation ids keeps the linked ones.
-        await args.codeChanges.record(
-          githubCodeChange(
-            {
-              candidateOwned: false,
-              draft: pullRequest.isDraft,
-              number: pullRequest.number,
-              openedAt: new Date(pullRequest.createdAt),
-              pullRequestId: String(pullRequest.databaseId),
-              repositoryFullName: nameWithOwner,
-              repositoryId: String(databaseId),
-              state: "open",
-              title: pullRequest.title,
-              updatedAt: new Date(pullRequest.updatedAt),
-            },
-            [],
-          ),
-        );
-        continue;
-      }
-      const body = webhookBody(
-        "closed",
+      // oxlint-disable-next-line no-await-in-loop -- The sweep reads GitHub for one pull request at a time, under rate limits.
+      await reconcilePullRequest(
+        args,
         { databaseId, nameWithOwner },
         pullRequest,
+        drafts,
       );
-      const outcome = normalizeGitHubPullRequestOutcome({
-        body,
-        botEmail: args.botEmail,
-      });
-      if (!outcome) continue;
-      // Publish before the write. When the publish fails, the row stays open
-      // and the next reconcile tries again. The events have the key of the
-      // webhook events for this close, so a Watch gets the close once.
-      // Like the webhook, a merge names the people involved.
-      const events = await withGitHubPullRequestPeople({
-        body,
-        deliveryId: "reconcile",
-        events: gitHubPullRequestTerminalEvents(body),
-        hasMatch: args.events.hasMatch,
-        load: async (target) =>
-          await loadGitHubPullRequestPeople({
-            logins: target.logins,
-            loadPage: await args.loadCommitPages(target),
-          }),
-        log: args.log,
-      });
-      for (const event of events) {
-        await args.events.publish({ ...event, objectType: "code_change" });
-      }
-      // No webhook closed the merge conflict notice either. Like the
-      // publish, a failed close keeps the row open for the next reconcile.
-      await closeGitHubConflictNotice({
-        db: args.db,
-        ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
-        reviewItems: args.reviewItems,
-        ...(pullRequest.merged
-          ? { reason: "The pull request merged.", status: "done" }
-          : {
-              reason: "The pull request closed without merging.",
-              status: "dismissed",
-            }),
-      });
-      await applyGitHubPullRequestOutcome({
-        annotations: args.annotations,
-        codeChanges: args.codeChanges,
-        db: args.db,
-        log: args.log,
-        outcome,
-      });
     }
   }
+}
+
+/** Write the GitHub state of one stored pull request. */
+async function reconcilePullRequest(
+  args: ReconcileArgs,
+  { databaseId, nameWithOwner }: { databaseId: number; nameWithOwner: string },
+  pullRequest: z.output<typeof lifecycleSchema>,
+  /** The stored draft state of each pull request number. */
+  drafts: Map<number, boolean>,
+): Promise<void> {
+  if (pullRequest.state === "OPEN") {
+    if (pullRequest.isDraft !== drafts.get(pullRequest.number)) {
+      // The draft write also records the current title.
+      await reconcileDraft(args, { databaseId, nameWithOwner }, pullRequest);
+      return;
+    }
+    // Rows from before the code index stored titles have none, and no
+    // lifecycle webhook arrives for a title edit. Write the title from
+    // this read. No conversation ids keeps the linked ones.
+    await args.codeChanges.record(
+      githubCodeChange(
+        {
+          candidateOwned: false,
+          draft: pullRequest.isDraft,
+          number: pullRequest.number,
+          openedAt: new Date(pullRequest.createdAt),
+          pullRequestId: String(pullRequest.databaseId),
+          repositoryFullName: nameWithOwner,
+          repositoryId: String(databaseId),
+          state: "open",
+          title: pullRequest.title,
+          updatedAt: new Date(pullRequest.updatedAt),
+        },
+        [],
+      ),
+    );
+    return;
+  }
+  const body = webhookBody(
+    "closed",
+    { databaseId, nameWithOwner },
+    pullRequest,
+  );
+  const outcome = normalizeGitHubPullRequestOutcome({
+    body,
+    botEmail: args.botEmail,
+  });
+  if (!outcome) return;
+  // Publish before the write. When the publish fails, the row stays open
+  // and the next reconcile tries again. The events have the key of the
+  // webhook events for this close, so a Watch gets the close once.
+  // Like the webhook, a merge names the people involved.
+  const events = await withGitHubPullRequestPeople({
+    body,
+    deliveryId: "reconcile",
+    events: gitHubPullRequestTerminalEvents(body),
+    hasMatch: args.events.hasMatch,
+    load: async (target) =>
+      await loadGitHubPullRequestPeople({
+        logins: target.logins,
+        loadPage: await args.loadCommitPages(target),
+      }),
+    log: args.log,
+  });
+  for (const event of events) {
+    // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
+    await args.events.publish({ ...event, objectType: "code_change" });
+  }
+  // No webhook closed the merge conflict notice either. Like the
+  // publish, a failed close keeps the row open for the next reconcile.
+  await closeGitHubConflictNotice({
+    db: args.db,
+    ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
+    reviewItems: args.reviewItems,
+    ...(pullRequest.merged
+      ? { reason: "The pull request merged.", status: "done" }
+      : {
+          reason: "The pull request closed without merging.",
+          status: "dismissed",
+        }),
+  });
+  await applyGitHubPullRequestOutcome({
+    annotations: args.annotations,
+    codeChanges: args.codeChanges,
+    db: args.db,
+    log: args.log,
+    outcome,
+  });
 }
 
 /**
@@ -304,6 +319,7 @@ export async function reconcileGitHubPullRequests(
     if (reconciled >= REPOSITORY_LIMIT) break;
     // Claim before the GitHub reads. A failed reconcile, such as one that
     // GitHub rate limits, runs again when the claim ends.
+    // oxlint-disable-next-line no-await-in-loop -- Claim and reconcile one repository at a time, up to REPOSITORY_LIMIT.
     const claimed = await args.state.setIfNotExists(
       `pull-request-reconcile:${repositoryId}`,
       args.nowMs,
@@ -312,6 +328,7 @@ export async function reconcileGitHubPullRequests(
     if (!claimed) continue;
     reconciled += 1;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Claim and reconcile one repository at a time, up to REPOSITORY_LIMIT.
       await reconcileRepository(args, Number(repositoryId), drafts);
     } catch (error) {
       if (error instanceof GitHubRepositoryUnreachableError) {

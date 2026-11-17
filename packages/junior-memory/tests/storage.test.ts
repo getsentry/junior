@@ -66,7 +66,7 @@ const memoryState: PluginState = {
     return true;
   },
   async withLock(_key, _ttlMs, callback) {
-    return await callback();
+    return { acquired: true, value: await callback() };
   },
 };
 
@@ -78,6 +78,7 @@ function memoryHeartbeatContext(args: {
   return {
     agent: {
       dispatch: vi.fn(),
+      dispatchForIdentity: vi.fn(),
       get: vi.fn(),
     },
     annotations: { forConversation: vi.fn() },
@@ -121,7 +122,7 @@ function createMemoryState(): PluginState {
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
-      return await callback();
+      return { acquired: true, value: await callback() };
     },
   };
 }

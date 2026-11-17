@@ -31,6 +31,23 @@ const RUNTIME_INPUT_TAGS = [
   "relayed-review-item-dismissed",
 ] as const;
 
+/** Who wrote a block: a usable ID when there is one, and a display name. */
+export interface TagAuthor {
+  authorId?: string;
+  authorName?: string;
+}
+
+/**
+ * Return the author attributes of a tag. Every block that shows who wrote
+ * it, such as a person's message, a thread Message, or an Event author's
+ * text, uses these, so one author always looks the same to the model.
+ */
+export function authorAttrs(
+  author: TagAuthor | undefined,
+): PromptTagAttributes {
+  return { author_id: author?.authorId, author_name: author?.authorName };
+}
+
 /**
  * Render text that someone other than the runtime or a person in this Turn
  * wrote, such as agent output or provider text. The tag names what it is and

@@ -1,4 +1,11 @@
-import { date, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  date,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+} from "drizzle-orm/pg-core";
 
 /**
  * Daily named counters used by Junior and loaded plugins.
@@ -12,7 +19,11 @@ export const juniorStats = pgTable(
     namespace: text("namespace").notNull(),
     metric: text("metric").notNull(),
     name: text("name").notNull(),
-    count: integer("count").notNull().default(0),
+    // A bigint, so a money counter in micro-USD does not overflow in a day.
+    count: bigint("value", { mode: "number" }).notNull().default(0),
+    // TODO: drop in the release after micro-USD. Only the runtime before it
+    // adds to this integer column, and a repair migration moves its amounts.
+    legacyCount: integer("count").notNull().default(0),
   },
   (table) => [
     primaryKey({

@@ -103,6 +103,8 @@ const TEST_EGRESS = {
   },
 };
 
+const dispatchForIdentity = async () => ({ status: "not_linked" as const });
+
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -1172,7 +1174,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async (_event: Event) => {});
-      const routes = getPluginRoutes({ events: { publish } });
+      const routes = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1228,7 +1233,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1294,7 +1302,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1329,6 +1340,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1363,6 +1375,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1402,6 +1415,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(

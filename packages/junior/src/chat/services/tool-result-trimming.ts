@@ -113,9 +113,9 @@ export function trimToolResults<T extends TrimmableEntry>(
   entries: T[],
 ): { entries: T[]; trimming: ToolResultTrimming } {
   let latestInstructionIndex = -1;
-  entries.forEach((entry, index) => {
+  for (const [index, entry] of entries.entries()) {
     if (hasTurnInput(entry.message)) latestInstructionIndex = index;
-  });
+  }
   const trimming: ToolResultTrimming = { trimmedResults: 0, removedChars: 0 };
   const trimmed = entries.map((entry, index) => {
     if (

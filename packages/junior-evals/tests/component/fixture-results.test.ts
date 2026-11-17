@@ -19,6 +19,7 @@ describe("failed call reporting", () => {
           events: [
             { type: "message", role: "user", content: "Earlier request" },
           ],
+          turns: [],
         },
       ],
       error: new Error("The agent was not idle within 60 seconds"),

@@ -6,13 +6,13 @@ const {
   createSandboxMock,
   executeSandboxToolMock,
   executeCustomCommandMock,
-  writeGeneratedArtifactsMock,
+  writeGeneratedFilesMock,
 } = vi.hoisted(() => ({
   captureRepositoryInstructionsMock: vi.fn(),
   createSandboxMock: vi.fn(),
   executeSandboxToolMock: vi.fn(),
   executeCustomCommandMock: vi.fn(),
-  writeGeneratedArtifactsMock: vi.fn(),
+  writeGeneratedFilesMock: vi.fn(),
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
@@ -27,8 +27,8 @@ vi.mock("@/chat/discovery", () => ({
   listReferenceFiles: () => ["/tmp/reference.md"],
 }));
 
-vi.mock("@/chat/tools/sandbox/generated-artifacts", () => ({
-  writeSandboxGeneratedArtifacts: writeGeneratedArtifactsMock,
+vi.mock("@/chat/tools/sandbox/generated-files", () => ({
+  writeSandboxGeneratedFiles: writeGeneratedFilesMock,
 }));
 
 import {
@@ -223,18 +223,18 @@ describe("createAgentSandbox", () => {
 
   it("forwards ordinary tools and generated artifacts", async () => {
     executeSandboxToolMock.mockResolvedValue({ cwd: "/workspace" });
-    writeGeneratedArtifactsMock.mockResolvedValue([{ path: "/tmp/file.txt" }]);
+    writeGeneratedFilesMock.mockResolvedValue([{ path: "/tmp/file.txt" }]);
     const sandbox = createAgentSandbox(options());
     const call = { toolName: "bash", input: { command: "pwd" } };
 
     await expect(sandbox.tools.execute(call)).resolves.toEqual({
       cwd: "/workspace",
     });
-    await expect(sandbox.writeGeneratedArtifacts([])).resolves.toEqual([
+    await expect(sandbox.writeGeneratedFiles([])).resolves.toEqual([
       { path: "/tmp/file.txt" },
     ]);
 
     expect(executeSandboxToolMock).toHaveBeenCalledWith(call);
-    expect(writeGeneratedArtifactsMock).toHaveBeenCalledWith(workspace, []);
+    expect(writeGeneratedFilesMock).toHaveBeenCalledWith(workspace, []);
   });
 });

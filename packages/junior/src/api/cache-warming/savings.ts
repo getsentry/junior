@@ -1,5 +1,10 @@
-import { SAVINGS_NAMESPACE, savingsTotals } from "@/chat/cache-warming/savings";
-import { readStats, type Stat } from "@/stats";
+import {
+  SAVINGS_NAMESPACE,
+  savingsTotals,
+  type SavingsTotals,
+} from "@/chat/cache-warming/savings";
+import { microUsdToUsd } from "@/db/micro-usd";
+import { readStats } from "@/stats";
 import {
   cacheWarmingSavingsReportSchema,
   type CacheWarmingSavingsReport,
@@ -7,9 +12,23 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-function savings(stats: readonly Stat[]) {
-  const { historyDays: _, ...totals } = savingsTotals(stats);
-  return totals;
+// Dollar fields of the report, converted once from micro-USD.
+function savingsUsd(totals: SavingsTotals) {
+  return {
+    hits: totals.hits,
+    idlePeriods: totals.idlePeriods,
+    oracleSavingsUsd: microUsdToUsd(totals.oracleSavingsMicroUsd),
+    savedUsd: microUsdToUsd(totals.savedMicroUsd),
+    unwarmedIdlePeriods: totals.unwarmedIdlePeriods,
+    unwarmedOracleSavingsUsd: microUsdToUsd(
+      totals.unwarmedOracleSavingsMicroUsd,
+    ),
+    warmupCostUsd: microUsdToUsd(totals.warmupCostMicroUsd),
+  };
+}
+
+function netSavingsUsd(totals: SavingsTotals): number {
+  return microUsdToUsd(totals.savedMicroUsd - totals.warmupCostMicroUsd);
 }
 
 /**
@@ -34,28 +53,27 @@ export async function readCacheWarmingSavings(
         0,
     ),
   );
-  const known = savings(
+  const known = savingsTotals(
     stats.filter((stat) => !unknownCostDates.has(stat.date)),
   );
-  const netSavingsUsd = known.savedUsd - known.warmupCostUsd;
+  const knownNetSavingsUsd = netSavingsUsd(known);
+  const knownOracleSavingsUsd = microUsdToUsd(known.oracleSavingsMicroUsd);
   return cacheWarmingSavingsReportSchema.parse({
     days: dates.map((date) => {
-      const day = savings(stats.filter((stat) => stat.date === date));
+      const day = savingsTotals(stats.filter((stat) => stat.date === date));
       return {
         date,
-        ...day,
-        netSavingsUsd: unknownCostDates.has(date)
-          ? null
-          : day.savedUsd - day.warmupCostUsd,
+        ...savingsUsd(day),
+        netSavingsUsd: unknownCostDates.has(date) ? null : netSavingsUsd(day),
       };
     }),
     totals: {
-      ...savings(stats),
-      netSavingsUsd,
-      knownCostOracleSavingsUsd: known.oracleSavingsUsd,
+      ...savingsUsd(savingsTotals(stats)),
+      netSavingsUsd: knownNetSavingsUsd,
+      knownCostOracleSavingsUsd: knownOracleSavingsUsd,
       effectiveness:
-        known.oracleSavingsUsd > 0
-          ? netSavingsUsd / known.oracleSavingsUsd
+        knownOracleSavingsUsd > 0
+          ? knownNetSavingsUsd / knownOracleSavingsUsd
           : null,
       unknownCostDays: unknownCostDates.size,
     },

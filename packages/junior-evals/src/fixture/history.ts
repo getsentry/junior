@@ -21,6 +21,7 @@ import { projectConversationMessages } from "@/chat/conversations/message-projec
 import {
   commitAcceptedReply,
   commitMessages,
+  loadConversationProjection,
   recordToolExecutionStarted,
 } from "@/chat/conversations/projection";
 import {
@@ -442,10 +443,15 @@ function slackInputText(text: string): string {
   }).text;
 }
 
-/** Write `items` as earlier turns. Return the last event sequence. */
+/**
+ * Write `items` as earlier turns. Return the last event sequence. In a
+ * Conversation that already started, the turns follow its current agent
+ * history, as later real turns would.
+ */
 export async function loadHistory(args: {
   api: RequestApp;
   conversation: LoadedConversation;
+  started: boolean;
   items: HistoryItem[] | RecordedConversation;
   replyMessages: WeakMap<HistoryReply, string>;
   slack: SlackMock;
@@ -454,6 +460,7 @@ export async function loadHistory(args: {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
   if (isRecordedConversation(args.items)) {
+    if (args.started) throw new Error("A recording starts a Conversation");
     return await loadRecording({ ...args, recording: args.items });
   }
   const { appMessages, turns } = groupTurns(args.items);
@@ -475,21 +482,31 @@ export async function loadHistory(args: {
   }
   // Junior has no rows for a thread that only apps posted in.
   if (turns.length === 0) return BEFORE_FIRST_EVENT;
-  // Earlier turns happened before the call, one millisecond apart.
-  let clockMs = Date.now() - args.items.length - 1;
+  // Agent history commits take the full history, not only new messages.
+  const current = args.started
+    ? await loadConversationProjection({ conversationId })
+    : undefined;
+  // Earlier turns happened before the call, one millisecond apart, and after
+  // the turns that the Conversation already has.
+  let clockMs = Math.max(
+    Date.now() - args.items.length - 1,
+    current?.messages.at(-1)?.timestamp ?? 0,
+  );
   const tick = () => (clockMs += 1);
-  await recordRoot(conversation, tick(), turns[0]?.input);
+  if (!args.started) await recordRoot(conversation, tick(), turns[0]?.input);
   const lifecycle = getTurnLifecycle();
   const state = coerceThreadConversationState({});
-  // Agent history commits take the full history, not only new messages.
-  const agentHistory: PiMessage[] = [];
-  const agentProvenance: ConversationMessageProvenance[] = [];
+  const agentHistory: PiMessage[] = [...(current?.messages ?? [])];
+  const agentProvenance: ConversationMessageProvenance[] = [
+    ...(current?.provenance ?? []),
+  ];
 
+  /* oxlint-disable no-await-in-loop -- History replays each Turn in order, like a real Conversation. */
   for (const [index, turn] of turns.entries()) {
     const message = await historyUserMessage({
       conversation,
       createdAtMs: tick(),
-      first: index === 0 && appMessages.length === 0,
+      first: index === 0 && appMessages.length === 0 && !args.started,
       input: turn.input,
       slack: args.slack,
     });
@@ -629,6 +646,7 @@ export async function loadHistory(args: {
       turnId,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   if (
     conversation.surface === "slack" &&

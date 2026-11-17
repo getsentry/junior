@@ -32,6 +32,7 @@ const COMPUTED_TAG = "*";
 // Index of the attributes argument of each tag writer.
 const WRITERS = new Map([
   ["renderEmptyTag", 1],
+  ["openingTag", 1],
   ["renderInlineTag", 2],
   ["renderTag", 1],
   ["renderUntrustedTag", 1],
@@ -72,10 +73,30 @@ function stringConstants(program: ESTree.Program): Map<string, string> {
   return constants;
 }
 
+// Helpers that return a fixed set of attributes, which a writer call spreads
+// in, such as `{ ...authorAttrs(author), slack_ts }`.
+const ATTRIBUTE_HELPERS = new Map([
+  ["authorAttrs", ["author_id", "author_name"]],
+]);
+
+function spreadAttributeNames(node: ESTree.SpreadElement) {
+  const argument = node.argument;
+  if (argument.type !== "CallExpression") return undefined;
+  return argument.callee.type === "Identifier"
+    ? ATTRIBUTE_HELPERS.get(argument.callee.name)
+    : undefined;
+}
+
 function attributeNames(node: ESTree.ObjectExpression) {
   const names: string[] = [];
   for (const property of node.properties) {
-    if (property.type !== "Property" || property.computed) return undefined;
+    if (property.type === "SpreadElement") {
+      const spread = spreadAttributeNames(property);
+      if (spread === undefined) return undefined;
+      names.push(...spread);
+      continue;
+    }
+    if (property.computed) return undefined;
     const key = property.key;
     if (key.type === "Identifier") names.push(key.name);
     else if (key.type === "Literal" && typeof key.value === "string") {

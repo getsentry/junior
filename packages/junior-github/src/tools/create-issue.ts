@@ -9,6 +9,8 @@ import {
   subscribableResourceSchema,
   type SubscribableResource,
   type PluginToolExecuteOptions,
+  type WatchResult,
+  watchResultSchema,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
@@ -17,10 +19,11 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { gitHubIssueSubscribable } from "../events/issue.js";
+import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   resolveGitHubRequester,
+  startedByPerson,
 } from "../tool-support/attribution.js";
 import {
   githubApi,
@@ -118,7 +121,9 @@ interface GitHubIssueResult {
 }
 
 interface GitHubIssueData extends GitHubIssueResult {
+  note?: string;
   subscribable?: SubscribableResource;
+  subscription?: WatchResult;
 }
 
 interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
@@ -126,8 +131,10 @@ interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
 }
 
 const gitHubIssueDataSchema = z.object({
+  note: z.string().optional(),
   number: z.number(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
   url: z.string(),
 });
 
@@ -137,21 +144,33 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
-function gitHubIssueToolResult(
+/**
+ * Next step after an issue is created. Whether Junior does the work is the
+ * requester's decision, so the note asks for a Review item. Only a Turn that
+ * a person started gets it: no one can answer the item in other runs.
+ */
+function implementIssueNote(issue: string): string {
+  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use addReviewItem: question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now", dedupe_key "github-issue-implement:${issue}". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with spawnAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
+}
+
+async function gitHubIssueToolResult(
+  ctx: ToolRegistrationHookContext,
   input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
-  canSubscribe: boolean,
-): GitHubIssueToolResult {
+): Promise<GitHubIssueToolResult> {
   const repo = parseRepo(input.repo);
-  const subscribable = gitHubIssueSubscribable({
-    canSubscribe,
+  const repoName = `${repo.owner}/${repo.name}`;
+  const watch = await watchGitHubIssue(ctx, {
     number: result.number,
-    repo: `${repo.owner}/${repo.name}`,
+    repo: repoName,
   });
   const data = {
+    ...(startedByPerson(ctx)
+      ? { note: implementIssueNote(`${repoName}#${result.number}`) }
+      : undefined),
     number: result.number,
     url: result.url,
-    ...(subscribable ? { subscribable } : undefined),
+    ...watch,
   };
   return {
     objectAnnotations: [
@@ -233,7 +252,6 @@ async function createGitHubIssueRequest(
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(
         input.body ?? "",
-        ctx,
         await resolveGitHubRequester(ctx),
       ),
       conversationId,
@@ -297,7 +315,7 @@ export const gitHubIssueTool = definePluginTool({
     const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
     const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
     const key = `createIssue:${conversationId}:${toolCallId}`;
-    return await ctx.state.withLock(
+    const attempt = await ctx.state.withLock(
       `${key}:lock`,
       GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
       async () => {
@@ -314,10 +332,10 @@ export const gitHubIssueTool = definePluginTool({
             number: state.number,
             url: state.url,
           };
-          return gitHubIssueToolResult(
+          return await gitHubIssueToolResult(
+            ctx,
             completedInput,
             completedResult,
-            ctx.events.canSubscribe,
           );
         }
         if (state?.status === "pending") {
@@ -356,11 +374,7 @@ export const gitHubIssueTool = definePluginTool({
               { cause: error },
             );
           }
-          return gitHubIssueToolResult(
-            parsedInput,
-            result,
-            ctx.events.canSubscribe,
-          );
+          return await gitHubIssueToolResult(ctx, parsedInput, result);
         } catch (error) {
           if (
             isEgressAuthRequired(error) ||
@@ -372,5 +386,11 @@ export const gitHubIssueTool = definePluginTool({
         }
       },
     );
+    if (!attempt.acquired) {
+      throw new Error(
+        "GitHub issue creation for this tool call is already running; refusing to create a duplicate issue.",
+      );
+    }
+    return attempt.value;
   },
 });

@@ -1,4 +1,5 @@
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
@@ -57,14 +58,25 @@ export async function resumeConversationDelivery(
     );
 }
 
-/** True while a root's Event Turn replies stay out of its Location. */
+/**
+ * True while the root of this Conversation is detached from its Location.
+ * Only a root stores the pause, so a child agent reads its root's.
+ */
 export async function isConversationDeliveryPaused(
   conversationId: string,
 ): Promise<boolean> {
+  const root = alias(juniorConversations, "root");
   const [row] = await getSqlExecutor()
     .db()
-    .select({ pausedAt: juniorConversations.deliveryPausedAt })
+    .select({ pausedAt: root.deliveryPausedAt })
     .from(juniorConversations)
+    .innerJoin(
+      root,
+      eq(
+        root.conversationId,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+      ),
+    )
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
   return Boolean(row?.pausedAt);

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.305.0",
+  "version": "0.306.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -81,6 +81,7 @@
     "@modelcontextprotocol/sdk": "1.32.0",
     "@neondatabase/serverless": "^1.1.0",
     "@sentry/junior-plugin-api": "workspace:*",
+    "@sentry/junior-search": "workspace:*",
     "@sentry/nitro": "catalog:",
     "@sentry/node": "catalog:",
     "@sentry/server-utils": "catalog:",

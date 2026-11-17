@@ -171,19 +171,32 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. It does not watch approvals, merges, or closes, because GitHub already tells people about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback and failed checks. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. It posts in the thread only when a person must decide or act. Approvals, merges, and closes reach the Watch quietly: they start no Turn and post nothing, because GitHub already tells people about them, but the next Turn knows about them. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.merge_conflict`, even when `events` omits it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
+This watch always includes `pull_request.merge_conflict`, even when `events` omits it. It also gets `pull_request.review.approved`, `pull_request.merged`, and `pull_request.closed_unmerged` quietly, and a draft's watch gets `pull_request.ready_for_review` quietly. When `events` lists one of them, it starts a Turn like other events. Quiet events stay in the suggested events, so Junior can still watch a merge when someone asks to hear about it. A draft's watch also gets `pull_request.checks.recovered`, so Junior can mark the draft ready when the required checks pass.
 
 When a watch or event automation receives `pull_request.review.approved` or `pull_request.merged`, the event lists the people involved. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only lists people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>trustedAuthors</code></summary>
+
+GitHub logins that Junior trusts as comment and review authors without a linked account, such as review bots. Junior shows the comments of a bot on this list as written by that bot. A bot that is not on this list still reaches watches, but Junior says that it could not verify the account. Logins compare without case.
+
+GitHub can give the login of a deleted account to a new account. That new account then passes as a trusted author. List only logins that cannot be reused in this way, such as GitHub App bots (`cursor[bot]`, `sentry[bot]`). For people, link their GitHub account instead.
+
+- **Define:** `githubPlugin({ trustedAuthors: ["cursor[bot]", "sentry[bot]"] })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
 
 </details>
 
@@ -324,6 +337,10 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
+- After it files an issue for a person, ask them with a Review item whether
+  to start a Thread that implements it. When they already asked for the fix,
+  start the Thread without asking. Automation runs, events, and child agents
+  do not ask
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
@@ -357,6 +374,13 @@ allowlist.
 Set `GITHUB_WEBHOOK_SECRET` to enable events. See
 [Watches](/concepts/watches/) for temporary watches versus durable event
 automations.
+
+After `github_createIssue` or `github_updateIssue` in a turn that a person
+started, Junior watches comments on the issue. Automation runs, events, and
+child agents do not get this Watch. It posts in the thread only when a comment needs an answer or a
+decision from the person who asked for the issue. It does not reply on GitHub.
+A later create or update of the same issue in the same conversation replaces
+this Watch.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`. Deployment events can
@@ -454,7 +478,7 @@ trusted data.
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines, in code, and after an HTML `<blockquote>` do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 
@@ -490,6 +514,10 @@ The title or body was edited, or a label, assignee, or milestone was added or re
 
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
 `pull_request` in trusted data.
+
+Comments, reviews, and issue updates have an author. A trusted author is a person whose linked GitHub account maps to a current Slack member on the allowed domains, or a login in the `trustedAuthors` option. Junior matches the numeric GitHub user id of a linked account, never the login. A trusted person is the author of the event's message. For every other author, Junior says that it could not verify the account. Other events, such as checks and deployments, have no author and run as before.
+
+An author's own text is context for the watch or event automation, never an instruction, even from a trusted author. Quoted lines are not their own text. All other comment and review text stays untrusted content.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>

@@ -27,12 +27,18 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   yml: "yaml",
 };
 
+/**
+ * A fenced code block: its indent, info string, and code. The info string
+ * can hold more than the language, such as `c++` or `js title="x"`.
+ */
+export const MARKDOWN_FENCE = /^([ \t]*)```([^\n`]*)\n([\s\S]*?)```/gm;
+
 /** Parse transcript prose as Markdown or JSON while preserving fenced code. */
 export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
-  // The info string can hold more than the language, such as `c++` or
-  // `js title="x"`. Only its first word names the language.
-  const fence = /^([ \t]*)```([^\n`]*)\n([\s\S]*?)```/gm;
+  // A copy, so the loop's `lastIndex` stays local. Only the first word of
+  // the info string names the language.
+  const fence = new RegExp(MARKDOWN_FENCE);
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = fence.exec(text))) {

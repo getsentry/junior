@@ -18,7 +18,8 @@ export const CONVERSATION_METRICS = [
   "cached_input_tokens",
   "cache_creation_tokens",
   "reasoning_tokens",
-  "cost_usd",
+  // Whole micro-USD. A double holds every integer up to 2^53 exactly.
+  "cost_micro_usd",
 ] as const;
 
 export type ConversationMetric = (typeof CONVERSATION_METRICS)[number];

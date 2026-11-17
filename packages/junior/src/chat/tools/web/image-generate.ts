@@ -11,7 +11,7 @@ import {
 } from "@/chat/core-model";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
-import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
+import { generatedFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -45,7 +45,7 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
     prompt: z.string(),
     enriched_prompt: z.string(),
     image_count: z.number().int().nonnegative(),
-    images: z.array(generatedArtifactFileRefSchema),
+    images: z.array(generatedFileRefSchema),
     delivery: z.string(),
     resized_images: z.array(resizedImageSchema).optional(),
     resize_notice: z.string().optional(),
@@ -167,12 +167,12 @@ function extensionForMediaType(mediaType: string): string {
 }
 
 /**
- * Create the image tool with sandbox artifact guidance matched to file-send capability.
+ * Create the image tool with sandbox file guidance matched to file-send capability.
  *
  * @runBuilt imageGenerate
  */
 export function createImageGenerateTool(
-  hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
+  hooks: Required<Pick<ToolHooks, "writeGeneratedFiles">>,
   options: {
     modelId: string;
     canSendFilesToActiveConversation?: boolean;
@@ -212,6 +212,7 @@ export function createImageGenerateTool(
     execute: async ({ prompt, images = [] }) => {
       const model = options.modelId;
       const sourceImages = await Promise.all(
+        // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 4 images.
         images.map(async (path) => ({
           path,
           ...(await readSandboxImage(
@@ -269,14 +270,14 @@ export function createImageGenerateTool(
       }));
 
       if (uploads.length > 0) {
-        const artifactRefs = await hooks.writeGeneratedArtifacts(uploads);
+        const fileRefs = await hooks.writeGeneratedFiles(uploads);
 
         return {
           model,
           prompt,
           enriched_prompt: enrichedPrompt,
-          image_count: artifactRefs.length,
-          images: artifactRefs,
+          image_count: fileRefs.length,
+          images: fileRefs,
           ...resizeResult,
           delivery: options.canSendFilesToActiveConversation
             ? "Generated images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."

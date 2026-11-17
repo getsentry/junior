@@ -84,10 +84,14 @@ export function tagJson(value: unknown): string {
     .replaceAll(">", "\\u003e");
 }
 
-function openingTag(
+/**
+ * Render the opening tag of one tag, such as the start of a block that
+ * stored history or a database query looks for.
+ */
+export function openingTag(
   name: string,
-  attributes: PromptTagAttributes,
-  escapeAttribute: (value: string) => string,
+  attributes: PromptTagAttributes = {},
+  escapeAttribute: (value: string) => string = escapeTagAttribute,
 ): string {
   const rendered = Object.entries(attributes).flatMap(([key, value]) =>
     value === undefined || value === ""

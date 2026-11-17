@@ -145,7 +145,7 @@ async function sentTurn(
 ) {
   const tools = createTools(
     [],
-    { writeGeneratedArtifacts: () => [] },
+    { writeGeneratedFiles: () => [] },
     {
       ...fullContext("slack", behavior.promptMode),
       ...bindTurnTools(run, behavior),
@@ -219,7 +219,7 @@ describe("static tool registry", () => {
     (platform, mode) => {
       const built = createTools(
         [],
-        { writeGeneratedArtifacts: () => [] },
+        { writeGeneratedFiles: () => [] },
         fullContext(platform, mode),
       );
       const staticBuilt = Object.fromEntries(
@@ -363,7 +363,7 @@ describe("static tool registry", () => {
           Object.keys(
             createTools(
               [],
-              { writeGeneratedArtifacts: () => [] },
+              { writeGeneratedFiles: () => [] },
               fullContext(platform, mode),
             ),
           ),

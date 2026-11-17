@@ -1,5 +1,6 @@
 import { gte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { microUsdToUsd } from "@/db/micro-usd";
 import type {
   ActorDirectoryReport,
   ActorDirectoryWindows,
@@ -38,7 +39,7 @@ const HOUR_METRIC_LOOKBACK = 48;
 const DIRECTORY_RANGES = [1, 7, 30, 90] as const;
 
 type MetricBucket = {
-  costUsd: number;
+  costMicroUsd: number;
   durationMs: number;
 };
 
@@ -49,11 +50,7 @@ function emptyDirectoryDay(date: string): PeopleActivityDayReport {
 }
 
 function emptyBucket(): MetricBucket {
-  return { costUsd: 0, durationMs: 0 };
-}
-
-function addUsd(current: number, next: number): number {
-  return Math.round((current + next) * 1e12) / 1e12;
+  return { costMicroUsd: 0, durationMs: 0 };
 }
 
 function directoryActivityDays(
@@ -102,7 +99,7 @@ function sumBuckets(
   for (let cursor = startMs; cursor <= endMs; cursor += stepMs) {
     const bucket = buckets.get(keyFor(cursor));
     if (!bucket) continue;
-    total.costUsd = addUsd(total.costUsd, bucket.costUsd);
+    total.costMicroUsd += bucket.costMicroUsd;
     total.durationMs += bucket.durationMs;
   }
   return total;
@@ -134,9 +131,9 @@ function rangeWindow(
     );
     return {
       conversations,
-      costUsd: currentTotals.costUsd,
+      costUsd: microUsdToUsd(currentTotals.costMicroUsd),
       durationMs: currentTotals.durationMs,
-      priorCostUsd: priorTotals.costUsd,
+      priorCostUsd: microUsdToUsd(priorTotals.costMicroUsd),
     };
   }
 
@@ -159,9 +156,9 @@ function rangeWindow(
   );
   return {
     conversations,
-    costUsd: currentTotals.costUsd,
+    costUsd: microUsdToUsd(currentTotals.costMicroUsd),
     durationMs: currentTotals.durationMs,
-    priorCostUsd: priorTotals.costUsd,
+    priorCostUsd: microUsdToUsd(priorTotals.costMicroUsd),
   };
 }
 
@@ -189,7 +186,7 @@ function rangeStart(nowMs: number, range: Range): Date {
 
 function metricBuckets(
   rows: {
-    costUsd: number | null;
+    costMicroUsd: number | null;
     date: string;
     durationMs: number;
     email: string;
@@ -200,7 +197,7 @@ function metricBuckets(
     const buckets = byEmail.get(row.email) ?? new Map<string, MetricBucket>();
     byEmail.set(row.email, buckets);
     buckets.set(row.date, {
-      costUsd: row.costUsd ?? 0,
+      costMicroUsd: row.costMicroUsd ?? 0,
       durationMs: row.durationMs,
     });
   }
@@ -225,7 +222,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     HOUR_METRIC_LOOKBACK,
   ).start;
   const turns = personTurns();
-  const { active, conversations, costUsd, durationMs, failed, tokens } =
+  const { active, conversations, costMicroUsd, durationMs, failed, tokens } =
     turnAggregateColumns(turns);
   const day = turnBucket(turns, "day");
   const hour = turnBucket(turns, "hour");
@@ -240,7 +237,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     )::integer`;
   const spendRows = (since: Date, bucket: typeof day) =>
     getDb()
-      .select({ email: turns.email, date: bucket, costUsd, durationMs })
+      .select({ email: turns.email, date: bucket, costMicroUsd, durationMs })
       .from(turns)
       .where(gte(turns.occurredAt, since))
       .groupBy(turns.email, bucket);

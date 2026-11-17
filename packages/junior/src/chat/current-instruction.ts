@@ -4,27 +4,19 @@ import {
   renderTag,
   unescapeTagText,
 } from "@sentry/junior-plugin-api";
+import { authorAttrs, type TagAuthor } from "@/chat/input-tags";
 
 const CURRENT_INSTRUCTION_TAG = "current-instruction";
 
 /** Render the active user task in a stable prompt boundary. */
 export function renderCurrentInstruction(
   instruction: string,
-  attrs?: {
-    authorId?: string;
-    authorName?: string;
-    slackTs?: string;
-  },
+  attrs?: TagAuthor & { slackTs?: string },
 ): string {
   return renderTag(
     CURRENT_INSTRUCTION_TAG,
-    {
-      author_id: attrs?.authorId,
-      author_name: attrs?.authorName,
-      slack_ts: attrs?.slackTs,
-    },
+    { ...authorAttrs(attrs), slack_ts: attrs?.slackTs },
     [escapeTagTextAndQuotes(instruction)],
-    escapeTagTextAndQuotes,
   );
 }
 

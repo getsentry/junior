@@ -5,6 +5,8 @@
  * model never reads status prose. `policies/prompt-markers.md` owns the
  * tags.
  */
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstruction } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
@@ -78,13 +80,16 @@ export async function savedInputInstruction(args: {
 export async function eventReviewItemInputs(
   messages: readonly InboundMessage[],
 ): Promise<Map<string, string>> {
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const rendered = await Promise.all(
-    messages.map(
-      async (message) =>
-        [
-          message.inboundMessageId,
-          await loadReviewItemInput(message.input.reviewItemChange),
-        ] as const,
+    messages.map((message) =>
+      limit(
+        async () =>
+          [
+            message.inboundMessageId,
+            await loadReviewItemInput(message.input.reviewItemChange),
+          ] as const,
+      ),
     ),
   );
   return new Map(

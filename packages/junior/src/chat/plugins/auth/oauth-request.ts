@@ -82,9 +82,9 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
 
   const contentType = headers.get("Content-Type") ?? DEFAULT_TOKEN_CONTENT_TYPE;
   const serializedHeaders: Record<string, string> = {};
-  headers.forEach((value, key) => {
+  for (const [key, value] of headers) {
     serializedHeaders[key] = value;
-  });
+  }
   return {
     headers: serializedHeaders,
     body: contentTypeToBody(contentType, payload),

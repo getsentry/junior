@@ -20,7 +20,7 @@ import {
   indentTagLines,
   renderTag,
 } from "@sentry/junior-plugin-api";
-import { renderThreadContext } from "@/chat/input-tags";
+import { authorAttrs, renderThreadContext } from "@/chat/input-tags";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
@@ -28,7 +28,7 @@ const CONTEXT_MAX_MESSAGE_CHARS = 3200;
 // Hard cap on the rendered thread context, newest Messages first.
 const THREAD_CONTEXT_MAX_CHARS = 60_000;
 const THREAD_CONTEXT_OMITTED_NOTE =
-  "Older Messages of this thread are not shown. Find them with the searchConversationEvents and readConversationEvent tools.";
+  "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 /** Normalize message boundaries without changing transcript formatting. */
@@ -235,12 +235,13 @@ function renderThreadContextMessage(
         index,
         ts: new Date(message.createdAtMs).toISOString(),
         role: message.role,
-        author: conversationAuthorDisplayName(message),
-        actor_id: message.author?.userId,
+        ...authorAttrs({
+          authorId: message.author?.userId,
+          authorName: conversationAuthorDisplayName(message),
+        }),
         slack_ts: message.meta?.slackTs,
       },
       [renderConversationMessageLine(message, conversation)],
-      escapeTagTextAndQuotes,
     ),
     "  ",
   );

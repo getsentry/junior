@@ -15,11 +15,12 @@ import { Link } from "react-router";
 import { CircleHelp, Pencil, Trash2 } from "lucide-react";
 import {
   automationEditSchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
+import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
 
 /**
  * Header actions for one Automation: Edit, Pause or Resume, and Delete.
@@ -31,7 +32,7 @@ export function AutomationActions({
   editVariant,
   onDelete,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   editPath: string;
   /** Use "outline" when a notice on the page owns the main action. */
   editVariant: "default" | "outline";
@@ -63,9 +64,7 @@ export function AutomationActions({
       });
     },
     onSuccess: async (updated) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await refreshChangedAutomation(queryClient, updated);
       toast.add({
         title:
           updated.status === "blocked"

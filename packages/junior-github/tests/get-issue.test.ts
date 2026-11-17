@@ -52,7 +52,7 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe: true },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    users: { resolveActor: async () => (user ? { user } : undefined) },
+    resolveWorkOwner: async () => (user ? { kind: "person", user } : undefined),
   } as never);
   return { adapter, tool };
 }

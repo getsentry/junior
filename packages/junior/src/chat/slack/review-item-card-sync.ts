@@ -1,5 +1,8 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -150,7 +153,8 @@ export function createSlackReviewItemShow(
 
 /**
  * Show the current state of a Review item in its linked Slack threads. An
- * open item gets one card in each linked thread that has none. Each existing
+ * open item gets one card in each linked thread that has none and is not
+ * detached. Each existing
  * card changes in place. A card in a thread that can no longer show the item
  * loses its content. A closed item posts no new cards. Syncs of one item run
  * one at a time under a state lock, so two syncs cannot post two cards in
@@ -196,12 +200,26 @@ export async function syncReviewItemSlackCards(args: {
           const cardedKeys = new Set(
             carded.flatMap((thread) => (thread ? [threadKey(thread)] : [])),
           );
-          const missing =
+          const uncarded =
             item.status === "open"
               ? [...linkedThreads.values()].filter(
                   (thread) => !cardedKeys.has(threadKey(thread)),
                 )
               : [];
+          // A detached thread gets no new card. A card that it already has
+          // still changes in place, so it does not show a stale state.
+          const limit = pLimit(FAN_OUT_CONCURRENCY);
+          const missing = (
+            await Promise.all(
+              uncarded.map((thread) =>
+                limit(async () =>
+                  (await isConversationDeliveryPaused(thread.conversationId))
+                    ? []
+                    : [thread],
+                ),
+              ),
+            )
+          ).flat();
           const results = await Promise.allSettled([
             ...rows.map((row, index) => {
               const thread = carded[index];

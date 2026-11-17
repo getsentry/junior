@@ -10,6 +10,7 @@ import {
   loadSnapshotsForProfile,
 } from "@/chat/sandbox/snapshot/store";
 import type { JuniorDatabase } from "@/db/db";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import type { Workspace, WorkspaceSnapshot } from "./types";
 import {
@@ -17,6 +18,9 @@ import {
   WorkspaceValidationError,
   type WorkspaceRecipeInput,
 } from "./validation";
+
+// Postgres `unique_violation`: another Workspace already has the name.
+const UNIQUE_VIOLATION = "23505";
 
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
@@ -94,25 +98,6 @@ function sameWorkspaceRepos(
   const currentIds = current.map(identity).sort();
   const nextIds = next.map(identity).sort();
   return currentIds.every((value, index) => value === nextIds[index]);
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (
-      typeof current === "object" &&
-      current !== null &&
-      "code" in current &&
-      (current as { code?: unknown }).code === "23505"
-    ) {
-      return true;
-    }
-    current =
-      typeof current === "object" && current !== null && "cause" in current
-        ? (current as { cause?: unknown }).cause
-        : undefined;
-  }
-  return false;
 }
 
 async function cleanupSnapshotBuilders(
@@ -252,7 +237,7 @@ export async function createWorkspace(input: {
       await replaceWorkspaceRepos(db, id, recipe.repos);
     });
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (isPostgresErrorCode(error, UNIQUE_VIOLATION)) {
       throw new WorkspaceValidationError(
         `Workspace name already exists: ${recipe.name}`,
       );
@@ -314,7 +299,7 @@ export async function updateWorkspace(
     if (!result) return undefined;
     await cleanupSnapshotBuilders(id, result.builderNames);
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (isPostgresErrorCode(error, UNIQUE_VIOLATION)) {
       throw new WorkspaceValidationError(
         `Workspace name already exists: ${recipe.name}`,
       );

@@ -117,6 +117,7 @@ export async function stackGitHubPullRequest(
       depth < MAX_STACK_DEPTH && branch !== trunk;
       depth += 1
     ) {
+      // oxlint-disable-next-line no-await-in-loop -- Each step walks down from the parent that the step before found.
       const parents = await github(
         "github.pull.list",
         `${api}/pulls?state=open&per_page=2&head=${encodeURIComponent(`${owner}:${branch}`)}`,
@@ -128,6 +129,7 @@ export async function stackGitHubPullRequest(
       const parent = parents[0]!;
       // Base branches that loop back are not a stack.
       if (chain.includes(parent.number)) return undefined;
+      // oxlint-disable-next-line no-await-in-loop -- Each step walks down from the parent that the step before found.
       const stacks = await github(
         "github.stack.read",
         `${api}/stacks?pull_request=${parent.number}`,
@@ -140,6 +142,7 @@ export async function stackGitHubPullRequest(
         if (stack.pull_requests.at(-1)?.number !== parent.number) {
           return undefined;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Each step walks down from the parent that the step before found.
         const added = await github(
           "github.stack.add",
           `${api}/stacks/${stack.number}/add`,

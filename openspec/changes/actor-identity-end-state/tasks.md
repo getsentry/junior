@@ -152,17 +152,20 @@ Finish #2482.
     name an author only on its own provider.
   - event authors do not become participants. The participant list shows
     only `user` Identities with a User.
-  - the trust rule is live (`design.md`, Trust). Trusted text counts like a
-    chat message from that author. An event from an untrusted or unknown
-    author does not start a run. Junior drops it before it joins a batch or
-    a Turn, so the agent never sees it. A system event runs as today.
+  - the trust rule is live (`design.md`, Trust). An author's text is context
+    for the Watch or Automation task, never an instruction. An event from an
+    untrusted or unknown author still runs, and the task input says the
+    account is not verified. A system event runs as today. (David changed
+    both rules: first from "does not start a run", then in the #3404 review
+    from "trusted text counts like a chat message".)
   - event Turns still run as the system Actor. The event author labels the
     Message and feeds the trust check, and gives no credentials
     (`design.md`, Why The Event Author Is Not The Turn Actor).
   - `trustedAuthors` is documented for the GitHub plugin, with the warning
     about reused logins.
   - Cursor Bugbot and Sentry's GitHub bot are on `trustedAuthors` in the
-    deployed app config, in the same release as the trust rule.
+    deployed app config. Nothing is dropped, so this need not ship in the
+    same release as the trust rule.
 - **Constraints:**
   - needs #2260.
   - core gets only a provider-neutral trusted result. Core reads no GitHub
@@ -182,9 +185,42 @@ Finish #2482.
     for a bot author.
   - the batch Message author. Current proposal: the shared author when every
     entry has the same one, else the system Identity.
-  - where Junior drops untrusted authored events, so that none joins a batch
-    or a Turn.
+  - how the task input and Guardian mark an untrusted author.
   - the exact Bugbot and Sentry logins, from real event senders.
+- **Trust part, built with #2217 and #2260:**
+  - one owner, `chat/identities/trust.ts`, for every trust decision: Slack
+    ingress (`isTrustedSlackAuthor`), Identity dispatch (`findTrustedUser`),
+    allowed domains (`isAllowedDomain`, with `ifNoDomains` for what an
+    empty list means, after `parseEmail` at sign-in and dispatch), and Event
+    authors (`resolveEventAuthor`). It reads its own
+    config and keeps the Slack member cache.
+  - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
+    `trusted`, and `text`. Its provider is always the Event namespace. The
+    GitHub plugin derives it in `gitHubEventAuthor` and splits own text from
+    the rest with one parser, `splitCommentText`. Own text goes only to
+    `author.text`; `untrustedText` keeps the rest, so core shows it once.
+  - Watch ingest and Event automation ingest each resolve the author once,
+    after they find a match, the same way Slack ingress resolves a Slack
+    author. Nothing downstream decides again, and no trust value rides on
+    the Turn, Guardian, or tools.
+  - a linked trusted author writes the Event's Message: its author Identity
+    is theirs, so batching keeps Messages with different authors apart. A
+    listed bot has no Identity, so it gets its own author id. The Turn Actor
+    and credentials stay the system Actor, and the author does not join the
+    Conversation.
+  - every author's own text is context in the Event task: a `<message>` with
+    the same `author_id` and `author_name` as their messages, from one
+    shared `authorAttrs()`. The lead says what the text is and that it is
+    context, not an instruction. For an untrusted author it also says that
+    the runtime could not verify the account. Watch and Event automation runs
+    render it the same way. Guardian judges an Event Turn against the Watch
+    task and has no author rule.
+  - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and
+    `sentry[bot]` (id 39604003).
+  - still open: real Message author Identities for web, mock, and bot
+    Messages. Slack and web Messages from one person are one input class to
+    them, but they have different Identities and Actors and run on different
+    worker paths, so they do not share a Turn yet.
 
 ## 5. Dry Run
 

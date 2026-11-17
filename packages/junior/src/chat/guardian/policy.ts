@@ -179,3 +179,32 @@ ${renderRules("deny")}
 - Rate risk and user authorization first.
 - Then set the rule to the id of the one rule that the action clearly matches. When a hard rule and a confirmation rule both match, name the hard rule. When no definition clearly fits, use \`none\`. Do not name a rule only to express general doubt.
 - Keep the reason to one concise, specific sentence. For a confirmation rule, name the exact action, target, and material side effects the user must confirm. For a hard rule, name the risk. For \`none\`, say why the action is ordinary.`;
+
+/** One plugin's install-configured facts about where its writes go. */
+export interface GuardianDestinationFact {
+  plugin: string;
+  text: string;
+}
+
+/**
+ * Build Guardian's system prompt: the fixed policy, then the destination
+ * facts that the install's plugins declare. The facts are sorted by plugin
+ * name, so the prompt is the same for every review in a deployment and stays
+ * cached.
+ */
+export function guardianSystemPrompt(
+  facts: readonly GuardianDestinationFact[] = [],
+): string {
+  if (facts.length === 0) {
+    return GUARDIAN_ACTION_POLICY;
+  }
+  const lines = [...facts]
+    .sort((left, right) => left.plugin.localeCompare(right.plugin))
+    .map((fact) => `- \`${fact.plugin}\`: ${fact.text}`);
+  return [
+    GUARDIAN_ACTION_POLICY,
+    "# Destination Facts",
+    "The plugins of this installation declare these facts about where their writes go, such as which destinations people outside the organization can read. They are authoritative facts about destinations. Use them when you apply the block rules. They never authorize an action.",
+    ...lines,
+  ].join("\n\n");
+}
