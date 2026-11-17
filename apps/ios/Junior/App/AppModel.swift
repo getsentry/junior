@@ -88,16 +88,19 @@ final class AppModel {
     let defaults = UserDefaults.standard
     // Builds before the Keychain kept the whole server, token included, in
     // defaults; move the token and drop that copy.
+    var legacyToken: String?
     if let legacy = defaults.data(forKey: "server"),
       let old = try? JSONDecoder().decode(JuniorServer.self, from: legacy)
     {
-      if TokenStore.read() == nil, let token = old.token { _ = TokenStore.write(token) }
+      legacyToken = old.token
+      let moved = TokenStore.read() != nil || old.token == nil || TokenStore.write(old.token)
       defaults.set(old.baseURL.absoluteString, forKey: "serverURL")
-      defaults.removeObject(forKey: "server")
+      // Keep the old copy until the Keychain holds the token.
+      if moved { defaults.removeObject(forKey: "server") }
     }
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
     let baseURL = launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!
-    let server = JuniorServer(baseURL: baseURL, token: TokenStore.read())
+    let server = JuniorServer(baseURL: baseURL, token: TokenStore.read() ?? legacyToken)
     self.server = server
     self.client = JuniorClient(server: server)
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system

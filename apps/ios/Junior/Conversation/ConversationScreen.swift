@@ -185,7 +185,7 @@ struct ConversationScreen: View {
                 // Any part on screen counts, so a reply taller than the screen
                 // is read too (the web reports rows that reach the viewport).
                 .onScrollVisibilityChange(threshold: 0.01) { visible in
-                  if visible, let seq = row.seq { model.noteSeen(seq, client: app.client) }
+                  if let seq = row.seq { model.rowVisibility(seq, visible: visible, client: app.client) }
                 }
             }
             if let actionError = model.actionError {
@@ -229,7 +229,7 @@ struct ConversationScreen: View {
       }
       // Count rows as read only once the page sits where it opens.
       try? await Task.sleep(for: .milliseconds(400))
-      model.trackingReads = true
+      model.startTrackingReads(app.client)
     }
   }
 
@@ -404,7 +404,9 @@ private struct ConversationComposer: View {
   @FocusState private var focused: Bool
 
   private var canSend: Bool {
-    !model.sending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
+    // Not before the page loads: a send's reload would race the first load.
+    model.detail != nil && !model.sending
+      && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty)
   }
 
   var body: some View {

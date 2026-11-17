@@ -29,7 +29,11 @@ final class ConversationModel {
   private var seenSeq = -1
   /// Off until the page has scrolled to where it opens; rows laid out on the
   /// way there were not read.
-  var trackingReads = false
+  private(set) var trackingReads = false
+  /// Rows on screen now, kept even while reads are not tracked yet.
+  @ObservationIgnored private var visibleSeqs = Set<Int>()
+  /// The first load has applied; later loads only refresh.
+  private var opened = false
   private var reportedSeq = -1
   private var reportTask: Task<Void, Never>?
 
@@ -66,12 +70,13 @@ final class ConversationModel {
   func load(_ client: JuniorClient, openAtUnread: Bool = false) async {
     startedLoads += 1
     let ticket = startedLoads
-    let opening = detail == nil
+    let opening = !opened
     do {
       let (next, data): (ConversationDetail, Data) = try await client.getWithData(
         path, query: [URLQueryItem(name: "mailbox", value: "true")])
       guard ticket > appliedLoad else { return }
       appliedLoad = ticket
+      opened = true
       argumentOrder.merge(toolArgumentOrder(in: data)) { _, new in new }
       let newOldest = next.events.map(\.seq).min()
       if opening {
@@ -98,6 +103,12 @@ final class ConversationModel {
             guard await fetchEarlierPage(client) else { break }
           }
         }
+      }
+      // A newer load (or a restart) may have applied during the walk; keep
+      // its newer detail and only show the pages this walk added.
+      guard ticket == appliedLoad, !Task.isCancelled else {
+        if detail != nil { rebuild() }
+        return
       }
       detail = next
       rebuild()
@@ -152,6 +163,23 @@ final class ConversationModel {
 
   /// Record that a row reached the screen and report the newest one after a
   /// short pause (`PUT …/read-position`). The server keeps the highest value.
+  /// A row came on or went off screen.
+  func rowVisibility(_ seq: Int, visible: Bool, client: JuniorClient) {
+    if visible {
+      visibleSeqs.insert(seq)
+      noteSeen(seq, client: client)
+    } else {
+      visibleSeqs.remove(seq)
+    }
+  }
+
+  /// Start counting reads once the page sits where it opens, including the
+  /// rows already on screen there (their visibility will not change again).
+  func startTrackingReads(_ client: JuniorClient) {
+    trackingReads = true
+    if let newest = visibleSeqs.max() { noteSeen(newest, client: client) }
+  }
+
   func noteSeen(_ seq: Int, client: JuniorClient) {
     guard trackingReads, seq > seenSeq else { return }
     seenSeq = seq
