@@ -76,7 +76,7 @@ export async function embedConversationEvents(
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
   const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
-  const rows = await db
+  const selected = await db
     .select({ seq: events.seq, text })
     .from(events)
     .leftJoin(
@@ -92,11 +92,15 @@ export async function embedConversationEvents(
         eq(events.conversationId, conversationId),
         inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
         isNull(embeddings.seq),
-        sql`btrim(${eventSearchTextSql()}) <> ''`,
+        // Text of only whitespace, such as newlines, has nothing to embed.
+        sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
       ),
     )
     .orderBy(desc(events.seq))
     .limit(MAX_EVENTS_PER_RUN);
+  // The embedder rejects text that JavaScript trims to nothing, such as a
+  // no-break space, which the SQL filter above keeps.
+  const rows = selected.filter((row) => row.text.trim() !== "");
   for (let start = 0; start < rows.length; start += EMBEDDING_BATCH_SIZE) {
     const batch = rows.slice(start, start + EMBEDDING_BATCH_SIZE);
     const result = await embedder.embedDocuments(batch.map((row) => row.text));

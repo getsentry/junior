@@ -1,5 +1,6 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import {
   recordWebConversationActivity,
@@ -19,7 +20,10 @@ import {
 import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { juniorConversationEvents } from "@/db/schema";
+import {
+  juniorConversationEventEmbeddings,
+  juniorConversationEvents,
+} from "@/db/schema";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -104,6 +108,10 @@ function topicVector(text: string): number[] {
 const eventEmbedder: ConversationEventEmbedder = {
   model: "test-embedding",
   async embedDocuments(texts) {
+    // Like the real embedder, which trims each text.
+    if (texts.some((text) => text.trim() === "")) {
+      throw new Error("Embedding input is empty");
+    }
     return {
       model: "test-embedding",
       provider: "test",
@@ -413,6 +421,18 @@ describe("searchConversationEvents", () => {
       embedder: queryEmbedder,
     });
     expect(byMeaning.events[0]).toMatchObject({ seq: 3 });
+    // A vector of another model and size does not break the search.
+    await getDb()
+      .update(juniorConversationEventEmbeddings)
+      .set({ dimensions: 2, embedding: [1, 0], model: "other-embedding" })
+      .where(eq(juniorConversationEventEmbeddings.seq, 1));
+    const mixedSizes = await executeTool({ query: "pull request" }, context(), {
+      embedder: queryEmbedder,
+    });
+    expect(mixedSizes.events[0]).toMatchObject({ seq: 3 });
+    await expect(
+      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(1);
 
     // Stored lexemes give the same matches. Newer events without stored
     // lexemes stay searchable, and an event without text gets empty ones.
@@ -446,7 +466,29 @@ describe("searchConversationEvents", () => {
           text: "Retried the lease fix in getsentry/junior#4822.",
         },
       },
+      {
+        createdAtMs: 8,
+        data: {
+          type: "message",
+          messageId: "m-blank",
+          role: "assistant",
+          text: "\n\t\n",
+        },
+      },
+      {
+        createdAtMs: 9,
+        data: {
+          type: "message",
+          messageId: "m-no-break-space",
+          role: "assistant",
+          text: "\u00a0",
+        },
+      },
     ]);
+    // Text that trims to nothing is not embedded and does not stop the rest.
+    await expect(
+      embedConversationEvents(getDb(), eventEmbedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(1);
     await expect(executeTool({ query: "lease.ts" })).resolves.toMatchObject({
       events: [{ seq: 2 }],
     });
@@ -458,7 +500,7 @@ describe("searchConversationEvents", () => {
     });
     await expect(
       storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
-    ).resolves.toBe(2);
+    ).resolves.toBe(4);
     await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
       events: [{ seq: 6 }],
     });

@@ -273,9 +273,10 @@ async function meaningRanks(
         eq(embeddings.dimensions, query.vector.length),
       ),
     )
-    // The filter above runs first, so only vectors of the query size meet.
+    // Postgres can order before it filters, and pgvector fails on vectors of
+    // two sizes. The CASE keeps a vector of another size from the operator.
     .orderBy(
-      sql`${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::vector`,
+      sql`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::vector END`,
     )
     .limit(CANDIDATES_PER_LEG);
   return rows.map((row) => row.seq);
