@@ -15,7 +15,7 @@ import {
 
 import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
-import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
+import { invalidateReviewItemCollections, reviewItemQueryKey } from "./queries";
 
 const UNDO_MS = 6_000;
 
@@ -33,10 +33,21 @@ async function commitSweep(
       ),
     ),
   );
-  await queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
-  return items
-    .filter((_, index) => results[index]!.status === "rejected")
-    .map((item) => item.id);
+  const kept: string[] = [];
+  for (const [index, result] of results.entries()) {
+    const id = items[index]!.id;
+    if (result.status === "fulfilled") {
+      queryClient.setQueryData(reviewItemQueryKey(id), result.value);
+      continue;
+    }
+    kept.push(id);
+    void queryClient.invalidateQueries({
+      exact: true,
+      queryKey: reviewItemQueryKey(id),
+    });
+  }
+  await invalidateReviewItemCollections(queryClient);
+  return kept;
 }
 
 function unsweep(

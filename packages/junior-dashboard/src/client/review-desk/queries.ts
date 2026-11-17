@@ -6,6 +6,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
@@ -49,6 +50,28 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
+}
+
+/** Key one Review item. Each Review item row reads its own item. */
+export function reviewItemQueryKey(id: string | undefined) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
+}
+
+const REVIEW_ITEM_COLLECTIONS = ["count", "list", "waiting-conversations"];
+
+/**
+ * Refresh the Review item reads that a change to known items moves: the
+ * count, the lists, and the waiting Conversations. Write each changed item
+ * to its own key, so the rows of the other items do not refetch.
+ */
+export function invalidateReviewItemCollections(queryClient: QueryClient) {
+  return Promise.all(
+    REVIEW_ITEM_COLLECTIONS.map((collection) =>
+      queryClient.invalidateQueries({
+        queryKey: [...REVIEW_ITEMS_QUERY_KEY, collection],
+      }),
+    ),
+  );
 }
 
 /** Key the Review item list that these filters read. */
@@ -100,7 +123,7 @@ export function useReviewItemData(
   return useQuery({
     enabled: Boolean(id),
     placeholderData: placeholder,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+    queryKey: reviewItemQueryKey(id),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemSchema,
@@ -209,15 +232,16 @@ export function useReviewItemAction() {
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
       ),
+    onError: (_error, args) =>
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: reviewItemQueryKey(args.id),
+      }),
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
     onSuccess: (item) =>
-      queryClient.setQueryData(
-        [...REVIEW_ITEMS_QUERY_KEY, "detail", item.id],
-        item,
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
+      queryClient.setQueryData(reviewItemQueryKey(item.id), item),
+    onSettled: () => invalidateReviewItemCollections(queryClient),
   });
 }
 

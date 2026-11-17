@@ -323,6 +323,7 @@ export function InboxList(props: {
   const markDone = async (bundle: InboxBundle) => {
     for (const item of bundle.items) {
       if (item.status !== "open" || !item.canAct) continue;
+      // oxlint-disable-next-line no-await-in-loop -- Stop at the first dismiss that fails.
       const closed = await action
         .mutateAsync({ body: { action: "dismiss" }, id: item.id })
         .then(

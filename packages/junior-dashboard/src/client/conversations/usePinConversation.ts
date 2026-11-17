@@ -4,6 +4,7 @@ import { pinConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
 import {
+  invalidateConversationFeeds,
   mapConversationFeedCache,
   type ConversationFeedCache,
 } from "./conversationFeedCache";
@@ -66,9 +67,9 @@ export function usePinConversation(
       return previous;
     },
     onError: (_error, pinned, previous) => {
-      previous?.feeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of previous?.feeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       queryClient.setQueryData(detailQueryKey, previous?.detail);
       options?.onError?.(pinned);
     },
@@ -79,7 +80,7 @@ export function usePinConversation(
     // A reader's first pin adds the conversation to their feed.
     onSettled: () =>
       Promise.all([
-        queryClient.invalidateQueries(feeds),
+        invalidateConversationFeeds(queryClient),
         queryClient.invalidateQueries({
           exact: true,
           queryKey: detailQueryKey,

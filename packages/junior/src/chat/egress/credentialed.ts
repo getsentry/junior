@@ -439,19 +439,19 @@ function requestHeaders(
     upstreamHost,
     tracePropagation,
   );
-  request.headers.forEach((value, key) => {
+  for (const [key, value] of request.headers) {
     const normalized = key.toLowerCase();
     if (
       HOP_BY_HOP_HEADERS.has(normalized) ||
       PROXY_ONLY_HEADERS.has(normalized)
     ) {
-      return;
+      continue;
     }
     if (TRACE_PROPAGATION_HEADERS.has(normalized) && !mayPropagateTrace) {
-      return;
+      continue;
     }
     headers.append(key, value);
-  });
+  }
 
   for (const transform of lease.headerTransforms) {
     if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
@@ -472,7 +472,7 @@ function requestHeaders(
 
 function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
-  upstream.headers.forEach((value, key) => {
+  for (const [key, value] of upstream.headers) {
     const normalized = key.toLowerCase();
     if (
       !HOP_BY_HOP_HEADERS.has(normalized) &&
@@ -480,7 +480,7 @@ function responseHeaders(upstream: Response): Headers {
     ) {
       headers.append(key, value);
     }
-  });
+  }
   return headers;
 }
 

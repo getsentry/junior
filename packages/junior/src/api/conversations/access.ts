@@ -175,6 +175,7 @@ export function createConversationAccessReader(
       }
     }
     const entries = await Promise.all(
+      // oxlint-disable-next-line junior/bounded-fan-out -- It waits on the reads above and starts no query.
       conversationIds.map(async (id) => [id, await byId.get(id)] as const),
     );
     return new Map(

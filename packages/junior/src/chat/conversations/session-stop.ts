@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import type { StateAdapter } from "chat";
 import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
@@ -25,6 +26,9 @@ import {
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
 
+// Conversations whose watches one stop cancels at once.
+const WATCH_CANCEL_CONCURRENCY = 8;
+
 /** Skip reason on the Message that saves Events for a stopped Conversation. */
 const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
 
@@ -47,9 +51,14 @@ export async function markConversationsStopped(
     return;
   }
   if (options.cancelWatches) {
-    for (const conversationId of conversationIds) {
-      await cancelSubscriptions({ conversationId, state: options.state });
-    }
+    const limit = pLimit(WATCH_CANCEL_CONCURRENCY);
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        limit(() =>
+          cancelSubscriptions({ conversationId, state: options.state }),
+        ),
+      ),
+    );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()
