@@ -55,6 +55,12 @@ describe("sentry egress policy", () => {
       ["POST", "https://us.sentry.io/api/0/organizations/sentry/alert-rules/"],
       ["PUT", "https://sentry.io/api/0/organizations/sentry/detectors/12/"],
       ["PUT", "https://sentry.io/api/0/organizations/sentry/issues/123/"],
+      [
+        "POST",
+        "https://sentry.io/api/0/organizations/sentry/issues/123/notes/",
+      ],
+      ["POST", "https://sentry.io/api/0/issues/123/notes/"],
+      ["POST", "https://sentry.io/api/0/groups/123/comments/"],
     ] as const) {
       expect(() => grantFor(method, url)).not.toThrow();
     }

@@ -18,7 +18,9 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const NOT_A_PERMISSION_FAILURE =
   "This is a runtime policy, not a Sentry permission failure; do not ask for more Sentry permissions.";
 
-// Path patterns after `/api/0/`. `*` matches one segment.
+// Path patterns after `/api/0/`. `*` matches one segment, and `a|b` matches
+// either name. Sentry routes issues under the organization and at the top
+// level, and `groups` and `comments` are aliases of `issues` and `notes`.
 const KNOWN_WRITES: ReadonlyArray<{ methods: string[]; path: string }> = [
   // Projects and teams.
   { methods: ["POST"], path: "teams/*/*/projects" },
@@ -47,11 +49,16 @@ const KNOWN_WRITES: ReadonlyArray<{ methods: string[]; path: string }> = [
     path: "organizations/*/dashboards/*/revisions/*/restore",
   },
   // Issue triage and investigation.
-  { methods: ["PUT"], path: "organizations/*/issues" },
-  { methods: ["PUT"], path: "organizations/*/issues/*" },
-  { methods: ["PUT"], path: "issues/*" },
-  { methods: ["POST"], path: "organizations/*/issues/*/notes" },
-  { methods: ["POST"], path: "organizations/*/issues/*/autofix" },
+  { methods: ["PUT"], path: "organizations/*/issues|groups" },
+  { methods: ["PUT"], path: "organizations/*/issues|groups/*" },
+  { methods: ["PUT"], path: "issues|groups/*" },
+  {
+    methods: ["POST"],
+    path: "organizations/*/issues|groups/*/notes|comments",
+  },
+  { methods: ["POST"], path: "issues|groups/*/notes|comments" },
+  { methods: ["POST"], path: "organizations/*/issues|groups/*/autofix" },
+  { methods: ["POST"], path: "issues|groups/*/autofix" },
   { methods: ["POST"], path: "organizations/*/search-agent/start" },
 ];
 
@@ -99,7 +106,10 @@ function matchesPath(segments: string[], pattern: string): boolean {
   const parts = pattern.split("/");
   return (
     parts.length === segments.length &&
-    parts.every((part, index) => part === "*" || part === segments[index])
+    parts.every(
+      (part, index) =>
+        part === "*" || part.split("|").includes(segments[index] ?? ""),
+    )
   );
 }
 
