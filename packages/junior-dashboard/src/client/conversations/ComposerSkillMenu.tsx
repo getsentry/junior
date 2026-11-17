@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type KeyboardEvent,
   type RefObject,
@@ -56,6 +57,16 @@ export function useComposerSkillMenu(
   });
 
   const close = () => setToken(undefined);
+  // A tap on the menu blurs the textarea before its click lands, and a
+  // scrollbar drag blurs it too. Keep the menu open while a press in it
+  // runs. Mobile browsers fire the blur after `pointerup`, so the click
+  // ends the press.
+  const pressingMenu = useRef(false);
+
+  /** Close on blur, unless the blur comes from a press in the menu. */
+  const blur = () => {
+    if (!pressingMenu.current) close();
+  };
 
   /** Read the reference at the caret after an edit or caret move. */
   const sync = () => {
@@ -145,6 +156,19 @@ export function useComposerSkillMenu(
             style={placement}
             role="listbox"
             aria-label="Skills"
+            // Keep focus and the caret in the textarea on desktop.
+            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={() => {
+              pressingMenu.current = true;
+            }}
+            onPointerCancel={() => {
+              pressingMenu.current = false;
+            }}
+            // A tap moved focus out of the textarea. Put it back.
+            onClick={() => {
+              pressingMenu.current = false;
+              textareaRef.current?.focus({ preventScroll: true });
+            }}
           >
             {rows.map((row, index) => (
               <SkillOption
@@ -161,7 +185,7 @@ export function useComposerSkillMenu(
         )
       : null;
 
-  return { close, textboxProps, handleKeyDown, menu, sync };
+  return { blur, textboxProps, handleKeyDown, menu, sync };
 }
 
 type MenuPlacement = {
@@ -227,8 +251,6 @@ function SkillOption(props: {
         props.active && "bg-dashboard-fill-hover",
       )}
       id={props.id}
-      // Keep focus and the caret in the textarea.
-      onMouseDown={(event) => event.preventDefault()}
       onClick={props.onSelect}
       onMouseMove={props.active ? undefined : props.onHover}
       role="option"

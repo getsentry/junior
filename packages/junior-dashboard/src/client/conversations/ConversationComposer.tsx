@@ -576,7 +576,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           maxLength={32_000}
           defaultValue={initialDraft.text}
           {...skillMenu.textboxProps}
-          onBlur={skillMenu.close}
+          onBlur={skillMenu.blur}
           onChange={(event) => {
             setMessage(event.target.value);
             syncTextareaHeight();
