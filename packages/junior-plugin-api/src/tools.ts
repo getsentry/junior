@@ -779,6 +779,14 @@ export interface PluginConversationToolContext {
   }): Promise<PluginConversationMatch[]>;
 }
 
+/** An Automation run that a GitHub or other provider write can name. */
+export interface PluginAutomationRun {
+  automationId: string;
+  automationRunId?: string;
+  /** Host-owned dashboard link to the Automation. */
+  url?: string;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -790,8 +798,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Other Conversations. Set only when the turn has a `conversationId`. */
   conversations?: PluginConversationToolContext;
-  /** Host-owned dashboard link to the Automation that started this run. */
-  automationLink?: { url: string };
+  /**
+   * Resolve the Automation run that this Turn's root Conversation belongs
+   * to, from the run's stored record. A Turn outside an Automation run, and a
+   * run whose record names no Automation, get nothing.
+   */
+  resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Decision model for narrow choices, such as checks on text a tool writes. */
@@ -807,6 +819,14 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   users: {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+    /**
+     * Resolve the root Actor of this Turn's Conversation tree: the person who
+     * started its root Conversation. A root that the system started, such as
+     * an Automation run, has no person, so this returns nothing.
+     */
+    resolveRootActor(): Promise<
+      { identity: Identity; user?: User } | undefined
+    >;
     /**
      * Resolve the current actor's IANA timezone. Uses their profile when
      * Junior knows it, else the install default. Always returns a timezone.

@@ -4,6 +4,7 @@ import {
   type Identity,
   type User,
   type Actor,
+  type PluginAutomationRun,
   type PluginLogger,
   type PluginEgress,
   type Source,
@@ -122,15 +123,18 @@ export const gitHubUpdateIssueTool = definePluginTool({
     _options,
     ctx: {
       actor?: Actor | undefined;
-      automationLink?: { url: string };
       conversationId?: string | undefined;
       egress: PluginEgress;
       log: PluginLogger;
       events: ToolRegistrationHookContext["events"];
       conversationLink?: { url: string };
+      resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
       source?: Source | undefined;
       users: {
         resolveActor(): Promise<
+          { identity?: Identity; user?: User } | undefined
+        >;
+        resolveRootActor(): Promise<
           { identity?: Identity; user?: User } | undefined
         >;
       };
@@ -171,7 +175,6 @@ export const gitHubUpdateIssueTool = definePluginTool({
             body: appendGitHubFooter(
               appendGitHubRequesterAttribution(
                 update.body,
-                ctx,
                 requester,
                 currentBody,
               ),

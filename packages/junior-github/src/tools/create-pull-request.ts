@@ -26,6 +26,7 @@ import {
 } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
+  assertGitHubPullRequestRequester,
   linkedGitHubLogin,
   parseGitHubLogin,
   resolveGitHubRequester,
@@ -243,7 +244,6 @@ function isDefinitiveGitHubPullRequestCreateRejection(error: unknown): boolean {
 function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
-  ctx: ToolRegistrationHookContext,
   requester: GitHubRequester | undefined,
   dashboardUrl?: string,
 ): { body: unknown; path: string } {
@@ -253,7 +253,7 @@ function createGitHubPullRequestRequest(
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
+      appendGitHubRequesterAttribution(input.body ?? "", requester),
       conversationId,
       dashboardUrl,
     ),
@@ -606,18 +606,18 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
+          const requester = await resolveGitHubRequester(ctx);
+          assertGitHubPullRequestRequester(requester);
           if (descriptionChecks) {
             await checkPullRequestDescription(
               ctx.decider,
               parsedInput.body ?? "",
             );
           }
-          const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
-            ctx,
             requester,
             ctx.conversationLink?.url,
           );

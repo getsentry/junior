@@ -2,6 +2,7 @@ import {
   type Actor,
   type Identity,
   type PluginEgress,
+  type PluginAutomationRun,
   type PluginLogger,
   type User,
   definePluginTool,
@@ -94,8 +95,12 @@ export const gitHubGetIssueTool = definePluginTool({
       egress: PluginEgress;
       events: { canSubscribe: boolean };
       log: PluginLogger;
+      resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
       users: {
         resolveActor(): Promise<
+          { identity?: Identity; user?: User } | undefined
+        >;
+        resolveRootActor(): Promise<
           { identity?: Identity; user?: User } | undefined
         >;
       };

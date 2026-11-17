@@ -356,12 +356,14 @@ function positiveDuration(value: number | null): number | undefined {
 export async function readAutomationExecutionByConversationId(args: {
   conversationId: string;
 }): Promise<
-  { kind: AutomationExecutionType; automationId: string } | undefined
+  | { kind: AutomationExecutionType; automationId: string; runId: string }
+  | undefined
 > {
   const [row] = await getDb()
     .select({
       kind: juniorAutomations.kind,
       automationId: juniorAutomationRuns.automationId,
+      runId: juniorAutomationRuns.id,
     })
     .from(juniorAutomationRuns)
     .innerJoin(

@@ -15,7 +15,7 @@ function toolContext(
     currentBody?: string;
     decider?: unknown;
     requester?: unknown;
-    source?: unknown;
+    automationRun?: unknown;
   } = {},
 ) {
   const fetch = vi.fn(async (input: { operation: string }) => {
@@ -55,9 +55,10 @@ function toolContext(
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
     conversationLink: { url: "https://example.com/session" },
-    source: options.source,
+    resolveAutomationRun: async () => options.automationRun,
     users: {
       resolveActor: async () => options.requester,
+      resolveRootActor: async () => undefined,
     },
   };
   return {
@@ -174,7 +175,6 @@ describe("updatePullRequest", () => {
     {
       name: "a review event keeps the requesters",
       actor: { platform: "system", name: "event" },
-      source: { kind: "event" },
       expected: "via @lcian.",
     },
     {
@@ -206,8 +206,7 @@ describe("updatePullRequest", () => {
     {
       name: "an automation run is added after the people",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
+      automationRun: {
         automationId: "evt_1",
         automationRunId: "run_1",
       },
@@ -216,8 +215,7 @@ describe("updatePullRequest", () => {
     {
       name: "each automation run is kept, like each person",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
+      automationRun: {
         automationId: "evt_1",
         automationRunId: "run_2",
       },
@@ -229,25 +227,28 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       expected:
         "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
     },
-  ])("$name", async ({ actor, currentBody, expected, requester, source }) => {
-    const { fetch, tool } = toolContext(undefined, {
-      actor,
-      currentBody: currentBody ?? ATTRIBUTED_BODY,
-      requester,
-      source,
-    });
+  ])(
+    "$name",
+    async ({ actor, automationRun, currentBody, expected, requester }) => {
+      const { fetch, tool } = toolContext(undefined, {
+        actor,
+        currentBody: currentBody ?? ATTRIBUTED_BODY,
+        requester,
+        automationRun,
+      });
 
-    await tool.execute?.(
-      { repo: "getsentry/junior", number: 691, body: "Updated body" },
-      { toolCallId: "update-pr" },
-    );
+      await tool.execute?.(
+        { repo: "getsentry/junior", number: 691, body: "Updated body" },
+        { toolCallId: "update-pr" },
+      );
 
-    const body = await patchedBody(fetch);
-    expect(body).toMatch(
-      /^Updated body\n\n<!-- junior-request-attribution:start -->/,
-    );
-    expect(body).toContain(`\n${expected}\n`);
-  });
+      const body = await patchedBody(fetch);
+      expect(body).toMatch(
+        /^Updated body\n\n<!-- junior-request-attribution:start -->/,
+      );
+      expect(body).toContain(`\n${expected}\n`);
+    },
+  );
 
   it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
     // The decision model finds a test plan and nothing else.

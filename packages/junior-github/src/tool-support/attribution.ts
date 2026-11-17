@@ -1,11 +1,12 @@
 import * as z from "zod";
-import type {
-  Actor,
-  Identity,
-  PluginEgress,
-  PluginLogger,
-  Source,
-  User,
+import {
+  PluginToolInputError,
+  type Actor,
+  type Identity,
+  type PluginAutomationRun,
+  type PluginEgress,
+  type PluginLogger,
+  type User,
 } from "@sentry/junior-plugin-api";
 import { githubApi, githubErrorMessage } from "./github-api.js";
 
@@ -76,63 +77,41 @@ export function startedByPerson(ctx: {
 }
 
 /** Name the Automation run that made this write. */
-function automationLabel(
-  source: Source | undefined,
-  automationUrl: string | undefined,
-): string | undefined {
-  if (
-    (source?.kind !== "event_automation" &&
-      source?.kind !== "scheduled_automation") ||
-    !source.automationId
-  ) {
-    return undefined;
-  }
-  const automation = `automation \`${source.automationId}\``;
-  const label = automationUrl
-    ? `[${automation}](${automationUrl})`
-    : automation;
-  return source.automationRunId
-    ? `${label} · Run ID \`${source.automationRunId}\``
+function automationLabel(run: PluginAutomationRun): string {
+  const automation = `automation \`${run.automationId}\``;
+  const label = run.url ? `[${automation}](${run.url})` : automation;
+  return run.automationRunId
+    ? `${label} · Run ID \`${run.automationRunId}\``
     : label;
 }
 
 /**
  * Resolve the requester display label through the host identity path first.
  *
- * Automation runs use the automation label. Other system actors get no label
- * because their names are internal. For people, prefer a linked GitHub login
- * as an `@` mention so GitHub subscribes the requester. Otherwise use the
- * linked user name, then the stored identity name/handle, then the
- * already-hydrated actor profile. Never publish a raw actor id.
+ * Automation runs use the automation label. For people, prefer a linked
+ * GitHub login as an `@` mention so GitHub subscribes the requester.
+ * Otherwise use the linked user name, then the stored identity name/handle,
+ * then the Turn Actor's already-hydrated profile. Never publish a raw actor
+ * id.
  */
-function requesterLabel(args: {
-  actor: Actor | undefined;
-  automationUrl?: string | undefined;
-  identity?: Identity | undefined;
-  source?: Source | undefined;
-  user?: User | undefined;
-}): string | undefined {
-  const { actor, identity, user } = args;
-  const automation = automationLabel(args.source, args.automationUrl);
-  if (automation) {
-    return automation;
-  }
-  if (!actor || actor.platform === "system") {
-    return undefined;
-  }
-
+function requesterLabel(
+  requester: GitHubRequester | undefined,
+): string | undefined {
+  if (!requester) return undefined;
+  if (requester.automation) return automationLabel(requester.automation);
+  const { actor, identity, user } = requester;
   const login = linkedGitHubLogin(user);
   if (login) {
     return `@${login}`;
   }
 
-  const userId = actor.userId;
+  const userId = actor?.userId;
   const display =
     cleanDisplayValue(user?.displayName, userId) ??
     cleanDisplayValue(identity?.displayName, userId) ??
     cleanDisplayValue(identity?.handle, userId) ??
-    cleanDisplayValue(actor.fullName, userId) ??
-    cleanDisplayValue(actor.userName, userId);
+    cleanDisplayValue(actor?.fullName, userId) ??
+    cleanDisplayValue(actor?.userName, userId);
   return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 
@@ -222,36 +201,86 @@ export async function readGitHubBody(
   );
 }
 
-/** The stored Junior identity and user of the Actor that makes a GitHub write. */
+/**
+ * Who a GitHub write is for: a person, with their stored Identity and User
+ * when Junior has them, or an Automation run.
+ */
 export interface GitHubRequester {
+  /** The Turn Actor, when the person runs the Turn themselves. */
+  actor?: Exclude<Actor, { platform: "system" }>;
+  automation?: PluginAutomationRun;
   identity?: Identity;
   user?: User;
 }
 
-/**
- * Look up the current Actor once for one GitHub write. The attribution block,
- * the saved pull request requester, and the assignee all use this one result.
- *
- * System actors have no requester. The lookup is best effort: a failure is
- * logged and gives no requester, so it never blocks the write.
- */
-export async function resolveGitHubRequester(ctx: {
-  actor?: Actor | undefined;
-  log: PluginLogger;
-  users: {
-    resolveActor(): Promise<GitHubRequester | undefined>;
-  };
-}): Promise<GitHubRequester | undefined> {
-  if (!ctx.actor || ctx.actor.platform === "system") return undefined;
+async function bestEffort<T>(
+  log: PluginLogger,
+  lookup: string,
+  read: () => Promise<T | undefined>,
+): Promise<T | undefined> {
   try {
-    return await ctx.users.resolveActor();
+    return await read();
   } catch (error) {
-    ctx.log.warn("github.requester.resolve_actor.failed", {
+    log.warn(`github.requester.${lookup}.failed`, {
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
     return undefined;
   }
+}
+
+/**
+ * Look up the requester once for one GitHub write. The attribution block,
+ * the saved pull request requester, and the assignee all use this one result.
+ *
+ * The order is: the person who runs the Turn, then the person who is the root
+ * Actor, then the Automation run of the root. A system Turn, such as a Watch
+ * Event or a parent agent's message, does its root's work. A person who runs
+ * the Turn is never replaced by someone else, also when Junior cannot name
+ * them. Each lookup is best effort: a failure is logged and moves on.
+ */
+export async function resolveGitHubRequester(ctx: {
+  actor?: Actor | undefined;
+  log: PluginLogger;
+  resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
+  users: {
+    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    resolveRootActor(): Promise<
+      { identity?: Identity; user?: User } | undefined
+    >;
+  };
+}): Promise<GitHubRequester | undefined> {
+  const { actor, log } = ctx;
+  if (actor && actor.platform !== "system") {
+    const stored = await bestEffort(log, "resolve_actor", () =>
+      ctx.users.resolveActor(),
+    );
+    return { actor, ...stored };
+  }
+  const root = await bestEffort(log, "resolve_root_actor", () =>
+    ctx.users.resolveRootActor(),
+  );
+  if (root) return root;
+  const automation = await bestEffort(log, "resolve_automation_run", () =>
+    ctx.resolveAutomationRun(),
+  );
+  return automation ? { automation } : undefined;
+}
+
+/**
+ * Reject a pull request that would not say who it is for. The check uses the
+ * same label as the attribution block, so a pull request that passes always
+ * names a person or an Automation run.
+ */
+export function assertGitHubPullRequestRequester(
+  requester: GitHubRequester | undefined,
+): void {
+  if (requesterLabel(requester)) return;
+  throw new PluginToolInputError(
+    requester && !requester.automation
+      ? "Cannot open a pull request: the person who asked for it has no linked GitHub account or name to attribute it to. Do not retry. Ask them to link their GitHub account and ask again, or report it as blocked."
+      : "Cannot open a pull request: no person or Automation run asked for this work. Do not retry. Report it as blocked, so the person who wants it can ask for it.",
+  );
 }
 
 /**
@@ -262,23 +291,8 @@ export async function resolveGitHubRequester(ctx: {
  */
 export function appendGitHubRequesterAttribution(
   body: string,
-  ctx: {
-    actor?: Actor | undefined;
-    automationLink?: { url: string };
-    source?: Source | undefined;
-  },
   requester: GitHubRequester | undefined,
   currentBody?: string,
 ): string {
-  return applyAttribution(
-    body,
-    requesterLabel({
-      actor: ctx.actor,
-      automationUrl: ctx.automationLink?.url,
-      identity: requester?.identity,
-      source: ctx.source,
-      user: requester?.user,
-    }),
-    currentBody,
-  );
+  return applyAttribution(body, requesterLabel(requester), currentBody);
 }

@@ -4,10 +4,10 @@ import {
   type Identity,
   type User,
   type Actor,
+  type PluginAutomationRun,
   type PluginLogger,
   type PluginDecider,
   type PluginEgress,
-  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -166,7 +166,6 @@ export function createGitHubUpdatePullRequestTool(
       _options,
       ctx: {
         actor?: Actor | undefined;
-        automationLink?: { url: string };
         conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
@@ -174,9 +173,12 @@ export function createGitHubUpdatePullRequestTool(
         log: PluginLogger;
         events: { canSubscribe: boolean };
         conversationLink?: { url: string };
-        source?: Source | undefined;
+        resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
         users: {
           resolveActor(): Promise<
+            { identity?: Identity; user?: User } | undefined
+          >;
+          resolveRootActor(): Promise<
             { identity?: Identity; user?: User } | undefined
           >;
         };
@@ -209,7 +211,6 @@ export function createGitHubUpdatePullRequestTool(
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
                   update.body,
-                  ctx,
                   requester,
                   currentBody,
                 ),

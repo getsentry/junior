@@ -32,7 +32,9 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import { readRootAutomationRun } from "@/chat/automations/conversation-run";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { readRootActorIdentity } from "@/chat/conversations/root-actor";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
@@ -864,12 +866,19 @@ export function getPluginTools(
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
-    const automationUrl =
-      (context.source.kind === "event_automation" ||
-        context.source.kind === "scheduled_automation") &&
-      context.source.automationId
-        ? getDashboardTaskLink(context.source.automationId)
-        : undefined;
+    const { conversationId } = context;
+    const resolveAutomationRun = async () => {
+      const run = await readRootAutomationRun(conversationId);
+      if (!run) return undefined;
+      const url = getDashboardTaskLink(run.automationId);
+      return {
+        automationId: run.automationId,
+        ...(run.automationRunId
+          ? { automationRunId: run.automationRunId }
+          : undefined),
+        ...(url ? { url } : undefined),
+      };
+    };
     const onCost = createPluginModelCostRecorder({
       conversationId: context.conversationId,
       pluginName,
@@ -879,9 +888,7 @@ export function getPluginTools(
     const common = {
       ...basePluginContext(plugin),
       annotations,
-      ...(automationUrl
-        ? { automationLink: { url: automationUrl } }
-        : undefined),
+      resolveAutomationRun,
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -900,6 +907,8 @@ export function getPluginTools(
       state: createPluginState(pluginName),
       users: {
         resolveActor,
+        resolveRootActor: async () =>
+          await readRootActorIdentity(conversationId),
         async resolveTimezone() {
           const actor = context.actor;
           const resolved = await resolveActor();

@@ -2967,6 +2967,7 @@ describe("GitHub-owned pull request outcomes", () => {
         providerSubjectId: person,
       },
       user: {
+        displayName: person,
         email: `${person}@example.com`,
         id: `user-${person}`,
         identities: linkedGitHub.has(person)
