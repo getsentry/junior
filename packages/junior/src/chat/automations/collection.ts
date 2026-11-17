@@ -12,6 +12,8 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
+  lte,
   ne,
   notInArray,
   or,
@@ -19,8 +21,13 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
-import { juniorAutomations, juniorDestinations } from "@/db/schema";
+import {
+  juniorAutomationRuns,
+  juniorAutomations,
+  juniorDestinations,
+} from "@/db/schema";
 
 /**
  * The collection applies access before counts, filter options, and paging.
@@ -63,15 +70,17 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         : undefined,
     ),
   )!;
-  const lastRunNeedsAttention = sql<boolean>`coalesce(${automation.lastRunStatus} in ('failed', 'blocked'), false)`;
+  const lastRun = juniorAutomationRuns;
+  const lastRunNeedsAttention = sql<boolean>`coalesce(${lastRun.status} in ('failed', 'blocked'), false)`;
   // When the last run ended, or else when the Automation was created.
-  const activityAtMs = sql<number>`coalesce(${automation.lastRunAtMs}, ${automation.createdAtMs})`;
+  const activityAtMs = sql<number>`coalesce(${lastRun.completedAtMs}, ${automation.createdAtMs})`;
   return db
     .select({
       kind: automation.kind,
       id: automation.id,
       title: automation.title,
       createdAtMs: automation.createdAtMs,
+      lastRunId: automation.lastRunId,
       activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
       state: sql<string>`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
@@ -113,6 +122,7 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
+    .leftJoin(lastRun, eq(lastRun.id, automation.lastRunId))
     .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
 }
@@ -266,10 +276,41 @@ export async function readAutomationActivityPage(
   pageSize: number,
   after?: AutomationActivityPosition,
 ) {
-  // One extra row tells whether more follow.
-  const rows = await getDb()
+  const db = getDb();
+  const limit = pageSize + 1; // One extra row tells whether more follow.
+  // Sorting the collection by its last run's end time would read the last
+  // run of every row. Instead, walk runs newest first and keep each run that
+  // is a listed Automation's last run, and merge the Automations that have no
+  // run yet by creation time.
+  const run = alias(juniorAutomationRuns, "page_run");
+  const withRun = db
     .select({
-      activityAtMs: collection.activityAtMs,
+      activityAtMs: sql<number>`${run.completedAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(run)
+    .innerJoin(collection, eq(collection.lastRunId, run.id))
+    .where(
+      and(
+        where,
+        after
+          ? and(
+              lte(run.completedAtMs, after.activityAtMs),
+              sql`(${run.completedAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`,
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(run.completedAtMs), desc(collection.id))
+    .limit(limit);
+  const withoutRun = db
+    .select({
+      activityAtMs: sql<number>`${collection.createdAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
       id: collection.id,
       kind: collection.kind,
     })
@@ -277,13 +318,17 @@ export async function readAutomationActivityPage(
     .where(
       and(
         where,
+        isNull(collection.lastRunId),
         after
-          ? sql`(${collection.activityAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
+          ? sql`(${collection.createdAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
           : undefined,
       ),
     )
-    .orderBy(desc(collection.activityAtMs), desc(collection.id))
-    .limit(pageSize + 1);
+    .orderBy(desc(collection.createdAtMs), desc(collection.id))
+    .limit(limit);
+  const rows = await unionAll(withRun, withoutRun)
+    .orderBy(desc(sql.identifier("activity_at_ms")), desc(sql.identifier("id")))
+    .limit(limit);
   const pageRows = rows.slice(0, pageSize);
   const last = pageRows.at(-1);
   return {

@@ -1,5 +1,5 @@
 {
-  "id": "b0a4713c-9625-448e-a8d3-9c4637c9bc92",
+  "id": "fb278771-4d1c-4003-aa03-5179f0a37640",
   "prevId": "2d154736-5c0f-47c7-a700-ba3fe7791778",
   "version": "7",
   "dialect": "postgresql",
@@ -939,9 +939,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "cost_usd": {
-          "name": "cost_usd",
-          "type": "double precision",
+        "cost_micro_usd": {
+          "name": "cost_micro_usd",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -1221,14 +1221,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_run_at_ms": {
-          "name": "last_run_at_ms",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_run_status": {
-          "name": "last_run_status",
+        "last_run_id": {
+          "name": "last_run_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1461,6 +1455,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "junior_automations_last_run_id_junior_automation_runs_id_fk": {
+          "name": "junior_automations_last_run_id_junior_automation_runs_id_fk",
+          "tableFrom": "junior_automations",
+          "tableTo": "junior_automation_runs",
+          "columnsFrom": [
+            "last_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

@@ -12,7 +12,7 @@ import {
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
 import { nextDetailVersion } from "./sql/detail-version";
-import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
+import { costMicroUsdExpr } from "@/chat/automations/run-cost";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 
 function finite(value: number | undefined): number | undefined {
@@ -201,14 +201,16 @@ export async function replaceConversationMetrics(
       })
       .where(eq(juniorConversations.conversationId, args.conversationId))
       .returning({
-        costUsd: conversationUsageCostExpr(juniorConversations.usage).as(
-          "cost_usd",
+        costMicroUsd: costMicroUsdExpr(juniorConversations.usage).as(
+          "cost_micro_usd",
         ),
       }),
   );
   await db
     .with(usageUpdate)
     .update(juniorAutomationRuns)
-    .set({ costUsd: sql`(select ${usageUpdate.costUsd} from ${usageUpdate})` })
+    .set({
+      costMicroUsd: sql`(select ${usageUpdate.costMicroUsd} from ${usageUpdate})`,
+    })
     .where(eq(juniorAutomationRuns.conversationId, args.conversationId));
 }

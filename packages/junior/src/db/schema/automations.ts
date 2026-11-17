@@ -6,9 +6,10 @@ import {
   jsonb,
   pgTable,
   text,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { juniorAutomationRuns } from "./automation-runs";
 import { juniorIdentities } from "./identities";
-import type { AutomationExecutionStatus } from "@/chat/automations/execution-stats";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
 
@@ -48,13 +49,15 @@ export const juniorAutomations = pgTable(
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
     /**
-     * When the latest run with an outcome ended, and that outcome, copied
-     * from `junior_automation_runs` so the list can order by activity and
-     * find failed last runs without a read per row.
-     * `refreshAutomationLastRun` sets both after each run write.
+     * The latest run with an outcome. The list reads its end time and status
+     * to order by activity and to find failed last runs.
+     * `refreshAutomationLastRun` sets it after each run write. A purged run
+     * clears it.
      */
-    lastRunAtMs: bigint("last_run_at_ms", { mode: "number" }),
-    lastRunStatus: text("last_run_status").$type<AutomationExecutionStatus>(),
+    lastRunId: text("last_run_id").references(
+      (): AnyPgColumn => juniorAutomationRuns.id,
+      { onDelete: "set null" },
+    ),
     namespace: text("namespace"),
     identifier: text("identifier"),
     record: jsonb("record")
@@ -96,6 +99,9 @@ export const juniorAutomations = pgTable(
     index("junior_automations_creator_slack_idx")
       .on(table.teamId, table.creatorSlackUserId)
       .where(sql`${table.status} <> 'deleted'`),
+    // The activity page walks runs newest first and finds the Automation
+    // whose last run each one is. A purged run clears `last_run_id` through it.
+    index("junior_automations_last_run_idx").on(table.lastRunId),
     index("junior_automations_run_now_due_idx")
       .on(table.runNowAtMs, table.createdAtMs, table.id)
       .where(

@@ -33,7 +33,7 @@ export async function recordEventAutomationRunStarted(
       automationVersion: automationVersionOf(args.automation),
       conversationId: existingConversationId(conversationId),
       // The dispatch can write usage before this row exists.
-      costUsd: conversationCostOf(conversationId),
+      costMicroUsd: conversationCostOf(conversationId),
       startedAtMs: args.nowMs,
       status: "running",
     })

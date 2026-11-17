@@ -104,7 +104,7 @@ async function writeRun(
     conversationId: dispatchConversationId
       ? existingConversationId(dispatchConversationId)
       : null,
-    costUsd: dispatchConversationId
+    costMicroUsd: dispatchConversationId
       ? conversationCostOf(dispatchConversationId)
       : null,
     dispatchId: stored.dispatchId ?? null,

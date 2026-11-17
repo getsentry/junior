@@ -14,7 +14,7 @@ import {
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
-import { conversationCostOf } from "./run-cost";
+import { conversationCostOf, microUsdToUsd } from "./run-cost";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   automationTaskDescription,
@@ -157,8 +157,7 @@ export async function refreshAutomationLastRun(
   await db
     .update(juniorAutomations)
     .set({
-      lastRunAtMs: latest(sql`${juniorAutomationRuns.completedAtMs}`),
-      lastRunStatus: latest(sql`${juniorAutomationRuns.status}`),
+      lastRunId: latest(sql`${juniorAutomationRuns.id}`),
     })
     .where(eq(juniorAutomations.id, automationId));
 }
@@ -194,7 +193,7 @@ export async function recordAutomationExecution(
         conversationId: options.conversationId
           ? existingConversationId(options.conversationId)
           : null,
-        costUsd: options.conversationId
+        costMicroUsd: options.conversationId
           ? conversationCostOf(options.conversationId)
           : null,
         ...outcome,
@@ -204,7 +203,7 @@ export async function recordAutomationExecution(
         set: {
           ...outcome,
           conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
-          costUsd: conversationCostOf(
+          costMicroUsd: conversationCostOf(
             sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
           ),
         },
@@ -234,7 +233,9 @@ export async function readAutomationExecutionSummaries(
   const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
   const costSince = (sinceMs: number) =>
-    sql<number>`coalesce(sum(${juniorAutomationRuns.costUsd}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
+    sql<number>`coalesce(sum(${juniorAutomationRuns.costMicroUsd}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::bigint`.mapWith(
+      Number,
+    );
   const summaryRows = db
     .select({
       costLast1Day: costSince(oneDayAgoMs),
@@ -246,7 +247,10 @@ export async function readAutomationExecutionSummaries(
       runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${thirtyDaysAgoMs})::int`,
       runsLast90Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${ninetyDaysAgoMs})::int`,
       automationId: juniorAutomationRuns.automationId,
-      totalCostUsd: sql<number>`coalesce(sum(${juniorAutomationRuns.costUsd}), 0)::double precision`,
+      totalCostMicroUsd:
+        sql<number>`coalesce(sum(${juniorAutomationRuns.costMicroUsd}), 0)::bigint`.mapWith(
+          Number,
+        ),
       totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorAutomationRuns)
@@ -267,10 +271,10 @@ export async function readAutomationExecutionSummaries(
       {
         ...rowStats.get(row.automationId)!,
         costUsd: {
-          1: addUsd(0, row.costLast1Day),
-          7: addUsd(0, row.costLast7Days),
-          30: addUsd(0, row.costLast30Days),
-          90: addUsd(0, row.costLast90Days),
+          1: microUsdToUsd(row.costLast1Day),
+          7: microUsdToUsd(row.costLast7Days),
+          30: microUsdToUsd(row.costLast30Days),
+          90: microUsdToUsd(row.costLast90Days),
         },
         runs: {
           1: row.runsLast1Day,
@@ -278,7 +282,7 @@ export async function readAutomationExecutionSummaries(
           30: row.runsLast30Days,
           90: row.runsLast90Days,
         },
-        totalCostUsd: addUsd(0, row.totalCostUsd),
+        totalCostUsd: microUsdToUsd(row.totalCostMicroUsd),
         totalRuns: row.totalRuns,
       },
     ]),
@@ -609,8 +613,8 @@ export async function readAutomationExecutionStatusDays(args: {
     if (row.status === "completed") day.completed = row.count;
     else if (row.status === "failed") day.failed = row.count;
     else if (row.status === "blocked") day.blocked = row.count;
-    if (row.costUsd !== null && row.costUsd > 0) {
-      day.costUsd = addUsd(day.costUsd, row.costUsd);
+    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
+      day.costUsd = addUsd(day.costUsd, microUsdToUsd(row.costMicroUsd));
     }
   }
   return [...byDate.values()];
@@ -649,8 +653,8 @@ export async function readAutomationExecutionStatusHours(args: {
     if (row.status === "completed") hour.completed = row.count;
     else if (row.status === "failed") hour.failed = row.count;
     else if (row.status === "blocked") hour.blocked = row.count;
-    if (row.costUsd !== null && row.costUsd > 0) {
-      hour.costUsd = addUsd(hour.costUsd, row.costUsd);
+    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
+      hour.costUsd = addUsd(hour.costUsd, microUsdToUsd(row.costMicroUsd));
     }
   }
   return [...byHour.values()];
@@ -666,9 +670,9 @@ async function readExecutionStatusBuckets(args: {
   return await getDb()
     .select({
       count: count(),
-      costUsd: sql<
+      costMicroUsd: sql<
         number | null
-      >`SUM(${juniorAutomationRuns.costUsd})::double precision`,
+      >`SUM(${juniorAutomationRuns.costMicroUsd})::bigint`.mapWith(Number),
       date: args.bucket,
       status: juniorAutomationRuns.status,
     })

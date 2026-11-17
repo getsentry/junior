@@ -146,12 +146,12 @@ describe("Automation run cost", () => {
       });
       expect(await readCost()).toEqual({ day: 0.25, total: 0.25, week: 0.25 });
 
-      // Each stored run cost equals the cost of its Conversation.
+      // Each stored run cost is the cost of its Conversation in micro-USD.
       const [parity] = await fixture.sql
         .db()
         .select({
           conversation: conversationUsageCostExpr(juniorConversations.usage),
-          run: juniorAutomationRuns.costUsd,
+          run: juniorAutomationRuns.costMicroUsd,
         })
         .from(juniorAutomationRuns)
         .innerJoin(
@@ -162,7 +162,7 @@ describe("Automation run cost", () => {
           ),
         )
         .where(eq(juniorAutomationRuns.id, "cost-run"));
-      expect(parity!.run).toBe(parity!.conversation);
+      expect(parity).toEqual({ conversation: 0.25, run: 250_000 });
     } finally {
       await fixture.close();
     }
