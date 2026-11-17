@@ -24,11 +24,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const show = page.getByRole("group", { name: "Show" });
     const snoozes = page.getByRole("region", { name: "Snoozes" });
     const automation = page.getByRole("link", { name: /^Open automation: / });
-    // Runs is the default: the Automations that run, and no snoozes.
+    // Scheduled is the default: the Automations that run, and no snoozes.
     await expect(automation.first()).toBeVisible();
     await expect(snoozes).toHaveCount(0);
 
-    await show.getByRole("button", { name: "Snoozes", exact: true }).click();
+    await show.getByRole("button", { name: "Snoozed", exact: true }).click();
     await expect(page).toHaveURL(/[?&]action=snoozes(?:&|$)/);
     await expect(snoozes).toContainText(rollout.title);
     await expect(automation).toHaveCount(0);
@@ -37,7 +37,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       view: "desktop",
     });
 
-    await show.getByRole("button", { name: "All", exact: true }).click();
+    await show.getByRole("button", { name: "Everything", exact: true }).click();
     await expect(snoozes).toContainText(rollout.title);
     await expect(automation.first()).toBeVisible();
 
@@ -49,7 +49,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await snoozes.getByRole("button", { name: "Wake" }).click();
     await woken;
     await expect(snoozes).toHaveCount(0);
-    await show.getByRole("button", { name: "Runs", exact: true }).click();
+    await show.getByRole("button", { name: "Scheduled", exact: true }).click();
     await expect(page).not.toHaveURL(/[?&]action=/);
   });
 

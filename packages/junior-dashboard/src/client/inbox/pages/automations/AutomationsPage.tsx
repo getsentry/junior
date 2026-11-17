@@ -63,12 +63,13 @@ const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 /**
  * Which Automations the page lists, by action: the ones that run (the
- * default), the viewer's snoozes, or both. The `action` URL value holds it.
+ * default), the viewer's snoozes, or both. The `action` URL value holds it;
+ * the values stay `runs`, `snoozes` and `all`, so saved links keep working.
  */
 const ACTIONS = [
-  { label: "Runs", value: "runs" },
-  { label: "Snoozes", value: "snoozes" },
-  { label: "All", value: "all" },
+  { label: "Scheduled", value: "runs" },
+  { label: "Snoozed", value: "snoozes" },
+  { label: "Everything", value: "all" },
 ] as const;
 
 type ActionFilter = (typeof ACTIONS)[number]["value"];

@@ -144,11 +144,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
-    // At its time the row still sleeps on the server; the next check wakes it.
+    // At its time the row still sleeps on the server.
+    const checked = page.waitForResponse((response) =>
+      response.url().endsWith("/api/automations/snoozes"),
+    );
     await page.clock.fastForward("01:01");
+    await checked;
     await expect(rowHead(todo, checkout)).toHaveCount(0);
-    await page.clock.fastForward("00:35");
-    await expect(rowHead(todo, checkout)).toBeVisible();
+    // A later check wakes it, with no reload. Step the clock until it runs.
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(5_000);
+        return rowHead(todo, checkout).count();
+      })
+      .toBe(1);
   });
 
   test("a snoozed row wakes at its time without a reload", async ({

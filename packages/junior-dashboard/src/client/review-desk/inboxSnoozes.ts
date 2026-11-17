@@ -10,7 +10,7 @@ import {
   type WakeAutomationCreateBody,
   type WakeAutomationPayload,
 } from "@sentry/junior/api/schema";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import {
@@ -81,8 +81,9 @@ export function useWakeSnoozes() {
 
 /**
  * Refresh the Inbox when the next snooze timer fires, so its row wakes.
- * Each read sets the timer again, so a snooze that still hides after its
- * time is checked again soon.
+ * Each read sets the timer again. A time that has passed refreshes at once
+ * the first time; after that, a snooze the server still hides is checked
+ * again soon.
  */
 function useRefreshAtNextWake(
   snoozes: readonly WakeAutomationPayload[],
@@ -92,13 +93,21 @@ function useRefreshAtNextWake(
   const nextWakeMs = Math.min(
     ...snoozes.flatMap((snooze) => snoozeWakesAtMs(snooze) ?? []),
   );
+  // The wake time whose own refresh already ran.
+  const refreshedAtOnce = useRef<number>(undefined);
   useEffect(() => {
     if (!Number.isFinite(nextWakeMs)) return;
     const untilMs = nextWakeMs - Date.now();
-    const timer = setTimeout(
-      () => void refreshInbox(queryClient),
-      untilMs > 0 ? Math.min(MAX_TIMER_MS, untilMs) : DUE_RECHECK_MS,
-    );
+    const delayMs =
+      untilMs > 0
+        ? Math.min(MAX_TIMER_MS, untilMs)
+        : refreshedAtOnce.current === nextWakeMs
+          ? DUE_RECHECK_MS
+          : 0;
+    const timer = setTimeout(() => {
+      refreshedAtOnce.current = nextWakeMs;
+      void refreshInbox(queryClient);
+    }, delayMs);
     return () => clearTimeout(timer);
   }, [nextWakeMs, readAtMs, queryClient]);
 }
