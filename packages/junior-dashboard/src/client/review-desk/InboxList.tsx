@@ -194,6 +194,8 @@ export function InboxList(props: {
       ? [linkedClosed, ...done.items]
       : done.items;
   // A snoozed item is still open. Its link opens Snoozed, with its row.
+  // The snoozes list can say so before Snoozed's own rows load.
+  const linkedSnoozed = linkedId ? data.snoozes.hidesItem(linkedId) : false;
   const snoozedKey = linkedId
     ? data.snoozedRows.find((row) =>
         row.items.some((item) => item.id === linkedId),
@@ -265,10 +267,13 @@ export function InboxList(props: {
       void navigate(listPath, { replace: true });
       return;
     }
-    if (snoozedKey) {
-      void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
-        replace: true,
-      });
+    if (snoozedKey || linkedSnoozed) {
+      // On Snoozed, the link waits for its row there.
+      if (view !== "snoozed") {
+        void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
+          replace: true,
+        });
+      }
       return;
     }
     if (!linkedLoaded) return;
@@ -278,6 +283,8 @@ export function InboxList(props: {
     }
     if (!linked.data) return;
     if (linked.data.status === "open") {
+      // Until the snoozes load, an open item may still be snoozed.
+      if (linkedSnoozed === undefined) return;
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
       if (includedId !== linkedId) includeItem(linkedId);
@@ -299,6 +306,7 @@ export function InboxList(props: {
     linkedId,
     linkedLoaded,
     linkedRowKey,
+    linkedSnoozed,
     linkedStreamIndex,
     listPath,
     loaded,

@@ -149,6 +149,34 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a link to a snoozed item waits for Snoozed, which loads last", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [license, rollout],
+      snoozes: [
+        {
+          conversationId: rollout.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    // Snoozed rows arrive after the Inbox and the snoozes list are ready.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/review-items?**snoozed=true**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
+    await expect(page).toHaveURL(/[?&]view=snoozed(?:&|$)/);
+    release();
+    await expect(rowHead(page, checkout)).toBeVisible();
+  });
+
   test("a snoozed row the server still hides after its time is checked again", async ({
     dashboard,
     page,
