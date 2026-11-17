@@ -272,7 +272,7 @@ export function InboxList(props: {
         void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
           replace: true,
         });
-      } else if (data.snoozedLoaded) {
+      } else if (data.snoozedRead.settled) {
         // Snoozed read every page without the row, so the link is stale.
         void navigate(listPath, { replace: true });
       }
@@ -309,7 +309,7 @@ export function InboxList(props: {
     linkedLoaded,
     linkedRowKey,
     linkedSnoozed,
-    data.snoozedLoaded,
+    data.snoozedRead.settled,
     linkedStreamIndex,
     listPath,
     loaded,
@@ -678,20 +678,32 @@ export function InboxList(props: {
         />
       );
   } else if (view === "snoozed") {
-    body = data.snoozedError ? (
-      <InlineError className="py-3">
+    // A failed read keeps the rows already read, with a retry below them.
+    const snoozedRetry = data.snoozedRead.failed ? (
+      <RetryRow
+        loading={data.snoozedRead.loading}
+        onRetry={data.snoozedRead.retry}
+      >
         Could not load your snoozed rows.
-      </InlineError>
-    ) : !data.snoozedLoaded ? (
-      <RowsLoading />
-    ) : data.snoozedRows.length === 0 ? (
-      <InboxEmptyState label="Nothing snoozed" />
-    ) : (
-      // Snoozed rows expand in place like the others, and wake there.
-      <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
-        {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
-      </ul>
-    );
+      </RetryRow>
+    ) : null;
+    body =
+      data.snoozedRows.length > 0 ? (
+        <>
+          {/* Snoozed rows expand in place like the others, and wake there. */}
+          <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
+            {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
+          </ul>
+          {snoozedRetry}
+        </>
+      ) : (
+        (snoozedRetry ??
+        (data.snoozedRead.loaded ? (
+          <InboxEmptyState label="Nothing snoozed" />
+        ) : (
+          <RowsLoading />
+        )))
+      );
   } else if (view === "prs") {
     body = pullRequests.loading ? (
       <RowsLoading />

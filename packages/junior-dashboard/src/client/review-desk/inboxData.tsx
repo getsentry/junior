@@ -258,10 +258,18 @@ function useBuildInboxData(input: {
     pinned,
     signedIn,
     snoozedRows,
-    /** A failed read must not look like nothing is snoozed. */
-    snoozedError: snoozedFailed,
-    /** Snoozed has read every page, so a missing row is not snoozed. */
-    snoozedLoaded: !snoozedPending && !snoozedFailed && !moreSnoozed,
+    snoozedRead: {
+      failed: snoozedFailed,
+      /** Every page is read, so an empty list means nothing is snoozed. */
+      loaded: !snoozedPending && !snoozedFailed && !moreSnoozed,
+      loading: fetchingSnoozed,
+      /** Loaded with no read in flight, so a missing row is not snoozed. */
+      settled:
+        !snoozedPending && !snoozedFailed && !moreSnoozed && !fetchingSnoozed,
+      // A later page retries that page, and keeps the rows already read.
+      retry: () =>
+        void (moreSnoozed ? fetchNextSnoozed() : snoozedQuery.refetch()),
+    },
     /** Automation alerts for To do: those the viewer has not put away. */
     todoAutomations: automations.filter(
       (automation) => !alerts.hidden(automation),

@@ -149,6 +149,43 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a failed Snoozed page keeps the rows already read, and retries", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [rollout, digest, prReady],
+      pageSize: 1,
+      snoozes: [rollout, digest].map((item) => ({
+        conversationId: item.addedByConversationId,
+        untilMs: NOW_MS + 86_400_000,
+      })),
+    });
+    // Snoozed's second page fails until the retry.
+    let failing = true;
+    await page.route(
+      (url) =>
+        url.pathname === "/api/review-items" &&
+        url.searchParams.get("snoozed") === "true" &&
+        url.searchParams.has("cursor"),
+      (route) =>
+        failing
+          ? route.fulfill({ status: 500, json: { error: "boom" } })
+          : route.fallback(),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await expect(rowHead(page, checkout)).toBeVisible();
+    await expect(
+      page.getByText("Could not load your snoozed rows."),
+    ).toBeVisible();
+    failing = false;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(rowHead(page, "Daily operations digest")).toBeVisible();
+    await expect(
+      page.getByText("Could not load your snoozed rows."),
+    ).toHaveCount(0);
+  });
+
   test("a link to a snoozed item waits for Snoozed, which loads last", async ({
     dashboard,
     page,
