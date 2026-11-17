@@ -44,6 +44,8 @@ import {
   conversationDeliveryResponseSchema,
 } from "../schema/conversation-delivery";
 import {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -94,7 +96,10 @@ import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
-import { setConversationSubscription } from "./subscription";
+import {
+  inviteToConversation,
+  setConversationSubscription,
+} from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
@@ -434,6 +439,30 @@ export function createConversationRoutes(
       jsonResponse(
         conversationSubscriptionResponseSchema,
         await setConversationSubscription(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
+    "/:conversationId/invites",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationInviteBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationInviteResponseSchema,
+        await inviteToConversation(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),

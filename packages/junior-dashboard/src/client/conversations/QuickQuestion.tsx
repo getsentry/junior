@@ -462,7 +462,9 @@ export function QuickQuestionPanel(props: {
   const busy = props.pending || thinking;
 
   useEffect(() => {
-    footerRef.current?.querySelector("textarea")?.focus();
+    footerRef.current
+      ?.querySelector<HTMLElement>("[contenteditable='true'], textarea")
+      ?.focus();
   }, [thread.id]);
 
   // Keep the newest message in view.

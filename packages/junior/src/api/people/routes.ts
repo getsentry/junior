@@ -8,6 +8,8 @@ import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   avatarParamsSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
@@ -19,6 +21,7 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
+import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
@@ -53,6 +56,17 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
 
   app.get("/", async () =>
     jsonResponse(actorDirectoryReportSchema, await readPeopleList()),
+  );
+
+  // Before `/:email`, which would also match `/search`.
+  app.get(
+    "/search",
+    requireViewer,
+    validateRequest("query", peopleSearchQuerySchema, "Invalid search query."),
+    async (context) =>
+      jsonResponse(peopleSearchReportSchema, {
+        people: await readPeopleSearchFromSql(context.req.valid("query").q),
+      }),
   );
 
   app.get(

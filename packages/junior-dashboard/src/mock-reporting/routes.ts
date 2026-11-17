@@ -4,7 +4,6 @@ import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   acceptedConversationMessageSchema,
-  apiErrorSchema,
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
   createConversationBodySchema,
@@ -91,7 +90,9 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
+import { errorResponse } from "./error-response";
 import { readMockConversationOutline } from "./outline";
+import { registerMockPeopleSearchRoutes } from "./people-search";
 import {
   actOnMockReviewItem,
   answerMockReviewItemByReply,
@@ -163,10 +164,6 @@ function withMockFeedIncludes(
     return kept;
   };
   return { ...feed, conversations: feed.conversations.map(strip) };
-}
-
-function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
-  return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
 function viewerIdentity(viewer: User) {
@@ -280,6 +277,8 @@ export function createMockReportingApi(): Hono<{
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
+  // Before `/people/:email`, which would take `search` as an email.
+  registerMockPeopleSearchRoutes(app);
   app.get("/people/me/spend", (context) => {
     const email = context.get("viewer")?.email;
     const report = email ? readMockPersonalSpend(email) : undefined;

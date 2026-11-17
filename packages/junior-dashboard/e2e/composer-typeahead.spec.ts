@@ -1,0 +1,198 @@
+import type { Page } from "@playwright/test";
+
+import { expect, test } from "./test";
+
+const PUBLIC_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+const PARTICIPANT_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+
+async function openComposer(page: Page, baseURL: string, id: string) {
+  await page.goto(`${baseURL}/conversations/${encodeURIComponent(id)}`);
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  // The editor loads after the page. A textarea stands in until then.
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await composer.click();
+  return composer;
+}
+
+test("@ suggests people and sends the mention as a Slack token", async ({
+  page,
+  dashboard,
+}) => {
+  const sent: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      sent.push(route.request().postDataJSON().message);
+    }
+    await route.fallback();
+  });
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+
+  await composer.pressSequentially("Hi @c");
+  const people = page.getByRole("listbox", { name: "People" });
+  await expect(people.getByRole("option")).toHaveText([
+    /Casey Nguyen/,
+    /Riley Chen/,
+  ]);
+  await expect(
+    people.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  // Arrows move the choice and wrap. Escape closes the menu.
+  await composer.press("ArrowDown");
+  await expect(
+    people.getByRole("option", { name: /Riley Chen/ }),
+  ).toHaveAttribute("aria-selected", "true");
+  await composer.press("ArrowDown");
+  await expect(
+    people.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toHaveAttribute("aria-selected", "true");
+  await composer.press("Escape");
+  await expect(people).toBeHidden();
+
+  // The menu stays closed until the caret leaves that reference.
+  await composer.pressSequentially("h");
+  await expect(people).toBeHidden();
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await composer.pressSequentially("@ri");
+  await expect(people.getByRole("option")).toHaveText([/Riley Chen/]);
+  await composer.press("Enter");
+  await expect(people).toBeHidden();
+  await expect(composer).toHaveText("Hi @Riley Chen ");
+  await expect(composer.locator("[data-mention='U789']")).toBeVisible();
+
+  await composer.pressSequentially("can you look?");
+  await composer.press("Enter");
+  await expect.poll(() => sent).toEqual(["Hi <@U789> can you look?"]);
+  await expect(composer).toHaveText("");
+});
+
+test("a pasted Slack mention becomes a mention", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "ask <@U456> first");
+    document.activeElement?.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  });
+  await expect(composer.locator("[data-mention='U456']")).toHaveText("@U456");
+  await expect(composer).toHaveText("ask @U456 first");
+});
+
+test("Invite subscribes a mentioned person to a public conversation", async ({
+  page,
+  dashboard,
+}) => {
+  const invites: unknown[] = [];
+  await page.route("**/api/conversations/*/invites", async (route) => {
+    invites.push(route.request().postDataJSON());
+    await route.fallback();
+  });
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  await composer.pressSequentially("@case");
+  await composer.press("Tab");
+  await composer.locator("[data-mention='U456']").click();
+
+  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
+  // Avatar and display name only: no email address or Slack handle.
+  await expect(card).not.toContainText("casey@example.com");
+  await expect(card).not.toContainText("@casey");
+  await card.getByRole("button", { name: "Invite" }).click();
+  await expect(card.getByText("Subscribed")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
+  expect(invites).toEqual([{ slackUserId: "U456" }]);
+});
+
+test("a private conversation's mention card has no Invite", async ({
+  page,
+  dashboard,
+}) => {
+  // A participant's private conversation, so the composer shows.
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/conversations/${encodeURIComponent(PARTICIPANT_CONVERSATION_ID)}`,
+    async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...json, visibility: "private" },
+      });
+    },
+  );
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PARTICIPANT_CONVERSATION_ID,
+  );
+  await composer.pressSequentially("@case");
+  await composer.press("Enter");
+  await composer.locator("[data-mention='U456']").click();
+  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
+  await expect(card.getByRole("link", { name: "Profile" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
+});
+
+test("$ suggests skills and inserts the skill name", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "triage-incident",
+          description: "Triage a live incident into a suspects-first note.",
+        },
+        {
+          name: "tpm",
+          description: "Run the TPM bug digest from Linear.",
+        },
+      ],
+    }),
+  );
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  await composer.pressSequentially("use $t");
+  const skills = page.getByRole("listbox", { name: "Skills" });
+  await expect(skills.getByRole("option")).toHaveText([
+    /\$triage-incident/,
+    /\$tpm/,
+  ]);
+  await composer.press("ArrowUp");
+  await expect(skills.getByRole("option", { name: /\$tpm/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await composer.press("ArrowDown");
+  await composer.press("Tab");
+  await expect(skills).toBeHidden();
+  await expect(composer).toHaveText("use $triage-incident ");
+});

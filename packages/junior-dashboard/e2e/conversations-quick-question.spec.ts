@@ -191,11 +191,14 @@ test("asks a quick question about selected reply text", async ({
   await composer.press("Enter");
   // The held question stays in the composer. Thinking waits for it.
   await expect.poll(() => asks).toBe(1);
-  await expect(composer).toHaveValue("Why?");
+  await expect(composer).toHaveText("Why?", { useInnerText: true });
   await expect(panel.getByText("Thinking…")).toBeHidden();
   acceptFirstAsk();
   await expect(panel.getByText("Answer 1.")).toBeVisible();
-  await expect(composer).toHaveAttribute("placeholder", "Ask a follow-up…");
+  await expect(composer).toHaveAttribute(
+    "aria-placeholder",
+    "Ask a follow-up…",
+  );
   await composer.fill("And then?");
   await composer.press("Enter");
   await expect(panel.getByText("Answer 2.")).toBeVisible();
@@ -286,7 +289,7 @@ test("quotes selected reply text in the message box", async ({
   // The quote keeps the Markdown of the reply: marks, lists, tables, code.
   await selectWholeReply(page);
   await respond.click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     [
       "Thanks.",
       "",
@@ -324,6 +327,7 @@ test("quotes selected reply text in the message box", async ({
       "",
       "",
     ].join("\n"),
+    { useInnerText: true },
   );
   await screenshot(page, "conversation-selection-respond-quoted", {
     view: "desktop",
@@ -362,6 +366,6 @@ test.describe("on a touch screen", () => {
     await respond.tap();
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
-    ).toHaveValue(`> ${quote}\n\n`);
+    ).toHaveText(`> ${quote}\n\n`, { useInnerText: true });
   });
 });

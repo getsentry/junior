@@ -264,8 +264,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     // New on Automations starts the ask in a new conversation.
     await page.getByRole("button", { name: "New automation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
-    await expect(page.getByLabel("Start a conversation")).toHaveValue(
+    await expect(page.getByLabel("Start a conversation")).toHaveText(
       /^Set up an automation that /,
+      { useInnerText: true },
     );
   });
 

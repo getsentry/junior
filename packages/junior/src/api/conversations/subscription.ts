@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
@@ -7,13 +7,19 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorIdentities,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
+  ConversationInviteBody,
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "../schema/conversation-subscription";
-import { readConversationAccessFromSql } from "./access";
+import {
+  canAddConversationMessages,
+  readConversationAccessFromSql,
+} from "./access";
 
 /*
  * Conversation subscription: the owner of this contract.
@@ -44,9 +50,17 @@ import { readConversationAccessFromSql } from "./access";
  *   again. A restored root never sits in no feed.
  * - Given a Turn, when the agent changes the subscription with its tool,
  *   then only the person who started the Turn changes, in the current
- *   Conversation. Nobody can subscribe or unsubscribe another person. The
- *   dashboard conversation menu, the agent tool, and the MCP tool act only
- *   on the signed-in person or the Turn actor. No argument names a person.
+ *   Conversation. The dashboard conversation menu, the agent tool, and the
+ *   MCP tool act only on the signed-in person or the Turn actor. No argument
+ *   of theirs names a person.
+ * - Given a public Conversation that a person can add Messages to, when
+ *   they Invite a person they mention, then that person becomes a
+ *   subscribed Participant. This is the only way to subscribe another
+ *   person. It gives no access: anyone can already read a public
+ *   Conversation and join it by posting. A private Conversation refuses
+ *   Invite with the same error as a missing one, so Invite never shares
+ *   private content. An existing Participant keeps their row, so Invite
+ *   does not undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
@@ -60,7 +74,7 @@ import { readConversationAccessFromSql } from "./access";
  *   their own auto-archive run skips it.
  * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
  *   input membership (`recordTurnInputParticipants`), auto-archive
- *   (`archivableRow`), and the entry points: this module's HTTP route,
+ *   (`archivableRow`), and the entry points: this module's HTTP routes,
  *   `chat/tools/conversation-subscription.ts`, and
  *   `api/mcp/tools/set-conversation-subscription.ts`.
  */
@@ -160,6 +174,69 @@ export async function updateConversationSubscription(
       return { archivedAt: null, subscribed: false };
     }
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
+  });
+}
+
+/**
+ * Invite a mentioned person into a public Conversation's feed, for the HTTP
+ * API. The contract is in the comment above. `added` is false when the
+ * person was already a Participant.
+ */
+export async function inviteToConversation(
+  viewer: User,
+  conversationId: string,
+  body: ConversationInviteBody,
+): Promise<ConversationInviteResponse> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], viewer)
+  ).get(conversationId);
+  const rootConversationId = access?.rootConversationId;
+  if (
+    !rootConversationId ||
+    access.visibility !== "public" ||
+    !canAddConversationMessages(access)
+  ) {
+    throwApiError(404, "Conversation not found.");
+  }
+  const [person] = await getDb()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.providerSubjectId, body.slackUserId),
+        isNotNull(juniorIdentities.userId),
+      ),
+    )
+    .limit(1);
+  if (!person?.userId) throwApiError(404, "Person not found.");
+  const userId = person.userId;
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    // Lock the root as an unsubscribe does, so a last-subscriber archive
+    // either sees this subscriber or happens before it.
+    const [root] = await db
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, rootConversationId))
+      .for("no key update");
+    if (!root) throwApiError(404, "Conversation not found.");
+    // The detail ETag and the feed version read the subscription on each
+    // request.
+    // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
+    const added = await db
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: root.lastActivityAt,
+        rootConversationId,
+        unsubscribedAt: null,
+        userId,
+      })
+      .onConflictDoNothing()
+      .returning({ userId: juniorConversationParticipants.userId });
+    return { added: added.length > 0 };
   });
 }
 

@@ -108,8 +108,9 @@ test("stops the active Turn and returns queued text to the composer", async ({
   // Queued text goes back ahead of the draft.
   await composer.fill("Draft in progress");
   await stop.click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     `${queuedMessage.text}\n${sentMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
   await expect(pending).toBeHidden();
   expect(stopRequests).toBe(1);
@@ -278,8 +279,9 @@ test("edits a queued message back into the composer", async ({
     .getByRole("button", { name: "Edit queued message" })
     .first()
     .click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     `${queuedMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
   await expect(page.getByRole("img", { name: "queued-chart.png" })).toHaveCount(
     1,
@@ -290,7 +292,8 @@ test("edits a queued message back into the composer", async ({
   await expect(
     page.getByText("That message was already read or removed."),
   ).toBeVisible();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     `${queuedMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
 });

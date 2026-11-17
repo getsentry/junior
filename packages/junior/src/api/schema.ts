@@ -183,10 +183,13 @@ export type {
   ConversationDeliveryResponse,
 } from "./schema/conversation-delivery";
 export {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -267,6 +270,9 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  mentionablePersonSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -292,7 +298,9 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   ActorWindowMetrics,
+  MentionablePerson,
   PeopleActivityDayReport,
+  PeopleSearchReport,
   PersonalSpendReport,
   PersonParams,
 } from "./schema/person";

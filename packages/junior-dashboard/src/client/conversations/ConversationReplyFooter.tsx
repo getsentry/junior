@@ -30,6 +30,7 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
+import type { ComposerInviteTarget } from "./ComposerMention";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
@@ -66,6 +67,8 @@ function ReplyFooter(props: {
   conversationId: string;
   /** A request to focus the message box. */
   focusRequest?: ReplyFocusRequest | undefined;
+  /** The public Conversation that a mentioned person can be Invited to. */
+  invite?: ComposerInviteTarget | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   /**
@@ -443,6 +446,7 @@ function ReplyFooter(props: {
             ? `Could not stop ${getDashboardAgentName()}. Try again.`
             : undefined)
         }
+        invite={props.invite}
         ref={composerRef}
         label="Continue this conversation"
         placeholder={questionShown ? "Or type your answer…" : undefined}

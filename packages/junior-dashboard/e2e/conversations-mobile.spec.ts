@@ -227,7 +227,9 @@ test.describe("on a touch screen", () => {
     await composer.fill("First line");
     await composer.press("Enter");
     await composer.pressSequentially("Second line");
-    await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(composer).toHaveText("First line\nSecond line", {
+      useInnerText: true,
+    });
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
@@ -781,7 +783,7 @@ test("opens and closes a conversation on mobile", async ({
   await composer.fill("Keep the mobile composer ready");
   await composer.press("Enter");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expect
     .poll(() =>
       transcript.evaluate(

@@ -73,6 +73,14 @@ async function person(name: string) {
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json());
     },
+    /** Invite a mentioned person by Slack user id. Returns the response. */
+    async invite(slackUserId: string) {
+      return await api(`/${CONVERSATION_ID}/invites`, {
+        body: JSON.stringify({ slackUserId }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+    },
     async pin() {
       const response = await patch(`/${CONVERSATION_ID}/pin`, {
         pinned: true,
@@ -151,7 +159,10 @@ async function say(someone: Person, mentionsJunior: boolean) {
 }
 
 /** Given Ana and Ben both mentioned Junior in one Slack thread. */
-async function sharedThread(starter?: string) {
+async function sharedThread(
+  starter?: string,
+  visibility: "private" | "public" = "public",
+) {
   // The starter's Slack actor has no email, so no User exists yet and they
   // get no participant row. `person(starter)` links a User later.
   await getConversationStore().recordActivity({
@@ -169,7 +180,7 @@ async function sharedThread(starter?: string) {
     nowMs,
     source: "internal",
     title: "Shared thread",
-    visibility: "public",
+    visibility,
   });
   const ana = await person("ana");
   const ben = await person("ben");
@@ -272,5 +283,32 @@ describe("conversation subscription", () => {
     await ben.setSubscribed(false);
     await ana.restore();
     expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+  });
+
+  it("Invite adds a mentioned person to the feed of a public conversation", async () => {
+    const { ana, ben } = await sharedThread();
+    const cleo = await person("cleo");
+    expect(await cleo.feed()).toEqual([]);
+
+    const invited = await ana.invite("U-cleo");
+    expect(invited.status).toBe(200);
+    expect(await invited.json()).toEqual({ added: true });
+    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
+    expect(await cleo.open()).toMatchObject({ subscribed: true });
+
+    // An existing Participant keeps their own choice to unsubscribe.
+    await ben.setSubscribed(false);
+    expect(await (await ana.invite("U-ben")).json()).toEqual({ added: false });
+    expect(await ben.feed()).toEqual([]);
+  });
+
+  it("Invite on a private conversation is refused and shares nothing", async () => {
+    const { ana } = await sharedThread(undefined, "private");
+    const cleo = await person("cleo");
+
+    const invited = await ana.invite("U-cleo");
+    expect(invited.status).toBe(404);
+    expect(await cleo.feed()).toEqual([]);
+    expect(await cleo.feed("?q=shared")).toEqual([]);
   });
 });

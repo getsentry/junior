@@ -9,6 +9,20 @@ export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
   .strict();
 
+/** Query of the people search that the composer `@` menu uses. */
+export const peopleSearchQuerySchema = z
+  .object({ q: z.string().trim().min(1).max(100) })
+  .strict();
+
+/** A person that a Message can mention: they have a Slack user id. */
+export const mentionablePersonSchema = actorIdentitySchema
+  .extend({ slackUserId: z.string().min(1) })
+  .strict();
+
+export const peopleSearchReportSchema = z
+  .object({ people: z.array(mentionablePersonSchema) })
+  .strict();
+
 /** Route parameters for the photo of one Identity. */
 export const avatarParamsSchema = z
   .object({ identityId: z.string().min(1).max(200) })
@@ -148,3 +162,5 @@ export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;
 export type PersonalSpendReport = z.infer<typeof personalSpendReportSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
+export type MentionablePerson = z.infer<typeof mentionablePersonSchema>;
+export type PeopleSearchReport = z.infer<typeof peopleSearchReportSchema>;

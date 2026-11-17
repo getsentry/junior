@@ -36,6 +36,28 @@ export function ConversationPageDock(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
+  // Invite subscribes a person to a public Conversation and grants no
+  // access, so a private one has none. The API checks again.
+  const conversation = detail.data;
+  const invite = useMemo(
+    () =>
+      conversation?.visibility === "public" && conversation.kind !== "task"
+        ? {
+            conversationId: props.conversationId,
+            participantSlackUserIds: new Set(
+              conversation.participants?.flatMap((person) =>
+                person.slackUserId ? [person.slackUserId] : [],
+              ),
+            ),
+          }
+        : undefined,
+    [
+      props.conversationId,
+      conversation?.visibility,
+      conversation?.kind,
+      conversation?.participants,
+    ],
+  );
 
   if (!detail.data) return null;
   return (
@@ -46,6 +68,7 @@ export function ConversationPageDock(props: {
       // too large to re-enter the footer on every live poll while typing.
       committedMessageIds={mailboxCommittedIds}
       focusRequest={props.focusRequest}
+      invite={invite}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
       onShowQuestion={props.onShowQuestion}
