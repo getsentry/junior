@@ -42,6 +42,7 @@ import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 import {
   juniorAgentInvocations,
   juniorConversationEvents,
@@ -477,16 +478,6 @@ function byConversation<Row extends { conversationId: string }>(
   return grouped;
 }
 
-function isQueryCanceled(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (typeof current !== "object") return false;
-    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
 /** Idle periods of a history scan, and how much of the history it read. */
 export interface HistoryScan {
   periods: ReplayedIdlePeriod[];
@@ -528,7 +519,7 @@ async function replayConversations(
     } catch (error) {
       // A batch with too much history for one query is skipped. The budget
       // check still stops the scan in time.
-      if (!isQueryCanceled(error)) throw error;
+      if (!isPostgresErrorCode(error, QUERY_CANCELED)) throw error;
       canceledBatches += 1;
       continue;
     }
