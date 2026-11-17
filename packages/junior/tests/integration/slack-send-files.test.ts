@@ -163,27 +163,32 @@ describe("Slack sendFiles", () => {
     ).not.toHaveProperty("initial_comment");
   });
 
-  it("accepts a generated artifact reference without translating its path", async () => {
+  it("sends a generated file under its original name, with or without the reference", async () => {
     const imageBytes = Buffer.from("image bytes");
-    const generatedArtifact = {
+    const generatedFile = {
       bytes: imageBytes.byteLength,
       filename: "generated.png",
       mimeType: "image/png",
-      path: "/tmp/junior/artifacts/generated.png",
+      path: "/tmp/jr/gen/0123456789ab/generated.png",
     };
-    const tool = createSlackSendFilesTool(
-      createContext("share the generated image"),
-      createToolState(),
-      createMaterializeFile({ [generatedArtifact.path]: imageBytes }),
-    );
+    const createTool = () =>
+      createSlackSendFilesTool(
+        createContext("share the generated image"),
+        createToolState(),
+        createMaterializeFile({ [generatedFile.path]: imageBytes }),
+      );
 
-    const result = await executeTool(tool, { files: [generatedArtifact] });
+    const result = await executeTool(createTool(), { files: [generatedFile] });
+    // A send with only the path takes the name from the last path segment.
+    await executeTool(createTool(), { files: [{ path: generatedFile.path }] });
 
-    expect(
-      getCapturedSlackApiCalls("files.getUploadURLExternal")[0]?.params,
-    ).toMatchObject({
-      filename: generatedArtifact.filename,
+    const uploads = getCapturedSlackApiCalls("files.getUploadURLExternal");
+    expect(uploads[0]?.params).toMatchObject({
+      filename: generatedFile.filename,
       length: String(imageBytes.byteLength),
+    });
+    expect(uploads[1]?.params).toMatchObject({
+      filename: generatedFile.filename,
     });
     expect(result).toEqual({
       attachment_refs: [],
