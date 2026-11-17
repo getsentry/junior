@@ -73,6 +73,7 @@ struct SettingsScreen: View {
               Button(saved ? "Saved" : "Save changes", action: save)
                 .buttonStyle(.dashboard(.outline))
                 .disabled(!connectionChanged)
+                .accessibilityIdentifier("save-connection")
               if app.server.token != nil {
                 Button("Remove token") {
                   token = ""
@@ -80,6 +81,9 @@ struct SettingsScreen: View {
                 }
                 .buttonStyle(.dashboard(.ghost))
               }
+            }
+            if app.tokenSaveFailed {
+              InlineError(text: "Could not save the token in the Keychain. It works until the app quits.")
             }
             if let error = app.shellError {
               InlineError(text: error.localizedDescription)

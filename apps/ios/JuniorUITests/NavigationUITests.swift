@@ -51,4 +51,20 @@ final class NavigationUITests: XCTestCase {
     let closed = NSPredicate(format: "label CONTAINS 'closed this' OR label CONTAINS 'dismissed this'")
     XCTAssertTrue(app.staticTexts.matching(closed).firstMatch.waitForExistence(timeout: 10))
   }
+
+  /// The token lives in the Keychain and survives a relaunch.
+  func testTokenPersists() {
+    var app = launch(open: "/settings")
+    let field = app.secureTextFields.firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    field.tap()
+    field.typeText("jr_pat_uitest")
+    app.buttons["save-connection"].tap()
+    XCTAssertTrue(app.buttons["Remove token"].waitForExistence(timeout: 5))
+    app.terminate()
+    app = launch(open: "/settings")
+    let remove = app.buttons["Remove token"]
+    XCTAssertTrue(remove.waitForExistence(timeout: 10))
+    remove.tap()
+  }
 }

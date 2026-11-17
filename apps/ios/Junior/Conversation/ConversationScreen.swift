@@ -182,7 +182,9 @@ struct ConversationScreen: View {
               }
               rowView(row)
                 .id(row.id)
-                .onScrollVisibilityChange(threshold: 0.5) { visible in
+                // Any part on screen counts, so a reply taller than the screen
+                // is read too (the web reports rows that reach the viewport).
+                .onScrollVisibilityChange(threshold: 0.01) { visible in
                   if visible, let seq = row.seq { model.noteSeen(seq, client: app.client) }
                 }
             }
@@ -225,6 +227,9 @@ struct ConversationScreen: View {
       } else {
         proxy.scrollTo("bottom", anchor: .bottom)
       }
+      // Count rows as read only once the page sits where it opens.
+      try? await Task.sleep(for: .milliseconds(400))
+      model.trackingReads = true
     }
   }
 
@@ -232,8 +237,8 @@ struct ConversationScreen: View {
     switch row {
     case .message(let message):
       MessageRow(
-        message: message, slackSurface: model.detail?.surface == "slack",
-        onFork: model.detail?.canFork == true ? { forkFrom = message.id } : nil)
+        message: message, slackSurface: model.detail?.surface == "slack", blocks: model.messageBlocks[message.id],
+        onFork: model.detail?.canFork == true && message.forkable ? { forkFrom = message.id } : nil)
     case .activity(let activity): ActivityRow(activity: activity)
     case .failure(let failure): FailureRow(failure: failure)
     case .thread(let thread): ThreadCard(thread: thread)

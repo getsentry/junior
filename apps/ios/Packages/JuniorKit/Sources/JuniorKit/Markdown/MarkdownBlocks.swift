@@ -27,13 +27,19 @@ public struct MarkdownTable: Equatable, Sendable {
 }
 
 /// Parse Markdown into blocks. Single newlines inside a paragraph are kept as
-/// hard breaks, as `remark-breaks` does on the web.
+/// hard breaks, as `remark-breaks` does on the web. A top-level paragraph
+/// that leads with a bold-only line gets that line as a heading.
 public func parseMarkdown(_ source: String) -> [MarkdownBlock] {
+  splitBoldLead(parseBlocks(source))
+}
+
+/// Parse blocks without the top-level section-label rule (list items, quotes).
+func parseBlocks(_ source: String) -> [MarkdownBlock] {
   let lines = source.replacingOccurrences(of: "\r\n", with: "\n")
     .split(separator: "\n", omittingEmptySubsequences: false)
     .map(String.init)
   var parser = BlockParser(lines: lines)
-  return splitBoldLead(parser.parse())
+  return parser.parse()
 }
 
 private struct BlockParser {
@@ -164,7 +170,7 @@ private struct BlockParser {
       }
       index += 1
     }
-    return .quote(parseMarkdown(inner.joined(separator: "\n")))
+    return .quote(parseBlocks(inner.joined(separator: "\n")))
   }
 
   // MARK: Lists
@@ -237,7 +243,7 @@ private struct BlockParser {
           body[0] = String(head.dropFirst(min(4, head.count)))
         }
       }
-      items.append(MarkdownListItem(blocks: parseMarkdown(body.joined(separator: "\n")), checked: checked))
+      items.append(MarkdownListItem(blocks: parseBlocks(body.joined(separator: "\n")), checked: checked))
     }
     return .list(ordered: first.ordered, start: first.number, items: items)
   }
@@ -343,11 +349,15 @@ func splitBoldLead(_ blocks: [MarkdownBlock]) -> [MarkdownBlock] {
   blocks.flatMap { block -> [MarkdownBlock] in
     guard case .paragraph(let text) = block else { return [block] }
     let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-    let head = String(lines[0])
+    var head = String(lines[0])
+    // `**Gaps**:` counts too, and keeps its colon.
+    let colon = head.hasSuffix("**:")
+    if colon { head.removeLast() }
     guard head.hasPrefix("**"), head.hasSuffix("**"), head.count > 4,
       !head.dropFirst(2).dropLast(2).contains("**")
     else { return [block] }
-    let heading = MarkdownBlock.heading(level: 3, text: String(head.dropFirst(2).dropLast(2)))
+    let heading = MarkdownBlock.heading(
+      level: 3, text: String(head.dropFirst(2).dropLast(2)) + (colon ? ":" : ""))
     return lines.count > 1 ? [heading, .paragraph(String(lines[1]))] : [heading]
   }
 }

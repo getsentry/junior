@@ -194,7 +194,14 @@ public enum EventData: Decodable, Sendable, Hashable {
   case message(MessageEvent)
   case assistantMessage(parts: [AssistantPart])
   case toolCalls(calls: [ToolCall], assistantParts: [AssistantPart]?)
-  case turnLifecycle(turnId: String?, state: String, failureCode: String?, failureReason: String?)
+  case turnLifecycle(
+    turnId: String?, state: String, failureCode: String?, failureReason: String?, inputMessageIds: [String])
+  /// The agent read this message, though no one addressed it.
+  case messageHandled(messageId: String)
+  /// A plugin's event in the transcript, such as captured memories.
+  case structuredEvent(title: String, namespace: String?, name: String?)
+  /// History was summarized to fit the model's context.
+  case compaction
   case turnContext(turnId: String?, pluginName: String?, kind: String?, memoryCount: Int)
   case subagent(SubagentEvent)
   /// Junior's text posted to another tool, such as a GitHub comment.
@@ -236,11 +243,12 @@ public enum EventData: Decodable, Sendable, Hashable {
 
   enum Keys: String, CodingKey {
     case type, parts, calls, assistant, turnId, state, failureCode, failureReason, pluginName, kind
-    case content, text, plugin, attachments
+    case content, text, plugin, attachments, inputMessageIds, messageId, presentation, namespace, name
   }
 
   private struct Assistant: Decodable { var parts: [AssistantPart]? }
   private struct Delivered: Decodable { var filename: String? }
+  private struct Presentation: Decodable { var title: String? }
   private struct ContextContent: Decodable { var memories: [JSONValue]? }
 
   public init(from decoder: Decoder) throws {
@@ -260,7 +268,17 @@ public enum EventData: Decodable, Sendable, Hashable {
         turnId: try c.decodeIfPresent(String.self, forKey: .turnId),
         state: try c.decodeIfPresent(String.self, forKey: .state) ?? "",
         failureCode: try c.decodeIfPresent(String.self, forKey: .failureCode),
-        failureReason: try c.decodeIfPresent(String.self, forKey: .failureReason))
+        failureReason: try c.decodeIfPresent(String.self, forKey: .failureReason),
+        inputMessageIds: (try? c.decodeIfPresent([String].self, forKey: .inputMessageIds)) ?? [])
+    case "message_handled":
+      self = .messageHandled(messageId: try c.decodeIfPresent(String.self, forKey: .messageId) ?? "")
+    case "structured_event":
+      self = .structuredEvent(
+        title: (try? c.decodeIfPresent(Presentation.self, forKey: .presentation))?.title ?? "Event",
+        namespace: try? c.decodeIfPresent(String.self, forKey: .namespace),
+        name: try? c.decodeIfPresent(String.self, forKey: .name))
+    case "compaction":
+      self = .compaction
     case "turn_context":
       let content = try? c.decodeIfPresent(ContextContent.self, forKey: .content)
       self = .turnContext(

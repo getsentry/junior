@@ -80,11 +80,21 @@ final class AppModel {
   let agentName = "Junior"
 
   private var versions: DataVersions?
+  private var versionsConversationId: String?
   private var polling: Task<Void, Never>?
   private var lastInput = Date()
 
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
+    // Builds before the Keychain kept the whole server, token included, in
+    // defaults; move the token and drop that copy.
+    if let legacy = defaults.data(forKey: "server"),
+      let old = try? JSONDecoder().decode(JuniorServer.self, from: legacy)
+    {
+      if TokenStore.read() == nil, let token = old.token { _ = TokenStore.write(token) }
+      defaults.set(old.baseURL.absoluteString, forKey: "serverURL")
+      defaults.removeObject(forKey: "server")
+    }
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
     let baseURL = launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!
     let server = JuniorServer(baseURL: baseURL, token: TokenStore.read())
@@ -188,15 +198,24 @@ final class AppModel {
   private func pollOnce() async {
     var query: [URLQueryItem] = []
     if let openConversationId { query.append(URLQueryItem(name: "conversationId", value: openConversationId)) }
+    let polledConversation = openConversationId
     guard let next: DataVersions = try? await client.get("/api/versions", query: query) else { return }
-    defer { versions = next }
+    defer {
+      versions = next
+      versionsConversationId = polledConversation
+    }
     guard let previous = versions else { return }
     if next.conversations != previous.conversations { conversationsVersion += 1 }
     if next.reviewItems != previous.reviewItems {
       reviewItemsVersion += 1
       conversationsVersion += 1
     }
-    if next.conversation != nil, next.conversation != previous.conversation { conversationVersion += 1 }
+    // The token is per Conversation; compare only tokens for the same one.
+    if next.conversation != nil, versionsConversationId == polledConversation,
+      next.conversation != previous.conversation
+    {
+      conversationVersion += 1
+    }
     if next.spend != previous.spend || next.reviewItems != previous.reviewItems {
       await refreshSpendAndCount()
     }
@@ -212,8 +231,11 @@ final class AppModel {
   /// The URL goes to defaults; the token goes to the Keychain.
   private func saveServer() {
     UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
-    TokenStore.write(server.token)
+    tokenSaveFailed = !TokenStore.write(server.token)
   }
+
+  /// The Keychain refused the token; it works this session but will not last.
+  var tokenSaveFailed = false
 }
 
 /// The personal token, kept in the Keychain for this device only.
@@ -237,13 +259,16 @@ enum TokenStore {
     return String(data: data, encoding: .utf8)
   }
 
-  static func write(_ token: String?) {
-    SecItemDelete(query as CFDictionary)
-    guard let token, let data = token.data(using: .utf8) else { return }
+  /// Store or clear the token. Returns false when the Keychain refused.
+  @discardableResult
+  static func write(_ token: String?) -> Bool {
+    let deleted = SecItemDelete(query as CFDictionary)
+    guard deleted == errSecSuccess || deleted == errSecItemNotFound else { return false }
+    guard let token, let data = token.data(using: .utf8) else { return true }
     var item = query
     item[kSecValueData as String] = data
     item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    SecItemAdd(item as CFDictionary, nil)
+    return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
   }
 }
 

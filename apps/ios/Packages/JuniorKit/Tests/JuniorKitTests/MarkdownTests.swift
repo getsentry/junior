@@ -137,3 +137,19 @@ import Testing
     #expect(url.absoluteString == "http://h/api/conversations/slack%3AC1%3A1.2?q=C%2B%2B%20a%26b")
   }
 }
+
+@Suite struct MarkdownSecondPassTests {
+  @Test func sectionLabelOnlyAtTopLevel() {
+    #expect(parseMarkdown("**Gaps**:\nNone left.") == [.heading(level: 3, text: "Gaps:"), .paragraph("None left.")])
+    guard case .list(true, _, let items) = parseMarkdown("1. **Install**\n   Run npm install.").first else {
+      Issue.record("expected a list")
+      return
+    }
+    #expect(items[0].blocks == [.paragraph("**Install**\nRun npm install.")])
+  }
+
+  @Test func slackLinksSkipCode() {
+    let text = parseInlineMarkdown("`<https://x.com|label>` and <https://y.com|y>")
+    #expect(String(text.characters) == "<https://x.com|label> and y")
+  }
+}

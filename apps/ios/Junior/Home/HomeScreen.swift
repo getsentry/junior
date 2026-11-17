@@ -81,6 +81,9 @@ struct HomeScreen: View {
           Color.clear.frame(height: 20)
         }
       }
+      if model.refreshFailed {
+        Text("Could not refresh. Pull to try again.").type(.xs).foregroundStyle(Tokens.textMuted)
+      }
       if model.nextCursor != nil {
         LoadMoreRow(failed: model.loadMoreFailed) { Task { await model.loadMore(app.client) } }
           .task { await model.loadMore(app.client) }

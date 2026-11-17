@@ -34,12 +34,16 @@ struct RootView: View {
         placeRoot
           .background(SwipeBackEnabler().frame(width: 0, height: 0))
           .navigationDestination(for: Route.self) { route in
-            switch route {
-            case .conversation(let id): ConversationScreen(conversationId: id)
-            case .reviewItem(let id): ReviewItemScreen(itemId: id)
-            case .automation(let id): AutomationScreen(automationId: id)
-            case .settings: SettingsScreen()
+            Group {
+              switch route {
+              case .conversation(let id): ConversationScreen(conversationId: id)
+              case .reviewItem(let id): ReviewItemScreen(itemId: id)
+              case .automation(let id): AutomationScreen(automationId: id)
+              case .settings: SettingsScreen()
+              }
             }
+            // A deep link opens with a pushed screen and never shows the root.
+            .background(SwipeBackEnabler().frame(width: 0, height: 0))
           }
       }
       .tint(Tokens.accent)

@@ -14,6 +14,7 @@ struct ReviewItemScreen: View {
   @State private var error: JuniorAPIError?
   @State private var showDetails = false
   @State private var forkFrom: String?
+  @State private var excerptCanFork = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -23,7 +24,7 @@ struct ReviewItemScreen: View {
         ScrollViewReader { proxy in
           ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-              ExcerptView(messages: excerpt, dividerIndex: dividerIndex) { forkFrom = $0 }
+              ExcerptView(messages: excerpt, dividerIndex: dividerIndex, canFork: excerptCanFork) { forkFrom = $0 }
               QuestionCard(item: item) { updated in
                 self.item = updated
                 app.didWrite()
@@ -166,6 +167,7 @@ struct ReviewItemScreen: View {
     guard let id = item.addedByConversationId else { return }
     guard let detail: ConversationDetail = try? await app.client.get("/api/conversations/\(id.pathEscaped)")
     else { return }
+    excerptCanFork = detail.canFork == true
     let model = buildTranscript(events: detail.events, status: nil, fallbackAuthor: detail.actorIdentity)
     let messages = model.rows.compactMap { row -> TranscriptMessage? in
       if case .message(let message) = row, message.speaker != .system { return message }
@@ -185,6 +187,7 @@ struct ReviewItemScreen: View {
 private struct ExcerptView: View {
   let messages: [TranscriptMessage]
   let dividerIndex: Int?
+  let canFork: Bool
   let onFork: (String) -> Void
 
   var body: some View {
@@ -201,7 +204,9 @@ private struct ExcerptView: View {
           }
           .padding(.vertical, 4)
         }
-        MessageRow(message: message, slackSurface: false) { onFork(message.id) }
+        MessageRow(
+          message: message, slackSurface: false,
+          onFork: canFork && message.forkable ? { onFork(message.id) } : nil)
       }
     }
   }

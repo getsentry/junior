@@ -14,6 +14,7 @@ final class InboxModel {
 
   var nextCursor: String?
   var loadingMore = false
+  var loadMoreError: String?
   private var startedLoads = 0
   private var appliedLoad = 0
 
@@ -49,10 +50,19 @@ final class InboxModel {
   /// The next page, from the "Load more" button (pages hold 50 items).
   func loadMore(_ client: JuniorClient) async {
     guard let cursor = nextCursor, !loadingMore else { return }
+    let ticket = startedLoads
     loadingMore = true
     defer { loadingMore = false }
-    guard let page: ReviewItemPage = try? await client.get("/api/review-items", query: params(cursor: cursor))
-    else { return }
+    let page: ReviewItemPage
+    do {
+      page = try await client.get("/api/review-items", query: params(cursor: cursor))
+    } catch {
+      loadMoreError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not load more."
+      return
+    }
+    // A new search since this started makes its page stale.
+    guard ticket == startedLoads else { return }
+    loadMoreError = nil
     let known = Set(items.map(\.id))
     items += page.items.filter { !known.contains($0.id) }
     nextCursor = page.nextCursor
@@ -168,6 +178,10 @@ struct InboxScreen: View {
             }
           }
         }
+      }
+      if let loadMoreError = model.loadMoreError { InlineError(text: loadMoreError) }
+      if model.error != nil, !model.items.isEmpty {
+        Text("Could not refresh. Pull to try again.").type(.xs).foregroundStyle(Tokens.textMuted)
       }
       if model.nextCursor != nil {
         Button(model.loadingMore ? "Loading…" : "Load more") { Task { await model.loadMore(app.client) } }

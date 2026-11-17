@@ -182,3 +182,26 @@ let pacific = TimeZone(identifier: "America/Los_Angeles")!
     #expect(failure.title == "Model rate limited")
   }
 }
+
+@Suite struct AmbientMessageTests {
+  private func events(_ json: String) throws -> [TranscriptEvent] {
+    try JSONDecoder.junior.decode([TranscriptEvent].self, from: Data(json.utf8))
+  }
+
+  /// Unaddressed messages show only after the agent read them.
+  @Test func hidesUnhandledAmbientMessages() throws {
+    let model = buildTranscript(
+      events: try events(
+        """
+        [{"seq":1,"createdAt":"2026-08-07T11:00:00.000Z","data":{"type":"message","messageId":"a","role":"user","text":"chatter","explicitMention":false}},
+         {"seq":2,"createdAt":"2026-08-07T11:00:01.000Z","data":{"type":"message","messageId":"b","role":"user","text":"context","explicitMention":false}},
+         {"seq":3,"createdAt":"2026-08-07T11:00:02.000Z","data":{"type":"message_handled","messageId":"b"}}]
+        """), status: .completed, fallbackAuthor: nil)
+    guard case .activity(let activity) = model.rows.first else {
+      Issue.record("expected one activity row")
+      return
+    }
+    #expect(model.rows.count == 1)
+    #expect(activity.entries.map(\.kind) == [.note("context")])
+  }
+}

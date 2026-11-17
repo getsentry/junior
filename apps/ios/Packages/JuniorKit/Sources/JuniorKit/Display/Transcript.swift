@@ -69,6 +69,8 @@ public struct TranscriptMessage: Sendable, Hashable, Identifiable {
   public var recalledMemories: Int
   /// The tool Junior posted this reply to, such as `github`.
   public var postedTo: String? = nil
+  /// A stored assistant message that a fork can start after.
+  public var forkable: Bool = false
 }
 
 public struct TranscriptActivity: Sendable, Hashable, Identifiable {
@@ -163,9 +165,20 @@ public func buildTranscript(
   var turnMessage: [String: String] = [:]
   var recalledByMessage: [String: Int] = [:]
   var lastUserMessageId: String?
+  var userMessageIds = Set<String>()
   var lastLifecycle: String?
   var threadIndex: [String: Int] = [:]
   var spawnToolIds: Set<String> = []
+  // Messages that did not address the agent show only once it read them:
+  // `message_handled`, or a Turn's input (`eventTranscript.ts`).
+  var handled = Set<String>()
+  for event in sorted {
+    switch event.data {
+    case .messageHandled(let id): handled.insert(id)
+    case .turnLifecycle(_, "started", _, _, let inputs): handled.formUnion(inputs)
+    default: break
+    }
+  }
 
   func toolEntry(_ call: ToolCall, seq: Int, at time: Date?) -> ActivityEntry {
     let state: ActivityEntry.ToolState =
@@ -190,9 +203,9 @@ public func buildTranscript(
     case .message(let message):
       // Context for a Turn that did not address the agent, and quiet replies,
       // fold into activity like the web's collapsible rows.
-      if (message.role == "user" && message.explicitMention == false && message.eventType == nil)
-        || (message.role == "assistant" && message.quiet == true)
-      {
+      let ambient = message.role == "user" && message.explicitMention == false && message.eventType == nil
+      if ambient, !handled.contains(message.messageId) { continue }
+      if ambient || (message.role == "assistant" && message.quiet == true) {
         let note = ActivityEntry(
           id: "note-\(message.messageId)", kind: .note(message.text ?? ""), startedAt: time, endedAt: time)
         entries.append((event.seq, .activity(note, seq: event.seq)))
@@ -211,7 +224,10 @@ public func buildTranscript(
         speaker = .person(
           message.actorIdentityId.flatMap { authors[$0] } ?? message.actorIdentity ?? fallbackAuthor)
       }
-      if message.role == "user" { lastUserMessageId = message.messageId }
+      if message.role == "user" {
+        lastUserMessageId = message.messageId
+        userMessageIds.insert(message.messageId)
+      }
       entries.append(
         (
           event.seq,
@@ -220,7 +236,8 @@ public func buildTranscript(
               id: message.messageId, seq: event.seq, speaker: speaker, createdAt: time,
               text: message.text ?? "", redacted: message.redacted == true,
               fromSlack: message.source == "slack",
-              attachments: message.attachments?.compactMap(\.filename) ?? [], recalledMemories: 0))
+              attachments: message.attachments?.compactMap(\.filename) ?? [], recalledMemories: 0,
+              forkable: speaker == .agent))
         ))
     case .replyPosted(let text, let plugin):
       entries.append(
@@ -266,9 +283,14 @@ public func buildTranscript(
           entries.append((call.startedSeq ?? event.seq, .activity(entry, seq: event.seq)))
         }
       }
-    case .turnLifecycle(let turnId, let state, let code, let reason):
+    case .turnLifecycle(let turnId, let state, let code, let reason, let inputs):
       lastLifecycle = state
-      if state == "started", let turnId, let lastUserMessageId { turnMessage[turnId] = lastUserMessageId }
+      // The Turn's own user input when known, else the latest user message.
+      if state == "started", let turnId,
+        let prompt = inputs.last(where: { userMessageIds.contains($0) }) ?? lastUserMessageId
+      {
+        turnMessage[turnId] = prompt
+      }
       if state == "failed" {
         let copy = transcriptFailureCopy(code: code, reason: reason, agentName: agentName)
         entries.append(
@@ -280,8 +302,8 @@ public func buildTranscript(
       }
     case .subagent(let subagent):
       if let tool = subagent.parentToolCallId { spawnToolIds.insert(tool) }
-      // One card per child, at its start, with the latest status.
-      let key = subagent.childConversationId ?? "seq-\(event.seq)"
+      // One card per invocation of a child, at its start, with the latest status.
+      let key = "\(subagent.childConversationId ?? "seq-\(event.seq)"):\(subagent.startedSeq ?? event.seq)"
       let thread = TranscriptThread(
         seq: subagent.startedSeq ?? event.seq, conversationId: subagent.childConversationId,
         title: subagent.title ?? subagent.agentName ?? "Thread", status: subagent.status, startedAt: time,
@@ -294,6 +316,15 @@ public func buildTranscript(
         threadIndex[key] = entries.count
         entries.append((subagent.startedSeq ?? event.seq, .thread(thread)))
       }
+    case .structuredEvent(let title, _, _):
+      let note = ActivityEntry(id: "structured-\(event.seq)", kind: .note(title), startedAt: time, endedAt: time)
+      entries.append((event.seq, .activity(note, seq: event.seq)))
+    case .compaction:
+      let note = ActivityEntry(
+        id: "compaction-\(event.seq)", kind: .note("Compacted history"), startedAt: time, endedAt: time)
+      entries.append((event.seq, .activity(note, seq: event.seq)))
+    case .messageHandled:
+      continue
     case .other:
       continue
     }

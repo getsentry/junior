@@ -27,6 +27,9 @@ final class ConversationModel {
   /// The newest event when the Conversation opened; later rows are not "new".
   private(set) var unreadThrough: Int?
   private var seenSeq = -1
+  /// Off until the page has scrolled to where it opens; rows laid out on the
+  /// way there were not read.
+  var trackingReads = false
   private var reportedSeq = -1
   private var reportTask: Task<Void, Never>?
 
@@ -73,25 +76,30 @@ final class ConversationModel {
       let newOldest = next.events.map(\.seq).min()
       if opening {
         previousCursor = next.previousCursor
-      } else if let newOldest, let known = events.keys.max(), newOldest > known + 1 {
-        // Too much happened while away: start from the new window, and let
-        // "Show earlier messages" fill in the rest.
+      } else if let newOldest, let known = events.keys.max(), newOldest > known {
+        // The new window does not overlap what is loaded (too much happened
+        // while away): start from it, and let "Show earlier messages" fill
+        // in the rest. Seqs can skip, so only a window past every loaded
+        // event counts.
         events = [:]
         previousCursor = next.previousCursor
+        historyEpoch += 1
       }
       for event in next.events { events[event.seq] = event }
-      detail = next
       if opening {
         readAtOpen = next.readPosition?.lastReadSeq
         unreadThrough = events.keys.max()
         reportedSeq = readAtOpen ?? -1
+        // Load back to the first unread event before the page shows, so the
+        // "New" line does not move after the reader lands on it.
         if openAtUnread, let read = readAtOpen {
           for _ in 0..<5 {
             guard let oldest = events.keys.min(), oldest > read + 1, previousCursor != nil else { break }
-            await loadEarlier(client)
+            guard await fetchEarlierPage(client) else { break }
           }
         }
       }
+      detail = next
       rebuild()
       error = nil
       refreshFailed = false
@@ -100,19 +108,36 @@ final class ConversationModel {
     } catch {}
   }
 
+  /// Bumps when a refresh replaces the loaded window; an earlier page from
+  /// before that would leave a hole, so it is dropped.
+  private var historyEpoch = 0
+
+  /// "Show earlier messages".
   func loadEarlier(_ client: JuniorClient) async {
-    guard let cursor = previousCursor, !loadingEarlier else { return }
+    guard !loadingEarlier else { return }
     loadingEarlier = true
     defer { loadingEarlier = false }
+    if await fetchEarlierPage(client) {
+      rebuild()
+    } else if !Task.isCancelled {
+      actionError = "Could not load earlier messages."
+    }
+  }
+
+  /// Merge the page before `previousCursor`. Returns false when it failed.
+  private func fetchEarlierPage(_ client: JuniorClient) async -> Bool {
+    guard let cursor = previousCursor else { return false }
+    let epoch = historyEpoch
     do {
       let (page, data): (TranscriptEventPage, Data) = try await client.getWithData(
         "\(path)/events", query: [URLQueryItem(name: "before", value: cursor)])
+      guard epoch == historyEpoch else { return true }
       argumentOrder.merge(toolArgumentOrder(in: data)) { _, new in new }
       for event in page.events { events[event.seq] = event }
       previousCursor = page.previousCursor == cursor ? nil : page.previousCursor
-      rebuild()
+      return true
     } catch {
-      actionError = "Could not load earlier messages."
+      return false
     }
   }
 
@@ -128,7 +153,7 @@ final class ConversationModel {
   /// Record that a row reached the screen and report the newest one after a
   /// short pause (`PUT …/read-position`). The server keeps the highest value.
   func noteSeen(_ seq: Int, client: JuniorClient) {
-    guard seq > seenSeq else { return }
+    guard trackingReads, seq > seenSeq else { return }
     seenSeq = seq
     guard seq > reportedSeq else { return }
     reportTask?.cancel()
@@ -145,11 +170,25 @@ final class ConversationModel {
     }
   }
 
+  /// Parsed Markdown per message id, so polls do not re-parse every row.
+  private(set) var messageBlocks: [String: [MarkdownBlock]] = [:]
+  @ObservationIgnored private var parsedByText: [String: [MarkdownBlock]] = [:]
+
   private func rebuild() {
     guard let detail else { return }
     transcript = buildTranscript(
       events: Array(events.values), status: detail.status, fallbackAuthor: detail.actorIdentity,
       authors: detail.authors ?? [:], argumentOrder: argumentOrder, hasEarlierHistory: previousCursor != nil)
+    var blocks: [String: [MarkdownBlock]] = [:]
+    var kept: [String: [MarkdownBlock]] = [:]
+    for row in transcript.rows {
+      guard case .message(let message) = row, !message.text.isEmpty else { continue }
+      let parsed = parsedByText[message.text] ?? parseMarkdown(message.text)
+      kept[message.text] = parsed
+      blocks[message.id] = parsed
+    }
+    parsedByText = kept
+    messageBlocks = blocks
   }
 
   /// The draft's idempotency key. A retry after a timeout reuses it, so the

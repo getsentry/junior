@@ -43,10 +43,15 @@ public func plainText(fromMarkdown source: String) -> String {
 /// dashboard renders text that came from Slack.
 func normalizeSlackLinks(_ text: String) -> String {
   guard text.contains("<") else { return text }
-  var output = text
-  let labeled = /<((?:https?|mailto):[^|>\s]+)\|([^>]+)>/
-  output = output.replacing(labeled) { match in "[\(match.2)](\(match.1))" }
-  let bare = /<((?:https?|mailto):[^>\s]+)>/
-  output = output.replacing(bare) { match in String(match.1) }
-  return output
+  // Leave code spans alone: odd segments between backticks are code.
+  let segments = text.split(separator: "`", omittingEmptySubsequences: false)
+  return segments.enumerated().map { index, segment -> String in
+    guard index.isMultiple(of: 2) else { return String(segment) }
+    var output = String(segment)
+    let labeled = /<((?:https?|mailto):[^|>\s]+)\|([^>]+)>/
+    output = output.replacing(labeled) { match in "[\(match.2)](\(match.1))" }
+    let bare = /<((?:https?|mailto):[^>\s]+)>/
+    output = output.replacing(bare) { match in String(match.1) }
+    return output
+  }.joined(separator: "`")
 }

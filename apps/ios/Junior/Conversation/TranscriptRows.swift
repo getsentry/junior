@@ -7,6 +7,8 @@ struct MessageRow: View {
   @Environment(AppModel.self) private var app
   let message: TranscriptMessage
   let slackSurface: Bool
+  /// Parsed body, when the caller keeps a cache; parsed here otherwise.
+  var blocks: [MarkdownBlock]? = nil
   /// Fork after this reply, when the Conversation allows it.
   var onFork: (() -> Void)?
   @State private var copied = false
@@ -22,7 +24,7 @@ struct MessageRow: View {
             .italic()
             .foregroundStyle(Tokens.textMuted)
         } else if !message.text.isEmpty {
-          MarkdownView(message.text)
+          MarkdownView(blocks: blocks ?? parseMarkdown(message.text), step: .base, color: Tokens.text)
         }
         if !message.attachments.isEmpty {
           FlowRow(items: message.attachments) { name in

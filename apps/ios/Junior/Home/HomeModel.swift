@@ -62,8 +62,13 @@ final class HomeModel {
     } catch {}
   }
 
+  /// A refresh failed while rows show; the list keeps them.
+  var refreshFailed: Bool { error != nil && !rows.isEmpty }
+
   func loadMore(_ client: JuniorClient) async {
     guard let cursor = nextCursor, !loadingMore else { return }
+    // A new search or refresh since this started makes its page stale.
+    let ticket = startedLoads
     loadingMore = true
     defer { loadingMore = false }
     var query = [URLQueryItem(name: "cursor", value: cursor)]
@@ -71,6 +76,7 @@ final class HomeModel {
     if !trimmed.isEmpty { query.append(URLQueryItem(name: "q", value: trimmed)) }
     do {
       let page: ConversationFeed = try await client.get("/api/conversations", query: query)
+      guard ticket == startedLoads else { return }
       let known = Set(rows.map(\.conversationId))
       rows += page.conversations.filter { !known.contains($0.conversationId) }
       nextCursor = page.nextCursor
@@ -89,6 +95,9 @@ final class HomeModel {
         rows[index].archivedAt = archivedAt
       }
     }
+    // Roll back to what the list shows now, not to the row as passed in: an
+    // Undo passes the row from before its archive.
+    let before = rows.first { $0.conversationId == row.conversationId }?.archivedAt
     update(archived ? Date() : nil)
     struct Body: Encodable {
       var archived: Bool
@@ -101,7 +110,7 @@ final class HomeModel {
         "PATCH", "/api/conversations/\(row.conversationId.pathEscaped)/archive",
         body: Body(archived: archived, lastSeenAt: row.lastSeenAt?.raw))
     } catch {
-      update(row.archivedAt)
+      update(before)
       throw error
     }
   }

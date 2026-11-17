@@ -38,6 +38,12 @@ acquire_lock() {
     if { [[ -n "$owner" ]] && ! kill -0 "$owner" 2>/dev/null; } ||
       { [[ -z "$owner" ]] && (($(date +%s) - $(stat -f %m "$lock_dir" 2>/dev/null || date +%s) > 60)); }; then
       if mv "$lock_dir" "$lock_dir.stale.$$" 2>/dev/null; then
+        # Another waiter may have taken over first; if the lock we moved is
+        # not the one judged stale, put it back.
+        if [[ "$(cat "$lock_dir.stale.$$/pid" 2>/dev/null || true)" != "$owner" ]] &&
+          mv "$lock_dir.stale.$$" "$lock_dir" 2>/dev/null; then
+          continue
+        fi
         log "took over a stale lock from ${owner:-an unknown run}"
         rm -rf "$lock_dir.stale.$$"
       fi

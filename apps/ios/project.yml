@@ -12,7 +12,9 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
-    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_STYLE: Automatic
+    # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
+    "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
 packages:
   JuniorKit:
