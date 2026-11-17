@@ -178,6 +178,8 @@ export interface Turn {
 export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
+  /** Text of each compaction summary, for checks that the answer is not in it. */
+  compactionSummaries: string[];
   lastSeq: number;
   replies: Reply[];
   toolCalls: ToolCall[];
@@ -340,6 +342,7 @@ export function readCallEvents(args: {
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
   let compactions = 0;
+  const compactionSummaries: string[] = [];
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -401,6 +404,7 @@ export function readCallEvents(args: {
     }
     if (data.type === "compaction") {
       compactions += 1;
+      if (data.summary) compactionSummaries.push(data.summary);
       continue;
     }
   }
@@ -414,6 +418,7 @@ export function readCallEvents(args: {
 
   return {
     compactions,
+    compactionSummaries,
     lastSeq,
     replies,
     toolCalls: [...toolCalls.values()],

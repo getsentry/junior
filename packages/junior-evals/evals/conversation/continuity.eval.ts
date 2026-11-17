@@ -39,56 +39,91 @@ const uploadChecks = (firstBuild: number, count: number) =>
       }),
     ],
   );
-// Storage reports of about 3,500 tokens each fill the window. One check in
-// the middle read a certificate end date above a long disk listing, so a
-// summary keeps no trace of it. No event shares a word with the question
-// about it, so only a search by meaning finds it.
-const storageReport = (shard: number) =>
-  Array.from(
-    { length: 300 },
-    (_, index) =>
-      `${(index % 97) + 1}.${index % 10}G\t/srv/data/shard-${shard}/segment-${String(index).padStart(6, "0")}.parquet`,
-  ).join("\n");
-const storageChecks = (firstShard: number, count: number) =>
-  Array.from({ length: count }, (_, index) => firstShard + index).flatMap(
-    (shard) => [
-      slackMention(`Do the weekly storage report for shard ${shard}.`),
-      reply(`Shard ${shard} storage looks normal.`, {
-        toolHistory: [
-          {
-            name: "bash",
-            arguments: { command: `du -ah /srv/data/shard-${shard}` },
-            result: {
-              exit_code: 0,
-              stdout: storageReport(shard),
-              stderr: "",
-              timed_out: false,
-            },
-          },
-        ],
-      }),
-    ],
-  );
-const EDGE_CHECK = [
-  slackMention("Do the weekly checks on edge-1."),
-  reply("All weekly checks on edge-1 passed.", {
-    toolHistory: [
-      {
-        name: "bash",
-        arguments: {
-          command:
-            "openssl x509 -enddate -noout -in /etc/edge/tls/api.pem && du -ah /srv/edge",
-        },
-        result: {
-          exit_code: 0,
-          stdout: `notAfter=Apr  2 00:00:00 2026 GMT\n${storageReport(0).replaceAll("/srv/data/shard-0", "/srv/edge")}`,
-          stderr: "",
-          timed_out: false,
-        },
-      },
-    ],
-  }),
+// Every host check prints the end date of the host's certificate above a
+// disk listing of about 1,300 tokens, so 43 checks are past the window. Each
+// host has its own date, so a summary cannot keep them all. Only the mail
+// host uses SMTP, and no event shares a word with the question about it, so
+// only a search by meaning finds it.
+const HOST_ROLES = [
+  "api",
+  "cdn",
+  "grafana",
+  "kafka",
+  "redis",
+  "postgres",
+  "vault",
+  "ldap",
+  "jenkins",
+  "nginx",
+  "prometheus",
+  "elastic",
+  "minio",
+  "rabbitmq",
+  "etcd",
+  "consul",
+  "harbor",
+  "runner",
+  "auth",
+  "billing",
+  "search",
 ];
+const HOSTS = ["iad1", "sfo1", "fra1", "sin1"].flatMap((region) =>
+  HOST_ROLES.map((role) => `${role}-${region}`),
+);
+const MAIL_HOST = "smtp-iad1";
+const MAIL_HOST_END_DATE = "Apr  2 00:00:00 2026 GMT";
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+// Other hosts end on other days, from January 2026 on, three days apart.
+const endDate = (host: string) => {
+  if (host === MAIL_HOST) return MAIL_HOST_END_DATE;
+  const index = HOSTS.indexOf(host);
+  const day = new Date(
+    Date.UTC(2026, 0, 5 + index * 3 + (index >= 29 ? 1 : 0)),
+  );
+  return `${MONTHS[day.getUTCMonth()]} ${String(day.getUTCDate()).padStart(2, " ")} 00:00:00 ${day.getUTCFullYear()} GMT`;
+};
+const diskListing = (host: string) =>
+  Array.from(
+    { length: 120 },
+    (_, index) =>
+      `${(index % 97) + 1}.${index % 10}G\t/srv/${host}/segment-${String(index).padStart(6, "0")}.parquet`,
+  ).join("\n");
+const hostChecks = (hosts: readonly string[]) =>
+  hosts.flatMap((host) => [
+    slackMention(`Do the weekly checks on ${host}.`),
+    reply(`All weekly checks on ${host} passed.`, {
+      toolHistory: [
+        {
+          name: "bash",
+          arguments: {
+            command: `openssl x509 -enddate -noout -in /etc/pki/${host}.pem && du -ah /srv/${host}`,
+          },
+          result: {
+            exit_code: 0,
+            stdout: `notAfter=${endDate(host)}\n${diskListing(host)}`,
+            stderr: "",
+            timed_out: false,
+          },
+        },
+      ],
+    }),
+  ]);
+// Forms of the mail host's end date that a summary could hold.
+const holdsMailHostDate = (summaries: readonly string[]) =>
+  /\bApr(il)?\.?\s+0?2\b|2026-04-02|\b0?4\/0?2\b/i.test(summaries.join("\n"));
 const historyReads = (conversation: { toolCalls: ToolCall[] }) =>
   toolCallsOf("searchConversationEvents", conversation).length +
   toolCallsOf("readConversationEvent", conversation).length;
@@ -178,16 +213,27 @@ describe("Thread Continuity", () => {
       limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
     });
     const first = await run(slackMention("Thanks, that's all for this week."), {
-      history: [...storageChecks(1, 4), ...EDGE_CHECK, ...storageChecks(5, 10)],
+      history: hostChecks([
+        ...HOSTS.slice(0, 20),
+        MAIL_HOST,
+        ...HOSTS.slice(20, 42),
+      ]),
     });
     // The Turn stored the event vectors after it finished.
     const conversation = await first.continue(
-      slackMention("When does our HTTPS certificate expire?"),
-      { history: storageChecks(15, 14) },
+      slackMention("When does the certificate on our mail server expire?"),
+      { history: hostChecks(HOSTS.slice(42)) },
     );
 
     expect(first.compactions).toBeGreaterThan(0);
     expect(conversation.compactions).toBeGreaterThan(0);
+    // The case proves nothing when a summary still holds the answer.
+    expect(
+      holdsMailHostDate([
+        ...first.compactionSummaries,
+        ...conversation.compactionSummaries,
+      ]),
+    ).toBe(false);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
