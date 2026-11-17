@@ -1,10 +1,8 @@
 import {
   type Actor,
-  type Identity,
   type PluginEgress,
-  type PluginAutomationRun,
+  type PluginWorkOwner,
   type PluginLogger,
-  type User,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -16,6 +14,7 @@ import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   linkedGitHubLogin,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
@@ -95,15 +94,7 @@ export const gitHubGetIssueTool = definePluginTool({
       egress: PluginEgress;
       events: { canSubscribe: boolean };
       log: PluginLogger;
-      resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
-      users: {
-        resolveActor(): Promise<
-          { identity?: Identity; user?: User } | undefined
-        >;
-        resolveRootActor(): Promise<
-          { identity?: Identity; user?: User } | undefined
-        >;
-      };
+      resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
     },
   ): Promise<Result> {
     const repo = parseRepo(input.repo);
@@ -126,7 +117,9 @@ export const gitHubGetIssueTool = definePluginTool({
     const issue = providerIssueSchema.parse(response.body);
     // A transferred issue redirects to its new repository.
     const repoRef = issueRepoRef(issue.repository_url) ?? repo.ref;
-    const login = linkedGitHubLogin(requester?.user)?.toLowerCase();
+    const login = linkedGitHubLogin(
+      requesterPerson(requester)?.user,
+    )?.toLowerCase();
     const needsClaim =
       login !== undefined &&
       issue.state === "open" &&

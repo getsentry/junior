@@ -5,6 +5,7 @@ import {
   type PluginSandbox,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
+  type PluginWorkOwner,
   type ToolRegistrationHookContext,
   type WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
@@ -407,8 +408,8 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
-  resolveAutomationRun?: ToolRegistrationHookContext["resolveAutomationRun"];
-  resolveRootActor?: ToolRegistrationHookContext["users"]["resolveRootActor"];
+  /** Overrides the host's work owner. By default a person runs the Turn. */
+  workOwner?: PluginWorkOwner | undefined;
   source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
   subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
@@ -425,8 +426,12 @@ function githubToolsContext(input?: {
     log: pluginLog,
     plugin: { name: "github" },
     ...(input?.actor ? { actor: input.actor } : undefined),
-    resolveAutomationRun:
-      input?.resolveAutomationRun ?? (async () => undefined),
+    async resolveWorkOwner(): Promise<PluginWorkOwner | undefined> {
+      if (input && "workOwner" in input) return input.workOwner;
+      const actor = input?.actor;
+      if (!actor || actor.platform === "system") return undefined;
+      return { kind: "person", actor, ...(await input?.resolveActor?.()) };
+    },
     conversationId,
     destination: { platform: "local" as const, conversationId },
     source: input?.source ?? {
@@ -470,7 +475,6 @@ function githubToolsContext(input?: {
     users: {
       replaceSlackMentions: async (value) => value,
       resolveActor: input?.resolveActor ?? (async () => undefined),
-      resolveRootActor: input?.resolveRootActor ?? (async () => undefined),
     },
     state: {
       async delete(key: string) {
@@ -1182,11 +1186,13 @@ describe("github plugin", () => {
         automationRunId: "dispatch_1",
       },
       subscribe,
-      resolveAutomationRun: async () => ({
-        automationId: "evt_1",
-        automationRunId: "dispatch_1",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "dispatch_1",
         url: "https://junior.example.com/automations/evt_1",
-      }),
+      },
     });
     const tool = bindPluginTool(
       githubPlugin().hooks?.tools?.()?.["createIssue"],
@@ -2022,7 +2028,7 @@ Conversation: \`local:test:old-conversation\`
     {
       name: "the root Actor of a system Turn",
       actor: { platform: "system", name: "event" },
-      resolveRootActor: async () => linkedRequester,
+      workOwner: { kind: "person" as const, ...linkedRequester },
     },
   ])(
     "assigns pull requests to $name and mentions them in attribution",
@@ -2323,7 +2329,6 @@ Conversation: \`local:test:old-conversation\`
 
   it.each([
     {
-      // The person who runs the Turn is never replaced by the root Actor.
       name: "a person whose name does not resolve",
       actor: {
         fullName: "U039RR91S",
@@ -2331,15 +2336,6 @@ Conversation: \`local:test:old-conversation\`
         teamId: "T1",
         userId: "U039RR91S",
         userName: "U039RR91S",
-      },
-      rootActor: {
-        identity: {
-          displayName: "Root Person",
-          id: "identity-root",
-          provider: "slack",
-          providerSubjectId: "U0ROOT",
-          providerTenantId: "T1",
-        },
       },
       error:
         "Cannot open a pull request: the person who asked for it has no linked GitHub account or name to attribute it to. Do not retry. Ask them to link their GitHub account",
@@ -2354,19 +2350,17 @@ Conversation: \`local:test:old-conversation\`
         identifier: "getsentry/junior#660",
         namespace: "github",
       },
-      rootActor: undefined,
       error: NO_REQUESTER_ERROR,
     },
     {
       name: "a child agent of a system root",
       actor: { platform: "system", name: "event" },
       source: { kind: "agent_invocation" as const },
-      rootActor: undefined,
       error: NO_REQUESTER_ERROR,
     },
   ])(
     "rejects a pull request with no requester from $name",
-    async ({ actor, error, rootActor, source }) => {
+    async ({ actor, error, source }) => {
       const state = new Map<string, unknown>();
       const ctx = githubToolsContext({
         actor,
@@ -2378,7 +2372,6 @@ Conversation: \`local:test:old-conversation\`
             providerTenantId: "T1",
           },
         }),
-        resolveRootActor: async () => rootActor,
         ...(source ? { source } : undefined),
         stateSet: ({ key, value }) => {
           state.set(key, value);

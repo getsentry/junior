@@ -3,7 +3,7 @@ import {
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
 import { readAutomationExecutionByConversationId } from "@/chat/automations/execution-stats";
-import { readConversationRoot } from "@/chat/conversations/root-actor";
+import { readConversationRoot } from "@/chat/conversations/root";
 
 /** The Automation of one run, read from the run's stored record. */
 export interface ConversationAutomationRun {

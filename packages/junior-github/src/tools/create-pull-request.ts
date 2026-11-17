@@ -10,6 +10,7 @@ import {
   type SubscribableResource,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
+  type PluginWorkOwner,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
   watchResultSchema,
@@ -29,8 +30,8 @@ import {
   assertGitHubPullRequestRequester,
   linkedGitHubLogin,
   parseGitHubLogin,
+  requesterPerson,
   resolveGitHubRequester,
-  type GitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
 import { saveGitHubDraftReviewers } from "../pull-request-requesters/draft-reviewers.js";
@@ -244,7 +245,7 @@ function isDefinitiveGitHubPullRequestCreateRejection(error: unknown): boolean {
 function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
-  requester: GitHubRequester | undefined,
+  requester: PluginWorkOwner | undefined,
   dashboardUrl?: string,
 ): { body: unknown; path: string } {
   const repo = parseRepo(input.repo);
@@ -338,9 +339,9 @@ async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
-  requester: GitHubRequester | undefined,
+  requester: PluginWorkOwner | undefined,
 ): Promise<void> {
-  const assignee = linkedGitHubLogin(requester?.user);
+  const assignee = linkedGitHubLogin(requesterPerson(requester)?.user);
   if (!assignee) return;
   try {
     const repo = parseRepo(input.repo);
@@ -407,7 +408,7 @@ async function requestPullRequestReviewers(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
-  requester: GitHubRequester | undefined,
+  requester: PluginWorkOwner | undefined,
 ): Promise<void> {
   const named = namedReviewers(input);
   const repo = parseRepo(input.repo);
@@ -416,7 +417,7 @@ async function requestPullRequestReviewers(
       await saveNamedDraftReviewers(ctx, input, result.number);
       return;
     }
-    const requesterLogin = linkedGitHubLogin(requester?.user);
+    const requesterLogin = linkedGitHubLogin(requesterPerson(requester)?.user);
     const reviewers = named ?? (requesterLogin ? [requesterLogin] : []);
     if (reviewers.length === 0) return;
     const response = await githubApi(ctx.egress, {
@@ -578,9 +579,10 @@ export function createGitHubPullRequestTool(
             const completedInput = state.input ?? parsedInput;
             // The call can stop after it saves this state but before it saves
             // the opener, so a retry saves the opener again.
+            const requester = await resolveGitHubRequester(ctx);
             await recordOpener(ctx, completedInput, state, {
               conversationId,
-              identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
+              identityId: requesterPerson(requester)?.identity?.id,
             });
             // The same stop can drop the reviewers named for a draft.
             await saveNamedDraftReviewers(ctx, completedInput, state.number);
@@ -614,7 +616,7 @@ export function createGitHubPullRequestTool(
               parsedInput.body ?? "",
             );
           }
-          const identityId = requester?.identity?.id;
+          const identityId = requesterPerson(requester)?.identity?.id;
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,

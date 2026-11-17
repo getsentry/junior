@@ -1,8 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { Identity, User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { readIdentityById } from "@/chat/plugins/viewer";
 import { juniorConversations } from "@/db/schema";
 
 /**
@@ -40,18 +38,4 @@ export async function readConversationRoot(conversationId: string): Promise<
       ? { actorIdentityId: row.actorIdentityId }
       : undefined),
   };
-}
-
-/**
- * Read the root Actor of a Conversation tree when it is a person. A root
- * that the system started has the system Identity, so it gives nothing.
- */
-export async function readRootActorIdentity(
-  conversationId: string,
-): Promise<{ identity: Identity; user?: User } | undefined> {
-  const root = await readConversationRoot(conversationId);
-  // The read by id returns only user Identities.
-  return root?.actorIdentityId
-    ? await readIdentityById(root.actorIdentityId)
-    : undefined;
 }

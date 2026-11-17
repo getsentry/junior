@@ -3091,11 +3091,11 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       },
       events: { canSubscribe: false },
+      async resolveWorkOwner() {
+        return { kind: "person", ...identityOf(person) };
+      },
       users: {
         replaceSlackMentions: async (value: unknown) => value,
-        async resolveActor() {
-          return identityOf(person);
-        },
       },
       state: {
         async delete(key: string) {

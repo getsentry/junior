@@ -204,12 +204,13 @@ describe("review request when a draft is ready", () => {
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
         state,
+        resolveWorkOwner: async () => ({
+          kind: "person",
+          identity: { id: "identity-requester", provider: "slack" },
+          user: { identities: [{ handle: "Requester", provider: "github" }] },
+        }),
         users: {
           replaceSlackMentions: async (value: unknown) => value,
-          resolveActor: async () => ({
-            identity: { id: "identity-requester", provider: "slack" },
-            user: { identities: [{ handle: "Requester", provider: "github" }] },
-          }),
         },
       } as never,
     );

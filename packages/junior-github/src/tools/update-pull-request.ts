@@ -1,10 +1,8 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
-  type PluginAutomationRun,
+  type PluginWorkOwner,
   type PluginLogger,
   type PluginDecider,
   type PluginEgress,
@@ -20,6 +18,7 @@ import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
@@ -173,15 +172,7 @@ export function createGitHubUpdatePullRequestTool(
         log: PluginLogger;
         events: { canSubscribe: boolean };
         conversationLink?: { url: string };
-        resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
-        users: {
-          resolveActor(): Promise<
-            { identity?: Identity; user?: User } | undefined
-          >;
-          resolveRootActor(): Promise<
-            { identity?: Identity; user?: User } | undefined
-          >;
-        };
+        resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
       },
     ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
@@ -266,9 +257,10 @@ export function createGitHubUpdatePullRequestTool(
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      if (requester?.identity) {
+      const identity = requesterPerson(requester)?.identity;
+      if (identity) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-          identityId: requester.identity.id,
+          identityId: identity.id,
           number: providerResult.number,
           repositoryFullName: repo.ref,
         });

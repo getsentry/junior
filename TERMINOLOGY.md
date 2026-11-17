@@ -57,6 +57,9 @@ Canonical words for Junior code and docs. One concept, one word.
   defaults that need people use Participants. A Conversation has no owner.
   The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
   Participant like any other, and is kept only for attribution such as spend.
+- **Work owner**: who a Turn's work is credited to, for attribution only: the
+  person Actor of the Turn, else the root Actor if it is a person, else the
+  system record that started the root, such as an Automation run.
 - **Admin**: a User with the Junior-wide admin role, set only by
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed

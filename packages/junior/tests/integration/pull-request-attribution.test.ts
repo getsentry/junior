@@ -189,6 +189,23 @@ describe("pull request attribution", () => {
       expect(opened.map(({ body }) => body)).toEqual(
         Array(2).fill(expect.stringContaining("via **Pat Requester**.")),
       );
+
+      // A person who runs the Turn is never replaced by the root Actor, also
+      // when Junior cannot name them.
+      const unnamed = {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U999",
+      } as const;
+      await expect(
+        createPullRequest({
+          ...personRun,
+          actor: unnamed,
+          credentialContext: credentialContextForActor(unnamed),
+          turnId: "unnamed-turn",
+        }),
+      ).rejects.toThrow("Ask them to link their GitHub account");
+      expect(opened).toHaveLength(2);
     } finally {
       await fixture.close();
     }

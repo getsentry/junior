@@ -779,13 +779,28 @@ export interface PluginConversationToolContext {
   }): Promise<PluginConversationMatch[]>;
 }
 
-/** An Automation run that a GitHub or other provider write can name. */
-export interface PluginAutomationRun {
-  automationId: string;
-  automationRunId?: string;
-  /** Host-owned dashboard link to the Automation. */
-  url?: string;
-}
+/**
+ * Whose work a Turn does. A person, with their stored Identity and User when
+ * Junior has them, or the system record that started the work, such as an
+ * Automation run.
+ */
+export type PluginWorkOwner =
+  | {
+      kind: "person";
+      /** The Turn Actor, when the person runs the Turn themselves. */
+      actor?: Exclude<Actor, { platform: "system" }>;
+      identity?: Identity;
+      user?: User;
+    }
+  | {
+      kind: "system";
+      /** What started the work, such as `automation`. */
+      name: string;
+      id: string;
+      runId?: string;
+      /** Host-owned dashboard link to the record. */
+      url?: string;
+    };
 
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
@@ -799,11 +814,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   /** Other Conversations. Set only when the turn has a `conversationId`. */
   conversations?: PluginConversationToolContext;
   /**
-   * Resolve the Automation run that this Turn's root Conversation belongs
-   * to, from the run's stored record. A Turn outside an Automation run, and a
-   * run whose record names no Automation, get nothing.
+   * Resolve whose work this Turn does: the person who runs it, else the
+   * person who started its root Conversation, else the system record that
+   * started the root. Returns nothing when nobody did.
    */
-  resolveAutomationRun(): Promise<PluginAutomationRun | undefined>;
+  resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Decision model for narrow choices, such as checks on text a tool writes. */
@@ -819,14 +834,6 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   users: {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
-    /**
-     * Resolve the root Actor of this Turn's Conversation tree: the person who
-     * started its root Conversation. A root that the system started, such as
-     * an Automation run, has no person, so this returns nothing.
-     */
-    resolveRootActor(): Promise<
-      { identity: Identity; user?: User } | undefined
-    >;
     /**
      * Resolve the current actor's IANA timezone. Uses their profile when
      * Junior knows it, else the install default. Always returns a timezone.

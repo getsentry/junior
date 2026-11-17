@@ -14,8 +14,8 @@ function toolContext(
     actor?: unknown;
     currentBody?: string;
     decider?: unknown;
-    requester?: unknown;
-    automationRun?: unknown;
+    /** Overrides the host's work owner. By default the Turn Actor. */
+    workOwner?: unknown;
   } = {},
 ) {
   const fetch = vi.fn(async (input: { operation: string }) => {
@@ -43,23 +43,23 @@ function toolContext(
       )
     );
   });
+  const ctxActor = options.actor ?? {
+    platform: "slack",
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: options.actor ?? {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor: ctxActor,
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
     conversationLink: { url: "https://example.com/session" },
-    resolveAutomationRun: async () => options.automationRun,
-    users: {
-      resolveActor: async () => options.requester,
-      resolveRootActor: async () => undefined,
-    },
+    resolveWorkOwner: async () =>
+      "workOwner" in options
+        ? options.workOwner
+        : { kind: "person", actor: ctxActor },
   };
   return {
     fetch,
@@ -180,7 +180,8 @@ describe("updatePullRequest", () => {
     {
       name: "another person with a linked GitHub account is added",
       actor: jan,
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "jan-auer" }] },
       },
       expected: "via @lcian, @jan-auer.",
@@ -198,7 +199,8 @@ describe("updatePullRequest", () => {
         teamId: "T1",
         userId: "U3",
       },
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "lcian" }] },
       },
       expected: "via @lcian.",
@@ -206,18 +208,22 @@ describe("updatePullRequest", () => {
     {
       name: "an automation run is added after the people",
       actor: { platform: "system", name: "automation" },
-      automationRun: {
-        automationId: "evt_1",
-        automationRunId: "run_1",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_1",
       },
       expected: "via @lcian, automation `evt_1` · Run ID `run_1`.",
     },
     {
       name: "each automation run is kept, like each person",
       actor: { platform: "system", name: "automation" },
-      automationRun: {
-        automationId: "evt_1",
-        automationRunId: "run_2",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_2",
       },
       currentBody: `Original body
 
@@ -227,28 +233,24 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       expected:
         "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
     },
-  ])(
-    "$name",
-    async ({ actor, automationRun, currentBody, expected, requester }) => {
-      const { fetch, tool } = toolContext(undefined, {
-        actor,
-        currentBody: currentBody ?? ATTRIBUTED_BODY,
-        requester,
-        automationRun,
-      });
+  ])("$name", async ({ actor, currentBody, expected, workOwner }) => {
+    const { fetch, tool } = toolContext(undefined, {
+      actor,
+      currentBody: currentBody ?? ATTRIBUTED_BODY,
+      ...(workOwner ? { workOwner } : undefined),
+    });
 
-      await tool.execute?.(
-        { repo: "getsentry/junior", number: 691, body: "Updated body" },
-        { toolCallId: "update-pr" },
-      );
+    await tool.execute?.(
+      { repo: "getsentry/junior", number: 691, body: "Updated body" },
+      { toolCallId: "update-pr" },
+    );
 
-      const body = await patchedBody(fetch);
-      expect(body).toMatch(
-        /^Updated body\n\n<!-- junior-request-attribution:start -->/,
-      );
-      expect(body).toContain(`\n${expected}\n`);
-    },
-  );
+    const body = await patchedBody(fetch);
+    expect(body).toMatch(
+      /^Updated body\n\n<!-- junior-request-attribution:start -->/,
+    );
+    expect(body).toContain(`\n${expected}\n`);
+  });
 
   it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
     // The decision model finds a test plan and nothing else.

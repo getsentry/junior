@@ -32,8 +32,9 @@ also wake a Conversation or run an Event automation.
 - A user's linked GitHub account is used for attribution. In the
   dashboard, it also limits which PR and issue cards the user sees.
 - Every PR names who it is for: the person who runs the Turn, else the
-  person who started the root Conversation, else the root's Automation
-  run. Junior refuses to open a PR that names nobody.
+  person who started the root Conversation, else the system record that
+  started the root, such as an Automation run. Junior refuses to open a PR
+  that names nobody.
 - Images in PRs, issues, and comments are links to public Junior images.
 - Junior can review a PR and request changes.
 - Junior cannot fork or administer a repo, and never pushes to or deletes

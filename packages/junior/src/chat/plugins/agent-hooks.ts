@@ -32,9 +32,8 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
-import { readRootAutomationRun } from "@/chat/automations/conversation-run";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
-import { readRootActorIdentity } from "@/chat/conversations/root-actor";
+import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
@@ -79,10 +78,7 @@ import type {
 } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import {
-  getDashboardConversationLink,
-  getDashboardTaskLink,
-} from "@/chat/dashboard-link";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { createWatch, turnEvents } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
@@ -866,19 +862,6 @@ export function getPluginTools(
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
-    const { conversationId } = context;
-    const resolveAutomationRun = async () => {
-      const run = await readRootAutomationRun(conversationId);
-      if (!run) return undefined;
-      const url = getDashboardTaskLink(run.automationId);
-      return {
-        automationId: run.automationId,
-        ...(run.automationRunId
-          ? { automationRunId: run.automationRunId }
-          : undefined),
-        ...(url ? { url } : undefined),
-      };
-    };
     const onCost = createPluginModelCostRecorder({
       conversationId: context.conversationId,
       pluginName,
@@ -888,7 +871,12 @@ export function getPluginTools(
     const common = {
       ...basePluginContext(plugin),
       annotations,
-      resolveAutomationRun,
+      resolveWorkOwner: async () =>
+        await resolveWorkOwner({
+          actor: context.actor,
+          conversationId: context.conversationId,
+          resolveActor,
+        }),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -907,8 +895,6 @@ export function getPluginTools(
       state: createPluginState(pluginName),
       users: {
         resolveActor,
-        resolveRootActor: async () =>
-          await readRootActorIdentity(conversationId),
         async resolveTimezone() {
           const actor = context.actor;
           const resolved = await resolveActor();
