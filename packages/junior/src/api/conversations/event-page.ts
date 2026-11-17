@@ -306,6 +306,7 @@ async function scanConversationEventPage(
   let counted = 0;
 
   while (counted <= args.limit) {
+    // oxlint-disable-next-line no-await-in-loop -- Each scan starts after the last row of the scan before.
     const [batch, turnStart] = await Promise.all([
       readConversationEventRows(executor, {
         afterSeq,

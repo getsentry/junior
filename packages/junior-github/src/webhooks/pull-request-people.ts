@@ -87,6 +87,7 @@ async function forEachCommit(
   visit: (commit: { coAuthorEmails: string[]; login?: string }) => void,
 ): Promise<void> {
   for (let page = 1; page <= MAX_PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first short page.
     const commits = commitPageSchema.parse(await loadPage(page, PAGE_SIZE));
     for (const commit of commits) {
       visit({

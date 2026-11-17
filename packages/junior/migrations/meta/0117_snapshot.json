@@ -1,6 +1,6 @@
 {
-  "id": "f6e620b7-69f3-480c-93af-f5c091354f1e",
-  "prevId": "901b5ab9-7066-4ab7-a86f-4e8563d12618",
+  "id": "1d7ad5d1-18fe-45a9-8d2d-fafc3a93e378",
+  "prevId": "2d154736-5c0f-47c7-a700-ba3fe7791778",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1415,56 +1415,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_automations_wake_subject_idx": {
-          "name": "junior_automations_wake_subject_idx",
-          "columns": [
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_one_wake_idx": {
-          "name": "junior_automations_one_wake_idx",
-          "columns": [
-            {
-              "expression": "creator_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "coalesce(\"subject_review_item_id\", '')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_automations_match_idx": {
           "name": "junior_automations_match_idx",
           "columns": [
@@ -2268,6 +2218,169 @@
           "value": "vector_dims(\"junior_conversation_embeddings\".\"embedding\") = \"junior_conversation_embeddings\".\"dimensions\""
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.junior_conversation_event_embeddings": {
+      "name": "junior_conversation_event_embeddings",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dimensions": {
+          "name": "dimensions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "halfvec",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "junior_conversation_event_embeddings_event_fk": {
+          "name": "junior_conversation_event_embeddings_event_fk",
+          "tableFrom": "junior_conversation_event_embeddings",
+          "tableTo": "junior_conversation_events",
+          "columnsFrom": [
+            "conversation_id",
+            "seq"
+          ],
+          "columnsTo": [
+            "conversation_id",
+            "seq"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_conversation_event_embeddings_pk": {
+          "name": "junior_conversation_event_embeddings_pk",
+          "columns": [
+            "conversation_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_conversation_event_embeddings_dimensions_check": {
+          "name": "junior_conversation_event_embeddings_dimensions_check",
+          "value": "vector_dims(\"junior_conversation_event_embeddings\".\"embedding\") = \"junior_conversation_event_embeddings\".\"dimensions\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.junior_conversation_event_lexemes": {
+      "name": "junior_conversation_event_lexemes",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lexemes": {
+          "name": "lexemes",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "junior_conversation_event_lexemes_lexemes_idx": {
+          "name": "junior_conversation_event_lexemes_lexemes_idx",
+          "columns": [
+            {
+              "expression": "lexemes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_conversation_event_lexemes_event_fk": {
+          "name": "junior_conversation_event_lexemes_event_fk",
+          "tableFrom": "junior_conversation_event_lexemes",
+          "tableTo": "junior_conversation_events",
+          "columnsFrom": [
+            "conversation_id",
+            "seq"
+          ],
+          "columnsTo": [
+            "conversation_id",
+            "seq"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_conversation_event_lexemes_pk": {
+          "name": "junior_conversation_event_lexemes_pk",
+          "columns": [
+            "conversation_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.junior_conversation_events": {

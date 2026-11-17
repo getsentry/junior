@@ -32,6 +32,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   isNotNull,
   isNull,
   lte,
@@ -304,13 +305,14 @@ async function selectDoneRoots(
 }
 
 /**
- * Archive one root for everyone when it is still archivable for the run's
- * user.
+ * Archive roots for everyone when they are still archivable for the run's
+ * user, in one statement, and count the archived roots.
  */
-async function archiveRoot(
+async function archiveRoots(
   run: ArchiveRun,
-  rootConversationId: string,
-): Promise<boolean> {
+  rootConversationIds: string[],
+): Promise<number> {
+  if (rootConversationIds.length === 0) return 0;
   const archivable = getDb()
     .select({ userId: juniorConversationParticipants.userId })
     .from(juniorConversationParticipants)
@@ -322,7 +324,7 @@ async function archiveRoot(
       and(
         eq(
           juniorConversationParticipants.rootConversationId,
-          rootConversationId,
+          juniorConversations.conversationId,
         ),
         archivableRow(run),
       ),
@@ -332,13 +334,13 @@ async function archiveRoot(
     .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
     .where(
       and(
-        eq(juniorConversations.conversationId, rootConversationId),
+        inArray(juniorConversations.conversationId, rootConversationIds),
         isNull(juniorConversations.archivedAt),
         sql`exists (${archivable})`,
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return updated.length > 0;
+  return updated.length;
 }
 
 /** Archive every done conversation of one user and count the rows. */
@@ -349,17 +351,20 @@ async function archiveUserDoneConversations(
   let after: CandidateCursor | undefined;
   let archived = 0;
   let scanned = 0;
+  /* oxlint-disable no-await-in-loop -- Each page starts after the last root of the page before. */
   for (;;) {
     const rows = await selectCandidateRoots(run, after);
     if (rows.length === 0) break;
     scanned += rows.length;
     const rootIds = rows.map((row) => row.rootConversationId);
-    for (const rootId of await selectDoneRoots(rootIds, cutoffMs)) {
-      if (await archiveRoot(run, rootId)) archived += 1;
-    }
+    archived += await archiveRoots(
+      run,
+      await selectDoneRoots(rootIds, cutoffMs),
+    );
     if (rows.length < AUTO_ARCHIVE_PAGE_SIZE) break;
     after = rows.at(-1);
   }
+  /* oxlint-enable no-await-in-loop */
   return { archived, scanned };
 }
 
@@ -404,6 +409,7 @@ export async function runAutoArchiveSweep(args: {
   let archived = 0;
   let scanned = 0;
   for (const user of await selectAutoArchiveUsers()) {
+    // oxlint-disable-next-line no-await-in-loop -- The sweep archives for one user at a time to keep database load low.
     const result = await archiveUserDoneConversations({
       graceHours: user.graceHours,
       kind: "scheduled",

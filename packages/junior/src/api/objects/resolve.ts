@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
   objectAnnotationSchema,
@@ -38,9 +39,6 @@ import {
   SLACK_MESSAGE_LINK_FILTER,
 } from "./slack-message";
 import { webPageLinkType } from "./web-page/resolve";
-
-// Object links that one read resolves at once.
-const OBJECT_LINK_CONCURRENCY = 8;
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
@@ -220,7 +218,7 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
-  const limit = pLimit(OBJECT_LINK_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const results = await Promise.all(
     [...new Set(urls)].map((url) =>
       limit(async () => {

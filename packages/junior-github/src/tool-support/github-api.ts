@@ -50,6 +50,7 @@ export async function githubApi(
   // Writes are not followed: write policy needs a `/repos/{owner}/{repo}` URL.
   const follow = input.followRedirects === true && method === "GET";
   for (let hop = 0; ; hop++) {
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     response = await egress.fetch({
       provider: "github",
       operation: input.operation,
@@ -64,6 +65,7 @@ export async function githubApi(
     });
     const next = follow ? redirectTarget(response, url) : undefined;
     if (!next || hop >= MAX_REDIRECTS) break;
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     await response.body?.cancel();
     url = next;
   }

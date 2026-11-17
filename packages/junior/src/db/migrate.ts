@@ -59,15 +59,18 @@ function concurrentIndexes(
 export async function waitForMigrationLock(
   tryLock: () => Promise<boolean>,
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Poll until the lock is free. */
   while (!(await tryLock())) {
     await new Promise((resolve) => setTimeout(resolve, MIGRATION_LOCK_POLL_MS));
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 async function retryOnLockTimeout(
   tag: string,
   apply: () => Promise<void>,
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Retry only after the attempt before fails. */
   for (let attempt = 1; ; attempt += 1) {
     try {
       await apply();
@@ -86,6 +89,7 @@ async function retryOnLockTimeout(
       await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -113,6 +117,7 @@ export async function applyMigrations(
   );
   const appliedAt = Number(last?.createdAt ?? 0);
 
+  /* oxlint-disable no-await-in-loop -- Migrations, and the statements of each, apply in order. */
   for (const migration of readMigrationFiles(config)) {
     if (migration.folderMillis <= appliedAt) {
       continue;
@@ -151,4 +156,5 @@ export async function applyMigrations(
       });
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }

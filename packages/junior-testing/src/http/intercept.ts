@@ -30,6 +30,7 @@ export async function interceptTestHttp(
   input: HttpInterceptRequest,
 ): Promise<Response> {
   for (const fixture of TEST_HTTP_FIXTURES) {
+    // oxlint-disable-next-line no-await-in-loop -- The first fixture that answers wins, in list order.
     const response = await fixture(input);
     if (response) return response;
   }

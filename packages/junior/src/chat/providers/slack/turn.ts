@@ -5,6 +5,7 @@
  * It calls `executeTurn` to run and finish the Turn.
  */
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -166,9 +167,6 @@ import {
   resolveSlackChannelFacts,
   saveSteeringMessages,
 } from "@/chat/providers/slack/input";
-
-// Queued messages whose input one steer loads at once.
-const STEERING_INPUT_CONCURRENCY = 8;
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -473,7 +471,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
-          const limit = pLimit(STEERING_INPUT_CONCURRENCY);
+          const limit = pLimit(FAN_OUT_CONCURRENCY);
           return await Promise.all(
             queuedMessages.map((queued) =>
               limit(async () => {

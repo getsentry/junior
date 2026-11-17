@@ -112,6 +112,14 @@ function shownTop(card: HTMLElement, scroller: HTMLElement): number {
 }
 
 /**
+ * Turn the browser's scroll anchoring on or off for the scroll area. The
+ * hold turns it off, so a scroll it did not make is the reader's.
+ */
+function anchorScroll(scroller: HTMLElement, on: boolean) {
+  scroller.style.overflowAnchor = on ? "" : "none";
+}
+
+/**
  * True while a card in the scroll area still animates its height, as
  * `useAnimatedHeight` does. Spinners and transforms move no row.
  */
@@ -281,31 +289,37 @@ export function useInboxFocus(
       if (!store.update({ restKey: key })) return;
       const area = scroller.current;
       cancelAnimationFrame(frame.current);
+      if (area) anchorScroll(area, true);
       if (!card || !area) return;
       // Hold the card under the pointer where it shows while the card that
-      // lost focus collapses above it. Each frame scrolls back only what the
-      // card moved on screen, so a move that the browser's own scroll
-      // anchoring already undid scrolls nothing.
+      // lost focus collapses above it. Scroll anchoring is off while the hold
+      // runs, so only the hold and the reader move the scroll. A scroll that
+      // the hold did not make is the reader's, such as a wheel or a scroll to
+      // a card, so the hold lets go instead of scrolling back.
+      anchorScroll(area, false);
       const top = shownTop(card, area);
       const until = performance.now() + SETTLE_MS;
       let scrolled = area.scrollTop;
-      let shown = top;
       const hold = () => {
-        if (!card.isConnected) return;
-        const now = shownTop(card, area);
-        const before = area.scrollTop;
-        // A scroll moves the card on screen by as much as the area scrolled.
-        // Someone else scrolled, such as the reader's wheel or a scroll to
-        // a card, so the hold lets go instead of scrolling back.
-        const scroll = before - scrolled;
-        if (Math.abs(scroll) >= 0.5 && Math.abs(now - shown + scroll) < 0.5)
+        const max = area.scrollHeight - area.clientHeight;
+        // A list that got shorter clamps the scroll at its new end.
+        const clamped =
+          area.scrollTop < scrolled && area.scrollTop >= max - 0.5;
+        if (
+          !card.isConnected ||
+          (Math.abs(area.scrollTop - scrolled) >= 0.5 && !clamped)
+        ) {
+          anchorScroll(area, true);
           return;
-        const drift = now - top;
+        }
+        const drift = shownTop(card, area) - top;
         if (Math.abs(drift) >= 0.5) area.scrollTop += drift;
-        shown = now - (area.scrollTop - before);
         scrolled = area.scrollTop;
-        if (performance.now() < until || cardsMoving(area))
+        if (performance.now() < until || cardsMoving(area)) {
           frame.current = requestAnimationFrame(hold);
+        } else {
+          anchorScroll(area, true);
+        }
       };
       frame.current = requestAnimationFrame(hold);
     },
