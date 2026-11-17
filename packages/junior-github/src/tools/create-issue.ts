@@ -252,7 +252,6 @@ async function createGitHubIssueRequest(
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(
         input.body ?? "",
-        ctx,
         await resolveGitHubRequester(ctx),
       ),
       conversationId,

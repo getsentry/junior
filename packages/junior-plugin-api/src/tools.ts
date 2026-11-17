@@ -779,6 +779,29 @@ export interface PluginConversationToolContext {
   }): Promise<PluginConversationMatch[]>;
 }
 
+/**
+ * Whose work a Turn does. A person, with their stored Identity and User when
+ * Junior has them, or the system record that started the work, such as an
+ * Automation run.
+ */
+export type PluginWorkOwner =
+  | {
+      kind: "person";
+      /** The Turn Actor, when the person runs the Turn themselves. */
+      actor?: Exclude<Actor, { platform: "system" }>;
+      identity?: Identity;
+      user?: User;
+    }
+  | {
+      kind: "system";
+      /** What started the work, such as `automation`. */
+      name: string;
+      id: string;
+      runId?: string;
+      /** Host-owned dashboard link to the record. */
+      url?: string;
+    };
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -790,8 +813,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Other Conversations. Set only when the turn has a `conversationId`. */
   conversations?: PluginConversationToolContext;
-  /** Host-owned dashboard link to the Automation that started this run. */
-  automationLink?: { url: string };
+  /**
+   * Resolve whose work this Turn does: the person who runs it, else the
+   * person who started its root Conversation, else the system record that
+   * started the root. Returns nothing when nobody did.
+   */
+  resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Decision model for narrow choices, such as checks on text a tool writes. */

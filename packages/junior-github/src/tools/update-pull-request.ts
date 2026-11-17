@@ -1,13 +1,11 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
   type PluginDecider,
   type PluginEgress,
-  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -20,6 +18,7 @@ import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
@@ -166,7 +165,6 @@ export function createGitHubUpdatePullRequestTool(
       _options,
       ctx: {
         actor?: Actor | undefined;
-        automationLink?: { url: string };
         conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
@@ -174,12 +172,7 @@ export function createGitHubUpdatePullRequestTool(
         log: PluginLogger;
         events: { canSubscribe: boolean };
         conversationLink?: { url: string };
-        source?: Source | undefined;
-        users: {
-          resolveActor(): Promise<
-            { identity?: Identity; user?: User } | undefined
-          >;
-        };
+        resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
       },
     ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
@@ -209,7 +202,6 @@ export function createGitHubUpdatePullRequestTool(
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
                   update.body,
-                  ctx,
                   requester,
                   currentBody,
                 ),
@@ -265,9 +257,10 @@ export function createGitHubUpdatePullRequestTool(
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      if (requester?.identity) {
+      const identity = requesterPerson(requester)?.identity;
+      if (identity) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-          identityId: requester.identity.id,
+          identityId: identity.id,
           number: providerResult.number,
           repositoryFullName: repo.ref,
         });
