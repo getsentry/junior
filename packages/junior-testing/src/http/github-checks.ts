@@ -147,7 +147,7 @@ export async function interceptTestGitHubChecksHttp(
     return undefined;
   }
   if (request.method !== "GET") return undefined;
-  // ast-grep-ignore: no-value-switch -- a fake server routes by URL path, not by type.
+  // oxlint-disable-next-line junior/no-value-switch -- A fake server routes by URL path, not by type.
   switch (url.pathname) {
     // GitHub's issue endpoint also returns pull requests. Title generation
     // reads a plain owner/repo#number reference through this endpoint.
