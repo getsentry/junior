@@ -60,8 +60,21 @@ export function useComposerSkillMenu(
   // A tap on the menu blurs the textarea before its click lands, and a
   // scrollbar drag blurs it too. Keep the menu open while a press in it
   // runs. Mobile browsers fire the blur after `pointerup`, so the click
-  // ends the press.
+  // ends the press. A drag or scroll ends with no click, so the next
+  // press outside the menu also ends it.
   const pressingMenu = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const endPress = (event: PointerEvent) => {
+      const menu = document.getElementById(listboxId);
+      if (!(event.target instanceof Node) || !menu?.contains(event.target)) {
+        pressingMenu.current = false;
+      }
+    };
+    document.addEventListener("pointerdown", endPress, true);
+    return () => document.removeEventListener("pointerdown", endPress, true);
+  }, [open, listboxId]);
 
   /** Close on blur, unless the blur comes from a press in the menu. */
   const blur = () => {
