@@ -36,6 +36,7 @@ Do not list behaviors. The verification map in
 
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
+- [Guardian](./guardian.md): review of each tool action before it runs.
 - [Review desk](./review-desk.md): work that waits for a person, labeled
   "Inbox" in the dashboard.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
