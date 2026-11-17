@@ -316,6 +316,23 @@ function watchGuidance(
   return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
+/** Whether a Watch delivers this event type as a Quiet Event. */
+export function isQuietEvent(
+  subscription: Pick<Watch, "quietEvents">,
+  eventType: string,
+): boolean {
+  return subscription.quietEvents?.includes(eventType) === true;
+}
+
+/** The event types of a Watch that start a Turn. */
+export function turnEvents(
+  subscription: Pick<Watch, "events" | "quietEvents">,
+): string[] {
+  return subscription.events.filter(
+    (eventType) => !isQuietEvent(subscription, eventType),
+  );
+}
+
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,

@@ -11,11 +11,13 @@ import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeDb } from "@/chat/db";
 import { ingestEvent } from "@/chat/events/ingest";
-import { listWatches } from "@/chat/events/store";
+import { createWatch, listWatches } from "@/chat/events/store";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { countAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -98,6 +100,14 @@ describe("Quiet Events", () => {
         resource,
       }),
     ).resolves.toMatchObject({ events: ["job.failed"] });
+    const listed = createListWatchesTool({
+      conversationId: CONVERSATION_ID,
+    } as ToolRuntimeContext);
+    await expect(listed.execute!({}, {} as never)).resolves.toMatchObject({
+      subscriptions: [
+        { events: ["job.failed"], quiet_events: ["job.succeeded"] },
+      ],
+    });
     // The automated-turn limit counts Turns, so it does not hold back a
     // Quiet Event.
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
@@ -149,6 +159,57 @@ describe("Quiet Events", () => {
     ).resolves.toEqual([
       "A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. Demo job 1, job.succeeded: Demo job 1 succeeded.",
     ]);
+  });
+
+  it("adds no note when another Watch starts a Turn for the Event", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const events = await pluginEvents(queue);
+    await events.subscribe({
+      events: ["job.failed", "job.succeeded"],
+      intent: "Fix the job when it fails.",
+      quietEvents: ["job.succeeded"],
+      resource,
+    });
+    // A person asked to hear when the job succeeds.
+    await createWatch({
+      conversationId: CONVERSATION_ID,
+      events: ["job.succeeded"],
+      expiresAtMs: Date.now() + 60_000,
+      intent: "Tell the person when the job succeeds.",
+      label: resource.label,
+      namespace: resource.namespace,
+      identifier: resource.identifier,
+      resourceType: resource.type,
+    });
+
+    await expect(
+      ingestEvent(
+        {
+          eventKey: "delivery-succeeded",
+          eventType: "job.succeeded",
+          occurredAtMs: Date.now(),
+          namespace: "demo",
+          identifier: "job-1",
+          terminal: true,
+          trustedSummary: "Demo job 1 succeeded.",
+        },
+        { queue },
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+
+    await getTurnLifecycle().start({
+      conversationId: CONVERSATION_ID,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["turn-for-success-message"],
+      surface: "internal",
+      turnId: "turn-for-success",
+    });
+    await expect(
+      loadTurnConversationNotes({
+        conversationId: CONVERSATION_ID,
+        turnId: "turn-for-success",
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("rejects a Watch whose every event is quiet", async () => {

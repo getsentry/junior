@@ -6,10 +6,13 @@ import { resolveEventAuthor } from "@/chat/identities/trust";
 import {
   addQuietEventNote,
   enqueueEventNotification,
-  isQuietEvent,
 } from "@/chat/events/notification";
 import { resolveEventMentions } from "@/chat/events/people";
-import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
+import {
+  deliverWatch,
+  findMatchingWatches,
+  isQuietEvent,
+} from "@/chat/events/store";
 import { slackMention } from "@/chat/slack/mrkdwn";
 
 /** Match a normalized event and enqueue notifications into conversations. */
@@ -61,6 +64,13 @@ export async function ingestEvent(
     author.status === "trusted" && author.actor
       ? { mention: slackMention(author.actor.userId), handle: author.handle }
       : undefined;
+  // A Conversation whose Turn gets this Event from another Watch needs no
+  // note that says nobody was told.
+  const turnConversations = new Set(
+    subscriptions
+      .filter((subscription) => !isQuietEvent(subscription, event.eventType))
+      .map((subscription) => subscription.conversationId),
+  );
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
@@ -81,7 +91,9 @@ export async function ingestEvent(
         deliver: async (current) => {
           if (isQuietEvent(current, event.eventType)) {
             quiet = true;
-            await addQuietEventNote({ event, subscription: current });
+            if (!turnConversations.has(current.conversationId)) {
+              await addQuietEventNote({ event, subscription: current });
+            }
             return true;
           }
           const result = await enqueueEventNotification({

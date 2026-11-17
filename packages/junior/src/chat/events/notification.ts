@@ -412,14 +412,6 @@ export function createEventInboundMessage(input: {
   };
 }
 
-/** Whether a Watch delivers this event type as a Quiet Event. */
-export function isQuietEvent(
-  subscription: Pick<Watch, "quietEvents">,
-  eventType: string,
-): boolean {
-  return subscription.quietEvents?.includes(eventType) === true;
-}
-
 /**
  * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
  * automated-turn limit does not apply. The next Turn sees the note as
