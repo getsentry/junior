@@ -13,6 +13,7 @@ import {
   getDb,
 } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { setTrustConfig } from "@/chat/identities/trust";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import {
@@ -140,11 +141,17 @@ describe("Slack webhook: Review item cards", () => {
   afterEach(async () => {
     process.env = { ...ORIGINAL_ENV };
     resetSlackApiMockState();
+    setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
     await disconnectStateAdapter();
     await closeDb();
   });
 
   function harness(options: { allowedDomains?: string[] } = {}) {
+    // Slack ingress reads the allowed domains that `createApp` applies.
+    setTrustConfig({
+      allowedBotUserIds: [],
+      allowedDomains: options.allowedDomains ?? [],
+    });
     const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
@@ -213,7 +220,6 @@ describe("Slack webhook: Review item cards", () => {
         }),
         waitUntil: waitUntil.fn,
         services: {
-          ...options,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),

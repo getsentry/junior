@@ -16,6 +16,8 @@ Canonical words for Junior code and docs. One concept, one word.
   state, keyed by a unique `conversationId`. Parent is optional and separate
   from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
   never changes. `automation` is a top-level Conversation for an Automation run.
+  A Conversation is the default. Slack is a Destination attached to it. Do not
+  say "web Conversation".
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -72,6 +74,18 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Event author**: the account that wrote the content of an Event, such as
+  a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
+  with no author is a system Event. The author never becomes the Turn Actor.
+- **Author trust**: core's decision for one Event author, `AuthorTrust`:
+  `system`, `trusted`, or `untrusted` with a reason. Core makes it once at
+  ingest. `chat/identities/trust.ts` owns it and every other trust check
+  (Slack ingress, Identity dispatch, allowed emails).
+- **Trusted author**: an Event author with `trusted` Author trust. Like a
+  Slack author, a linked person writes the Event's Message. Any other author
+  is an Untrusted author: the Event runs as system context, and the task
+  input says the account is not verified. Either way, the author's own text
+  is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops

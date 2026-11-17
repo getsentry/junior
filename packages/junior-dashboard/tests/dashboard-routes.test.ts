@@ -468,6 +468,18 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
   });
 
+  it("rejects a verified session whose email is not a valid email", async () => {
+    for (const email of ["@sentry.io", "sentry.io"]) {
+      const app = dashboard({ user: { email, emailVerified: true } });
+
+      const response = await app.fetch(
+        new Request("http://localhost/api/runtime"),
+      );
+
+      expect(response.status).toBe(403);
+    }
+  });
+
   it("requires a verified email for the allowed email-domain fallback", async () => {
     const app = dashboard({
       user: {
