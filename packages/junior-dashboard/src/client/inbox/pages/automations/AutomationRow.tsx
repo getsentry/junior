@@ -9,6 +9,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "react-router";
+import { usePrefetchAutomation } from "../../../api";
 import { ActorAvatar } from "../../../components/ActorAvatar";
 import { FormNotice } from "../../../components/FormNotice";
 import { statusDotToneClass } from "../../../components/StatusDot";
@@ -69,8 +70,10 @@ export function AutomationRow(props: {
   const ref = useRef<HTMLLIElement>(null);
   useAnimatedHeight(ref, String(props.expanded));
   const regionId = `automation-row-${automation.id}`;
+  const prefetch = usePrefetchAutomation(automation.id);
   return (
     <li
+      {...prefetch}
       className={cn(inboxCardClass(props.expanded), "cursor-pointer")}
       data-automation-id={automation.id}
       data-dock-key={`automation:${automation.id}`}
