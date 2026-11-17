@@ -51,3 +51,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Background work](./background-work.md) covers one reply per message, a Turn that outlives its time limit, and a Turn whose worker is killed.
 - [Automations](./automations.md) covers Scheduled, Event, and channel-message Automations from Slack, and the Automations pages.
 - [GitHub](./github.md) covers pull requests, issues, Watches, attribution, and GitHub cards.
+- [Sandbox credentials](./sandbox-credentials.md) covers which Sandbox requests get the Actor's credential, credentials that a request brings, browser requests, the connect prompt, and Sentry write denials.

@@ -1,8 +1,10 @@
 import type { OAuthBearerCredentials } from "../types";
 
-const DEFAULT_PLACEHOLDERS: Record<OAuthBearerCredentials["type"], string> = {
-  "oauth-bearer": "host_managed_credential",
-};
+/**
+ * The marker that every built-in Sandbox credential placeholder contains,
+ * such as `host_managed_credential` or `ghp_host_managed_credential`.
+ */
+export const HOST_MANAGED_CREDENTIAL_PLACEHOLDER = "host_managed_credential";
 
 /** Resolve the non-secret sandbox token placeholder for token-backed credentials. */
 export function resolveAuthTokenPlaceholder(
@@ -10,6 +12,6 @@ export function resolveAuthTokenPlaceholder(
 ): string {
   return (
     credentials.authTokenPlaceholder?.trim() ||
-    DEFAULT_PLACEHOLDERS[credentials.type]
+    HOST_MANAGED_CREDENTIAL_PLACEHOLDER
   );
 }
