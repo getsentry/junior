@@ -192,6 +192,21 @@ const app = await createApp({
 This option costs one fast-model call per completed Turn. The example app and
 `junior chat` enable it.
 
+## Event embeddings
+
+`searchConversationEvents` matches the words of a query in Conversation
+history. To also match by meaning, enable event embeddings:
+
+```ts
+const app = await createApp({
+  eventEmbeddings: { enabled: true },
+});
+```
+
+After each completed Turn, Junior embeds up to 256 of the newest events that
+have no embedding, with the model in `AI_EMBEDDING_MODEL`. This costs one
+embedding call per 32 events. The example app and `junior chat` enable it.
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same

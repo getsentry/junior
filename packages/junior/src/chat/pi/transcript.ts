@@ -18,6 +18,12 @@ import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
 const AGENTS_INSTRUCTIONS_START = "# AGENTS.md instructions";
 
+/** Starts of user text parts that hold runtime context, not a person's words. */
+export const RUNTIME_CONTEXT_TEXT_STARTS = [
+  RUNTIME_TURN_CONTEXT_START,
+  AGENTS_INSTRUCTIONS_START,
+] as const;
+
 function userMessageContent(message: PiMessage): unknown[] | undefined {
   const record = message as { role?: unknown; content?: unknown };
   return record.role === "user" && Array.isArray(record.content)
@@ -31,8 +37,9 @@ function isRuntimeTurnContextPart(part: unknown): boolean {
     typeof part === "object" &&
     (part as { type?: unknown }).type === "text" &&
     typeof (part as { text?: unknown }).text === "string" &&
-    ((part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START) ||
-      (part as { text: string }).text.startsWith(AGENTS_INSTRUCTIONS_START))
+    RUNTIME_CONTEXT_TEXT_STARTS.some((start) =>
+      (part as { text: string }).text.startsWith(start),
+    )
   );
 }
 

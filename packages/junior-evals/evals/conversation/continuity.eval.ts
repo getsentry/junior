@@ -1,6 +1,7 @@
 import { describe, expect } from "vitest";
 import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 // Junior compacts agent history above 90% of the context window, at about 4
@@ -59,7 +60,7 @@ describe("Thread Continuity", () => {
     expect(conversation.replies).toHaveLength(1);
   });
 
-  test("when a compacted tool result holds an exact detail, read the full result back", async ({
+  test("when a compacted tool result holds an exact detail, find it with a history search", async ({
     agent,
   }) => {
     const { run } = await agent({
@@ -67,7 +68,7 @@ describe("Thread Continuity", () => {
     });
     const conversation = await run(
       slackMention(
-        "What was the exact checksum on step 0042 of that build log? I need to paste it into the release ticket.",
+        "What was the exact checksum on step 1847 of that build log? I need to paste it into the release ticket.",
       ),
       {
         history: [
@@ -91,10 +92,17 @@ describe("Thread Continuity", () => {
     );
 
     expect(conversation.compactions).toBeGreaterThan(0);
-    // The checksum is only in the compacted tool result.
+    // The checksum is only in the compacted tool result, far past its start.
     expect(conversation.replies.map((item) => item.text).join("\n")).toContain(
-      checksum(42),
+      checksum(1847),
     );
+    expect(
+      toolCallsOf("searchConversationEvents", conversation).some(
+        (call) =>
+          typeof (call.input as { query?: unknown } | undefined)?.query ===
+          "string",
+      ),
+    ).toBe(true);
   });
 
   test.for([
