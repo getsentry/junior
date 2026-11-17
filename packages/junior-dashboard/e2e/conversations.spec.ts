@@ -1,6 +1,6 @@
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { mobile, screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -192,10 +192,14 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     .filter({ has: page.locator('img[alt="chart.png"]') })
     .first();
   await image.waitFor({ state: "visible" });
-  await image.evaluate((element) =>
-    element.scrollIntoView({ block: "center", inline: "nearest" }),
-  );
-  await screenshot(page, "conversation-attachment");
+  // A resize keeps another scroll position, so center the image in each view.
+  for (const view of [desktop, mobile]) {
+    await page.setViewportSize(view);
+    await image.evaluate((element) =>
+      element.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
+    await screenshot(page, "conversation-attachment", { view: view.name });
+  }
 
   await image.click();
   const preview = page.getByRole("dialog", { name: "chart.png" });

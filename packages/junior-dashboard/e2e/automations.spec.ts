@@ -5,7 +5,7 @@ import { mockAutomationCollection } from "../src/mock-reporting/automation-colle
 import { NOW } from "../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import type { Page } from "@playwright/test";
 
 /** One option in a filter of the Automations filter panel or sheet. */
@@ -934,6 +934,9 @@ test("groups automations by what needs attention on the landing page", async ({
   await expect(
     page.getByRole("button", { name: "Expand instruction", exact: true }),
   ).toBeVisible();
+  // The screenshot uses this size. A resize would move the pointer off the
+  // chart and close its tooltip.
+  await page.setViewportSize(desktop);
   await page
     .getByRole("region", { name: "Recent runs" })
     .getByRole("img")

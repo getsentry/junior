@@ -39,6 +39,7 @@ import { ConnectionsSettings } from "./ConnectionsSettings";
 import { ExperimentalUiSetting } from "./ExperimentalUiSetting";
 import { McpSettings } from "./McpSettings";
 import { PersonalTokensSettings } from "./PersonalTokensSettings";
+import { TranscriptScrollerSetting } from "./TranscriptScrollerSetting";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
 import { getDashboardAgentName } from "../../agentName";
 
@@ -55,6 +56,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
+      <InterfaceSettings identity={identity} />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -139,14 +141,27 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
-      <ExperimentalUiSetting identity={identity} />
-      <NavLayoutSetting />
-      <ConversationStartSetting />
-      <ComposerAutocorrectSetting />
-      <InboxTabCountSetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
+    </SettingsSection>
+  );
+}
+
+/** Group the choices for how the dashboard looks and works. */
+function InterfaceSettings({ identity }: SettingsPageProps) {
+  return (
+    <SettingsSection
+      anchor="interface"
+      description="The new dashboard applies to your account. The other choices apply to this browser."
+      title="Interface"
+    >
+      <ExperimentalUiSetting identity={identity} />
+      <NavLayoutSetting />
+      <ConversationStartSetting />
+      <TranscriptScrollerSetting />
+      <ComposerAutocorrectSetting />
+      <InboxTabCountSetting />
     </SettingsSection>
   );
 }
@@ -161,12 +176,9 @@ function NavLayoutSetting() {
         className="m-0 text-lg font-bold"
         title="Navigation"
       />
-      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-        This choice applies to this browser.
-      </p>
       <RadioGroup<NavLayoutChoice>
         aria-label="Navigation"
-        className="grid gap-3"
+        className="mt-4 grid gap-3"
         onValueChange={setChoice}
         value={choice}
       >
@@ -221,7 +233,7 @@ function ConversationStartSetting() {
       />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
         {getDashboardAgentName()} keeps your place in each conversation on all
-        your devices. This choice applies to this browser.
+        your devices.
       </p>
       <RadioGroup<ConversationStartPosition>
         aria-label="Open conversations at"
@@ -272,8 +284,7 @@ function ComposerAutocorrectSetting() {
           <FieldLabel htmlFor="composer-autocorrect">Autocorrect</FieldLabel>
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
-            type. This can change ids, paths, and code. This choice applies to
-            this browser.
+            type. This can change ids, paths, and code.
           </FieldDescription>
         </FieldContent>
       </Field>
@@ -303,8 +314,7 @@ function InboxTabCountSetting() {
             Show the Inbox count in the tab
           </FieldLabel>
           <FieldDescription id="inbox-tab-count-help">
-            In the tab title and on the tab icon. This choice applies to this
-            browser.
+            In the tab title and on the tab icon.
           </FieldDescription>
         </FieldContent>
       </Field>

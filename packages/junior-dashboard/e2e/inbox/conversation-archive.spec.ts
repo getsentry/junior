@@ -1,6 +1,43 @@
 import { viewAsParticipant } from "./conversationMenu";
+import type { Locator } from "@playwright/test";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
+
+/**
+ * Rest the pointer on an Inbox row's head until the row stops moving, so
+ * its hover actions take a click. A row that still moves under the pointer
+ * makes a click retry with a forced scroll, which moves the row out from
+ * under the pointer, and its hidden actions then take no click.
+ */
+async function restOnRow(head: Locator) {
+  await head.hover();
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  let last = "";
+  await expect
+    .poll(
+      async () => {
+        // Spinners loop forever, so only transitions and height runs count.
+        const now = await row.evaluate(
+          (element) =>
+            `${(element as HTMLElement).style.transform}:${
+              element
+                .getAnimations({ subtree: true })
+                .filter(
+                  (run) =>
+                    run.playState === "running" &&
+                    !(run instanceof CSSAnimation),
+                ).length
+            }`,
+        );
+        const settled = now === last;
+        last = now;
+        return settled;
+      },
+      // Longer than the focus intent, so the row has started to move.
+      { intervals: [250] },
+    )
+    .toBe(true);
+}
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -330,7 +367,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
       await page.goto(dashboard.baseURL);
 
-      await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+      await restOnRow(
+        page.getByRole("link", { name: /Dashboard QA edge cases/ }),
+      );
       await page
         .getByRole("button", { name: "Archive Dashboard QA edge cases" })
         .click();
@@ -341,7 +380,11 @@ test.describe("new UI", { tag: "@new" }, () => {
 
       // Burn most of the first notice's timer, then archive a second conversation.
       await page.clock.fastForward(5_000);
-      await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
+      // The row still moves as the pointer's focus lands on it, so let it
+      // settle before its hidden Archive takes a click.
+      await restOnRow(
+        page.getByRole("link", { name: /Checkout latency triage/ }),
+      );
       await page
         .getByRole("button", { name: "Archive Checkout latency triage" })
         .click();
