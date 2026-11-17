@@ -307,6 +307,9 @@ function MessageOutlineItem({
         data-in-view={shown ? "" : undefined}
         className={cn(
           "group/message-outline-item flex h-[8px] w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring/55",
+          // The bar sits on the edge that the rail sits on, since `w-6`
+          // and the bar's px width differ when the root font size does.
+          side === "right" && "justify-end",
           // The items on screen join into one thumb.
           shown && "bg-dashboard-scrollbar-thumb",
           shown && index === inView.from && "rounded-t-sm",
