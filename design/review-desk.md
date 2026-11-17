@@ -12,6 +12,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   these.
 - There is one way to ask a person, and only for a decision that is theirs
   and blocks the work. Progress, offers, and scope choices are not items.
+  Whether Junior starts new work for the requester, such as a Thread that
+  implements an issue it filed, is the requester's decision, not an offer.
 - A notice tells a person something that they must know or fix, such as a
   failed or blocked Automation. It never asks.
 - Only an assignee answers, and the answer carries their authority. Junior,
