@@ -18,6 +18,7 @@ export const objectTypeSchema = z.enum([
   "release",
   "dashboard",
   "monitor",
+  "alert",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -39,6 +40,7 @@ const objectTypeLabels = {
   release: "Release",
   dashboard: "Dashboard",
   monitor: "Monitor",
+  alert: "Alert",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -78,7 +80,7 @@ export type ObjectTone =
 export function objectPresentation(object: {
   objectType: ObjectType;
   status?: string | undefined;
-  facts?: { type: string; state?: string } | undefined;
+  facts?: { type: string; state?: string; enabled?: boolean } | undefined;
 }): { icon: ObjectIconName; tone: ObjectTone; label: string } {
   // Saved deployment cards used Item before Deployment became a native type.
   const type =
@@ -104,6 +106,7 @@ export function objectPresentation(object: {
       release: "tag",
       dashboard: "apps",
       monitor: "bell",
+      alert: "bell",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];
@@ -136,6 +139,8 @@ export function objectPresentation(object: {
     if (state === "ok") tone = "success";
     if (state === "failing") tone = "danger";
     if (state === "pending") tone = "info";
+  } else if (type === "alert") {
+    if (object.facts?.enabled) tone = "success";
   } else if (type === "conversation") {
     if (status === "running") tone = "info";
     if (status === "failed") tone = "danger";
