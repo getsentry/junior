@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -18,6 +19,9 @@ import {
   type ResolvedAssignees,
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
+
+// Conversations whose participants one check reads at once.
+const PARTICIPANT_READ_CONCURRENCY = 8;
 
 // Every Review item access rule lives in this file. Callers must not copy a
 // rule.
@@ -363,16 +367,15 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const inConversation = new Set<string>();
-  for (const conversationId of new Set(args.conversationIds)) {
-    for (const id of await conversationParticipantUserIds(
-      getDb(),
-      conversationId,
-      others,
-    )) {
-      inConversation.add(id);
-    }
-  }
+  const limit = pLimit(PARTICIPANT_READ_CONCURRENCY);
+  const participants = await Promise.all(
+    [...new Set(args.conversationIds)].map((conversationId) =>
+      limit(() =>
+        conversationParticipantUserIds(getDb(), conversationId, others),
+      ),
+    ),
+  );
+  const inConversation = new Set(participants.flatMap((ids) => [...ids]));
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

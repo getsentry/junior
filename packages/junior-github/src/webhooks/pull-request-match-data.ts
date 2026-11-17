@@ -165,6 +165,7 @@ async function withRolesAndAuthors(
   const loadAuthors = lookups.has("authors") ? context.loadAuthors : undefined;
   if (!loadRole && !loadAuthors) return events;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One delivery's events. Lookups are shared per login and number.
     events.map(async (event) => {
       const number = context.numbers.get(event.eventKey);
       if (number === undefined) return event;

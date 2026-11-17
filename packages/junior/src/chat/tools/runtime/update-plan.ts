@@ -203,6 +203,7 @@ export function createUpdatePlanTool(
         nowMs: Date.now(),
         change: {
           add: await Promise.all(
+            // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 items.
             add.map(async (item) => ({
               title: item.title,
               ...(item.notes ? { notes: item.notes } : undefined),
@@ -211,6 +212,7 @@ export function createUpdatePlanTool(
             })),
           ),
           update: await Promise.all(
+            // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 items.
             update.map(async (item) => ({
               id: item.id,
               ...(item.title ? { title: item.title } : undefined),

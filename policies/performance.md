@@ -27,7 +27,6 @@ each rule, so new code cannot drift from it.
   such as `invalidateConversationFeeds` or `invalidateReviewItemCollections`.
   Do not invalidate, refetch, reset, or remove a key with two or fewer parts,
   unless you pass `exact: true`. Check: dashboard oxlint `query-invalidation/no-broad-query-invalidation`.
-
 - Keep the SQL work of hot API routes inside a budget. A budget counts the
   statements of one request, and its serial rounds: the longest chain of
   statements where each one waits on the one before. Integration tests measure

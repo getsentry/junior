@@ -1,5 +1,5 @@
 import { mockAutomationEditor } from "../automation-editor-fixture";
-import { automationReport } from "./automation-fixture";
+import { LIST_NOW, automationReport } from "./automation-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "../harness";
@@ -115,6 +115,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/automations?type=event#history`,
     );
 
+    // Groups follow the latest run, so fix the day that the list reads.
+    await page.clock.setFixedTime(LIST_NOW);
     await page.goto(dashboard.baseURL);
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -129,20 +131,39 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("main").getByRole("link", { exact: true, name: "Runs" }),
     ).toHaveAttribute("href", "/automations/runs");
-    // To do holds only the viewer's own; someone else's problem stays with
-    // the active Automations, with the link that fixes it.
+    // To do holds only the viewer's own. Mine is the default, and groups
+    // its Automations by the latest run, newest first.
     await expect(
       page.getByRole("region", { exact: true, name: "To do" }),
     ).toHaveCount(0);
-    const active = page
-      .getByRole("main")
-      .getByRole("region", { name: "Active" });
-    await expect(active.getByRole("listitem")).toHaveCount(3);
-    await expect(active).toContainText("Incident change alerts");
+    const scopes = page.getByRole("navigation", {
+      name: "Automations to show",
+    });
     await expect(
-      active.getByRole("link", { name: "Change trigger", exact: true }),
+      scopes.getByRole("link", { name: "Mine", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    const main = page.getByRole("main");
+    const group = (name: string) =>
+      main.getByRole("region", { exact: true, name });
+    await expect(
+      group("Today").getByRole("link", { name: /^Open automation: / }),
+    ).toHaveText(["Weekly project summary"]);
+    await expect(
+      group("This week").getByRole("link", { name: /^Open automation: / }),
+    ).toHaveText(["Closed issue summary"]);
+    await expect(main).not.toContainText("Incident change alerts");
+    // All adds someone else's problem, with the link that fixes it.
+    await scopes.getByRole("link", { name: "All", exact: true }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/automations?scope=all`);
+    await expect(
+      scopes.getByRole("link", { name: "All", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    const earlier = group("Earlier");
+    await expect(earlier).toContainText("Incident change alerts");
+    await expect(
+      earlier.getByRole("link", { name: "Change trigger", exact: true }),
     ).toHaveAttribute("href", "/automations/event-2/edit");
-    await screenshot(page, "automations");
+    await screenshot(page, "automations", { lightTheme: true });
     const weeklySummary = page
       .getByRole("main")
       .getByText("Weekly project summary", {
@@ -162,7 +183,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await openWeekly.click();
     await expect(page).toHaveURL(
-      `${dashboard.baseURL}/automations/scheduled-1`,
+      `${dashboard.baseURL}/automations/scheduled-1?scope=all`,
     );
     await expect(
       page.getByRole("heading", {
@@ -193,13 +214,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     const recentRun = recentRuns.getByRole("link", {
       name: /^Open completed run/,
     });
+    // The page keeps the list's scope, so Back returns to the same list.
     await expect(recentRun).toHaveAttribute(
       "href",
-      /^\/automations\/scheduled-1\?run=/,
+      /^\/automations\/scheduled-1\?scope=all&run=/,
     );
     await recentRun.click();
     await expect(page).toHaveURL(
-      /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
+      /\/automations\/scheduled-1\?scope=all&run=scheduled-1-run-1$/,
     );
     const recentDetails = page.getByRole("dialog");
     await expect(
@@ -217,7 +239,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(recentDetails).toHaveCount(0);
     await expect(page).toHaveURL(
-      `${dashboard.baseURL}/automations/scheduled-1`,
+      `${dashboard.baseURL}/automations/scheduled-1?scope=all`,
     );
     await expect(recentRun).toBeFocused();
     await expect(
@@ -235,7 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lightTheme: true,
     });
     await page.getByRole("link", { name: "Back to automations" }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/automations?scope=all`);
     await openWeekly.click();
     await page.setViewportSize({ width: 390, height: 844 });
     await page
@@ -391,9 +413,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Open automation: Weekly project summary",
     });
     const backToList = page.getByRole("link", { name: "Back to automations" });
-    const active = page
+    const rows = page
       .getByRole("main")
-      .getByRole("region", { name: "Active" });
+      .getByRole("link", { name: /^Open automation: / });
     const deleteButton = page
       .getByRole("group", { name: "Automation actions" })
       .getByRole("button", { name: "Delete automation", exact: true });
@@ -444,16 +466,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       "true",
     );
     await page.getByRole("button", { name: "Close filters" }).click();
-    // Groups show every match at once, so there are no page controls.
     await page.goto(listUrl);
-    await expect(active.getByRole("listitem")).toHaveCount(31);
+    await expect(rows).toHaveCount(31);
     await page.reload();
-    await expect(active.getByRole("listitem")).toHaveCount(31);
-    // Old scope, sort, and page links fall back to every Automation.
+    await expect(rows).toHaveCount(31);
+    // Old sort and page links fall back to the list; the scope stays.
     await page.goto(
-      `${dashboard.baseURL}/automations?scope=mine&sort=title&page=2`,
+      `${dashboard.baseURL}/automations?scope=all&sort=title&page=2`,
     );
-    await expect(active).toContainText("Incident change alerts");
+    await expect(page.getByRole("main")).toContainText(
+      "Incident change alerts",
+    );
     const pendingDetail = gate();
     let detailRequests = 0;
     await page.route("**/api/automations/scheduled-1", async (route) => {
@@ -468,10 +491,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       }
       return route.fallback();
     });
-    let failRuns = true;
+    // Runs load with the summary, and again when the Overview shows after
+    // the summary's retry. Fail both, so the Overview offers Try again.
+    let failRuns = 2;
     await page.route("**/api/automations/scheduled-1/executions", (route) => {
-      if (!failRuns) return route.fallback();
-      failRuns = false;
+      if (failRuns === 0) return route.fallback();
+      failRuns -= 1;
       return route.fulfill({
         status: 503,
         json: { error: "History unavailable" },
@@ -498,7 +523,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
     await backToList.click();
     await expect(page).toHaveURL(listUrl);
-    await expect(active.getByRole("listitem")).toHaveCount(31);
+    await expect(rows).toHaveCount(31);
     await page.getByRole("button", { name: /^Filters/ }).click();
     const findDestination = page.getByLabel("Search destination options");
     await findDestination.fill("TEAM-07");
@@ -929,6 +954,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await page.getByRole("link", { name: "Back to automations" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    // Someone else's Automation is under All.
+    await page
+      .getByRole("navigation", { name: "Automations to show" })
+      .getByRole("link", { name: "All", exact: true })
+      .click();
     await page.route("**/api/automations/event-2/executions", (route) =>
       route.fulfill({
         json: {

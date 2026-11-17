@@ -476,16 +476,16 @@ function nameMatch(document: SearchDocument, query: QueryTerm[]): number {
     return 0;
   }
   let best = 0;
-  query.forEach((term, actionIndex) => {
+  for (const [actionIndex, term] of query.entries()) {
     const actionWeight = term.get(action) ?? 0;
     if (actionWeight === 0) {
-      return;
+      continue;
     }
     const covered = objects.filter((object) =>
       query.some((other, index) => index !== actionIndex && other.has(object)),
     ).length;
     best = Math.max(best, (actionWeight * covered) / objects.length);
-  });
+  }
   return best;
 }
 

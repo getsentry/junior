@@ -1,11 +1,16 @@
+import { useMemo } from "react";
 import {
   keepPreviousData,
   queryOptions,
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
+  type InfiniteData,
 } from "@tanstack/react-query";
 import type {
   ActorProfileReport,
+  AutomationList,
+  AutomationListItem,
   CodePersonReport,
 } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
@@ -229,6 +234,60 @@ export function useAutomationsData(enabled: boolean, search: string) {
     placeholderData: keepPreviousData,
     retry: false,
   });
+}
+
+/**
+ * Page through the Automation list by `sort=activity`, as the new UI's
+ * list scrolls. `automations` holds the rows of every loaded page.
+ */
+export function useAutomationPagesData(enabled: boolean, search: string) {
+  const query = useInfiniteQuery({
+    enabled,
+    initialPageParam: "",
+    queryKey: ["dashboard", "automations", "activity-pages", search],
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams(search);
+      params.set("sort", "activity");
+      if (pageParam) params.set("cursor", pageParam);
+      return fetchDashboardJson(
+        automationListSchema,
+        `/api/automations?${params.toString()}`,
+        signal,
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+  const pages = query.data?.pages;
+  const automations = useMemo(
+    () => (pages ?? []).flatMap((page) => page.automations),
+    [pages],
+  );
+  return { automations, first: pages?.[0], query };
+}
+
+/**
+ * Find a loaded list row for one Automation, so its page can show the
+ * header before the summary arrives.
+ */
+export function useCachedAutomationListItem(
+  id: string | undefined,
+): AutomationListItem | undefined {
+  const queryClient = useQueryClient();
+  if (!id) return undefined;
+  for (const [, data] of queryClient.getQueriesData<
+    AutomationList | InfiniteData<AutomationList>
+  >({ queryKey: ["dashboard", "automations"] })) {
+    const lists = data && "pages" in data ? data.pages : data ? [data] : [];
+    for (const list of lists) {
+      const found = list.automations?.find(
+        (automation) => automation.id === id,
+      );
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 /** Load details by ID, independent of list filters and pagination. */

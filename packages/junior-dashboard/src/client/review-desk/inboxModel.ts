@@ -1,5 +1,5 @@
 import type {
-  AutomationSummary,
+  AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -130,6 +130,20 @@ export function timeSectionAt(iso: string, nowMs: number): string {
   return "earlier";
 }
 
+/** Split rows into Today, This week, and Earlier, keeping their order. */
+export function timeGroups<Row>(
+  rows: readonly Row[],
+  timeOf: (row: Row) => string,
+  nowMs: number,
+) {
+  return TIME_SECTIONS.map((section) => ({
+    ...section,
+    rows: rows.filter(
+      (row) => timeSectionAt(timeOf(row), nowMs) === section.key,
+    ),
+  })).filter((section) => section.rows.length > 0);
+}
+
 /**
  * Group closed items for Done: Today, This week, and Earlier, by when they
  * closed, newest closed first as the list reads them. Empty groups drop out.
@@ -229,7 +243,7 @@ type AutomationAttentionGroup =
  * that failed or blocked.
  */
 export function automationAttentionGroup(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): AutomationAttentionGroup {
   if (automation.status === "blocked") return "Blocked";
   if (automation.kind === "event" && automation.trigger.problems.length > 0)

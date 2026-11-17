@@ -77,6 +77,7 @@ export async function loadCompleteConversationTranscript(args: {
     const page =
       cachedPages.get(before) ??
       ({
+        // oxlint-disable-next-line no-await-in-loop -- Each page gives the cursor of the next.
         ...(await args.readPage(before)),
         requestedBefore: before,
       } satisfies ConversationHistoryPage);

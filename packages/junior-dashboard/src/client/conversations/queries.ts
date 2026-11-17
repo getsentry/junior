@@ -33,6 +33,7 @@ import {
   conversationFeedCacheRows,
   mapConversationFeedCache,
   type ConversationFeedCache,
+  invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
 import {
@@ -246,9 +247,7 @@ export function useCreateConversation() {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(accepted.conversationId),
@@ -297,9 +296,7 @@ export function useForkConversation(sourceConversationId: string) {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
     },
   });
 }
@@ -358,9 +355,7 @@ export function useAppendConversationMessage(conversationId: string) {
             accepted.messageId,
           ),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(conversationId),
@@ -420,9 +415,7 @@ export function useCancelConversationPendingMessages(conversationId: string) {
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
+        invalidateConversationFeeds(queryClient),
         queryClient.invalidateQueries({
           exact: true,
           queryKey: conversationDetailQueryKey(conversationId),

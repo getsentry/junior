@@ -6,9 +6,13 @@
  * that it creates, with the email of each person who asked for it. Only those
  * people can send a token to it, and only until their record expires.
  */
+import pLimit from "p-limit";
 import { runBestEffort } from "@/chat/logging";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getStateAdapter } from "@/chat/state/adapter";
+
+// Preview origins that one token use records at once.
+const PREVIEW_ORIGIN_WRITE_CONCURRENCY = 8;
 
 // A Conversation resumes its named Sandbox with the same Preview URLs, and
 // each resume renews the records. So a record only has to outlive one Sandbox
@@ -48,10 +52,10 @@ export async function renewPreviewOrigins(
   await runBestEffort(async () => {
     const owner = await resolveOwner();
     if (!owner) return;
+    const limit = pLimit(PREVIEW_ORIGIN_WRITE_CONCURRENCY);
     await Promise.all(
-      urls.map(
-        async (url) =>
-          await recordPreviewOrigin({ ownerEmail: owner.email, url }),
+      urls.map((url) =>
+        limit(() => recordPreviewOrigin({ ownerEmail: owner.email, url })),
       ),
     );
   }, "sandbox.preview_origin.renew.failed");

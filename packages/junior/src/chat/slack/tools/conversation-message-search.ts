@@ -173,6 +173,7 @@ export function createSlackConversationMessageSearchTool(
         limit: input.limit ?? DEFAULT_LIMIT,
       });
       const matchesOutput = await Promise.all(
+        // oxlint-disable-next-line junior/bounded-fan-out -- The search returns at most 50 matches.
         matches.map(async (match) => {
           // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
           const reference = parseSlackThreadId(match.conversationId);

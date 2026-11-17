@@ -330,8 +330,8 @@ export function useTranscriptReadReporter(input: {
     const mutations = new MutationObserver((records) => {
       let seqChanged = false;
       for (const record of records) {
-        record.addedNodes.forEach(observeRows);
-        record.removedNodes.forEach(forgetRows);
+        for (const node of record.addedNodes) observeRows(node);
+        for (const node of record.removedNodes) forgetRows(node);
         if (record.type === "attributes") {
           const row = record.target as HTMLElement;
           intersections.observe(row);

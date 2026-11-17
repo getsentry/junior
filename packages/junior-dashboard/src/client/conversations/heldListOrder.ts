@@ -41,9 +41,9 @@ export function holdSectionOrder(
   );
   const heldIds = new Set(held.flatMap((section) => section.ids));
   let lastHeld = -1;
-  latestRows.forEach((row, index) => {
+  for (const [index, row] of latestRows.entries()) {
     if (heldIds.has(row.conversation.id)) lastHeld = index;
-  });
+  }
   const sections: ConversationSection[] = held.map((section) => ({
     conversations: section.ids.flatMap((id) => byId.get(id) ?? []),
     key: section.key,
@@ -56,9 +56,9 @@ export function holdSectionOrder(
   }
   const shown = new Map<string, { index: number; key: string }>();
   for (const section of sections) {
-    section.conversations.forEach((conversation, index) =>
-      shown.set(conversation.id, { index, key: section.key }),
-    );
+    for (const [index, conversation] of section.conversations.entries()) {
+      shown.set(conversation.id, { index, key: section.key });
+    }
   }
   let pending = 0;
   for (const section of latest) {
