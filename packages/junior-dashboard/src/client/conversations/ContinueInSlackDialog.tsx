@@ -31,6 +31,7 @@ import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
 import { OutboundLink } from "../components/OutboundLink";
 import { getDashboardAgentName } from "../agentName";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
  * Move a public dashboard conversation to a thread in a public Slack channel
@@ -75,12 +76,9 @@ export function ContinueInSlackDialog(props: {
     // The feed and Location pages list the conversation under its Location.
     onSuccess: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The old Location and the new one both change.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(props.conversationId),
         }),

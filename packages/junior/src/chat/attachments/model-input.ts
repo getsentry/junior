@@ -69,6 +69,7 @@ export async function loadInputAttachments(args: {
 }): Promise<AgentAttachment[]> {
   let images = 0;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- A Message has at most MAX_INPUT_ATTACHMENTS files.
     args.attachments.map(async (attachment): Promise<AgentAttachment> => {
       const base = {
         attachmentId: attachment.id,

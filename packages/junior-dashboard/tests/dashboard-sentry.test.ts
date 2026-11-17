@@ -1,11 +1,12 @@
 import {
   getClient,
   getCurrentScope,
+  startInactiveSpan,
   type BrowserOptions,
 } from "@sentry/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { initDashboardSentry, sendReplyRating } from "@dashboard/sentry";
+import { initDashboardSentry, sendFeedback } from "@dashboard/sentry";
 
 type Span = Parameters<NonNullable<BrowserOptions["beforeSendSpan"]>>[0];
 
@@ -30,7 +31,7 @@ describe("dashboard browser Sentry", () => {
   it("does not start without a server DSN", () => {
     vi.stubGlobal("window", {});
 
-    initDashboardSentry();
+    initDashboardSentry("classic");
 
     expect(getClient()).toBeUndefined();
   });
@@ -43,7 +44,7 @@ describe("dashboard browser Sentry", () => {
       },
     });
 
-    initDashboardSentry();
+    initDashboardSentry("classic");
 
     const options = getClient()?.getOptions();
     expect(options?.dsn).toBe("https://public@example.com/1");
@@ -70,7 +71,7 @@ describe("dashboard browser Sentry", () => {
     });
   });
 
-  it("sends a Reply rating with the reader and comment", async () => {
+  it("sends a Reply rating with the reader, comment, and shell", async () => {
     vi.stubGlobal("window", {
       __JUNIOR_DASHBOARD_SENTRY__: {
         dsn: "https://public@example.com/1",
@@ -81,15 +82,16 @@ describe("dashboard browser Sentry", () => {
         pathname: "/conversations/c1",
       },
     });
-    initDashboardSentry();
+    initDashboardSentry("inbox");
     const items: unknown[] = [];
     getClient()?.on("beforeEnvelope", (envelope) => {
       items.push(...envelope[1].map(([, payload]) => payload));
     });
 
-    sendReplyRating({
+    sendFeedback({
       comment: "Wrong repo",
       conversationId: "c1",
+      kind: "reply_rating",
       messageId: "m1",
       rating: "bad",
       reader: { email: "ana@example.com", name: "Ana" },
@@ -108,6 +110,7 @@ describe("dashboard browser Sentry", () => {
         },
       },
       tags: {
+        "app.dashboard.ui": "inbox",
         "app.reply.rating": "bad",
         "gen_ai.conversation.id": "c1",
         "messaging.message.id": "m1",
@@ -126,6 +129,71 @@ describe("dashboard browser Sentry", () => {
       "tags",
       "timestamp",
       "type",
+    ]);
+  });
+
+  it("sends general feedback with its topic and shell", async () => {
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+      location: { origin: "http://localhost", pathname: "/" },
+    });
+    initDashboardSentry("inbox");
+    const items: unknown[] = [];
+    getClient()?.on("beforeEnvelope", (envelope) => {
+      items.push(...envelope[1].map(([, payload]) => payload));
+    });
+
+    sendFeedback({
+      comment: "The Inbox hides snoozed rows",
+      kind: "general",
+      reader: { email: "ana@example.com", name: "Ana" },
+      topic: "new_ui",
+    });
+
+    await vi.waitFor(() => expect(items).toHaveLength(1));
+    expect(items[0]).toMatchObject({
+      contexts: {
+        feedback: {
+          contact_email: "ana@example.com",
+          message: "The Inbox hides snoozed rows",
+          name: "Ana",
+          source: "dashboard_feedback",
+        },
+      },
+      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+    });
+  });
+
+  it("names the shell on every span", async () => {
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+    });
+    initDashboardSentry("classic");
+    const client = getClient();
+    const items: unknown[] = [];
+    client?.on("beforeEnvelope", (envelope) => {
+      items.push(...envelope[1].map(([, payload]) => payload));
+    });
+
+    startInactiveSpan({ name: "Click", op: "ui.action" }).end();
+    await client?.flush();
+
+    expect(items).toMatchObject([
+      {
+        items: [
+          {
+            attributes: {
+              "app.dashboard.ui": { type: "string", value: "classic" },
+            },
+          },
+        ],
+      },
     ]);
   });
 });

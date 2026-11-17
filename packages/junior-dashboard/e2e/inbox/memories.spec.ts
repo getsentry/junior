@@ -313,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page
       .getByRole("alertdialog", { name: "Forget this memory for everyone?" })
       .getByRole("button", { name: "Forget" })
-      .evaluate((button) => {
+      .evaluate((button: HTMLElement) => {
         button.click();
         button.click();
       });

@@ -463,7 +463,7 @@ jobs:
       - name: Run dashboard e2e
         env:
           PLAYWRIGHT_PROJECT: ${{ matrix.project }}
-        run: scripts/run-dashboard-e2e.sh
+        run: pnpm test:e2e:dashboard --project="$PLAYWRIGHT_PROJECT"
       - name: Upload dashboard screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

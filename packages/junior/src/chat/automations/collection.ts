@@ -70,12 +70,17 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
   const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
       where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
       order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
+  // When the last run ended, or else when the Automation was created.
+  const activityAtMs = sql<number>`coalesce((select ${runs.completedAtMs} from ${runs}
+      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
+      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), ${automation.createdAtMs})`;
   return db
     .select({
       kind: automation.kind,
       id: automation.id,
       title: automation.title,
       createdAtMs: automation.createdAtMs,
+      activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
       state: sql<string>`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
         "last_run_needs_attention",
@@ -218,14 +223,27 @@ export async function countOwnedAutomationsNeedingAttention(
   ).length;
 }
 
-/** Read an SQL page and complete, access-scoped counts and filter options. */
+/** Where a page of `sort=activity` ends: its last row's activity and ID. */
+export type AutomationActivityPosition = { activityAtMs: number; id: string };
+
+/**
+ * Read an SQL page and complete, access-scoped counts and filter options.
+ * `sort=activity` pages by position: it reads the rows after `after`, and
+ * `next` is set when more rows follow.
+ */
 export async function readAutomationCollection(
   viewer: AutomationViewer,
   input: AutomationListQuery,
+  after?: AutomationActivityPosition,
 ) {
   const db = getDb();
   const collection = viewerAutomationCollection(viewer);
-  const { attention, unavailable } = await attentionFilters(collection);
+  // The trigger check reads every accessible event Automation, so only the
+  // filters that use it pay for it.
+  const { attention, unavailable } =
+    input.scope === "attention" || input.state === "unavailable"
+      ? await attentionFilters(collection)
+      : { attention: undefined, unavailable: undefined };
   const where = and(
     input.scope === "mine"
       ? eq(collection.owned, true)
@@ -251,37 +269,80 @@ export async function readAutomationCollection(
       ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.skill}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
-  const [totals, counts, creators, destinations] = await Promise.all([
-    db.select({ total: count() }).from(collection).where(where),
-    db
-      .select({
-        all: count(),
-        mine: sql<number>`count(*) filter (where ${collection.owned})::int`,
-        public: sql<number>`count(*) filter (where ${collection.isPublic})::int`,
-        private: sql<number>`count(*) filter (where not ${collection.isPublic})::int`,
-      })
-      .from(collection),
-    db
-      .select({
-        value: collection.creator,
-        label: sql<string>`min(${collection.creatorLabel})`,
-      })
-      .from(collection)
-      .groupBy(collection.creator)
-      .orderBy(sql`min(${collection.creatorLabel})`, collection.creator),
-    db
-      .select({
-        value: collection.destination,
-        label: sql<string>`min(${collection.destinationLabel})`,
-      })
-      .from(collection)
-      .groupBy(collection.destination)
-      .orderBy(
-        sql`min(${collection.destinationLabel})`,
-        collection.destination,
-      ),
-  ]);
+  // A page by activity does not depend on the total, so it reads alongside
+  // the counts. One extra row tells whether more follow.
+  const activityPage =
+    input.sort === "activity"
+      ? db
+          .select({
+            activityAtMs: collection.activityAtMs,
+            id: collection.id,
+            kind: collection.kind,
+          })
+          .from(collection)
+          .where(
+            and(
+              where,
+              after
+                ? sql`(${collection.activityAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
+                : undefined,
+            ),
+          )
+          .orderBy(desc(collection.activityAtMs), desc(collection.id))
+          .limit(input.pageSize + 1)
+      : undefined;
+  const [totals, counts, creators, destinations, activityRows] =
+    await Promise.all([
+      db.select({ total: count() }).from(collection).where(where),
+      db
+        .select({
+          all: count(),
+          mine: sql<number>`count(*) filter (where ${collection.owned})::int`,
+          public: sql<number>`count(*) filter (where ${collection.isPublic})::int`,
+          private: sql<number>`count(*) filter (where not ${collection.isPublic})::int`,
+        })
+        .from(collection),
+      db
+        .select({
+          value: collection.creator,
+          label: sql<string>`min(${collection.creatorLabel})`,
+        })
+        .from(collection)
+        .groupBy(collection.creator)
+        .orderBy(sql`min(${collection.creatorLabel})`, collection.creator),
+      db
+        .select({
+          value: collection.destination,
+          label: sql<string>`min(${collection.destinationLabel})`,
+        })
+        .from(collection)
+        .groupBy(collection.destination)
+        .orderBy(
+          sql`min(${collection.destinationLabel})`,
+          collection.destination,
+        ),
+      activityPage,
+    ]);
   const total = totals[0]!.total;
+  const facets = {
+    total,
+    pageSize: input.pageSize,
+    counts: counts[0]!,
+    creators,
+    destinations,
+  };
+  if (activityRows) {
+    const pageRows = activityRows.slice(0, input.pageSize);
+    const last = pageRows.at(-1);
+    return {
+      rows: pageRows,
+      page: 1,
+      ...facets,
+      ...(activityRows.length > input.pageSize && last
+        ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
+        : undefined),
+    };
+  }
   const page = Math.min(
     input.page,
     Math.max(1, Math.ceil(total / input.pageSize)),
@@ -301,13 +362,5 @@ export async function readAutomationCollection(
     .orderBy(order, desc(collection.id))
     .limit(input.pageSize)
     .offset((page - 1) * input.pageSize);
-  return {
-    rows,
-    total,
-    page,
-    pageSize: input.pageSize,
-    counts: counts[0]!,
-    creators,
-    destinations,
-  };
+  return { rows, page, ...facets };
 }

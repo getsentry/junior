@@ -832,6 +832,7 @@ export function ConversationPage(props: {
           overlay={
             view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
+                conversation={conversationDetail}
                 conversationId={conversationId}
                 events={outlineEvents}
                 onSelect={selectOutlineItem}

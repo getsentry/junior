@@ -849,6 +849,9 @@ importers:
       micromark-extension-gfm:
         specifier: ^3.0.0
         version: 3.0.0
+      p-limit:
+        specifier: ^7.3.1
+        version: 7.3.3
       parse5:
         specifier: ^7.3.0
         version: 7.3.0
@@ -14449,6 +14452,7 @@ snapshots:
       mdast-util-from-markdown: 2.1.0
       mdast-util-gfm: 3.1.0
       micromark-extension-gfm: 3.0.0
+      p-limit: 7.3.3
       parse5: 7.3.0
       zod: 4.6.7
     transitivePeerDependencies:
@@ -14496,6 +14500,7 @@ snapshots:
       mdast-util-from-markdown: 2.1.0
       mdast-util-gfm: 3.1.0
       micromark-extension-gfm: 3.0.0
+      p-limit: 7.3.3
       parse5: 7.3.0
       zod: 4.6.7
     transitivePeerDependencies:
@@ -16428,7 +16433,7 @@ snapshots:
       mrmime: 2.0.1
       neotraverse: 1.0.1
       obug: 2.1.4
-      p-limit: 7.3.1
+      p-limit: 7.3.3
       p-queue: 9.3.3
       package-manager-detector: 1.8.0
       piccolore: 0.1.3

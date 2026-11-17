@@ -131,10 +131,10 @@ export async function loadGitHubPullRequestPeople(args: {
     }
   };
 
-  args.logins.forEach(addLogin);
+  for (const login of args.logins) addLogin(login);
   await forEachCommit(args.loadPage, (commit) => {
     if (commit.login) addLogin(commit.login);
-    commit.coAuthorEmails.forEach(addEmail);
+    for (const email of commit.coAuthorEmails) addEmail(email);
   });
   return [...people.values()].slice(0, MAX_PEOPLE);
 }
@@ -157,7 +157,9 @@ export async function loadGitHubPullRequestAuthors(args: {
   };
   await forEachCommit(args.loadPage, (commit) => {
     add(commit.login);
-    commit.coAuthorEmails.forEach((email) => add(noreplyLogin(email)));
+    for (const email of commit.coAuthorEmails) {
+      add(noreplyLogin(email));
+    }
   });
   return [...authors.values()].slice(0, MAX_PEOPLE);
 }

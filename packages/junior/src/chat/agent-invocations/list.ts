@@ -449,17 +449,20 @@ async function listAnsweredLoopChildren(
   if (children.length === 0 || parentMessages.length === 0) {
     return [];
   }
+  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   const answered = await Promise.all(
-    children.map(async ({ childConversationId }) => {
-      const turnIds = await listOpenLoopTurnIds(childConversationId);
-      return parentMessages.some(
-        ({ sender }) =>
-          sender.conversationId === childConversationId &&
-          turnIds.includes(sender.turnId),
-      )
-        ? childConversationId
-        : undefined;
-    }),
+    children.map(({ childConversationId }) =>
+      limit(async () => {
+        const turnIds = await listOpenLoopTurnIds(childConversationId);
+        return parentMessages.some(
+          ({ sender }) =>
+            sender.conversationId === childConversationId &&
+            turnIds.includes(sender.turnId),
+        )
+          ? childConversationId
+          : undefined;
+      }),
+    ),
   );
   return answered.filter((id) => id !== undefined);
 }

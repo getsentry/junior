@@ -213,6 +213,7 @@ export function createImageGenerateTool(
     execute: async ({ prompt, images = [] }) => {
       const model = options.modelId;
       const sourceImages = await Promise.all(
+        // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 4 images.
         images.map(async (path) => ({
           path,
           ...(await readSandboxImage(

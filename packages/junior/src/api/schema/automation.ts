@@ -129,6 +129,23 @@ export const automationSummarySchema = z.discriminatedUnion("kind", [
   eventAutomationSummarySchema,
 ]);
 
+/**
+ * Totals that read every run of an Automation. Only the Automation page
+ * shows them, so list rows leave them out.
+ */
+const AUTOMATION_TOTAL_FIELDS = {
+  costUsd: true,
+  runs: true,
+  totalCostUsd: true,
+  totalRuns: true,
+} as const;
+
+/** One list row: a summary without the totals that read every run. */
+export const automationListItemSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationSummarySchema.omit(AUTOMATION_TOTAL_FIELDS),
+  eventAutomationSummarySchema.omit(AUTOMATION_TOTAL_FIELDS),
+]);
+
 /** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) execution bucket key. */
 export const automationMetricBucketSchema = z
   .string()
@@ -148,7 +165,13 @@ export const automationListQuerySchema = z
     destination: z.string().max(300).optional(),
     /** Only Automations that run this skill. */
     skill: automationSkillNameSchema.optional(),
-    sort: z.enum(["newest", "oldest", "title"]).default("newest"),
+    /**
+     * `activity` lists the latest run or creation first, and pages with
+     * `cursor`. The other orders page with `page`.
+     */
+    sort: z.enum(["newest", "oldest", "title", "activity"]).default("newest"),
+    /** `nextCursor` of the page before, with `sort=activity`. */
+    cursor: z.string().min(1).max(1_000).optional(),
     page: z.coerce.number().int().min(1).max(1_000_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),
   })
@@ -163,7 +186,9 @@ const automationFilterOptionSchema = z
 
 export const automationListSchema = z
   .object({
-    automations: z.array(automationSummarySchema),
+    automations: z.array(automationListItemSchema),
+    /** Set when more rows follow `sort=activity`. Pass it as `cursor`. */
+    nextCursor: z.string().min(1).optional(),
     total: z.number().int().nonnegative(),
     page: z.number().int().positive(),
     pageSize: z.number().int().positive(),
@@ -350,6 +375,7 @@ export type AutomationRun = z.output<typeof automationRunSchema>;
 export type AutomationRunList = z.output<typeof automationRunListSchema>;
 export type AutomationRunWindows = z.output<typeof automationRunWindowsSchema>;
 export type AutomationSummary = z.output<typeof automationSummarySchema>;
+export type AutomationListItem = z.output<typeof automationListItemSchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
 
 export type AutomationListQuery = z.output<typeof automationListQuerySchema>;

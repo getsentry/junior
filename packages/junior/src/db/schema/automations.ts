@@ -126,6 +126,12 @@ export const juniorAutomations = pgTable(
       table.createdAtMs,
       table.id,
     ),
+    // The other arm of the owned rule (`viewerAutomationCollection`): an
+    // Automation that a viewer's Slack account created. With the identity
+    // index, Mine reads only the viewer's rows.
+    index("junior_automations_creator_slack_idx")
+      .on(table.teamId, table.creatorSlackUserId)
+      .where(sql`${table.status} <> 'deleted'`),
     index("junior_automations_run_now_due_idx")
       .on(table.runNowAtMs, table.createdAtMs, table.id)
       .where(

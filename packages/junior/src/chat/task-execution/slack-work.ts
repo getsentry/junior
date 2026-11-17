@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { AgentDurability } from "@/chat/agent/types";
 import {
@@ -63,6 +64,9 @@ import {
 } from "@/chat/task-execution/attempt-selection";
 import type { TurnRecord } from "@/chat/task-execution/checkpoint";
 import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
+
+// Slack authors that one backfill looks up at once.
+const SLACK_AUTHOR_LOOKUP_CONCURRENCY = 5;
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -581,30 +585,33 @@ async function bindSlackActorIdentities(args: {
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
 
+  const limit = pLimit(SLACK_AUTHOR_LOOKUP_CONCURRENCY);
   await Promise.all(
-    [...byAuthorId].map(async ([authorId, messages]) => {
-      const profile = await lookupSlackUser(args.teamId, authorId);
-      await Promise.all(
-        messages.map((message) =>
-          ensureSlackMessageActorIdentity(
-            message,
-            args.teamId,
-            async () => profile,
+    [...byAuthorId].map(([authorId, messages]) =>
+      limit(async () => {
+        const profile = await lookupSlackUser(args.teamId, authorId);
+        await Promise.all(
+          messages.map((message) =>
+            ensureSlackMessageActorIdentity(
+              message,
+              args.teamId,
+              async () => profile,
+            ),
           ),
-        ),
-      );
-      if (profile && messages.some(getMessageAuthorIdentityId)) {
-        // Ingress resolved the Identity without a profile lookup. Save the
-        // profile names on it. Message writes never saved the email.
-        await resolveActorIdentityId(
-          getSqlExecutor(),
-          createSlackActor(args.teamId, authorId, {
-            fullName: profile.fullName,
-            userName: profile.userName,
-          }),
         );
-      }
-    }),
+        if (profile && messages.some(getMessageAuthorIdentityId)) {
+          // Ingress resolved the Identity without a profile lookup. Save the
+          // profile names on it. Message writes never saved the email.
+          await resolveActorIdentityId(
+            getSqlExecutor(),
+            createSlackActor(args.teamId, authorId, {
+              fullName: profile.fullName,
+              userName: profile.userName,
+            }),
+          );
+        }
+      }),
+    ),
   );
 }
 

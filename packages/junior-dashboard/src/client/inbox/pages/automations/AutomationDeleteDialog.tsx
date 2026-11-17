@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -17,7 +17,7 @@ import { invalidateAutomationReads } from "../../../review-desk/inboxQueries";
 
 /** Confirm deletion by name and keep a failed request available for retry. */
 export function AutomationDeleteDialog(props: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   onClose(): void;
   onDeleted(): void;
   returnFocus(): HTMLElement | false;

@@ -15,7 +15,7 @@ import { Link } from "react-router";
 import { CircleHelp, Pencil, Trash2 } from "lucide-react";
 import {
   automationEditSchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
@@ -31,7 +31,7 @@ export function AutomationActions({
   editVariant,
   onDelete,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   editPath: string;
   /** Use "outline" when a notice on the page owns the main action. */
   editVariant: "default" | "outline";
