@@ -128,9 +128,6 @@ export function initSentry(): void {
     beforeSend: scrubPrivateSentryEvent,
     beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
     beforeSendSpan: scrubPrivateSentrySpan,
-    // Junior records its own gen_ai spans for AI SDK calls, such as
-    // embeddings, reranking, and structured output. The SDK's spans would
-    // duplicate them. `piAiIntegration` records the requests that Pi sends.
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
         (integration) => integration.name !== "VercelAI",
