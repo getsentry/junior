@@ -12,4 +12,4 @@ constraints:
     all:
       - regex: '^["@'']@sentry/junior-.+["@'']$'
       - not:
-          regex: '^["@'']@sentry/junior-plugin-api(/[a-z-]+)?["@'']$'
+          regex: '^["@'']@sentry/junior-(plugin-api|search)(/[a-z-]+)?["@'']$'
