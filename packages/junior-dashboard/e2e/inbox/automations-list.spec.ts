@@ -100,9 +100,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("button", { name: "Details: Closed issue summary" })
       .click();
     await expect(details).toHaveCount(0);
-    await expect(
-      main.getByRole("region", { name: "Closed issue summary: details" }),
-    ).toBeVisible();
+    const eventDetails = main.getByRole("region", {
+      name: "Closed issue summary: details",
+    });
+    await expect(eventDetails).toBeVisible();
+    // The trigger names each filter once.
+    await expect(eventDetails).toContainText("filters: labels includes bug");
+    expect(
+      (await eventDetails.textContent())?.split("labels includes bug"),
+    ).toHaveLength(2);
     // The keyboard opens and closes a card from its Details button.
     await toggle.focus();
     await page.keyboard.press("Enter");

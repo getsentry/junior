@@ -162,7 +162,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(earlier).toContainText("Incident change alerts");
     await expect(
       earlier.getByRole("link", { name: "Change trigger", exact: true }),
-    ).toHaveAttribute("href", "/automations/event-2/edit");
+    ).toHaveAttribute("href", "/automations/event-2/edit?scope=all");
     await screenshot(page, "automations", { lightTheme: true });
     const weeklySummary = page
       .getByRole("main")
