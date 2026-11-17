@@ -1,6 +1,6 @@
 import { ArrowUpRight, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 
 import { FormNotice } from "../components/FormNotice";
 import { useConversationDensity } from "../conversations/conversationDensity";
@@ -27,7 +27,7 @@ const LAST_RUN_LABELS = {
   failed: "failed",
 } as const;
 
-function lastRunLine(automation: AutomationSummary): string | undefined {
+function lastRunLine(automation: AutomationListItem): string | undefined {
   // A run with no recorded result still says when it ran.
   if (!automation.lastRunStatus)
     return automation.lastRunAt
@@ -43,7 +43,7 @@ function lastRunLine(automation: AutomationSummary): string | undefined {
  * Why the Automation is here, as its status: the attention reason, or the
  * last run's own result when that is the reason.
  */
-function attentionStatus(automation: AutomationSummary): string {
+function attentionStatus(automation: AutomationListItem): string {
   const reason = automationAttentionGroup(automation);
   return reason === "Last run failed or blocked"
     ? (lastRunLine(automation) ?? reason)
@@ -60,7 +60,7 @@ function attentionStatus(automation: AutomationSummary): string {
  * or, in To do, when the viewer dismisses or snoozes this alert.
  */
 export function InboxAutomationRow(props: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   expanded: boolean;
   /** Names the row for keys and focus. */
   rowKey: string;

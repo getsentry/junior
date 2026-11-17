@@ -1,8 +1,15 @@
 import type { Page } from "@playwright/test";
-import type { AutomationList } from "@sentry/junior/api/schema";
+import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 
-export const automationReport: Pick<AutomationList, "automations"> = {
+/**
+ * The day that Automation list groups read in tests: Weekly project summary
+ * ran today, Closed issue summary this week, and Incident change alerts
+ * never.
+ */
+export const LIST_NOW = new Date("2026-08-06T20:00:00.000Z");
+
+export const automationReport: { automations: AutomationSummary[] } = {
   automations: [
     {
       createdAt: "2026-07-28T16:00:00.000Z",
@@ -147,7 +154,7 @@ export const automationReport: Pick<AutomationList, "automations"> = {
  * endpoint does, so the tab badge matches the mocked list.
  */
 export function attentionCount(
-  report: Pick<AutomationList, "automations"> = automationReport,
+  report: { automations: AutomationSummary[] } = automationReport,
 ): number {
   return mockAutomationCollection(
     report,

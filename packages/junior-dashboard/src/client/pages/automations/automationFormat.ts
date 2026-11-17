@@ -1,12 +1,12 @@
 import type {
   AutomationExecution,
   AutomationRun,
-  AutomationSummary,
+  AutomationListItem,
 } from "@sentry/junior/api/schema";
 import type { StatusChipTone } from "../../components/StatusChip";
 import { formatTime } from "../../time";
 
-type ScheduledAutomation = Extract<AutomationSummary, { kind: "scheduled" }>;
+type ScheduledAutomation = Extract<AutomationListItem, { kind: "scheduled" }>;
 
 /** Show the schedule with its timezone unless the schedule text already names it. */
 export function automationScheduleLabel(
@@ -56,7 +56,7 @@ export function automationRunTitle(
 /** Name the Automation on one of its runs, so run details can show it. */
 export function automationRunOf(
   execution: AutomationExecution,
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): AutomationRun {
   return {
     ...execution,

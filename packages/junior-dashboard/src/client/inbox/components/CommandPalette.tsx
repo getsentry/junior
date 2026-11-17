@@ -1,5 +1,5 @@
 import type {
-  AutomationSummary,
+  AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import {
@@ -332,9 +332,9 @@ function CommandPaletteBody(props: {
 function paletteItems(input: {
   actions: PaletteAction[];
   activeGroup?: string;
-  automations: AutomationSummary[];
+  automations: AutomationListItem[];
   /** Server matches on title, instruction, skill, and resource. */
-  automationsSearched: AutomationSummary[];
+  automationsSearched: AutomationListItem[];
   currentConversationId?: string;
   /** Directory rows, already matched and ranked. */
   directories: PaletteItem[];
@@ -534,7 +534,7 @@ function doneItem(item: ReviewItemPayload, query?: string): PaletteItem {
 }
 
 function automationItem(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
   query?: string,
 ): PaletteItem {
   const match = query ? quickOpenMatch(automation.title, query) : undefined;
