@@ -162,7 +162,8 @@ export const eventSearchTaskRegistration: PluginRegistration = {
           `event-search:${run.conversationId}`,
           EMBEDDING_LOCK_TTL_MS,
           async () => {
-            const [lexemes, embedded] = await Promise.all([
+            // Wait for both before the lock is released, even when one fails.
+            const [lexemeResult, embeddingResult] = await Promise.allSettled([
               storeConversationEventLexemes(getDb(), run.conversationId),
               embedConversationEvents(
                 getDb(),
@@ -173,6 +174,12 @@ export const eventSearchTaskRegistration: PluginRegistration = {
                 run.conversationId,
               ),
             ]);
+            if (lexemeResult.status === "rejected") throw lexemeResult.reason;
+            if (embeddingResult.status === "rejected") {
+              throw embeddingResult.reason;
+            }
+            const lexemes = lexemeResult.value;
+            const embedded = embeddingResult.value;
             context.log.info("Conversation events indexed", {
               conversationId: run.conversationId,
               embedded,
