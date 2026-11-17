@@ -72,7 +72,7 @@ describe("Filing Issues", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        "the cart page in acme/storefront drops the coupon code when you reload it. file an issue for it and fix it",
+        "the cart page in acme/storefront drops the coupon code when you reload it. file an issue for it, then fix it",
       ),
     );
 
