@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
@@ -142,6 +143,24 @@ export function existingConversationId(conversationId: string): SQL {
 }
 
 /**
+ * Copy when an Automation's latest execution ended to `last_run_at_ms`.
+ * Call it after each write that adds, settles, or removes an execution. It
+ * reads the runs again, so a late or out-of-order write cannot leave an older
+ * time.
+ */
+export async function refreshAutomationLastRun(
+  db: JuniorDatabase,
+  automationId: string,
+): Promise<void> {
+  await db
+    .update(juniorAutomations)
+    .set({
+      lastRunAtMs: sql`(select max(${juniorAutomationRuns.completedAtMs}) from ${juniorAutomationRuns} where ${juniorAutomationRuns.automationId} = ${automationId} and ${isExecution()})`,
+    })
+    .where(eq(juniorAutomations.id, automationId));
+}
+
+/**
  * Record the outcome of one Automation run. A run that already has an outcome
  * keeps it. A failed write is logged, and the heartbeat settles a started
  * event run later.
@@ -182,6 +201,7 @@ export async function recordAutomationExecution(
         },
         setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
       });
+    await refreshAutomationLastRun(getDb(), automationId);
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,

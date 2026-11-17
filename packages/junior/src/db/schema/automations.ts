@@ -46,6 +46,12 @@ export const juniorAutomations = pgTable(
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
+    /**
+     * When the latest run with an outcome ended, copied from
+     * `junior_automation_runs` so the list can order by activity without a
+     * read per row. `refreshAutomationLastRun` sets it after each run write.
+     */
+    lastRunAtMs: bigint("last_run_at_ms", { mode: "number" }),
     namespace: text("namespace"),
     identifier: text("identifier"),
     record: jsonb("record")

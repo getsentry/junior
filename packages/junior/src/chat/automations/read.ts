@@ -5,6 +5,7 @@ import type {
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListPage,
   AutomationListItem,
   AutomationListQuery,
   AutomationVersionList,
@@ -530,18 +531,30 @@ export async function readTaskCandidates(
   });
 }
 
+type ViewerAutomationPage<List> = Omit<List, "nextCursor"> & {
+  next?: AutomationActivityPosition;
+};
+
 /**
  * Read a page from the full accessible Automation collection. Rows carry
  * their last runs, not the totals that read every run. `next` is the
- * position after the page when `sort=activity` has more rows.
+ * position after the page when `sort=activity` has more rows. A page after
+ * `after` has no counts or filter options.
  */
+export function readViewerAutomations(
+  user: User,
+  input?: AutomationListQuery,
+): Promise<ViewerAutomationPage<AutomationList>>;
+export function readViewerAutomations(
+  user: User,
+  input: AutomationListQuery,
+  after: AutomationActivityPosition | undefined,
+): Promise<ViewerAutomationPage<AutomationListPage>>;
 export async function readViewerAutomations(
   user: User,
   input: AutomationListQuery = automationListQuerySchema.parse({}),
   after?: AutomationActivityPosition,
-): Promise<
-  Omit<AutomationList, "nextCursor"> & { next?: AutomationActivityPosition }
-> {
+): Promise<ViewerAutomationPage<AutomationListPage>> {
   const { rows, ...page } = await readAutomationCollection(user, input, after);
   const ids = rows.map((row) => row.id);
   const [selected, stats] = await Promise.all([

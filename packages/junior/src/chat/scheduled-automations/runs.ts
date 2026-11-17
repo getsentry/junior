@@ -12,7 +12,10 @@ import {
 } from "drizzle-orm";
 import { getNextRunAtMs } from "./cadence";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
-import { existingConversationId } from "@/chat/automations/execution-stats";
+import {
+  existingConversationId,
+  refreshAutomationLastRun,
+} from "@/chat/automations/execution-stats";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -110,6 +113,9 @@ async function writeRun(
     .insert(juniorAutomationRuns)
     .values({ id: stored.id, ...columns })
     .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
+  if (stored.completedAtMs !== undefined) {
+    await refreshAutomationLastRun(db, stored.taskId);
+  }
 }
 
 /**

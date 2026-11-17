@@ -28,7 +28,7 @@ import {
   automationUpdateSchema,
   automationExecutionListSchema,
   automationListQuerySchema,
-  automationListSchema,
+  automationListPageSchema,
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
@@ -114,7 +114,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           )
         : undefined;
       const { next, ...list } = await readViewerAutomations(user, query, after);
-      return jsonResponse(automationListSchema, {
+      return jsonResponse(automationListPageSchema, {
         ...list,
         automations: await attachAutomationMentions(
           getSqlExecutor(),

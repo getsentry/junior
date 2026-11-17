@@ -30,6 +30,7 @@ import {
   locationDirectoryReportSchema,
   personalSpendReportSchema,
   automationExecutionListSchema,
+  automationListPageSchema,
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
@@ -250,7 +251,7 @@ export function useAutomationPagesData(enabled: boolean, search: string) {
       params.set("sort", "activity");
       if (pageParam) params.set("cursor", pageParam);
       return fetchDashboardJson(
-        automationListSchema,
+        automationListPageSchema,
         `/api/automations?${params.toString()}`,
         signal,
       );

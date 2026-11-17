@@ -205,6 +205,17 @@ export const automationListSchema = z
   })
   .strict();
 
+/**
+ * One `sort=activity` page. A page after the first omits the total, counts,
+ * and filter options, because the first page already has them.
+ */
+export const automationListPageSchema = automationListSchema.partial({
+  total: true,
+  counts: true,
+  creators: true,
+  destinations: true,
+});
+
 export const automationParamsSchema = z
   .object({
     id: z.string().min(1),
@@ -377,6 +388,7 @@ export type AutomationRunWindows = z.output<typeof automationRunWindowsSchema>;
 export type AutomationSummary = z.output<typeof automationSummarySchema>;
 export type AutomationListItem = z.output<typeof automationListItemSchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
+export type AutomationListPage = z.output<typeof automationListPageSchema>;
 
 export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
