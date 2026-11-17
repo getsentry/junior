@@ -607,9 +607,8 @@ test.describe("on a touch screen", () => {
       transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
     ).toHaveCount(0);
     await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+    // No screenshot: where a fling stops depends on the timing of the touch
+    // events, so each run would show other rows.
     expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-    await screenshot(page, "conversation-long-transcript-touch", {
-      view: "mobile",
-    });
   });
 });
