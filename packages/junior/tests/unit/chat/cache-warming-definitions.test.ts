@@ -111,10 +111,14 @@ async function endTurn(
   turnContext = context,
   mode: PromptMode = definitionsKey.mode,
 ) {
-  const recorder = createCacheWarmingRecorder(id, userActor, {
-    ...definitionsKey,
-    mode,
-  });
+  const recorder = createCacheWarmingRecorder(
+    id,
+    { userActor, idleNeedsPendingWork: false },
+    {
+      ...definitionsKey,
+      mode,
+    },
+  );
   void recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }

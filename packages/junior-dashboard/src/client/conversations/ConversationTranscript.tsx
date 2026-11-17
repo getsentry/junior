@@ -22,7 +22,7 @@ import {
   EmptyTitle,
 } from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
-import { formatTime, unavailableTranscriptLabel } from "../format";
+import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ObjectAttachProvider } from "./ObjectAttach";
 import { ConversationBrief } from "./ConversationBrief";
@@ -97,6 +97,8 @@ import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
+import { ComfortableDensityContext } from "../uiShell";
+import { formatTime } from "../time";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -514,6 +516,7 @@ function TranscriptEntryList(
     },
 ) {
   const search = useTranscriptSearch();
+  const comfortable = use(ComfortableDensityContext);
   const activityKeys = useRef(new Map<string, string>());
   const [openRows] = useState(() => new Map<string, boolean>());
   const replyRatings = useTranscriptReplyRatings();
@@ -653,9 +656,10 @@ function TranscriptEntryList(
     revealIndex === undefined ? undefined : footerRowIndex(rows, revealIndex);
   const virtualizer = useVirtualRows({
     count: rows.length,
-    defaultSize: defaultTranscriptRowSize,
+    defaultSize: (sizeClass) =>
+      defaultTranscriptRowSize(sizeClass, comfortable),
     // The gap between rows, like the gap of the transcript stack.
-    gap: 4,
+    gap: comfortable ? 12 : 4,
     getItemKey: (index) => rows[index]!.key,
     keptIndexes: [
       anchorKey === undefined ? undefined : indexByKey.get(anchorKey),

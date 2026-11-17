@@ -2,12 +2,7 @@ import { memo, useMemo } from "react";
 import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
-import {
-  formatElapsedDuration,
-  formatMessageTimestamp,
-  formatPayloadSize,
-  stringifyPartValue,
-} from "../format";
+import { formatPayloadSize, stringifyPartValue } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
 import { ShimmerText } from "../components/ShimmerText";
 import { ReviewItemAskRow } from "../review-desk/ReviewItemChangeRow";
@@ -16,6 +11,7 @@ import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { formatElapsedDuration, formatMessageTimestamp } from "../time";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {

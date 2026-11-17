@@ -30,7 +30,7 @@ function regionOrigin(org: string, regionUrl: string): string {
     !SENTRY_API_DOMAINS.includes(url.hostname)
   ) {
     throw new Error(
-      `Sentry org "${org}" names a region URL that Junior does not call`,
+      `Sentry org "${org}" names a region URL that this plugin does not call`,
     );
   }
   return url.origin;

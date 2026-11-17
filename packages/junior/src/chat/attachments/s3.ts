@@ -69,6 +69,11 @@ async function expectOk(response: Response, operation: string): Promise<void> {
   }
 }
 
+/** Presigned URL lifetime in whole seconds, at least one. */
+function expiresInSeconds(expiresAtMs: number): string {
+  return String(Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000)));
+}
+
 /** Store private conversation attachments in an S3-compatible bucket. */
 export function createS3AttachmentStorage(
   config: S3StorageConfig,
@@ -108,7 +113,7 @@ export function createS3AttachmentStorage(
       const url = new URL(objectUrl(config, input.key));
       url.searchParams.set(
         "X-Amz-Expires",
-        String(Math.max(1, Math.ceil((input.expiresAtMs - Date.now()) / 1000))),
+        expiresInSeconds(input.expiresAtMs),
       );
       const browserHeaders = {
         "content-type": input.contentType,
@@ -127,6 +132,19 @@ export function createS3AttachmentStorage(
         method: "PUT",
         url: signed.url,
       };
+    },
+    async createDownloadUrl(input) {
+      const url = new URL(objectUrl(config, input.key));
+      url.searchParams.set(
+        "X-Amz-Expires",
+        expiresInSeconds(input.expiresAtMs),
+      );
+      // Sign only the host, so a fetch with no extra headers is valid.
+      const signed = await client.sign(url.toString(), {
+        aws: { signQuery: true },
+        method: "GET",
+      });
+      return signed.url;
     },
     async get(key, range) {
       const response = await client.fetch(

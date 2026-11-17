@@ -13,6 +13,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { fileFields } from "@/chat/attachments/store";
 
 /** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
@@ -69,8 +70,9 @@ export async function matchSlackAttachments(args: {
       providerId: juniorAttachments.providerId,
       bytes: juniorAttachments.bytes,
       contentType: juniorAttachments.contentType,
-      filename: juniorAttachments.filename,
       storageKey: juniorAttachments.storageKey,
+      storageProvider: juniorAttachments.storageProvider,
+      title: juniorAttachments.title,
     })
     .from(juniorAttachments)
     .where(
@@ -81,15 +83,26 @@ export async function matchSlackAttachments(args: {
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-  return rows.map(({ storageKey, ...row }) =>
-    storageKey === null ? { ...row, pending: true as const } : row,
-  );
+  return rows.map((row) => {
+    const { bytes, contentType, filename } = fileFields(row);
+    const attachment = {
+      bytes,
+      contentType,
+      filename,
+      id: row.id,
+      providerId: row.providerId,
+    };
+    return row.storageKey === null
+      ? { ...attachment, pending: true as const }
+      : attachment;
+  });
 }
 
 /**
  * Fingerprint the live Slack attachments that `matchSlackAttachments` can
- * return for a Conversation. It changes when one is stored or deleted, so a
- * reader can tell that stored messages may now show other files.
+ * return for a Conversation. It changes when one is recorded, stored, or
+ * deleted, so a reader can tell that stored messages may now show other
+ * files, or a file that is no longer pending.
  */
 export function slackAttachmentsVersionQuery(
   db: JuniorDatabase,
@@ -97,7 +110,7 @@ export function slackAttachmentsVersionQuery(
 ) {
   return db
     .select({
-      version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id}, ',' order by ${juniorAttachments.id})), '')`,
+      version: sql<string>`coalesce(md5(string_agg(concat(${juniorAttachments.id}, ':', ${juniorAttachments.storageKey} is null), ',' order by ${juniorAttachments.id})), '')`,
     })
     .from(juniorAttachments)
     .where(
@@ -124,7 +137,7 @@ export function getSlackFileId(attachment: Attachment): string | undefined {
 }
 
 /**
- * Look up a Slack file that Junior recorded without storing it.
+ * Look up a Slack file that Junior recorded without storing it yet.
  *
  * Uses the installation token that the caller binds: the Slack turn, or the
  * dashboard route for the conversation's Slack team.
@@ -134,7 +147,7 @@ export const readSlackAttachmentSource: ReadAttachmentSource = async (
 ) => {
   const unavailable = (cause?: unknown) =>
     new AttachmentSourceUnavailableError(
-      "The Slack file was deleted, or Junior can no longer access it.",
+      "The Slack file was deleted, or this app can no longer access it.",
       { cause },
     );
   if (source.provider !== "slack") throw unavailable();

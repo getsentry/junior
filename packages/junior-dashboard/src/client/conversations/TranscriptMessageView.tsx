@@ -3,7 +3,7 @@ import {
   TranscriptAttachments,
   TranscriptLocalFiles,
 } from "./TranscriptAttachment";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectRow } from "./ObjectRow";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
@@ -12,7 +12,6 @@ import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
-  formatMessageTimestamp,
   transcriptMessageActor,
   transcriptMessageActorLabel,
   transcriptRoleKind,
@@ -30,6 +29,7 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
+import { formatMessageTimestamp } from "../time";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
@@ -111,7 +111,7 @@ export const TranscriptMessageView = memo(
           switch (card.kind) {
             case "object":
               return (
-                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                <ObjectRow key={`${card.plugin}:${card.key}`} card={card} />
               );
             case "automation":
               return (
@@ -175,7 +175,7 @@ export function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         {props.message.parts.map((_part, index) => (
           <div className="py-1" key={index}>
             <RedactedMarker />

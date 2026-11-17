@@ -22,8 +22,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
-  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -56,6 +54,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -244,7 +243,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;
@@ -441,9 +440,14 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -463,12 +467,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },

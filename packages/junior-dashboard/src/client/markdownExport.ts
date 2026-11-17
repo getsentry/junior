@@ -1,8 +1,6 @@
 import {
   conversationDisplayTitle,
   formatConversationCostTotal,
-  formatElapsedDuration,
-  formatMs,
   formatUsageTotal,
   actorLabel,
   slackLocationLabel,
@@ -33,6 +31,7 @@ import type {
   TranscriptViewTurnContext,
 } from "./types";
 import { memoryRecallContent } from "./conversations/turnContext";
+import { formatDuration, formatElapsedDuration } from "./time";
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
 export function buildConversationMarkdown(
@@ -493,7 +492,7 @@ function eventOffset(
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
   const start = Date.parse(conversationTranscript.startedAt);
   if (!Number.isFinite(start) || timestamp < start) return "";
-  return `+${formatMs(timestamp - start)}`;
+  return `+${formatDuration(timestamp - start)}`;
 }
 
 function addMetaLine(

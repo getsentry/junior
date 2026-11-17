@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
@@ -73,13 +73,20 @@ function memoryDb(): JuniorSqlDatabase & {
 }
 
 describe("publishImage tool", () => {
+  beforeEach(() => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("publishes a sandbox image to a conversation-owned public URL", async () => {
     const imageStorage = createMemoryAttachmentStorage();
     const db = memoryDb();
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
       db,
-      publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,
       workspace: workspace(PNG_BYTES),
     });
@@ -110,7 +117,6 @@ describe("publishImage tool", () => {
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
-      publicBaseUrl: () => "https://junior.example.com",
       storage: createMemoryAttachmentStorage(),
       workspace: workspace(null),
     });
@@ -127,7 +133,6 @@ describe("publishImage tool", () => {
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
-      publicBaseUrl: () => "https://junior.example.com",
       storage: createMemoryAttachmentStorage(),
       workspace: workspace(Buffer.from("not-an-image")),
     });
@@ -150,7 +155,6 @@ describe("publishImage tool", () => {
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
-      publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,
       workspace: workspace(PNG_BYTES),
     });

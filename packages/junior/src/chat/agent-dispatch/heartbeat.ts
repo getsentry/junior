@@ -8,7 +8,6 @@ import {
   getPlugins,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
-import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -16,6 +15,7 @@ import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/he
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
+import type { IdentityDispatcher } from "./identity";
 import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,
@@ -67,6 +67,7 @@ async function runWithTimeout<T>(
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
@@ -89,6 +90,7 @@ export async function runPluginHeartbeats(args: {
           heartbeat(
             createHeartbeatContext({
               conversationWorkQueue: args.conversationWorkQueue,
+              dispatchForIdentity: args.dispatchForIdentity,
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
@@ -204,16 +206,14 @@ export async function recoverPendingAgentInvocationResults(args: {
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue | undefined;
+  dispatchForIdentity: IdentityDispatcher;
   /** The app's event publisher. */
-  events?: AppEventPublisher | undefined;
+  events: AppEventPublisher;
   nowMs: number;
   /** Shows a Review item that a plugin heartbeat changed. */
   showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
-  const events =
-    args.events ??
-    createEventAppPublisher({ conversationWork: () => ({ queue }) });
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   const endStoppedChildWork = createEndStoppedChildWork({ queue });
@@ -269,7 +269,8 @@ export async function runHeartbeat(args: {
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
-    events,
+    dispatchForIdentity: args.dispatchForIdentity,
+    events: args.events,
     nowMs: args.nowMs,
     showReviewItem: args.showReviewItem,
   });

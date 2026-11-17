@@ -49,7 +49,7 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
-export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export { isAllowedDomain, parseEmail } from "./chat/identities/trust";
 export {
   DEFAULT_USER_SETTINGS,
   readUserSettings,

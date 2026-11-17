@@ -799,7 +799,7 @@ async function validateDeploymentConfig(
     checked = true;
     if (!/\bjuniorNitro\s*\(/.test(nitroConfig)) {
       errors.push(
-        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron into the deployed build output.`,
+        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits the Vercel queue trigger and heartbeat cron into the deployed build output.`,
       );
     }
   }
@@ -833,7 +833,7 @@ async function validateDeploymentConfig(
   ) {
     checked = true;
     errors.push(
-      `${vercelConfigPath}: framework must be "nitro" for Junior's Vercel deployment wiring.`,
+      `${vercelConfigPath}: framework must be "nitro" for the Vercel deployment wiring.`,
     );
   }
 

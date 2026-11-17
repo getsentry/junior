@@ -86,7 +86,7 @@ export function assertLocalPostgresUrl(databaseUrl: string): void {
   const { hostname } = new URL(databaseUrl);
   if (hostname !== "localhost" && hostname !== "127.0.0.1") {
     throw new Error(
-      `Junior test database URL must point at localhost or 127.0.0.1, got ${hostname}`,
+      `Test database URL must point at localhost or 127.0.0.1, got ${hostname}`,
     );
   }
 }

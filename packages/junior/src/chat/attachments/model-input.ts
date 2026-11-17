@@ -39,6 +39,7 @@ async function readStoredBytes(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
+  // Only web uploads reach here, and a web upload is always stored.
   if (
     !record ||
     record.storageProvider !== args.storage.provider ||

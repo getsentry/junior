@@ -105,6 +105,7 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     },
     compat: {
       forceAdaptiveThinking: true,
+      supportsMidConvoSystemMessages: true,
       supportsTemperature: false,
     },
   },
@@ -154,6 +155,9 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
     thinkingLevelMap: {
       xhigh: "xhigh",
       max: "max",
+    },
+    compat: {
+      supportsMidConvoSystemMessages: true,
     },
   },
   "openai/gpt-6-astra": {
@@ -789,7 +793,7 @@ export async function embedTexts(params: {
 }
 
 /** Read the billed cost that AI Gateway reports in provider metadata. */
-function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+export function gatewayCostUsd(providerMetadata: unknown): number | undefined {
   const cost = (
     providerMetadata as { gateway?: { cost?: unknown } } | undefined
   )?.gateway?.cost;

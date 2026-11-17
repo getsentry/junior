@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import {
   DASHBOARD_SERVICE_WORKER_PATH,
@@ -37,9 +39,7 @@ test("saves notification working hours and the Slack schedule choice", async ({
     page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Push notifications are not set up for this Junior install.",
-    ),
+    page.getByText("Push notifications are not set up for this app."),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
 
@@ -384,6 +384,68 @@ test("links to a settings section", async ({ page, dashboard }) => {
   ).toBeInViewport();
 });
 
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  return release;
+}
+
+test("lets the reader scroll away from a linked section while it loads", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "MCP" }),
+  ).toBeInViewport();
+
+  // Scroll to the top over a few frames with no input event, as a
+  // scrollbar drag does.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "General" }),
+  ).toBeInViewport();
+});
+
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+  await expect(heading).toBeInViewport();
+
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(heading).toBeInViewport();
+});
+
 test("opens an old Settings page as its section and keeps the query", async ({
   page,
   dashboard,
@@ -402,27 +464,3 @@ test("opens an old Settings page as its section and keeps the query", async ({
     page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
 });
-
-test(
-  "goes back to the current UI from the new one",
-  { tag: "@new" },
-  async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/settings`);
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toBeVisible();
-    await screenshot(page, "new-ui-placeholder", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    await page
-      .getByRole("button", { name: "Use the current dashboard" })
-      .click();
-
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toHaveCount(0);
-  },
-);

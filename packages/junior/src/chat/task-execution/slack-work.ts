@@ -47,11 +47,7 @@ import {
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
-import {
-  createSlackActor,
-  parseActorUserId,
-  type SlackActorProfile,
-} from "@/chat/actor";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
@@ -461,12 +457,6 @@ interface SlackInboxTurnRuntime {
 
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
-  lookupSlackUser?:
-    | ((
-        teamId: string,
-        userId: string,
-      ) => Promise<SlackActorProfile | null | undefined>)
-    | undefined;
   runNextPausedTurn: (
     conversationId: string,
     options: {
@@ -582,10 +572,6 @@ function restoreMessage(args: {
 }
 
 async function bindSlackActorIdentities(args: {
-  lookupSlackUser: (
-    teamId: string,
-    userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
   messages: Message[];
   teamId: string;
 }): Promise<void> {
@@ -597,7 +583,7 @@ async function bindSlackActorIdentities(args: {
 
   await Promise.all(
     [...byAuthorId].map(async ([authorId, messages]) => {
-      const profile = await args.lookupSlackUser(args.teamId, authorId);
+      const profile = await lookupSlackUser(args.teamId, authorId);
       await Promise.all(
         messages.map((message) =>
           ensureSlackMessageActorIdentity(
@@ -672,7 +658,6 @@ export function createSlackConversationWorker(
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
   return async (context) => {
     const adapter = options.getSlackAdapter();
-    const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
     const state = getConnectedState(options.state);
     await state.connect();
 
@@ -763,7 +748,6 @@ export function createSlackConversationWorker(
           }),
         );
         await bindSlackActorIdentities({
-          lookupSlackUser: actorLookup,
           messages,
           teamId: destination.teamId,
         });

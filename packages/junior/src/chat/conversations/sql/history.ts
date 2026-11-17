@@ -40,6 +40,7 @@ import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
+import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
   rootConversationIsArchived,
@@ -264,6 +265,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
+        await writeMessageLinks(this.executor, conversationId, rows);
         if (
           pending.some(
             (event) =>
@@ -292,7 +294,8 @@ class SqlConversationEventStore implements ConversationEventStore {
   /**
    * Add the authors of Turn input messages to the conversation.
    * Only people who start a Turn join it. Thread context, such as backfilled
-   * or skipped messages, keeps its author without membership.
+   * or skipped messages, and Event Messages keep their author without
+   * membership.
    */
   private async recordTurnInputParticipants(
     conversationId: string,
@@ -323,6 +326,9 @@ class SqlConversationEventStore implements ConversationEventStore {
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
+      // An Event author writes its Message for attribution only. They did
+      // not address this Conversation, so they do not join it.
+      if (data.meta?.["eventType"]) continue;
       const unarchives = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

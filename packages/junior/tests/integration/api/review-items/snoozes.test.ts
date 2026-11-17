@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
@@ -92,6 +94,12 @@ describe("snoozes", () => {
     expect((await asAna.inbox()).count).toBe(1);
     await runHeartbeat({
       conversationWorkQueue: fixture.queue,
+      dispatchForIdentity: createIdentityDispatcher({
+        conversationWorkQueue: () => fixture.queue,
+      }),
+      events: createEventAppPublisher({
+        conversationWork: () => ({ queue: fixture.queue }),
+      }),
       nowMs: Date.now(),
     });
     const [settled] = await getDb()

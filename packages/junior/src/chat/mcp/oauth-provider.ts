@@ -20,11 +20,12 @@ import {
   type McpAuthSessionState,
 } from "./auth-store";
 import type { McpLoginOwner } from "./token-refresh";
+import { botConfig } from "@/chat/config";
 
 /** The client metadata that Junior registers for one MCP OAuth callback. */
 export function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
   return {
-    client_name: "Junior MCP Client",
+    client_name: `${botConfig.userName} MCP Client`,
     redirect_uris: [callbackUrl],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],

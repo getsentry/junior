@@ -43,23 +43,27 @@ export function useSheet(
     return releaseBodyScrollLock;
   }, []);
 
+  // Dialog and Drawer roots both use this handler, so read only `cancel`.
+  const onOpenChange = (
+    nextOpen: boolean,
+    details: Pick<Dialog.Root.ChangeEventDetails, "cancel">,
+  ) => {
+    if (!nextOpen && !topmost) {
+      details.cancel();
+      return;
+    }
+    closingRef.current = !nextOpen;
+    setOpen(nextOpen);
+  };
+
   return {
+    /** Close from the sheet's own controls, with the exit animation. */
+    close: () => onOpenChange(false, { cancel() {} }),
     rootProps: {
       open,
       modal: topmost ? "trap-focus" : false,
       disablePointerDismissal: !topmost,
-      // Dialog and Drawer roots both use this handler, so read only `cancel`.
-      onOpenChange(
-        nextOpen: boolean,
-        details: Pick<Dialog.Root.ChangeEventDetails, "cancel">,
-      ) {
-        if (!nextOpen && !topmost) {
-          details.cancel();
-          return;
-        }
-        closingRef.current = !nextOpen;
-        setOpen(nextOpen);
-      },
+      onOpenChange,
       onOpenChangeComplete(nextOpen) {
         if (!nextOpen && closingRef.current) onClose();
       },

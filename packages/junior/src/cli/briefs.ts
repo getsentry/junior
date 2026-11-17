@@ -32,6 +32,7 @@ type PullOptions = {
 };
 
 type RunOptions = {
+  assistantName: string;
   model: string;
   out: string;
   promptFile?: string | undefined;
@@ -101,8 +102,10 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
     }
   }
   if (snapshots.length === 0) throw new Error(CLI_USAGE);
+  const bot = await configuredBot();
   return {
-    model: model ?? (await configuredBriefModelId()),
+    assistantName: bot.userName,
+    model: model ?? bot.fastModelId,
     out,
     promptFile,
     snapshots,
@@ -111,13 +114,16 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
 }
 
 /**
- * Read the production Brief model only when a run needs it. `chat/config`
+ * Read the production bot config only when a run needs it. `chat/config`
  * reads `DATABASE_URL` at import, and `briefs pull` must work with only a
  * token.
  */
-async function configuredBriefModelId(): Promise<string> {
+async function configuredBot(): Promise<{
+  fastModelId: string;
+  userName: string;
+}> {
   const { botConfig } = await import("@/chat/config");
-  return botConfig.fastModelId;
+  return botConfig;
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
@@ -236,6 +242,7 @@ async function runSnapshot(
   )) {
     versions.push(
       await generateBrief({
+        assistantName: options.assistantName,
         completeObject: (request) =>
           completeObject({
             ...request,

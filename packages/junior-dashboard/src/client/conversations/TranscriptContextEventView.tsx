@@ -6,9 +6,10 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
-import { formatCompactNumber, formatMessageTimestamp } from "../format";
+import { formatCompactNumber } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
 import { DisplayText } from "../display-text/DisplayText";
+import { formatMessageTimestamp } from "../time";
 
 /** Render a structural context change from the privacy-safe event API. */
 export function TranscriptContextEventView(props: {

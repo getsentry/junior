@@ -170,7 +170,7 @@ describe("Google account setup", () => {
     const response = await callback(app, cookie, state);
     const body = await response.text();
     expect(response.status).toBe(200);
-    expect(body).toContain(`Junior now acts as <code>${ACCOUNT_EMAIL}</code>`);
+    expect(body).toContain(`The bot now acts as <code>${ACCOUNT_EMAIL}</code>`);
     expect(body).not.toContain("refresh-token");
 
     const exchange = new URLSearchParams(String(fetch.mock.calls[0][1]!.body));

@@ -144,11 +144,9 @@ async function completeDashboardTurn(
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: "turn-1" },
-    {
-      send: async (message) => {
-        scheduled.push(`${message.plugin}.${message.name}`);
-        await processPluginTask(message);
-      },
+    async (message) => {
+      scheduled.push(`${message.plugin}.${message.name}`);
+      await processPluginTask(message);
     },
   );
   return scheduled;

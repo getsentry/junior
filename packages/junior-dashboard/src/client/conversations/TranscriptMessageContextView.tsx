@@ -3,11 +3,7 @@ import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
-import {
-  formatMessageTimestamp,
-  transcriptMessageActor,
-  transcriptMessageActorLabel,
-} from "../format";
+import { transcriptMessageActor, transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -18,6 +14,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { formatMessageTimestamp } from "../time";
 
 /** Render ambient conversation context that is not a primary chat bubble. */
 export function TranscriptMessageContextView(props: {
@@ -78,7 +75,7 @@ export function TranscriptMessageContextView(props: {
         </CollapsibleContent>
       </Collapsible>
       <article
-        className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
+        className="hidden min-w-0 border-l-2 border-dashboard-border-emphasis py-0.5 pl-3 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow

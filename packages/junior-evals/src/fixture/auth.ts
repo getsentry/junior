@@ -25,7 +25,7 @@ export async function completeAuthorization(args: {
 }): Promise<void> {
   const { link } = args;
   if (!link) {
-    throw new Error(`Junior gave ${args.userId} no authorization link`);
+    throw new Error(`The agent gave ${args.userId} no authorization link`);
   }
   const approval = await fetch(link, { redirect: "manual" });
   const location = approval.headers.get("location");

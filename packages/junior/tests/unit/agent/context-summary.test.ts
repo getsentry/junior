@@ -15,6 +15,7 @@ import {
 import {
   readAgentHistory,
   withAgentRequest,
+  writeAgentHistory,
   type AgentRequestStreamFn,
 } from "@/chat/pi/agent-history";
 
@@ -123,6 +124,16 @@ describe("context summary", () => {
       assistant([{ type: "text", text: "Done." }]),
     ]);
     const agent = createAgent(streamFn);
+    // Capability sections before the first assistant message fold into the
+    // system prompt. The summary request must fold them the same way.
+    agent.state.messages = writeAgentHistory(agent.state.messages, [
+      {
+        role: "system",
+        content: "",
+        sections: { skills: "<skills>a</skills>" },
+        timestamp: 0,
+      },
+    ]);
     await agent.prompt("Fix the failing check.");
 
     const request = await buildAgentModelRequest(
@@ -132,6 +143,7 @@ describe("context summary", () => {
 
     expect(request.model).toBe(model);
     expect(request.context).toEqual(calls[0]!.context);
+    expect(request.context.messages.map(({ role }) => role)).toEqual(["user"]);
     // Pi passes its whole loop config as options. Providers read only the
     // request fields, so compare those and skip the loop hooks.
     const requestOptions = (options: SimpleStreamOptions) =>

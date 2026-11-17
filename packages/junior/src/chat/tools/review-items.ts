@@ -321,7 +321,7 @@ export function createAddReviewItemTool(
         !scope.actorIsPerson
       ) {
         throw new ToolInputError(
-          "No person would see this item: no default assignee has a Junior user, and this Turn has no person. Set `assignees`.",
+          "No person would see this item: no default assignee has a User, and this Turn has no person. Set `assignees`.",
         );
       }
       await requireReviewItemAssignees({

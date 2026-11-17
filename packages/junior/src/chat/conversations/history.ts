@@ -33,6 +33,15 @@ const toolResultEventDataSchema = z
   })
   .passthrough();
 
+// A Pi system message after the leading one. The leading one is rebuilt for
+// each slice and never saved.
+const systemMessageEventDataSchema = z
+  .object({
+    type: z.literal("system_message"),
+    role: z.never().optional(),
+  })
+  .passthrough();
+
 /**
  * One replayable agent-history item. Junior owns `type` and user provenance,
  * forbids the provider `role` discriminator, and leaves preserved message
@@ -42,6 +51,7 @@ export const agentHistoryItemSchema = z.discriminatedUnion("type", [
   userMessageEventDataSchema,
   assistantMessageEventDataSchema,
   toolResultEventDataSchema,
+  systemMessageEventDataSchema,
 ]);
 
 /** A native replayable agent-history item. */
@@ -509,6 +519,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "user_message",
   "assistant_message",
   "tool_result",
+  "system_message",
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",
   "authorization_requested",

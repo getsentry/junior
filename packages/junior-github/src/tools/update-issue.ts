@@ -1,9 +1,8 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
   type PluginEgress,
   type Source,
@@ -11,15 +10,17 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
+  watchResultSchema,
   type PluginToolOutput,
-  type SubscribableResource,
+  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { gitHubIssueSubscribable } from "../events/issue.js";
+import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
@@ -73,13 +74,13 @@ const issueSchema = z.object({
   number: z.number(),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
   title: z.string(),
   url: z.string(),
 });
 type Issue = z.output<typeof issueSchema>;
 interface Result extends PluginToolOutput, Issue {
   target: "updateIssue";
-  subscribable?: SubscribableResource;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   issueSchema.extend({
@@ -121,18 +122,13 @@ export const gitHubUpdateIssueTool = definePluginTool({
     _options,
     ctx: {
       actor?: Actor | undefined;
-      automationLink?: { url: string };
       conversationId?: string | undefined;
       egress: PluginEgress;
       log: PluginLogger;
-      events: { canSubscribe: boolean };
+      events: ToolRegistrationHookContext["events"];
       conversationLink?: { url: string };
+      resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
       source?: Source | undefined;
-      users: {
-        resolveActor(): Promise<
-          { identity?: Identity; user?: User } | undefined
-        >;
-      };
     },
   ): Promise<Result> {
     const parsedInput = inputSchema.safeParse(input);
@@ -149,11 +145,11 @@ export const gitHubUpdateIssueTool = definePluginTool({
         : undefined;
     // Check before any write, so a failed assignment changes nothing.
     const assignee = update.assign_requester
-      ? linkedGitHubLogin(requester?.user)
+      ? linkedGitHubLogin(requesterPerson(requester)?.user)
       : undefined;
     if (update.assign_requester && !assignee) {
       throw new PluginToolInputError(
-        "The requester has no linked GitHub account, so Junior cannot assign the issue to them.",
+        "The requester has no linked GitHub account, so the issue cannot be assigned to them.",
       );
     }
     const currentBody =
@@ -170,7 +166,6 @@ export const gitHubUpdateIssueTool = definePluginTool({
             body: appendGitHubFooter(
               appendGitHubRequesterAttribution(
                 update.body,
-                ctx,
                 requester,
                 currentBody,
               ),
@@ -227,8 +222,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
         `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
       );
     }
-    const subscribable = gitHubIssueSubscribable({
-      canSubscribe: ctx.events.canSubscribe,
+    const watch = await watchGitHubIssue(ctx, {
       number: providerResult.number,
       repo: repo.ref,
     });
@@ -249,7 +243,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       body: providerResult.body,
       number: providerResult.number,
       state: providerResult.state,
-      ...(subscribable ? { subscribable } : undefined),
+      ...watch,
       title: providerResult.title,
       url: providerResult.html_url,
     };

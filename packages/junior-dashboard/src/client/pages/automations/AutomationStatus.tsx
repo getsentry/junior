@@ -10,10 +10,12 @@ import {
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { automationPath, formatRelativeTime } from "../../format";
+import { automationPath } from "../../format";
 import { buttonVariants } from "../../components/ui/button";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
+import { formatRelativeTime, getDashboardTimeZone } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 /**
  * Name the lifecycle state. It is a live region, so Pause and Resume results
@@ -196,7 +198,7 @@ export function AutomationAttention({
           {automation.statusReason ??
             "Check the last run to see what needs fixing."}{" "}
           {!automation.ownedByViewer && automation.credentialMode === "creator"
-            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to Junior's credentials first.`
+            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to ${agentNamePossessive()} credentials first.`
             : null}
         </p>
       ) : null}
@@ -269,7 +271,7 @@ function AutomationNextTrigger({
         ? "Waiting for a matching event"
         : "Waiting for a trigger fix";
   else if (automation.nextRunAt) {
-    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const browserZone = getDashboardTimeZone();
     const scheduleTime = formatAutomationRunTime(
       automation.nextRunAt,
       automation.timezone,

@@ -55,7 +55,6 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
-  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
 } from "./task-queue";
@@ -64,9 +63,11 @@ import type { Lock } from "chat";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: ((message: PluginTaskQueueMessage) => Promise<void>) | undefined;
-}
+/**
+ * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
+ * by default, or an in-process queue.
+ */
+export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
@@ -466,7 +467,7 @@ function findPluginTask(message: PluginTaskQueueMessage) {
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
-  options: ScheduleSessionCompletedPluginTasksOptions = {},
+  send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
   const taskRegistrations = [
@@ -485,7 +486,6 @@ export async function scheduleSessionCompletedPluginTasks(
   if (!record || record.state !== "completed") {
     throw new Error("Completed plugin task session record is not ready");
   }
-  const send = options.send ?? sendVercelPluginTask;
   const messages = taskRegistrations.map(({ name, plugin }) => ({
     name,
     params: coreParams,

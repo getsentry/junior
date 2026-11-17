@@ -85,10 +85,7 @@ export function createSlackAdapterStatusSender(args: {
 export function createSlackWebApiStatusSender(args: {
   channelId?: string | undefined;
   threadTs?: string | undefined;
-  getSlackClient?: typeof getSlackClient | undefined;
 }): AssistantStatusSender {
-  const getClient = args.getSlackClient ?? getSlackClient;
-
   return async (text, loadingMessages) => {
     const channelId = args.channelId;
     const threadTs = args.threadTs;
@@ -105,7 +102,7 @@ export function createSlackWebApiStatusSender(args: {
 
     try {
       await withSetStatusSpan(() =>
-        getClient().assistant.threads.setStatus({
+        getSlackClient().assistant.threads.setStatus({
           channel_id: normalizedChannelId,
           thread_ts: threadTs,
           status: text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",

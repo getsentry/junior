@@ -189,12 +189,12 @@ async function runStatus(ctx: PluginCliActionContext): Promise<number> {
 export function createGoogleCliCommand(): PluginCliCommandDefinition {
   return {
     name: "google",
-    summary: "Connect and inspect Junior's Google account",
+    summary: "Connect and inspect the bot's Google account",
     configure(command: Command, junior) {
       command
         .command("connect")
         .description(
-          "Sign in as Junior's Google account in a browser and store the grant",
+          "Sign in as the bot's Google account in a browser and store the grant",
         )
         .option(
           "--port <port>",
@@ -209,7 +209,7 @@ export function createGoogleCliCommand(): PluginCliCommandDefinition {
         );
       command
         .command("status")
-        .description("Show whether Junior's Google account is connected")
+        .description("Show whether the bot's Google account is connected")
         .action(junior.action(async (ctx) => await runStatus(ctx)));
     },
   };

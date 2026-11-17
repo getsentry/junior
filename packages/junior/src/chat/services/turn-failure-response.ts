@@ -143,22 +143,22 @@ export interface FinalizedTurnFailure {
   reply: AgentRunResult;
 }
 
-/** Enforce one captured failure response and return its structured correlation. */
-export function finalizeFailedTurnReplyWithEvent(args: {
-  reply: AgentRunResult;
-  logException: LogException;
-  attributes?: Record<string, unknown>;
-}): FinalizedTurnFailure {
-  if (args.reply.diagnostics.outcome === "success") {
-    return { reply: args.reply };
-  }
-
-  const failureReason = getTurnFailureReason(args.reply);
-  const capture = getFailureCapture(args.reply);
+/**
+ * Report one failed agent run to Sentry and attach the event ID.
+ *
+ * The agent run is the only caller. It reports inside its log and privacy
+ * context, so the event has the run's context and redaction. Callers read the
+ * ID from `diagnostics.eventId` and never report the run again.
+ */
+export function captureTurnFailure(
+  result: AgentRunResult,
+  logException: LogException,
+): AgentRunResult {
+  const failureReason = getTurnFailureReason(result);
+  const capture = getFailureCapture(result);
   const eventId = requireTurnFailureEventId(
-    args.logException(capture.error, capture.eventName, {
-      ...getAgentTurnDiagnosticsAttributes(args.reply),
-      ...args.attributes,
+    logException(capture.error, capture.eventName, {
+      ...getAgentTurnDiagnosticsAttributes(result),
       ...capture.attributes,
       ...(failureReason
         ? { "app.ai.failure_reason": failureReason }
@@ -166,6 +166,22 @@ export function finalizeFailedTurnReplyWithEvent(args: {
     }),
     capture.eventName,
   );
+  return { ...result, diagnostics: { ...result.diagnostics, eventId } };
+}
+
+/** Build the failure reply for a reported failed run, with its event ID. */
+export function finalizeFailedTurnReplyWithEvent(args: {
+  reply: AgentRunResult;
+}): FinalizedTurnFailure {
+  if (args.reply.diagnostics.outcome === "success") {
+    return { reply: args.reply };
+  }
+
+  const failureReason = getTurnFailureReason(args.reply);
+  const eventId = args.reply.diagnostics.eventId;
+  if (!eventId) {
+    throw new Error("Failed agent run has no Sentry event ID");
+  }
 
   // Only text derived from actual assistant messages may be delivered as
   // partial output. Synthesized failure replies (runtime catch-alls) report
