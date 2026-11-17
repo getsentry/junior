@@ -1,4 +1,5 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
+import { expectRequestBudget } from "./request-budget";
 import type { Page } from "@playwright/test";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -255,13 +256,19 @@ test("the inbox shows an item in its conversation", async ({
   page,
 }) => {
   await mockReviewItems(page);
-  await page.goto(`${dashboard.baseURL}/review`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   const list = page.getByRole("navigation", { name: "Review items" });
-  // The item that waited longest opens first.
-  await expect(
-    detail.getByRole("heading", { name: license.title }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/review`);
+      // The item that waited longest opens first.
+      await expect(
+        detail.getByRole("heading", { name: license.title }),
+      ).toBeVisible();
+    },
+    { requests: 10, serialRounds: 2 },
+  );
   await expect(
     list.getByRole("link", { name: new RegExp(license.title) }),
   ).toHaveAttribute("aria-current", "page");

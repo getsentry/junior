@@ -10,6 +10,7 @@ import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
+import { traceSqlPool } from "./statement-channel";
 import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
@@ -185,6 +186,7 @@ export function createPostgresJuniorSqlExecutor(args: {
       "app.db.driver": "postgres",
     });
   });
+  traceSqlPool(pool);
   if (args.onInfo) {
     forwardInfoMessages(pool, args.onInfo);
   }
