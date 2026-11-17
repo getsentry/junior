@@ -268,11 +268,13 @@ export function InboxList(props: {
       return;
     }
     if (snoozedKey || linkedSnoozed) {
-      // On Snoozed, the link waits for its row there.
       if (view !== "snoozed") {
         void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
           replace: true,
         });
+      } else if (data.snoozedLoaded) {
+        // Snoozed read every page without the row, so the link is stale.
+        void navigate(listPath, { replace: true });
       }
       return;
     }
@@ -307,6 +309,7 @@ export function InboxList(props: {
     linkedLoaded,
     linkedRowKey,
     linkedSnoozed,
+    data.snoozedLoaded,
     linkedStreamIndex,
     listPath,
     loaded,
@@ -675,15 +678,20 @@ export function InboxList(props: {
         />
       );
   } else if (view === "snoozed") {
-    body =
-      data.snoozedRows.length === 0 ? (
-        <InboxEmptyState label="Nothing snoozed" />
-      ) : (
-        // Snoozed rows expand in place like the others, and wake there.
-        <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
-          {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
-        </ul>
-      );
+    body = data.snoozedError ? (
+      <InlineError className="py-3">
+        Could not load your snoozed rows.
+      </InlineError>
+    ) : !data.snoozedLoaded ? (
+      <RowsLoading />
+    ) : data.snoozedRows.length === 0 ? (
+      <InboxEmptyState label="Nothing snoozed" />
+    ) : (
+      // Snoozed rows expand in place like the others, and wake there.
+      <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
+        {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
+      </ul>
+    );
   } else if (view === "prs") {
     body = pullRequests.loading ? (
       <RowsLoading />

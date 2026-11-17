@@ -173,6 +173,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(page).toHaveURL(/[?&]view=snoozed(?:&|$)/);
+    // Loading must not read as an empty Snoozed.
+    await expect(
+      page.locator('[role="status"][aria-busy="true"]'),
+    ).toBeVisible();
+    await expect(page.getByText("Nothing snoozed")).toHaveCount(0);
     release();
     await expect(rowHead(page, checkout)).toBeVisible();
   });

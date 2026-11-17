@@ -107,6 +107,7 @@ function useBuildInboxData(input: {
     hasNextPage: moreSnoozed,
     isError: snoozedFailed,
     isFetching: fetchingSnoozed,
+    isPending: snoozedPending,
   } = snoozedQuery;
   useEffect(() => {
     if (moreSnoozed && !fetchingSnoozed && !snoozedFailed) {
@@ -257,6 +258,10 @@ function useBuildInboxData(input: {
     pinned,
     signedIn,
     snoozedRows,
+    /** A failed read must not look like nothing is snoozed. */
+    snoozedError: snoozedFailed,
+    /** Snoozed has read every page, so a missing row is not snoozed. */
+    snoozedLoaded: !snoozedPending && !snoozedFailed && !moreSnoozed,
     /** Automation alerts for To do: those the viewer has not put away. */
     todoAutomations: automations.filter(
       (automation) => !alerts.hidden(automation),
