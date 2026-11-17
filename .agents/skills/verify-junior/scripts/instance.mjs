@@ -412,10 +412,15 @@ async function stop(runDir, log = console.log) {
 function queueWorkerOf(pid) {
   return descendants(pid).find((child) => {
     try {
-      // ps, not /proc: macOS has no /proc.
-      return execFileSync("ps", ["-o", "command=", "-p", String(child)], {
-        encoding: "utf8",
-      }).includes("dev-queue-worker.mjs");
+      // ps, not /proc: macOS has no /proc. -ww stops ps from cutting the
+      // command at the terminal width.
+      return execFileSync(
+        "ps",
+        ["-ww", "-o", "command=", "-p", String(child)],
+        {
+          encoding: "utf8",
+        },
+      ).includes("dev-queue-worker.mjs");
     } catch {
       return false;
     }
