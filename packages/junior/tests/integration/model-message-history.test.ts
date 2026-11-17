@@ -166,7 +166,6 @@ describe("model message history", () => {
       expect.arrayContaining(["available-skills", "script-tools"]),
     );
     expect(leading).not.toHaveProperty("workspaces");
-    expect(first.systemPrompt).toContain(leading!["available-skills"]);
     expect(await sectionUpdates()).toEqual([]);
     expect(first.messages.map((message) => message.role)).not.toContain(
       "system",

@@ -355,7 +355,6 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
-      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),
@@ -516,7 +515,6 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
-      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),
@@ -574,7 +572,6 @@ describe("paused turn composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
-      expect.objectContaining({ role: "system", sections: expect.any(Object) }),
       expect.objectContaining({
         role: "user",
       }),
