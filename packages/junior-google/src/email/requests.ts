@@ -98,9 +98,9 @@ async function handleMessage(
 
 /**
  * Read new inbox history after the stored cursor and dispatch each verified
- * request. The cursor moves past a history record only after every message
- * in it is handled, so a failure retries that record on the next heartbeat.
- * Dispatch idempotency makes the retry safe.
+ * request. Messages are handled together, and the cursor moves only after
+ * all of them are handled, so a failure retries the poll on the next
+ * heartbeat. Dispatch idempotency makes the retry safe.
  */
 async function pollInbox(
   ctx: HeartbeatHookContext,
@@ -118,33 +118,31 @@ async function pollInbox(
   }
 
   let next = cursor;
-  let read = 0;
-  let dispatched = 0;
+  let expired = false;
+  const messageIds: string[] = [];
   let pageToken: string | undefined;
   for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- each page needs the token from the page before.
     const page: GmailHistoryPage | "expired" = await listInboxHistory(
       accessToken,
       cursor,
       pageToken,
     );
     if (page === "expired") {
-      ctx.log.warn("google.email_request.history_expired", {});
-      next = await readMailboxHistoryId(accessToken);
+      expired = true;
       break;
     }
     let stopped = false;
     for (const record of page.history ?? []) {
       const messages = record.messagesAdded ?? [];
-      if (read > 0 && read + messages.length > MAX_MESSAGES_PER_POLL) {
+      if (
+        messageIds.length > 0 &&
+        messageIds.length + messages.length > MAX_MESSAGES_PER_POLL
+      ) {
         stopped = true;
         break;
       }
-      for (const { message } of messages) {
-        if (await handleMessage(ctx, config, accessToken, message.id)) {
-          dispatched += 1;
-        }
-        read += 1;
-      }
+      messageIds.push(...messages.map(({ message }) => message.id));
       next = record.id;
     }
     if (stopped) break;
@@ -154,6 +152,14 @@ async function pollInbox(
     }
     pageToken = page.nextPageToken;
   }
+  const handled = await Promise.all(
+    messageIds.map((id) => handleMessage(ctx, config, accessToken, id)),
+  );
+  if (expired) {
+    ctx.log.warn("google.email_request.history_expired", {});
+    next = await readMailboxHistoryId(accessToken);
+  }
+  const dispatched = handled.filter(Boolean).length;
   await ctx.state.set(HISTORY_CURSOR_KEY, next);
   return dispatched;
 }

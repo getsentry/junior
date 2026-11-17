@@ -275,14 +275,25 @@ describe("Google email requests", () => {
 
     await expect(heartbeat()).resolves.toEqual({ dispatchCount: 1 });
     expect(state.values.get("email-requests:history-id")).toBe("120");
-    // Only senders that Google proved reach core.
+    // Only senders that Google proved reach core. Messages are handled
+    // together, so the order is not fixed.
     expect(
-      dispatchForIdentity.mock.calls.map(([options]) =>
-        "verifiedEmail" in options ? options.verifiedEmail : undefined,
-      ),
-    ).toEqual([KNOWN_SENDER, "candidate@outside.test", "bob@example.com"]);
+      dispatchForIdentity.mock.calls
+        .map(([options]) =>
+          "verifiedEmail" in options ? options.verifiedEmail : undefined,
+        )
+        .sort(),
+    ).toEqual([
+      "alice@example.com",
+      "bob@example.com",
+      "candidate@outside.test",
+    ]);
     // The input becomes the sender's Message, so it holds no quoted text.
-    expect(dispatchForIdentity.mock.calls[0]![0]).toEqual({
+    expect(
+      dispatchForIdentity.mock.calls.find(
+        ([options]) => options.idempotencyKey === "google-email:request",
+      )?.[0],
+    ).toEqual({
       idempotencyKey: "google-email:request",
       input: [
         "Email subject: Re: Interview",
@@ -294,19 +305,19 @@ describe("Google email requests", () => {
       verifiedEmail: KNOWN_SENDER,
     });
     expect(
-      log.info.mock.calls.map(
-        (call) => call[1]["app.google.email_request.reason"],
-      ),
+      log.info.mock.calls
+        .map((call) => call[1]["app.google.email_request.reason"])
+        .sort(),
     ).toEqual([
-      "unauthenticated",
-      "unauthenticated",
-      "not_linked",
-      "no_text",
-      "not_linked",
-      "invalid_sender",
       "automated",
       "calendar_reply",
       "deleted",
+      "invalid_sender",
+      "no_text",
+      "not_linked",
+      "not_linked",
+      "unauthenticated",
+      "unauthenticated",
     ]);
   });
 
@@ -355,13 +366,18 @@ describe("Google email requests", () => {
 
     await expect(heartbeat()).resolves.toEqual({ dispatchCount: 2 });
     expect(
-      dispatchForIdentity.mock.calls.map(([options]) => options.idempotencyKey),
-    ).toEqual(["google-email:toAccount", "google-email:ccAsks"]);
+      dispatchForIdentity.mock.calls
+        .map(([options]) => options.idempotencyKey)
+        .sort(),
+    ).toEqual(["google-email:ccAsks", "google-email:toAccount"]);
     // Mail to the account needs no decision. A CC is judged on the sender's
     // own words, without the quoted ask.
     expect(decided).toHaveLength(3);
-    expect(decided[2]).toContain("Thanks, Tuesday works for me.");
-    expect(decided[2]).not.toContain("can you find");
+    const replyAll = decided.find((message) =>
+      message.includes("Thanks, Tuesday works for me."),
+    );
+    expect(replyAll).toBeDefined();
+    expect(replyAll).not.toContain("can you find");
     expect(
       log.info.mock.calls.map(
         (call) => call[1]["app.google.email_request.reason"],
