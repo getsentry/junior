@@ -88,16 +88,12 @@ export function classifySandboxCredentialRequest(
   const markers = placeholders(manifest);
   const names = credentialHeaders(manifest);
   let sawPlaceholder = false;
-  let sawCarried = false;
-  headers.forEach((value, key) => {
+  for (const [key, value] of headers) {
     if (hasPlaceholder(value, markers)) {
       sawPlaceholder = true;
-    } else if (names.has(key.toLowerCase()) && value.trim()) {
-      sawCarried = true;
+    } else if (names.has(key) && value.trim()) {
+      return "carried";
     }
-  });
-  if (sawCarried) {
-    return "carried";
   }
   return sawPlaceholder ? "placeholder" : "none";
 }

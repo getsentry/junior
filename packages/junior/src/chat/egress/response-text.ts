@@ -36,30 +36,19 @@ export async function responseTextWithinLimit(
   if (!body) {
     return "";
   }
-  const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (!value) {
-        continue;
-      }
+    // Leaving the loop early cancels the stream.
+    for await (const value of body) {
       bytes += value.byteLength;
       if (bytes > limit) {
-        await reader.cancel().catch(() => undefined);
         return undefined;
       }
       chunks.push(value);
     }
   } catch {
-    await reader.cancel().catch(() => undefined);
     return undefined;
-  } finally {
-    reader.releaseLock();
   }
   const combined = new Uint8Array(bytes);
   let offset = 0;
