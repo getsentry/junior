@@ -392,13 +392,21 @@ export function wakeMockSnooze(id: string): boolean {
 export function readMockSnoozes(nowMs: number): WakeAutomationPayload[] {
   const open = readMockReviewItems(nowMs, {});
   return [...snoozes.values()].flatMap((snooze) => {
-    const itemIds = open
-      .filter(
-        (item) => item.addedByConversationId === snooze.subject.conversationId,
-      )
-      .map((item) => item.id);
-    return snoozeWakesAtMs(snooze) > nowMs && itemIds.length > 0
-      ? [{ ...snooze, itemIds }]
+    const items = open.filter(
+      (item) => item.addedByConversationId === snooze.subject.conversationId,
+    );
+    // Like the API, the row is named after its newest open item.
+    const newest = [...items].sort((x, y) =>
+      y.createdAt.localeCompare(x.createdAt),
+    )[0];
+    return snoozeWakesAtMs(snooze) > nowMs && newest
+      ? [
+          {
+            ...snooze,
+            itemIds: items.map((item) => item.id),
+            title: newest.title,
+          },
+        ]
       : [];
   });
 }
