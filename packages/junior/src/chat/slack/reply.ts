@@ -17,6 +17,7 @@ import { resolveHandleMentions } from "@/chat/events/people";
 import { logWarn } from "@/chat/logging";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { splitSlackReplyText } from "@/chat/slack/output";
+import { fitsSlackMetadataLimit } from "./work-object";
 
 /** Slack channel and optional thread where a Turn posts. */
 export interface SlackReplyTarget {
@@ -98,12 +99,28 @@ export async function sendSlackReply(args: {
       text,
       cards: [],
     }));
-  const cards = (args.cards ?? []).map((card) =>
-    renderSlackCard(card, args.conversationId),
-  );
-  // Keep previews in small groups so one reply does not become a wall of cards.
-  for (let index = 0; index < cards.length; index += 5) {
-    const group = cards.slice(index, index + 5);
+  // Keep previews in small groups so one reply does not become a wall of
+  // cards. Slack ignores all metadata of a post that is too large, so a card
+  // that does not fit its group starts the next post, and a card that is too
+  // large alone posts as text.
+  const groups: SlackCard[][] = [];
+  for (const card of args.cards ?? []) {
+    const rendered = renderSlackCard(card, args.conversationId);
+    const slackCard =
+      rendered.entity && !fitsSlackMetadataLimit([rendered.entity])
+        ? { entity: null, text: rendered.text }
+        : rendered;
+    const group = groups.at(-1);
+    const entities = [...(group ?? []), slackCard].flatMap((item) =>
+      item.entity ? [item.entity] : [],
+    );
+    if (group && group.length < 5 && fitsSlackMetadataLimit(entities)) {
+      group.push(slackCard);
+    } else {
+      groups.push([slackCard]);
+    }
+  }
+  for (const [index, group] of groups.entries()) {
     const lastPost = posts.at(-1);
     if (index === 0 && lastPost) lastPost.cards = group;
     else posts.push({ text: "", cards: group });

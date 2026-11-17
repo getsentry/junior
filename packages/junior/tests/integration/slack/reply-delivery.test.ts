@@ -193,6 +193,59 @@ describe("sendSlackReply", () => {
     }
   });
 
+  it("keeps each post's Work Objects within Slack's metadata limit", async () => {
+    const card = {
+      kind: "object" as const,
+      plugin: "objects",
+      label: "ENG-1",
+      objectType: "task" as const,
+      title: "Saved issue",
+      description: "Steps to reproduce. ".repeat(25),
+    };
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: "Here are the issues.",
+      threadTs: "1700000000.000100",
+      cards: [
+        ...Array.from({ length: 5 }, (_, index) => ({
+          ...card,
+          key: `repo#${index}`,
+          url: `https://example.com/issues/${index}`,
+        })),
+        // Slack counts each non-ASCII character as a 6-byte escape.
+        {
+          ...card,
+          key: "repo#big",
+          title: "修正".repeat(80),
+          description: "修正".repeat(250),
+          url: "https://example.com/issues/big",
+        },
+      ],
+    });
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    const metadata = posts.flatMap((post) => {
+      const value = post.params["metadata"] as
+        | { entities: Array<{ url: string }> }
+        | undefined;
+      return value ? [value] : [];
+    });
+    expect(
+      Math.max(...metadata.map((value) => JSON.stringify(value).length)),
+    ).toBeLessThanOrEqual(4_000);
+    expect(
+      metadata.flatMap((value) => value.entities).map((entity) => entity.url),
+    ).toEqual(
+      Array.from(
+        { length: 5 },
+        (_, index) => `https://example.com/issues/${index}`,
+      ),
+    );
+    expect(JSON.stringify(posts.at(-1)?.params["blocks"])).toContain(
+      "修正".repeat(80),
+    );
+  });
+
   it("does not post empty text", async () => {
     await expect(
       sendSlackReply({
