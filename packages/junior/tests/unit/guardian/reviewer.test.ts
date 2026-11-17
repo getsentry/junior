@@ -5,6 +5,10 @@ import {
   guardianDecision,
   guardianPrompt,
 } from "@/chat/guardian/reviewer";
+import {
+  GUARDIAN_ACTION_POLICY,
+  guardianSystemPrompt,
+} from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
   type RootConversation,
@@ -89,6 +93,20 @@ describe("Guardian action review", () => {
         modelId: "test/guardian",
         prompt: expect.stringContaining('"cadence": "weekly"'),
       }),
+    );
+  });
+
+  it("puts sorted plugin destination facts after the policy in the system prompt", () => {
+    const notion = { plugin: "notion", text: "The Docs space is public." };
+    const linear = { plugin: "linear", text: "Team PY syncs to GitHub." };
+
+    const system = guardianSystemPrompt([notion, linear]);
+
+    expect(guardianSystemPrompt([linear, notion])).toBe(system);
+    expect(guardianSystemPrompt()).toBe(GUARDIAN_ACTION_POLICY);
+    expect(system.startsWith(GUARDIAN_ACTION_POLICY)).toBe(true);
+    expect(system.indexOf("`linear`: Team PY syncs to GitHub.")).toBeLessThan(
+      system.indexOf("`notion`: The Docs space is public."),
     );
   });
 

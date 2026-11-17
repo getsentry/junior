@@ -295,6 +295,7 @@ const manifestSourceSchema = z
     }),
     "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
+    "review-context": nonEmptyTrimmedString.optional(),
     "config-keys": z
       .array(z.string(), {
         error: "must be an array when provided",
@@ -364,6 +365,7 @@ function manifestConfigPatch(
   const result: Record<string, unknown> = {};
   setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
+  setDefined(result, "review-context", config.reviewContext);
   setDefined(result, "config-keys", config.configKeys);
   setDefined(result, "domains", config.domains);
   setDefined(result, "api-headers", config.apiHeaders);
@@ -1310,6 +1312,9 @@ function parseManifestSource(
     name: data.name,
     displayName: data["display-name"],
     description: data.description,
+    ...(data["review-context"]
+      ? { reviewContext: data["review-context"] }
+      : undefined),
     configKeys,
     ...(domains ? { domains } : undefined),
     ...(apiHeaders ? { apiHeaders } : undefined),

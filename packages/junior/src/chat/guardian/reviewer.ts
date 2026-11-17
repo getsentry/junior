@@ -3,9 +3,10 @@ import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import type { completeObject } from "@/chat/core-model";
 import {
-  GUARDIAN_ACTION_POLICY,
   GUARDIAN_BLOCK_RULES,
   GUARDIAN_RULE_IDS,
+  guardianSystemPrompt,
+  type GuardianDestinationFact,
 } from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
@@ -165,7 +166,10 @@ export function guardianDecision(
 export function createGuardianActionReviewer(options: {
   modelId: string;
   completeObject: CompleteObject;
+  /** Install-configured plugin facts about where writes go. */
+  destinationFacts?: readonly GuardianDestinationFact[];
 }): ToolActionReviewer {
+  const system = guardianSystemPrompt(options.destinationFacts);
   return {
     async review(proposal, reviewOptions) {
       const timeoutSignal = AbortSignal.timeout(GUARDIAN_REVIEW_TIMEOUT_MS);
@@ -176,7 +180,7 @@ export function createGuardianActionReviewer(options: {
         options.completeObject({
           modelId: options.modelId,
           schema: guardianAssessmentSchema,
-          system: GUARDIAN_ACTION_POLICY,
+          system,
           prompt: guardianPrompt(proposal),
           maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
           operation: "guardian_action_review",

@@ -160,6 +160,7 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "name", manifest.name);
   setDefined(result, "display-name", manifest.displayName);
   setDefined(result, "description", manifest.description);
+  setDefined(result, "review-context", manifest.reviewContext);
   setDefined(
     result,
     "config-keys",
