@@ -102,9 +102,6 @@ data, does not run.
   to its reviewed tool, as GitHub does for issue and pull request text.
   Other writes, such as a git push to a work branch, run with no review.
   This breaks "a block holds for the outcome, not for the tool".
-- `createPreview` skips review, so a Sandbox server gets a public URL that
-  Guardian never sees. This breaks "a public URL for a Sandbox server always
-  goes through Guardian review". getsentry/junior#3601 makes it reviewed.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".
