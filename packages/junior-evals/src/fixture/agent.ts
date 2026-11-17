@@ -273,6 +273,7 @@ export async function createFixtureAgent(
   const close = async (): Promise<void> => {
     queue.close();
     while (queue.pending().length > 0 || background.size > 0) {
+      // oxlint-disable-next-line no-await-in-loop -- Settled work can start more work, so check again until none is left.
       await Promise.allSettled([...queue.pending(), ...background]);
     }
     if (!closed) {
@@ -326,6 +327,7 @@ export async function createFixtureAgent(
       const pending = [...queue.pending(), ...background];
       if (pending.length === 0) {
         // Let work that a finished delivery started reach the queue.
+        // oxlint-disable-next-line no-await-in-loop -- Wait for idle: each round checks the work that the round before started.
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (queue.pending().length === 0 && background.size === 0) break;
         continue;
@@ -339,6 +341,7 @@ export async function createFixtureAgent(
         );
       }
       let timer: ReturnType<typeof setTimeout> | undefined;
+      // oxlint-disable-next-line no-await-in-loop -- Wait for idle: each round checks the work that the round before started.
       await Promise.race([
         Promise.allSettled(pending),
         new Promise((resolve) => {
@@ -825,6 +828,7 @@ export async function createFixtureAgent(
         // Inputs in one call arrive before the worker runs, as one batch.
         if (inputs.length > 1) queue.hold();
         try {
+          // oxlint-disable-next-line no-await-in-loop -- Inputs of one call arrive in order.
           for (const next of inputs) await sendInput(record, next);
         } finally {
           queue.release();

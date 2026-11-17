@@ -351,6 +351,7 @@ async function streamSessionReplay(args: {
   const messages = await args.conversations.readMessages(args.sessionId);
   for (const message of messages) {
     if (args.signal.aborted) return false;
+    // oxlint-disable-next-line no-await-in-loop -- Stream messages in order.
     const emitted = await args.emit({
       jsonrpc: "2.0",
       method: acp.methods.client.session.update,
@@ -396,6 +397,7 @@ async function queueReceipt(args: {
     for (const [index, output] of receipt.outputs.entries()) {
       const id = ids[index];
       if (!id || prepared.retainedIds.has(id)) continue;
+      // oxlint-disable-next-line no-await-in-loop -- Append outputs in stream order.
       await appendStreamOutputWithLock({
         existingIds: prepared.existingIds,
         id,
@@ -592,6 +594,7 @@ async function streamPrompt(args: {
   let cursor = args.output.afterSeq;
   const sentMessageIds = new Set<string>();
 
+  /* oxlint-disable no-await-in-loop -- Poll the Turn, then stream its messages in order. */
   while (!args.signal.aborted) {
     if (!(await connectionIsLive(args.state, args.connectionId))) return false;
     const page = await args.conversations.readTurn({
@@ -646,6 +649,7 @@ async function streamPrompt(args: {
       );
     }
   }
+  /* oxlint-enable no-await-in-loop */
   return false;
 }
 
@@ -803,6 +807,7 @@ function createSseBody(args: {
 
       const emit: EmitAcpMessage = async (message) => {
         while (!abort.signal.aborted && (controller.desiredSize ?? 0) <= 0) {
+          // oxlint-disable-next-line no-await-in-loop -- Wait until the stream has room for the next message.
           await sleep(EVENT_POLL_INTERVAL_MS, abort.signal);
         }
         if (
@@ -819,6 +824,7 @@ function createSseBody(args: {
 
       const pump = async (): Promise<void> => {
         let cursor = await readStreamCursor(args.state, args.route);
+        /* oxlint-disable no-await-in-loop -- Pump stream items in order, one at a time. */
         while (!abort.signal.aborted) {
           if (!(await connectionIsLive(args.state, args.route.connectionId))) {
             return;
@@ -880,6 +886,7 @@ function createSseBody(args: {
             if (!delivered || abort.signal.aborted) return;
           }
         }
+        /* oxlint-enable no-await-in-loop */
       };
 
       void pump()

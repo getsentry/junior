@@ -493,6 +493,7 @@ async function startQueueWorker(
         // A job can end before the work it started with `waitUntil`, such
         // as title work. Let that work finish before its connections close.
         while (backgroundWork.size > 0) {
+          // oxlint-disable-next-line no-await-in-loop -- Work that finishes can start more work, so check again until none is left.
           await Promise.allSettled(backgroundWork);
         }
         try {
