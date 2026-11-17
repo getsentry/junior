@@ -18,7 +18,12 @@
       "entry": ["nitro.config.ts", "server.ts", "plugins.ts", "scripts/*.mjs"],
     },
     "packages/junior": {
-      "entry": ["scripts/*.{mjs,ts}", "tests/**/*.types.ts"],
+      "entry": [
+        "scripts/*.{mjs,ts}",
+        "tests/**/*.types.ts",
+        // vitest.config.ts preloads it with `--import`.
+        "tests/fixtures/pg-tracing-hook.ts",
+      ],
     },
     "packages/junior-evals": {
       "entry": [

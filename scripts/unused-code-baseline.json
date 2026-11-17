@@ -152,7 +152,6 @@
     "packages/junior/src/chat/automations/edit-schema.ts: automationEditFieldsSchema",
     "packages/junior/src/chat/automations/execution-stats.ts: AUTOMATION_EXECUTION_STATUSES",
     "packages/junior/src/chat/automations/execution-stats.ts: AUTOMATION_EXECUTION_TYPES",
-    "packages/junior/src/chat/briefs/registration.ts: isBriefsEnabled",
     "packages/junior/src/chat/briefs/task.ts: updateConversationBrief",
     "packages/junior/src/chat/cache-warming/definitions.ts: definitionsFingerprint",
     "packages/junior/src/chat/cache-warming/request.ts: supportsWarming",
