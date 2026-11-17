@@ -41,6 +41,7 @@ import { buildConversationMarkdown } from "../../markdownExport";
 import {
   CONVERSATION_ASK_PARAM,
   CONVERSATION_EVENT_PARAM,
+  CONVERSATION_MESSAGE_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
@@ -134,6 +135,7 @@ import {
 import { TranscriptLoading } from "../../conversations/TranscriptLoading";
 import { recordTranscriptShown } from "../../sentry";
 import {
+  readConversationLink,
   unheldLinkStart,
   useHistoryAround,
   type ConversationLink,
@@ -179,6 +181,8 @@ export function ConversationPage(props: {
   // A linked Turn opens the event that started it. Until that event is
   // found, it acts like a linked event that is still loading.
   const linkedTurnId = searchParams.get(CONVERSATION_TURN_PARAM) ?? undefined;
+  const linkedMessageId =
+    searchParams.get(CONVERSATION_MESSAGE_PARAM) ?? undefined;
   const eventOpen =
     selectedEventSeq !== undefined || linkedTurnId !== undefined;
   // Event details and turn context show over Conversation details. Closing
@@ -280,7 +284,7 @@ export function ConversationPage(props: {
   // A link at open shows its row, so the transcript does not open at the
   // latest message or the read position, unless the link fails first.
   const [startAtLink, setStartAtLink] = useState(
-    () => selectedEventSeq !== undefined || linkedTurnId !== undefined,
+    () => readConversationLink(searchParams) !== undefined,
   );
   const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
@@ -293,13 +297,10 @@ export function ConversationPage(props: {
   // A linked row that the transcript does not hold. The transcript opens at
   // the page around it until the reader jumps to the latest. A link at open
   // starts there, so the first render reads no other page.
-  const [linkStart, setLinkStart] = useState(() =>
-    linkedTurnId !== undefined
-      ? unheldLinkStart(detail.data?.events, { turn: linkedTurnId })
-      : selectedEventSeq === undefined
-        ? undefined
-        : unheldLinkStart(detail.data?.events, { event: selectedEventSeq }),
-  );
+  const [linkStart, setLinkStart] = useState(() => {
+    const link = readConversationLink(searchParams);
+    return link && unheldLinkStart(detail.data?.events, link);
+  });
   const showLatestPage = useCallback(() => {
     setShowLatest(true);
     setLinkStart(undefined);
@@ -349,6 +350,7 @@ export function ConversationPage(props: {
       (current) => {
         const next = new URLSearchParams(current);
         next.delete(CONVERSATION_EVENT_PARAM);
+        next.delete(CONVERSATION_MESSAGE_PARAM);
         next.delete(CONVERSATION_TURN_PARAM);
         return next;
       },
@@ -560,8 +562,10 @@ export function ConversationPage(props: {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
       openLink({ event: selectedEventSeq });
+    } else if (linkedMessageId !== undefined) {
+      openLink({ message: linkedMessageId });
     }
-  }, [linkedTurnId, selectedEventSeq]);
+  }, [linkedMessageId, linkedTurnId, selectedEventSeq]);
   // Replace a found Turn link with a link to its first event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
@@ -887,6 +891,7 @@ export function ConversationPage(props: {
                         pinRequestVersion={pinRequestVersion}
                         onShowQuestion={showQuestion}
                         revealAsk={askReveal}
+                        linkedMessageId={linkedMessageId}
                         revealSeq={revealSeq}
                         responding={
                           !detail.error &&

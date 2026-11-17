@@ -35,7 +35,14 @@ import {
   buildUnreadConversationTranscript,
   conversationHistoryVersion,
 } from "./transcript";
-import { turnStartedEventSeq } from "./conversationRoutes";
+import {
+  CONVERSATION_EVENT_PARAM,
+  CONVERSATION_MESSAGE_PARAM,
+  CONVERSATION_TURN_PARAM,
+  messageEventSeq,
+  parseConversationEventSeq,
+  turnStartedEventSeq,
+} from "./conversationRoutes";
 
 /** The transcript to show and how to load more of it. */
 export type TranscriptHistory = {
@@ -58,11 +65,12 @@ export type TranscriptHistory = {
 
 /**
  * The row that the transcript opens at: the `unreadCursor` of the read
- * position, or a linked event seq or Turn id.
+ * position, or a linked event seq, Turn id, or Message id.
  */
 export type HistoryStart =
   | { around: string }
   | { event: string }
+  | { message: string }
   | { turn: string };
 
 /**
@@ -256,8 +264,23 @@ function readConversationEventsFrom(
   });
 }
 
-/** A linked event seq or Turn id. */
-export type ConversationLink = { event: number } | { turn: string };
+/** A linked event seq, Turn id, or Message id. */
+export type ConversationLink =
+  | { event: number }
+  | { message: string }
+  | { turn: string };
+
+/** Read the link of a page URL. A Turn wins over an event, then a Message. */
+export function readConversationLink(
+  params: URLSearchParams,
+): ConversationLink | undefined {
+  const turn = params.get(CONVERSATION_TURN_PARAM);
+  if (turn) return { turn };
+  const event = parseConversationEventSeq(params.get(CONVERSATION_EVENT_PARAM));
+  if (event !== undefined) return { event };
+  const message = params.get(CONVERSATION_MESSAGE_PARAM);
+  return message ? { message } : undefined;
+}
 
 /** The page to open for a link, or nothing when `events` hold its row. */
 export function unheldLinkStart(
@@ -265,12 +288,16 @@ export function unheldLinkStart(
   link: ConversationLink,
 ): HistoryStart | undefined {
   const seq =
-    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
+    "event" in link
+      ? link.event
+      : "message" in link
+        ? messageEventSeq(events, link.message)
+        : turnStartedEventSeq(events, link.turn);
   const held =
     seq !== undefined &&
     events !== undefined &&
     seq >= (events[0]?.seq ?? Infinity) &&
     seq <= (events.at(-1)?.seq ?? -Infinity);
   if (held) return undefined;
-  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
+  return "event" in link ? { event: String(link.event) } : link;
 }
