@@ -577,7 +577,8 @@ export function report(dir: string) {
     "lore and hybrid use BM25 only. Lore also ranks with embeddings, so they are a lower bound for Lore.",
   );
   for (const name of scoredArms.filter(
-    (arm) => arm.startsWith("distill-") || arm === "lore" || arm === "hybrid",
+    (arm) =>
+      arm.startsWith("distill-") || arm.startsWith("lore") || arm === "hybrid",
   )) {
     const cost = costSummary(points, arms[name]!, recorded);
     const verdict = worthIt({
@@ -587,8 +588,17 @@ export function report(dir: string) {
       extraUsd: -cost.savingsUsd,
       recordedSummaryUsd: recordedUsd,
     });
+    const byTotal = worthIt({
+      results,
+      arm: name,
+      rerunSpread: spread,
+      extraUsd: -cost.savingsUsd,
+      recordedSummaryUsd: recordedUsd,
+      totalCostDeltaUsd: totalCost(points, arms[name]!, recorded).deltaUsd,
+    });
     lines.push(
-      `${name}: ${verdict.pass ? "WORTH IT" : "NOT WORTH IT"} ${JSON.stringify(verdict.checks)}`,
+      `${name}: ${verdict.pass ? "WORTH IT" : "NOT WORTH IT"} (summary-spend bar) ${JSON.stringify(verdict.checks)}`,
+      `${name}: ${byTotal.pass ? "WORTH IT" : "NOT WORTH IT"} (total-cost bar) cost check ${JSON.stringify(byTotal.checks["total cost <= today"])}`,
     );
   }
   writeFileSync(file(dir, "report.md"), lines.join("\n"));

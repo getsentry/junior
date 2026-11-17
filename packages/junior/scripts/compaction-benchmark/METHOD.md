@@ -121,8 +121,11 @@ already saw the whole history), the Luna chain, and the experiment 2 arms.
 `summary-removed` runs today's `SUMMARY_INSTRUCTION` over the removed
 history alone, at points 0, 4, 9, 14 and 19 only.
 
-Tier 1 is mined again per tail. Tier 2 keeps the approved items whose every
-source is in the removed history at that tail.
+Tier 1 is mined again per tail. Tier 2 keeps the approved items whose
+source is in the removed history at that tail. The miner read only
+production's removed history, which a smaller tail only grows, so an item
+without cited seqs qualifies; an item that cites seqs qualifies when every
+cited seq is before the kept tail.
 
 Experiment 2 reshapes the Luna distiller, consolidation and curator prompts
 to the summary's sections. Constraints and preferences stay pinned.

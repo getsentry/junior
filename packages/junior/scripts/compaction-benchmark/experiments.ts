@@ -157,7 +157,12 @@ export async function sectioned(ctx: StageContext) {
   return { chain, pool, arms };
 }
 
-/** Tier 2 items whose every source is in the removed history at this tail. */
+/**
+ * Tier 2 items whose source is in the removed history at this tail. The
+ * miner read only production's removed history, which a smaller tail only
+ * grows, so an item without cited seqs qualifies. An item that cites seqs
+ * qualifies only when every cited seq is before the kept tail.
+ */
 function itemsAtTail(
   items: readonly Tier2Item[],
   shrunk: readonly CompactionPoint[],
@@ -165,9 +170,7 @@ function itemsAtTail(
   return items.filter((item) => {
     const point = shrunk[item.point]!;
     const cut = point.tail[0]?.seq ?? point.seq;
-    return (
-      item.sourceSeqs.length > 0 && item.sourceSeqs.every((seq) => seq < cut)
-    );
+    return item.sourceSeqs.every((seq) => seq < cut);
   });
 }
 
