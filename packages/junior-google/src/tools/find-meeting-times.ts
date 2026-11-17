@@ -647,12 +647,12 @@ export const findMeetingTimesTool = definePluginTool({
     const checked: Array<{ email: string; time_zone?: string }> = [];
     const unavailable: Array<{ email: string; reason: string }> = [];
     const slotAttendees: SlotAttendee[] = [];
-    everyone.forEach((email, index) => {
+    for (const [index, email] of everyone.entries()) {
       const calendar = calendars[email];
       const error = calendar?.errors?.[0]?.reason;
       if (!calendar || error) {
         unavailable.push({ email, reason: error ?? "notFound" });
-        return;
+        continue;
       }
       const calendarZone = timeZones[index];
       checked.push({
@@ -668,7 +668,7 @@ export const findMeetingTimesTool = definePluginTool({
         required: required.has(email),
         timeZone: calendarZone ?? timeZone,
       });
-    });
+    }
 
     const slots = !slotAttendees.some((attendee) => attendee.required)
       ? []

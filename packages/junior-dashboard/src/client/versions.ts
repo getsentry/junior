@@ -10,6 +10,7 @@ import {
 import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
 import { REVIEW_ITEMS_QUERY_KEY } from "./review-desk/queries";
+import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
 
@@ -79,13 +80,15 @@ function refreshChangedReads(
   );
   // Waiting Conversations outside the newest page join the feed.
   if (moved("conversations") || moved("reviewItems")) {
-    void client.invalidateQueries({ queryKey: ["dashboard", "conversations"] });
+    void invalidateConversationFeeds(client);
   }
   if (moved("reviewItems")) {
+    // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The token does not say which item moved, and each row reads its own item.
     void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
   }
   if (moved("spend")) {
     void client.invalidateQueries({
+      exact: true,
       queryKey: ["dashboard", "personal-spend"],
     });
   }

@@ -1,4 +1,4 @@
-import type { InfiniteData } from "@tanstack/react-query";
+import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import type {
   ConversationFeed,
   ConversationFeedItem,
@@ -71,4 +71,18 @@ export function mapConversationFeedCache(
       conversations: map(page.conversations, index === 0),
     })),
   };
+}
+
+/**
+ * Refresh every cached Conversation feed after a change that can add, move,
+ * or remove a feed row. The client cannot tell which feeds list the row, so
+ * the change refreshes the feed family. Only mounted feeds refetch. Prefer an
+ * optimistic `setQueriesData` patch and the versions poll when the change is
+ * known in full.
+ */
+export function invalidateConversationFeeds(queryClient: QueryClient) {
+  // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- Any feed can list the changed row.
+  return queryClient.invalidateQueries({
+    queryKey: ["dashboard", "conversations"],
+  });
 }

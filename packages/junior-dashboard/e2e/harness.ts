@@ -107,9 +107,9 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
 
 async function writeResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     res.setHeader(name, value);
-  });
+  }
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 

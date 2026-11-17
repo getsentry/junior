@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { createHash } from "node:crypto";
 import {
   objectAnnotationSchema,
@@ -37,6 +38,9 @@ import {
   SLACK_MESSAGE_LINK_FILTER,
 } from "./slack-message";
 import { webPageLinkType } from "./web-page/resolve";
+
+// Object links that one read resolves at once.
+const OBJECT_LINK_CONCURRENCY = 8;
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
@@ -216,32 +220,35 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
+  const limit = pLimit(OBJECT_LINK_CONCURRENCY);
   const results = await Promise.all(
-    [...new Set(urls)].map(async (url) => {
-      const parsed = URL.canParse(url) ? new URL(url) : undefined;
-      const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-      if (!parsed || !linkType) return [];
-      // Each viewer has their own entry: a card holds only what they see.
-      const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-      const resolve = async () =>
-        (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
-      try {
-        const object =
-          linkType.cacheCards === false
-            ? await resolve()
-            : await cache.getOrLoad(key, async () => ({
-                value: await resolve(),
-                ttlMs: OBJECT_LINK_TTL_MS,
-              }));
-        return object ? [{ object, url }] : [];
-      } catch (error) {
-        // One failed provider read must not hide the other cards.
-        logException(error, "object_link.resolve.failed", {
-          "app.plugin.name": linkType.owner,
-        });
-        return [];
-      }
-    }),
+    [...new Set(urls)].map((url) =>
+      limit(async () => {
+        const parsed = URL.canParse(url) ? new URL(url) : undefined;
+        const linkType = parsed && findObjectLinkType(linkTypes, parsed);
+        if (!parsed || !linkType) return [];
+        // Each viewer has their own entry: a card holds only what they see.
+        const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+        const resolve = async () =>
+          (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
+        try {
+          const object =
+            linkType.cacheCards === false
+              ? await resolve()
+              : await cache.getOrLoad(key, async () => ({
+                  value: await resolve(),
+                  ttlMs: OBJECT_LINK_TTL_MS,
+                }));
+          return object ? [{ object, url }] : [];
+        } catch (error) {
+          // One failed provider read must not hide the other cards.
+          logException(error, "object_link.resolve.failed", {
+            "app.plugin.name": linkType.owner,
+          });
+          return [];
+        }
+      }),
+    ),
   );
   return results.flat();
 }

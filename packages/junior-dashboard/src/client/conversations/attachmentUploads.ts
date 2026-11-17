@@ -23,6 +23,7 @@ async function uploadMessageFiles(
 ): Promise<string[] | undefined> {
   if (!files?.length) return undefined;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- The composer allows at most MAX_INPUT_ATTACHMENTS files.
     files.map(async (file) => {
       const { target, uploadId } = await post(
         attachmentUploadSchema,

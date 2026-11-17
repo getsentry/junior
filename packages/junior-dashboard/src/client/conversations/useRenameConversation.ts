@@ -60,20 +60,19 @@ export function useRenameConversation(
       return previous;
     },
     onError: (_error, _title, previous) => {
-      previous?.feeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of previous?.feeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       queryClient.setQueryData(detailQueryKey, previous?.detail);
       options?.onError?.();
     },
+    // The answer's title is in every feed, so no feed refetches. The
+    // versions poll refreshes the feeds if another change moved them.
     onSuccess: (result) => setTitle(result.title),
     onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries(feeds),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: detailQueryKey,
-        }),
-      ]),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: detailQueryKey,
+      }),
   });
 }

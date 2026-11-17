@@ -34,6 +34,7 @@ export async function readStoredComposerFiles(
   attachments: readonly MessageAttachment[] | undefined,
 ): Promise<File[]> {
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- A Message has at most MAX_INPUT_ATTACHMENTS files.
     (attachments ?? []).map(async (attachment) => {
       const response = await fetch(
         conversationAttachmentUrl(conversationId, attachment.id),
