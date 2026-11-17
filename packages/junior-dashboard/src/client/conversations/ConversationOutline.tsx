@@ -274,8 +274,12 @@ function useOutlineSeqsInView(
     };
     schedule();
     scroll.addEventListener("scroll", schedule, { passive: true });
+    // A resize moves rows in and out of view without a scroll.
+    const observer = new ResizeObserver(schedule);
+    observer.observe(scroll);
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       scroll.removeEventListener("scroll", schedule);
     };
   }, [scrollRef, update]);

@@ -187,6 +187,12 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
   const scrub = (event: PointerEvent<HTMLOListElement>) => {
     const drag = dragRef.current;
     if (!onScrub || drag?.pointerId !== event.pointerId) return;
+    // A release outside the list before the drag starts sends no
+    // `pointerup` here, so a move without the button ends the press.
+    if ((event.buttons & 1) === 0) {
+      dragRef.current = undefined;
+      return;
+    }
     const list = event.currentTarget;
     if (!drag.dragging) {
       if (Math.abs(event.clientY - drag.startY) < DRAG_START_PX) return;

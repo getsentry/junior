@@ -455,6 +455,24 @@ test("scrolls with the outline instead of the scrollbar", async ({
   await expect(row(transcript, startSeq - 100)).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
 
+  // A press released off the list ends there, so a later hover does not
+  // move the transcript.
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 300, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await outline
+    .getByRole("button", { name: `Transcript message ${startSeq - 60} with` })
+    .hover();
+  await expect(target).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, startSeq - 100)).toBeInViewport();
+
+  // A shorter transcript shows fewer items, and the thumb follows.
+  const inView = await thumb.count();
+  await page.setViewportSize({ height: 600, width: 1920 });
+  await expect.poll(() => thumb.count()).toBeLessThan(inView);
+
   // Where the outline hides, the scrollbar comes back.
   await page.setViewportSize({ height: 900, width: 700 });
   await expect(outline).toBeHidden();
