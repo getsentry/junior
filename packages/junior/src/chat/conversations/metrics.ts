@@ -14,6 +14,7 @@ import type { ConversationRunMetrics } from "./store";
 import { nextDetailVersion } from "./sql/detail-version";
 import { costMicroUsdExpr } from "@/chat/automations/run-cost";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { microUsdToUsd, microUsdToUsdSql, usdToMicroUsd } from "@/db/micro-usd";
 
 function finite(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value >= 0
@@ -27,6 +28,7 @@ export function conversationMetricValues(args: {
   usage?: AgentTurnUsage | undefined;
 }): Partial<Record<ConversationMetric, number>> {
   const usage = args.usage;
+  const costUsd = agentTurnCostUsd(usage);
   return {
     duration_ms: Math.max(0, args.durationMs),
     total_tokens: agentTurnTotalTokens(usage),
@@ -35,7 +37,7 @@ export function conversationMetricValues(args: {
     cached_input_tokens: finite(usage?.cachedInputTokens),
     cache_creation_tokens: finite(usage?.cacheCreationTokens),
     reasoning_tokens: finite(usage?.reasoningTokens),
-    cost_usd: agentTurnCostUsd(usage),
+    cost_micro_usd: costUsd === undefined ? undefined : usdToMicroUsd(costUsd),
   };
 }
 
@@ -73,14 +75,17 @@ export async function readConversationRunMetrics(
   const hasComponents = Object.values(components).some(
     (value) => value !== undefined,
   );
-  const costUsd = values.get("cost_usd");
+  const costMicroUsd = values.get("cost_micro_usd");
   const usage = Object.fromEntries(
     Object.entries({
       ...components,
       reasoningTokens: values.get("reasoning_tokens"),
       // `total_tokens` repeats the component sum when components exist.
       totalTokens: hasComponents ? undefined : values.get("total_tokens"),
-      cost: costUsd === undefined ? undefined : { total: costUsd },
+      cost:
+        costMicroUsd === undefined
+          ? undefined
+          : { total: microUsdToUsd(costMicroUsd) },
     }).filter(([, value]) => value !== undefined),
   ) as AgentTurnUsage;
   return {
@@ -167,8 +172,9 @@ export async function replaceConversationMetrics(
       or ${metric("cached_input_tokens")} is not null
       or ${metric("cache_creation_tokens")} is not null
   `;
-  const cost = sql`case when ${metric("cost_usd")} is null then null
-    else jsonb_build_object('total', ${metric("cost_usd")}) end`;
+  // Usage JSON keeps the provider's USD shape.
+  const cost = sql`case when ${metric("cost_micro_usd")} is null then null
+    else jsonb_build_object('total', ${microUsdToUsdSql(metric("cost_micro_usd"))}) end`;
   const db = executor.db();
   // The usage update and the copy of its cost to the Conversation's run are
   // one statement, so they commit together. RETURNING gives the new usage; the

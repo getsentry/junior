@@ -14,7 +14,8 @@ import {
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
-import { conversationCostOf, microUsdToUsd } from "./run-cost";
+import { conversationCostOf } from "./run-cost";
+import { microUsdToUsd } from "@/db/micro-usd";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   automationTaskDescription,
@@ -51,10 +52,6 @@ function isExecution(): SQL {
 
 export type AutomationExecutionType =
   (typeof AUTOMATION_EXECUTION_TYPES)[number];
-
-function addUsd(current: number, next: number): number {
-  return Math.round((current + next) * 1e12) / 1e12;
-}
 
 export type AutomationRunWindows = {
   1: number;
@@ -613,16 +610,7 @@ export async function readAutomationExecutionStatusDays(args: {
     const date = utcDate(startMs + offset * 86_400_000);
     byDate.set(date, emptyStatusDay(date));
   }
-  for (const row of rows) {
-    const day = byDate.get(row.date);
-    if (!day) continue;
-    if (row.status === "completed") day.completed = row.count;
-    else if (row.status === "failed") day.failed = row.count;
-    else if (row.status === "blocked") day.blocked = row.count;
-    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
-      day.costUsd = addUsd(day.costUsd, microUsdToUsd(row.costMicroUsd));
-    }
-  }
+  applyExecutionStatusBuckets(byDate, rows);
   return [...byDate.values()];
 }
 
@@ -653,17 +641,33 @@ export async function readAutomationExecutionStatusHours(args: {
       .slice(0, 13);
     byHour.set(date, emptyStatusDay(date));
   }
-  for (const row of rows) {
-    const hour = byHour.get(row.date);
-    if (!hour) continue;
-    if (row.status === "completed") hour.completed = row.count;
-    else if (row.status === "failed") hour.failed = row.count;
-    else if (row.status === "blocked") hour.blocked = row.count;
-    if (row.costMicroUsd !== null && row.costMicroUsd > 0) {
-      hour.costUsd = addUsd(hour.costUsd, microUsdToUsd(row.costMicroUsd));
-    }
-  }
+  applyExecutionStatusBuckets(byHour, rows);
   return [...byHour.values()];
+}
+
+/**
+ * Add status counts and cost to their buckets. Cost sums in micro-USD, so a
+ * bucket's USD comes from one exact integer.
+ */
+function applyExecutionStatusBuckets(
+  buckets: Map<string, AutomationExecutionStatusDay>,
+  rows: Awaited<ReturnType<typeof readExecutionStatusBuckets>>,
+): void {
+  const costMicroUsd = new Map<AutomationExecutionStatusDay, number>();
+  for (const row of rows) {
+    const bucket = buckets.get(row.date);
+    if (!bucket) continue;
+    if (row.status === "completed") bucket.completed = row.count;
+    else if (row.status === "failed") bucket.failed = row.count;
+    else if (row.status === "blocked") bucket.blocked = row.count;
+    costMicroUsd.set(
+      bucket,
+      (costMicroUsd.get(bucket) ?? 0) + (row.costMicroUsd ?? 0),
+    );
+  }
+  for (const [bucket, microUsd] of costMicroUsd) {
+    bucket.costUsd = microUsdToUsd(microUsd);
+  }
 }
 
 /** Count one automation's executions and their cost per time bucket and status. */
