@@ -12,7 +12,11 @@ function initial(name: string): string {
 }
 
 // A photo that fails to load shows the initial, so every person has a mark.
-function PersonPhoto(props: { className: string; person: Person }) {
+function PersonPhoto(props: {
+  className: string;
+  initialClassName?: string;
+  person: Person;
+}) {
   const [failed, setFailed] = useState(false);
   if (props.person.avatarUrl && !failed) {
     return (
@@ -34,7 +38,9 @@ function PersonPhoto(props: { className: string; person: Person }) {
         props.className,
       )}
     >
-      {initial(props.person.name)}
+      <span className={props.initialClassName}>
+        {initial(props.person.name)}
+      </span>
     </span>
   );
 }
@@ -66,7 +72,8 @@ export function PersonInline(props: {
     >
       {props.avatar === false ? null : (
         <PersonPhoto
-          className="mr-1 inline-grid size-[1em] align-[-0.125em] text-[0.6em]"
+          className="mr-1 inline-grid size-[1em] align-[-0.125em]"
+          initialClassName="text-[0.6em]"
           person={props.person}
         />
       )}
