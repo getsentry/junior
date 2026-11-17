@@ -275,17 +275,19 @@ async function syncOne(
     // item that a person closed does not come back until the action
     // changes. When the action cannot be known yet, a later event decides.
     const changed = next !== undefined && next.action !== previous;
+    if (changed) {
+      await showAction(items, {
+        action: next.action,
+        dedupeKey,
+        identityId: opener.identityId,
+        number: target.number,
+        previous,
+        state,
+      });
+    }
+    // Close the old items only after the new one shows, so a failed show
+    // does not leave the desk with no next-action item.
     await Promise.all([
-      changed
-        ? showAction(items, {
-            action: next.action,
-            dedupeKey,
-            identityId: opener.identityId,
-            number: target.number,
-            previous,
-            state,
-          })
-        : undefined,
       closeLegacyItems(items, name),
       // The same read closes the merge conflict notice from
       // `merge-conflict-checks/policy.ts` when the conflict is gone.
