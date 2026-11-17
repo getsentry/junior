@@ -68,8 +68,9 @@ function parseSender(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const angle = value.match(/^(.*)<([^<>]+)>\s*$/s);
   const rawName = angle?.[1] ?? "";
-  // A second mailbox outside a quoted display name means a list.
-  if (/[<>,;]/.test(rawName.replace(/"(?:[^"\\]|\\.)*"/g, ""))) {
+  // A second mailbox or a group outside a quoted display name means a list.
+  // A comma alone does not: mail clients send names like `Doe, Alice`.
+  if (/[<>@:;]/.test(rawName.replace(/"(?:[^"\\]|\\.)*"/g, ""))) {
     return undefined;
   }
   const address = emailSchema.safeParse(angle ? angle[2] : value);

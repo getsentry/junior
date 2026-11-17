@@ -231,7 +231,7 @@ describe("Google email requests", () => {
       }),
       unknown: gmailMessage("unknown", { from: "bob@example.com" }),
       twoSenders: gmailMessage("twoSenders", {
-        from: "Alice Doe <alice@example.com>, Mallory <mallory@example.com>",
+        from: "mallory@example.com, Alice Doe <alice@example.com>",
       }),
       autoReply: gmailMessage("autoReply", {
         headers: [
@@ -327,6 +327,7 @@ describe("Google email requests", () => {
     const messages: Record<string, ReturnType<typeof gmailMessage>> = {
       toAccount: gmailMessage("toAccount", {
         cc: "",
+        from: "Doe, Alice <alice@example.com>",
         text: "Please review the hiring plan in the doc.",
         to: ACCOUNT_EMAIL,
       }),
