@@ -54,6 +54,8 @@ export function ComposerMention(props: {
         {person.avatarUrl ? <MentionPhoto src={person.avatarUrl} /> : null}@
         {name}
       </PopoverTrigger>
+      {/* The shared person card replaces this content when it lands, with
+          InviteAction in its actions slot. */}
       <PopoverContent align="start" className="w-64" side="top">
         <div className="flex items-center gap-3">
           <ActorAvatar imageUrl={person.avatarUrl} name={name} size="detail" />

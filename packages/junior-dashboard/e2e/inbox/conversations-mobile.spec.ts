@@ -38,7 +38,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "Investigate checkout latency" }),
     ).toBeVisible();
 
-    const composer = page.getByPlaceholder("Message Junior…");
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
     await composer.focus();
     await page.evaluate(
       ({ height, offsetTop }) => {
@@ -193,7 +193,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     releaseCreate();
     await expect(page).toHaveURL(/\/conversations\/.+/);
     await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
-    const reply = page.getByPlaceholder("Message Junior…");
+    const reply = page.locator('[aria-placeholder="Message Junior…"]');
     await reply.focus();
     await expectFocusedComposerAtVisualViewportBottom(reply, 844);
   });
@@ -423,7 +423,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       )
       .toBeLessThanOrEqual(1);
 
-    const composer = page.getByPlaceholder("Message Junior…");
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
     await composer.focus();

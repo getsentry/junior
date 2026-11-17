@@ -4,9 +4,7 @@ import {
   composerFilesFit,
 } from "./ComposerFiles";
 import {
-  lazy,
   memo,
-  Suspense,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -38,13 +36,18 @@ import {
   type ComposerInviteTarget,
 } from "./ComposerMention";
 import { splitMentions } from "./composerMentionToken";
+import type ComposerEditor from "./composer-editor/ComposerEditor";
 import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 import { getDashboardAgentName } from "../agentName";
 
-// Lexical is large. A textarea stands in while it loads.
-const ComposerEditor = lazy(() => import("./composer-editor/ComposerEditor"));
 const DRAFT_MAX_LENGTH = 32_000;
+
+// Lexical is large, so the editor is not in the first page load. Start to
+// load it at once, so a reader who goes offline later still has it.
+const loadComposerEditor = () =>
+  import("./composer-editor/ComposerEditor").catch(() => undefined);
+const composerEditorLoad = loadComposerEditor();
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -189,6 +192,9 @@ export const ConversationComposer = memo(function ConversationComposer(
     touchKeyboardMatches,
     () => false,
   );
+  // A textarea stands in until the editor loads, and when it cannot load.
+  const [Editor, setEditor] = useState<typeof ComposerEditor>();
+  const editorLoadFailedRef = useRef(false);
   const editorRef = useRef<ComposerEditorHandle>(null);
   const editorElementRef = useRef<HTMLDivElement>(null);
   // Takes text while the editor loads.
@@ -223,6 +229,23 @@ export const ConversationComposer = memo(function ConversationComposer(
       storeDraft(storageKey, draftRef.current);
     };
   }, [storageKey]);
+
+  // A load that failed offline tries again when the dashboard is online.
+  useEffect(() => {
+    if (Editor || !online) return;
+    let current = true;
+    const load = editorLoadFailedRef.current
+      ? loadComposerEditor()
+      : composerEditorLoad;
+    void load.then((module) => {
+      if (!current) return;
+      if (module) setEditor(() => module.default);
+      else editorLoadFailedRef.current = true;
+    });
+    return () => {
+      current = false;
+    };
+  }, [Editor, online]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -567,8 +590,8 @@ export const ConversationComposer = memo(function ConversationComposer(
           type="file"
         />
         <ComposerInviteContext.Provider value={props.invite}>
-          <Suspense fallback={standIn}>
-            <ComposerEditor
+          {Editor ? (
+            <Editor
               autocorrect={autocorrect}
               className={fieldClass}
               editable={!holdPending}
@@ -594,7 +617,9 @@ export const ConversationComposer = memo(function ConversationComposer(
                 document.activeElement === standInRef.current
               }
             />
-          </Suspense>
+          ) : (
+            standIn
+          )}
         </ComposerInviteContext.Provider>
         <div
           className={cn(
