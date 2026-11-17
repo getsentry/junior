@@ -35,6 +35,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: mockAutomationCollection(collection, params),
       });
     });
+    // Reads of one Automation page, which only a row hover starts here.
+    const summaryReads: string[] = [];
+    page.on("request", (request) => {
+      const { pathname } = new URL(request.url());
+      if (/^\/api\/automations\/scheduled-1(?:\/executions)?$/.test(pathname))
+        summaryReads.push(pathname);
+    });
     await page.goto(`${dashboard.baseURL}/automations`);
     const main = page.getByRole("main");
     const rows = main.getByRole("link", { name: /^Open automation: / });
@@ -103,5 +110,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("Enter");
     await expect(details).toHaveCount(0);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // A pointer that rests on a row loads its page, so the open reuses it.
+    await rows.first().hover();
+    await expect
+      .poll(() => [...summaryReads].sort())
+      .toEqual([
+        "/api/automations/scheduled-1",
+        "/api/automations/scheduled-1/executions",
+      ]);
+    await rows.first().click();
+    await expect(
+      page.getByRole("heading", { name: "Weekly project summary" }),
+    ).toBeVisible();
+    expect(summaryReads).toHaveLength(2);
   });
 });

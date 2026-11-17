@@ -962,7 +962,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/automations/event-2/executions", (route) =>
       route.fulfill({
         json: {
-          automation: report.automations.find((item) => item.id === "event-2"),
           executions: [],
           executionDays: [],
           truncated: false,
