@@ -12,7 +12,6 @@ import {
 } from "@/chat/slack/ids";
 import { lookupSlackBot, lookupSlackUserProfile } from "@/chat/slack/users";
 import { createCache } from "@/chat/state/cache";
-export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 // Slack Connect admits external authors, but user_team is not guaranteed.
 // Missing user_team must neither grant access nor block local authors.
