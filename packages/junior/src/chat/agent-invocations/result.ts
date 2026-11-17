@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -99,9 +100,6 @@ import {
   enqueueAgentInvocation,
   resolveAgentInvocationId,
 } from "./work";
-
-// Mailbox entries of one batch that load their input at once.
-const BATCH_ENTRY_CONCURRENCY = 8;
 
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
@@ -882,7 +880,7 @@ export async function withAgentInvocationResultActors(
         getConversationStoppedAtMs(conversationId),
       ])
     : [undefined, undefined];
-  const limit = pLimit(BATCH_ENTRY_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const batch = await Promise.all(
     work.batch.map((entry) =>
       limit(async () => {

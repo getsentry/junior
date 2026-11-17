@@ -135,6 +135,7 @@ export async function guardedFetch(
     if (!URL.canParse(current)) return { failure: "invalid_url" };
     const url = new URL(current);
     if (blockedUrl(url, request.hosts)) return { failure: "blocked_address" };
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     const hop = await requestHop(
       url,
       request,

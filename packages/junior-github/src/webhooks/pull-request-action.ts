@@ -20,6 +20,7 @@ import type {
   PluginLogger,
   PluginReviewItems,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
@@ -41,6 +42,9 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+
+// Pull requests that one delivery syncs at once, under GitHub rate limits.
+const PULL_REQUEST_SYNC_CONCURRENCY = 5;
 
 /**
  * A check normally takes a few seconds. After this time, a check that
@@ -78,13 +82,15 @@ async function closeLegacyItems(
   items: PluginReviewItems,
   name: string,
 ): Promise<void> {
-  for (const prefix of LEGACY_DEDUPE_PREFIXES) {
-    await items.close({
-      dedupeKey: `${prefix}${name}`,
-      reason: "One item now shows the next action.",
-      status: "dismissed",
-    });
-  }
+  await Promise.all(
+    LEGACY_DEDUPE_PREFIXES.map((prefix) =>
+      items.close({
+        dedupeKey: `${prefix}${name}`,
+        reason: "One item now shows the next action.",
+        status: "dismissed",
+      }),
+    ),
+  );
 }
 
 const pullRequestWebhookSchema = z.object({
@@ -259,51 +265,60 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
-  while (requests !== undefined) {
-    try {
-      const state = await loadPullRequestMergeState(args.env, target);
-      const next = nextAction(state, requesterLogin, saved);
-      // Act only on a change. So repeat events add no second item, and an
-      // item that a person closed does not come back until the action
-      // changes. When the action cannot be known yet, a later event decides.
-      const changed = next !== undefined && next.action !== saved;
-      if (changed) {
-        await showAction(items, {
-          action: next.action,
-          dedupeKey,
-          identityId: opener.identityId,
-          number: target.number,
-          previous: saved,
-          state,
-        });
-      }
-      await closeLegacyItems(items, name);
+  // One check: read GitHub, change the items, and return the saved action.
+  const check = async (
+    previous: GitHubPullRequestAction | undefined,
+  ): Promise<GitHubPullRequestAction | undefined> => {
+    const state = await loadPullRequestMergeState(args.env, target);
+    const next = nextAction(state, requesterLogin, previous);
+    // Act only on a change. So repeat events add no second item, and an
+    // item that a person closed does not come back until the action
+    // changes. When the action cannot be known yet, a later event decides.
+    const changed = next !== undefined && next.action !== previous;
+    if (changed) {
+      await showAction(items, {
+        action: next.action,
+        dedupeKey,
+        identityId: opener.identityId,
+        number: target.number,
+        previous,
+        state,
+      });
+    }
+    // Close the old items only after the new one shows, so a failed show
+    // does not leave the desk with no next-action item.
+    await Promise.all([
+      closeLegacyItems(items, name),
       // The same read closes the merge conflict notice from
       // `merge-conflict-checks/policy.ts` when the conflict is gone.
-      if (
-        state.state !== "open" ||
-        (state.mergeableState && state.mergeableState !== "dirty")
-      ) {
-        await items.close({
-          dedupeKey: gitHubConflictNoticeKey(target),
-          ...(endedReason(state) ?? {
-            reason: GITHUB_CONFLICT_GONE_REASON,
-            status: "done",
-          }),
-        });
-      }
-      if (changed) {
-        // Save after the items change, so a failure leaves the old action
-        // and the next event tries again.
-        await setGitHubPullRequestNextAction(args.db, {
-          ...target,
-          action: next.action,
-        });
-        saved = next.action;
-      }
+      state.state !== "open" ||
+      (state.mergeableState && state.mergeableState !== "dirty")
+        ? items.close({
+            dedupeKey: gitHubConflictNoticeKey(target),
+            ...(endedReason(state) ?? {
+              reason: GITHUB_CONFLICT_GONE_REASON,
+              status: "done",
+            }),
+          })
+        : undefined,
+    ]);
+    if (!changed) return previous;
+    // Save after the items change, so a failure leaves the old action and
+    // the next event tries again.
+    await setGitHubPullRequestNextAction(args.db, {
+      ...target,
+      action: next.action,
+    });
+    return next.action;
+  };
+  while (requests !== undefined) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Each check reads GitHub again for the requests that came in during the check before.
+      saved = await check(saved);
     } catch (error) {
       failure ??= error;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each check reads GitHub again for the requests that came in during the check before.
     requests = await releaseGitHubPullRequestReadySync(args.db, target, {
       id,
       requests,
@@ -328,15 +343,25 @@ export async function syncGitHubPullRequestActions(args: {
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {
-  for (const target of args.targets) {
-    try {
-      await syncOne(args, target);
-    } catch (error) {
-      logFailOpenFailure(args.log, "GitHub pull request action failed", error, {
-        deliveryId: args.deliveryId,
-        number: target.number,
-        repository: target.repositoryFullName,
-      });
-    }
-  }
+  const limit = pLimit(PULL_REQUEST_SYNC_CONCURRENCY);
+  await Promise.all(
+    args.targets.map((target) =>
+      limit(async () => {
+        try {
+          await syncOne(args, target);
+        } catch (error) {
+          logFailOpenFailure(
+            args.log,
+            "GitHub pull request action failed",
+            error,
+            {
+              deliveryId: args.deliveryId,
+              number: target.number,
+              repository: target.repositoryFullName,
+            },
+          );
+        }
+      }),
+    ),
+  );
 }

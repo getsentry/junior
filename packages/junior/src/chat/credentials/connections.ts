@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { randomBytes } from "node:crypto";
 import type { WebActor } from "@/chat/actor";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
@@ -13,9 +14,6 @@ import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 import { startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
-
-// OAuth plugins whose tokens one listing reads at once.
-const CONNECTION_READ_CONCURRENCY = 8;
 
 /** One plugin account that a user can connect and disconnect. */
 export interface Connection {
@@ -55,7 +53,7 @@ export async function listConnections(
   const plugins = pluginCatalogRuntime
     .getProviders()
     .filter((plugin) => Boolean(plugin.manifest.oauth));
-  const limit = pLimit(CONNECTION_READ_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   return await Promise.all(
     plugins.map((plugin) =>
       limit(async () => {

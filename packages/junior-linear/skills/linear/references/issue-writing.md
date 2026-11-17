@@ -1,6 +1,6 @@
 # Issue Writing
 
-Load when creating a new Linear issue or substantially rewriting one. Cross-type rules (title length, delegated footer, generalization, compression) live in `SKILL.md` § Draft issue content — this file covers classification, title phrasing, and Linear-specific fields only.
+Load when creating a new Linear issue or substantially rewriting one. Cross-type rules (title length, Junior footer, generalization, compression) live in `SKILL.md` § Draft issue content — this file covers classification, title phrasing, and Linear-specific fields only.
 
 ## Classify the work item
 
