@@ -1,4 +1,5 @@
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { mockReviewItems, rollout } from "./inbox-fixture";
 import { desktop, screenshot } from "../screenshot";
@@ -51,6 +52,35 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(snoozes).toHaveCount(0);
     await show.getByRole("button", { name: "Scheduled", exact: true }).click();
     await expect(page).not.toHaveURL(/[?&]action=/);
+  });
+
+  test("Everything with only snoozes shows no empty state", async ({
+    page,
+    dashboard,
+  }) => {
+    await mockLandingAutomationApis(page);
+    await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: mockAutomationCollection(
+          { automations: [] },
+          new URL(route.request().url()).searchParams,
+        ),
+      }),
+    );
+    await mockReviewItems(page, {
+      open: [rollout],
+      snoozes: [
+        {
+          conversationId: rollout.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/automations?action=all`);
+    await expect(page.getByRole("region", { name: "Snoozes" })).toContainText(
+      rollout.title,
+    );
+    await expect(page.getByText(/no automations yet/i)).toHaveCount(0);
   });
 
   test("groups automations into To do, then by latest run, on the landing page", async ({

@@ -244,7 +244,13 @@ export function AutomationsPage(props: { enabled: boolean }) {
             snoozes.length === 0 ? (
               <InboxEmptyState label="Nothing snoozed" />
             ) : null}
-            {list && automations.length === 0 && todo.length === 0 ? (
+            {list &&
+            automations.length === 0 &&
+            todo.length === 0 &&
+            // Everything lists snoozes too, so it is empty only when they are.
+            (!showSnoozes ||
+              snoozesQuery.error ||
+              (snoozesQuery.data && snoozes.length === 0)) ? (
               <InboxEmptyState
                 label={
                   filtered
