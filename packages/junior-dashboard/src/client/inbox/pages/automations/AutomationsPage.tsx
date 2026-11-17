@@ -7,6 +7,10 @@ import {
 import { useAutomationsData } from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
 import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "../../../components/ui/toggle-group";
+import {
   ActiveFilterChips,
   FilterToggle,
 } from "../../components/filters/FilterToolbar";
@@ -36,8 +40,13 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "../../../review-desk/inboxFocus";
+import {
+  useSnoozesData,
+  useWakeSnoozes,
+} from "../../../review-desk/inboxSnoozes";
 import { pathWithSearch } from "../../../searchParams";
 import { AutomationRow } from "./AutomationRow";
+import { SnoozeRow } from "./SnoozeRow";
 
 const EMPTY: AutomationSummary[] = [];
 
@@ -50,11 +59,27 @@ const LANDING_PAGE_SIZE = "100";
 const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 /**
+ * Which Automations the page lists, by action: the ones that run (the
+ * default), the viewer's snoozes, or both. The `action` URL value holds it.
+ */
+const ACTIONS = [
+  { label: "Runs", value: "runs" },
+  { label: "Snoozes", value: "snoozes" },
+  { label: "All", value: "all" },
+] as const;
+
+type ActionFilter = (typeof ACTIONS)[number]["value"];
+
+function actionFilter(value: string | null): ActionFilter {
+  return ACTIONS.find((action) => action.value === value)?.value ?? "runs";
+}
+
+/**
  * Landing page for Automations, in the Inbox's style: To do first, the
  * viewer's Automations that need attention as the Inbox lists them, then
  * what runs, then what is stopped. Each card shows recent runs and the next
  * run, so the page answers "is my work healthy" without opening each
- * Automation.
+ * Automation. The action filter shows the viewer's snoozes instead, or too.
  */
 export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
@@ -80,7 +105,17 @@ export function AutomationsPage(props: { enabled: boolean }) {
       ([key, value]) => [key, String(value)],
     ),
   );
-  const query = useAutomationsData(props.enabled, request.toString());
+  const action = actionFilter(searchParams.get("action"));
+  const showRuns = action !== "snoozes";
+  const showSnoozes = action !== "runs";
+  const query = useAutomationsData(
+    props.enabled && showRuns,
+    request.toString(),
+  );
+  const snoozesQuery = useSnoozesData(props.enabled && showSnoozes);
+  const snoozes = snoozesQuery.data?.snoozes ?? [];
+  const wake = useWakeSnoozes();
+  const [snoozesCollapsed, setSnoozesCollapsed] = useState(false);
   const setFilter = (key: string, value: string) => {
     // Consecutive control events can precede the router's next render.
     const next = new URLSearchParams(window.location.search);
@@ -100,7 +135,9 @@ export function AutomationsPage(props: { enabled: boolean }) {
   const inbox = useInboxData();
   const todo = filtered ? EMPTY : inbox.todoAutomations;
   const automations = query.data?.automations ?? EMPTY;
-  const loading = !query.data && !query.error;
+  const loading = showRuns
+    ? !query.data && !query.error
+    : !snoozesQuery.data && !snoozesQuery.error;
   const scroll = usePaneRowScroll("automations", Boolean(query.data));
   // The Inbox's one pointer driver moves these cards too.
   const [expanded, setExpanded] = useState<string>();
@@ -121,6 +158,20 @@ export function AutomationsPage(props: { enabled: boolean }) {
       <HeaderBar
         actions={
           <>
+            <ToggleGroup
+              aria-label="Show"
+              onValueChange={(values) => {
+                const next = values[0];
+                if (next) setFilter("action", next === "runs" ? "" : next);
+              }}
+              value={[action]}
+            >
+              {ACTIONS.map((option) => (
+                <ToggleGroupItem key={option.value} value={option.value}>
+                  {option.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
             <Link
               className={buttonVariants({ variant: "ghost" })}
               to="/automations/runs"
@@ -159,7 +210,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             {loading ? (
               <PageContentSkeleton label="Loading automations" variant="list" />
             ) : null}
-            {query.error ? (
+            {showRuns && query.error ? (
               <InlineError>
                 Automations could not be loaded.{" "}
                 <Button variant="outline" onClick={() => void query.refetch()}>
@@ -167,7 +218,26 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </Button>
               </InlineError>
             ) : null}
-            {query.data && automations.length === 0 && todo.length === 0 ? (
+            {snoozesQuery.error ? (
+              <InlineError>
+                Snoozes could not be loaded.{" "}
+                <Button
+                  variant="outline"
+                  onClick={() => void snoozesQuery.refetch()}
+                >
+                  Try again
+                </Button>
+              </InlineError>
+            ) : null}
+            {action === "snoozes" &&
+            snoozesQuery.data &&
+            snoozes.length === 0 ? (
+              <InboxEmptyState label="Nothing snoozed" />
+            ) : null}
+            {showRuns &&
+            query.data &&
+            automations.length === 0 &&
+            todo.length === 0 ? (
               <InboxEmptyState
                 label={
                   filtered
@@ -176,12 +246,12 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 }
               />
             ) : null}
-            {query.isFetching && query.data ? (
+            {showRuns && query.isFetching && query.data ? (
               <span className="sr-only" role="status">
                 Updating results…
               </span>
             ) : null}
-            {query.data ? (
+            {showRuns && query.data ? (
               <InboxFocusProvider focus={focus.focus}>
                 <InboxPreviewGate>
                   <AutomationGroups
@@ -195,7 +265,27 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </InboxPreviewGate>
               </InboxFocusProvider>
             ) : null}
-            {query.data && query.data.total > automations.length ? (
+            {showSnoozes ? (
+              <InboxSection
+                collapsed={snoozesCollapsed}
+                count={snoozes.length}
+                label="Snoozes"
+                onToggle={() => setSnoozesCollapsed((collapsed) => !collapsed)}
+              >
+                {snoozes.map((snooze) => (
+                  <SnoozeRow
+                    key={snooze.id}
+                    onWake={() => wake.mutate([snooze.id])}
+                    snooze={snooze}
+                    waking={
+                      wake.isPending &&
+                      Boolean(wake.variables?.includes(snooze.id))
+                    }
+                  />
+                ))}
+              </InboxSection>
+            ) : null}
+            {showRuns && query.data && query.data.total > automations.length ? (
               <p className="m-0 text-xs text-dashboard-text-muted">
                 Showing {automations.length} of {query.data.total}. Filter, or
                 search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.

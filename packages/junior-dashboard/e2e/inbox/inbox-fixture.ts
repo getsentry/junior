@@ -1,5 +1,6 @@
 /** Review items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 
 export const viewer = {
@@ -198,10 +199,33 @@ export const grab = {
   title: "Cover the Friday deploy",
 };
 
+/** A snooze on one Conversation's row, as `POST /api/automations` makes it. */
+function mockSnooze(id: string, conversationId: string, untilMs: number) {
+  return {
+    action: "wake" as const,
+    createdAt: new Date(untilMs - 86_400_000).toISOString(),
+    id,
+    status: "active" as const,
+    subject: { conversationId },
+    triggers: [
+      { kind: "new_item" as const },
+      {
+        events: ["timer.fired"],
+        firesAt: new Date(untilMs).toISOString(),
+        kind: "event" as const,
+        namespace: "junior",
+        resourceType: "timer",
+      },
+    ] as const,
+  };
+}
+
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
- * keeps an answered item open, so a test can answer it twice.
+ * keeps an answered item open, so a test can answer it twice. Snoozes live
+ * here too, as wake Automations: a snoozed row leaves the viewer's lists
+ * until its timer passes `now`, which is the test's clock.
  */
 export async function mockReviewItems(
   page: Page,
@@ -213,11 +237,91 @@ export async function mockReviewItems(
     automations?: () => number;
     failActions?: string[];
     keepOpen?: boolean;
+    /**
+     * The time a snooze timer is checked against: the page's pinned clock
+     * by default. A test that moves the clock passes the page's time.
+     */
+    now?: () => number | Promise<number>;
     open?: unknown[];
     pageSize?: number;
+    /** Snoozes that exist before the page loads. */
+    snoozes?: { conversationId: string; untilMs: number }[];
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
+  const snoozes = new Map(
+    (options.snoozes ?? []).map((snooze, index) => [
+      `snooze-${index}`,
+      mockSnooze(`snooze-${index}`, snooze.conversationId, snooze.untilMs),
+    ]),
+  );
+  /** The open items of each row that a snooze hides now, by snooze id. */
+  const asleep = async () => {
+    const nowMs = await (options.now ?? (() => NOW_MS))();
+    return new Map(
+      [...snoozes].flatMap(([id, snooze]) => {
+        const itemIds = open
+          .filter(
+            (i) => i.addedByConversationId === snooze.subject.conversationId,
+          )
+          .map((i) => i.id);
+        // A Conversation with no title is named after its newest item.
+        const newest = open
+          .filter(
+            (i) => i.addedByConversationId === snooze.subject.conversationId,
+          )
+          .sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0];
+        return Date.parse(snooze.triggers[1].firesAt) > nowMs && newest
+          ? [[id, { ...snooze, itemIds, title: newest.title }] as const]
+          : [];
+      }),
+    );
+  };
+  const snoozedRows = async () =>
+    new Set(
+      [...(await asleep()).values()].map(
+        (snooze) => snooze.subject.conversationId,
+      ),
+    );
+  await page.route(
+    (url) =>
+      /\/api\/automations(\/snoozes|\/snooze-[^/]+)?$/.test(url.pathname),
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith("/snoozes")) {
+        return route.fulfill({
+          json: { snoozes: [...(await asleep()).values()] },
+        });
+      }
+      if (request.method() === "POST" && path.endsWith("/automations")) {
+        const body = request.postDataJSON();
+        if (body?.action !== "wake") return route.fallback();
+        // A new snooze on a row replaces the viewer's last one.
+        for (const [id, snooze] of snoozes) {
+          if (snooze.subject.conversationId === body.subject.conversationId) {
+            snoozes.delete(id);
+          }
+        }
+        const id = `snooze-${snoozes.size}-${Date.now()}`;
+        const snooze = {
+          ...body,
+          createdAt: new Date().toISOString(),
+          id,
+          status: "active",
+        };
+        snoozes.set(id, snooze);
+        return route.fulfill({ json: snooze, status: 201 });
+      }
+      const id = path.match(/\/automations\/(snooze-[^/]+)$/)?.[1];
+      if (request.method() === "DELETE" && id) {
+        return snoozes.delete(decodeURIComponent(id))
+          ? route.fulfill({ status: 204 })
+          : route.fulfill({ json: { error: "Not found" }, status: 404 });
+      }
+      return route.fallback();
+    },
+  );
   let open = (options.open ?? [
     rollout,
     license,
@@ -233,10 +337,14 @@ export async function mockReviewItems(
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
+      const sleeping = await snoozedRows();
       const needsViewer = open.filter(
-        (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+        (i) =>
+          i.kind === "action" &&
+          i.canAct &&
+          !i.assignedToEveryone &&
+          !sleeping.has(i.addedByConversationId),
       );
-      const snoozed = url.searchParams.get("snoozed")?.split(",") ?? [];
       return route.fulfill({
         json: {
           automations: (options.automations ?? attentionCount)(),
@@ -246,7 +354,7 @@ export async function mockReviewItems(
           codeChanges: needsViewer.filter(
             (i) => i.subject?.objectType === "code_change",
           ).length,
-          snoozed: open.filter((i) => snoozed.includes(i.id)).length,
+          snoozed: (await asleep()).size,
         },
       });
     }
@@ -256,6 +364,11 @@ export async function mockReviewItems(
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
       const closed = (url.searchParams.get("status") ?? "open") !== "open";
+      // The viewer's Inbox leaves out snoozed rows, and Snoozed lists only
+      // them. A search and a Conversation's own list still show them.
+      const sleeping = await snoozedRows();
+      const forViewer = url.searchParams.get("for") === "viewer";
+      const snoozedOnly = url.searchParams.get("snoozed") === "true";
       const list = (
         closed
           ? [...archived].sort((x, y) => y.closedAt.localeCompare(x.closedAt))
@@ -265,7 +378,12 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
-          `${i.title}\n${i.body}`.toLowerCase().includes(q),
+          `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
+          (snoozedOnly
+            ? sleeping.has(i.addedByConversationId)
+            : !forViewer ||
+              Boolean(q || linked) ||
+              !sleeping.has(i.addedByConversationId)),
       );
       // The waiting sort lists what waits on the viewer first, then the
       // rest, newest first, as the server does. Otherwise items keep their

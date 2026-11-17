@@ -17,7 +17,7 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
-import type { SnoozeChoice } from "./inboxSnooze";
+import type { SnoozeChoice } from "./snoozeChoices";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
 

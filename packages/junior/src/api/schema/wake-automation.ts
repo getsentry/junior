@@ -26,13 +26,17 @@ export const wakeAutomationSchema = z
   .strict();
 
 /**
- * The viewer's Snoozes that hide an Inbox row now, newest first. `title` is
- * the snoozed item's, or the Conversation's when it has one.
+ * The viewer's Snoozes that hide an Inbox row now, newest first. `itemIds`
+ * are the open items that each one hides from the viewer. `title` is the
+ * snoozed item's, or the Conversation's when it has one.
  */
 export const wakeAutomationListSchema = z
   .object({
     snoozes: z.array(
-      wakeAutomationSchema.extend({ title: z.string().min(1).optional() }),
+      wakeAutomationSchema.extend({
+        itemIds: z.array(z.string().min(1)).min(1),
+        title: z.string().min(1).optional(),
+      }),
     ),
   })
   .strict();

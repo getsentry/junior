@@ -5,7 +5,6 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
@@ -13,7 +12,7 @@ import type { Conversation } from "../types";
 import type { InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
-import { useInboxSnoozes } from "./inboxSnooze";
+import { useInboxSnoozes } from "./inboxSnoozes";
 import {
   useLinkedConversationTitles,
   useReviewItemData,
@@ -95,6 +94,12 @@ function useBuildInboxData(input: {
     forViewer: true,
     sort: "waiting",
   });
+  // Snoozed reads its rows from the server, like To do.
+  const { items: snoozedItems } = useReviewItemsData({
+    enabled: signedIn,
+    forViewer: true,
+    snoozed: true,
+  });
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -106,10 +111,11 @@ function useBuildInboxData(input: {
   );
   const list = useMemo(
     () =>
-      linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
+      linked?.status === "open" &&
+      ![...loaded, ...snoozedItems].some((item) => item.id === linked.id)
         ? [...loaded, linked]
         : loaded,
-    [linked, loaded],
+    [linked, loaded, snoozedItems],
   );
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
@@ -119,7 +125,7 @@ function useBuildInboxData(input: {
   const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(nowMs);
+  const snoozes = useInboxSnoozes(signedIn);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
@@ -144,16 +150,12 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
-  const live = list.filter((item) => !sweeper.isSwept(item.id));
-  const sleepingConversations = new Set(
-    inboxBundles(live)
-      .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
-      .map((bundle) => bundle.conversationId),
+  // The server leaves snoozed rows out of `list`. A row snoozed a moment
+  // ago stays out until the list refreshes.
+  const awake = list.filter(
+    (item) =>
+      !sweeper.isSwept(item.id) && !snoozes.hides(item.addedByConversationId),
   );
-  const asleep = (item: ReviewItemPayload) =>
-    sleepingConversations.has(item.addedByConversationId) ||
-    snoozes.sleeps(item.id, item.id);
-  const awake = live.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
@@ -167,7 +169,9 @@ function useBuildInboxData(input: {
     awake.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
   const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
-  const snoozedRows = inboxBundles(live.filter(asleep));
+  const snoozedRows = inboxBundles(
+    snoozedItems.filter((item) => !sweeper.isSwept(item.id)),
+  ).filter((bundle) => !snoozes.waking(bundle.key));
 
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity. A Conversation outside the loaded feed joins when it has

@@ -53,7 +53,7 @@ import {
 import { useHoverExpandAllowed } from "./hoverExpand";
 import { useInboxRowFocused } from "./inboxFocus";
 import { useAnimatedHeight } from "./rowMotion";
-import type { SnoozeChoice } from "./inboxSnooze";
+import type { SnoozeChoice } from "./snoozeChoices";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";

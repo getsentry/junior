@@ -10,7 +10,7 @@ import {
   ATTENTION_TONE_CLASS,
   OPEN_TONE_CLASS,
 } from "../conversations/ConversationMeta";
-import { type SnoozeChoice, snoozeChoices } from "./inboxSnooze";
+import { type SnoozeChoice, snoozeChoices } from "./snoozeChoices";
 
 /** Snooze an Inbox row from its action bar: a menu of the snooze times. */
 export function RowSnoozeButton(props: {

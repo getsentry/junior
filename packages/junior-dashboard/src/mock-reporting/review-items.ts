@@ -8,6 +8,8 @@ import type {
   ConversationReportEvent,
   ReviewItemActionBody,
   ReviewItemPayload,
+  WakeAutomationCreateBody,
+  WakeAutomationPayload,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -338,10 +340,67 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
+/** The viewer's snoozes, by id. A snooze hides one Conversation's row. */
+const snoozes = new Map<string, Omit<WakeAutomationPayload, "itemIds">>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockReviewItems(): void {
   changes.clear();
+  snoozes.clear();
+}
+
+function snoozeWakesAtMs(snooze: Pick<WakeAutomationPayload, "triggers">) {
+  const timer = snooze.triggers.find((trigger) => "firesAt" in trigger);
+  return timer && "firesAt" in timer ? Date.parse(timer.firesAt) : Infinity;
+}
+
+/** The Conversations whose rows a snooze hides now. */
+function snoozedConversationIds(nowMs: number): Set<string> {
+  return new Set(
+    [...snoozes.values()]
+      .filter((snooze) => snoozeWakesAtMs(snooze) > nowMs)
+      .map((snooze) => snooze.subject.conversationId),
+  );
+}
+
+/** Snooze a mock row, like `POST /api/automations`. It replaces the last. */
+export function snoozeMockRow(
+  nowMs: number,
+  body: WakeAutomationCreateBody,
+): Omit<WakeAutomationPayload, "itemIds"> {
+  for (const [id, snooze] of snoozes) {
+    if (snooze.subject.conversationId === body.subject.conversationId) {
+      snoozes.delete(id);
+    }
+  }
+  const snooze = {
+    ...body,
+    createdAt: new Date(nowMs).toISOString(),
+    id: `mock-snooze-${snoozes.size + 1}-${nowMs}`,
+    status: "active" as const,
+  };
+  snoozes.set(snooze.id, snooze);
+  return snooze;
+}
+
+/** Wake a mock row, like `DELETE /api/automations/:id`. */
+export function wakeMockSnooze(id: string): boolean {
+  return snoozes.delete(id);
+}
+
+/** List the snoozes that hide a mock row now, like the API. */
+export function readMockSnoozes(nowMs: number): WakeAutomationPayload[] {
+  const open = readMockReviewItems(nowMs, {});
+  return [...snoozes.values()].flatMap((snooze) => {
+    const itemIds = open
+      .filter(
+        (item) => item.addedByConversationId === snooze.subject.conversationId,
+      )
+      .map((item) => item.id);
+    return snoozeWakesAtMs(snooze) > nowMs && itemIds.length > 0
+      ? [{ ...snooze, itemIds }]
+      : [];
+  });
 }
 
 function payload(seed: MockItemSeed): ReviewItemPayload {
@@ -378,16 +437,24 @@ export function readMockReviewItems(
   filters: {
     closed?: boolean | undefined;
     conversationId?: string | undefined;
+    /** Leaves out snoozed rows, like the viewer's Inbox. */
+    forViewer?: boolean | undefined;
     q?: string | undefined;
+    /** Lists only snoozed rows. */
+    snoozed?: boolean | undefined;
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
+  const snoozed = snoozedConversationIds(nowMs);
   const items = seeds(nowMs)
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
-        (!q || seed.title.toLowerCase().includes(q)),
+        (!q || seed.title.toLowerCase().includes(q)) &&
+        (filters.snoozed
+          ? snoozed.has(seed.conversationId)
+          : !filters.forViewer || !snoozed.has(seed.conversationId)),
     )
     .map(payload);
   if (filters.closed)
@@ -485,16 +552,13 @@ export function readMockWaitingConversations(nowMs: number) {
 
 /** The open mock action items that the viewer must answer. */
 function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
-  return readMockReviewItems(nowMs, {}).filter(
+  return readMockReviewItems(nowMs, { forViewer: true }).filter(
     (item) => item.kind === "action" && !item.assignedToEveryone,
   );
 }
 
 /** Count the mock items like `GET /api/review-items/count`, but Automations. */
-export function readMockReviewItemCounts(
-  nowMs: number,
-  snoozedIds: readonly string[],
-) {
+export function readMockReviewItemCounts(nowMs: number) {
   const needsViewer = mockItemsNeedingViewer(nowMs);
   return {
     decisions: needsViewer.filter((item) => item.request).length,
@@ -502,9 +566,7 @@ export function readMockReviewItemCounts(
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
-      snoozedIds.includes(item.id),
-    ).length,
+    snoozed: readMockSnoozes(nowMs).length,
   };
 }
 

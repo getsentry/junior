@@ -71,7 +71,13 @@ describe("snoozes", () => {
     expect(await asAna.snoozed()).toEqual({
       count: 1,
       items: ["Review acme entry"],
-      snoozes: [{ subject: { conversationId: ROOT }, title: undefined }],
+      snoozes: [
+        {
+          items: 1,
+          subject: { conversationId: ROOT },
+          title: "Review acme entry",
+        },
+      ],
     });
     expect(await asAna.versions()).not.toBe(versionBefore);
     // Each snooze has its own User.
@@ -274,7 +280,7 @@ describe("snoozes", () => {
     expect(await asAna.snoozed()).toEqual({
       count: 1,
       items: ["Review private entry"],
-      snoozes: [{ subject, title: "Review private entry" }],
+      snoozes: [{ items: 1, subject, title: "Review private entry" }],
     });
 
     // A private item is for its assignees only.

@@ -161,6 +161,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         action: wake.action,
         createdAt: new Date(wake.createdAtMs).toISOString(),
         id: wake.id,
+        itemIds: wake.itemIds,
         status: wake.status,
         subject: wake.subject,
         triggers: wake.triggers,

@@ -122,9 +122,10 @@ export function api(fixture: ConversationFixture, viewer: User) {
       ).items.map((item) => item.title),
       snoozes: (
         (await json("/automations/snoozes")) as {
-          snoozes: { subject: unknown; title?: string }[];
+          snoozes: { itemIds: string[]; subject: unknown; title?: string }[];
         }
       ).snoozes.map((snooze) => ({
+        items: snooze.itemIds.length,
         subject: snooze.subject,
         title: snooze.title,
       })),

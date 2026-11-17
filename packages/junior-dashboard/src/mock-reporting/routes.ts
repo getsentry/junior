@@ -147,6 +147,7 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { addMockSnoozeRoutes } from "./snooze-routes";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
@@ -896,12 +897,21 @@ export function createMockReportingApi(): Hono<{
   // Answer Review item reads and actions from the mock items, so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", (c) => {
-    const { conversationId, q, status } = c.req.query();
+    const {
+      conversationId,
+      for: forViewer,
+      q,
+      snoozed,
+      status,
+    } = c.req.query();
     return jsonResponse(reviewItemListSchema, {
       items: readMockReviewItems(NOW_MS, {
         closed: Boolean(status && status !== "open"),
         conversationId,
+        // A search and a Conversation's own list still show snoozed rows.
+        forViewer: forViewer === "viewer" && !q && !conversationId,
         q: q || undefined,
+        snoozed: snoozed === "true",
       }),
     });
   });
@@ -915,10 +925,7 @@ export function createMockReportingApi(): Hono<{
             ).total,
           }
         : undefined),
-      ...readMockReviewItemCounts(
-        NOW_MS,
-        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
-      ),
+      ...readMockReviewItemCounts(NOW_MS),
     }),
   );
   app.get("/review-items/waiting-conversations", () =>
@@ -965,6 +972,7 @@ export function createMockReportingApi(): Hono<{
       truncated: false,
     });
   });
+  addMockSnoozeRoutes(app);
   app.get("/automations/:id", (c) => {
     const automation = readMockAutomationList().automations.find(
       (automation) => automation.id === c.req.param("id"),

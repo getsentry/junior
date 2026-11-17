@@ -192,7 +192,27 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
     await screenshot(page, "inbox-snooze", { view: "desktop" });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/automations"),
+    );
     await page.getByRole("button", { name: "Tomorrow" }).click();
+    // The snooze is a wake Automation on the server: it wakes the row at
+    // its time, or when the Conversation adds an item.
+    expect((await created).postDataJSON()).toMatchObject({
+      action: "wake",
+      subject: { conversationId: rollout.addedByConversationId },
+      triggers: [
+        { kind: "new_item" },
+        {
+          events: ["timer.fired"],
+          kind: "event",
+          namespace: "junior",
+          resourceType: "timer",
+        },
+      ],
+    });
     const todo = page.getByRole("region", { name: "To do" });
     await expect(
       todo.getByRole("link", { name: new RegExp(checkout) }),
@@ -204,6 +224,43 @@ test.describe("new UI", { tag: "@new" }, () => {
     await rowHead(page, checkout).click();
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
+  });
+
+  test("a row snoozed in another browser loads asleep", async ({
+    dashboard,
+    page,
+  }) => {
+    // Nothing in this browser knows about the snooze: the server keeps it.
+    await mockReviewItems(page, {
+      open: [license, rollout],
+      snoozes: [
+        {
+          conversationId: rollout.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
+    await expect(rowHead(todo, checkout)).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
+      /^Snoozed\s*1$/,
+    );
+
+    await nav.getByRole("link", { name: /^Snoozed/ }).click();
+    await rowHead(page, checkout).click();
+    const woken = page.waitForRequest(
+      (request) =>
+        request.method() === "DELETE" &&
+        new URL(request.url()).pathname.endsWith("/api/automations/snooze-0"),
+    );
+    await page.getByRole("button", { name: "Wake" }).click();
+    await woken;
+    await expect(page.getByText("Nothing snoozed")).toBeVisible();
+    await nav.getByRole("link", { name: /^Inbox/ }).click();
+    await expect(rowHead(todo, checkout)).toBeVisible();
   });
 
   test("a sweep clears only FYI items, with an Undo", async ({
@@ -621,7 +678,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.clock.install({ time: NOW_MS });
-    await mockReviewItems(page, { open: [license, rollout] });
+    // The server checks the snooze timer against the page's clock.
+    await mockReviewItems(page, {
+      now: () => page.evaluate(() => Date.now()),
+      open: [license, rollout],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await rowHead(todo, checkout).click();

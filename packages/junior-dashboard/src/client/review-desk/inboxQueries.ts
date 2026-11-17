@@ -10,7 +10,6 @@ import {
 
 import { fetchDashboardJson } from "../http";
 import { useAutomationAlerts } from "./automationAlerts";
-import { useSnoozedItemIds } from "./inboxSnooze";
 import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
@@ -42,23 +41,18 @@ export function useInboxTodoCount(enabled: boolean): number | undefined {
 
 /**
  * Count what the Inbox entries and the badge show, as the server counts it:
- * the open action items assigned to the viewer, by bundle, and the open
- * snoozed rows. The versions poll refreshes it when it changes.
+ * the open action items assigned to the viewer, by bundle, and the snoozed
+ * rows. The versions poll refreshes it when it changes.
  */
 export function useInboxCountData(enabled: boolean) {
-  // The snoozed rows live in this browser; the server counts the open ones.
-  const snoozed = useSnoozedItemIds().join(",");
   return useQuery({
     enabled,
     placeholderData: keepPreviousData,
-    queryKey: [...REVIEW_ITEM_COUNT_QUERY_KEY, snoozed],
+    queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
-        `/api/review-items/count?${new URLSearchParams({
-          include: "automations",
-          ...(snoozed ? { snoozed } : undefined),
-        })}`,
+        "/api/review-items/count?include=automations",
         signal,
       ),
     retry: false,

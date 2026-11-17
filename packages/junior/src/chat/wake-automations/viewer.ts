@@ -169,27 +169,29 @@ export async function unsnoozeViewerSnooze(
   });
 }
 
+/** SQL: an open Review item in the wake row that the viewer's Inbox lists. */
+function openItemForViewerInWakeRow(user: User): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    reviewItemVisibleTo(reviewItemReaderForUser(user)),
+    reviewItemForUser(user.id),
+    reviewItemInWakeRow(),
+  )!;
+}
+
 /**
  * SQL: the viewer's snoozes that have not woken and that still hide an open
  * Review item the viewer's Inbox lists. A snooze on a row the viewer can no
  * longer see does not show.
  */
 function viewerSnoozesAsleep(user: User, nowMs: number): SQL {
-  const db = getDb();
   return and(
     snoozeOfUserAsleep(user.id, nowMs),
     exists(
-      db
+      getDb()
         .select({ id: juniorReviewItems.id })
         .from(juniorReviewItems)
-        .where(
-          and(
-            eq(juniorReviewItems.status, "open"),
-            reviewItemVisibleTo(reviewItemReaderForUser(user)),
-            reviewItemForUser(user.id),
-            reviewItemInWakeRow(),
-          ),
-        ),
+        .where(openItemForViewerInWakeRow(user)),
     ),
   )!;
 }
@@ -207,22 +209,30 @@ export async function countViewerSnoozes(
 }
 
 /**
- * List the viewer's snoozes that hide a row now, newest first. The title is
- * the snoozed item's, or the Conversation's.
+ * List the viewer's snoozes that hide a row now, newest first, with the open
+ * items each one hides from them. The title is the snoozed item's, or the
+ * Conversation's, or its newest open item's.
  */
 export async function listViewerSnoozes(
   user: User,
   nowMs = Date.now(),
-): Promise<Array<WakeAutomation & { title?: string }>> {
+): Promise<Array<WakeAutomation & { itemIds: string[]; title?: string }>> {
   const itemTitle = sql<
     string | null
   >`(select ${juniorReviewItems.title} from ${juniorReviewItems} where ${juniorReviewItems.id} = ${juniorAutomations.subjectReviewItemId})`;
+  const itemIds = sql<
+    string[]
+  >`(select coalesce(array_agg(${juniorReviewItems.id} order by ${juniorReviewItems.id}), '{}') from ${juniorReviewItems} where ${openItemForViewerInWakeRow(user)})`;
+  // A Conversation with no title is named after its newest item, as in the
+  // Inbox.
+  const newestItemTitle = sql<string>`(select ${juniorReviewItems.title} from ${juniorReviewItems} where ${openItemForViewerInWakeRow(user)} order by ${juniorReviewItems.createdAt} desc limit 1)`;
   const rows = await getDb()
     .select({
       automation: juniorAutomations,
+      itemIds,
       title: sql<
         string | null
-      >`coalesce(${itemTitle}, nullif(trim(${juniorConversations.title}), ''))`,
+      >`coalesce(${itemTitle}, nullif(trim(${juniorConversations.title}), ''), ${newestItemTitle})`,
     })
     .from(juniorAutomations)
     .leftJoin(
@@ -237,6 +247,12 @@ export async function listViewerSnoozes(
   return rows.flatMap((row) => {
     const wake = parseWakeAutomationRow(row.automation);
     if (!wake) return [];
-    return [{ ...wake, ...(row.title ? { title: row.title } : undefined) }];
+    return [
+      {
+        ...wake,
+        itemIds: row.itemIds,
+        ...(row.title ? { title: row.title } : undefined),
+      },
+    ];
   });
 }
