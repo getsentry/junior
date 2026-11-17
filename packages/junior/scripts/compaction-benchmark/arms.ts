@@ -9,6 +9,8 @@ import {
   consolidationUser,
   distillationUser,
   parseObservations,
+  SECTIONED_CONSOLIDATION_SYSTEM,
+  SECTIONED_DISTILLATION_SYSTEM,
 } from "./prompt";
 
 /** What one arm puts in model view in place of removed history. */
@@ -22,6 +24,16 @@ export interface ArmContext {
   observations?: string[];
   /** Per-Turn retrieval on top of `context`, for the Lore and hybrid arms. */
   injection?: Injection;
+  /** Kept raw tail, when it differs from production's (experiment 1). */
+  tailTokens?: number;
+  /** Distillation chain state after this point. */
+  chain?: ChainState;
+}
+
+/** What a distillation chain carries from one point to the next. */
+export interface ChainState {
+  observations: string[];
+  meta?: string;
 }
 
 /** Docs one arm retrieves from for each Turn, and what that cost per Turn. */
@@ -107,10 +119,18 @@ export async function distillationChain(
   points: readonly CompactionPoint[],
   modelId: string,
   call: Call,
+  /** `sectioned`: prompts that produce the summary's sections (experiment 2). */
+  variant?: "sectioned",
+  /** Chain state to continue from, such as an earlier point's `chain`. */
+  initial?: ChainState,
 ): Promise<ArmContext[]> {
-  const stage = `distill-${modelId.split("/").at(-1)}`;
-  let observations: string[] = [];
-  let meta: string | undefined;
+  const stage = `distill-${modelId.split("/").at(-1)}${variant ? `-${variant}` : ""}`;
+  const system = variant ? SECTIONED_DISTILLATION_SYSTEM : DISTILLATION_SYSTEM;
+  const consolidation = variant
+    ? SECTIONED_CONSOLIDATION_SYSTEM
+    : CONSOLIDATION_SYSTEM;
+  let observations: string[] = [...(initial?.observations ?? [])];
+  let meta: string | undefined = initial?.meta;
   const contexts: ArmContext[] = [];
   for (const point of points) {
     let cost = 0;
@@ -120,7 +140,7 @@ export async function distillationChain(
       const result = await call({
         stage,
         modelId,
-        system: DISTILLATION_SYSTEM,
+        system,
         user: distillationUser({
           date,
           messages: renderMessages(segment),
@@ -141,7 +161,7 @@ export async function distillationChain(
       const result = await call({
         stage: `${stage}-consolidate`,
         modelId,
-        system: CONSOLIDATION_SYSTEM,
+        system: consolidation,
         user: consolidationUser({ segments: older, previousMeta: meta }),
         maxTokens: 8_000,
         expectedOutputTokens: 4_000,
@@ -162,6 +182,10 @@ export async function distillationChain(
       tokens: estimateTextTokens(context),
       workerCostUsd: cost,
       observations: added,
+      chain:
+        meta === undefined
+          ? { observations: [...observations] }
+          : { observations: [...observations], meta },
     });
   }
   return contexts;

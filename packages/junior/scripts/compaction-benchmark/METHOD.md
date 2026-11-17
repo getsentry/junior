@@ -110,3 +110,25 @@ rate of decided outcomes. It is never pooled with recall.
 
 Limits: the system prompt and tools are today's, not those of Nov 9-14.
 Only the GitHub plugin is loaded. Triggers are keyword heuristics.
+
+## Experiments 1 and 2 (frozen before their run)
+
+Experiment 1 keeps a smaller raw tail: the newest 32k or 64k estimated
+tokens of production's tail. The rest joins the removed history. Each point
+keeps production's state from before it and compacts once with the smaller
+tail. Arms at each tail: `empty`, `recorded` (production's summary, which
+already saw the whole history), the Luna chain, and the experiment 2 arms.
+`summary-removed` runs today's `SUMMARY_INSTRUCTION` over the removed
+history alone, at points 0, 4, 9, 14 and 19 only.
+
+Tier 1 is mined again per tail. Tier 2 keeps the approved items whose every
+source is in the removed history at that tail.
+
+Experiment 2 reshapes the Luna distiller, consolidation and curator prompts
+to the summary's sections. Constraints and preferences stay pinned.
+
+Cost: the total modeled prompt of every recorded call in the next version,
+shifted by each arm's replacement and kept tail. The verdict replaces the
+summary-spend check with "total cost no higher than today's" (production
+tail plus recorded summary). The recall checks compare with `recorded` at
+the same tail, and with `summary-removed` on its five points.

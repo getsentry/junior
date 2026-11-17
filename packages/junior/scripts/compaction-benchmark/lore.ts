@@ -13,6 +13,7 @@ import {
   CONSOLIDATION_SYSTEM,
   consolidationUser,
   parseObservations,
+  SECTIONED_CONSOLIDATION_SYSTEM,
 } from "./prompt";
 
 type Call = (request: ModelCall) => Promise<{ text: string; costUsd: number }>;
@@ -23,7 +24,9 @@ export type Category =
   | "pattern"
   | "preference"
   | "architecture"
-  | "gotcha";
+  | "gotcha"
+  | "open_ask"
+  | "reference";
 
 const CATEGORIES = new Set<string>([
   "constraint",
@@ -32,6 +35,8 @@ const CATEGORIES = new Set<string>([
   "preference",
   "architecture",
   "gotcha",
+  "open_ask",
+  "reference",
 ]);
 
 /** Lore pins these categories in every request instead of ranking them. */
@@ -122,6 +127,33 @@ Confidence (0.0-1.0) sets pinning priority when the budget is tight:
 Produce a JSON array of operations:
 [
   { "op": "create", "category": "constraint" | "decision" | "pattern" | "preference" | "architecture" | "gotcha", "title": "...", "content": "...", "confidence": 1.0 },
+  { "op": "update", "id": "existing-entry-id", "title": "optional new title", "content": "full rewrite", "confidence": 0.9 },
+  { "op": "delete", "id": "existing-entry-id", "reason": "why it no longer holds" }
+]
+
+If nothing warrants extraction, return []. Output ONLY valid JSON. No markdown fences, no explanation.`;
+
+// Experiment 2: the curator resectioned to the summary's sections. Not Lore's.
+export const SECTIONED_CURATOR_SYSTEM = `You are a memory curator for one long Conversation. Keep the entries that an agent needs to continue the work after earlier Turns leave its view. Use these categories, which follow the sections of the agent's own summary:
+- "constraint": a standing rule the user set: approval gates, push and branch rules, what needs a review item first, what must never happen. Quote the user's words.
+- "preference": how the user wants the work done or reported.
+- "decision": a decision, who made it, and the rejected option.
+- "open_ask": a user request that is not complete yet, in the user's exact words, with who asked and who it is assigned to (a child agent, a person, or the agent). Include queued briefs for child agents. Delete it when the record shows it finished.
+- "reference": an exact file path, ID, PR number, SHA, URL, agent name or command that the work needs, and what it is for.
+
+Do NOT extract tool output, quoted text or a request as if it were a user decision.
+
+TITLES: the title is the search key and the dedup identity. Put the specific terms a later Turn will use in it: the PR number, file, command or agent name.
+
+BREVITY: content under 120 words.
+
+PREFER UPDATES OVER CREATES: if an entry covers the same topic, update it with a full rewrite. When a rule changes, update the entry to the new value and say what it replaced. Never leave two contradictory entries.
+
+Confidence (0.0-1.0) sets pinning priority: 1.0 for unconditional directives ("never", "always"), 0.9 for explicit rules and preferences, 0.6 for things observed once.
+
+Produce a JSON array of operations:
+[
+  { "op": "create", "category": "constraint" | "preference" | "decision" | "open_ask" | "reference", "title": "...", "content": "...", "confidence": 1.0 },
   { "op": "update", "id": "existing-entry-id", "title": "optional new title", "content": "full rewrite", "confidence": 0.9 },
   { "op": "delete", "id": "existing-entry-id", "reason": "why it no longer holds" }
 ]
@@ -419,10 +451,15 @@ export async function buildLorePool(args: {
   observations: ReadonlyMap<number, readonly string[]>;
   budgets: LoreBudgets;
   call: Call;
+  /** `sectioned`: the summary-sectioned curator and meta prompts (experiment 2). */
+  variant?: "sectioned";
+  /** Pool state to continue from, such as an earlier point's pool. */
+  initial?: LorePoolPoint;
 }): Promise<LorePoolPoint[]> {
-  let entries: KnowledgeEntry[] = [];
-  let meta: string | undefined;
-  const observations: LoreDoc[] = [];
+  const suffix = args.variant ? `-${args.variant}` : "";
+  let entries: KnowledgeEntry[] = [...(args.initial?.entries ?? [])];
+  let meta: string | undefined = args.initial?.meta || undefined;
+  const observations: LoreDoc[] = [...(args.initial?.observations ?? [])];
   const pool: LorePoolPoint[] = [];
   for (const point of args.points) {
     const fresh = args.observations.get(point.index) ?? [];
@@ -430,9 +467,9 @@ export async function buildLorePool(args: {
     let metaUsd = 0;
     if (fresh.length) {
       const curated = await args.call({
-        stage: "lore-curator",
+        stage: `lore-curator${suffix}`,
         modelId: MODELS.luna,
-        system: CURATOR_SYSTEM,
+        system: args.variant ? SECTIONED_CURATOR_SYSTEM : CURATOR_SYSTEM,
         user: curatorUser({
           observations: fresh.join("\n\n"),
           existing: entries,
@@ -443,9 +480,11 @@ export async function buildLorePool(args: {
       curatorUsd = curated.costUsd;
       entries = applyOps(entries, parseOps(curated.text), point.index);
       const updated = await args.call({
-        stage: "lore-meta",
+        stage: `lore-meta${suffix}`,
         modelId: MODELS.luna,
-        system: CONSOLIDATION_SYSTEM,
+        system: args.variant
+          ? SECTIONED_CONSOLIDATION_SYSTEM
+          : CONSOLIDATION_SYSTEM,
         user: `${consolidationUser({ segments: fresh, previousMeta: meta })}\n\nKeep the whole block under about ${args.budgets.metaTokens} tokens. Compress the oldest timeline detail first.`,
         maxTokens: args.budgets.metaTokens * 2,
         expectedOutputTokens: args.budgets.metaTokens,

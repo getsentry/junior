@@ -1,15 +1,17 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { Tier2Item } from "./arms";
 import { assertOutsideGit } from "./events";
-import { BudgetStop, modelCaller, provider } from "./models";
+import { BudgetStop, MODELS, modelCaller, provider } from "./models";
 import {
   BEHAVIOR_ARMS,
   behavior,
   behaviorReport,
   rules,
 } from "./behavior-stage";
+import { distillationChain } from "./arms";
+import { TAIL_BUDGETS, sectioned, tailReport, tailRun } from "./experiments";
 import { DEFAULT_BUDGETS, type LoreBudgets } from "./lore";
 import {
   distill,
@@ -57,7 +59,7 @@ const command = positionals[0];
 const data = values.data ?? process.env["COMPACTION_BENCHMARK_DATA"];
 if (!command || !data) {
   console.error(
-    "Usage: run.ts <all|merge|rebuild|tier1|score|rules|tier2|distill|rerun-summary|lore|probe|behavior|report> --data DIR [--continue] [--arms lore,hybrid] [--behavior] [--dry-run] [--max-usd N]",
+    "Usage: run.ts <all|experiments|tail-report|merge|rebuild|tier1|score|rules|tier2|distill|rerun-summary|lore|probe|behavior|report> --data DIR [--continue] [--arms lore,hybrid] [--behavior] [--dry-run] [--max-usd N]",
   );
   process.exit(2);
 }
@@ -226,6 +228,48 @@ async function allNew(maxUsd: number) {
   );
 }
 
+/**
+ * Experiments 1 and 2: the summary-sectioned arms at production's tail, then
+ * every arm at each smaller tail, then both reports. A dry run prints the
+ * estimate by stage instead.
+ */
+async function experiments(dryRun: boolean, maxUsd: number) {
+  const { ctx, ledger } = context(dryRun, maxUsd);
+  const built = await sectioned(ctx);
+  const luna = await distillationChain(
+    loadPoints(data!),
+    MODELS.luna,
+    ctx.call,
+  );
+  for (const budget of TAIL_BUDGETS) {
+    await tailRun(ctx, budget, {
+      luna,
+      sectionedChain: built.chain,
+      sectionedPool: built.pool,
+    });
+  }
+  if (dryRun) {
+    console.log("\nEstimated model spend (uncached calls only):");
+    for (const [stage, row] of Object.entries(ledger.estimatedByStage)) {
+      console.log(
+        `  ${stage.padEnd(36)} ${String(row.calls).padStart(5)} calls  $${row.usd.toFixed(2)}`,
+      );
+    }
+    console.log(
+      `  ${"total".padEnd(36)} ${String(ledger.pendingCalls).padStart(5)} calls  $${ledger.estimatedUsd.toFixed(2)}`,
+    );
+    console.log(`ledger so far: $${ledger.spentUsd.toFixed(2)}`);
+    return;
+  }
+  report(data!);
+  const lines = tailReport(data!);
+  writeFileSync(join(data!, "tails/report.md"), lines.join("\n"));
+  console.log(lines.join("\n"));
+  console.log(
+    `spent so far in this cache: $${ledger.spentUsd.toFixed(2)} of $${maxUsd}`,
+  );
+}
+
 async function all(maxUsd: number) {
   const { ctx, ledger } = context(false, maxUsd);
   const continueCommand = `${script} all --continue --data ${data} --max-usd ${maxUsd}`;
@@ -303,7 +347,14 @@ async function main() {
   else if (command === "tier1") tier1(data!);
   else if (command === "score") score(data!);
   else if (command === "rules") rules(data!, turnsPerPoint);
-  else if (command === "report") {
+  else if (command === "experiments") {
+    await experiments(
+      values["dry-run"] ?? false,
+      Number(values["max-usd"] ?? DEFAULT_ALL_MAX_USD),
+    );
+  } else if (command === "tail-report") {
+    console.log(tailReport(data!).join("\n"));
+  } else if (command === "report") {
     report(data!);
     behaviorReport(data!);
   } else if (command === "all" && (newArms || values.behavior)) {

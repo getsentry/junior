@@ -59,6 +59,23 @@ interface Ledger {
   calls: number;
   estimatedUsd: number;
   pendingCalls: number;
+  /** Dry-run estimates by stage family, such as `probe` or `summary`. */
+  estimatedByStage: Record<string, { calls: number; usd: number }>;
+}
+
+function stageFamily(stage: string): string {
+  return stage.startsWith("probe-") ? "probe" : stage;
+}
+
+function addEstimate(ledger: Ledger, stage: string, usd: number) {
+  ledger.estimatedUsd += usd;
+  ledger.pendingCalls += 1;
+  const row = (ledger.estimatedByStage[stageFamily(stage)] ??= {
+    calls: 0,
+    usd: 0,
+  });
+  row.calls += 1;
+  row.usd += usd;
 }
 
 function ledgerPath(budget: Budget) {
@@ -76,6 +93,7 @@ export function readLedger(budget: Budget): Ledger {
     calls: saved.calls ?? 0,
     estimatedUsd: 0,
     pendingCalls: 0,
+    estimatedByStage: {},
   };
 }
 
@@ -372,8 +390,7 @@ export function modelCaller(budget: Budget) {
     }
     const estimate = estimateCallUsd(request);
     if (budget.dryRun) {
-      ledger.estimatedUsd += estimate;
-      ledger.pendingCalls += 1;
+      addEstimate(ledger, request.stage, estimate);
       return {
         text: "x ".repeat(request.expectedOutputTokens),
         costUsd: estimate,
@@ -423,8 +440,7 @@ export function modelCaller(budget: Budget) {
     }
     const estimate = estimateChatUsd(request);
     if (budget.dryRun) {
-      ledger.estimatedUsd += estimate;
-      ledger.pendingCalls += 1;
+      addEstimate(ledger, request.stage, estimate);
       return {
         text: "",
         toolCalls: [],

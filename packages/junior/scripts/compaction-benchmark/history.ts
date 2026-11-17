@@ -42,6 +42,8 @@ export interface CompactionPoint {
   rebuiltInputMessages: number;
   /** Assistant calls made in the version this compaction created. */
   nextVersionCalls: number;
+  /** Recorded prompt and output tokens of each of those calls, in order. */
+  nextVersionPrompts: Array<{ prompt: number; output: number }>;
   /** Seq where the next compaction happens, or the last seq. */
   windowEndSeq: number;
 }
@@ -128,13 +130,33 @@ export function rebuildCompactions(
   const points: CompactionPoint[] = [];
   let history: BenchMessage[] = [];
   const assistantSeqs: number[] = [];
+  const usage = new Map<number, { prompt: number; output: number }>();
 
   for (const event of events) {
     const data = event.data;
     if (MESSAGE_TYPES.has(data.type)) {
       const message = toMessage(event);
       history.push(message);
-      if (message.role === "assistant") assistantSeqs.push(event.seq);
+      if (message.role === "assistant") {
+        assistantSeqs.push(event.seq);
+        const recorded = data["usage"] as
+          | {
+              input?: number;
+              cacheRead?: number;
+              cacheWrite?: number;
+              output?: number;
+            }
+          | undefined;
+        if (recorded) {
+          usage.set(event.seq, {
+            prompt:
+              (recorded.input ?? 0) +
+              (recorded.cacheRead ?? 0) +
+              (recorded.cacheWrite ?? 0),
+            output: recorded.output ?? 0,
+          });
+        }
+      }
       continue;
     }
     if (data.type === "compaction_requested") {
@@ -179,6 +201,7 @@ export function rebuildCompactions(
       after,
       rebuiltInputMessages: history.length,
       nextVersionCalls: 0,
+      nextVersionPrompts: [],
       windowEndSeq: 0,
     });
     history = [
@@ -197,9 +220,14 @@ export function rebuildCompactions(
   const lastSeq = events.at(-1)?.seq ?? 0;
   for (const point of points) {
     point.windowEndSeq = points[point.index + 1]?.seq ?? lastSeq;
-    point.nextVersionCalls = assistantSeqs.filter(
+    const calls = assistantSeqs.filter(
       (seq) => seq > point.seq && seq <= point.windowEndSeq,
-    ).length;
+    );
+    point.nextVersionCalls = calls.length;
+    point.nextVersionPrompts = calls.flatMap((seq) => {
+      const recorded = usage.get(seq);
+      return recorded ? [recorded] : [];
+    });
   }
   return points;
 }

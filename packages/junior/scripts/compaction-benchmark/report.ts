@@ -108,6 +108,53 @@ export function versionCost(point: CompactionPoint, arm: ArmContext): number {
   );
 }
 
+/**
+ * Experiment 1 cost: the whole prompt of every recorded call in the next
+ * version, shifted by the arm's replacement and kept tail against
+ * production's (recorded summary plus production tail). The first call
+ * writes its prompt cold; each later call reads the previous prompt from
+ * cache and writes its growth. Output is priced too, the same for all arms.
+ * Growth and call counts come from the log, so a smaller tail does not get
+ * the later compactions it would delay.
+ */
+export function totalVersionCost(
+  point: CompactionPoint,
+  arm: ArmContext,
+): number {
+  const tokens = (messages: readonly { tokens: number }[]) =>
+    messages.reduce((sum, message) => sum + message.tokens, 0);
+  const productionTail = tokens(point.tail);
+  const shift =
+    arm.tokens +
+    (arm.tailTokens ?? productionTail) -
+    estimateTextTokens(point.recordedSummary) -
+    productionTail;
+  const calls = point.nextVersionPrompts.length
+    ? point.nextVersionPrompts
+    : [{ prompt: point.details.replacementInputTokens, output: 0 }];
+  let usd = arm.workerCostUsd;
+  let previous = 0;
+  calls.forEach((call, index) => {
+    const prompt = Math.max(0, call.prompt + shift);
+    const rate = rates(MODELS.opus, prompt);
+    const cached = index ? Math.min(previous, prompt) : 0;
+    usd +=
+      (cached * rate.cacheRead +
+        (prompt - cached) * rate.cacheWrite +
+        call.output * rate.output) /
+      1_000_000;
+    previous = prompt;
+  });
+  const rate = rates(MODELS.opus, point.details.replacementInputTokens);
+  for (const turn of arm.injection?.turns ?? []) {
+    usd +=
+      (turn.tokens *
+        (rate.cacheWrite + Math.max(0, turn.calls - 1) * rate.cacheRead)) /
+      1_000_000;
+  }
+  return usd;
+}
+
 /** Summed modeled cost and savings against the recorded summary. */
 export function costSummary(
   points: readonly CompactionPoint[],
@@ -217,13 +264,20 @@ export function worthIt(args: {
   rerunSpread: number;
   extraUsd: number;
   recordedSummaryUsd: number;
+  /** Recall baseline. Experiment 1 uses the summary at the same tail. */
+  baseline?: string;
+  floor?: string;
+  /** Experiment 1: total modeled cost against today's setup replaces the spend check. */
+  totalCostDeltaUsd?: number;
 }) {
+  const baseline = args.baseline ?? "recorded";
+  const floorArm = args.floor ?? "empty";
   const margin = Math.max(BAR.minMargin, BAR.spreadFactor * args.rerunSpread);
   const checks: Record<string, boolean> = {};
   for (const withRaw of [false, true]) {
     for (const tier of [1, 2] as const) {
       const mine = probeRecall(args.results, args.arm, tier, withRaw);
-      const base = probeRecall(args.results, "recorded", tier, withRaw);
+      const base = probeRecall(args.results, baseline, tier, withRaw);
       checks[
         `tier${tier}${withRaw ? "+raw" : ""} +${Math.round(margin * 100)}pts`
       ] =
@@ -238,7 +292,7 @@ export function worthIt(args: {
         mine.passRate !== undefined &&
         base.passRate !== undefined &&
         mine.passRate - base.passRate > margin;
-      const floor = probeRecall(args.results, "empty", tier, withRaw);
+      const floor = probeRecall(args.results, floorArm, tier, withRaw);
       checks[`tier${tier}${withRaw ? "+raw" : ""} above empty floor`] =
         mine.recall !== undefined &&
         floor.recall !== undefined &&
@@ -253,7 +307,7 @@ export function worthIt(args: {
     );
     const oldBase = probeRecall(
       args.results,
-      "recorded",
+      baseline,
       1,
       withRaw,
       BAR.decayMinAge,
@@ -261,7 +315,11 @@ export function worthIt(args: {
     checks[`decay age>=${BAR.decayMinAge}${withRaw ? "+raw" : ""}`] =
       (old.recall ?? 0) >= (oldBase.recall ?? 0);
   }
-  checks[`cost <= ${BAR.maxCostFactor}x summary spend`] =
-    args.extraUsd <= BAR.maxCostFactor * args.recordedSummaryUsd;
+  if (args.totalCostDeltaUsd === undefined) {
+    checks[`cost <= ${BAR.maxCostFactor}x summary spend`] =
+      args.extraUsd <= BAR.maxCostFactor * args.recordedSummaryUsd;
+  } else {
+    checks["total cost <= today"] = args.totalCostDeltaUsd <= 0;
+  }
   return { pass: Object.values(checks).every(Boolean), checks };
 }

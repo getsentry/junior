@@ -44,6 +44,7 @@ import {
   scoreTier1Answer,
   scoreTier2Answer,
   tier1Presence,
+  totalVersionCost,
   wilson,
   worthIt,
   BAR,
@@ -320,14 +321,20 @@ export async function probe(
     arms?: string[];
     extraArms?: Record<string, ArmContext[]>;
     items?: Tier2Item[];
+    /** Experiment 1: tail-specific facts, points and output file. */
+    facts?: Tier1Fact[];
+    points?: CompactionPoint[];
+    output?: string;
   } = {},
 ): Promise<ProbeResult[]> {
-  const { points, turns } = loadData(ctx.dir);
-  const queries = probeQueries(points, turns);
+  const data = loadData(ctx.dir);
+  const points = options.points ?? data.points;
+  const queries = probeQueries(points, data.turns);
   const arms = { ...loadArms(ctx.dir), ...options.extraArms };
   const names =
     options.arms ?? Object.keys(arms).filter((name) => name !== "removed");
-  const facts = readJson<Tier1Fact[]>(ctx.dir, "tier1.json");
+  const output = options.output ?? "probes.json";
+  const facts = options.facts ?? readJson<Tier1Fact[]>(ctx.dir, "tier1.json");
   const items =
     options.items ??
     (existsSync(file(ctx.dir, "tier2.json"))
@@ -383,12 +390,12 @@ export async function probe(
   });
   if (ctx.dryRun) return results;
   const kept =
-    options.arms && existsSync(file(ctx.dir, "probes.json"))
-      ? readJson<ProbeResult[]>(ctx.dir, "probes.json").filter(
+    options.arms && existsSync(file(ctx.dir, output))
+      ? readJson<ProbeResult[]>(ctx.dir, output).filter(
           (row) => !names.includes(row.arm),
         )
       : [];
-  writeJson(ctx.dir, "probes.json", [...kept, ...results]);
+  writeJson(ctx.dir, output, [...kept, ...results]);
   return results;
 }
 
@@ -422,6 +429,61 @@ function cell(row: {
 }) {
   const [low, high] = wilson(row.passes, row.n);
   return `${pct(row.recall)} / ${pct(row.passRate)} [${pct(low)}–${pct(high)}]`;
+}
+
+/**
+ * Recall cells of one arm and raw setting: overall Tier 1, its age buckets,
+ * and Tier 2, with leaks. `only` limits rows to some points.
+ */
+export function recallCells(
+  results: readonly ProbeResult[],
+  name: string,
+  withRaw: boolean,
+  only?: ReadonlySet<number>,
+) {
+  const row = (tier: 1 | 2, minAge = 0, maxAge = Infinity) => {
+    const rows = results.filter(
+      (entry) =>
+        entry.arm === name &&
+        entry.tier === tier &&
+        entry.withRaw === withRaw &&
+        entry.age >= minAge &&
+        entry.age <= maxAge &&
+        (!only || only.has(entry.point)),
+    );
+    const passes = rows.filter(isPass).length;
+    return {
+      n: rows.length,
+      passes,
+      recall: rows.length
+        ? rows.reduce((sum, entry) => sum + entry.recall, 0) / rows.length
+        : undefined,
+      passRate: rows.length ? passes / rows.length : undefined,
+      leaks: rows.reduce((sum, entry) => sum + entry.leaked, 0),
+    };
+  };
+  const t2 = row(2);
+  return {
+    t1n: row(1).n,
+    t2n: t2.n,
+    cells: `${cell(row(1))} | ${cell(row(1, 0, 1))} | ${cell(row(1, 2, 4))} | ${cell(row(1, 5))} | ${cell(t2)} | ${t2.leaks}`,
+  };
+}
+
+/** Summed experiment 1 total cost of an arm, and today's, over some points. */
+export function totalCost(
+  points: readonly CompactionPoint[],
+  arm: readonly ArmContext[],
+  recorded: readonly ArmContext[],
+) {
+  let armUsd = 0;
+  let todayUsd = 0;
+  for (const entry of arm) {
+    const point = points[entry.point]!;
+    armUsd += totalVersionCost(point, entry);
+    todayUsd += totalVersionCost(point, recorded[entry.point]!);
+  }
+  return { armUsd, todayUsd, deltaUsd: armUsd - todayUsd };
 }
 
 /** Write and print the results tables and the worth-it verdicts. */
@@ -467,37 +529,16 @@ export function report(dir: string) {
     "",
     "Cells: mean recall / full-pass rate [Wilson 95% CI of the pass rate]. `empty` is the guessability floor. Reruns are scored only at their points.",
     "",
-    "| arm | raw | T1 | T1 age 1 | T1 age 2-4 | T1 age 5+ | T2 | T2 leaks | mean ctx tok | worker $ | modeled savings $ |",
-    "|---|---|---|---|---|---|---|---:|---:|---:|---:|",
+    "| arm | raw | T1 | T1 age 1 | T1 age 2-4 | T1 age 5+ | T2 | T2 leaks | mean ctx tok | worker $ | modeled savings $ | total $ | total Δ vs today $ |",
+    "|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|",
   ];
   for (const name of scoredArms) {
     const cost = costSummary(points, arms[name]!, recorded);
     const only = name.startsWith("rerun-") ? rerunPoints : undefined;
+    const total = totalCost(points, arms[name]!, recorded);
     for (const withRaw of [false, true]) {
-      const row = (tier: 1 | 2, minAge = 0, maxAge = Infinity) => {
-        const rows = results.filter(
-          (entry) =>
-            entry.arm === name &&
-            entry.tier === tier &&
-            entry.withRaw === withRaw &&
-            entry.age >= minAge &&
-            entry.age <= maxAge &&
-            (!only || only.has(entry.point)),
-        );
-        const passes = rows.filter(isPass).length;
-        return {
-          n: rows.length,
-          passes,
-          recall: rows.length
-            ? rows.reduce((sum, entry) => sum + entry.recall, 0) / rows.length
-            : undefined,
-          passRate: rows.length ? passes / rows.length : undefined,
-          leaks: rows.reduce((sum, entry) => sum + entry.leaked, 0),
-        };
-      };
-      const t2 = row(2);
       lines.push(
-        `| ${name} | ${withRaw ? "yes" : "no"} | ${cell(row(1))} | ${cell(row(1, 0, 1))} | ${cell(row(1, 2, 4))} | ${cell(row(1, 5))} | ${cell(t2)} | ${t2.leaks} | ${Math.round(cost.meanTokens)} | ${cost.workerUsd.toFixed(2)} | ${only ? "n/a" : cost.savingsUsd.toFixed(2)} |`,
+        `| ${name} | ${withRaw ? "yes" : "no"} | ${recallCells(results, name, withRaw, only).cells} | ${Math.round(cost.meanTokens)} | ${cost.workerUsd.toFixed(2)} | ${only ? "n/a" : cost.savingsUsd.toFixed(2)} | ${total.armUsd.toFixed(2)} | ${only ? "n/a" : total.deltaUsd.toFixed(2)} |`,
       );
     }
   }
