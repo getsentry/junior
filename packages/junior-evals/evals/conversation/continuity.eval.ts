@@ -234,13 +234,6 @@ describe("Thread Continuity", () => {
       queries: [
         "mail server certificate expiration",
         "mail server /etc/pki certificate",
-        ...toolCallsOf("searchConversationEvents", conversation).flatMap(
-          (call) => {
-            const query = (call.input as { query?: unknown } | undefined)
-              ?.query;
-            return typeof query === "string" ? [query] : [];
-          },
-        ),
       ],
     });
 
