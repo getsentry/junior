@@ -7,7 +7,7 @@ description: Prove what Junior does by launching the local example app (`pnpm de
 
 Junior's surfaces are Slack (Turns and Review item cards), the dashboard (Conversations, Inbox, Automations), GitHub (PRs, issues, webhooks), and runtime systems that users rely on but do not touch (the conversation queue, the heartbeat, child agent workers). The local example app (`apps/example`) runs all of them except Slack and GitHub. Slack and GitHub are faked at their HTTP boundary in integration tests, and the model is replayed or called in evals.
 
-All helpers are Node scripts in `scripts/`. Run them from the repo root as `node .agents/skills/verify-junior/scripts/<name>`. The claims and their proofs are in [map/README.md](map/README.md).
+All helpers are Node scripts in `scripts/`. Run them from the repo root as `node .agents/skills/verify-junior/scripts/<name>`. The claims and their proofs are in [features/README.md](features/README.md).
 
 ## Launch
 
@@ -69,4 +69,4 @@ It stops the `pnpm dev` process tree that `launch` recorded, never processes fou
 
 ## Map
 
-Read [map/README.md](map/README.md). Cite a claim as `<file>#<id>`, for example `review-desk#first-answer-closes`. When a claim has no runnable proof, it is under the `Gaps` section of its map file. Keep the map current with the `maintain-verification-skill` skill.
+Read [features/README.md](features/README.md). Cite a claim as `<file>#<id>`, for example `review-desk#first-answer-closes`. When a claim has no runnable proof, it is under the `Gaps` section of its map file. Keep the map current with the `maintain-verification-skill` skill.

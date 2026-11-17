@@ -11,7 +11,7 @@
 //       per pattern, log, claims, command). Status is the exit code, or
 //       `too-few` when fewer tests passed than the command has patterns.
 //       Default kind: test.
-// MAP_FILE defaults to every file in map/ except README.md.
+// MAP_FILE defaults to every file in features/ except README.md.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -45,9 +45,9 @@ for (let i = 0; i < rest.length; i++) {
 if (kinds.size === 0) kinds.add("test");
 const mapFiles = files.length
   ? files
-  : readdirSync(join(skillDir, "map"))
+  : readdirSync(join(skillDir, "features"))
       .filter((name) => name.endsWith(".md") && name !== "README.md")
-      .map((name) => join(skillDir, "map", name));
+      .map((name) => join(skillDir, "features", name));
 
 /** Each proof command in a map file, with its kind and the claims that cite it. */
 function readCommands(file) {

@@ -24,7 +24,7 @@ Preconditions:
 - Compose Postgres is healthy. `instance.mjs launch` starts it, or run `docker compose up -d --wait postgres redis`.
 - The run directory is `$RUN_DIR`.
 
-- **`one-reply`, `host-limit`, `lost-wake`, `worker-killed`, `run-once`, `signed-wake`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/background-work .agents/skills/verify-junior/map/background-work.md`. Each command exits `0`.
+- **`one-reply`, `host-limit`, `lost-wake`, `worker-killed`, `run-once`, `signed-wake`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/background-work .agents/skills/verify-junior/features/background-work.md`. Each command exits `0`.
 
 ## Gotchas
 

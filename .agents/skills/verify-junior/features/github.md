@@ -29,7 +29,7 @@ Preconditions:
 - Compose Postgres is healthy (`docker compose up -d --wait postgres redis`). `instance.mjs launch` also starts it.
 - `pnpm build` ran after the last pull, and the run directory is `$RUN_DIR`.
 
-- **`pr-assign`, `attribution`, `pr-follow`, `feedback-status`, `issues`, `cards`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/github .agents/skills/verify-junior/map/github.md`. Each command exits `0`. `summary.tsv` lists each command, its exit code, and the claims it proves.
+- **`pr-assign`, `attribution`, `pr-follow`, `feedback-status`, `issues`, `cards`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/github .agents/skills/verify-junior/features/github.md`. Each command exits `0`. `summary.tsv` lists each command, its exit code, and the claims it proves.
 - **Evals.** Add `--kind eval` to the same command. See Gotchas for what an eval run needs.
 
 ## Gotchas
