@@ -5,6 +5,7 @@
  * model never reads status prose. `policies/prompt-markers.md` owns the
  * tags.
  */
+import pLimit from "p-limit";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstruction } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
@@ -13,6 +14,9 @@ import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ReviewItemChangeRecord } from "./change-record";
 import { getReviewItem, type ReviewItem } from "./store";
+
+// Messages whose Review item input one Turn loads at once.
+const REVIEW_ITEM_INPUT_CONCURRENCY = 8;
 
 const QUESTION_MAX_LENGTH = 512;
 
@@ -78,13 +82,16 @@ export async function savedInputInstruction(args: {
 export async function eventReviewItemInputs(
   messages: readonly InboundMessage[],
 ): Promise<Map<string, string>> {
+  const limit = pLimit(REVIEW_ITEM_INPUT_CONCURRENCY);
   const rendered = await Promise.all(
-    messages.map(
-      async (message) =>
-        [
-          message.inboundMessageId,
-          await loadReviewItemInput(message.input.reviewItemChange),
-        ] as const,
+    messages.map((message) =>
+      limit(
+        async () =>
+          [
+            message.inboundMessageId,
+            await loadReviewItemInput(message.input.reviewItemChange),
+          ] as const,
+      ),
     ),
   );
   return new Map(

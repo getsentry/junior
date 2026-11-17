@@ -21,6 +21,7 @@ import {
   conversationFeedCacheRows,
   mapConversationFeedCache,
   type ConversationFeedCache,
+  invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import {
   conversationDetailQueryKey,
@@ -289,8 +290,8 @@ export function archiveConversationMutationOptions(
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
 
-      previousFeeds.forEach(([queryKey, feed]) => {
-        if (!feed) return;
+      for (const [queryKey, feed] of previousFeeds) {
+        if (!feed) continue;
         const conversationExists = Boolean(
           findFeedRow(conversationFeedCacheRows(feed), conversationId),
         );
@@ -327,7 +328,7 @@ export function archiveConversationMutationOptions(
               : conversations;
           }),
         );
-      });
+      }
       queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
         detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
       );
@@ -344,9 +345,9 @@ export function archiveConversationMutationOptions(
       } satisfies ArchiveConversationMutationContext;
     },
     onError: (_error, _args, context) => {
-      context?.previousFeeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of context?.previousFeeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       if (context) {
         queryClient.setQueryData(
           context.detailQueryKey,
@@ -388,12 +389,11 @@ export function archiveConversationMutationOptions(
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // Location and Person pages count and list archived Conversations.
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which Location lists it.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which People list it.
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         queryClient.invalidateQueries({ predicate: isTreeArchiveRead }),
       ]);

@@ -9,7 +9,7 @@ import {
   type EventMatch,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
@@ -255,11 +255,7 @@ async function indexTtlMs(
   subscriptionIds: string[],
   nowMs: number,
 ): Promise<number> {
-  const records = await Promise.all(
-    subscriptionIds.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, subscriptionIds);
   const latestExpiresAtMs = Math.max(
     nowMs,
     ...records
@@ -270,6 +266,15 @@ async function indexTtlMs(
       .map((record) => record.expiresAtMs),
   );
   return ttlUntil(latestExpiresAtMs, nowMs);
+}
+
+/** Read many Watch records in one state round trip. */
+async function readSubscriptions(
+  state: StateAdapter,
+  ids: readonly string[],
+): Promise<Array<Watch | undefined>> {
+  const values = await getStateValues(state, ids.map(subscriptionKey));
+  return values.map(parseSubscription);
 }
 
 function parseSubscription(value: unknown): Watch | undefined {
@@ -519,11 +524,7 @@ export async function listWatches(input: {
     state,
     conversationIndexKey(input.conversationId),
   );
-  const records = await Promise.all(
-    ids.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, ids);
   return records
     .filter(
       (record): record is Watch =>
@@ -637,11 +638,7 @@ export async function collectEventMatchKeys(input: {
       state,
       resourceIndexKey(input.namespace, identifier),
     );
-    const records = await Promise.all(
-      ids.map(async (id) =>
-        parseSubscription(await state.get(subscriptionKey(id))),
-      ),
-    );
+    const records = await readSubscriptions(state, ids);
     for (const record of records) {
       if (!record) continue;
       if (record.namespace !== input.namespace) continue;
@@ -673,11 +670,7 @@ export async function findMatchingWatches(input: {
     state,
     resourceIndexKey(input.namespace, input.identifier),
   );
-  const records = await Promise.all(
-    ids.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, ids);
   return records.filter(
     (record): record is Watch =>
       record !== undefined &&
