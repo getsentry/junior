@@ -12,7 +12,7 @@ the Inbox, Automations, and the navigation drawer, in dark and light themes.
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
 | `JuniorUITests`         | UI journeys against the mock dashboard.                                                                        |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
-| `scripts/`              | `mock-server.mts`, `xcbuild.sh`, `sim.sh`, and `generate-icons.mjs`.                                           |
+| `scripts/`              | `mock-server.mts`, `xcbuild.sh`, `sim.sh`, `device.sh`, and `generate-icons.mjs`.                              |
 
 The app reads the same `/api/*` routes as the web dashboard. JuniorKit tests
 decode fixtures that are real responses from the mock dashboard.
@@ -52,6 +52,14 @@ decode fixtures that are real responses from the mock dashboard.
 
 To open the project in Xcode, run `xcodegen generate` in `apps/ios`.
 
+### On an iPhone
+
+Sign in to Xcode with your Apple ID (Xcode › Settings › Accounts), put
+`DEVELOPMENT_TEAM = <team ID>` in `apps/ios/Local.xcconfig` (git ignores it),
+connect the iPhone with Developer Mode on, and run `apps/ios/scripts/device.sh`.
+A personal team also needs `JUNIOR_BUNDLE_ID = <a bundle ID of its own>` there,
+and its builds expire after 7 days.
+
 ### Machine rules
 
 One simulator can use about 10 GB of memory. `sim.sh` takes a machine lock,
@@ -76,8 +84,11 @@ a new worktree reuses compiled work.
 
 ## Sign-in
 
-The app sends a personal token (`jr_pat_…`, from Settings › API Tokens on the
-web) as a Bearer token. The dashboard accepts personal tokens only for `GET`
+When the dashboard rejects the app (no token, or an expired one), the app
+shows Connect. It opens the dashboard's API Tokens page in an in-app browser,
+where you sign in with Google and copy a new token, and then you paste it.
+
+The app sends that personal token (`jr_pat_…`) as a Bearer token. The dashboard accepts personal tokens only for `GET`
 requests. Writes (send a message, answer a Review item, pause an Automation)
 work against the mock server, but a real deployment rejects them, and the app
 says so. A native sign-in or a write scope for tokens needs a server change.

@@ -29,7 +29,23 @@ struct RootView: View {
 
   var body: some View {
     @Bindable var app = app
-    ZStack {
+    Group {
+      if app.needsConnect {
+        ConnectScreen()
+      } else {
+        shell
+      }
+    }
+    .background(Tokens.bg.ignoresSafeArea())
+    .simultaneousGesture(TapGesture().onEnded { app.noteInput() })
+    .sheet(item: $app.webPage) { url in
+      SafariView(url: url).ignoresSafeArea()
+    }
+  }
+
+  private var shell: some View {
+    @Bindable var app = app
+    return ZStack {
       NavigationStack(path: $app.path) {
         placeRoot
           .background(SwipeBackEnabler().frame(width: 0, height: 0))
@@ -53,11 +69,6 @@ struct RootView: View {
           .transition(.move(edge: .leading))
           .zIndex(1)
       }
-    }
-    .background(Tokens.bg.ignoresSafeArea())
-    .simultaneousGesture(TapGesture().onEnded { app.noteInput() })
-    .sheet(item: $app.webPage) { url in
-      SafariView(url: url).ignoresSafeArea()
     }
   }
 

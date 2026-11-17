@@ -167,14 +167,7 @@ struct SettingsScreen: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(label).type(.sm, .semibold).foregroundStyle(Tokens.text)
-      // `text-sm` with `py-2`, as the web input.
-      content()
-        .font(.dashboard(.sm))
-        .foregroundStyle(Tokens.text)
-        .padding(.horizontal, 12)
-        .frame(height: 37)
-        .background(Tokens.ink, in: RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
+      content().dashboardInput()
       if let help {
         Text(help).type(.xs, lineHeight: 1.625).foregroundStyle(Tokens.textMuted)
           .fixedSize(horizontal: false, vertical: true)

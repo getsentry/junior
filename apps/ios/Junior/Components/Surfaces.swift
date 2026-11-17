@@ -2,6 +2,16 @@ import JuniorKit
 import SwiftUI
 
 extension View {
+  /// A text input: `text-sm` with `py-2`, as the web input.
+  func dashboardInput() -> some View {
+    font(.dashboard(.sm))
+      .foregroundStyle(Tokens.text)
+      .padding(.horizontal, 12)
+      .frame(height: 37)
+      .background(Tokens.ink, in: RoundedRectangle(cornerRadius: 6))
+      .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
+  }
+
   /// List card: radius 8, `border-subtle`, `fill-faint`.
   /// The 1pt inset matches CSS, where a border adds to the box.
   func listCard(radius: CGFloat = 8) -> some View {

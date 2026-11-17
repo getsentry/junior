@@ -38,10 +38,12 @@ final class AppModel {
     didSet {
       saveServer()
       client = JuniorClient(server: server)
-      Task { await refreshShell() }
+      shellRefresh = Task { await refreshShell() }
     }
   }
   private(set) var client: JuniorClient
+  /// The shell refresh a server change started, so a caller can await it.
+  private(set) var shellRefresh: Task<Void, Never>?
   var theme: ThemeChoice {
     didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
   }
@@ -54,6 +56,8 @@ final class AppModel {
   var spend: Spend?
   var inboxCount = 0
   var shellError: JuniorAPIError?
+  /// The dashboard rejected the token, or there is none and it needs one.
+  var needsConnect: Bool { shellError == .signedOut }
 
   var place: Place = .conversations
   var path: [Route] = []
