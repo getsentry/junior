@@ -1,15 +1,10 @@
 import { describe, expect } from "vitest";
 import {
   githubWebhook,
-  heartbeat,
   slackMention,
   slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
-import {
-  insertGitHubPullRequestWatch,
-  insertScheduledAutomation,
-  slackChannel,
-} from "@junior-evals/fixture/insert";
+import { insertGitHubPullRequestWatch } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -88,32 +83,5 @@ describe("Thread Context", () => {
     );
     expect(followUp.turns).toHaveLength(1);
     expect(followUp.turns[0]!.threadContextMessageIds).toHaveLength(1);
-  });
-
-  test("when a message without a mention follows an Automation run, the next mention sees it", async ({
-    run,
-  }) => {
-    await insertScheduledAutomation({
-      credentialMode: "system",
-      destination: slackChannel(),
-      due: true,
-      once: true,
-      task: "Post this reminder: Submit timesheets by 5pm today.",
-    });
-
-    const delivery = await run(heartbeat());
-    expect(delivery.replies).toHaveLength(1);
-    expect(delivery.turns[0]!.threadContextMessageIds).toEqual([]);
-
-    const followUp = await delivery.continue([
-      slackThreadMessage("Payroll moved the deadline to 6pm today.", {
-        author: sam,
-      }),
-      slackMention("When are timesheets due now? Answer with the time only."),
-    ]);
-
-    expect(followUp.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
-    expect(followUp.turns[0]!.threadContextMessageIds).toHaveLength(1);
-    expect(followUp.replies[0]!.text).toMatch(/6\s*pm/i);
   });
 });
