@@ -52,8 +52,6 @@ data, does not run.
   proves that each effect is safe. A core tool is reviewed only when it opts
   in, such as Automation and Workspace changes, `spawnAgent`, and
   `messageAgent`.
-- Guardian does not review Sandbox commands.
-  [Sandbox credentials](./sandbox-credentials.md) limits what they reach.
 - A confirmation rule asks. The person clears it when they confirm the exact
   action. A hard rule denies, and no confirmation clears it. Examples are
   `data_exposure`, `credential_probing`, `security_weakening`, and
@@ -97,6 +95,11 @@ data, does not run.
   public repo. `data_exposure` then misses private data in that write. This
   breaks "the install states facts about destinations".
   getsentry/junior#3596 adds `review-context`.
+- Guardian does not review Sandbox commands, such as a provider CLI or git
+  that writes with a plugin credential. Only
+  [Sandbox credentials](./sandbox-credentials.md) limits them. This breaks
+  "a block holds for the outcome, not for the tool": a write that Guardian
+  blocks as a tool call can run as a command.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".
