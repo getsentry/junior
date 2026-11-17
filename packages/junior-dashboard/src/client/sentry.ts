@@ -1,12 +1,14 @@
 import {
   BrowserClient,
-  browserTracingIntegration,
+  browserTracingCoreIntegration,
   captureFeedback,
   defaultStackParser,
+  fetchTracingIntegration,
   getActiveSpan,
   getClient,
   getIsolationScope,
   getRootSpan,
+  linkedTracesIntegration,
   makeFetchTransport,
   setCurrentClient,
   spanToJSON,
@@ -289,14 +291,16 @@ export function initDashboardSentry(ui: UiShell): void {
   scope.setAttribute("app.dashboard.ui", ui);
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
-  // A client built directly bundles only browser tracing.
+  // A client built directly bundles only the integrations listed here.
+  // `browserTracingIntegration` would also bundle web vitals, XHR, long
+  // task, and resource spans.
   const client = new BrowserClient({
     ...config,
     beforeSendSpan: scrubSpan,
     stackParser: defaultStackParser,
     transport: makeFetchTransport,
     integrations: [
-      browserTracingIntegration({
+      browserTracingCoreIntegration({
         beforeStartSpan: (options) =>
           options.op === "pageload"
             ? {
@@ -308,6 +312,8 @@ export function initDashboardSentry(ui: UiShell): void {
               }
             : options,
       }),
+      fetchTracingIntegration(),
+      linkedTracesIntegration(),
     ],
   });
   setCurrentClient(client);

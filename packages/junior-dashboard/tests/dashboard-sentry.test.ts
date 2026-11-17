@@ -50,6 +50,8 @@ describe("dashboard browser Sentry", () => {
     expect(options?.dsn).toBe("https://public@example.com/1");
     expect(options?.integrations.map(({ name }) => name)).toEqual([
       "BrowserTracing",
+      "FetchTracing",
+      "LinkedTraces",
     ]);
     const scrubbed = options?.beforeSendSpan?.(
       span({
