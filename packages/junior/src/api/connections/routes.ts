@@ -22,7 +22,7 @@ import { requireViewer } from "../viewer";
 /**
  * Create authenticated routes that list, connect, and disconnect the viewer's
  * plugin accounts. Connections belong to the viewer's User id, which is the
- * web Actor id and the credential subject for the viewer's web Conversations.
+ * web Actor id and the credential subject for the viewer's Conversations.
  */
 export function createConnectionRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();

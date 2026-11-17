@@ -9,11 +9,11 @@ import {
   ChildConversationStatusPill,
   childConversationStatus,
 } from "./ChildConversationStatus";
-import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
 import { HighlightText } from "./transcriptSearch";
+import { formatCompactAge } from "../time";
 
 /**
  * Link a Thread that the parent started to its page: title, status, and age.

@@ -148,7 +148,7 @@ function repoPayload(repo: string): Record<string, unknown> {
     private: false,
     owner: organizationPayload(ownerLogin),
     html_url: htmlUrl,
-    description: "Junior eval repository fixture",
+    description: "Eval repository fixture",
     fork: false,
     url: apiUrl,
     trees_url: `${apiUrl}/git/trees{/sha}`,
@@ -419,6 +419,26 @@ async function githubResponse(
     `Missing eval GitHub egress fixture for ${request.method} ${upstreamUrl.pathname}\n`,
     { status: 501 },
   );
+}
+
+const ISSUE_ROUTE = /^\/repos\/[^/]+\/[^/]+\/issues(?:\/\d+(?:\/comments)?)?$/;
+
+/**
+ * Serve the issue routes to GitHub calls that plugin tools make in process,
+ * such as `github_createIssue` and `github_getIssue`. Other routes return
+ * undefined, so the caller's unhandled-request rule still applies.
+ */
+export async function interceptTestGitHubIssuesHttp(
+  request: Request,
+  upstreamUrl: URL,
+): Promise<Response | undefined> {
+  if (
+    upstreamUrl.hostname !== GITHUB_API_HOST ||
+    !ISSUE_ROUTE.test(upstreamUrl.pathname)
+  ) {
+    return undefined;
+  }
+  return await githubResponse(request, upstreamUrl);
 }
 
 /** Intercept GitHub API traffic for test scenarios without shell command stubs. */

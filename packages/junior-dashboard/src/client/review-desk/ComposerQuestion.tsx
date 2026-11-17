@@ -32,6 +32,8 @@ import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 export type ComposerQuestionAnswers = {
   /** Send every question that has picks. Resolves false when one fails. */
   send(): Promise<boolean>;
+  /** Show the open question with this id, as the reader's move. */
+  show(id: string): void;
 };
 
 /**
@@ -164,6 +166,11 @@ export function ComposerQuestion(props: {
   );
   const item = props.questions[index];
   useImperativeHandle(props.answersRef, () => ({
+    show: (id) => {
+      if (id === item?.id || !props.questions.some((q) => q.id === id)) return;
+      readerMovedRef.current = true;
+      setSelectedId(id);
+    },
     send: async () => {
       sendingFromMessageBoxRef.current = true;
       const sends = props.questions.flatMap((question) => {
@@ -248,6 +255,8 @@ export function ComposerQuestion(props: {
   return (
     <MessageCard
       aria-label={`Question: ${item.title}`}
+      // Esc here dismisses the question, so it does not leave the page.
+      data-escape-scope=""
       className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
       onKeyDown={onKeyDown}
       ref={(node) => {

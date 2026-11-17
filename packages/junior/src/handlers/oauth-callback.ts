@@ -5,6 +5,7 @@
  * or change its history.
  */
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { authorizationId } from "@/chat/oauth-authorization";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
@@ -91,13 +92,6 @@ function oauthTokenErrorAttributes(
   };
 }
 
-function pluginAuthorizationId(args: {
-  provider: string;
-  sessionId: string;
-}): string {
-  return `${args.sessionId}:plugin:${args.provider}`;
-}
-
 /** Return the Junior user of the person who started the OAuth connection. */
 async function resolveOAuthActorUserId(
   actor: SlackActor | WebActor,
@@ -154,7 +148,7 @@ async function linkOAuthAccountIdentity(args: {
   );
   const userId = actorUserId ?? emailMatch?.userId;
   if (!userId) {
-    throw new Error("OAuth account has no Junior user to link");
+    throw new Error("OAuth account has no User to link");
   }
   const email = emailMatch?.userId === userId ? emailMatch.email : undefined;
   await upsertLinkedIdentity(executor, userId, {
@@ -198,7 +192,8 @@ async function wakeAuthorizedPluginTurn(
       provider: stored.provider,
       actorId: stored.userId,
       scope: stored.scope,
-      authorizationId: pluginAuthorizationId({
+      authorizationId: authorizationId({
+        kind: "plugin",
         provider: stored.provider,
         sessionId: turnId,
       }),
@@ -439,7 +434,8 @@ export async function GET(
           ...(account?.label ? { accountLabel: account.label } : undefined),
           ...(stored.resumeSessionId
             ? {
-                authorizationId: pluginAuthorizationId({
+                authorizationId: authorizationId({
+                  kind: "plugin",
                   provider,
                   sessionId: stored.resumeSessionId,
                 }),
@@ -504,7 +500,8 @@ export async function GET(
         kind: "plugin",
         provider: stored.provider,
         actorId: stored.userId,
-        authorizationId: pluginAuthorizationId({
+        authorizationId: authorizationId({
+          kind: "plugin",
           provider: stored.provider,
           sessionId: stored.resumeSessionId!,
         }),

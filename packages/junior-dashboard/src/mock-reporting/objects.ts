@@ -238,6 +238,37 @@ const SENTRY_RELEASE: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "sentry",
 };
 const SENTRY_RELEASE_PATH = "/releases/junior%404.2.0/";
+// The mock release thread links to the metric alert that paged on the
+// checkout slowdown.
+const SENTRY_MONITOR: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "monitor",
+  key: "monitor:acme:4021",
+  label: "Checkout p95 latency",
+  title: "Checkout p95 latency",
+  status: "Alerting",
+  displayType: "Sentry monitor",
+  facts: {
+    type: "monitor",
+    summary: "Pages the checkout team when p95 checkout spans pass 800 ms.",
+    kind: "metric",
+    state: "failing",
+    project: "junior",
+    environment: "production",
+    detail: "p95(span.duration) per 5 min",
+    trend: {
+      label: "p95(span.duration), last 4 h",
+      points: [
+        210, 205, 220, 214, 208, 230, 226, 219, 224, 231, 228, 236, 240, 233,
+        238, 245, 251, 247, 262, 270, 284, 301, 333, 362, 410, 468, 522, 590,
+        644, 702, 768, 812, 846, 871, 902, 930, 918, 944, 961, 952, 970, 988,
+        1004, 991, 1012, 1030, 1018, 1041,
+      ],
+    },
+  },
+  plugin: "sentry",
+};
+const SENTRY_MONITOR_PATH = "/monitors/4021/";
 // The mock release thread links to one Sentry trace: a checkout request
 // whose payment call failed.
 const SENTRY_TRACE_ID = "a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4";
@@ -343,7 +374,7 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
     media: "video",
     siteName: "YouTube",
     thumbnailUrl: MOCK_THUMBNAIL_URL,
-    title: "Junior 4.2 launch demo",
+    title: "Checkout 4.2 launch demo",
     url: "https://www.youtube.com/watch?v=MockLaunchDemo",
   },
   "https://blog.example.com/posts/release-4-2": {
@@ -377,6 +408,12 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
+  }
+  if (
+    url.hostname === "acme.sentry.io" &&
+    url.pathname === SENTRY_MONITOR_PATH
+  ) {
+    return [{ object: { ...SENTRY_MONITOR, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
     return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];

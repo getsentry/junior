@@ -32,8 +32,10 @@ list the known searchable sources when those sources are known at turn start.
 
 - **WHEN** Junior creates the native `searchTools` definition
 - **THEN** the description explains that deferred tools are grouped by source
-- **AND** the description tells the model to search a source before using
-  `executeTool`
+- **AND** the description tells the model to list a source or search with a
+  query before using `executeTool`
+- **AND** the description says that a result with only `params` needs a search
+  for its exact name to get its `input_schema`
 - **AND** the description lists compact source summaries
 - **AND** the description does not enumerate every tool in every source.
 
@@ -86,6 +88,13 @@ tool.
 - **AND** individual tool results do not include expanded plugin manifests, MCP
   provider configuration, credential state, or connection metadata.
 
+#### Scenario: Schema or params preview
+
+- **WHEN** a search has a query
+- **THEN** the first result includes its full `input_schema`
+- **AND** the other results include only a `params` preview of their arguments
+- **AND** a source listing with no query includes only `params` previews.
+
 ### Requirement: Model-Visible Descriptions Are Summarized
 
 Junior SHALL summarize source and tool descriptions before rendering them in
@@ -121,6 +130,8 @@ Junior supports first-class deferred tool loading.
 - **WHEN** the model needs a deferred capability but does not know the exact
   tool name
 - **THEN** it can call `searchTools`
+- **AND** if the selected result has only `params`, search its exact name to
+  get its `input_schema`
 - **AND** use the returned exact `tool_name` in `executeTool`
 - **AND** pass arguments matching the selected tool schema.
 

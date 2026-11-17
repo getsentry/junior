@@ -195,91 +195,77 @@ label the Message and feed the trust check.
 ### Requirement: Trusted Event Authors
 
 An event author SHALL be trusted when Junior verifies their linked account on
-an allowed domain, with the same check that Identity dispatch and Watch
-requester instructions use. An event author SHALL also be trusted when the
+an allowed domain, with the same check that Identity dispatch and Slack
+ingress use. An event author SHALL also be trusted when the
 plugin's `trustedAuthors` list has their login. Every other author SHALL be
 untrusted. An unknown sender SHALL NOT be trusted.
 
-Junior SHALL treat text from a trusted author exactly like a chat message from
-that author, no more and no less. Only the author's own text SHALL count.
-Lines that the author only quotes SHALL NOT count.
+An event author's text SHALL NOT be an instruction, even from a trusted
+author. The Watch or Automation that the event matched SHALL give the job, and
+action review SHALL judge the Turn against it. Only the author's own text
+SHALL carry the author. Lines that the author only quotes SHALL stay provider
+text.
 
-An event from an untrusted or unknown author SHALL NOT start a run. A system
-event SHALL run as today. Core SHALL get only a provider-neutral trusted
-result. Core SHALL NOT read provider logins to decide trust.
+A trusted linked author SHALL write the event's Message under their Identity.
+Batching SHALL keep Messages with different authors apart. Event Messages
+SHALL NOT share a Turn with Slack or web Messages. Every event SHALL run.
+Core SHALL get only a provider-neutral trusted result. Core SHALL NOT read
+provider logins to decide trust.
 
-Junior SHALL decide trust for each event. Junior SHALL drop an untrusted
-authored event before it joins a batch or a Turn, so the agent never sees it.
-Only trusted and system entries SHALL be batched. When none is left, Junior
-SHALL NOT start a Turn.
+The author's text SHALL carry the same author attributes as that author's
+messages. For an untrusted author, the task input SHALL say that Junior could
+not verify the account.
 
 #### Scenario: Linked member on an allowed domain
 
 - **WHEN** a person whose GitHub account links to one current Slack member on
   an allowed domain comments on a watched PR
-- **THEN** Junior treats the comment text like a chat message from that
-  person.
+- **THEN** that person writes the event's Message
+- **AND** the comment text is context for the Watch task, with their author
+  ID and name.
 
 #### Scenario: Linked member on another domain
 
 - **WHEN** a person whose GitHub account links to a Slack member whose email
   is not on an allowed domain comments on a watched PR
-- **THEN** the event does not start a run.
+- **THEN** the event runs as system context, marked as not verified.
 
 #### Scenario: Deactivated linked member
 
 - **WHEN** a person whose GitHub account links to a Slack user who is no
   longer an active member comments on a watched PR
-- **THEN** the event does not start a run.
+- **THEN** the event runs as system context, marked as not verified.
 
 #### Scenario: Author with no linked account
 
 - **WHEN** a person whose GitHub Identity has no linked Slack user, and who
   is not on `trustedAuthors`, comments on a watched PR
-- **THEN** the event does not start a run.
+- **THEN** the event runs as system context, marked as not verified.
 
 #### Scenario: Quoted text from a trusted author
 
 - **WHEN** a trusted author quotes another person's text in a comment
-- **THEN** Junior treats only the author's own lines as trusted text.
+- **THEN** only the author's own lines carry the author.
 
 #### Scenario: Bot on the trusted authors list
 
 - **WHEN** a bot whose GitHub login is on `trustedAuthors` comments on a
   watched PR
-- **THEN** Junior treats the comment text like a chat message from that bot
+- **THEN** its comment text carries the bot as author, without the
+  not-verified mark
 - **AND** the bot has no User and gets no participant row.
-
-#### Scenario: Person on the trusted authors list
-
-- **WHEN** a person whose GitHub login is on `trustedAuthors`, and who has no
-  allowed-domain email, comments on a watched PR
-- **THEN** Junior treats the comment text like a chat message from that
-  person.
 
 #### Scenario: Unknown sender
 
 - **WHEN** a sender with no known Identity link and no entry on
   `trustedAuthors` comments on a watched PR
-- **THEN** the event does not start a run.
+- **THEN** the event runs as system context, marked as not verified.
 
-#### Scenario: Bot not on the trusted authors list
+#### Scenario: Trusted author asks for more work
 
-- **WHEN** a bot whose GitHub login is not on `trustedAuthors` comments on a
-  watched PR
-- **THEN** the event does not start a run.
-
-#### Scenario: Untrusted event in a busy wait window
-
-- **WHEN** a trusted comment and an untrusted comment arrive in the same wait
-  window
-- **THEN** Junior drops the untrusted comment before batching
-- **AND** the Turn input has only the trusted comment.
-
-#### Scenario: Only untrusted events
-
-- **WHEN** every event in a wait window has an untrusted author
-- **THEN** no Turn starts.
+- **WHEN** a trusted author's comment asks for work that the Watch task does
+  not ask for
+- **THEN** action review does not take the comment as approval.
 
 ### Requirement: Guardian Labels Use The Actor
 

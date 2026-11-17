@@ -35,6 +35,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
@@ -42,6 +43,7 @@ import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 import {
   juniorAgentInvocations,
   juniorConversationEvents,
@@ -229,10 +231,15 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
+  const messageText = sql`${events.payload}->>'message'`;
+  // Newer rows keep the fields that replay reads as payload keys. Older rows
+  // keep them only in the message string. The fields that replay reads have
+  // no Unicode escapes, so the cast keeps their values.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
-    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
-    ELSE ${events.payload}
+    WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
+    WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
+    ELSE ${storedMessageJson(messageText)}
   END`;
   return await getDb()
     .select({
@@ -244,7 +251,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
       toolName: sql<string | null>`(${message})->>'toolName'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
-      modelId: sql<string | null>`(${message})->>'model'`,
+      modelId: sql<string | null>`${events.payload}->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
     })
@@ -426,9 +433,10 @@ function replayConversation(
     }
     lastCallMs = startedAtMs;
     if (turnEnding) {
-      const waitsOnPendingWork =
-        turnBehavior({ kind, personInput: userActor }).promptMode ===
-        "automation";
+      const waitsOnPendingWork = turnBehavior({
+        kind,
+        personInput: userActor,
+      }).idleNeedsPendingWork;
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),
@@ -462,16 +470,6 @@ function byConversation<Row extends { conversationId: string }>(
     grouped.set(row.conversationId, list);
   }
   return grouped;
-}
-
-function isQueryCanceled(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (typeof current !== "object") return false;
-    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
 }
 
 /** Idle periods of a history scan, and how much of the history it read. */
@@ -515,7 +513,7 @@ async function replayConversations(
     } catch (error) {
       // A batch with too much history for one query is skipped. The budget
       // check still stops the scan in time.
-      if (!isQueryCanceled(error)) throw error;
+      if (!isPostgresErrorCode(error, QUERY_CANCELED)) throw error;
       canceledBatches += 1;
       continue;
     }

@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -28,6 +29,8 @@ function testSlackSource(threadTs: string) {
 function makeDiagnostics() {
   return {
     assistantMessageCount: 0,
+    // A real agent run reports its failure and sets the event ID.
+    eventId: "0123456789abcdef0123456789abcdef",
     modelId: "fake-agent-model",
     outcome: "execution_failure" as const,
     toolCalls: [],
@@ -76,6 +79,7 @@ describe("Slack resume result handling", () => {
 
     await expect(
       resumeSlackTurn({
+        sendPluginTask: sendVercelPluginTask,
         messageText: "Resume the failed turn",
         channelId: "C123",
         threadTs: "1700000000.009",
@@ -135,6 +139,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "Continue the original request",
       conversationId: "slack:C123:1700000000.015",
       turnId: "turn-invalid-resume-actor",
@@ -172,6 +177,7 @@ describe("Slack resume result handling", () => {
     const conversationId = "agent-dispatch:resume-binding";
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId,
       turnId: "turn-resume-dispatch-binding",
@@ -214,6 +220,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId: "conversation-auth-pause",
       turnId: "turn-auth-pause",
@@ -258,6 +265,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "Continue the original request",
       conversationId: "slack:C123:1700000000.006",
       turnId: "turn-resume-execution-failure",
@@ -295,6 +303,7 @@ describe("Slack resume result handling", () => {
 
     await expect(
       resumeSlackTurn({
+        sendPluginTask: sendVercelPluginTask,
         messageText: "continue this turn",
         conversationId: "slack:C123:1700000000.011",
         turnId: "turn-resume-commit-fail",
@@ -336,6 +345,7 @@ describe("Slack resume result handling", () => {
     const onFailure = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId: "slack:C123:1700000000.014",
       turnId: "turn-resume-suspend-fail",

@@ -1,3 +1,4 @@
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -9,7 +10,6 @@ import {
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   backfillCacheWarmingGaps,
   scanIdlePeriods,
@@ -32,10 +32,13 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversationEvents } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  runTestHeartbeat,
+} from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
@@ -110,10 +113,7 @@ const gaps = (segment: string) =>
 
 async function heartbeat(nowMs: number) {
   vi.setSystemTime(nowMs);
-  await runHeartbeat({
-    conversationWorkQueue: createConversationWorkQueueTestAdapter(),
-    nowMs,
-  });
+  await runTestHeartbeat(createConversationWorkQueueTestAdapter(), nowMs);
 }
 
 describe("cache warming gap backfill", () => {
@@ -329,6 +329,7 @@ describe("cache warming savings re-fill", () => {
       cacheRead: number;
       cacheWrite?: number;
       stopReason?: "stop" | "toolUse";
+      text?: string;
       toolName?: string;
       /** The stored result of the tool call. */
       toolFailed?: boolean;
@@ -380,7 +381,9 @@ describe("cache warming savings re-fill", () => {
                       },
                     ],
                   }
-                : undefined),
+                : call.text
+                  ? { content: [{ type: "text" as const, text: call.text }] }
+                  : undefined),
               model: MODEL_ID,
               stopReason: call.stopReason ?? "stop",
               usage: { ...message.usage, cacheWrite: call.cacheWrite ?? 0 },
@@ -429,12 +432,31 @@ describe("cache warming savings re-fill", () => {
     const person = authenticatedApi(PERSON);
     // The first idle period ends with a read of the cache 7 minutes later,
     // the second with a write, and the third within the cache TTL.
+    // Postgres jsonb rejects the escapes that a stored message gets for a NUL
+    // character and for a lone surrogate.
     await storeCalls("local:test:savings-refill-idle", [
-      { atMs: DAY_1, cacheRead: 60_000 },
-      { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
+      { atMs: DAY_1, cacheRead: 60_000, text: "Read \0 from the file." },
+      {
+        atMs: DAY_1 + 7 * MINUTE,
+        cacheRead: 60_000,
+        // Text cut inside an emoji keeps half of its surrogate pair.
+        text: "Done \u{1F600}".slice(0, -1),
+      },
       { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
       { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
     ]);
+    // Older releases kept these fields only in the message string.
+    await getDb()
+      .update(juniorConversationEvents)
+      .set({
+        payload: sql`${juniorConversationEvents.payload} - 'stopReason' - 'timestamp' - 'toolName' - 'isError'`,
+      })
+      .where(
+        eq(
+          juniorConversationEvents.conversationId,
+          "local:test:savings-refill-idle",
+        ),
+      );
     // Two 7 minute tool waits: the first reads the cache, the second writes.
     const RUN = DAY_1 + 2 * 60 * MINUTE;
     await storeCalls("local:test:savings-refill-tools", [
@@ -632,6 +654,36 @@ describe("cache warming savings re-fill", () => {
       [{ atMs: RUN + 60 * MINUTE, cacheRead: 60_000 }],
       "automation",
     );
+    // A person's reply in an Automation Conversation needs no pending work.
+    const REPLY = RUN + 120 * MINUTE;
+    const replyId = "local:test:replay-automation-reply";
+    await getConversationStore().recordActivity({
+      conversationId: replyId,
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      activityAtMs: REPLY,
+      nowMs: REPLY,
+      kind: "automation",
+    });
+    await getConversationEventStore().append(replyId, [
+      {
+        createdAtMs: REPLY,
+        data: historyItemFromPiMessage(
+          { role: "user", content: "Run it again.", timestamp: REPLY },
+          instructionProvenanceFor({
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          }),
+        ),
+      },
+      {
+        createdAtMs: REPLY + 1_000,
+        data: historyItemFromPiMessage(
+          { ...reply(60_000, REPLY), model: MODEL_ID },
+          contextProvenance,
+        ),
+      },
+    ]);
 
     const nowMs = DAY_2 + 26 * 60 * MINUTE;
     const { periods, toolWaits } = await scanIdlePeriods({
@@ -656,6 +708,7 @@ describe("cache warming savings re-fill", () => {
         turnEnding: "reply",
         gapMs: nowMs - RUN,
       }),
+      expect.objectContaining({ sinceMs: REPLY, turnEnding: "reply" }),
     ]);
   });
 });

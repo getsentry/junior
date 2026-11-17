@@ -116,6 +116,7 @@ ORDER BY datname DESC
     return result.rows.map((row) => row.datname);
   });
   for (const databaseName of databaseNames) {
+    // oxlint-disable-next-line no-await-in-loop -- Drop one test database at a time to keep admin connections low.
     await dropPostgresTestDatabase(options, databaseName);
   }
 }

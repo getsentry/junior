@@ -9,12 +9,13 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../../components/ui/tooltip";
-import { formatCostSummary, formatRuntime } from "../../format";
+import { formatCostSummary } from "../../format";
 import { cn } from "../../styles";
 import {
   automationRunStatusTone,
   formatAutomationRunTime,
 } from "./automationFormat";
+import { formatRuntime } from "../../time";
 
 /** One bar in the strip. `to` makes the bar open that run in place. */
 export type AutomationRunStripRun = {

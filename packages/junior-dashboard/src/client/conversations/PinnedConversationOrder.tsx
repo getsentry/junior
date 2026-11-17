@@ -12,7 +12,6 @@ import {
   DndContext,
   DragOverlay,
   MouseSensor,
-  TouchSensor,
   useDndContext,
   useSensor,
   useSensors,
@@ -30,12 +29,22 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 export type PinnedRowDrag = {
   dragging: boolean;
   listeners: DraggableSyntheticListeners;
+  move: PinnedRowMove;
   onKeyDown(event: KeyboardEvent): void;
   setNodeRef(element: HTMLElement | null): void;
 };
 
+/** Move a pinned row one place. Each side is unset at its end of the list. */
+export type PinnedRowMove = {
+  down: (() => void) | undefined;
+  up: (() => void) | undefined;
+};
+
 type PinnedOrder = {
+  count: number;
   disabled: boolean;
+  /** The pins, in order. Other rows in the list do not drag. */
+  ids: readonly string[];
   move(conversationId: string, toIndex: number): void;
 };
 
@@ -78,14 +87,14 @@ export function PinnedConversationOrder(props: {
     [conversations, ids, onError, reorder],
   );
   const disabled = !reorder || ids.length < 2;
-  const order = useMemo(() => ({ disabled, move }), [disabled, move]);
+  const order = useMemo(
+    () => ({ count: ids.length, disabled, ids, move }),
+    [disabled, ids, move],
+  );
   const sensors = useSensors(
-    // A short move before the drag starts keeps a click a click.
+    // A short move before the drag starts keeps a click a click. Touch has
+    // no drag: a long press opens the row sheet, which moves the row.
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    // A long press starts a drag, so a swipe still scrolls the list.
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
-    }),
   );
   const announcements = useMemo(
     () => pinAnnouncements(conversations),
@@ -121,27 +130,41 @@ export function PinnedConversationOrder(props: {
 
 /**
  * Make one pinned row draggable inside `PinnedConversationOrder`. Alt+ArrowUp
- * and Alt+ArrowDown move the row one place without a pointer. Returns nothing
- * when the order is disabled, so the row renders as a plain row.
+ * and Alt+ArrowDown, and the row menu, move the row one place without a
+ * drag. Returns nothing when the order is disabled or the row is not a pin,
+ * so it renders as a plain row that is neither dragged nor dropped on.
  */
 export function usePinnedRowDrag(
   conversationId: string,
 ): PinnedRowDrag | undefined {
   const order = useContext(PinnedOrderContext);
-  const disabled = !order || order.disabled;
+  const disabled =
+    !order || order.disabled || !order.ids.includes(conversationId);
   const sortable = useSortable({ disabled, id: conversationId });
   const { index } = sortable;
   if (disabled) return undefined;
+  const move: PinnedRowMove = {
+    down:
+      index < order.count - 1
+        ? () => order.move(conversationId, index + 1)
+        : undefined,
+    up: index > 0 ? () => order.move(conversationId, index - 1) : undefined,
+  };
   return {
     dragging: sortable.isDragging,
     listeners: sortable.listeners,
+    move,
     onKeyDown: (event) => {
       if (!event.altKey) return;
-      const offset =
-        event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-      if (offset === 0) return;
+      const run =
+        event.key === "ArrowUp"
+          ? move.up
+          : event.key === "ArrowDown"
+            ? move.down
+            : undefined;
+      if (!run) return;
       event.preventDefault();
-      order.move(conversationId, index + offset);
+      run();
     },
     setNodeRef: sortable.setNodeRef,
   };

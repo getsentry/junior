@@ -1,10 +1,18 @@
+import { useMemo } from "react";
 import {
   keepPreviousData,
   queryOptions,
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
+  type InfiniteData,
 } from "@tanstack/react-query";
-import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type {
+  ActorProfileReport,
+  AutomationList,
+  AutomationListItem,
+  CodePersonReport,
+} from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
@@ -34,7 +42,10 @@ import {
   skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
-import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
+import {
+  pluginUserPageLinksSchema,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 
 import {
   dashboardBootstrapSchema,
@@ -43,6 +54,7 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
+import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemData } from "./types";
 
 declare global {
@@ -115,14 +127,18 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
+  // Only the new UI's rows show files and link cards, which cost the server
+  // a query, so only it asks for them.
+  const include = useInboxUi() && !search ? "links,media" : "";
   return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
-    queryKey: ["dashboard", "conversations", "viewer", { search }],
+    queryKey: ["dashboard", "conversations", "viewer", { include, search }],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
+      if (include) params.set("include", include);
       if (pageParam) params.set("cursor", pageParam);
       const query = params.toString();
       return fetchDashboardJson(
@@ -141,8 +157,9 @@ export function useConversationsData(search = "") {
 }
 
 /** Fetch repository and code change analytics. */
-export function useCodeOverviewData() {
+export function useCodeOverviewData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
@@ -150,22 +167,33 @@ export function useCodeOverviewData() {
   });
 }
 
-/** Fetch code activity, recent changes, and Workspaces for one repository. */
-export function useCodeRepositoryData(repositoryId: string | undefined) {
+/**
+ * Fetch code activity, recent changes, and Workspaces for one repository.
+ * `state` lists only the changes in that state.
+ */
+export function useCodeRepositoryData(
+  repositoryId: string | undefined,
+  state?: CodeChangeState,
+) {
   return useQuery({
     enabled: Boolean(repositoryId),
-    queryKey: ["dashboard", "code", "repositories", repositoryId],
+    queryKey: ["dashboard", "code", "repositories", repositoryId, state],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         codeRepositoryReportSchema,
-        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}${
+          state ? `?state=${state}` : ""
+        }`,
         signal,
       ),
     retry: false,
   });
 }
 
-/** Fetch conversations linked to one repository through its code changes. */
+/**
+ * Fetch conversations linked to one repository through its code changes,
+ * optionally matching `search` on the server.
+ */
 export function useCodeRepositoryConversationsData(
   repositoryId: string | undefined,
   search = "",
@@ -206,6 +234,60 @@ export function useAutomationsData(enabled: boolean, search: string) {
     placeholderData: keepPreviousData,
     retry: false,
   });
+}
+
+/**
+ * Page through the Automation list by `sort=activity`, as the new UI's
+ * list scrolls. `automations` holds the rows of every loaded page.
+ */
+export function useAutomationPagesData(enabled: boolean, search: string) {
+  const query = useInfiniteQuery({
+    enabled,
+    initialPageParam: "",
+    queryKey: ["dashboard", "automations", "activity-pages", search],
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams(search);
+      params.set("sort", "activity");
+      if (pageParam) params.set("cursor", pageParam);
+      return fetchDashboardJson(
+        automationListSchema,
+        `/api/automations?${params.toString()}`,
+        signal,
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+  const pages = query.data?.pages;
+  const automations = useMemo(
+    () => (pages ?? []).flatMap((page) => page.automations),
+    [pages],
+  );
+  return { automations, first: pages?.[0], query };
+}
+
+/**
+ * Find a loaded list row for one Automation, so its page can show the
+ * header before the summary arrives.
+ */
+export function useCachedAutomationListItem(
+  id: string | undefined,
+): AutomationListItem | undefined {
+  const queryClient = useQueryClient();
+  if (!id) return undefined;
+  for (const [, data] of queryClient.getQueriesData<
+    AutomationList | InfiniteData<AutomationList>
+  >({ queryKey: ["dashboard", "automations"] })) {
+    const lists = data && "pages" in data ? data.pages : data ? [data] : [];
+    for (const list of lists) {
+      const found = list.automations?.find(
+        (automation) => automation.id === id,
+      );
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 /** Load details by ID, independent of list filters and pagination. */
@@ -275,8 +357,9 @@ export function useAutomationVersionsData(
 }
 
 /** Fetch the actor directory used by the People dashboard route. */
-export function useActorDirectoryData() {
+export function useActorDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
@@ -330,6 +413,29 @@ export function useActorCodeData(email: string | undefined) {
 }
 
 /**
+ * Read every open code change of one person, a page of the code overview at
+ * a time. Open changes list first, so paging stops at the first page that
+ * reaches completed changes.
+ */
+export function useActorOpenCodeChanges(email: string | undefined) {
+  return useInfiniteQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code", "open"],
+    queryFn: ({ pageParam, signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ""}`,
+        signal,
+      ),
+    // An empty cursor reads the first page.
+    initialPageParam: "",
+    getNextPageParam: (page: CodePersonReport) =>
+      page.changes.at(-1)?.state === "open" ? page.nextCursor : undefined,
+    retry: false,
+  });
+}
+
+/**
  * Fetch the authenticated viewer's rolling model spend. The versions poll
  * refreshes it when it changes.
  */
@@ -349,8 +455,9 @@ export function usePersonalSpendData(enabled: boolean) {
 }
 
 /** Fetch the public location directory and private activity aggregate. */
-export function useLocationDirectoryData() {
+export function useLocationDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "locations"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(

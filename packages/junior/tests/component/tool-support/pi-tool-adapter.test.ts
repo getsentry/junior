@@ -9,7 +9,6 @@ import {
 } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -63,34 +62,6 @@ function actionReview(
 describe("Pi tool adapter", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
-  });
-
-  it("emits assistant status for updatePlan only", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const onStatus = vi.fn(async () => undefined);
-    const [updatePlanTool, bashTool] = createPiAgentTools(
-      {
-        updatePlan: createUpdatePlanTool(),
-        bash: {
-          description: "bash",
-          inputSchema: {},
-          execute: async () => ({ ok: true }),
-        },
-      },
-      sandbox,
-      { spanContext: {}, searchToolsCost: { owner: "none" }, onStatus },
-    );
-
-    await updatePlanTool!.execute("tool-plan", {
-      plan: [
-        { step: "Inspect current behavior", status: "completed" },
-        { step: "Implement the MVP", status: "in_progress" },
-      ],
-    });
-    await bashTool!.execute("tool-bash", { command: "pwd" });
-
-    expect(onStatus).toHaveBeenCalledOnce();
-    expect(onStatus).toHaveBeenCalledWith({ text: "Implement the MVP" });
   });
 
   it("emits assistant status when reportProgress runs through executeTool", async () => {

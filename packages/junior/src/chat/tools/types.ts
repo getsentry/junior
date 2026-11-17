@@ -25,7 +25,7 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
+import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -59,9 +59,9 @@ export interface ToolHooks {
    * Materialize generated files and return sandbox paths that exist before the
    * generating tool reports success.
    */
-  writeGeneratedArtifacts?: (
+  writeGeneratedFiles?: (
     files: FileUpload[],
-  ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
+  ) => GeneratedFileRef[] | Promise<GeneratedFileRef[]>;
   onSkillLoaded?: (skill: Skill) => void | Promise<void>;
   toolOverrides?:
     | {
@@ -90,6 +90,12 @@ interface BaseToolRuntimeContext {
   turnId?: string;
   /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
   turnTools: TurnBehavior["tools"];
+  /**
+   * Tools that the Turn lists, from its Prompt mode. A Thread lists the tools
+   * of every sender, and the ones that `turnTools` does not allow are
+   * disabled. Omitted means `turnTools`.
+   */
+  listedTools?: TurnBehavior["tools"];
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */

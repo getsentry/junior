@@ -82,6 +82,14 @@ export function isAbortError(error: unknown): boolean {
   });
 }
 
+/** A sandbox call that Junior owns did not finish within its time limit. */
+export class SandboxCallTimeoutError extends Error {
+  constructor(operation: string, timeoutMs: number, options?: ErrorOptions) {
+    super(`${operation} did not finish within ${timeoutMs}ms`, options);
+    this.name = "SandboxCallTimeoutError";
+  }
+}
+
 /** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError as-is. */
 export function wrapSandboxSetupError(error: unknown): Error {
   const notReady = getWorkspaceSnapshotNotReadyError(error);

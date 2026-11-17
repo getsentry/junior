@@ -28,6 +28,7 @@ import {
 import { sentryEventLinks } from "./links/events.js";
 import { sentryIssueLinks } from "./links/issues.js";
 import { sentryReleaseLinks } from "./links/releases.js";
+import { sentryMonitorLinks } from "./links/monitors.js";
 import { sentryTraceLinks } from "./links/traces.js";
 import { linkifySentryShortIds } from "./links/short-ids.js";
 import {
@@ -35,6 +36,7 @@ import {
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { enforceSentryEgressPolicy } from "./egress-policy.js";
 import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookSecret } from "./webhooks/secret.js";
@@ -93,6 +95,7 @@ export function sentryPlugin(): PluginRegistration {
       sentryReleaseLinks,
       sentryDashboardLinks,
       sentryDashboardWidgetLinks,
+      sentryMonitorLinks,
     ],
     manifest: {
       commandEnv: {
@@ -133,7 +136,10 @@ export function sentryPlugin(): PluginRegistration {
     },
     hooks: {
       formatMarkdown: ({ config, text }) => linkifySentryShortIds(text, config),
-      grantForEgress: sentryGrantForEgress,
+      grantForEgress(ctx) {
+        enforceSentryEgressPolicy(ctx.request);
+        return sentryGrantForEgress(ctx);
+      },
       issueCredential: issueSentryCredential,
       resolveOAuthAccount: resolveSentryOAuthAccount,
       routes(ctx) {

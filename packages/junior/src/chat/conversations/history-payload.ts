@@ -10,6 +10,7 @@ export function isEncodedHistoryType(type: string): boolean {
     type === "user_message" ||
     type === "assistant_message" ||
     type === "tool_result" ||
+    type === "system_message" ||
     type === "handoff" ||
     type === "compaction"
   );
@@ -47,6 +48,10 @@ export function encodeHistoryPayload(data: ConversationEventData): {
       provider: message["provider"],
       usage: message["usage"],
       toolCallId: message["toolCallId"],
+      stopReason: message["stopReason"],
+      timestamp: message["timestamp"],
+      toolName: message["toolName"],
+      isError: message["isError"],
     },
   };
 }

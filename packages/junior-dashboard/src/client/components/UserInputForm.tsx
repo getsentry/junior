@@ -20,6 +20,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
+import { useInboxUi } from "../uiShell";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -236,6 +237,7 @@ export function UserInputForm(props: {
   requestId: string;
   secondaryActions?: ReactNode;
 }) {
+  const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
   const [picked, setPicked] = useState<string>();
   const [failed, setFailed] = useState(false);
@@ -304,6 +306,11 @@ export function UserInputForm(props: {
     }
   }
 
+  const sendButton = (
+    <Button disabled={sending} type="submit" variant="default">
+      Send
+    </Button>
+  );
   const secondary = props.secondaryActions ? (
     <div className="flex flex-wrap gap-1 sm:ml-auto">
       {props.secondaryActions}
@@ -437,12 +444,15 @@ export function UserInputForm(props: {
           {/* A docked form sends from the message box, so this row can be
               empty there. */}
           {props.docked && fieldCount < 2 && !secondary ? null : (
-            <div className="flex flex-wrap items-center gap-2">
-              {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="default">
-                  Send
-                </Button>
+            // Send is the main action. The new UI ends the row with it, on
+            // the right; the current UI starts the row with it.
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2",
+                inbox && "justify-end",
               )}
+            >
+              {props.docked || inbox ? null : sendButton}
               {fieldCount > 1 ? (
                 <span
                   aria-live="polite"
@@ -452,6 +462,7 @@ export function UserInputForm(props: {
                 </span>
               ) : null}
               {secondary}
+              {props.docked || !inbox ? null : sendButton}
             </div>
           )}
         </form>

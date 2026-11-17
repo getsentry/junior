@@ -28,9 +28,18 @@ export default defineConfig({
       "@sentry/junior-github": pluginSource("junior-github"),
       "@sentry/junior-google": pluginSource("junior-google"),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        pluginApiPackageRoot,
+        "src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",
+      ),
+      "@sentry/junior-search": path.resolve(
+        packagesRoot,
+        "junior-search/src/index.ts",
       ),
       "@sentry/junior-vercel": pluginSource("junior-vercel"),
     },

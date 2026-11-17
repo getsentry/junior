@@ -168,7 +168,8 @@ function formatToolInputError(error: z.ZodError): string {
   return `Invalid tool arguments: ${details || "input did not match schema"}`;
 }
 
-function parseToolInput<TInputSchema extends ZodTypeAny>(
+/** Parse tool input with its Zod schema, as a model-repairable error on failure. */
+export function parseToolInput<TInputSchema extends ZodTypeAny>(
   schema: TInputSchema,
   args: unknown,
 ): z.output<TInputSchema> {

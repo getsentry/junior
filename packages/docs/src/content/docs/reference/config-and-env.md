@@ -36,6 +36,7 @@ related:
 | `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
 | `AI_VISION_MODEL`                           | No          | Image summary model for thread history and a text-only `AI_MODEL`. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                     |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
+| `AI_TRANSCRIPTION_MODEL`                    | No          | Model for the `transcribeAudio` tool. Defaults to `elevenlabs/scribe-v2`. It must accept an ElevenLabs `sourceUrl`, and the storage must be internet-reachable.             |
 | `AI_REFUSAL_FALLBACK_MODEL`                 | No          | Model that continues an agent Turn when `AI_MODEL` refuses it, for example after a provider safety block. Unset by default: a refusal ends the Turn.                        |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
@@ -191,6 +192,25 @@ const app = await createApp({
 This option costs one fast-model call per completed Turn. The example app and
 `junior chat` enable it.
 
+## Event embeddings
+
+`searchConversationEvents` matches the words of a query in Conversation
+history. After each completed Turn, Junior stores the search words of up to
+2,000 events that have none, so word searches in long Conversations stay fast.
+This needs no provider call and is always on.
+
+To also match by meaning, enable event embeddings:
+
+```ts
+const app = await createApp({
+  eventEmbeddings: { enabled: true },
+});
+```
+
+After each completed Turn, Junior embeds up to 256 of the newest events that
+have no embedding, with the model in `AI_EMBEDDING_MODEL`. This costs one
+embedding call per 32 events. `junior chat` enables it.
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same
@@ -337,6 +357,7 @@ const app = await createApp({
   rerankingModelId: "voyage/rerank-2.5-lite",
   webSearchModelId: "openai/gpt-6-luna",
   imageGenerationModelId: "openai/gpt-image-2",
+  transcriptionModelId: "elevenlabs/scribe-v2",
   visionModelId: "openai/gpt-5.6-sol",
 });
 ```

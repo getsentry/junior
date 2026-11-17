@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+
 import { defineConfig, devices } from "@playwright/test";
 import type { DashboardShell } from "./src/public-assets";
 
@@ -7,6 +9,15 @@ const chrome = {
   // job does not depend on apt package mirrors during Playwright setup.
   ...(process.env["CI"] ? { channel: "chrome" } : undefined),
 };
+
+// A spec under e2e/inbox/ tests the new UI, so its namesake in e2e/ is
+// for the current UI only. The review desk exists only in the current UI.
+const currentUiSpecs = [
+  ...readdirSync(new URL("./e2e/inbox", import.meta.url)).filter((name) =>
+    name.endsWith(".spec.ts"),
+  ),
+  "review-desk.spec.ts",
+].map((name) => `**/e2e/${name}`);
 
 export default defineConfig<{ ui: DashboardShell }>({
   testDir: "./e2e",
@@ -32,9 +43,8 @@ export default defineConfig<{ ui: DashboardShell }>({
     },
     trace: "retain-on-failure",
   },
-  // One project for each UI shell. A spec for one shell has the `@classic`
-  // or `@new` tag. Until the new shell renders the shared pages, untagged
-  // specs run only on the current UI.
+  // One project for each UI shell. A test for one shell has the `@classic`
+  // or `@new` tag, or is in a spec for one shell. Other specs run on both.
   projects: [
     {
       grepInvert: /@new\b/,
@@ -42,8 +52,9 @@ export default defineConfig<{ ui: DashboardShell }>({
       use: { ...chrome, ui: "classic" },
     },
     {
-      grep: /@new\b/,
+      grepInvert: /@classic\b/,
       name: "inbox",
+      testIgnore: currentUiSpecs,
       use: { ...chrome, ui: "inbox" },
     },
   ],

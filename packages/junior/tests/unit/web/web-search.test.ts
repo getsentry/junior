@@ -3,6 +3,11 @@ import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
 vi.mock("ai", () => ({
   generateText: vi.fn(),
 }));
@@ -33,13 +38,22 @@ describe("createWebSearchTool", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    await closeDb();
   });
 
-  it("uses AI Gateway parallel search and maps tool results", async () => {
+  it("uses AI Gateway parallel search, maps tool results, and records the cost", async () => {
+    const conversationId = "local:test:web-search-cost";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local", conversationId },
+      conversationId,
+      nowMs: 1_000,
+      source: "internal",
+    });
     vi.mocked(generateText).mockResolvedValueOnce({
+      providerMetadata: { gateway: { cost: "0.0125" } },
       toolResults: [
         {
           type: "tool-result",
@@ -57,7 +71,9 @@ describe("createWebSearchTool", () => {
       ],
     } as never);
 
-    const tool = createWebSearchTool("anthropic/claude-sonnet-4.6");
+    const tool = createWebSearchTool("anthropic/claude-sonnet-4.6", {
+      conversationId,
+    });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -94,6 +110,17 @@ describe("createWebSearchTool", () => {
         },
       ],
     });
+    const events =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(events.map((event) => event.data)).toEqual([
+      {
+        type: "structured_event",
+        namespace: "junior",
+        name: "web_search",
+        version: 1,
+        content: { costUsd: 0.0125 },
+      },
+    ]);
   });
 
   it("passes the shared OIDC credential into the gateway provider", async () => {
@@ -105,7 +132,7 @@ describe("createWebSearchTool", () => {
       toolResults: [],
     } as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -122,7 +149,7 @@ describe("createWebSearchTool", () => {
       new Error('400 Invalid input: expected "function"'),
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -141,7 +168,7 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -170,7 +197,7 @@ describe("createWebSearchTool", () => {
       });
     }) as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -201,7 +228,7 @@ describe("createWebSearchTool", () => {
       return Promise.resolve({ toolResults: [] });
     }) as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -235,7 +262,7 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
@@ -262,7 +289,7 @@ describe("createWebSearchTool", () => {
       ),
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }

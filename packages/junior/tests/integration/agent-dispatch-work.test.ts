@@ -32,6 +32,10 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -348,6 +352,14 @@ describe("agent dispatch conversation work", () => {
       await processNext();
     };
 
+    // The thread already has state from a person's Conversation. The run
+    // keeps its own state under its Conversation id.
+    const slackThreadId = `slack:${destination.channelId}:1700000000.000200`;
+    await persistThreadStateById(slackThreadId, {
+      sandboxRef: { id: "sandbox-person" },
+    });
+    const personThreadState = await getPersistedThreadState(slackThreadId);
+
     await enqueueAgentDispatch(dispatch, { queue, state });
     await processNext();
 
@@ -356,6 +368,12 @@ describe("agent dispatch conversation work", () => {
       channel: destination.channelId,
       thread_ts: "1700000000.000200",
     });
+    await expect(getPersistedThreadState(slackThreadId)).resolves.toEqual(
+      personThreadState,
+    );
+    const runThreadState = await getPersistedThreadState(conversationId);
+    expect(runThreadState).not.toEqual({});
+    expect(runThreadState).not.toHaveProperty("app_sandbox_id");
     // The first reply binds the thread, so a person's reply before any later
     // Turn reaches this Conversation.
     await expect(
@@ -580,6 +598,23 @@ describe("agent dispatch conversation work", () => {
 
     expect(slackApiOutbox.messages()).toEqual([]);
     expect(modelStream).toHaveBeenCalledTimes(5);
+    // Top-level runs in one channel share its channel-level Slack thread id,
+    // but each keeps state under its own Conversation.
+    await expect(
+      getPersistedThreadState(`slack:${destination.channelId}:`),
+    ).resolves.toEqual({});
+    for (const answered of [quietDispatch, blockedDispatch]) {
+      const conversationId = getDispatchConversationId(answered);
+      await expect(getPersistedThreadState(conversationId)).resolves.toEqual({
+        conversation: expect.objectContaining({ schemaVersion: 1 }),
+      });
+      const stored = coerceThreadConversationState({});
+      await hydrateConversationMessages({
+        conversation: stored,
+        conversationId,
+      });
+      expect(stored.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    }
     await expect(getDispatchRecord(quietDispatch.id)).resolves.toMatchObject({
       status: "completed",
     });

@@ -11,6 +11,7 @@
 import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -31,7 +32,6 @@ import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
-  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -48,7 +48,6 @@ import {
 import {
   CAPABILITY_SECTION_TAG,
   REQUEST_CONTEXT_SECTION_TAG,
-  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -56,7 +55,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -224,54 +224,32 @@ function withoutSections(text: string, tags: string[]): string {
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
+/**
+ * Remove the sections that only the Turn that received them can use, and
+ * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ */
 function withoutRequestContext(text: string): string {
-  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+  return withoutSections(text, [
+    ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
+    PLAN_DELTA_TAG,
+  ]);
 }
 
 /**
- * Turn context sections that a Turn sends only when they differ from the
- * latest copy in history. Compaction keeps exactly that copy, byte for byte.
+ * Remove the copies of capability sections that the Turn context of older
+ * Turns held. Later system messages hold them now, and compaction folds
+ * those.
  */
-const LATEST_COPY_SECTION_TAGS: string[] = [
-  ...Object.values(CAPABILITY_SECTION_TAG),
-  SCRIPT_TOOLS_SECTION_TAG,
-];
-
-function latestSections(
-  messages: PiMessage[],
-  tags = LATEST_COPY_SECTION_TAGS,
-): string[] {
-  return tags.flatMap((tag) => latestTurnContextSection(messages, tag) ?? []);
-}
-
-/**
- * Remove every copy of the latest-copy sections, then put the given copies in
- * the first Turn context part. Callers leave out a section that kept history
- * already has.
- */
-function withLatestSections(content: unknown[], sections: string[]): unknown[] {
-  const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
-  const added = sections.map((section) => `\n\n${section}`).join("");
-  let pending = sections.length > 0;
-  const result = content.map((part) => {
+function withoutCapabilitySections(content: unknown[]): unknown[] {
+  return content.map((part) => {
     const text = textPart(part);
-    if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
-      return part;
-    }
-    let stripped = withoutSections(text, LATEST_COPY_SECTION_TAGS);
-    if (pending && stripped.endsWith(closingTag)) {
-      stripped = `${stripped.slice(0, -closingTag.length)}${added}${closingTag}`;
-      pending = false;
-    }
-    return { ...(part as object), text: stripped };
+    return text?.startsWith(`<${TURN_CONTEXT_TAG}>`)
+      ? {
+          ...(part as object),
+          text: withoutSections(text, Object.values(CAPABILITY_SECTION_TAG)),
+        }
+      : part;
   });
-  return pending
-    ? [
-        { type: "text", text: `<${TURN_CONTEXT_TAG}>${added}${closingTag}` },
-        ...result,
-      ]
-    : result;
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -304,17 +282,12 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  return runtimeContextContent(
-    effectiveMessages,
-    effectiveMessages,
-    latestSections(messages),
-  );
+  return runtimeContextContent(effectiveMessages, effectiveMessages);
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
-  latest: string[],
 ): {
   content: unknown[];
   timestamp: number;
@@ -323,11 +296,10 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = withLatestSections(
+  const content = withoutCapabilitySections(
     allContent.filter(
       (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
     ),
-    latest,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -380,8 +352,7 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context, the latest copy of each capability section and `<script-tools>`,
- * and AGENTS.md instructions.
+ * context and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -406,7 +377,6 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
-      latestSections([...earlierContext, ...turnContext]),
     ),
     timestamp,
   );
@@ -414,8 +384,7 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context, the latest copy of each
- * capability section and `<script-tools>`, and the AGENTS.md instructions.
+ * does not carry: the latest session context and the AGENTS.md instructions.
  * Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
@@ -433,12 +402,6 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
-      latestSections(
-        earlierContext,
-        LATEST_COPY_SECTION_TAGS.filter(
-          (tag) => !latestTurnContextSection(keptContext, tag),
-        ),
-      ),
     ),
   );
 }
@@ -560,13 +523,22 @@ async function loadRetainedUserMessages(
   });
 }
 
-/** Keep generated text inside the existing evidence-only prompt boundary. */
+const COMPACTION_READ_BACK_NOTE =
+  "The summary replaced earlier messages and tool results and leaves out most of their details. Before you call a detail unknown or ask for it, search for it with a searchConversationEvents query, then read the full text with readConversationEvent.";
+
+/**
+ * Keep generated text inside the existing evidence-only prompt boundary. The
+ * last line says where replaced detail stays readable: without it, the model
+ * often decides a detail from a compacted tool result is gone, and asks the
+ * person for it.
+ */
 export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
     '<thread-context authority="evidence-only">',
     escapeXml(summary),
     "</thread-context>",
+    COMPACTION_READ_BACK_NOTE,
   ].join("\n");
 }
 
@@ -686,7 +658,9 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
   for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
-      if ((message as { role?: unknown }).role !== "user") return undefined;
+      // A replacement adds only user messages and folded system state.
+      const role = (message as { role?: unknown }).role;
+      if (role !== "user" && role !== "system") return undefined;
       continue;
     }
     const tokens = measuredInputTokens(message);
@@ -860,10 +834,17 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
+  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemEntries = systemMessage
+    ? [{ message: systemMessage, provenance: contextProvenance }]
+    : [];
   const keptTokens = estimateReplacementTokens(
-    [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
-      (entry) => entry.message,
-    ),
+    [
+      ...retainedUserMessages,
+      ...contextEntries,
+      ...instructionEntries,
+      ...systemEntries,
+    ].map((entry) => entry.message),
     args.modelId,
     args.requestOverheadTokens,
   );
@@ -903,10 +884,17 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      appendOpenPlan(renderCompactionSummary(summary), source.messages),
+      await appendPlanSnapshot(
+        renderCompactionSummary(summary),
+        args.conversationId,
+      ),
     ),
     provenance: contextProvenance,
   };
+  // The current system state directly follows the summary of the history
+  // that held it. A system message must follow a user message. With no
+  // assistant message before it, the request folds it into the system
+  // prompt.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
@@ -915,10 +903,16 @@ async function compactActiveAboveThreshold(
     ? [
         ...retainedUserMessages,
         summaryEntry,
+        ...systemEntries,
         ...contextEntries,
         ...instructionEntries,
       ]
-    : [...contextEntries, ...instructionEntries, summaryEntry];
+    : [
+        ...contextEntries,
+        ...instructionEntries,
+        summaryEntry,
+        ...systemEntries,
+      ];
   const retainedMessageCount =
     retainedUserMessages.length + instructionMessages.length;
   const messages = replacement.map((entry) => entry.message);

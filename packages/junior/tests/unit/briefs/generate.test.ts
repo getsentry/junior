@@ -75,6 +75,7 @@ describe("generateBrief", () => {
     let capturedPrompt = "";
     let capturedSchema: unknown;
     const generation = await generateBrief({
+      assistantName: "Marky",
       input: input(),
       throughIndex: 2,
       prompt: "Write a Brief.",
@@ -102,7 +103,7 @@ describe("generateBrief", () => {
                 by: "Unknown person",
                 kind: "stated",
               },
-              { text: "Decision 2", by: "junior", kind: "confirmed" },
+              { text: "Decision 2", by: "assistant", kind: "confirmed" },
               ...Array.from({ length: 22 }, (_, index) => ({
                 text: `Decision ${index + 3}`,
                 by: "Ada",
@@ -193,7 +194,7 @@ describe("generateBrief", () => {
     expect(generation.brief.decisions).toEqual([
       { text: `Decision 0 ${"x".repeat(389)}`, kind: "assumed" },
       { text: "Decision 1", kind: "stated" },
-      { text: "Decision 2", by: "Junior", kind: "assumed" },
+      { text: "Decision 2", by: "Marky", kind: "assumed" },
     ]);
     expect(generation.brief.facts).toEqual([
       "Fact 0",
@@ -269,6 +270,7 @@ describe("generateBrief", () => {
     };
 
     const generation = await generateBrief({
+      assistantName: "Junior",
       input: noEvidenceInput,
       throughIndex: 2,
       prompt: "Write a Brief.",
@@ -323,6 +325,7 @@ describe("generateBrief", () => {
     let capturedPrompt = "";
 
     await generateBrief({
+      assistantName: "Junior",
       input: longInput,
       throughIndex: 100,
       prompt: "Write a Brief.",
@@ -407,6 +410,7 @@ describe("generateBrief", () => {
         ],
       };
       const generation = await generateBrief({
+        assistantName: "Junior",
         input: sizedInput,
         throughIndex: testCase.userMessages - 1,
         prompt: "Write a Brief.",

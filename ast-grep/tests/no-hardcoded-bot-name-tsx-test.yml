@@ -1,0 +1,11 @@
+id: no-hardcoded-bot-name-tsx
+valid:
+  - "const node = <p>{getDashboardAgentName()} saves a version.</p>;"
+  - "const node = <Composer placeholder={`Message ${getDashboardAgentName()}…`} />;"
+  - "const node = <JuniorLogo />;"
+  - "const node = <code>junior admin grant</code>;"
+invalid:
+  - "const node = <p>Junior saves a version.</p>;"
+  - 'const node = <Composer placeholder="Message Junior…" />;'
+  - 'const label = ok ? "Saved" : "Junior could not save it.";'
+  - "const node = <Fact>{`Junior’s accounts only`}</Fact>;"

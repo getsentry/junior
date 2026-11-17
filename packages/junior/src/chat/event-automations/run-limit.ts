@@ -128,9 +128,9 @@ export async function admitEventAutomationRun(args: {
   // Only runs after the last reset count. A retry finds its entry there too,
   // so a resume or revive also clears the answer for an earlier delivery.
   let lastReset = -1;
-  entries.forEach((entry, index) => {
+  for (const [index, entry] of entries.entries()) {
     if ("reset" in entry) lastReset = index;
-  });
+  }
   // A full list whose oldest entry is from this window may have dropped runs
   // from this window. Then the window is full, until a reset entry.
   const oldest = entries[0];

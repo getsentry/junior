@@ -12,8 +12,10 @@ import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
+import { DocumentTitleProvider } from "./client/documentTitle";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
+import type { UiShell } from "./client/uiShell";
 import {
   clearAppBadge,
   openNotificationTarget,
@@ -79,8 +81,6 @@ function DashboardErrorPanel(props: { error: Error }) {
   );
 }
 
-initDashboardSentry();
-
 // Keep the worker current for devices that already allow notifications.
 // Other devices register it on the Settings page.
 if (
@@ -130,10 +130,13 @@ const queryClient = new QueryClient({
  * Render the dashboard with one UI shell. Each shell has its own entry that
  * calls this, so the page loads only the code of the viewer's shell.
  */
-export function startDashboard(Shell: ComponentType): void {
+export function startDashboard(Shell: ComponentType, ui: UiShell): void {
+  // Only the shell entry knows its shell, so Sentry starts here, before the
+  // first render.
+  initDashboardSentry(ui);
   const root = document.getElementById("dashboard-root");
   if (!root) {
-    throw new Error("Junior dashboard root element was not found");
+    throw new Error("Dashboard root element was not found");
   }
   const router = createBrowserRouter([{ path: "*", element: <Shell /> }], {
     basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/",
@@ -144,7 +147,9 @@ export function startDashboard(Shell: ComponentType): void {
       <QueryClientProvider client={queryClient}>
         <Toaster>
           <TooltipProvider>
-            <RouterProvider router={router} />
+            <DocumentTitleProvider>
+              <RouterProvider router={router} />
+            </DocumentTitleProvider>
           </TooltipProvider>
         </Toaster>
       </QueryClientProvider>

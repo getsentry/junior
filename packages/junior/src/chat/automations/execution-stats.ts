@@ -8,7 +8,6 @@ import {
   inArray,
   isNotNull,
   lte,
-  max,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -73,12 +72,17 @@ export type AutomationRecentRun = {
   status: AutomationExecutionStatus;
 };
 
-export type AutomationExecutionSummary = {
-  costUsd: AutomationCostWindows;
+/** What a list row shows of an Automation's runs. */
+export type AutomationRowStats = {
   lastRunStatus?: AutomationExecutionStatus;
   lastConversationId?: string;
   lastExecutedAtMs?: number;
   recentRuns: AutomationRecentRun[];
+};
+
+/** Row stats plus the totals that read every run. */
+export type AutomationExecutionSummary = AutomationRowStats & {
+  costUsd: AutomationCostWindows;
   runs: AutomationRunWindows;
   totalCostUsd: number;
   totalRuns: number;
@@ -200,24 +204,6 @@ export async function readAutomationExecutionSummaries(
   const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
   const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
-  const selected = and(
-    isExecution(),
-    inArray(juniorAutomationRuns.automationId, automationIds),
-  );
-  const latest = db
-    .selectDistinctOn([juniorAutomationRuns.automationId], {
-      status: juniorAutomationRuns.status,
-      conversationId: juniorAutomationRuns.conversationId,
-      automationId: juniorAutomationRuns.automationId,
-    })
-    .from(juniorAutomationRuns)
-    .where(selected)
-    .orderBy(
-      juniorAutomationRuns.automationId,
-      desc(juniorAutomationRuns.completedAtMs),
-      desc(juniorAutomationRuns.id),
-    )
-    .as("latest_task_execution");
   const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   const costSince = (sinceMs: number) =>
     sql<number>`coalesce(sum(${conversationCost}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
@@ -227,9 +213,6 @@ export async function readAutomationExecutionSummaries(
       costLast7Days: costSince(sevenDaysAgoMs),
       costLast30Days: costSince(thirtyDaysAgoMs),
       costLast90Days: costSince(ninetyDaysAgoMs),
-      lastRunStatus: latest.status,
-      lastConversationId: latest.conversationId,
-      lastExecutedAtMs: max(juniorAutomationRuns.completedAtMs),
       runsLast1Day: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${oneDayAgoMs})::int`,
       runsLast7Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sevenDaysAgoMs})::int`,
       runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${thirtyDaysAgoMs})::int`,
@@ -239,39 +222,29 @@ export async function readAutomationExecutionSummaries(
       totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorAutomationRuns)
-    .innerJoin(
-      latest,
-      eq(latest.automationId, juniorAutomationRuns.automationId),
-    )
     .leftJoin(juniorConversations, executionConversation())
-    .where(selected)
-    .groupBy(
-      juniorAutomationRuns.automationId,
-      latest.conversationId,
-      latest.status,
-    );
-  const [rows, recentRuns] = await Promise.all([
+    .where(
+      and(
+        isExecution(),
+        inArray(juniorAutomationRuns.automationId, automationIds),
+      ),
+    )
+    .groupBy(juniorAutomationRuns.automationId);
+  const [rows, rowStats] = await Promise.all([
     summaryRows,
-    readAutomationRecentRuns(automationIds),
+    readAutomationRowStats(automationIds),
   ]);
   return new Map(
     rows.map((row) => [
       row.automationId,
       {
+        ...rowStats.get(row.automationId)!,
         costUsd: {
           1: addUsd(0, row.costLast1Day),
           7: addUsd(0, row.costLast7Days),
           30: addUsd(0, row.costLast30Days),
           90: addUsd(0, row.costLast90Days),
         },
-        lastRunStatus: row.lastRunStatus as AutomationExecutionStatus,
-        ...(row.lastConversationId
-          ? { lastConversationId: row.lastConversationId }
-          : undefined),
-        ...(row.lastExecutedAtMs !== null
-          ? { lastExecutedAtMs: row.lastExecutedAtMs }
-          : undefined),
-        recentRuns: recentRuns.get(row.automationId) ?? [],
         runs: {
           1: row.runsLast1Day,
           7: row.runsLast7Days,
@@ -286,16 +259,19 @@ export async function readAutomationExecutionSummaries(
 }
 
 /**
- * Load the newest runs of each Automation, oldest first. A lateral limit
- * reads at most `AUTOMATION_RECENT_RUN_LIMIT` rows per Automation from the
- * (automation, completed) index, so long histories do not slow the list.
+ * Load the newest runs of each Automation, oldest first, and its last run.
+ * A lateral limit reads at most `AUTOMATION_RECENT_RUN_LIMIT` rows per
+ * Automation from the (automation, completed) index, so long histories do
+ * not slow the list. An Automation with no run is absent.
  */
-async function readAutomationRecentRuns(
+export async function readAutomationRowStats(
   automationIds: string[],
-): Promise<Map<string, AutomationRecentRun[]>> {
+): Promise<Map<string, AutomationRowStats>> {
+  if (automationIds.length === 0) return new Map();
   const db = getDb();
   const recent = db
     .select({
+      conversationId: juniorAutomationRuns.conversationId,
       durationMs: juniorConversations.durationMs,
       executedAtMs: juniorAutomationRuns.completedAtMs,
       executionId: juniorAutomationRuns.id,
@@ -318,6 +294,7 @@ async function readAutomationRecentRuns(
   const rows = await db
     .select({
       automationId: juniorAutomations.id,
+      conversationId: recent.conversationId,
       durationMs: recent.durationMs,
       executedAtMs: recent.executedAtMs,
       status: recent.status,
@@ -330,17 +307,27 @@ async function readAutomationRecentRuns(
       asc(recent.executedAtMs),
       asc(recent.executionId),
     );
-  const byAutomation = new Map<string, AutomationRecentRun[]>();
+  const byAutomation = new Map<string, AutomationRowStats>();
   for (const row of rows) {
     const durationMs = positiveDuration(row.durationMs);
-    const runs = byAutomation.get(row.automationId) ?? [];
-    runs.push({
+    // isExecution() selects only runs with an outcome and a completion time.
+    const status = row.status as AutomationExecutionStatus;
+    const executedAtMs = row.executedAtMs!;
+    const stats = byAutomation.get(row.automationId) ?? { recentRuns: [] };
+    stats.recentRuns.push({
       ...(durationMs !== undefined ? { durationMs } : undefined),
-      // isExecution() selects only runs with a completion time.
-      executedAt: new Date(row.executedAtMs!).toISOString(),
-      status: row.status as AutomationExecutionStatus,
+      executedAt: new Date(executedAtMs).toISOString(),
+      status,
     });
-    byAutomation.set(row.automationId, runs);
+    // Rows come oldest first, so the last one is the last run.
+    byAutomation.set(row.automationId, {
+      recentRuns: stats.recentRuns,
+      lastRunStatus: status,
+      lastExecutedAtMs: executedAtMs,
+      ...(row.conversationId
+        ? { lastConversationId: row.conversationId }
+        : undefined),
+    });
   }
   return byAutomation;
 }
@@ -356,12 +343,14 @@ function positiveDuration(value: number | null): number | undefined {
 export async function readAutomationExecutionByConversationId(args: {
   conversationId: string;
 }): Promise<
-  { kind: AutomationExecutionType; automationId: string } | undefined
+  | { kind: AutomationExecutionType; automationId: string; runId: string }
+  | undefined
 > {
   const [row] = await getDb()
     .select({
       kind: juniorAutomations.kind,
       automationId: juniorAutomationRuns.automationId,
+      runId: juniorAutomationRuns.id,
     })
     .from(juniorAutomationRuns)
     .innerJoin(

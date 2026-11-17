@@ -30,6 +30,8 @@ import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
 import { OutboundLink } from "../components/OutboundLink";
+import { getDashboardAgentName } from "../agentName";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
  * Move a public dashboard conversation to a thread in a public Slack channel
@@ -74,12 +76,9 @@ export function ContinueInSlackDialog(props: {
     // The feed and Location pages list the conversation under its Location.
     onSuccess: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The old Location and the new one both change.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(props.conversationId),
         }),
@@ -112,7 +111,7 @@ export function ContinueInSlackDialog(props: {
           <>
             <DialogTitle>Moved to Slack</DialogTitle>
             <p className="m-0 text-dashboard-text-muted">
-              Mention Junior in the{" "}
+              Mention {getDashboardAgentName()} in the{" "}
               {move.data.channelName ? `#${move.data.channelName} ` : ""}
               thread to continue. Replies to dashboard messages stay here.
             </p>
@@ -204,8 +203,8 @@ export function ContinueInSlackDialog(props: {
                 ) : null}
               </Command>
               <FieldDescription>
-                Junior starts a thread there with this conversation. You can
-                move a conversation once.
+                {getDashboardAgentName()} starts a thread there with this
+                conversation. You can move a conversation once.
               </FieldDescription>
               <FieldError id={errorId}>{error}</FieldError>
             </Field>

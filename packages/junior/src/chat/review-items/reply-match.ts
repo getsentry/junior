@@ -74,12 +74,12 @@ export async function matchReplyToReviewItems(args: {
     state: [">>> REPLY START", text, ">>> REPLY END"].join("\n"),
   });
   const matched = new Set<string>();
-  args.items.forEach((item, index) => {
+  for (const [index, item] of args.items.entries()) {
     const answer = result.answers[keys[index]!];
-    if (answer?.choice !== "answers") return;
+    if (answer?.choice !== "answers") continue;
     // A provider without probabilities still returns its most likely choice.
     const probability = answer.probabilities?.answers ?? 1;
     if (probability >= MATCH_CONFIDENCE_THRESHOLD) matched.add(item.id);
-  });
+  }
   return matched;
 }

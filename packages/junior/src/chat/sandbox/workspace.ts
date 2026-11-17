@@ -87,10 +87,13 @@ export function bindSandboxFileSystem(
 export interface SandboxWorkspace {
   /**
    * Return a public HTTPS URL for a server that listens on `port` in the
-   * Sandbox. The URL stops working when the Sandbox stops. A sandbox provider
-   * that cannot route public traffic leaves it unset on its sessions.
+   * Sandbox. The URL stops working when the Sandbox stops, and works again
+   * when the Sandbox resumes. A sandbox provider that cannot route public
+   * traffic leaves it unset on its sessions.
    */
   createPreview?(port: number): Promise<string>;
+  /** Return the URLs of the Previews that this Sandbox already serves. */
+  previewUrls?(): string[];
   readFileToBuffer(input: {
     cwd?: string;
     path: string;

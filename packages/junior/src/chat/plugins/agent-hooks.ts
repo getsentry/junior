@@ -33,6 +33,7 @@ import type {
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
@@ -77,11 +78,8 @@ import type {
 } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import {
-  getDashboardConversationLink,
-  getDashboardTaskLink,
-} from "@/chat/dashboard-link";
-import { createWatch } from "@/chat/events/store";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { createWatch, turnEvents } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -102,6 +100,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
@@ -850,22 +849,19 @@ export function getPluginTools(
             registration,
             input.resource.identifier,
           ),
+          quietEvents: input.quietEvents,
           resourceType: input.resource.type,
         });
+        // Quiet Events never wake the Conversation, so the agent does not
+        // count on them. It can still watch them with watchEvents.
         return {
-          events: subscription.events,
+          events: turnEvents(subscription),
           id: subscription.id,
         };
       },
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
-    const automationUrl =
-      (context.source.kind === "event_automation" ||
-        context.source.kind === "scheduled_automation") &&
-      context.source.automationId
-        ? getDashboardTaskLink(context.source.automationId)
-        : undefined;
     const onCost = createPluginModelCostRecorder({
       conversationId: context.conversationId,
       pluginName,
@@ -875,9 +871,12 @@ export function getPluginTools(
     const common = {
       ...basePluginContext(plugin),
       annotations,
-      ...(automationUrl
-        ? { automationLink: { url: automationUrl } }
-        : undefined),
+      resolveWorkOwner: async () =>
+        await resolveWorkOwner({
+          actor: context.actor,
+          conversationId: context.conversationId,
+          resolveActor,
+        }),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -1155,6 +1154,7 @@ export function createPluginEventPublisher(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  dispatchForIdentity: IdentityDispatcher;
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
   events: AppEventPublisher;
@@ -1171,6 +1171,10 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      agent: {
+        dispatchForIdentity: (dispatchOptions) =>
+          options.dispatchForIdentity(pluginName, dispatchOptions),
+      },
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({

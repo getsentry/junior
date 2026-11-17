@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
@@ -47,9 +49,14 @@ export async function markConversationsStopped(
     return;
   }
   if (options.cancelWatches) {
-    for (const conversationId of conversationIds) {
-      await cancelSubscriptions({ conversationId, state: options.state });
-    }
+    const limit = pLimit(FAN_OUT_CONCURRENCY);
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        limit(() =>
+          cancelSubscriptions({ conversationId, state: options.state }),
+        ),
+      ),
+    );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()

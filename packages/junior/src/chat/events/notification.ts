@@ -23,13 +23,15 @@ import {
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { EVENT_AUTHOR_ID, eventBotAuthorId } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { addConversationNote } from "@/chat/conversations/notes";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -57,6 +59,15 @@ const eventTaskFactsSchema = z.object({
   doneBy: z
     .object({ mention: z.string(), handle: z.string().optional() })
     .optional(),
+  /** The Event author's own text and who wrote it. It is context. */
+  authorText: z
+    .object({
+      text: z.string().min(1),
+      authorId: z.string().optional(),
+      authorName: z.string().optional(),
+      verified: z.boolean(),
+    })
+    .optional(),
 });
 
 /** Facts for one Watch Event, saved so several Events can share one message. */
@@ -78,6 +89,8 @@ export function eventTaskFacts(
   people: readonly string[] = [],
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
+  /** Core's decision for the Event author. */
+  author: AuthorTrust = { status: "system" },
 ): EventTaskFacts {
   // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
@@ -87,6 +100,7 @@ export function eventTaskFacts(
   ]
     .filter((text): text is string => Boolean(text?.trim()))
     .join(" ");
+  const authorText = eventAuthorText(author);
   return {
     about: subscription.label,
     instructions: subscription.intent,
@@ -94,6 +108,7 @@ export function eventTaskFacts(
     ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
     ...(event.data ? { verifiedDetails: event.data } : undefined),
+    ...(authorText ? { authorText } : undefined),
     ...(event.untrustedText
       ? { externalText: event.untrustedText }
       : undefined),
@@ -253,6 +268,7 @@ export function renderEventBatchInputs(
       source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
+      authorText: facts.authorText,
       externalText: facts.externalText,
       doneBy: facts.doneBy,
     });
@@ -337,6 +353,23 @@ export function eventBatchMessageMeta(
   };
 }
 
+// A linked trusted author writes the Event Message, like a Slack author. A
+// listed bot has no Identity, so it gets only its own author id. Batching splits
+// Messages whose authors differ. Other Events are written by the system.
+function eventMessageAuthor(
+  author: AuthorTrust | undefined,
+): Pick<InboundMessage["input"], "authorId" | "authorIdentityId"> {
+  if (author?.status !== "trusted") {
+    return { authorId: EVENT_AUTHOR_ID, authorIdentityId: SYSTEM_IDENTITY_ID };
+  }
+  if (author.identityId) {
+    return { authorId: EVENT_AUTHOR_ID, authorIdentityId: author.identityId };
+  }
+  // No system Identity either: with it, the bot's Message could join a
+  // paused system Event Turn, whose owner has only that Identity.
+  return { authorId: eventBotAuthorId(author.provider, author.handle) };
+}
+
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
@@ -344,6 +377,8 @@ export function createEventInboundMessage(input: {
   text: string;
   /** Facts behind `text`, used when several Events share one message. */
   task?: EventTaskFacts;
+  /** Core's decision for the Event author. */
+  author?: AuthorTrust;
   receivedAtMs?: number;
 }): InboundMessage {
   const metadata: EventMailboxMetadata = {
@@ -371,12 +406,29 @@ export function createEventInboundMessage(input: {
     receivedAtMs: input.receivedAtMs ?? Date.now(),
     input: {
       text: input.text,
-      authorId: EVENT_AUTHOR_ID,
-      // TODO(dcramer): Use the event author Identity when plugins report it.
-      authorIdentityId: SYSTEM_IDENTITY_ID,
+      ...eventMessageAuthor(input.author),
       metadata,
     },
   };
+}
+
+/**
+ * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
+ * automated-turn limit does not apply. The next Turn sees the note as
+ * runtime context. Core writes how to use it before the Event facts, so a
+ * long summary that the note limit cuts never loses that rule.
+ */
+export async function addQuietEventNote(args: {
+  event: EventNotification;
+  subscription: Pick<Watch, "conversationId" | "id" | "label">;
+}): Promise<void> {
+  const { event, subscription } = args;
+  await addConversationNote({
+    conversationId: subscription.conversationId,
+    createdAtMs: event.occurredAtMs,
+    key: `quiet_event:${subscription.id}:${event.eventKey}`,
+    text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
+  });
 }
 
 /**
@@ -387,6 +439,8 @@ export function createEventInboundMessage(input: {
  * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueEventNotification(args: {
+  /** Core's decision for the Event author. */
+  author?: AuthorTrust;
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy | undefined;
   event: EventNotification;
@@ -395,7 +449,7 @@ export async function enqueueEventNotification(args: {
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const decision = await admitAutomatedTurn({
     conversationId: args.subscription.conversationId,
@@ -421,7 +475,7 @@ export async function enqueueEventNotification(args: {
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "duplicate" };
+    return { status: "paused" };
   }
 
   const task = eventTaskFacts(
@@ -429,9 +483,11 @@ export async function enqueueEventNotification(args: {
     args.event,
     args.people,
     args.doneBy,
+    args.author,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
+      author: args.author,
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,

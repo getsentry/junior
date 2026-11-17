@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import {
@@ -119,7 +120,10 @@ describe("conversation child agents API", () => {
         eq(juniorConversations.conversationId, helper.childConversationId),
       );
 
-    const response = await requestChildAgents(slackParentConversationId);
+    const response = await expectSqlBudget(
+      () => requestChildAgents(slackParentConversationId),
+      { statements: 8, serialRounds: 5 },
+    );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer.childConversationId)).json(),
     );

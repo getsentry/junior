@@ -12,7 +12,7 @@
     // when that command passes.
     "exactOptionalPropertyTypes": false,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "ES2025.Intl", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -40,6 +40,9 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "oxlint/**/*.ts",
+    "e2e/dashboard-switch.spec.ts",
+    "e2e/inbox/**/*.ts",
+    "e2e/request-budget.ts",
     "playwright.config.ts"
   ]
 }

@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
-import { insertGitHubDraftWatch } from "@junior-evals/fixture/insert";
+import { insertGitHubPullRequestWatch } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -23,7 +23,11 @@ describe("Watches", () => {
     const conversation = await run(
       slackMention(`Thanks for opening ${pullRequest}. I'll review it later.`),
     );
-    await insertGitHubDraftWatch({ conversation, pullRequest });
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: true,
+      pullRequest,
+    });
 
     const head = `feat/cache-warmup-${draft.number}`;
     const delivery = await conversation.continue(
@@ -93,19 +97,8 @@ describe("Watches", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("stopWatchingResources", stopped).map((call) => ({
-        input: call.input,
-        output: toolOutput(call),
-      })),
-    ).toEqual([
-      {
-        input: { id: watch!.id },
-        output: expect.objectContaining({
-          stopped_ids: [watch!.id],
-          watching_status: "stopped",
-        }),
-      },
-    ]);
+    // The model can stop the watch directly or from a codemode script, so
+    // check the active watches instead of the call.
+    expect(stopped.watchIds).not.toContain(watch!.id);
   });
 });

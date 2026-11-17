@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { AssistantThreadStartedEvent } from "@slack/types";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
@@ -35,6 +36,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
     });
     const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => slack,
+      sendPluginTask: sendVercelPluginTask,
     });
 
     await slackRuntime.handleAssistantThreadStarted({
@@ -78,7 +80,10 @@ describe("Slack contract: assistant lifecycle delivery", () => {
       getSlackAdapter: () => slack,
       state,
       queue,
-      runtime: createSlackRuntime({ getSlackAdapter: () => slack }),
+      runtime: createSlackRuntime({
+        getSlackAdapter: () => slack,
+        sendPluginTask: sendVercelPluginTask,
+      }),
     };
     const event = {
       type: "assistant_thread_started",

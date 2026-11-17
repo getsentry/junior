@@ -3,6 +3,7 @@ import * as z from "zod";
 
 import { fetchDashboardJson } from "../../http";
 import type { PluginUserPageRecord } from "../user/pluginUserPageData";
+import { formatTime } from "../../time";
 
 const memoryRecordSchema = z
   .object({
@@ -24,11 +25,11 @@ function titleCase(value: string): string {
 }
 
 function formattedDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return formatTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "UTC",
-  }).format(new Date(value));
+  });
 }
 
 /** Project one viewer-visible memory API record into the dashboard details model. */

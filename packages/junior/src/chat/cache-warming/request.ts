@@ -12,7 +12,7 @@ import type {
 import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import {
   MINUTE_MS,
   WARMUP_MARGIN_MS,
@@ -184,12 +184,12 @@ export async function breakerStates(
       .map(providerOf)
       .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
   );
-  return Promise.all(
-    [...providers].map(async (provider) => ({
-      provider,
-      open: (await state.get<boolean>(breakerOpenKey(provider))) === true,
-    })),
-  );
+  const warmed = [...providers];
+  const open = await getStateValues(state, warmed.map(breakerOpenKey));
+  return warmed.map((provider, index) => ({
+    provider,
+    open: open[index] === true,
+  }));
 }
 
 /**

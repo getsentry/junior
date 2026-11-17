@@ -221,10 +221,12 @@ async function collectPackageWarnings(
     if (!declaredPackage.name.startsWith("@sentry/junior-")) {
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
     if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
       continue;
     }
     const pluginVersion = comparableVersion(
+      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
       (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
         declaredPackage.spec,
     );
@@ -404,6 +406,7 @@ async function resolvePackageEntryPath(
       ? candidate
       : `./${candidate}`;
     const entryPath = path.resolve(packageDir, normalizedCandidate);
+    // oxlint-disable-next-line no-await-in-loop -- The first entry file that exists wins.
     if (await pathIsFile(entryPath)) {
       return entryPath;
     }
@@ -431,10 +434,23 @@ async function collectPackageJsPluginSources(
   packageDir: string,
   packageName: string,
 ): Promise<PluginSource[]> {
+  // Core ships skills but is not a plugin, and its entry reads app env at import.
+  if (packageName === "@sentry/junior") {
+    return [];
+  }
   const entryPath = await resolvePackageEntryPath(packageDir);
   if (!entryPath) {
     return [];
   }
+
+  const errorSource = (manifestPath: string, error: unknown): PluginSource => ({
+    pluginDir: packageDir,
+    packageName,
+    manifestPath,
+    errors: [
+      `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+    ],
+  });
 
   let moduleExports: Record<string, unknown>;
   try {
@@ -442,8 +458,8 @@ async function collectPackageJsPluginSources(
       string,
       unknown
     >;
-  } catch {
-    return [];
+  } catch (error) {
+    return [errorSource(entryPath, error)];
   }
 
   const pluginSources: PluginSource[] = [];
@@ -454,17 +470,19 @@ async function collectPackageJsPluginSources(
       continue;
     }
 
+    const manifestPath = `${entryPath}#${exportName}`;
     let registration: unknown;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Call plugin factories in export order.
       registration = await exportedValue();
-    } catch {
+    } catch (error) {
+      pluginSources.push(errorSource(manifestPath, error));
       continue;
     }
     if (!isPluginRegistrationLike(registration)) {
       continue;
     }
 
-    const manifestPath = `${entryPath}#${exportName}`;
     try {
       pluginSources.push({
         pluginDir: packageDir,
@@ -473,14 +491,7 @@ async function collectPackageJsPluginSources(
         manifest: parseInlinePluginManifest(registration.manifest, packageDir),
       });
     } catch (error) {
-      pluginSources.push({
-        pluginDir: packageDir,
-        packageName,
-        manifestPath,
-        errors: [
-          `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
-        ],
-      });
+      pluginSources.push(errorSource(manifestPath, error));
     }
   }
 
@@ -505,6 +516,7 @@ async function collectPluginDirectories(rootDir: string): Promise<string[]> {
     }
 
     const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
+    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
     if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
       pluginDirs.push(pluginDir);
     }
@@ -525,13 +537,16 @@ async function collectPackagedContent(
 
   for (const declaredPackage of packages) {
     const packageDir = packageInstallDir(rootDir, declaredPackage.name);
+    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
     if (!(await pathIsDirectory(packageDir))) {
       continue;
     }
 
     const rootManifestPath = path.join(packageDir, "plugin.yaml");
+    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
     const hasRootManifest = await pathIsFile(rootManifestPath);
     const packageSkillsRoot = path.join(packageDir, "skills");
+    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
     const hasPackageSkills = await pathIsDirectory(packageSkillsRoot);
 
     if (hasRootManifest) {
@@ -541,6 +556,7 @@ async function collectPackagedContent(
         packageName: declaredPackage.name,
       });
     } else if (hasPackageSkills) {
+      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
       const jsPluginSources = await collectPackageJsPluginSources(
         packageDir,
         declaredPackage.name,
@@ -558,6 +574,7 @@ async function collectPackagedContent(
     const nestedPluginsRoot = path.join(packageDir, "plugins");
     let nestedEntries;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
       nestedEntries = await fs.readdir(nestedPluginsRoot, {
         withFileTypes: true,
       });
@@ -570,6 +587,7 @@ async function collectPackagedContent(
         continue;
       }
       const pluginDir = path.join(nestedPluginsRoot, entry.name);
+      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
       if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
         pluginSources.push({
           pluginDir,
@@ -799,7 +817,7 @@ async function validateDeploymentConfig(
     checked = true;
     if (!/\bjuniorNitro\s*\(/.test(nitroConfig)) {
       errors.push(
-        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron into the deployed build output.`,
+        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits the Vercel queue trigger and heartbeat cron into the deployed build output.`,
       );
     }
   }
@@ -833,7 +851,7 @@ async function validateDeploymentConfig(
   ) {
     checked = true;
     errors.push(
-      `${vercelConfigPath}: framework must be "nitro" for Junior's Vercel deployment wiring.`,
+      `${vercelConfigPath}: framework must be "nitro" for the Vercel deployment wiring.`,
     );
   }
 
@@ -874,6 +892,7 @@ async function validateAppSourceFiles(
     const sourcePath = path.join(rootDir, fileName);
     let source: string;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
       source = await fs.readFile(sourcePath, "utf8");
     } catch {
       continue;
@@ -939,24 +958,15 @@ async function validateAppFiles(
 }
 
 async function hasJuniorAppMarkers(appDir: string): Promise<boolean> {
-  for (const fileName of [
-    "SOUL.md",
-    "WORLD.md",
-    "DESCRIPTION.md",
-    "ABOUT.md",
-  ]) {
-    if (await pathIsFile(path.join(appDir, fileName))) {
-      return true;
-    }
-  }
-
-  for (const dirName of ["skills", "plugins"]) {
-    if (await pathIsDirectory(path.join(appDir, dirName))) {
-      return true;
-    }
-  }
-
-  return false;
+  const markers = await Promise.all([
+    ...["SOUL.md", "WORLD.md", "DESCRIPTION.md", "ABOUT.md"].map((fileName) =>
+      pathIsFile(path.join(appDir, fileName)),
+    ),
+    ...["skills", "plugins"].map((dirName) =>
+      pathIsDirectory(path.join(appDir, dirName)),
+    ),
+  ]);
+  return markers.includes(true);
 }
 
 export async function runCheck(
@@ -985,6 +995,7 @@ export async function runCheck(
   ];
   const appSkillsRoot = contentRoot(resolvedRoot, "skills");
   const appSkillDirs = await collectSkillDirectories(appSkillsRoot);
+  /* oxlint-disable no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time. */
   const pluginSkillDirs = new Map<string, string[]>();
   for (const { pluginDir } of pluginSources) {
     pluginSkillDirs.set(
@@ -999,6 +1010,7 @@ export async function runCheck(
       await collectSkillDirectories(skillRoot.root),
     );
   }
+  /* oxlint-enable no-await-in-loop */
   const packagedStandaloneSkillDirs = [
     ...packagedSkillDirsByPackage.values(),
   ].flat();
@@ -1057,7 +1069,8 @@ export async function runCheck(
             pluginNameMap,
             providerDomainMap,
           )
-        : await validatePluginDirectory(
+        : // oxlint-disable-next-line no-await-in-loop -- The first plugin with a name wins, so check plugins in order.
+          await validatePluginDirectory(
             pluginDir,
             pluginNameMap,
             providerDomainMap,
@@ -1083,6 +1096,7 @@ export async function runCheck(
   warnings.push(...appSourceResult.warnings);
   errors.push(...appSourceResult.errors);
 
+  /* oxlint-disable no-await-in-loop -- The first skill with a name wins, so check skills in order. */
   for (const skillDir of appAndLocalPluginSkillDirs) {
     const result = await validateSkillDirectory(skillDir, duplicateSkillNames);
     skillResultsByDir.set(skillDir, result);
@@ -1098,6 +1112,7 @@ export async function runCheck(
     warnings.push(...result.warnings);
     errors.push(...result.errors);
   }
+  /* oxlint-enable no-await-in-loop */
 
   for (const pluginResult of pluginResults) {
     pluginResult.skillResults = (

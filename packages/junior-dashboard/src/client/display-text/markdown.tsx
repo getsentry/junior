@@ -21,7 +21,7 @@ import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
-import { ObjectCard } from "../conversations/ObjectCard";
+import { ObjectRow } from "../conversations/ObjectRow";
 import {
   mediaThumbnail,
   ObjectLinkPreview,
@@ -53,10 +53,13 @@ import {
  * with the object title, or a chip for a person. The first bare URL alone in
  * a top-level paragraph shows the full card, or only the thumbnail of a
  * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows.
+ * earlier text of the same message already shows. Inline mode shows links
+ * only with `chips`, outside a link or a button.
  */
 export function MarkdownText(props: {
   chat?: boolean | undefined;
+  /** Inline mode: show links, with object titles and person chips. */
+  chips?: boolean | undefined;
   compact?: boolean | undefined;
   document?: boolean;
   inline?: boolean;
@@ -71,8 +74,10 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={props.chips ? INLINE_CHIP_COMPONENTS : INLINE_COMPONENTS}
+        remarkPlugins={
+          props.chips ? [remarkGfm, remarkBareUrlStops] : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -405,6 +410,11 @@ const INLINE_COMPONENTS: Components = {
   ul: InlineContainer,
 };
 
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
+};
+
 function alignClass(align: unknown): string | undefined {
   if (align === "center") return "text-center";
   if (align === "right") return "text-right";
@@ -446,7 +456,7 @@ function ResolvedParagraph(props: {
   return <PlainParagraph>{props.children}</PlainParagraph>;
 }
 
-// A link alone on its line shows the full card. A video or image page shows
+// A link alone on its line shows a compact row. A video or image page shows
 // only its thumbnail.
 function StandaloneObject(props: {
   card: OwnedObjectAnnotation;
@@ -457,7 +467,7 @@ function StandaloneObject(props: {
   if (thumbnail) {
     return <ObjectThumbnailLink {...props} src={thumbnail} />;
   }
-  return <ObjectCard card={props.card} live={props.live} />;
+  return <ObjectRow card={props.card} live={props.live} />;
 }
 
 // The saved card replaces the link, so no visible link asks for the card.

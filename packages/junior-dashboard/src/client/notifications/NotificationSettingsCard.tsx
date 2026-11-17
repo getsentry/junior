@@ -38,6 +38,7 @@ import {
   sendTestNotification,
   turnOnThisDevice,
 } from "./queries";
+import { getDashboardAgentName } from "../agentName";
 
 const notificationSettingsQueryKey = notificationSettingsQuery.queryKey;
 
@@ -55,7 +56,7 @@ const TIMEZONE_SOURCE_LABEL: Record<
   Exclude<NotificationSettings["timezoneSource"], "manual">,
   string
 > = {
-  default: "Junior default",
+  default: "app default",
   saved: "from your profile",
   slack: "from Slack",
 };
@@ -80,8 +81,9 @@ export function NotificationSettingsCard() {
         title="Push notifications"
       />
       <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
-        Get a notification when Junior replies to a conversation you started
-        here. Slack threads keep using Slack notifications.
+        Get a notification when {getDashboardAgentName()} replies to a
+        conversation you started here. Slack threads keep using Slack
+        notifications.
       </p>
       {settingsQuery.isPending ? (
         <NotificationSettingsSkeleton />
@@ -146,7 +148,10 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     },
     onSuccess: (next) => {
       if (next) saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: pushDeviceQueryKey });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: pushDeviceQueryKey,
+      });
     },
   });
   const test = useMutation({ mutationFn: sendTestNotification });
@@ -154,17 +159,18 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
   if (!settings.publicKey) {
     return (
       <p className="mt-5 mb-0 text-sm text-dashboard-text-muted">
-        Push notifications are not set up for this Junior install. Ask a Junior
-        admin to add Web Push keys.
+        Push notifications are not set up for this app. Ask an admin to add Web
+        Push keys.
       </p>
     );
   }
   if (support === "needs-install") {
     return (
       <p className="mt-5 mb-0 text-sm text-dashboard-text-muted">
-        On iPhone and iPad, add Junior to your Home Screen first. Tap Share,
-        then Add to Home Screen. Open Junior from the Home Screen and come back
-        to this page.
+        On iPhone and iPad, add {getDashboardAgentName()} to your Home Screen
+        first. Tap Share, then Add to Home Screen. Open{" "}
+        {getDashboardAgentName()} from the Home Screen and come back to this
+        page.
       </p>
     );
   }
@@ -219,7 +225,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
           ? "1 device gets your notifications."
           : `${settings.deviceCount} devices get your notifications.`}
         {permissionDenied
-          ? " This browser blocks notifications from Junior. Allow them in the browser settings."
+          ? ` This browser blocks notifications from ${getDashboardAgentName()}. Allow them in the browser settings.`
           : ""}
       </p>
       {test.isSuccess ? (
@@ -292,8 +298,8 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
       {followSlack ? (
         <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
           {settings.slackPausedNow === undefined
-            ? "Junior cannot read your Slack notification schedule, so it uses the hours below."
-            : "Junior pauses notifications when Slack does. It uses the hours below only when it cannot read Slack."}
+            ? `${getDashboardAgentName()} cannot read your Slack notification schedule, so it uses the hours below.`
+            : `${getDashboardAgentName()} pauses notifications when Slack does. It uses the hours below only when it cannot read Slack.`}
         </p>
       ) : null}
       <Field className="mt-4" orientation="horizontal">
@@ -380,7 +386,8 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
           ))}
         </NativeSelect>
         <FieldDescription>
-          Automatic uses your Slack timezone when Junior can read it.
+          Automatic uses your Slack timezone when {getDashboardAgentName()} can
+          read it.
         </FieldDescription>
       </Field>
       <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">

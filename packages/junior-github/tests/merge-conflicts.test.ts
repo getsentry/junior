@@ -534,7 +534,7 @@ describe("merge conflict check on webhook events", () => {
           conversationId: "slack:C1:1.0",
           notice: {
             assigneeIdentityIds: ["identity-jane"],
-            body: "**Pull request 946** has merge conflicts with `main`. Junior stopped fixing them on its own, because Junior already fixed conflicts 3 times. If they are still there, ask Junior in this thread to fix them: https://github.com/getsentry/junior/pull/946",
+            body: "**Pull request 946** has merge conflicts with `main`. Automatic fixes stopped, because conflicts were already fixed 3 times. If they are still there, ask in this thread to fix them: https://github.com/getsentry/junior/pull/946",
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",

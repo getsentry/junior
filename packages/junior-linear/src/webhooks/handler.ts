@@ -50,6 +50,7 @@ export function createLinearWebhookRoute(args: {
       }
       const events = normalizeLinearEvents({ body, linearEvent });
       for (const event of events) {
+        // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
         await args.events.publish({ ...event, objectType: "task" });
       }
       return new Response(events.length ? "Accepted" : "Ignored", {

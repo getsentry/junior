@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
@@ -189,7 +190,12 @@ describe("review item actions API", () => {
     });
 
     expect(
-      await (await api(fixture, ana).get("/waiting-conversations")).json(),
+      await (
+        await expectSqlBudget(
+          () => api(fixture, ana).get("/waiting-conversations"),
+          { statements: 1, serialRounds: 1 },
+        )
+      ).json(),
     ).toEqual({
       conversations: [
         {
@@ -299,7 +305,12 @@ describe("review item actions API", () => {
       dedupe_key: "report:weekly",
     });
 
-    const anaCount = await (await api(fixture, ana).get("/count")).json();
+    const anaCount = await (
+      await expectSqlBudget(() => api(fixture, ana).get("/count"), {
+        statements: 1,
+        serialRounds: 1,
+      })
+    ).json();
     expect(anaCount).toEqual({
       decisions: 1,
       needsViewer: 1,
@@ -505,7 +516,10 @@ describe("review item actions API", () => {
     const ask = await item(30, "action", base + 60_000);
 
     const first = await (
-      await api(fixture, ana).get("?for=viewer&sort=waiting&limit=25")
+      await expectSqlBudget(
+        () => api(fixture, ana).get("?for=viewer&sort=waiting&limit=25"),
+        { statements: 4, serialRounds: 3 },
+      )
     ).json();
     expect(first.items[0]).toMatchObject({ id: ask, kind: "action" });
     expect(first.items).toHaveLength(25);
@@ -676,6 +690,26 @@ describe("review item actions API", () => {
       (await api(fixture, cal).get(`?for=viewer&limit=1&cursor=${cursor}`))
         .status,
     ).toBe(400);
+    const malformed = await api(fixture, cal).get("?limit=1&cursor=not-json");
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({
+      error: "Invalid review item cursor.",
+    });
+    // A cursor that an open tab got before a deploy still reads its page.
+    const tabCursor = Buffer.from(
+      JSON.stringify({
+        createdAtMs: Date.parse(first.items[0].createdAt),
+        id,
+        version: 2,
+      }),
+    ).toString("base64url");
+    expect(
+      (
+        await (
+          await api(fixture, cal).get(`?limit=1&cursor=${tabCursor}`)
+        ).json()
+      ).items,
+    ).toMatchObject([{ id: otherId }]);
     // Items for Everyone stay in the inbox list.
     expect(
       (await (await api(fixture, cal).get("?for=viewer")).json()).items,

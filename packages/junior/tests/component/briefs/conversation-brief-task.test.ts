@@ -92,7 +92,8 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
       return {
         dimensions: 2,
         model: input.modelId,
-        provider: "test-provider",
+        // The provider name that the real gateway client reports.
+        provider: "vercel-ai-gateway",
         vectors: input.texts.map(() => [1, 0]),
       };
     },
@@ -295,7 +296,7 @@ describe("Conversation Brief task", () => {
       params: { conversationId, sessionId: "turn-1" },
     };
     const send = vi.fn();
-    await scheduleSessionCompletedPluginTasks(firstTask.params, { send });
+    await scheduleSessionCompletedPluginTasks(firstTask.params, send);
     expect(send).toHaveBeenCalledWith(firstTask);
     await processPluginTask(firstTask);
 
@@ -334,7 +335,7 @@ describe("Conversation Brief task", () => {
         conversationId,
         dimensions: 2,
         model: botConfig.embeddingModelId,
-        provider: "test-provider",
+        provider: "vercel-ai-gateway",
       },
     ]);
     expect(rows[0]?.content.links).toEqual([

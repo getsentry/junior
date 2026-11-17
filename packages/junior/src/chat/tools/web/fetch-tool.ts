@@ -91,17 +91,17 @@ export function createWebFetchTool(
             mimeType: contentType.split(";")[0] ?? "application/octet-stream",
           },
         ];
-        const artifactRefs = hooks.writeGeneratedArtifacts
-          ? await hooks.writeGeneratedArtifacts(files)
+        const fileRefs = hooks.writeGeneratedFiles
+          ? await hooks.writeGeneratedFiles(files)
           : [];
 
         return {
           url: safeUrl.toString(),
           media_type: contentType,
           bytes: bytes.byteLength,
-          images: artifactRefs,
+          images: fileRefs,
           delivery:
-            artifactRefs.length > 0
+            fileRefs.length > 0
               ? options.canSendFilesToActiveConversation
                 ? "Fetched images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
                 : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."

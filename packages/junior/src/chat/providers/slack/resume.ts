@@ -27,7 +27,10 @@ import {
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
-import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
+import {
+  scheduleSessionCompletedPluginTasks,
+  type SendPluginTask,
+} from "@/chat/plugins/task-runner";
 import {
   logException,
   setSpanAttributes,
@@ -167,7 +170,8 @@ interface ResumeSlackTurnArgs {
   initialStatus?: AssistantStatusSpec;
   executeTurn: ExecuteTurn;
   inputMessageIds?: string[];
-  scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
+  /** Sends the plugin tasks of the Turn when it completes. */
+  sendPluginTask: SendPluginTask;
   commitResult?: (result: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
@@ -216,7 +220,7 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
 
 async function handleResumeFailure(args: {
   error: unknown;
-  eventName: string;
+  eventName: "slack.resume.turn.failed" | "slack.resume.pause_handler.failed";
   failureCode: ConversationTurnFailureCode;
   resume: ResumeSlackTurnArgs;
 }): Promise<void> {
@@ -647,7 +651,6 @@ async function resumeSlackTurnInContext(
       run.signal?.throwIfAborted();
       const finalized = finalizeFailedTurnReplyWithEvent({
         reply: result,
-        logException,
       });
       const reply = finalized.reply;
       setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
@@ -782,10 +785,10 @@ async function resumeSlackTurnInContext(
           conversationId: runArgs.conversationId,
           sessionId: runArgs.turnId,
         };
-        await (
-          runArgs.scheduleSessionCompletedPluginTasks ??
-          scheduleSessionCompletedPluginTasks
-        )(params);
+        await scheduleSessionCompletedPluginTasks(
+          params,
+          runArgs.sendPluginTask,
+        );
       } catch (scheduleError) {
         logException(
           scheduleError,

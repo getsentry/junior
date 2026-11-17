@@ -27,7 +27,6 @@ const outputSchema = juniorToolOutputSchema.extend({
 export function createPublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  publicBaseUrl?: () => string | undefined;
   storage: Pick<AttachmentStorage, "put">;
   workspace: SandboxWorkspace;
 }) {
@@ -54,7 +53,7 @@ export function createPublishImageTool(args: {
       .strict(),
     outputSchema,
     async execute({ path }) {
-      const publicBaseUrl = (args.publicBaseUrl ?? resolveBaseUrl)()?.trim();
+      const publicBaseUrl = resolveBaseUrl()?.trim();
       if (!publicBaseUrl) {
         throw new Error(
           "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.",

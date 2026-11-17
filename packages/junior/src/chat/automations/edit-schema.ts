@@ -13,11 +13,12 @@ export const automationTitleSchema = z.string().trim().min(1).max(60);
 /**
  * Instruction input for agent tools. The run does not see the request, so the
  * instruction names exact targets. It calls the creator "the Automation
- * creator". It names every other person with their mention.
+ * creator". It names every other person with their mention, also a requester
+ * who says "me".
  */
 export const automationInstructionToolSchema =
   automationTaskTextSchema.describe(
-    'Work to perform when the Automation runs. Say what to do, what to post, and when to post nothing. Do not say where to post: the outcomes set that, a run triggered by a Slack message replies in its thread, and each run ends with one message at most. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Where the run reads or changes something, write the exact target, such as a channel mention, a repo, or a link. Call the person who created the Automation "the Automation creator", not "me"; each run knows who that is. Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
+    'Work to perform when the Automation runs. Say what to do, what to post, and when to post nothing. Do not say where to post: the outcomes set that, a run triggered by a Slack message replies in its thread, and each run ends with one message at most. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Where the run reads or changes something, write the exact target, such as a channel mention, a repo, or a link. Keep every person the user means, including "me". Write the creator as "the Automation creator"; each run knows who that is. Write anyone else, including a requester who is not the creator, as their Slack mention, such as <@U123>. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
   );
 
 /** Context input for agent tools. It follows the same rules as an instruction. */

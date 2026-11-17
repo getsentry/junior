@@ -28,7 +28,10 @@ import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
-import { throwSandboxOperationError } from "@/chat/sandbox/errors";
+import {
+  SandboxCallTimeoutError,
+  throwSandboxOperationError,
+} from "@/chat/sandbox/errors";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
 import {
   getWorkspaceSnapshotNotReadyError,
@@ -145,6 +148,10 @@ function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
 }
 
 const VERCEL_FIREWALL_CHALLENGE_MARKER = "Vercel Security Checkpoint";
+
+// The AGENTS.md read runs between steps and takes under a second. Without a
+// limit, a failing sandbox API held it for 2 to 5 minutes before it failed.
+const REPOSITORY_INSTRUCTIONS_READ_TIMEOUT_MS = 30_000;
 
 const SANDBOX_TOOL_NAMES = new Set([
   "bash",
@@ -739,12 +746,22 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         "sandbox.repository_instructions.read",
         {},
         async (setSpanAttributes) => {
+          const timeout = AbortSignal.timeout(
+            REPOSITORY_INSTRUCTIONS_READ_TIMEOUT_MS,
+          );
           const { directories, instructions } =
             await readRepositoryInstructions({
               ...(workspaceDirectories.length > 0
                 ? { directories: workspaceDirectories }
                 : undefined),
-              runCommand,
+              runCommand: (input) => runCommand({ ...input, signal: timeout }),
+            }).catch((error: unknown) => {
+              if (!timeout.aborted) throw error;
+              throw new SandboxCallTimeoutError(
+                "sandbox.repository_instructions.read",
+                REPOSITORY_INSTRUCTIONS_READ_TIMEOUT_MS,
+                { cause: error },
+              );
             });
           setSpanAttributes({
             "app.repository_instructions.repo_count": directories.length,

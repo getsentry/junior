@@ -178,6 +178,8 @@ export function createGitHubWebhookRoute(args: {
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
+  /** Logins from the `trustedAuthors` plugin option. */
+  trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -376,6 +378,9 @@ export function createGitHubWebhookRoute(args: {
             ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
             deliveryId,
             eventName,
+            ...(args.trustedAuthors
+              ? { trustedAuthors: args.trustedAuthors }
+              : undefined),
           }),
           hasMatch,
           ...(commitPages
@@ -435,6 +440,7 @@ export function createGitHubWebhookRoute(args: {
         })),
       );
       for (const event of events) {
+        // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
         await args.events.publish({
           ...event,
           objectType: event.eventType.startsWith("pull_request.")

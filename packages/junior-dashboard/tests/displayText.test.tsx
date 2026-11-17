@@ -6,10 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import {
+  ClampedDisplayText,
   DisplayText,
   KnownObjectsProvider,
 } from "../src/client/display-text/DisplayText";
-import { textHasStandaloneUrl } from "../src/client/display-text/knownObjects";
+import {
+  splitStandaloneUrls,
+  textHasStandaloneUrl,
+} from "../src/client/display-text/knownObjects";
 import { displayPlainText } from "../src/client/display-text/plainText";
 import type { DashboardCoreData } from "../src/client/types";
 
@@ -410,44 +414,46 @@ describe("display text object links", () => {
     expect(html).not.toMatch(/<img|<svg/);
   });
 
-  it("shows a bare URL alone in a paragraph as the full card", () => {
+  it("shows a bare URL alone in a paragraph as the object row", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
       expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
-      expect(html).toContain("Last fetched");
+      expect(html).toContain("acme/app#7");
     }
   });
 
-  // The muted line above the card title.
-  function cardMeta(html: string) {
-    return html.match(/<p class="m-0 mb-1 [^"]*">([^<]*)<\/p>/)?.[1];
+  // The faint reference under the row title.
+  function rowReference(html: string) {
+    return html.match(
+      /<span class="min-w-0 truncate text-xs [^"]*">([^<]*)<\/span>/,
+    )?.[1];
   }
 
-  it("shows a card for a URL of any type alone on its line", () => {
-    // Core owns `junior` objects, so no card names that plugin. A web page
-    // without a site name names its host.
+  it("shows a row for a URL of any type alone on its line", () => {
+    // A row names no plugin. Its label, a fact, or its type follows the
+    // title. A web page without a site name names its host.
     for (const [url, name, meta] of [
-      [PERSON, "Person: Morgan Lee", "Person"],
+      [PERSON, "Person: Morgan Lee", "dev@example.com"],
       [
         CONVERSATION,
         "Conversation: Investigate checkout latency",
         "Conversation",
       ],
-      [DOC, "Google Doc: Release checklist", "Google Doc · google"],
+      [DOC, "Google Doc: Release checklist", "Google Doc"],
       [
         MESSAGE,
         "Message: Hold the deploy until the pin lands.",
-        "Message · #proj-release",
+        "#proj-release",
       ],
       [PAGE, "Web page: Release notes", "blog.example.com"],
     ] as const) {
       const html = render(`Done.\n\n${url}`);
       expect(cardCount(html, name)).toBe(1);
-      expect(cardMeta(html)).toBe(meta);
+      expect(rowReference(html)).toBe(meta);
     }
   });
 
-  it("names the site and author of a web page card", () => {
+  it("names the site and author of a web page row", () => {
     const html = markup(
       <KnownObjectsProvider
         annotations={[
@@ -464,7 +470,7 @@ describe("display text object links", () => {
         <DisplayText text={`Done.\n\n${PAGE}`} />
       </KnownObjectsProvider>,
     );
-    expect(cardMeta(html)).toBe("Example Blog · Morgan Lee");
+    expect(rowReference(html)).toBe("Example Blog · Morgan Lee");
     // The header names them, so the facts do not repeat them.
     expect(html.split("Morgan Lee").length - 1).toBe(1);
   });
@@ -477,7 +483,7 @@ describe("display text object links", () => {
     expect(cardCount(html, "Web page: Launch demo")).toBe(0);
   });
 
-  it("shows one card for a URL repeated in a message", () => {
+  it("shows one row for a URL repeated in a message", () => {
     for (const text of [
       `${PR}\n\nAgain:\n\n${PR}`,
       `${PR}\n\n\`\`\`\ncode\n\`\`\`\n\n${PR}`,
@@ -494,6 +500,7 @@ describe("display text object links", () => {
       /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
     );
     expect(html).not.toContain("acme/app#7");
+    expect(html).not.toContain('aria-label="Pull request: ');
     expect(html).not.toContain("Last fetched");
   });
 
@@ -519,5 +526,79 @@ describe("display text object links", () => {
     expect(textHasStandaloneUrl("```\n" + PR + "\n```", PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n    ${PR}`, PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n\t${PR}`, PR)).toBe(false);
+  });
+
+  it("splits the bare URLs that show as cards from the prose", () => {
+    const ISSUE = "https://github.com/getsentry/junior/issues/7";
+    expect(
+      splitStandaloneUrls(`Ready.\n\n${PR}\n\nMore: ${ISSUE}\n\n<${ISSUE}>`),
+    ).toEqual({ prose: `Ready.\n\nMore: ${ISSUE}`, urls: [PR, ISSUE] });
+    const fenced = "```\n" + PR + "\n\nstill code\n```";
+    expect(splitStandaloneUrls(`Run:\n\n${fenced}\n\n${PR}`)).toEqual({
+      prose: `Run:\n\n${fenced}`,
+      urls: [PR],
+    });
+    expect(splitStandaloneUrls(`Ready.\n\n    ${PR}`)).toEqual({
+      prose: `Ready.\n\n    ${PR}`,
+      urls: [],
+    });
+    expect(splitStandaloneUrls(PR)).toEqual({ prose: "", urls: [PR] });
+  });
+
+  it("shows a saved object that no Annotation names by its title", () => {
+    const html = markup(
+      <KnownObjectsProvider annotations={[]} cards={[byUrl(PR)]}>
+        <DisplayText text={`Opened ${PR} for review.`} />
+      </KnownObjectsProvider>,
+    );
+    expect(anchors(html)).toEqual([
+      expect.objectContaining({
+        href: PR,
+        label: "Retry checkout writes (#7)",
+      }),
+    ]);
+  });
+
+  it("shows inline links only with chips", () => {
+    const text = `Opened ${PR} for review.`;
+    expect(
+      anchors(
+        markup(
+          <KnownObjectsProvider annotations={annotations}>
+            <DisplayText inline text={text} />
+          </KnownObjectsProvider>,
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      anchors(
+        markup(
+          <KnownObjectsProvider annotations={annotations}>
+            <DisplayText chips inline text={text} />
+          </KnownObjectsProvider>,
+        ),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        href: PR,
+        label: "Retry checkout writes (#7)",
+      }),
+    ]);
+  });
+
+  it("clamps the prose and shows each bare URL after it", () => {
+    const html = markup(
+      <KnownObjectsProvider annotations={annotations}>
+        <ClampedDisplayText
+          label="the ask"
+          lines={2}
+          text={`Review this first.\n\n${PR}`}
+        />
+      </KnownObjectsProvider>,
+    );
+    const prose = html.indexOf("Review this first.");
+    const card = html.indexOf(PR);
+    expect(prose).toBeGreaterThanOrEqual(0);
+    expect(card).toBeGreaterThan(prose);
   });
 });

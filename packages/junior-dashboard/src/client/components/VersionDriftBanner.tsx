@@ -1,5 +1,7 @@
-import { JUNIOR_VERSION } from "@sentry/junior/version";
-
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardVersionDrift,
+} from "../dashboard-version";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 
@@ -16,7 +18,7 @@ export function VersionDriftBanner(props: {
       role="status"
       variant="banner"
     >
-      <span>The dashboard changed. Refresh to load the latest version.</span>
+      <span>{DASHBOARD_VERSION_DRIFT_MESSAGE}</span>
       <Button
         className="text-xs font-semibold leading-normal text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-text-solid"
         onClick={() => window.location.reload()}
@@ -25,15 +27,5 @@ export function VersionDriftBanner(props: {
         Refresh
       </Button>
     </Alert>
-  );
-}
-
-/** Report whether the browser bundle and server use different known versions. */
-export function dashboardVersionDrift(serverVersion?: string): boolean {
-  return (
-    Boolean(serverVersion) &&
-    JUNIOR_VERSION !== "unknown" &&
-    serverVersion !== "unknown" &&
-    serverVersion !== JUNIOR_VERSION
   );
 }

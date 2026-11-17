@@ -4,8 +4,8 @@ import { cn } from "@dashboard/lib/utils";
 import { Item, ItemContent, ItemMedia } from "./ui/item";
 
 /**
- * Frame one card in the transcript. Object, automation, and Review item
- * cards share this frame, so they read as one family. The card fills its
+ * Frame one full card: an object preview, an automation, or a docked
+ * question share this frame, so they read as one family. The card fills its
  * column.
  */
 export function MessageCard({
