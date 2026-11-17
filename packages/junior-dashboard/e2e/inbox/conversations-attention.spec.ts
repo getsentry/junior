@@ -26,7 +26,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   async function sectionOf(
     list: Locator,
     title: string,
-  ): Promise<string | undefined> {
+  ): Promise<string | null> {
     return list
       .locator("section[aria-label]")
       .filter({
