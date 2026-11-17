@@ -1,9 +1,5 @@
 import diagnosticsChannel from "node:diagnostics_channel";
 import { expect } from "vitest";
-import {
-  SQL_STATEMENT_CHANNEL,
-  type SqlStatementMessage,
-} from "@/db/statement-channel";
 
 /** The SQL work of one measured call. */
 export type SqlBudget = {
@@ -18,14 +14,22 @@ export type SqlBudget = {
 
 type Span = { start: number; end?: number };
 
-function isSqlStatementMessage(value: unknown): value is SqlStatementMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "phase" in value &&
-    "statement" in value
-  );
-}
+// Channels that `pg-tracing-hook.ts` injects, the same ones that Sentry's
+// Postgres integration reads to make database spans.
+/**
+ * The context of one traced `pg` call. The channel passes the same object to
+ * every event of that call.
+ */
+type PgCall = { arguments?: unknown };
+
+const QUERY_CHANNEL = diagnosticsChannel.tracingChannel<PgCall, PgCall>(
+  "orchestrion:pg:query",
+);
+const POOL_CONNECT_CHANNEL = diagnosticsChannel.tracingChannel<PgCall, PgCall>(
+  "orchestrion:pg-pool:connect",
+);
+
+const ignore = () => {};
 
 function serialRounds(spans: readonly Span[]): number {
   const rounds: number[] = [];
@@ -42,26 +46,50 @@ function serialRounds(spans: readonly Span[]): number {
 }
 
 /**
- * Run `call` and count the SQL statements that it sends through the process
- * executor, and how many of them wait on each other.
+ * Run `call` and count the SQL statements that it sends through `pg`, and how
+ * many of them wait on each other.
  */
 export async function measureSql<T>(
   call: () => T | Promise<T>,
 ): Promise<{ result: T; sql: SqlBudget }> {
-  // Message order, not time, decides whether one statement waits on another.
+  // Event order, not time, decides whether one statement waits on another.
   let order = 0;
-  const spans = new Map<object, Span>();
-  const listener = (message: unknown) => {
-    if (!isSqlStatementMessage(message)) return;
-    order += 1;
-    if (message.phase === "start") {
-      spans.set(message.statement, { start: order });
-    } else {
-      const span = spans.get(message.statement);
-      if (span) span.end = order;
-    }
+  const spans = new Map<PgCall, Span>();
+  const connectStarts = new WeakMap<PgCall, number>();
+  // A `pool.query` statement runs its query in the checkout callback. It
+  // starts when `pool.query` is called, not when a client is free, so the
+  // measured order does not depend on the pool size.
+  const checkouts: PgCall[] = [];
+  const connect = {
+    start: (context: PgCall) => {
+      connectStarts.set(context, ++order);
+    },
+    end: ignore,
+    asyncStart: (context: PgCall) => {
+      checkouts.push(context);
+    },
+    asyncEnd: () => {
+      checkouts.pop();
+    },
+    error: ignore,
   };
-  diagnosticsChannel.subscribe(SQL_STATEMENT_CHANNEL, listener);
+  const finish = (context: PgCall) => {
+    const span = spans.get(context);
+    if (span) span.end = ++order;
+  };
+  const query = {
+    start: (context: PgCall) => {
+      const checkout = checkouts.at(-1);
+      const start = checkout && connectStarts.get(checkout);
+      spans.set(context, { start: start ?? ++order });
+    },
+    end: ignore,
+    asyncStart: ignore,
+    asyncEnd: finish,
+    error: finish,
+  };
+  POOL_CONNECT_CHANNEL.subscribe(connect);
+  QUERY_CHANNEL.subscribe(query);
   try {
     const result = await call();
     const all = [...spans.values()];
@@ -70,7 +98,8 @@ export async function measureSql<T>(
       sql: { statements: all.length, serialRounds: serialRounds(all) },
     };
   } finally {
-    diagnosticsChannel.unsubscribe(SQL_STATEMENT_CHANNEL, listener);
+    QUERY_CHANNEL.unsubscribe(query);
+    POOL_CONNECT_CHANNEL.unsubscribe(connect);
   }
 }
 

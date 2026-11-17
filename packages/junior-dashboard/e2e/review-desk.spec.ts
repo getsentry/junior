@@ -267,7 +267,7 @@ test("the inbox shows an item in its conversation", async ({
         detail.getByRole("heading", { name: license.title }),
       ).toBeVisible();
     },
-    { requests: 10, serialRounds: 2 },
+    { requests: 9, serialRounds: 2 },
   );
   await expect(
     list.getByRole("link", { name: new RegExp(license.title) }),

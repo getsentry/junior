@@ -31,8 +31,10 @@ each rule, so new code cannot drift from it.
   statements of one request, and its serial rounds: the longest chain of
   statements where each one waits on the one before. Integration tests measure
   it with `expectSqlBudget` from `packages/junior/tests/fixtures/sql-budget.ts`.
-  The Postgres executor publishes each statement on the `junior:sql:statement`
-  diagnostics channel, which the helper reads.
+  The helper reads the `orchestrion:pg:*` tracing channels. These are the
+  channels that Sentry's Postgres spans use. Tests inject them into `pg` with
+  `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
+  extra wrapper.
 - Keep the API requests of the main dashboard pages inside a budget. Dashboard
   e2e specs measure a first page load with `expectRequestBudget` from
   `packages/junior-dashboard/e2e/request-budget.ts`.
