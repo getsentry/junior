@@ -917,7 +917,7 @@ export function createMockReportingApi(): Hono<{
   });
   app.get("/review-items/count", (c) =>
     jsonResponse(reviewItemCountSchema, {
-      ...(c.req.query("include") === "automations"
+      ...(c.req.query("include")?.split(",").includes("automations")
         ? {
             automations: mockAutomationCollection(
               readMockAutomationList(),

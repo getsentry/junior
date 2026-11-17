@@ -317,12 +317,13 @@ export function createReviewItemRoutes(services: {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
       const db = getDb();
-      // One query counts the badge and both bundles, and one the snoozed
-      // rows. The Automation count runs only when the request asks for it.
+      // One query counts the badge and both bundles. The snoozed and
+      // Automation counts run only when the request asks for them, so the
+      // classic dashboard pays for one query.
       const [subjects, snoozed, automations] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countViewerSnoozes(viewer),
-        query.include === "automations"
+        query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
+        query.include.includes("automations")
           ? countOwnedAutomationsNeedingAttention(viewer)
           : undefined,
       ]);

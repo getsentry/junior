@@ -134,8 +134,15 @@ export const reviewItemListSchema = z
 /** `GET /api/review-items/count` query. */
 export const reviewItemCountQuerySchema = z
   .object({
-    /** `automations` also counts the viewer's Automations that need attention. */
-    include: z.enum(["automations"]).optional(),
+    /**
+     * Extra counts, comma separated. `automations` counts the viewer's
+     * Automations that need attention, and `snoozed` their snoozed rows.
+     */
+    include: z
+      .string()
+      .default("")
+      .transform((value) => [...new Set(value.split(",").filter(Boolean))])
+      .pipe(z.array(z.enum(["automations", "snoozed"]))),
   })
   .strict();
 
@@ -161,7 +168,7 @@ export const reviewItemCountSchema = z
     needsViewer: z.number().int().nonnegative(),
     /**
      * The Inbox rows that the viewer snoozed and that still have an open
-     * item for them, as Snoozed lists them.
+     * item for them, as Snoozed lists them. 0 without `include=snoozed`.
      */
     snoozed: z.number().int().nonnegative(),
   })

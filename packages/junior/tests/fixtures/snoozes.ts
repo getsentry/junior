@@ -134,8 +134,11 @@ export function api(fixture: ConversationFixture, viewer: User) {
     }),
     /** What Snoozed shows: its count, its items, and the snoozes. */
     snoozed: async () => ({
-      count: ((await json("/review-items/count")) as { snoozed: number })
-        .snoozed,
+      count: (
+        (await json("/review-items/count?include=snoozed")) as {
+          snoozed: number;
+        }
+      ).snoozed,
       items: (
         (await json("/review-items?for=viewer&snoozed=true")) as {
           items: { title: string }[];

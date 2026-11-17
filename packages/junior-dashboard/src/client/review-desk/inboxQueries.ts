@@ -27,7 +27,7 @@ export function useInboxTodoCount(enabled: boolean): number | undefined {
   const attention = useAutomationAttentionData(enabled);
   const alerts = useAutomationAlerts(Date.now());
   if (!count) return undefined;
-  // The count read always sends `include=automations`.
+  // The count read always sends `include=automations,snoozed`.
   const automations = count.automations ?? 0;
   // Alerts put away in this browser leave To do, so they leave its count.
   // Only the attention list says which Automations they are. Until it
@@ -52,7 +52,7 @@ export function useInboxCountData(enabled: boolean) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
-        "/api/review-items/count?include=automations",
+        "/api/review-items/count?include=automations,snoozed",
         signal,
       ),
     retry: false,
