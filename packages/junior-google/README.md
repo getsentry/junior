@@ -64,4 +64,26 @@ Each edit of an existing Doc needs the `revision_id` that `readGoogleFile` or
 the last edit returned. If someone changed the Doc after that, the edit is
 refused, so Junior never changes text that it did not read.
 
+## Email requests
+
+Trial. People can email the Junior account, or CC it, to ask for work. For
+example: "Junior, find us 30 minutes next week." Junior does the work in a
+new public Conversation for the sender. It does not send email.
+
+1. Enable the Gmail API, and add the `gmail.readonly` scope to the consent
+   screen.
+2. Set `GOOGLE_WORKSPACE_EMAIL_REQUESTS=true`.
+3. Connect the account again to grant Gmail access.
+
+The heartbeat reads new inbox mail every minute. The plugin drops an email
+unless Google's `Authentication-Results` header shows DMARC pass for the
+From domain, and the email is not automated mail, a calendar reply, or mail
+from the Junior account. Core then starts work only when the From address is
+the primary email of a trusted User, the same as for every Identity
+dispatch. `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` does not apply to senders.
+
+The sender's first Message has the subject, the To and Cc addresses, and
+the text that the sender wrote. Quoted and forwarded text is cut, because
+other people wrote it. An email with only forwarded text is dropped.
+
 Plugin setup: https://junior.sentry.dev/extend/

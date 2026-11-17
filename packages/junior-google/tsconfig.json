@@ -13,5 +13,15 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  // Listed in scripts/typecheck-coverage-baseline.json until their types pass.
+  "exclude": [
+    "tests/calendar.test.ts",
+    "tests/connect.test.ts",
+    "tests/credentials.test.ts",
+    "tests/docs.test.ts",
+    "tests/files.test.ts",
+    "tests/links.test.ts",
+    "tests/meet.test.ts"
+  ]
 }
