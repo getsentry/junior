@@ -834,6 +834,20 @@
       "when": 1794933647013,
       "tag": "0118_automation_last_run_index",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794949484361,
+      "tag": "0119_money_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1794949505801,
+      "tag": "0120_conversation_cost_micro_usd",
+      "breakpoints": true
     }
   ]
 }

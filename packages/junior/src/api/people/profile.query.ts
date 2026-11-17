@@ -2,6 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { eq, gte, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
+import { microUsdToUsd } from "@/db/micro-usd";
 import { juniorDestinations } from "@/db/schema";
 import {
   slackLocationLabel,
@@ -120,15 +121,17 @@ function locationLabel(row: {
 }
 
 function activityBuckets(
-  rows: (AggregateRow & { costUsd: number | null; date: string })[],
+  rows: (AggregateRow & { costMicroUsd: number | null; date: string })[],
 ): Map<string, ActorActivityDayReport> {
   return new Map(
-    rows.map(({ costUsd, tokens, ...row }) => [
+    rows.map(({ costMicroUsd, tokens, ...row }) => [
       row.date,
       {
         ...emptyActivityDay(row.date),
         ...row,
-        ...(costUsd !== null ? { costUsd } : undefined),
+        ...(costMicroUsd !== null
+          ? { costUsd: microUsdToUsd(costMicroUsd) }
+          : undefined),
         ...(tokens !== null ? { tokens } : undefined),
       },
     ]),

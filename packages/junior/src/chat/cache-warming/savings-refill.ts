@@ -35,7 +35,9 @@ import {
   replaceHistorySavings,
 } from "./savings";
 
-const JOB_KEY = "junior:cache_warming:savings_refill:v1";
+// v2 job sums are in micro-USD. A v1 job in progress has older units, so it
+// is dropped and an admin starts a new one.
+const JOB_KEY = "junior:cache_warming:savings_refill:v2";
 // Only one slice runs at a time. A slice that dies holds it for this long.
 const SLICE_LOCK_KEY = "junior:cache_warming:savings_refill:v1:slice";
 const SLICE_LOCK_TTL_MS = 5 * MINUTE_MS;
