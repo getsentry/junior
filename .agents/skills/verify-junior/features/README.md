@@ -49,3 +49,4 @@ Keep source structure out of the map. Name only entry points, stable handles, re
 - `github.md`: pull requests, issues, Watches, attribution, and GitHub cards.
 - `review-desk.md`: Review items on the desk, in Slack cards, and above the message box.
 - `background-work.md`: Turns and runs that survive host limits, lost wakes, and killed workers.
+- `guardian.md`: action review of tool calls before they run, and the Guardian reviews on the System page.
