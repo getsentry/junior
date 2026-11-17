@@ -12,6 +12,7 @@ the check first. A rule that only review enforces is a judgment call.
 | Don't state the obvious. In UI copy, agent replies, Slack messages, docs, and PR text, cut what the context already shows. | Review |
 | Use the words in `TERMINOLOGY.md`. Do not invent synonyms. | Review |
 | Build the smallest design that solves the proven problem. When output lacks information, use the data the system already stores before you add a hook or lookup. No speculative abstractions, hooks, configuration, or wrappers. | Review, `policies/correctness-complexity.md` |
+| Generate deterministic output, such as links, IDs, and formats, in code. Do not fix it with prompt or tool text. | Review, `policies/agent-steering.md` |
 | Write TypeScript, not Java: functions, plain objects, simple types, small modules. | Review |
 | Search every consumer before you change a shared signature, error contract, or name. Use a hard cutover unless compatibility is required. | `pnpm typecheck` |
 | Let unexpected failures reach the owning boundary. Retry only expected transient failures. | `tool-error-classification:check` for tools, review elsewhere |
