@@ -158,6 +158,8 @@ export interface Conversation extends HarnessRun {
   authorizationPrompt?: string;
   /** Times Junior replaced agent history with a summary, as the dashboard shows. */
   compactions: number;
+  /** Text of each summary that the dashboard shows for those compactions. */
+  compactionSummaries: string[];
   /** Ids of the active Watches that the dashboard lists after the call. */
   watchIds: string[];
   turns: Turn[];
@@ -772,6 +774,7 @@ export async function createFixtureAgent(
         ? { authorizationPrompt: authorizationPrompt.label }
         : undefined),
       compactions: events.compactions,
+      compactionSummaries: events.compactionSummaries,
       files,
       reactions,
       replies,
@@ -817,6 +820,7 @@ export async function createFixtureAgent(
         items: options.history,
         replyMessages,
         slack,
+        started: record.started,
         viewerEmail: record.viewerEmail,
       });
       record.started = true;
@@ -898,6 +902,7 @@ export async function createFixtureAgent(
         toolCalls: [],
       }),
       compactions: 0,
+      compactionSummaries: [],
       files: [],
       reactions: [],
       replies: [],

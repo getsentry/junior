@@ -1,4 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
+import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -240,7 +241,22 @@ const STATIC_TOOL_BINDERS = {
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
   searchConversationEvents: (run) =>
-    createSearchConversationEventsTool(run.context),
+    createSearchConversationEventsTool(
+      run.context,
+      isEventEmbeddingsEnabled()
+        ? {
+            embedder: createConversationEmbedder({
+              cost: {
+                conversationId: run.context.conversationId,
+                ...(run.context.turnId
+                  ? { turnId: run.context.turnId }
+                  : undefined),
+              },
+              operation: "conversation_search_embedding",
+            }),
+          }
+        : undefined,
+    ),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
   searchConversations: (run) =>
     createSearchConversationsTool({

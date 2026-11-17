@@ -28,7 +28,10 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import {
+  setBriefsConfig,
+  setEventEmbeddingsConfig,
+} from "@/chat/briefs/registration";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -199,6 +202,13 @@ export interface JuniorAppOptions extends BotModelConfig {
    * default-model call per completed Turn. Disabled by default.
    */
   briefs?: { enabled?: boolean };
+  /**
+   * Embed the searchable events of a Conversation after each completed Turn,
+   * so `searchConversationEvents` also matches its history by meaning. This
+   * costs one embedding call per 32 new events. Disabled by default. Word
+   * search works without it.
+   */
+  eventEmbeddings?: { enabled?: boolean };
   /**
    * Domains that may use Junior. Slack checks the email domain of the
    * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
@@ -535,6 +545,9 @@ export async function createApp(
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
+    options?.eventEmbeddings,
+  );
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let previousTrustConfig: TrustConfig | undefined;
@@ -547,6 +560,7 @@ export async function createApp(
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
     setBriefsConfig(previousBriefsConfig);
+    setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

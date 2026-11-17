@@ -1,6 +1,6 @@
+import { fuseRankedLists } from "@sentry/junior-plugin-api";
 import type { MemoryRecord } from "./store";
 
-const RECIPROCAL_RANK_FUSION_K = 60;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RRF_WEIGHT = 1;
 
@@ -12,24 +12,6 @@ export interface MemoryMatch {
   vector?: {
     rank: number;
   };
-}
-
-function reciprocalRank(rank: number, weight: number): number {
-  return weight / (RECIPROCAL_RANK_FUSION_K + rank);
-}
-
-function matchScore(
-  match: MemoryMatch,
-  weights: { lexicalWeight: number; vectorWeight: number },
-): number {
-  return (
-    (match.vector
-      ? reciprocalRank(match.vector.rank, weights.vectorWeight)
-      : 0) +
-    (match.lexical
-      ? reciprocalRank(match.lexical.rank, weights.lexicalWeight)
-      : 0)
-  );
 }
 
 function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
@@ -63,38 +45,22 @@ export function rankMemoryMatches(
     vectorWeight?: number;
   },
 ): MemoryMatch[] {
-  const weights = {
-    lexicalWeight: positiveWeight(options.lexicalWeight, DEFAULT_RRF_WEIGHT),
-    vectorWeight: positiveWeight(options.vectorWeight, DEFAULT_RRF_WEIGHT),
-  };
-  const byId = new Map<string, MemoryMatch>();
-  for (const match of matches) {
-    const existing = byId.get(match.memory.id);
-    if (!existing) {
-      byId.set(match.memory.id, match);
-      continue;
-    }
-    // Merge the lexical and vector ranks of one memory.
-    byId.set(match.memory.id, {
-      ...existing,
-      ...(!existing.lexical && match.lexical
-        ? { lexical: match.lexical }
-        : undefined),
-      ...(!existing.vector && match.vector
-        ? { vector: match.vector }
-        : undefined),
-    });
-  }
-  return [...byId.values()].sort((left, right) => {
-    const scoreDelta = matchScore(right, weights) - matchScore(left, weights);
-    if (scoreDelta !== 0) {
-      return scoreDelta;
-    }
-    return (
+  const vector = matches.flatMap((match) =>
+    match.vector ? [{ item: match, rank: match.vector.rank }] : [],
+  );
+  const lexical = matches.flatMap((match) =>
+    match.lexical ? [{ item: match, rank: match.lexical.rank }] : [],
+  );
+  return fuseRankedLists([vector, lexical], {
+    key: (match) => match.memory.id,
+    weights: [
+      positiveWeight(options.vectorWeight, DEFAULT_RRF_WEIGHT),
+      positiveWeight(options.lexicalWeight, DEFAULT_RRF_WEIGHT),
+    ],
+    tiebreak: (left, right) =>
       observedAgeRank(right.memory, options.nowMs) -
         observedAgeRank(left.memory, options.nowMs) ||
       right.memory.observedAtMs - left.memory.observedAtMs ||
-      left.memory.id.localeCompare(right.memory.id)
-    );
+      left.memory.id.localeCompare(right.memory.id),
   });
 }

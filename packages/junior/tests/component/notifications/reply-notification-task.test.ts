@@ -222,7 +222,10 @@ describe("reply notification task", () => {
 
     await expect(
       completeDashboardTurn("The deploy finished."),
-    ).resolves.toEqual(["notifications.notifyReply"]);
+    ).resolves.toEqual([
+      "event-search.indexEvents",
+      "notifications.notifyReply",
+    ]);
 
     expect(pushes).toHaveLength(1);
     expect(pushes[0]!.headers.get("content-encoding")).toBe("aes128gcm");
