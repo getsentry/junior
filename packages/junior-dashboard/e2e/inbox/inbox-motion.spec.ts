@@ -303,6 +303,31 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await list.evaluate((element) => element.scrollTop)).toBe(200);
   });
 
+  test("a scroll while a row above the rested row resizes stays where the reader put it", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.clock.install();
+    await page.goto(`${dashboard.baseURL}/`);
+    const list = page.locator("[data-inbox-scroll]");
+    await expect(todoRows(page).nth(1)).toBeVisible();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    const rested = todoRows(page).nth(1);
+    await rested.locator('a[aria-controls^="inbox-row-"]').first().hover();
+    await page.clock.runFor(PAST_REST_MS);
+    await expect(rested).toHaveAttribute("data-grown", "true");
+    // In one frame, the row above grows and the reader scrolls. The hold
+    // must let go and not scroll the reader back.
+    await todoRows(page)
+      .first()
+      .evaluate((above) => {
+        (above as HTMLElement).style.paddingBottom = "80px";
+        above.closest("[data-inbox-scroll]")!.scrollTop = 200;
+      });
+    await page.clock.runFor(100);
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(200);
+  });
+
   test("a row with Threads grows as one card, with its Threads inside", async ({
     dashboard,
     page,
