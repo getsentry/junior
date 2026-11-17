@@ -135,7 +135,10 @@ export function bindSpawnAgent(
         getAgentInvocationId(run.conversationId, idempotencyKey),
       ))
     ) {
-      return await spawnChildAgent(createInput, { ...options, queue });
+      return await spawnChildAgent(
+        { ...createInput, parentTurnId: run.turnId },
+        { ...options, queue },
+      );
     }
     // With the flag off, a spawn that ran without an Agent invocation replays
     // as it ran.

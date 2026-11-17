@@ -4,7 +4,12 @@ import { eq } from "drizzle-orm";
 import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { ensureConversationWake } from "@/chat/task-execution/store";
 import {
@@ -570,6 +575,26 @@ function spawnAgentConfig(
 }
 
 /**
+ * Return whether a Conversation was stopped after its Turn started. A stop
+ * from before the Turn does not count: a later Turn runs past it, such as one
+ * for the reply of a Thread that a person resumed. With no record of the
+ * Turn's start, any stop counts.
+ */
+async function isStoppedInTurn(
+  conversationId: string,
+  turnId: string,
+): Promise<boolean> {
+  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+  if (stoppedAtMs === undefined) {
+    return false;
+  }
+  const startedAtMs = await new ConversationTurnLifecycleService(
+    getConversationEventStore(),
+  ).loadStartedAtMs(conversationId, turnId);
+  return startedAtMs === undefined || stoppedAtMs >= startedAtMs;
+}
+
+/**
  * Check a spawn replay against the child that the first spawn stored: its
  * kind, its name, and its agent config. A replay sends nothing, so the first
  * task, Actor, and credentials stay, and other input there gains no
@@ -608,11 +633,15 @@ async function assertSameSpawn(
  * invocation table.
  */
 export async function spawnChildAgent(
-  rawInput: CreateAgentInvocationInput & { parentToolCallId: string },
+  rawInput: CreateAgentInvocationInput & {
+    parentToolCallId: string;
+    parentTurnId: string;
+  },
   options: ChildAgentWorkOptions,
   nowMs = Date.now(),
 ): Promise<{ childConversationId: string }> {
-  const input = createAgentInvocationSchema.parse(rawInput);
+  const { parentTurnId, ...createInput } = rawInput;
+  const input = createAgentInvocationSchema.parse(createInput);
   const childConversationId = getSpawnedChildConversationId(
     input.parentConversationId,
     input.idempotencyKey,
@@ -637,10 +666,7 @@ export async function spawnChildAgent(
       }
       // A new child has no Turn to read a note, so a stopped parent cannot
       // start one.
-      if (
-        (await getConversationStoppedAtMs(input.parentConversationId)) !==
-        undefined
-      ) {
+      if (await isStoppedInTurn(input.parentConversationId, parentTurnId)) {
         throw new AgentStoppedError();
       }
       await createChildAgentConversation(
@@ -680,14 +706,16 @@ export async function messageChildAgent(
     input: string;
     parentConversationId: string;
     parentToolCallId: string;
+    parentTurnId: string;
   },
   options: ChildAgentWorkOptions,
   nowMs = Date.now(),
 ): Promise<{ delivery: "noted" | "queued" | "started" }> {
+  const { parentTurnId, ...work } = input;
   const sender = await readChildConversationSender(input.childConversationId);
   const delivery = await giveChildAgentWork(
     {
-      ...input,
+      ...work,
       agentName: sender?.agentName,
       nowMs,
       text: input.input,
@@ -696,10 +724,7 @@ export async function messageChildAgent(
     },
     options,
     async (open) => {
-      if (
-        (await getConversationStoppedAtMs(input.parentConversationId)) !==
-        undefined
-      ) {
+      if (await isStoppedInTurn(input.parentConversationId, parentTurnId)) {
         await addConversationNote({
           conversationId: input.childConversationId,
           createdAtMs: nowMs,

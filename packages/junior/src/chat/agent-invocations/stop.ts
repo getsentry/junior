@@ -74,11 +74,11 @@ export async function stopChildAgent(args: {
  * agent that existed then, so this stops only child agents that this
  * Conversation spawned or gave new work to after its stop, even when they
  * already finished, and everything below them. A child with no agent
- * invocation stops when it is not stopped yet: a stopped parent gives it no
- * work, so only a spawn that raced the stop, or a person's resume of a
- * Thread, leaves it running. When the stop already ended,
- * because a person or the parent gave the Conversation new input, this does
- * nothing.
+ * invocation stops when it is not stopped yet: a Turn that its stop
+ * interrupted gives it no work, so only a spawn that raced the stop, or a
+ * person's resume of a Thread, leaves it running. When the stop already
+ * ended, because a person or the parent gave the Conversation new input,
+ * this does nothing.
  *
  * Only a person's stop of this Conversation itself leaves child agents to
  * stop here: an agent stop, or a stop of a Conversation above it, stops this
@@ -89,17 +89,29 @@ export async function stopChildAgentsOf(
   conversationId: string,
   state?: StateAdapter,
 ): Promise<void> {
-  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs === undefined) {
+  const nowMs = Date.now();
+  // Read the stop under the create lock, so a resume that came first leaves
+  // the child agents running.
+  const stopped = await getSqlExecutor().withLock(
+    getChildAgentLockName(conversationId),
+    async () => {
+      const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+      if (stoppedAtMs === undefined) {
+        return undefined;
+      }
+      // The Conversation's own work already ended. Leave its read results as
+      // they are, so `listChildAgents` still shows them.
+      const tree = await stopAgentInvocationTree(conversationId, nowMs, {
+        includeRoot: false,
+        taskedAfterMs: stoppedAtMs,
+      });
+      return { stoppedAtMs, tree };
+    },
+  );
+  if (!stopped) {
     return;
   }
-  const nowMs = Date.now();
-  // The Conversation's own work already ended. Leave its read results as they
-  // are, so `listChildAgents` still shows them.
-  const tree = await stopAgentInvocationTree(conversationId, nowMs, {
-    includeRoot: false,
-    taskedAfterMs: stoppedAtMs,
-  });
+  const { stoppedAtMs, tree } = stopped;
   await skipUnreadResults(conversationId, nowMs, state);
   // They take the stop of this Conversation, so input that ends it ends
   // theirs too.

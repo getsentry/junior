@@ -11,6 +11,7 @@ import {
 import {
   getAgentInvocationId,
   getAgentInvocationMessageId,
+  getChildAgentLockName,
 } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -28,7 +29,8 @@ import {
   markConversationsStopped,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
-import { getSqlExecutor } from "@/chat/db";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -80,8 +82,9 @@ async function spawn(
   toolCallId: string,
   input: Partial<SpawnAgentInput> = {},
   state: StateAdapter = harness.state,
+  turnId?: string,
 ) {
-  const { childConversationId } = await bindSpawnAgent(parentRun(), {
+  const { childConversationId } = await bindSpawnAgent(parentRun(turnId), {
     conversationStore: harness.conversationStore,
     queue: harness.queue,
     state,
@@ -89,11 +92,29 @@ async function spawn(
   return childConversationId;
 }
 
-async function message(harness: Harness, to: string, toolCallId: string) {
-  return await bindMessageAgent(parentRun(), {
+async function message(
+  harness: Harness,
+  to: string,
+  toolCallId: string,
+  turnId?: string,
+) {
+  return await bindMessageAgent(parentRun(turnId), {
     queue: harness.queue,
     state: harness.state,
   })!({ text: "Check it again.", to }, { toolCallId });
+}
+
+/** Record the start of a parent Turn, as the root Turn code does. */
+async function startParentTurn(turnId = "parent-turn") {
+  await new ConversationTurnLifecycleService(getConversationEventStore()).start(
+    {
+      conversationId: slackParentConversationId,
+      createdAtMs: Date.now(),
+      inputMessageIds: [`${turnId}:input`],
+      surface: "slack",
+      turnId,
+    },
+  );
 }
 
 async function mailboxTexts(harness: Harness, conversationId: string) {
@@ -493,6 +514,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
     const harness = await createHarness();
     try {
       const childId = await spawn(harness, "call-1");
+      await startParentTurn();
       // A person stops the parent and its tree. The parent's run sees its
       // stop late, and messages the child first.
       await markConversationsStopped([slackParentConversationId, childId], {
@@ -540,6 +562,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
   it("refuses a spawn from a stopped parent", async () => {
     const harness = await createHarness();
     try {
+      await startParentTurn();
       await markConversationsStopped([slackParentConversationId], {
         cancelWatches: false,
         state: harness.state,
@@ -572,6 +595,95 @@ describe("spawn and messageAgent without Agent invocations", () => {
       );
       await harness.drain(childId);
       expect(harness.runs).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+  it("lets a parent give work in a Turn that started after its stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const threadId = await spawn(harness, "call-1", { kind: "thread" });
+      await markConversationsStopped([slackParentConversationId, threadId], {
+        cancelWatches: false,
+        state: harness.state,
+      });
+      // A person resumes only the Thread. Its reply starts a parent Turn
+      // while the parent's stop stays.
+      vi.setSystemTime(1_800_000_001_000);
+      await resumeStoppedConversationTree(threadId, Date.now());
+      vi.setSystemTime(1_800_000_002_000);
+      await startParentTurn("parent-turn-2");
+
+      // The Thread's task still waits, so the message queues behind it.
+      await expect(
+        message(harness, threadId, "call-2", "parent-turn-2"),
+      ).resolves.toEqual({ conversationId: threadId, delivery: "queued" });
+      await expect(mailboxTexts(harness, threadId)).resolves.toEqual([
+        "Check the deploy.",
+        "Check it again.",
+      ]);
+      const taskId = await spawn(
+        harness,
+        "call-3",
+        {},
+        harness.state,
+        "parent-turn-2",
+      );
+      await expect(mailboxTexts(harness, taskId)).resolves.toEqual([
+        "Check the deploy.",
+      ]);
+      await expect(
+        getConversationStoppedAtMs(slackParentConversationId),
+      ).resolves.toBe(1_800_000_000_000);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("leaves the children running when the parent resumes before its late tree stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      vi.setSystemTime(1_800_000_001_000);
+      await markConversationsStopped([slackParentConversationId], {
+        cancelWatches: false,
+        state: harness.state,
+      });
+      vi.setSystemTime(1_800_000_002_000);
+      // A person resumes the parent while its run's late tree stop waits for
+      // the parent's lock.
+      const resumed = deferred();
+      const release = deferred();
+      const holder = getSqlExecutor().withLock(
+        getChildAgentLockName(slackParentConversationId),
+        async () => {
+          await resumeStoppedConversationTree(
+            slackParentConversationId,
+            Date.now(),
+          );
+          resumed.resolve();
+          await release.promise;
+        },
+      );
+      await resumed.promise;
+      const lateStop = stopChildAgentsOf(
+        slackParentConversationId,
+        harness.state,
+      );
+      await vi.waitFor(async () => {
+        const rows = await getSqlExecutor().query<{ waiting: number }>(
+          "select count(*)::int as waiting from pg_locks where locktype = 'advisory' and not granted",
+        );
+        expect(rows[0]!.waiting).toBeGreaterThan(0);
+      });
+      release.resolve();
+      await Promise.all([holder, lateStop]);
+
+      await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
+        undefined,
+      );
     } finally {
       await harness.close();
     }

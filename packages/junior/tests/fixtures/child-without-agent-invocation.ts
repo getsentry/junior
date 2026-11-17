@@ -83,6 +83,7 @@ export async function spawnChildWithoutAgentInvocation(args: {
       ...(args.kind ? { kind: args.kind } : undefined),
       parentConversationId: args.parentConversationId,
       parentToolCallId: args.idempotencyKey,
+      parentTurnId: args.idempotencyKey,
       ...(args.title ? { title: args.title } : undefined),
     },
     {

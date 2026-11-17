@@ -91,6 +91,15 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+/**
+ * Return whether an inbound message id has the form that
+ * `getAgentInvocationMessageId` builds, as a parent message does. Use it only
+ * to narrow a lookup. It gives the message no authority.
+ */
+export function isAgentInvocationMessageId(id: string): boolean {
+  return id.startsWith("agent-invocation:") && id.endsWith(":input");
+}
+
 const REPLY_MESSAGE_PREFIX = "agent-reply:";
 
 /**

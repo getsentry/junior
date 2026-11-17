@@ -11,7 +11,7 @@ import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorConversationEvents } from "@/db/schema";
 import { readChildConversationSender } from "./child-input";
-import { getAgentInvocationMessageId } from "./ids";
+import { getAgentInvocationMessageId, isAgentInvocationMessageId } from "./ids";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.
@@ -177,8 +177,10 @@ export async function recordChildAgentEnded(
       ? []
       : (work?.messages.map((message) => message.inboundMessageId) ?? []),
   );
+  // Only parent messages have markers, so the lookup skips the child's other
+  // input.
   const taken = (work?.execution.inboundMessageIds ?? []).filter(
-    (id) => !waiting.has(id),
+    (id) => isAgentInvocationMessageId(id) && !waiting.has(id),
   );
   if (taken.length === 0) {
     return;
@@ -187,8 +189,6 @@ export async function recordChildAgentEnded(
   if (!sender) {
     return;
   }
-  // Only parent messages have markers. The lookup by key finds the open
-  // ones and skips the child's other input.
   const keys = await getSqlExecutor()
     .db()
     .select({ idempotencyKey: juniorConversationEvents.idempotencyKey })
