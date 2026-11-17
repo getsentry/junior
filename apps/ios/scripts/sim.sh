@@ -60,8 +60,11 @@ acquire_lock() {
 release() {
   if [[ -n "$reused" ]]; then
     xcrun simctl terminate "$reused" io.sentry.junior >/dev/null 2>&1 || true
-    xcrun simctl uninstall "$reused" io.sentry.junior >/dev/null 2>&1 || true
-    log "uninstalled the app from $reused (left it booted)"
+    # The UI test runner too: it aborts when opened by hand.
+    for bundle in io.sentry.junior io.sentry.junior.uitests.xctrunner; do
+      xcrun simctl uninstall "$reused" "$bundle" >/dev/null 2>&1 || true
+    done
+    log "uninstalled the app and its test runner from $reused (left it booted)"
   elif [[ -n "$udid" ]]; then
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
     xcrun simctl delete "$udid" >/dev/null 2>&1 || true
