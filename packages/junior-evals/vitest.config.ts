@@ -37,6 +37,10 @@ export default defineConfig({
         pluginApiPackageRoot,
         "src/index.ts",
       ),
+      "@sentry/junior-search": path.resolve(
+        packagesRoot,
+        "junior-search/src/index.ts",
+      ),
       "@sentry/junior-vercel": pluginSource("junior-vercel"),
     },
     // Vite 8 resolves tsconfig `paths` natively here:

@@ -13,6 +13,10 @@ export default defineConfig({
         __dirname,
         "../junior-plugin-api/src/index.ts",
       ),
+      "@sentry/junior-search": path.resolve(
+        __dirname,
+        "../junior-search/src/index.ts",
+      ),
     },
   },
   test: {
