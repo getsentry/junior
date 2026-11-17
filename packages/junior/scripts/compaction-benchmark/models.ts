@@ -94,8 +94,14 @@ function cachePath(budget: Budget, call: ModelCall) {
   return join(budget.cacheDir, call.stage, `${key}.json`);
 }
 
-/** OpenRouter when `OPENROUTER_API_KEY` is set, else AI Gateway. */
+/**
+ * OpenRouter when `OPENROUTER_API_KEY` is set, else AI Gateway. A dry run
+ * can set `COMPACTION_BENCHMARK_PROVIDER` to price against that provider's
+ * cache without a key.
+ */
 export function provider(): "openrouter" | "gateway" {
+  const forced = process.env["COMPACTION_BENCHMARK_PROVIDER"];
+  if (forced === "openrouter" || forced === "gateway") return forced;
   return process.env["OPENROUTER_API_KEY"] ? "openrouter" : "gateway";
 }
 
@@ -187,6 +193,153 @@ async function openRouterComplete(request: ModelCall, estimate: number) {
   }
 }
 
+/** One OpenAI-format chat message, as OpenRouter and AI Gateway accept. */
+export type ChatMessage =
+  | {
+      role: "system" | "user";
+      content:
+        | string
+        | Array<{
+            type: "text";
+            text: string;
+            cache_control?: { type: "ephemeral" };
+          }>;
+    }
+  | { role: "assistant"; content: string | null; tool_calls?: ChatToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+export interface ChatToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export interface ToolSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: unknown };
+}
+
+/** One tool-using model call of a replayed Turn. */
+export interface ChatRequest {
+  stage: string;
+  modelId: string;
+  messages: ChatMessage[];
+  tools: ToolSpec[];
+  maxTokens: number;
+  expectedOutputTokens: number;
+  /** Prompt tokens that an earlier call of the same Turn already cached. */
+  cachedPrefixTokens: number;
+}
+
+export interface ChatResult {
+  text: string;
+  toolCalls: ChatToolCall[];
+  finishReason: string;
+  costUsd: number;
+  /** Set on dry-run placeholders, which hold no real reply. */
+  placeholder?: true;
+}
+
+const GATEWAY_CHAT_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
+
+/** Price a chat call from catalog rates, counting the cached prefix as reads. */
+export function estimateChatUsd(request: ChatRequest): number {
+  const input = estimateTextTokens(
+    JSON.stringify(request.messages) + JSON.stringify(request.tools),
+  );
+  const cached = Math.min(request.cachedPrefixTokens, input);
+  const rate = rates(request.modelId, input);
+  return (
+    (cached * rate.cacheRead +
+      (input - cached) * rate.cacheWrite +
+      request.expectedOutputTokens * rate.output) /
+    PER_MILLION
+  );
+}
+
+interface ChatResponse {
+  choices?: Array<{
+    finish_reason?: string;
+    message?: { content?: string | null; tool_calls?: ChatToolCall[] };
+  }>;
+  usage?: OpenRouterResponse["usage"] & {
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      cache_write_tokens?: number;
+    };
+  };
+}
+
+/**
+ * Send one tool-using call through the OpenAI-compatible endpoint of the
+ * active provider. Charge the highest of the reported cost and catalog
+ * rates on the reported tokens, as `openRouterComplete` does.
+ */
+async function chatComplete(
+  request: ChatRequest,
+  estimate: number,
+): Promise<ChatResult> {
+  const openRouter = provider() === "openrouter";
+  const key = openRouter
+    ? process.env["OPENROUTER_API_KEY"]
+    : process.env["AI_GATEWAY_API_KEY"];
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(
+      openRouter ? OPENROUTER_URL : GATEWAY_CHAT_URL,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${key}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: request.modelId,
+          messages: request.messages,
+          tools: request.tools,
+          max_tokens: request.maxTokens,
+          usage: { include: true },
+        }),
+      },
+    );
+    // Rate limits and provider outages are transient; retry them twice.
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 5_000 * (attempt + 1)),
+      );
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Chat ${response.status} for ${request.modelId}: ${(await response.text()).slice(0, 300)}`,
+      );
+    }
+    const body = (await response.json()) as ChatResponse;
+    const usage = body.usage;
+    const prompt = usage?.prompt_tokens ?? 0;
+    const cached = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+    const written = usage?.prompt_tokens_details?.cache_write_tokens ?? 0;
+    const rate = rates(request.modelId, prompt);
+    const tokenUsd =
+      (cached * rate.cacheRead +
+        written * rate.cacheWrite +
+        Math.max(0, prompt - cached - written) * rate.input +
+        (usage?.completion_tokens ?? 0) * rate.output) /
+      PER_MILLION;
+    const costUsd = Math.max(
+      usage?.cost ?? 0,
+      usage?.cost_details?.upstream_inference_cost ?? 0,
+      tokenUsd,
+    );
+    const choice = body.choices?.[0];
+    return {
+      text: choice?.message?.content ?? "",
+      toolCalls: choice?.message?.tool_calls ?? [],
+      finishReason: choice?.finish_reason ?? "unknown",
+      costUsd: costUsd > 0 ? costUsd : estimate,
+    };
+  }
+}
+
 /**
  * Return a caller for one command. Cached results are free. A dry run adds
  * each uncached call's estimate and returns a placeholder of the expected
@@ -198,6 +351,13 @@ export function modelCaller(budget: Budget) {
   let reservedUsd = 0;
   if (!budget.dryRun && !(budget.maxUsd > 0)) {
     throw new Error("Model stages need --max-usd. Run with --dry-run first.");
+  }
+  if (
+    !budget.dryRun &&
+    provider() === "openrouter" &&
+    !process.env["OPENROUTER_API_KEY"]
+  ) {
+    throw new Error("The OpenRouter provider needs OPENROUTER_API_KEY.");
   }
 
   async function call(
@@ -244,7 +404,56 @@ export function modelCaller(budget: Budget) {
     return saved;
   }
 
-  return { call, ledger };
+  /** Cached, budgeted tool-using call. Dry runs return a placeholder. */
+  async function chat(request: ChatRequest): Promise<ChatResult> {
+    const key = createHash("sha256")
+      .update(
+        JSON.stringify([
+          provider(),
+          request.modelId,
+          request.messages,
+          request.tools,
+          request.maxTokens,
+        ]),
+      )
+      .digest("hex");
+    const path = join(budget.cacheDir, request.stage, `${key}.json`);
+    if (existsSync(path)) {
+      return JSON.parse(readFileSync(path, "utf8")) as ChatResult;
+    }
+    const estimate = estimateChatUsd(request);
+    if (budget.dryRun) {
+      ledger.estimatedUsd += estimate;
+      ledger.pendingCalls += 1;
+      return {
+        text: "",
+        toolCalls: [],
+        finishReason: "dry_run",
+        costUsd: estimate,
+        placeholder: true,
+      };
+    }
+    if (ledger.spentUsd + reservedUsd + estimate > budget.maxUsd) {
+      throw new BudgetStop(
+        `Stopping before ${request.stage}: spent $${ledger.spentUsd.toFixed(2)}, next call about $${estimate.toFixed(3)}, limit $${budget.maxUsd}.`,
+      );
+    }
+    reservedUsd += estimate;
+    const saved = await chatComplete(request, estimate).finally(() => {
+      reservedUsd -= estimate;
+    });
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(saved));
+    ledger.spentUsd += saved.costUsd;
+    ledger.calls += 1;
+    writeFileSync(
+      ledgerPath(budget),
+      JSON.stringify({ spentUsd: ledger.spentUsd, calls: ledger.calls }),
+    );
+    return saved;
+  }
+
+  return { call, chat, ledger };
 }
 
 /** Run independent calls with bounded concurrency, keeping input order. */

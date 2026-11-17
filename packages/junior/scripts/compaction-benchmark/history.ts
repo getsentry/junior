@@ -257,3 +257,19 @@ export function segments(messages: readonly BenchMessage[]): BenchMessage[][] {
   if (current.length) result.push(current);
   return result;
 }
+
+/** Model-visible messages with seqs in `(fromSeq, toSeq)`. */
+export function messagesBetween(
+  events: readonly BenchEvent[],
+  fromSeq: number,
+  toSeq: number,
+): BenchMessage[] {
+  return events
+    .filter(
+      (event) =>
+        event.seq > fromSeq &&
+        event.seq < toSeq &&
+        MESSAGE_TYPES.has(event.data.type),
+    )
+    .map(toMessage);
+}

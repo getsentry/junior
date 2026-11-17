@@ -1,6 +1,7 @@
 import { SUMMARY_INSTRUCTION } from "@/chat/agent/context-summary";
 import { estimateTextTokens } from "@/chat/services/token-estimate";
 import { renderMessages, segments, type CompactionPoint } from "./history";
+import type { LoreDoc } from "./lore";
 import { MODELS, mapLimit, type ModelCall } from "./models";
 import {
   CONSOLIDATION_SYSTEM,
@@ -17,6 +18,18 @@ export interface ArmContext {
   tokens: number;
   /** Model spend this arm needed at this point. */
   workerCostUsd: number;
+  /** Observation blocks this point added, for the Lore curator. */
+  observations?: string[];
+  /** Per-Turn retrieval on top of `context`, for the Lore and hybrid arms. */
+  injection?: Injection;
+}
+
+/** Docs one arm retrieves from for each Turn, and what that cost per Turn. */
+export interface Injection {
+  budget: number;
+  docs: LoreDoc[];
+  /** Real Turns of the next version: agent calls and injected tokens. */
+  turns: Array<{ calls: number; tokens: number }>;
 }
 
 type Call = (request: ModelCall) => Promise<{ text: string; costUsd: number }>;
@@ -101,6 +114,7 @@ export async function distillationChain(
   const contexts: ArmContext[] = [];
   for (const point of points) {
     let cost = 0;
+    const added: string[] = [];
     const date = point.createdAt.slice(0, 10);
     for (const segment of segments(point.dropped)) {
       const result = await call({
@@ -117,7 +131,10 @@ export async function distillationChain(
       });
       cost += result.costUsd;
       const parsed = parseObservations(result.text) ?? result.text.trim();
-      if (parsed) observations.push(parsed);
+      if (parsed) {
+        observations.push(parsed);
+        added.push(parsed);
+      }
     }
     if (observations.length > CONSOLIDATE_AFTER) {
       const older = observations.slice(0, -KEEP_RECENT);
@@ -144,6 +161,7 @@ export async function distillationChain(
       context,
       tokens: estimateTextTokens(context),
       workerCostUsd: cost,
+      observations: added,
     });
   }
   return contexts;

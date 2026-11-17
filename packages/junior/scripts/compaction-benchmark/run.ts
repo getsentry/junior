@@ -5,7 +5,15 @@ import type { Tier2Item } from "./arms";
 import { assertOutsideGit } from "./events";
 import { BudgetStop, modelCaller, provider } from "./models";
 import {
+  BEHAVIOR_ARMS,
+  behavior,
+  behaviorReport,
+  rules,
+} from "./behavior-stage";
+import { DEFAULT_BUDGETS, type LoreBudgets } from "./lore";
+import {
   distill,
+  lore,
   loadPoints,
   merge,
   probe,
@@ -29,14 +37,26 @@ const { positionals, values } = parseArgs({
     runs: { type: "string", default: "3" },
     points: { type: "string" },
     arms: { type: "string" },
+    behavior: { type: "boolean", default: false },
+    "behavior-arms": { type: "string" },
+    "behavior-points": { type: "string" },
+    provider: { type: "string" },
+    "pinned-tokens": { type: "string" },
+    "meta-tokens": { type: "string" },
+    "lore-inject-tokens": { type: "string" },
+    "hybrid-inject-tokens": { type: "string" },
   },
 });
+
+if (values.provider) {
+  process.env["COMPACTION_BENCHMARK_PROVIDER"] = values.provider;
+}
 
 const command = positionals[0];
 const data = values.data ?? process.env["COMPACTION_BENCHMARK_DATA"];
 if (!command || !data) {
   console.error(
-    "Usage: run.ts <all|merge|rebuild|tier1|score|tier2|distill|rerun-summary|probe|report> --data DIR [--continue] [--dry-run] [--max-usd N]",
+    "Usage: run.ts <all|merge|rebuild|tier1|score|rules|tier2|distill|rerun-summary|lore|probe|behavior|report> --data DIR [--continue] [--arms lore,hybrid] [--behavior] [--dry-run] [--max-usd N]",
   );
   process.exit(2);
 }
@@ -51,13 +71,26 @@ const DEFAULT_ALL_MAX_USD = 30;
 const ESTIMATED_TIER2_PER_POINT = 10;
 
 const indexes = values.points?.split(",").map(Number);
+const newArms = values.arms?.split(",");
+const behaviorArms = values["behavior-arms"]?.split(",") ?? BEHAVIOR_ARMS;
+const behaviorPoints = values["behavior-points"]?.split(",").map(Number);
+const budgets: LoreBudgets = {
+  pinnedTokens: Number(values["pinned-tokens"] ?? DEFAULT_BUDGETS.pinnedTokens),
+  metaTokens: Number(values["meta-tokens"] ?? DEFAULT_BUDGETS.metaTokens),
+  loreInjectTokens: Number(
+    values["lore-inject-tokens"] ?? DEFAULT_BUDGETS.loreInjectTokens,
+  ),
+  hybridInjectTokens: Number(
+    values["hybrid-inject-tokens"] ?? DEFAULT_BUDGETS.hybridInjectTokens,
+  ),
+};
 const cacheDir = join(data, "cache");
 const script = "pnpm exec tsx scripts/compaction-benchmark/run.ts";
 
 function context(dryRun: boolean, maxUsd: number) {
-  const { call, ledger } = modelCaller({ cacheDir, maxUsd, dryRun });
+  const { call, chat, ledger } = modelCaller({ cacheDir, maxUsd, dryRun });
   if (!dryRun) console.log(`model provider: ${provider()}`);
-  const ctx: StageContext = { dir: data!, call, dryRun };
+  const ctx: StageContext = { dir: data!, call, chat, dryRun };
   return { ctx, ledger };
 }
 
@@ -113,6 +146,79 @@ async function estimateAll() {
   return ledger.estimatedUsd;
 }
 
+/**
+ * Price the new-arm stages: `lore` (curator and meta calls, plus any
+ * distillation the cache lacks), their probes, and the behavioral track.
+ */
+async function estimateNew() {
+  const { ctx, ledger } = context(true, 0);
+  const rows: Array<[string, number, number]> = [];
+  const measure = async <T>(name: string, run: () => Promise<T>) => {
+    const [usd, calls] = [ledger.estimatedUsd, ledger.pendingCalls];
+    const result = await run();
+    rows.push([name, ledger.pendingCalls - calls, ledger.estimatedUsd - usd]);
+    return result;
+  };
+  const built =
+    newArms || values.behavior
+      ? await measure("lore (curator + meta)", () => lore(ctx, budgets))
+      : {};
+  if (newArms) {
+    await measure(`probe ${newArms.join(",")}`, () =>
+      probe(ctx, { arms: newArms, extraArms: built }),
+    );
+  }
+  if (values.behavior) {
+    await measure(`behavior ${behaviorArms.join(",")}`, () =>
+      behavior(ctx, {
+        arms: behaviorArms,
+        points: behaviorPoints,
+        extraArms: built,
+      }),
+    );
+  }
+  console.log("\nEstimated model spend (uncached calls only):");
+  for (const [name, calls, usd] of rows) {
+    console.log(
+      `  ${name.padEnd(48)} ${String(calls).padStart(5)} calls  $${usd.toFixed(2)}`,
+    );
+  }
+  console.log(
+    `  ${"total".padEnd(48)} ${String(ledger.pendingCalls).padStart(5)} calls  $${ledger.estimatedUsd.toFixed(2)}`,
+  );
+  return ledger.estimatedUsd;
+}
+
+/** `all --arms lore,hybrid` and `all --behavior`: only the new calls. */
+async function allNew(maxUsd: number) {
+  if (!merge(data!)) {
+    console.error("Finish the export before running the benchmark.");
+    process.exitCode = 1;
+    return;
+  }
+  tier1(data!);
+  rules(data!);
+  const estimate = await estimateNew();
+  const { ctx, ledger } = context(false, maxUsd);
+  const remaining = maxUsd - ledger.spentUsd;
+  if (estimate > remaining) {
+    console.warn(
+      `Estimate $${estimate.toFixed(2)} is above the $${remaining.toFixed(2)} left under --max-usd ${maxUsd} (the cap counts all earlier spend in this cache). Stages stop at the cap and resume from the cache.`,
+    );
+  }
+  await lore(ctx, budgets);
+  if (newArms) await probe(ctx, { arms: newArms });
+  if (values.behavior) {
+    await behavior(ctx, { arms: behaviorArms, points: behaviorPoints });
+  }
+  score(data!);
+  report(data!);
+  behaviorReport(data!);
+  console.log(
+    `spent so far in this cache: $${ledger.spentUsd.toFixed(2)} of $${maxUsd}`,
+  );
+}
+
 async function all(maxUsd: number) {
   const { ctx, ledger } = context(false, maxUsd);
   const continueCommand = `${script} all --continue --data ${data} --max-usd ${maxUsd}`;
@@ -166,7 +272,11 @@ async function modelStage() {
   else if (command === "rerun-summary") {
     await rerunSummary(ctx, Number(values.runs), indexes);
   } else if (command === "probe") {
-    await probe(ctx, values.arms ? { arms: values.arms.split(",") } : {});
+    await probe(ctx, newArms ? { arms: newArms } : {});
+  } else if (command === "lore") await lore(ctx, budgets);
+  else if (command === "behavior") {
+    await behavior(ctx, { arms: behaviorArms, points: behaviorPoints });
+    if (!dryRun) behaviorReport(data!);
   } else throw new Error(`Unknown command ${command}`);
   console.log(
     dryRun
@@ -181,8 +291,14 @@ async function main() {
   } else if (command === "rebuild") rebuild(data!);
   else if (command === "tier1") tier1(data!);
   else if (command === "score") score(data!);
-  else if (command === "report") report(data!);
-  else if (command === "all" && values["dry-run"]) await estimateAll();
+  else if (command === "rules") rules(data!);
+  else if (command === "report") {
+    report(data!);
+    behaviorReport(data!);
+  } else if (command === "all" && (newArms || values.behavior)) {
+    if (values["dry-run"]) await estimateNew();
+    else await allNew(Number(values["max-usd"] ?? DEFAULT_ALL_MAX_USD));
+  } else if (command === "all" && values["dry-run"]) await estimateAll();
   else if (command === "all") {
     await all(Number(values["max-usd"] ?? DEFAULT_ALL_MAX_USD));
   } else await modelStage();

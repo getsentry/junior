@@ -5,6 +5,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import {
   answerProbe,
@@ -22,24 +23,49 @@ import {
   type BenchEvent,
 } from "./events";
 import { eventText, rebuildCompactions, type CompactionPoint } from "./history";
-import { MODELS, mapLimit, type ModelCall } from "./models";
+import {
+  buildLorePool,
+  composeContext,
+  loreArms,
+  pinnedBlock,
+  DEFAULT_BUDGETS,
+  type LoreBudgets,
+} from "./lore";
+import {
+  MODELS,
+  mapLimit,
+  type ChatRequest,
+  type ChatResult,
+  type ModelCall,
+} from "./models";
 import {
   costSummary,
   probeRecall,
   scoreTier1Answer,
   scoreTier2Answer,
   tier1Presence,
+  wilson,
   worthIt,
+  BAR,
+  isPass,
   type ProbeResult,
 } from "./report";
 import { mineTier1, type Tier1Fact } from "./tier1";
+import {
+  firstTurnAfter,
+  maskValue,
+  turnAt,
+  turnsOf,
+  type BenchTurn,
+} from "./turns";
 
 type Call = (request: ModelCall) => Promise<{ text: string; costUsd: number }>;
 
-/** Files and the model caller for one data directory. */
+/** Files and the model callers for one data directory. */
 export interface StageContext {
   dir: string;
   call: Call;
+  chat: (request: ChatRequest) => Promise<ChatResult>;
   dryRun: boolean;
 }
 
@@ -63,6 +89,33 @@ function pct(value: number | undefined): string {
 /** Rebuild compaction points from `events.jsonl`. */
 export function loadPoints(dir: string): CompactionPoint[] {
   return rebuildCompactions(readEvents(file(dir, "events.jsonl")));
+}
+
+/** The event log, its compaction points and its Turns. */
+export function loadData(dir: string): {
+  events: BenchEvent[];
+  points: CompactionPoint[];
+  turns: BenchTurn[];
+} {
+  const events = readEvents(file(dir, "events.jsonl"));
+  return { events, points: rebuildCompactions(events), turns: turnsOf(events) };
+}
+
+/**
+ * The real Turn input that keys per-Turn retrieval. Tier 1: the Turn that
+ * later used the fact, with the fact itself masked, so retrieval cannot key
+ * on the answer. Tier 2: the first Turn after the compaction.
+ */
+export function probeQueries(
+  points: readonly CompactionPoint[],
+  turns: readonly BenchTurn[],
+) {
+  return {
+    tier1: (fact: Tier1Fact) =>
+      maskValue(turnAt(turns, fact.useSeq)?.input ?? "", fact.value),
+    tier2: (item: Tier2Item) =>
+      firstTurnAfter(turns, points[item.point]?.seq ?? 0)?.input ?? "",
+  };
 }
 
 /** Free arms plus every saved arm under `arms/`. */
@@ -111,10 +164,11 @@ export function tier1(dir: string) {
 /** Print Tier 1 presence recall and modeled cost for every arm. */
 export function score(dir: string) {
   const facts = readJson<Tier1Fact[]>(dir, "tier1.json");
-  const points = loadPoints(dir);
+  const { points, turns } = loadData(dir);
+  const queries = probeQueries(points, turns);
   const arms = loadArms(dir);
   for (const [name, arm] of Object.entries(arms)) {
-    const presence = tier1Presence(facts, arm);
+    const presence = tier1Presence(facts, arm, queries.tier1);
     const cost = costSummary(points, arm, arms["recorded"]!);
     const byAge = Object.entries(presence.byAge)
       .map(([age, row]) => `${age}:${pct(row.recall)}/${row.n}`)
@@ -205,7 +259,59 @@ export async function rerunSummary(
 }
 
 /**
+ * Build the `lore` and `hybrid` arms. The distillation chain reruns from its
+ * cache to recover each point's new observations, then a Luna curator and a
+ * Luna meta call run at each point.
+ */
+export async function lore(
+  ctx: StageContext,
+  budgets: LoreBudgets = DEFAULT_BUDGETS,
+): Promise<Record<string, ArmContext[]>> {
+  const { points, turns } = loadData(ctx.dir);
+  const chain = await distillationChain(points, MODELS.luna, ctx.call);
+  const pool = await buildLorePool({
+    points,
+    observations: new Map(
+      chain.map((entry) => [entry.point, entry.observations ?? []]),
+    ),
+    budgets,
+    call: ctx.call,
+  });
+  const arms = loreArms({
+    points,
+    pool,
+    turns,
+    recorded: freeArms(points).recorded,
+    distillUsd: new Map(
+      chain.map((entry) => [entry.point, entry.workerCostUsd]),
+    ),
+    budgets,
+    dryRun: ctx.dryRun,
+  });
+  if (!ctx.dryRun) {
+    writeJson(ctx.dir, "lore/pool.json", pool);
+    writeJson(ctx.dir, "lore/budgets.json", budgets);
+    for (const [name, arm] of Object.entries(arms)) {
+      writeJson(ctx.dir, `arms/${name}.json`, arm);
+    }
+    const last = pool.at(-1);
+    const byCategory: Record<string, number> = {};
+    for (const entry of last?.entries ?? []) {
+      byCategory[entry.category] = (byCategory[entry.category] ?? 0) + 1;
+    }
+    console.log(
+      `lore: ${last?.entries.length ?? 0} entries at the last point`,
+      byCategory,
+      `pinned ~${Math.round(pinnedBlock(last?.entries ?? [], budgets.pinnedTokens).length / 4)} tok, ${last?.observations.length ?? 0} observation docs`,
+    );
+  }
+  return arms;
+}
+
+/**
  * Ask every Tier 1 and Tier 2 probe of each arm, with and without search.
+ * Retrieval arms key their per-Turn injection on the real Turn input, never
+ * the probe question. With `arms`, rows of other arms in `probes.json` stay.
  * Dry runs pass the arms and items that earlier dry stages would produce.
  */
 export async function probe(
@@ -216,7 +322,8 @@ export async function probe(
     items?: Tier2Item[];
   } = {},
 ): Promise<ProbeResult[]> {
-  const points = loadPoints(ctx.dir);
+  const { points, turns } = loadData(ctx.dir);
+  const queries = probeQueries(points, turns);
   const arms = { ...loadArms(ctx.dir), ...options.extraArms };
   const names =
     options.arms ?? Object.keys(arms).filter((name) => name !== "removed");
@@ -226,16 +333,27 @@ export async function probe(
     (existsSync(file(ctx.dir, "tier2.json"))
       ? readJson<Tier2Item[]>(ctx.dir, "tier2.json")
       : []);
-  const jobs = names.flatMap((arm) =>
-    [false, true].flatMap((withRaw) => [
-      ...facts.map((fact) => ({ arm, withRaw, tier: 1 as const, fact })),
-      ...items.map((item) => ({ arm, withRaw, tier: 2 as const, item })),
-    ]),
-  );
+  // An arm built at only some points (the reruns) is probed only there.
+  const jobs = names.flatMap((arm) => {
+    const has = new Set((arms[arm] ?? []).map((entry) => entry.point));
+    return [false, true].flatMap((withRaw) => [
+      ...facts
+        .filter((fact) => has.has(fact.point))
+        .map((fact) => ({ arm, withRaw, tier: 1 as const, fact })),
+      ...items
+        .filter((item) => has.has(item.point))
+        .map((item) => ({ arm, withRaw, tier: 2 as const, item })),
+    ]);
+  });
   const results = await mapLimit(jobs, 8, async (job): Promise<ProbeResult> => {
     const pointIndex = job.tier === 1 ? job.fact.point : job.item.point;
-    const context =
-      arms[job.arm]?.find((entry) => entry.point === pointIndex)?.context ?? "";
+    const entry = arms[job.arm]!.find(
+      (context) => context.point === pointIndex,
+    )!;
+    const context = composeContext(
+      entry,
+      job.tier === 1 ? queries.tier1(job.fact) : queries.tier2(job.item),
+    );
     const question =
       job.tier === 1
         ? `Earlier work used a ${job.fact.kind} value at ▢▢▢ in this action:\n<action>${job.fact.maskedUse}</action>\nWhich value fills ▢▢▢?`
@@ -263,46 +381,162 @@ export async function probe(
       costUsd,
     };
   });
-  if (!ctx.dryRun) writeJson(ctx.dir, "probes.json", results);
+  if (ctx.dryRun) return results;
+  const kept =
+    options.arms && existsSync(file(ctx.dir, "probes.json"))
+      ? readJson<ProbeResult[]>(ctx.dir, "probes.json").filter(
+          (row) => !names.includes(row.arm),
+        )
+      : [];
+  writeJson(ctx.dir, "probes.json", [...kept, ...results]);
   return results;
 }
 
-/** Write and print the results table and the worth-it verdicts. */
+/** Arm configs and the bar, hashed so a report shows what it scored. */
+export function fingerprint(dir: string): string {
+  const hash = (name: string) =>
+    existsSync(file(dir, name))
+      ? createHash("sha256")
+          .update(readFileSync(file(dir, name)))
+          .digest("hex")
+          .slice(0, 12)
+      : "none";
+  const budgets = existsSync(file(dir, "lore/budgets.json"))
+    ? readJson<LoreBudgets>(dir, "lore/budgets.json")
+    : DEFAULT_BUDGETS;
+  const config = {
+    bar: BAR,
+    models: MODELS,
+    budgets,
+    tier1: hash("tier1.json"),
+    tier2: hash("tier2.json"),
+  };
+  return `${createHash("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 12)} ${JSON.stringify(config)}`;
+}
+
+function cell(row: {
+  recall?: number;
+  passRate?: number;
+  n: number;
+  passes: number;
+}) {
+  const [low, high] = wilson(row.passes, row.n);
+  return `${pct(row.recall)} / ${pct(row.passRate)} [${pct(low)}–${pct(high)}]`;
+}
+
+/** Write and print the results tables and the worth-it verdicts. */
 export function report(dir: string) {
   const points = loadPoints(dir);
   const arms = loadArms(dir);
   const results = readJson<ProbeResult[]>(dir, "probes.json");
-  const rerunRecall = Object.keys(arms)
-    .filter((name) => name.startsWith("rerun-"))
-    .map((name) => probeRecall(results, name, 1, false).recall ?? 0);
-  const spread =
-    rerunRecall.length > 1
-      ? Math.max(...rerunRecall) - Math.min(...rerunRecall)
-      : 0;
+  const facts = readJson<Tier1Fact[]>(dir, "tier1.json");
+  const items = existsSync(file(dir, "tier2.json"))
+    ? readJson<Tier2Item[]>(dir, "tier2.json")
+    : [];
+  const kindOf = new Map<string, string>([
+    ...facts.map(
+      (fact) => [`${fact.point}:${fact.key}`, fact.kind] as [string, string],
+    ),
+    ...items.map((item) => [item.id, item.kind] as [string, string]),
+  ]);
+  // Reruns exist at only some points. Compare them with each other there.
+  const rerunNames = Object.keys(arms).filter((name) =>
+    name.startsWith("rerun-"),
+  );
+  const rerunPoints = new Set(
+    rerunNames.flatMap((name) => arms[name]!.map((entry) => entry.point)),
+  );
+  const spreads = ([1, 2] as const).map((tier) => {
+    const values = rerunNames.map(
+      (name) =>
+        probeRecall(results, name, tier, false, 0, rerunPoints).recall ?? 0,
+    );
+    return values.length > 1 ? Math.max(...values) - Math.min(...values) : 0;
+  });
+  const spread = Math.max(...spreads);
   const recorded = arms["recorded"]!;
   const recordedUsd = recorded.reduce(
     (sum, entry) => sum + entry.workerCostUsd,
     0,
   );
+  const scoredArms = Object.keys(arms).filter(
+    (name) => name !== "removed" && results.some((row) => row.arm === name),
+  );
   const lines = [
-    "| arm | raw | T1 recall | T1 age>=5 | T2 recall | T2 leaks | mean ctx tok | worker $ | modeled savings $ |",
-    "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    `config ${fingerprint(dir)}`,
+    "",
+    "Cells: mean recall / full-pass rate [Wilson 95% CI of the pass rate]. `empty` is the guessability floor. Reruns are scored only at their points.",
+    "",
+    "| arm | raw | T1 | T1 age 1 | T1 age 2-4 | T1 age 5+ | T2 | T2 leaks | mean ctx tok | worker $ | modeled savings $ |",
+    "|---|---|---|---|---|---|---|---:|---:|---:|---:|",
   ];
-  for (const [name, arm] of Object.entries(arms)) {
-    const cost = costSummary(points, arm, recorded);
+  for (const name of scoredArms) {
+    const cost = costSummary(points, arms[name]!, recorded);
+    const only = name.startsWith("rerun-") ? rerunPoints : undefined;
     for (const withRaw of [false, true]) {
-      const t1 = probeRecall(results, name, 1, withRaw);
-      const old = probeRecall(results, name, 1, withRaw, 5);
-      const t2 = probeRecall(results, name, 2, withRaw);
-      if (!t1.n && !t2.n) continue;
+      const row = (tier: 1 | 2, minAge = 0, maxAge = Infinity) => {
+        const rows = results.filter(
+          (entry) =>
+            entry.arm === name &&
+            entry.tier === tier &&
+            entry.withRaw === withRaw &&
+            entry.age >= minAge &&
+            entry.age <= maxAge &&
+            (!only || only.has(entry.point)),
+        );
+        const passes = rows.filter(isPass).length;
+        return {
+          n: rows.length,
+          passes,
+          recall: rows.length
+            ? rows.reduce((sum, entry) => sum + entry.recall, 0) / rows.length
+            : undefined,
+          passRate: rows.length ? passes / rows.length : undefined,
+          leaks: rows.reduce((sum, entry) => sum + entry.leaked, 0),
+        };
+      };
+      const t2 = row(2);
       lines.push(
-        `| ${name} | ${withRaw ? "yes" : "no"} | ${pct(t1.recall)} | ${pct(old.recall)} | ${pct(t2.recall)} | ${t2.leaks} | ${Math.round(cost.meanTokens)} | ${cost.workerUsd.toFixed(2)} | ${cost.savingsUsd.toFixed(2)} |`,
+        `| ${name} | ${withRaw ? "yes" : "no"} | ${cell(row(1))} | ${cell(row(1, 0, 1))} | ${cell(row(1, 2, 4))} | ${cell(row(1, 5))} | ${cell(t2)} | ${t2.leaks} | ${Math.round(cost.meanTokens)} | ${cost.workerUsd.toFixed(2)} | ${only ? "n/a" : cost.savingsUsd.toFixed(2)} |`,
       );
     }
   }
-  lines.push("", `rerun spread (T1, summary only): ${pct(spread)}`);
-  for (const name of Object.keys(arms).filter((arm) =>
-    arm.startsWith("distill-"),
+  const kinds = [...new Set(kindOf.values())].sort();
+  lines.push(
+    "",
+    "Recall by kind (summary only / +raw):",
+    "",
+    `| arm | ${kinds.join(" | ")} |`,
+    `|---|${kinds.map(() => "---").join("|")}|`,
+  );
+  for (const name of scoredArms.filter((arm) => !arm.startsWith("rerun-"))) {
+    const byKind = kinds.map((kind) =>
+      [false, true]
+        .map((withRaw) => {
+          const rows = results.filter(
+            (entry) =>
+              entry.arm === name &&
+              entry.withRaw === withRaw &&
+              kindOf.get(entry.id) === kind,
+          );
+          return rows.length
+            ? pct(
+                rows.reduce((sum, entry) => sum + entry.recall, 0) /
+                  rows.length,
+              )
+            : "n/a";
+        })
+        .join(" / "),
+    );
+    lines.push(`| ${name} | ${byKind.join(" | ")} |`);
+  }
+  lines.push(
+    "",
+    `rerun spread at points ${[...rerunPoints].join(", ")}: T1 ${pct(spreads[0])}, T2 ${pct(spreads[1])}`,
+    "lore and hybrid use BM25 only. Lore also ranks with embeddings, so they are a lower bound for Lore.",
+  );
+  for (const name of scoredArms.filter(
+    (arm) => arm.startsWith("distill-") || arm === "lore" || arm === "hybrid",
   )) {
     const cost = costSummary(points, arms[name]!, recorded);
     const verdict = worthIt({
