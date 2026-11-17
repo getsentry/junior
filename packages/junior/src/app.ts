@@ -205,7 +205,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
-   * costs one embedding call per 32 new events. Disabled by default.
+   * costs one embedding call per 32 new events. Disabled by default. Word
+   * search works without it.
    */
   eventEmbeddings?: { enabled?: boolean };
   /**

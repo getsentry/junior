@@ -145,49 +145,55 @@ export async function embedConversationEvents(
 }
 
 /**
- * Core task registration that stores lexemes and embeds events after each
- * completed Turn.
+ * Core task registration that stores lexemes after each completed Turn and,
+ * when `embedEvents` is set, embeds events too.
  */
-export const eventSearchTaskRegistration: PluginRegistration = {
-  manifest: {
-    name: "event-search",
-    displayName: "Event search",
-    description: "Lexemes and embeddings for Conversation history search",
-  },
-  tasks: {
-    indexEvents: {
-      async run(context: PluginTaskContext) {
-        const run = await context.run.load();
-        await context.state.withLock(
-          `event-search:${run.conversationId}`,
-          EMBEDDING_LOCK_TTL_MS,
-          async () => {
-            // Wait for both before the lock is released, even when one fails.
-            const [lexemeResult, embeddingResult] = await Promise.allSettled([
-              storeConversationEventLexemes(getDb(), run.conversationId),
-              embedConversationEvents(
-                getDb(),
-                createConversationEventEmbedder({
-                  conversationId: run.conversationId,
-                  turnId: run.runId,
-                }),
-                run.conversationId,
-              ),
-            ]);
-            if (lexemeResult.status === "rejected") throw lexemeResult.reason;
-            if (embeddingResult.status === "rejected") {
-              throw embeddingResult.reason;
-            }
-            const lexemes = lexemeResult.value;
-            const embedded = embeddingResult.value;
-            context.log.info("Conversation events indexed", {
-              conversationId: run.conversationId,
-              embedded,
-              lexemes,
-            });
-          },
-        );
+export function eventSearchTaskRegistration(options: {
+  embedEvents: boolean;
+}): PluginRegistration {
+  return {
+    manifest: {
+      name: "event-search",
+      displayName: "Event search",
+      description: "Lexemes and embeddings for Conversation history search",
+    },
+    tasks: {
+      indexEvents: {
+        async run(context: PluginTaskContext) {
+          const run = await context.run.load();
+          await context.state.withLock(
+            `event-search:${run.conversationId}`,
+            EMBEDDING_LOCK_TTL_MS,
+            async () => {
+              // Wait for both before the lock is released, even when one fails.
+              const [lexemeResult, embeddingResult] = await Promise.allSettled([
+                storeConversationEventLexemes(getDb(), run.conversationId),
+                options.embedEvents
+                  ? embedConversationEvents(
+                      getDb(),
+                      createConversationEventEmbedder({
+                        conversationId: run.conversationId,
+                        turnId: run.runId,
+                      }),
+                      run.conversationId,
+                    )
+                  : 0,
+              ]);
+              if (lexemeResult.status === "rejected") {
+                throw lexemeResult.reason;
+              }
+              if (embeddingResult.status === "rejected") {
+                throw embeddingResult.reason;
+              }
+              context.log.info("Conversation events indexed", {
+                conversationId: run.conversationId,
+                embedded: embeddingResult.value,
+                lexemes: lexemeResult.value,
+              });
+            },
+          );
+        },
       },
     },
-  },
-};
+  };
+}

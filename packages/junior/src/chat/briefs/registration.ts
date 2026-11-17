@@ -31,19 +31,20 @@ export function setEventEmbeddingsConfig(config?: {
   return previous;
 }
 
-/** Return whether event embeddings are enabled. */
+/** Return whether event embeddings and meaning search are enabled. */
 export function isEventEmbeddingsEnabled(): boolean {
   return configuredEventEmbeddings.enabled === true;
 }
 
 /**
- * Return enabled core task registrations: Briefs, event embeddings, and
- * reply notifications.
+ * Return enabled core task registrations: Briefs, event search, and reply
+ * notifications. Event search always stores lexemes, which cost no provider
+ * call. It embeds events only when event embeddings are enabled.
  */
 export function coreTaskRegistrations(): PluginRegistration[] {
   return [
     ...(isBriefsEnabled() ? [briefsTaskRegistration] : []),
-    ...(isEventEmbeddingsEnabled() ? [eventSearchTaskRegistration] : []),
+    eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];
 }

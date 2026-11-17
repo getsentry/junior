@@ -195,7 +195,11 @@ This option costs one fast-model call per completed Turn. The example app and
 ## Event embeddings
 
 `searchConversationEvents` matches the words of a query in Conversation
-history. To also match by meaning, enable event embeddings:
+history. After each completed Turn, Junior stores the search words of up to
+2,000 events that have none, so word searches in long Conversations stay fast.
+This needs no provider call and is always on.
+
+To also match by meaning, enable event embeddings:
 
 ```ts
 const app = await createApp({
@@ -205,9 +209,7 @@ const app = await createApp({
 
 After each completed Turn, Junior embeds up to 256 of the newest events that
 have no embedding, with the model in `AI_EMBEDDING_MODEL`. This costs one
-embedding call per 32 events. It also stores the search words of up to 2,000
-events, so word searches in long Conversations stay fast. `junior chat`
-enables it.
+embedding call per 32 events. `junior chat` enables it.
 
 ## Experimental features
 
