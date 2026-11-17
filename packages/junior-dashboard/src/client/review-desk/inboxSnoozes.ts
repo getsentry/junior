@@ -27,6 +27,8 @@ import type { SnoozeChoice } from "./snoozeChoices";
 const SNOOZES_QUERY_KEY = [...REVIEW_ITEMS_QUERY_KEY, "snoozes"];
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
+/** How soon to look again when a snooze's time passed but it still hides. */
+const DUE_RECHECK_MS = 30_000;
 
 /** The time a snooze's timer fires, if it has one. */
 export function snoozeWakesAtMs(
@@ -38,19 +40,20 @@ export function snoozeWakesAtMs(
   return undefined;
 }
 
+const snoozesQuery = {
+  queryKey: SNOOZES_QUERY_KEY,
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    fetchDashboardJson(
+      wakeAutomationListSchema,
+      "/api/automations/snoozes",
+      signal,
+    ),
+  retry: false,
+} as const;
+
 /** The viewer's snoozes that hide an Inbox row now, newest first. */
 export function useSnoozesData(enabled: boolean) {
-  return useQuery({
-    enabled,
-    queryKey: SNOOZES_QUERY_KEY,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        wakeAutomationListSchema,
-        "/api/automations/snoozes",
-        signal,
-      ),
-    retry: false,
-  });
+  return useQuery({ ...snoozesQuery, enabled });
 }
 
 /** Refresh what a snooze change moves: the snoozes, the lists and counts. */
@@ -76,20 +79,37 @@ export function useWakeSnoozes() {
   });
 }
 
-/** Refresh the Inbox when the next snooze timer fires, so its row wakes. */
-function useRefreshAtNextWake(snoozes: readonly WakeAutomationPayload[]) {
+/**
+ * Refresh the Inbox when the next snooze timer fires, so its row wakes.
+ * Each read sets the timer again, so a snooze that still hides after its
+ * time is checked again soon.
+ */
+function useRefreshAtNextWake(
+  snoozes: readonly WakeAutomationPayload[],
+  readAtMs: number,
+) {
   const queryClient = useQueryClient();
   const nextWakeMs = Math.min(
     ...snoozes.flatMap((snooze) => snoozeWakesAtMs(snooze) ?? []),
   );
   useEffect(() => {
     if (!Number.isFinite(nextWakeMs)) return;
+    const untilMs = nextWakeMs - Date.now();
     const timer = setTimeout(
       () => void refreshInbox(queryClient),
-      Math.min(MAX_TIMER_MS, Math.max(0, nextWakeMs - Date.now())),
+      untilMs > 0 ? Math.min(MAX_TIMER_MS, untilMs) : DUE_RECHECK_MS,
     );
     return () => clearTimeout(timer);
-  }, [nextWakeMs, queryClient]);
+  }, [nextWakeMs, readAtMs, queryClient]);
+}
+
+/** The snoozes that hide one of these items. */
+function snoozesHiding(
+  snoozes: readonly WakeAutomationPayload[],
+  itemIds: readonly string[],
+) {
+  const ids = new Set(itemIds);
+  return snoozes.filter((snooze) => snooze.itemIds.some((id) => ids.has(id)));
 }
 
 /**
@@ -101,8 +121,9 @@ function useRefreshAtNextWake(snoozes: readonly WakeAutomationPayload[]) {
  */
 export function useInboxSnoozes(enabled: boolean) {
   const queryClient = useQueryClient();
-  const snoozes = useSnoozesData(enabled).data?.snoozes ?? [];
-  useRefreshAtNextWake(snoozes);
+  const snoozesData = useSnoozesData(enabled);
+  const snoozes = snoozesData.data?.snoozes ?? [];
+  useRefreshAtNextWake(snoozes, snoozesData.dataUpdatedAt);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
   const mark = (set: typeof setHidden, key: string, on: boolean) =>
@@ -113,10 +134,16 @@ export function useInboxSnoozes(enabled: boolean) {
       return next;
     });
   const wakeSnoozes = useWakeSnoozes();
-  /** The snoozes that hide one of the row's items. */
-  const snoozesOf = (bundle: InboxBundle) => {
-    const ids = new Set(bundle.items.map((item) => item.id));
-    return snoozes.filter((snooze) => snooze.itemIds.some((id) => ids.has(id)));
+  /**
+   * The snoozes that hide one of the row's items. The list can lag the
+   * Snoozed rows, so a row it does not cover reads it again.
+   */
+  const snoozesOf = async (bundle: InboxBundle) => {
+    const itemIds = bundle.items.map((item) => item.id);
+    const known = snoozesHiding(snoozes, itemIds);
+    if (known.length > 0) return known;
+    const fresh = await queryClient.fetchQuery(snoozesQuery);
+    return snoozesHiding(fresh.snoozes, itemIds);
   };
   const snooze = async (bundle: InboxBundle, choice: SnoozeChoice) => {
     mark(setHidden, bundle.key, true);
@@ -144,9 +171,8 @@ export function useInboxSnoozes(enabled: boolean) {
   const wake = async (bundle: InboxBundle) => {
     mark(setWaking, bundle.key, true);
     try {
-      await wakeSnoozes.mutateAsync(
-        snoozesOf(bundle).map((snooze) => snooze.id),
-      );
+      const hiding = await snoozesOf(bundle);
+      await wakeSnoozes.mutateAsync(hiding.map((snooze) => snooze.id));
     } finally {
       mark(setWaking, bundle.key, false);
     }
@@ -154,6 +180,14 @@ export function useInboxSnoozes(enabled: boolean) {
   return {
     /** The row was just snoozed, and the lists have not refreshed yet. */
     hides: (key: string) => hidden.has(key),
+    /**
+     * A snooze hides this item from the viewer. Undefined until the snoozes
+     * load; false when they fail, so the item still shows.
+     */
+    hidesItem: (itemId: string): boolean | undefined =>
+      enabled && snoozesData.isPending
+        ? undefined
+        : snoozesHiding(snoozes, [itemId]).length > 0,
     snooze,
     wake,
     /** The row was just woken, and the lists have not refreshed yet. */

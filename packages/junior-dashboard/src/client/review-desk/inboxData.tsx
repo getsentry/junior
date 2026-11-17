@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from "react";
@@ -94,12 +95,25 @@ function useBuildInboxData(input: {
     forViewer: true,
     sort: "waiting",
   });
-  // Snoozed reads its rows from the server, like To do.
-  const { items: snoozedItems } = useReviewItemsData({
+  // Snoozed reads its rows from the server, like To do. It reads every
+  // page, so its rows match its count.
+  const { items: snoozedItems, query: snoozedQuery } = useReviewItemsData({
     enabled: signedIn,
     forViewer: true,
     snoozed: true,
   });
+  const {
+    fetchNextPage: fetchNextSnoozed,
+    hasNextPage: moreSnoozed,
+    isError: snoozedFailed,
+    isFetching: fetchingSnoozed,
+  } = snoozedQuery;
+  useEffect(() => {
+    if (moreSnoozed && !fetchingSnoozed && !snoozedFailed) {
+      void fetchNextSnoozed();
+    }
+  }, [fetchNextSnoozed, fetchingSnoozed, moreSnoozed, snoozedFailed]);
+  const snoozes = useInboxSnoozes(signedIn);
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -109,13 +123,15 @@ function useBuildInboxData(input: {
     (id: string) => setLinkedItems((current) => ({ ...current, open: id })),
     [setLinkedItems],
   );
+  // The server leaves snoozed items out of `loaded`, so a linked item joins
+  // only once the snoozes show that none hides it.
+  const linkedAwake =
+    linked?.status === "open" &&
+    snoozes.hidesItem(linked.id) === false &&
+    !loaded.some((item) => item.id === linked.id);
   const list = useMemo(
-    () =>
-      linked?.status === "open" &&
-      ![...loaded, ...snoozedItems].some((item) => item.id === linked.id)
-        ? [...loaded, linked]
-        : loaded,
-    [linked, loaded, snoozedItems],
+    () => (linkedAwake && linked ? [...loaded, linked] : loaded),
+    [linked, linkedAwake, loaded],
   );
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
@@ -125,7 +141,6 @@ function useBuildInboxData(input: {
   const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(signedIn);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
