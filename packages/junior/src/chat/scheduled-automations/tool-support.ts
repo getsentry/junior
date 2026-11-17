@@ -1,21 +1,16 @@
-import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
-import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import * as z from "zod";
+import type { AutomationDestination } from "@/chat/automations/creator";
 import {
-  destinationFilterValue,
-  type AutomationDestination,
-} from "@/chat/automations/creator";
+  automationToolResult,
+  automationResultFields,
+  automationResultFieldSchemas,
+} from "@/chat/automations/result";
 import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
 } from "./types";
-import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
-import {
-  automationTaskDescription,
-  automationTaskSchema,
-} from "@/chat/automations/task";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 /** Model-facing shape of one scheduled automation. */
 export const compactTaskResultSchema = z
@@ -35,42 +30,13 @@ export const compactTaskResultSchema = z
     // recurrence back to the Automation tools unchanged.
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
-    destination: z
-      .object({
-        id: z.string().min(1),
-        channel: z.string().min(1),
-        thread: z.string().min(1).nullable(),
-      })
-      .strict(),
+    ...automationResultFieldSchemas,
     conversation_access: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
         visibility: z.enum(["private", "public"]),
       })
       .strict(),
-    credential_mode: z.enum(["system", "creator"]),
-    is_creator: z.boolean(),
-    created_by: z
-      .object({
-        name: z.string().min(1).nullable(),
-        username: z.string().min(1).nullable(),
-      })
-      .strict(),
-    outcomes: z
-      .array(
-        z
-          .object({
-            action: z.literal("send_message"),
-            destination: z
-              .object({
-                channel: z.string().min(1),
-                thread: z.string().min(1).nullable(),
-              })
-              .strict(),
-          })
-          .strict(),
-      )
-      .max(5),
     dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
@@ -125,27 +91,8 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
     next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
-    destination: {
-      id: destinationFilterValue(task.destination),
-      channel: task.destination.channelId,
-      thread: null,
-    },
+    ...automationResultFields(task, isCreator),
     conversation_access: task.conversationAccess,
-    credential_mode: task.credentialMode,
-    is_creator: isCreator,
-    created_by: {
-      name: task.createdBy.fullName ?? null,
-      username: task.createdBy.userName ?? null,
-    },
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
-      (outcome) => ({
-        action: outcome.action,
-        destination: {
-          channel: outcome.destination.channelId,
-          thread: outcome.destination.threadTs ?? null,
-        },
-      }),
-    ),
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
@@ -162,19 +109,9 @@ export async function scheduleAutomationToolResult(
   task: ScheduledAutomation,
   isCreator: boolean,
 ) {
-  const automation = compactTask(task, isCreator);
-  const description = automationTaskDescription(task.task);
-  const title =
-    automation.title ?? fallbackShortTitle(description, "Scheduled automation");
-  const annotation: ObjectAnnotation = {
-    kind: "object",
-    objectType: "automation",
-    label: title,
-    key: task.id,
-    title,
-    url: automation.dashboard_url,
-    description,
-    status: automation.status,
+  return automationToolResult(conversationId, compactTask(task, isCreator), {
+    task: task.task,
+    fallbackTitle: "Scheduled automation",
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
         ? `${new Intl.DateTimeFormat("en-US", {
@@ -182,18 +119,6 @@ export async function scheduleAutomationToolResult(
             timeStyle: "short",
             timeZone: task.schedule.timezone,
           }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
-        : automation.schedule,
-    warning:
-      automation.status === "blocked"
-        ? (automation.status_reason ?? "This automation is blocked.")
-        : automation.status === "completed"
-          ? "This automation has completed."
-          : undefined,
-  };
-  return {
-    automation,
-    objectCards: await saveObjectAnnotations(conversationId, "junior", [
-      annotation,
-    ]),
-  };
+        : task.schedule.description,
+  });
 }
