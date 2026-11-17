@@ -28,6 +28,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(open ? close : toggle).toBeVisible();
   }
 
+  /** Wait until `read` gives the same value twice in a row. */
+  async function steady(read: () => Promise<number | string>) {
+    let last: number | string | undefined;
+    await expect
+      .poll(async () => {
+        const now = await read();
+        const same = now === last;
+        last = now;
+        return same;
+      })
+      .toBe(true);
+  }
+
   test("a row opens its Conversation, and Back or Esc restores the list", async ({
     dashboard,
     page,
@@ -37,32 +50,36 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const scroller = list.locator(".overflow-y-auto").first();
-    await rowHead(list, checkout).click();
+    const head = rowHead(list, checkout);
+    await head.click();
+    // The row opens with a height animation. A scroll during it stops short,
+    // and the list keeps moving after the test reads the place.
+    const opened = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await steady(() =>
+      opened.evaluate((node) => (node as HTMLElement).offsetHeight),
+    );
     // The open row pushes this one below the fold, so the reader scrolls.
     const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
     await triage.scrollIntoViewIfNeeded();
     // A pointer that rests on a compact row expands it in place, and the
-    // click may scroll to reach it. Back restores the place the reader left
-    // from, so read it once the row has settled.
+    // click on Open would scroll to reach it. Back restores the place the
+    // reader left from, so scroll to Open and read the place once it holds.
     await triage.hover();
     const row = triage.locator("xpath=ancestor::*[@data-inbox-row][1]");
     await expect(row).toHaveAttribute("data-grown", "true");
-    let last = "";
-    await expect
-      .poll(async () => {
-        const now = await scroller.evaluate(
-          (node, target) =>
-            `${node.scrollTop}:${(target as HTMLElement).offsetHeight}`,
-          await row.elementHandle(),
-        );
-        const settled = now === last;
-        last = now;
-        return settled;
-      })
-      .toBe(true);
+    const open = row.getByRole("link", { name: "Open conversation" }).first();
+    await open.scrollIntoViewIfNeeded();
+    const target = await row.elementHandle();
+    await steady(() =>
+      scroller.evaluate(
+        (node, card) =>
+          `${node.scrollTop}:${(card as HTMLElement).offsetHeight}`,
+        target,
+      ),
+    );
     const top = await scroller.evaluate((node) => node.scrollTop);
     expect(top).toBeGreaterThan(0);
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await open.click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
     const back = page.getByRole("link", { name: "Back to Conversations" });
     await expect(back).toBeVisible();
