@@ -123,12 +123,12 @@ export function fuseEventRanks(
 ): number[] {
   const scores = new Map<number, number>();
   for (const list of lists) {
-    list.forEach((seq, index) => {
+    for (const [index, seq] of list.entries()) {
       scores.set(
         seq,
         (scores.get(seq) ?? 0) + 1 / (RECIPROCAL_RANK_FUSION_K + index + 1),
       );
-    });
+    }
   }
   return [...scores.entries()]
     .sort((left, right) => right[1] - left[1] || right[0] - left[0])

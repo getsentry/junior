@@ -103,6 +103,7 @@ export async function embedConversationEvents(
   const rows = selected.filter((row) => row.text.trim() !== "");
   for (let start = 0; start < rows.length; start += EMBEDDING_BATCH_SIZE) {
     const batch = rows.slice(start, start + EMBEDDING_BATCH_SIZE);
+    // oxlint-disable-next-line no-await-in-loop -- one batch at a time, so a provider failure stops the run and keeps the batches stored before it.
     const result = await embedder.embedDocuments(batch.map((row) => row.text));
     // The query above finds unembedded events by the embedder's model, so a
     // row of another model would look unembedded on every run.
@@ -125,6 +126,7 @@ export async function embedConversationEvents(
         seq: row.seq,
       };
     });
+    // oxlint-disable-next-line no-await-in-loop -- stores the batch embedded above before the next batch starts.
     await db
       .insert(embeddings)
       .values(values)
