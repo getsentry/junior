@@ -4,17 +4,18 @@
  * The memory heartbeat runs it every minute with a time limit, so a model
  * change backfills itself after deploy, and vectors that a failed or skipped
  * write left out are repaired. It only embeds memories that have no current
- * vector for the model, and it commits each batch on its own, so it is safe to
- * run again or at the same time.
+ * vector for the model, and `refreshEmbeddings` commits each batch on its own,
+ * so it is safe to run again or at the same time.
  */
 import { and, asc, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
 import {
   EMBEDDING_METRIC,
   hashEmbeddedContent,
-  parseEmbeddingBatch,
   type MemoryEmbeddingProvider,
 } from "./embedding";
+import { MEMORY_EMBEDDING_DIMENSIONS } from "./types";
 import { normalizeContent, type MemoryDb } from "./store";
 
 /** Live memories that have no vector of this model for their current content. */
@@ -75,73 +76,61 @@ export async function reembedMemories(args: {
   now?: () => number;
 }): Promise<number> {
   const now = args.now ?? Date.now;
-  // Paging by id makes sure that each run ends, even if a row stays missing.
-  let afterId: string | undefined;
-  let embedded = 0;
-
-  for (;;) {
-    if (args.deadlineMs !== undefined && now() >= args.deadlineMs) {
-      return embedded;
-    }
-    // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
-    const missing = await listMissingVectors({
-      afterId,
-      db: args.db,
-      embedder: args.embedder,
-      limit: args.batchSize,
-      nowMs: now(),
-    });
-    const last = missing.at(-1);
-    if (!last) {
-      return embedded;
-    }
-    afterId = last.id;
-
-    const batch = parseEmbeddingBatch(
-      // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
-      await args.embedder.embedTexts({
-        inputType: "document",
-        texts: missing.map((memory) => normalizeContent(memory.content)),
-      }),
-      missing.length,
-    );
-    if (
-      batch.provider !== args.embedder.provider ||
-      batch.model !== args.embedder.model
-    ) {
-      throw new Error("The embedder returned vectors of a different model.");
-    }
-
-    const createdAtMs = now();
-    // oxlint-disable-next-line no-await-in-loop -- Each batch pages on from the last id of the batch before, until the deadline.
-    await args.db
-      .insert(juniorMemoryEmbeddings)
-      .values(
-        missing.map((memory, index) => ({
-          contentHash: hashEmbeddedContent(memory.content),
-          createdAtMs,
-          dimensions: batch.dimensions,
-          embedding: batch.vectors[index]!,
-          memoryId: memory.id,
-          metric: EMBEDDING_METRIC,
-          model: batch.model,
-          provider: batch.provider,
-        })),
-      )
-      .onConflictDoUpdate({
-        target: [
-          juniorMemoryEmbeddings.memoryId,
-          juniorMemoryEmbeddings.provider,
-          juniorMemoryEmbeddings.model,
-        ],
-        set: {
-          contentHash: sql`excluded.content_hash`,
-          createdAtMs: sql`excluded.created_at_ms`,
-          dimensions: sql`excluded.dimensions`,
-          embedding: sql`excluded.embedding`,
-          metric: sql`excluded.metric`,
-        },
-      });
-    embedded += missing.length;
-  }
+  const refresh = await refreshEmbeddings<{
+    content: string;
+    id: string;
+    text: string;
+  }>({
+    batchSize: args.batchSize,
+    deadlineMs: args.deadlineMs,
+    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    embedder: args.embedder,
+    now,
+    // Paging by id makes sure that each run ends, even if a row stays missing.
+    listMissing: async ({ after, limit }) =>
+      (
+        await listMissingVectors({
+          afterId: after?.id,
+          db: args.db,
+          embedder: args.embedder,
+          limit,
+          nowMs: now(),
+        })
+      ).map((memory) => ({
+        ...memory,
+        text: normalizeContent(memory.content),
+      })),
+    write: async (rows, batch) => {
+      const createdAtMs = now();
+      await args.db
+        .insert(juniorMemoryEmbeddings)
+        .values(
+          rows.map(({ item, vector }) => ({
+            contentHash: hashEmbeddedContent(item.content),
+            createdAtMs,
+            dimensions: batch.dimensions,
+            embedding: vector,
+            memoryId: item.id,
+            metric: EMBEDDING_METRIC,
+            model: batch.model,
+            provider: batch.provider,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            juniorMemoryEmbeddings.memoryId,
+            juniorMemoryEmbeddings.provider,
+            juniorMemoryEmbeddings.model,
+          ],
+          set: {
+            contentHash: sql`excluded.content_hash`,
+            createdAtMs: sql`excluded.created_at_ms`,
+            dimensions: sql`excluded.dimensions`,
+            embedding: sql`excluded.embedding`,
+            metric: sql`excluded.metric`,
+          },
+        });
+    },
+  });
+  return refresh.embedded;
 }

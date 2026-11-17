@@ -1,4 +1,5 @@
 import * as z from "zod";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
@@ -8,7 +9,6 @@ import {
   assertCanReadConversationEvents,
   stripReplacementHistory,
 } from "@/chat/conversations/event-access";
-import type { ConversationEmbedder } from "@/chat/conversations/embedding";
 import { searchConversationEventText } from "@/chat/conversations/event-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore, getDb } from "@/chat/db";
@@ -141,7 +141,7 @@ export function createSearchConversationEventsTool(
   context: ToolRuntimeContext,
   options: {
     /** Embeds a query to also match events by meaning. */
-    embedder?: ConversationEmbedder;
+    embedder?: PluginEmbedder;
   } = {},
 ) {
   return zodTool({

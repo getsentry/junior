@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, foreignKey, integer, pgTable, text } from "drizzle-orm/pg-core";
 import { juniorConversationBriefs } from "./conversation-briefs";
 import { timestamptz } from "./timestamps";
-import { vector } from "./vector";
+import { embeddingVector } from "@sentry/junior-plugin-api/embeddings";
 
 /**
  * One embedding per Conversation, for semantic search. Its text is the latest
@@ -17,7 +17,7 @@ export const juniorConversationEmbeddings = pgTable(
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     dimensions: integer("dimensions").notNull(),
-    embedding: vector("embedding").notNull(),
+    embedding: embeddingVector("embedding").notNull(),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [
