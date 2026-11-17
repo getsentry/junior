@@ -7,8 +7,8 @@ child chooses to report reaches the parent.
 
 ## Intent
 
-- A child agent runs on the same path as a root Conversation. Copies of that
-  path drifted, and each fix added a status or a repair job.
+- One execution path runs every Conversation. A child agent has no path of
+  its own, so a fix to that path applies to every kind.
 - A parent wakes only for a report: a `reply`, a blocked report, or a
   failure. A child owns its Watch work, so the parent does not steer each
   Event.
@@ -29,8 +29,7 @@ child chooses to report reaches the parent.
 ## Rules
 
 - A child agent is an ordinary Conversation. Its `kind`, `thread` or
-  `task`, is the only switch for what differs from a root, and it never
-  changes.
+  `task`, is the only switch for its behavior, and it never changes.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
@@ -60,16 +59,16 @@ child chooses to report reaches the parent.
 
 ## Gaps
 
-- By default, each child still gets an Agent invocation, with its own
-  worker and status. Spawn and message without one
+- By default, each child gets an Agent invocation, with its own worker and
+  status. Spawn and message without one
   (getsentry/junior#3435) is in review behind the
   `child-agents-without-agent-invocations` flag. Some branches on `kind`
-  are still outside the one switch. This breaks "its `kind` is the only
+  are outside the one switch. This breaks "its `kind` is the only
   switch". getsentry/junior#3060 and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
-- Older child messages get their sender from their message id. This breaks
-  "a message id is an opaque key".
+- For some child messages, Junior reads the sender from the message id.
+  This breaks "a message id is an opaque key".
