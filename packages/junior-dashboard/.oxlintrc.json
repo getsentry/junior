@@ -157,7 +157,10 @@
       }
     },
     {
-      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "files": [
+        "src/client/conversations/ConversationSectionList.tsx",
+        "src/client/inbox/conversations/ConversationSectionList.tsx"
+      ],
       "rules": {
         "no-restricted-imports": "off"
       }

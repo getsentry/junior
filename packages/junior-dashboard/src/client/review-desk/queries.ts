@@ -25,9 +25,17 @@ import { fetchDashboardJson, post } from "../http";
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
 type ReviewItemListFilters = {
+  /** Lists the done and dismissed items instead, newest closed first. */
+  closed?: boolean;
   conversationId?: string;
+  enabled?: boolean;
   forViewer?: boolean;
   q?: string;
+  /**
+   * `waiting` pages the open items that wait on the viewer first, so the
+   * first page holds what needs them now.
+   */
+  sort?: "waiting";
 };
 
 function reviewItemListSearch(filters: ReviewItemListFilters) {
@@ -37,6 +45,8 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
 }
 
@@ -54,6 +64,7 @@ export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
 export function useReviewItemsData(filters: ReviewItemListFilters) {
   const search = reviewItemListSearch(filters);
   const query = useInfiniteQuery({
+    enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
     queryKey: reviewItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {

@@ -28,6 +28,10 @@ type Waiting = Pick<
  * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
  * month.
  *
+ * Without `waiting`, as in the new UI, there is no Needs you: a
+ * conversation that waits on the viewer stays in its section, and its row
+ * carries the waiting marker.
+ *
  * Needs you holds the conversations that wait on the viewer: an open Review
  * item in `waiting`, or a Turn that waits on an authorization. Open work
  * does not move a row. A pinned conversation
@@ -41,7 +45,7 @@ export function buildConversationSections(
   options: {
     nowMs: number;
     timeZone: string;
-    waiting: Waiting;
+    waiting?: Waiting;
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
@@ -53,7 +57,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const section = conversation.pinnedAt
       ? PINNED_SECTION
-      : waitsOnViewer(conversation, options.waiting)
+      : options.waiting && waitsOnViewer(conversation, options.waiting)
         ? NEEDS_YOU_SECTION
         : conversationSection(
             activityTime(conversation),
@@ -70,9 +74,11 @@ export function buildConversationSections(
   }
 
   sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
-  sections
-    .get(NEEDS_YOU_SECTION.key)
-    ?.conversations.sort(compareWaitStart(options.waiting));
+  if (options.waiting) {
+    sections
+      .get(NEEDS_YOU_SECTION.key)
+      ?.conversations.sort(compareWaitStart(options.waiting));
+  }
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
@@ -86,6 +92,25 @@ function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
   return (
     waiting.has(conversation.id) || conversation.awaitingAuthorization === true
   );
+}
+
+/**
+ * Sort pinned conversations to the front, in the order that
+ * `buildConversationSections` shows them without `waiting`: pins in the
+ * viewer's order, then the newest Message first. Paginated lists call this
+ * before paging, so page 1 holds every pin, and pages split where the
+ * sections do.
+ */
+export function pinnedFirst(conversations: Conversation[]): Conversation[] {
+  return [...conversations]
+    .sort((left, right) => activityTime(right) - activityTime(left))
+    .sort((left, right) => {
+      const leftRank = left.pinnedAt ? 0 : 1;
+      return (
+        leftRank - (right.pinnedAt ? 0 : 1) ||
+        (leftRank === 0 ? comparePinOrder(left, right) : 0)
+      );
+    });
 }
 
 /**

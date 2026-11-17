@@ -9,6 +9,7 @@ import {
   type PointerEvent,
   type RefObject,
 } from "react";
+import { dockFalloff } from "@dashboard/lib/dock";
 import { cn } from "@dashboard/lib/utils";
 
 /**
@@ -304,10 +305,7 @@ function barWidth(
   active: boolean,
 ): number {
   const distance = pointer === undefined ? Infinity : Math.abs(index - pointer);
-  const grow =
-    distance < GROW_RADIUS_ITEMS
-      ? (1 + Math.cos((Math.PI * distance) / GROW_RADIUS_ITEMS)) / 2
-      : 0;
+  const grow = dockFalloff(distance, GROW_RADIUS_ITEMS);
   const width = BAR_PX.base + (BAR_PX.max - BAR_PX.base) * grow;
   return active ? Math.max(BAR_PX.active, width) : width;
 }
