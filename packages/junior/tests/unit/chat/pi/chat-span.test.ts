@@ -161,7 +161,7 @@ describe("withChatSpanAttributes", () => {
 
     const finalMessage = {
       ...fakeMessage(),
-      usage: { ...fakeMessage().usage, cacheWrite1h: 3 },
+      usage: { ...fakeMessage().usage, cacheRead: 300, cacheWrite1h: 3 },
     };
     const events: AssistantMessageEvent[] = [
       { type: "start", partial: finalMessage },
@@ -192,6 +192,7 @@ describe("withChatSpanAttributes", () => {
       "gen_ai.response.time_to_first_chunk": 0.9,
       "app.ai.first_token_type": "text_start",
       "app.ai.usage.cache_write_1h": 3,
+      "gen_ai.usage.cache_hit_ratio": 0.75,
       "app.compaction.next_input.size": 7,
       "gen_ai.output.message_count": 1,
     });

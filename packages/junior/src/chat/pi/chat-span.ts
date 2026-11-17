@@ -119,6 +119,13 @@ function buildEndAttributes(message: AssistantMessage): TraceAttributes {
   if (message.usage.cacheWrite1h !== undefined) {
     attributes["app.ai.usage.cache_write_1h"] = message.usage.cacheWrite1h;
   }
+  // Per-call ratio, because metric monitors cannot divide two sums. The
+  // prompt cache detector reads it.
+  const { input, cacheRead, cacheWrite } = message.usage;
+  const inputTokens = input + cacheRead + cacheWrite;
+  if (inputTokens > 0) {
+    attributes["gen_ai.usage.cache_hit_ratio"] = cacheRead / inputTokens;
+  }
   if (message.stopReason === "error") {
     const providerError = createAssistantProviderError(message);
     Object.assign(attributes, getProviderErrorAttributes(providerError));
