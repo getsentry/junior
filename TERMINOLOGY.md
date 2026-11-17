@@ -98,9 +98,11 @@ Canonical words for Junior code and docs. One concept, one word.
   spawned or gave an Agent invocation to after the stop. A person's input
   sent after the stop, or new work from a child's parent, ends the stop. With
   `child-agents-without-agent-invocations` on, a stopped parent gives no new
-  work: `messageAgent` leaves a Conversation note and `spawnAgent` fails. A
-  person's stop keeps the Watches; an agent's `stopAgent` also cancels them.
-  Reports show it as `stopped` while no work runs.
+  work: `messageAgent` to a child with no Agent invocation leaves a
+  Conversation note, and `spawnAgent` fails. A child that has an Agent
+  invocation still starts work. A person's stop keeps the Watches; an
+  agent's `stopAgent` also cancels them. Reports show it as `stopped` while
+  no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.

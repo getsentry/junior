@@ -237,10 +237,11 @@ const app = await createApp({
     "user-customization": true,
     // Off by default. spawnAgent and messageAgent queue a child's work in
     // the child's own conversation instead of a separate task record. While
-    // a conversation is stopped, its messageAgent calls return `noted` and
-    // start no work, and its spawnAgent calls fail. If you turn this off
-    // again, later messages to children created while it was on use task
-    // records.
+    // a conversation is stopped, its messageAgent calls to children with no
+    // task record return `noted` and start no work, and its spawnAgent calls
+    // fail. A message to a child that has a task record still starts work.
+    // If you turn this off again, later messages to children created while
+    // it was on use task records.
     "child-agents-without-agent-invocations": true,
   },
 });
