@@ -431,6 +431,10 @@ async function collectPackageJsPluginSources(
   packageDir: string,
   packageName: string,
 ): Promise<PluginSource[]> {
+  // Core ships skills but is not a plugin, and its entry reads app env at import.
+  if (packageName === "@sentry/junior") {
+    return [];
+  }
   const entryPath = await resolvePackageEntryPath(packageDir);
   if (!entryPath) {
     return [];

@@ -630,6 +630,44 @@ describe("check cli", () => {
     expect(lines).toContain(`✖ error: ${path.join(packageRoot, error)}`);
   });
 
+  it("does not import the core package as a plugin", async () => {
+    const repoRoot = makeTempDir("junior-validate-core-package-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify({ dependencies: { "@sentry/junior": "1.0.0" } }),
+    );
+    const packageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@sentry",
+      "junior",
+    );
+    writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({
+        name: "@sentry/junior",
+        version: "1.0.0",
+        type: "module",
+      }),
+    );
+    writeFile(
+      path.join(packageRoot, "index.js"),
+      'throw new Error("DATABASE_URL is required");\n',
+    );
+    fs.mkdirSync(path.join(packageRoot, "skills"), { recursive: true });
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toContain(
+      "✓ Validation passed (0 plugin manifests, 0 skill directories checked).",
+    );
+  });
+
   it("warns when official plugin package versions differ from core", async () => {
     const repoRoot = makeTempDir("junior-validate-version-skew-");
     writeFile(
