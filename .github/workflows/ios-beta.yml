@@ -35,8 +35,8 @@ jobs:
         id: codesign-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.SENTRY_CODESIGN_APP_ID }}
-          private-key: ${{ secrets.SENTRY_CODESIGN_PRIVATE_KEY }}
+          app-id: ${{ secrets.IOS_CODESIGN_APP_ID }}
+          private-key: ${{ secrets.IOS_CODESIGN_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: apple-apps-codesigning
 
@@ -44,11 +44,11 @@ jobs:
         run: scripts/testflight.sh
         env:
           CODESIGN_TOKEN: ${{ steps.codesign-token.outputs.token }}
-          MATCH_GIT_USERNAME: ${{ secrets.MATCH_GIT_USERNAME }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.TESTFLIGHT_API_KEY_BASE64 }}
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.TESTFLIGHT_API_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.TESTFLIGHT_API_KEY_ISSUER_ID }}
+          MATCH_GIT_USERNAME: ${{ secrets.IOS_MATCH_GIT_USERNAME }}
+          MATCH_PASSWORD: ${{ secrets.IOS_MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.IOS_APP_STORE_CONNECT_ISSUER_ID }}
 
       - name: Upload build logs
         if: failure()
