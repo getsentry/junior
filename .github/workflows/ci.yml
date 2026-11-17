@@ -72,7 +72,6 @@ jobs:
             lint_config:
               - ast-grep/**
               - sgconfig.yml
-              - knip.jsonc
             plugins:
               - packages/junior-agent-browser/**
               - packages/junior-amplitude/**
