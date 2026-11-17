@@ -456,7 +456,7 @@ test("scrolls with the outline instead of the scrollbar", async ({
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
 
   // Where the outline hides, the scrollbar comes back.
-  await page.setViewportSize({ height: 900, width: 900 });
+  await page.setViewportSize({ height: 900, width: 700 });
   await expect(outline).toBeHidden();
   await expect.poll(() => scrollbarHidden(transcript)).toBe(false);
 });

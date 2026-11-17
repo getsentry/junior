@@ -34,7 +34,7 @@ import {
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
-import { useTranscriptScroller } from "./transcriptScroller";
+import { useScrollsWithOutline } from "./transcriptScroller";
 
 const NO_EVENTS: ConversationReportEvent[] = [];
 
@@ -80,12 +80,8 @@ export function ConversationOutline(props: {
       ),
     [events, outline],
   );
-  const [scroller] = useTranscriptScroller();
-  const seqsInView = useOutlineSeqsInView(
-    items,
-    scrollRef,
-    scroller === "outline",
-  );
+  const scrollsWithOutline = useScrollsWithOutline();
+  const seqsInView = useOutlineSeqsInView(items, scrollRef, scrollsWithOutline);
   const activeIndex = items.findIndex((item) => item.seq === seqsInView.top);
   const [jumpSeq, setJumpSeq] = useState<number>();
   const select = (seq: number) => {
@@ -95,7 +91,7 @@ export function ConversationOutline(props: {
   const navRef = useRef<HTMLElement>(null);
   const replacesScrollbar = useDisplayed(
     navRef,
-    scroller === "outline" && items.length >= 2,
+    scrollsWithOutline && items.length >= 2,
   );
   const lastIndex = items.findIndex((item) => item.seq === seqsInView.bottom);
   const inView = useMemo(
