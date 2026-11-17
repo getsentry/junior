@@ -1,7 +1,10 @@
 import path from "node:path";
+import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stopConversation } from "@/chat/conversations/stop";
+import { getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { juniorConversationEvents } from "@/db/schema";
 import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
 import {
   createConversationWorkSlackHarness,
@@ -108,7 +111,8 @@ async function expectNewLinkThenAnswer(
 describe("Slack MCP authorization", () => {
   it("sends a new link when the provider revokes the grant after sign-in", async () => {
     const user = "UREVOKED";
-    const harness = await askForBudget({ user, ts: "1712345.2001" });
+    const threadTs = "1712345.2001";
+    const harness = await askForBudget({ user, ts: threadTs });
     const [firstLink] = slackApiOutbox.authorizationLinks(user);
 
     await approve(harness, firstLink!);
@@ -117,6 +121,34 @@ describe("Slack MCP authorization", () => {
     await harness.drain();
 
     await expectNewLinkThenAnswer(harness, user);
+    // The callback's completion event pairs with the Turn's request event.
+    const events = await getSqlExecutor()
+      .db()
+      .select({
+        type: juniorConversationEvents.type,
+        payload: juniorConversationEvents.payload,
+      })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, `slack:C123:${threadTs}`),
+          inArray(juniorConversationEvents.type, [
+            "authorization_requested",
+            "authorization_completed",
+          ]),
+        ),
+      )
+      .orderBy(juniorConversationEvents.seq);
+    const ids = events.map((event) => [
+      event.type,
+      event.payload["authorizationId"],
+    ]);
+    const requestedId = ids[0]?.[1];
+    expect(requestedId).toEqual(expect.any(String));
+    expect(ids).toEqual([
+      ["authorization_requested", requestedId],
+      ["authorization_completed", requestedId],
+    ]);
   });
 
   it("sends a new link that asks for the scope the provider requires", async () => {
