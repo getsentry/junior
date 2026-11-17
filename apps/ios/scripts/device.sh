@@ -40,4 +40,5 @@ PY
 app="$ios_dir/.build.noindex/DerivedData/Build/Products/Debug-iphoneos/Junior.app"
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
 xcrun devicectl device install app --device "$device_id" "$app"
-xcrun devicectl device process launch --device "$device_id" --terminate-existing "$bundle_id" "$@"
+# `--` keeps the app's arguments (`-JuniorServer …`) from devicectl's own options.
+xcrun devicectl device process launch --device "$device_id" --terminate-existing "$bundle_id" -- "$@"
