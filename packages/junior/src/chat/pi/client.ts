@@ -54,8 +54,8 @@ import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   objectCompletionAttributes,
-  STRUCTURED_OUTPUT_REASONING_TOKENS,
   structuredOutputErrorCause,
+  structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
@@ -264,13 +264,18 @@ function extractText(message: {
     .trim();
 }
 
-/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<Api> {
-  const matched =
+function findGatewayModel(modelId: string): Model<Api> | undefined {
+  return (
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
       (model: Model<Api>) => model.id === modelId,
-    );
+    )
+  );
+}
+
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
+export function resolveGatewayModel(modelId: string): Model<Api> {
+  const matched = findGatewayModel(modelId);
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
@@ -539,10 +544,11 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
-  const maxOutputTokens =
-    params.maxTokens !== undefined
-      ? params.maxTokens + STRUCTURED_OUTPUT_REASONING_TOKENS
-      : undefined;
+  // Plugins can name a model outside the catalog, so a miss sends the sum.
+  const maxOutputTokens = structuredOutputTokenLimit(
+    params.maxTokens,
+    findGatewayModel(params.modelId)?.maxTokens,
+  );
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;

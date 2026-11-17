@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
-  getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
+  getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
+    { id: "openai/gpt-4o-mini" },
+  ]),
   logException: vi.fn(),
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
@@ -495,6 +497,50 @@ describe("completeText", () => {
         "gen_ai.usage.output_tokens": 10_500,
         "gen_ai.usage.reasoning.output_tokens": 10_495,
       }),
+    );
+  });
+
+  it.each([
+    [
+      "clamps to the output limit of a catalog model",
+      "mistral/mistral-small",
+      4_000,
+    ],
+    [
+      "keeps the full limit for a model outside the catalog",
+      "plugin/custom",
+      10_500,
+    ],
+  ] as const)("%s", async (_name, modelId, maxOutputTokens) => {
+    mocks.getModels.mockReturnValueOnce([
+      { id: "mistral/mistral-small", maxTokens: 4_000 },
+    ]);
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+        totalTokens: 13,
+      },
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+    await completeObject({
+      modelId,
+      schema: z.object({ ok: z.boolean() }),
+      prompt: "return json",
+      maxTokens: 2_500,
+    });
+
+    expect(mocks.generateObject).toHaveBeenCalledWith(
+      expect.objectContaining({ maxOutputTokens }),
     );
   });
 

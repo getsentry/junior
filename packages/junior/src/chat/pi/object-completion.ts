@@ -6,7 +6,20 @@ import { extractGenAiUsageAttributes } from "@/chat/logging";
  * Reasoning models spend output tokens before they write the object, and the
  * provider counts both against one `maxOutputTokens` limit.
  */
-export const STRUCTURED_OUTPUT_REASONING_TOKENS = 8_000;
+const STRUCTURED_OUTPUT_REASONING_TOKENS = 8_000;
+
+/**
+ * Output token limit for an object of `objectTokens`, with room for reasoning.
+ * It never exceeds the model's own output limit, which providers enforce.
+ */
+export function structuredOutputTokenLimit(
+  objectTokens: number | undefined,
+  modelMaxTokens: number | undefined,
+): number | undefined {
+  if (objectTokens === undefined) return undefined;
+  const limit = objectTokens + STRUCTURED_OUTPUT_REASONING_TOKENS;
+  return modelMaxTokens !== undefined ? Math.min(limit, modelMaxTokens) : limit;
+}
 
 /** Span attributes for the finish reason and usage of one object completion. */
 export function objectCompletionAttributes(
