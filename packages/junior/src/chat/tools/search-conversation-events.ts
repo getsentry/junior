@@ -17,7 +17,8 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-const DEFAULT_LIMIT = 25;
+/** Events that a search returns when the call sets no limit. */
+export const DEFAULT_EVENT_SEARCH_LIMIT = 25;
 const MAX_LIMIT = 100;
 const MAX_EVENT_DATA_BYTES = 4_000;
 const MAX_IDENTITY_CHARS = 256;
@@ -123,7 +124,9 @@ export const searchConversationEventsToolDefinition = zodToolDefinition({
         .min(1)
         .max(MAX_LIMIT)
         .nullable()
-        .describe(`Maximum events. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`)
+        .describe(
+          `Maximum events. Default ${DEFAULT_EVENT_SEARCH_LIMIT}; max ${MAX_LIMIT}.`,
+        )
         .optional(),
       types: z
         .array(knownEventTypeSchema)
@@ -152,7 +155,7 @@ export function createSearchConversationEventsTool(
         input.conversation_id?.trim() || currentConversationId;
       const afterSeq = input.after_seq ?? undefined;
       const beforeSeq = input.before_seq ?? undefined;
-      const limit = input.limit ?? DEFAULT_LIMIT;
+      const limit = input.limit ?? DEFAULT_EVENT_SEARCH_LIMIT;
       const types = input.types ?? undefined;
       if (
         afterSeq !== undefined &&
