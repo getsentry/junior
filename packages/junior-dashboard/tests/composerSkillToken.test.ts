@@ -2,8 +2,11 @@ import { expect, it } from "vitest";
 
 import { skillTokenAt } from "../src/client/conversations/composerSkillToken";
 
-const at = (text: string) =>
-  skillTokenAt(text.replace("|", ""), text.indexOf("|"));
+// `|` marks the caret.
+const at = (text: string) => {
+  const caret = text.indexOf("|");
+  return skillTokenAt(text.slice(0, caret) + text.slice(caret + 1), caret);
+};
 
 // No describe block: CI parses the JUnit report, and each " > " in a test
 // name adds an XML entity toward the parser's limit.
