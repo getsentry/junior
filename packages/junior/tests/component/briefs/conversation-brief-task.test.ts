@@ -315,7 +315,7 @@ describe("Conversation Brief task", () => {
       turnId: "turn-1",
       throughSeq: firstTurn.throughSeq,
       modelId: TEST.calls[0]?.modelId,
-      costUsd: 0.0042,
+      costMicroUsd: 4_200,
     });
     expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
     expect(rows[0]?.searchText).not.toBe("");

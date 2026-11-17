@@ -10,6 +10,10 @@
  * each Turn. Reciprocal rank fusion combines the two ranks, so neither leg
  * needs a score threshold.
  *
+ * The agent's tool calls count half in the fusion, so what a tool returned
+ * ranks above the call that repeats the query's words. The input of the
+ * running Turn is not a result: it is in the model context already.
+ *
  * The caller checks access to the Conversation first.
  *
  * Attributes on the `searchConversationEvents` `gen_ai.execute_tool` span:
@@ -34,6 +38,8 @@ import {
   inArray,
   isNull,
   lt,
+  not,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -56,6 +62,7 @@ import { guardedCosineDistance } from "@sentry/junior-plugin-api/embeddings";
 import { embedConversationQuery } from "./embedding";
 import { lexemesSql, searchedEventTextSql, seqIn } from "./event-lexemes";
 import {
+  callsToolSql,
   eventExcerpt,
   excerptTerms,
   SEARCHABLE_EVENT_TYPES,
@@ -70,12 +77,21 @@ import { eventFromRow } from "./sql/history";
 const MAX_COMPUTED_EVENTS = 20_000;
 const CANDIDATES_PER_LEG = 100;
 const BM25_B = 0.75;
+// The agent's tool calls repeat the words of its own commands and searches,
+// so in each leg a tool call counts half as much as other events. With RRF
+// k = 60, a tool call at rank 1 then scores below an event at rank 61.
+const TOOL_CALL_WEIGHT = 0.5;
 
 /** One event search. The bounds and types only make the result smaller. */
 export interface ConversationEventTextSearch {
   afterSeq?: number;
   beforeSeq?: number;
   conversationId: string;
+  /**
+   * The running Turn of this Conversation. Its input is in the model
+   * context already, so it is not a result.
+   */
+  currentTurnId?: string;
   /** Embeds the query to also match events by meaning. */
   embedder?: PluginEmbedder;
   limit: number;
@@ -141,23 +157,34 @@ export function rankKeywordCandidates(
 
 /**
  * Fuse ranked event lists with reciprocal rank fusion. An event in both
- * lists ranks above an event in one. Ties go to the newer event.
+ * lists ranks above an event in one. Events in `toolCalls` count
+ * `TOOL_CALL_WEIGHT` as much. Ties go to the newer event.
  */
 export function fuseEventRanks(
   lists: readonly (readonly number[])[],
+  toolCalls: ReadonlySet<number> = new Set(),
 ): number[] {
-  return fuseRankedLists(
-    lists.map((list) =>
-      list.map((seq, index) => ({ item: seq, rank: index + 1 })),
-    ),
-    { key: (seq) => seq, tiebreak: (left, right) => right - left },
-  );
+  // Each leg splits into its tool calls and the rest. Both keep the rank in
+  // the leg, and the tool calls get the lower weight.
+  const ranked = lists.flatMap((list) => {
+    const entries = list.map((seq, index) => ({ item: seq, rank: index + 1 }));
+    return [
+      entries.filter((entry) => !toolCalls.has(entry.item)),
+      entries.filter((entry) => toolCalls.has(entry.item)),
+    ];
+  });
+  return fuseRankedLists(ranked, {
+    key: (seq) => seq,
+    tiebreak: (left, right) => right - left,
+    weights: ranked.map((_, index) => (index % 2 ? TOOL_CALL_WEIGHT : 1)),
+  });
 }
 
-function searchBounds(
+async function searchBounds(
+  db: JuniorDatabase,
   search: ConversationEventTextSearch,
   types: readonly string[],
-): SQL | undefined {
+): Promise<SQL | undefined> {
   const events = juniorConversationEvents;
   return and(
     eq(events.conversationId, search.conversationId),
@@ -166,7 +193,64 @@ function searchBounds(
     search.beforeSeq === undefined
       ? undefined
       : lt(events.seq, search.beforeSeq),
+    search.currentTurnId === undefined
+      ? undefined
+      : await notTurnInput(db, search.conversationId, search.currentTurnId),
   );
+}
+
+// The input of a Turn: its input Messages, and the agent history messages
+// that the Turn adds for its input and for steering, after it starts.
+async function notTurnInput(
+  db: JuniorDatabase,
+  conversationId: string,
+  turnId: string,
+): Promise<SQL | undefined> {
+  const events = juniorConversationEvents;
+  const [started] = await db
+    .select({
+      seq: events.seq,
+      inputMessageIds: sql<string[]>`${events.payload}->'inputMessageIds'`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.conversationId, conversationId),
+        eq(events.type, "turn_started"),
+        eq(sql`${events.payload}->>'turnId'`, turnId),
+      ),
+    )
+    .limit(1);
+  if (!started) return undefined;
+  return not(
+    or(
+      and(eq(events.type, "user_message"), gt(events.seq, started.seq)),
+      and(
+        inArray(events.type, ["message", "message_updated"]),
+        inArray(sql`${events.payload}->>'messageId'`, started.inputMessageIds),
+      ),
+    )!,
+  );
+}
+
+async function toolCallSeqs(
+  db: JuniorDatabase,
+  conversationId: string,
+  seqs: readonly number[],
+): Promise<Set<number>> {
+  if (seqs.length === 0) return new Set();
+  const events = juniorConversationEvents;
+  const rows = await db
+    .select({ seq: events.seq })
+    .from(events)
+    .where(
+      and(
+        eq(events.conversationId, conversationId),
+        inArray(events.seq, [...seqs]),
+        callsToolSql(),
+      ),
+    );
+  return new Set(rows.map((row) => row.seq));
 }
 
 async function keywordRanks(
@@ -319,7 +403,7 @@ export async function searchConversationEventText(
     (type) => !search.types || search.types.includes(type),
   );
   if (types.length === 0) return [];
-  const bounds = searchBounds(search, types);
+  const bounds = await searchBounds(db, search, types);
   const timed = async <T>(work: Promise<T>) => {
     const startedAt = Date.now();
     const result = await work;
@@ -329,7 +413,10 @@ export async function searchConversationEventText(
     timed(keywordRanks(db, search, bounds)),
     timed(meaningRanks(db, search, bounds)),
   ]);
-  const seqs = fuseEventRanks([keyword.seqs, meaning.seqs]).slice(
+  const toolCalls = await toolCallSeqs(db, search.conversationId, [
+    ...new Set([...keyword.seqs, ...meaning.seqs]),
+  ]);
+  const seqs = fuseEventRanks([keyword.seqs, meaning.seqs], toolCalls).slice(
     0,
     search.limit,
   );

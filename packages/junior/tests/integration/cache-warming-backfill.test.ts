@@ -46,7 +46,7 @@ const MINUTE = 60_000;
 const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // Older releases wrote `done` here with no TTL.
 const LEGACY_BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
-const REFILL_KEY = "junior:cache_warming:savings_refill:v1";
+const REFILL_KEY = "junior:cache_warming:savings_refill:v2";
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 const SEGMENTS = [
   "user:1:none",
