@@ -205,7 +205,9 @@ const app = await createApp({
 
 After each completed Turn, Junior embeds up to 256 of the newest events that
 have no embedding, with the model in `AI_EMBEDDING_MODEL`. This costs one
-embedding call per 32 events. The example app and `junior chat` enable it.
+embedding call per 32 events. It also stores the search words of up to 2,000
+events, so word searches in long Conversations stay fast. `junior chat`
+enables it.
 
 ## Experimental features
 

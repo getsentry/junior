@@ -1,7 +1,8 @@
 /**
  * Event embeddings: a derived index for search by meaning over the history of
- * one Conversation. After each completed Turn, a background task embeds the
- * newest searchable events that have no vector of the configured model.
+ * one Conversation. After each completed Turn, the event search task stores
+ * lexemes (`event-lexemes.ts`) and embeds the newest searchable events that
+ * have no vector of the configured model.
  *
  * Each run embeds a bounded slice, newest first, so a long Conversation
  * catches up over later Turns and older history gets vectors last. Keyword
@@ -21,6 +22,7 @@ import {
 import { botConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { embedTexts, type ConversationModelCost } from "@/chat/core-model";
+import { storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
   SEARCHABLE_EVENT_TYPES,
@@ -136,21 +138,28 @@ export async function embedConversationEvents(
   return rows.length;
 }
 
-/** Core task registration that embeds events after each completed Turn. */
-export const eventEmbeddingTaskRegistration: PluginRegistration = {
+/**
+ * Core task registration that stores lexemes and embeds events after each
+ * completed Turn.
+ */
+export const eventSearchTaskRegistration: PluginRegistration = {
   manifest: {
-    name: "event-embeddings",
-    displayName: "Event embeddings",
-    description: "Embeddings for search by meaning in Conversation history",
+    name: "event-search",
+    displayName: "Event search",
+    description: "Lexemes and embeddings for Conversation history search",
   },
   tasks: {
-    embedEvents: {
+    indexEvents: {
       async run(context: PluginTaskContext) {
         const run = await context.run.load();
         await context.state.withLock(
-          `event-embeddings:${run.conversationId}`,
+          `event-search:${run.conversationId}`,
           EMBEDDING_LOCK_TTL_MS,
           async () => {
+            const lexemes = await storeConversationEventLexemes(
+              getDb(),
+              run.conversationId,
+            );
             const embedded = await embedConversationEvents(
               getDb(),
               createConversationEventEmbedder({
@@ -159,9 +168,10 @@ export const eventEmbeddingTaskRegistration: PluginRegistration = {
               }),
               run.conversationId,
             );
-            context.log.info("Conversation events embedded", {
+            context.log.info("Conversation events indexed", {
               conversationId: run.conversationId,
               embedded,
+              lexemes,
             });
           },
         );

@@ -16,6 +16,7 @@ import {
   embedConversationEvents,
   type ConversationEventEmbedder,
 } from "@/chat/conversations/event-embedding";
+import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorConversationEvents } from "@/db/schema";
@@ -405,6 +406,35 @@ describe("searchConversationEvents", () => {
       embedder: queryEmbedder,
     });
     expect(byMeaning.events[0]).toMatchObject({ seq: 3 });
+
+    // Stored lexemes give the same matches. A newer event without stored
+    // lexemes stays searchable.
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(4);
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(0);
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 6,
+        data: {
+          type: "message",
+          messageId: "m-retry",
+          role: "assistant",
+          text: "Retried the lease fix in getsentry/junior#4822.",
+        },
+      },
+    ]);
+    await expect(executeTool({ query: "lease.ts" })).resolves.toMatchObject({
+      events: [{ seq: 2 }],
+    });
+    await expect(executeTool({ query: "dashboard" })).resolves.toMatchObject({
+      events: [],
+    });
+    await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
+      events: [{ seq: 5 }],
+    });
   });
 
   it("omits replacement history from unknown event versions", async () => {

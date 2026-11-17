@@ -1,7 +1,7 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
-import { eventEmbeddingTaskRegistration } from "@/chat/conversations/event-embedding";
+import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
 import { briefsTaskRegistration } from "./task";
 
 type BriefsConfig = Readonly<{ enabled?: boolean }>;
@@ -43,7 +43,7 @@ export function isEventEmbeddingsEnabled(): boolean {
 export function coreTaskRegistrations(): PluginRegistration[] {
   return [
     ...(isBriefsEnabled() ? [briefsTaskRegistration] : []),
-    ...(isEventEmbeddingsEnabled() ? [eventEmbeddingTaskRegistration] : []),
+    ...(isEventEmbeddingsEnabled() ? [eventSearchTaskRegistration] : []),
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];
 }

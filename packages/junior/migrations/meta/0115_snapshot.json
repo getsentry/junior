@@ -1,5 +1,5 @@
 {
-  "id": "3f02b563-7207-4399-b853-5495b4f0427a",
+  "id": "5be8cb73-4ddb-4594-9f99-b81b1f075d5b",
   "prevId": "b43de5d9-64b5-4909-9bec-8731f09505af",
   "version": "7",
   "dialect": "postgresql",
@@ -2228,6 +2228,84 @@
           "value": "vector_dims(\"junior_conversation_event_embeddings\".\"embedding\") = \"junior_conversation_event_embeddings\".\"dimensions\""
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.junior_conversation_event_lexemes": {
+      "name": "junior_conversation_event_lexemes",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lexemes": {
+          "name": "lexemes",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "junior_conversation_event_lexemes_lexemes_idx": {
+          "name": "junior_conversation_event_lexemes_lexemes_idx",
+          "columns": [
+            {
+              "expression": "lexemes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_conversation_event_lexemes_event_fk": {
+          "name": "junior_conversation_event_lexemes_event_fk",
+          "tableFrom": "junior_conversation_event_lexemes",
+          "tableTo": "junior_conversation_events",
+          "columnsFrom": [
+            "conversation_id",
+            "seq"
+          ],
+          "columnsTo": [
+            "conversation_id",
+            "seq"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_conversation_event_lexemes_pk": {
+          "name": "junior_conversation_event_lexemes_pk",
+          "columns": [
+            "conversation_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.junior_conversation_events": {
