@@ -65,7 +65,7 @@ Put all evidence in `$RUN_DIR/evidence/<map file>/`. `$RUN_DIR` defaults to `${T
 node $S/instance.mjs stop $RUN_DIR
 ```
 
-It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. After a failed launch, run it too, so that no process keeps port 3000.
+It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. A failed launch runs it by itself, so that no process keeps port 3000.
 
 ## Map
 
