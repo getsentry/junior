@@ -97,11 +97,11 @@ data, does not run.
   public repo. `data_exposure` then misses private data in that write. This
   breaks "the install states facts about destinations".
   getsentry/junior#3596 adds `review-context`.
-- Guardian does not review Sandbox commands, such as a provider CLI or git
-  that writes with a plugin credential. Only
-  [Sandbox credentials](./sandbox-credentials.md) limits them. This breaks
-  "a block holds for the outcome, not for the tool": a write that Guardian
-  blocks as a tool call can run as a command.
+- Guardian does not review Sandbox commands, because `bash` never opted in
+  to review. A plugin can deny a write from the Sandbox and send the agent
+  to its reviewed tool, as GitHub does for issue and pull request text.
+  Other writes, such as a git push to a work branch, run with no review.
+  This breaks "a block holds for the outcome, not for the tool".
 - `createPreview` skips review, so a Sandbox server gets a public URL that
   Guardian never sees. This breaks "a public URL for a Sandbox server always
   goes through Guardian review". getsentry/junior#3601 makes it reviewed.
