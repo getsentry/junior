@@ -393,18 +393,18 @@ function AutomationAbout({ automation }: { automation: AutomationSummary }) {
   const versions = useAutomationVersionsData(true, automation.id);
   const activeVersion = versions.data?.activeVersion;
   const creator = (
-    <span className="inline-flex items-center gap-2">
-      <ActorAvatar
-        imageUrl={automation.createdByAvatarUrl}
-        name={automation.createdBy}
-        size="list"
-      />
-      <PersonReference
-        avatar={false}
-        label={automation.ownedByViewer ? "You" : undefined}
-        person={automationCreator(automation)}
-      />
-    </span>
+    <PersonReference
+      className="inline-flex items-center gap-2 text-inherit no-underline hover:underline"
+      label={automation.ownedByViewer ? "You" : undefined}
+      person={automationCreator(automation)}
+      photo={
+        <ActorAvatar
+          imageUrl={automation.createdByAvatarUrl}
+          name={automation.createdBy}
+          size="list"
+        />
+      }
+    />
   );
   return (
     <FactSection title="About">

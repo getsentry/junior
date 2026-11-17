@@ -656,7 +656,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(
-      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>.*?@Taylor Chen<\/a>/,
     );
     expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
     expect(html).toContain("@Riley Park");

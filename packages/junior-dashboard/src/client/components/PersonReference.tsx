@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { cloneElement, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useDashboardCoreData } from "../api";
 import { peoplePath } from "../format";
 import type { Person } from "../person";
 import { cn } from "../styles";
-import { HoverPreview } from "./ui/hover-preview";
+import { HoverPreview, useInsideHoverPreview } from "./ui/hover-preview";
 import { PersonCard } from "./PersonCard";
 
 function initial(name: string): string {
@@ -46,6 +46,16 @@ function PersonPhoto(props: {
   );
 }
 
+function InlinePhoto(props: { person: Person }) {
+  return (
+    <PersonPhoto
+      className="mr-1 inline-grid size-[1em] align-[-0.125em]"
+      initialClassName="text-[0.6em]"
+      person={props.person}
+    />
+  );
+}
+
 /**
  * Show one person in running text the way GitHub shows a mention: a small
  * round photo at text height, then the name. With `highlightSelf`, a
@@ -71,13 +81,7 @@ export function PersonInline(props: {
       )}
       data-self-mention={self ? "" : undefined}
     >
-      {props.avatar === false ? null : (
-        <PersonPhoto
-          className="mr-1 inline-grid size-[1em] align-[-0.125em]"
-          initialClassName="text-[0.6em]"
-          person={props.person}
-        />
-      )}
+      {props.avatar === false ? null : <InlinePhoto person={props.person} />}
       {props.children}
     </span>
   );
@@ -92,9 +96,10 @@ const TRIGGER_CLASS =
 /**
  * Show one person the same way everywhere: the small photo and the name,
  * with their card on hover, focus, or tap. The name links to their People
- * page when they have one. Set `avatar={false}` where a large photo already
- * sits beside the name, and `card={false}` inside a control, such as a row
- * link, that cannot hold another one.
+ * page when they have one. The photo is part of the link. Set `photo` to a
+ * larger photo in the link, `avatar={false}` where a large photo already
+ * sits apart from the name, and `card={false}` inside a control, such as a
+ * row link, that cannot hold another one.
  */
 export function PersonReference(props: {
   actions?: ReactNode;
@@ -106,44 +111,55 @@ export function PersonReference(props: {
   /** Text of the name, such as `@Name`. Defaults to the name. */
   label?: ReactNode;
   person: Person;
+  /** A larger photo that takes the place of the small one. */
+  photo?: ReactNode;
 }) {
-  const label = props.label ?? props.person.name;
+  const inside = useInsideHoverPreview();
   const className = props.className ?? NAME_CLASS;
-  if (props.card === false) {
-    return (
-      <PersonInline
-        avatar={props.avatar}
-        highlightSelf={props.highlightSelf}
-        person={props.person}
-      >
-        <span className={className}>{label}</span>
-      </PersonInline>
-    );
-  }
   const { email } = props.person;
-  return (
-    <PersonInline
-      avatar={props.avatar}
-      highlightSelf={props.highlightSelf}
-      person={props.person}
-    >
+  // The photo is part of the link, so it opens the card too.
+  const name = (
+    <>
+      {props.photo ??
+        (props.avatar === false ? null : <InlinePhoto person={props.person} />)}
+      {props.label ?? props.person.name}
+    </>
+  );
+  const link = email ? (
+    <Link
+      // Previews sit in cards that disable pointer events on their text.
+      className={cn("pointer-events-auto", className)}
+      to={peoplePath(email)}
+    />
+  ) : undefined;
+  let reference: ReactNode;
+  if (props.card === false || (inside && !link)) {
+    reference = <span className={className}>{name}</span>;
+  } else if (inside && link) {
+    // A card inside another card would close with it, so only link.
+    reference = cloneElement(link, undefined, name);
+  } else {
+    reference = (
       <HoverPreview
         content={<PersonCard actions={props.actions} person={props.person} />}
         tapToOpen
         trigger={
-          email ? (
-            <Link
-              // Previews sit in cards that disable pointer events on their text.
-              className={cn("pointer-events-auto", className)}
-              to={peoplePath(email)}
-            />
-          ) : (
+          link ?? (
             <button className={cn(TRIGGER_CLASS, className)} type="button" />
           )
         }
       >
-        {label}
+        {name}
       </HoverPreview>
+    );
+  }
+  return (
+    <PersonInline
+      avatar={false}
+      highlightSelf={props.highlightSelf}
+      person={props.person}
+    >
+      {reference}
     </PersonInline>
   );
 }

@@ -26,6 +26,15 @@ type VerticalSide = "top" | "bottom";
 
 const PreviewsOpen = createContext(true);
 
+// A card inside another card would close with it: moving the pointer to the
+// inner card leaves the outer one.
+const InsidePreview = createContext(false);
+
+/** Tell whether this element sits inside an open hover preview card. */
+export function useInsideHoverPreview(): boolean {
+  return useContext(InsidePreview);
+}
+
 /**
  * Hold the hover previews inside it while `open` is false. A preview that
  * was due shows once it turns true, if the pointer or focus is still on
@@ -107,7 +116,7 @@ export function HoverPreview(props: {
             onFocus={(event) => lockSide(event.currentTarget)}
             onPointerEnter={(event) => lockSide(event.currentTarget)}
           >
-            {props.content}
+            <InsidePreview value>{props.content}</InsidePreview>
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>

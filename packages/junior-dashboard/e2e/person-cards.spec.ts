@@ -89,6 +89,12 @@ test("a Slack mention shows the photo and name, and opens the person card", asyn
     card.getByRole("link", { name: /^Open person/ }),
   ).toHaveAttribute("href", /\/people\/avery%40sentry\.io$/);
   await expect(card).toContainText("avery@sentry.io");
+
+  // The photo mark is part of the link, so it opens the card too.
+  await page.mouse.move(0, 0);
+  await expect(card).toBeHidden();
+  await mention.locator('[aria-hidden="true"]').first().hover();
+  await expect(card).toBeVisible();
   // Avery's one Conversation is a private one the viewer is not in: it
   // counts, but it does not show.
   const activity = card.getByRole("region", { name: "Recent activity" });
@@ -140,6 +146,11 @@ test("a raw Slack id in a Review item question shows the person", async ({
   await expect(question).toBeVisible();
   await expect(question).toContainText("@Avery Chen owns the rollback.");
   await expect(question).not.toContainText("U789");
+  // Inside the preview, the mention only links: a card inside another card
+  // would close when the pointer leaves the outer one.
+  const mention = question.getByRole("link", { name: "@Avery Chen" });
+  await expect(mention).toHaveAttribute("href", "/people/avery%40sentry.io");
+  await expect(mention).not.toHaveAttribute("aria-haspopup", "dialog");
 });
 
 test("the answer line names the person who answered", async ({
