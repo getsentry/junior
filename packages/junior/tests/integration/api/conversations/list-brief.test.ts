@@ -6,6 +6,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
 describe("conversation list API Briefs", () => {
   test("shows the latest Brief only where private content is visible", async () => {
@@ -43,8 +44,9 @@ describe("conversation list API Briefs", () => {
         });
       }
 
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations",
+      const response = await expectSqlBudget(
+        () => createJuniorApi().request("http://localhost/api/conversations"),
+        { statements: 14, serialRounds: 3 },
       );
       expect(response.status).toBe(200);
       const conversations = new Map(

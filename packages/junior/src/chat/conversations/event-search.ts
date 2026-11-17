@@ -46,7 +46,9 @@ import {
   juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
-import type { ConversationEmbedder } from "./embedding";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
+import { guardedCosineDistance } from "@sentry/junior-plugin-api/embeddings";
+import { embedConversationQuery } from "./embedding";
 import { lexemesSql, searchedEventTextSql, seqIn } from "./event-lexemes";
 import {
   eventExcerpt,
@@ -71,7 +73,7 @@ export interface ConversationEventTextSearch {
   beforeSeq?: number;
   conversationId: string;
   /** Embeds the query to also match events by meaning. */
-  embedder?: ConversationEmbedder;
+  embedder?: PluginEmbedder;
   limit: number;
   query: string;
   types?: readonly KnownConversationEventType[];
@@ -263,15 +265,15 @@ async function meaningRanks(
   bounds: SQL | undefined,
 ): Promise<{ seqs: number[]; topDistance?: number }> {
   if (!search.embedder) return { seqs: [] };
-  const query = await search.embedder({
-    inputType: "query",
-    text: search.query,
-  });
+  const query = await embedConversationQuery(search.embedder, search.query);
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
-  // Postgres can order before it filters, and pgvector fails on vectors of
-  // two sizes. The CASE keeps a vector of another size from the operator.
-  const distance = sql<number>`CASE WHEN ${embeddings.dimensions} = ${query.vector.length} THEN ${embeddings.embedding} <=> ${JSON.stringify(query.vector)}::halfvec END`;
+  const distance = guardedCosineDistance({
+    column: embeddings.embedding,
+    dimensions: embeddings.dimensions,
+    query: query.vector,
+    type: "halfvec",
+  });
   const rows = await db
     .select({ seq: embeddings.seq, distance })
     .from(embeddings)

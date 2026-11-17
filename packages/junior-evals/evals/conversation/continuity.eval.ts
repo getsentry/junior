@@ -1,6 +1,7 @@
 import { describe, expect } from "vitest";
 import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { keywordSearchEvents } from "@junior-evals/fixture/event-search";
 import { toolCallsOf, type ToolCall } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -40,37 +41,16 @@ const uploadChecks = (firstBuild: number, count: number) =>
     ],
   );
 // Every host check prints the end date of the host's certificate above a
-// disk listing of about 1,300 tokens, so 43 checks are past the window. Each
-// host has its own date, so a summary cannot keep them all. Only the mail
-// host uses SMTP, and no event shares a word with the question about it, so
+// disk listing of about 1,400 tokens, so 36 checks are past the window. Each
+// host has its own date, so a summary cannot keep them all. Host names are
+// opaque. Only the disk listing of the mail host shows its role, through its
+// Postfix queue, and no event shares a word with the question about it. So
 // only a search by meaning finds it.
-const HOST_ROLES = [
-  "api",
-  "cdn",
-  "grafana",
-  "kafka",
-  "redis",
-  "postgres",
-  "vault",
-  "ldap",
-  "jenkins",
-  "nginx",
-  "prometheus",
-  "elastic",
-  "minio",
-  "rabbitmq",
-  "etcd",
-  "consul",
-  "harbor",
-  "runner",
-  "auth",
-  "billing",
-  "search",
-];
-const HOSTS = ["iad1", "sfo1", "fra1", "sin1"].flatMap((region) =>
-  HOST_ROLES.map((role) => `${role}-${region}`),
+const HOSTS = Array.from(
+  { length: 40 },
+  (_, index) => `node-${String(index + 1).padStart(2, "0")}`,
 );
-const MAIL_HOST = "smtp-iad1";
+const MAIL_HOST = "node-07";
 const MAIL_HOST_END_DATE = "Apr  2 00:00:00 2026 GMT";
 const MONTHS = [
   "Jan",
@@ -86,20 +66,42 @@ const MONTHS = [
   "Nov",
   "Dec",
 ];
-// Other hosts end on other days, from January 2026 on, three days apart.
+// Other hosts end on other days, five days apart from January 5, 2026.
 const endDate = (host: string) => {
   if (host === MAIL_HOST) return MAIL_HOST_END_DATE;
-  const index = HOSTS.indexOf(host);
-  const day = new Date(
-    Date.UTC(2026, 0, 5 + index * 3 + (index >= 29 ? 1 : 0)),
-  );
+  const day = new Date(Date.UTC(2026, 0, 5 + HOSTS.indexOf(host) * 5));
   return `${MONTHS[day.getUTCMonth()]} ${String(day.getUTCDate()).padStart(2, " ")} 00:00:00 ${day.getUTCFullYear()} GMT`;
 };
+const hex = (host: string, index: number) =>
+  (Math.imul(HOSTS.indexOf(host) * 1_000 + index + 1, 2_654_435_761) >>> 0)
+    .toString(16)
+    .toUpperCase()
+    .padStart(8, "0");
+// Paths of the data that each kind of host keeps, so roles differ by content.
+const DATA_PATHS: Array<(host: string, index: number) => string> = [
+  (_host, index) => `/var/lib/postgresql/16/main/base/16384/${20_000 + index}`,
+  (_host, index) =>
+    `/var/lib/kafka/logs/events-${index % 12}/000000000${index}.log`,
+  (_host, index) => `/var/lib/redis/appendonly-${index}.aof`,
+  (host, index) => `/var/cache/nginx/proxy/${hex(host, index)}`,
+  (host, index) =>
+    `/var/lib/elasticsearch/nodes/0/indices/${hex(host, index)}/0/index/_${index}.cfs`,
+  (host, index) =>
+    `/var/lib/prometheus/data/01H${hex(host, index)}/chunks/00000${index}`,
+  (host, index) =>
+    `/var/lib/registry/docker/registry/v2/blobs/sha256/${hex(host, index).toLowerCase()}/data`,
+  (_host, index) => `/var/lib/jenkins/workspace/build-${index}/target/app.jar`,
+];
+const POSTFIX_QUEUES = ["active", "deferred", "incoming", "hold"];
+const dataPath = (host: string, index: number) =>
+  host === MAIL_HOST
+    ? `/var/spool/postfix/${POSTFIX_QUEUES[index % 4]}/${hex(host, index).slice(0, 1)}/${hex(host, index)}`
+    : DATA_PATHS[HOSTS.indexOf(host) % DATA_PATHS.length]!(host, index);
 const diskListing = (host: string) =>
   Array.from(
     { length: 120 },
     (_, index) =>
-      `${(index % 97) + 1}.${index % 10}G\t/srv/${host}/segment-${String(index).padStart(6, "0")}.parquet`,
+      `${(index % 97) + 1}.${index % 10}M\t${dataPath(host, index)}`,
   ).join("\n");
 const hostChecks = (hosts: readonly string[]) =>
   hosts.flatMap((host) => [
@@ -109,7 +111,7 @@ const hostChecks = (hosts: readonly string[]) =>
         {
           name: "bash",
           arguments: {
-            command: `openssl x509 -enddate -noout -in /etc/pki/${host}.pem && du -ah /srv/${host}`,
+            command: `openssl x509 -enddate -noout -in /etc/pki/${host}.pem && du -ah /var`,
           },
           result: {
             exit_code: 0,
@@ -121,18 +123,21 @@ const hostChecks = (hosts: readonly string[]) =>
       ],
     }),
   ]);
+// An event of the mail host's check: it names the host or lists its queue.
+const isMailHostEvent = (event: unknown) => {
+  const text = JSON.stringify(event);
+  return text.includes(MAIL_HOST) || text.includes("/var/spool/postfix/");
+};
 // Forms of the mail host's end date that a summary could hold.
 const holdsMailHostDate = (summaries: readonly string[]) =>
   /\bApr(il)?\.?\s+0?2\b|2026-04-02|\b0?4\/0?2\b/i.test(summaries.join("\n"));
 const historyReads = (conversation: { toolCalls: ToolCall[] }) =>
   toolCallsOf("searchConversationEvents", conversation).length +
   toolCallsOf("readConversationEvent", conversation).length;
+const hasQuery = (call: ToolCall) =>
+  typeof (call.input as { query?: unknown } | undefined)?.query === "string";
 const searchedWithQuery = (conversation: { toolCalls: ToolCall[] }) =>
-  toolCallsOf("searchConversationEvents", conversation).some(
-    (call) =>
-      typeof (call.input as { query?: unknown } | undefined)?.query ===
-      "string",
-  );
+  toolCallsOf("searchConversationEvents", conversation).some(hasQuery);
 // This CI log is about 51,000 tokens. The answer must come from the summary.
 const CI_LOG = Array.from(
   { length: 1_800 },
@@ -213,20 +218,15 @@ describe("Thread Continuity", () => {
       limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
     });
     const first = await run(slackMention("Thanks, that's all for this week."), {
-      history: hostChecks([
-        ...HOSTS.slice(0, 20),
-        MAIL_HOST,
-        ...HOSTS.slice(20, 42),
-      ]),
+      history: hostChecks(HOSTS.slice(0, 37)),
     });
     // The Turn stored the event vectors after it finished.
     const conversation = await first.continue(
       slackMention("When does the certificate on our mail server expire?"),
-      { history: hostChecks(HOSTS.slice(42)) },
+      { history: hostChecks(HOSTS.slice(37)) },
     );
 
     expect(first.compactions).toBeGreaterThan(0);
-    expect(conversation.compactions).toBeGreaterThan(0);
     // The case proves nothing when a summary still holds the answer.
     expect(
       holdsMailHostDate([
@@ -240,7 +240,17 @@ describe("Thread Continuity", () => {
         pass: ["The reply says the certificate expires on April 2, 2026."],
       }),
     );
-    expect(searchedWithQuery(conversation)).toBe(true);
+    const firstQuerySearch = toolCallsOf(
+      "searchConversationEvents",
+      conversation,
+    ).find(hasQuery);
+    expect(firstQuerySearch).toBeDefined();
+    // Keyword search alone does not find the mail host for that search.
+    const keywordEvents = await keywordSearchEvents(
+      conversation.conversationId,
+      firstQuerySearch?.input,
+    );
+    expect(keywordEvents.some(isMailHostEvent)).toBe(false);
     expect(historyReads(conversation)).toBeLessThanOrEqual(8);
   });
 

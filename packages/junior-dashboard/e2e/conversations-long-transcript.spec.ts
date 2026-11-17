@@ -388,8 +388,10 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   // The outline lists every person message, not only the loaded page.
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
-  // By default the scrollbar stays, and the outline marks no thumb.
+  // By default the scrollbar stays, the outline sits on the left, and it
+  // marks no thumb.
   expect(await scrollbarHidden(transcript)).toBe(false);
+  await expect(outline).toHaveAttribute("data-side", "left");
   await expect(outline.locator("button[data-in-view]")).toHaveCount(0);
 
   const item = outline.getByRole("button", {
@@ -429,6 +431,8 @@ test("scrolls with the outline instead of the scrollbar", async ({
   });
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect.poll(() => scrollbarHidden(transcript)).toBe(true);
+  // The outline takes the place of the scrollbar on the right.
+  await expect(outline).toHaveAttribute("data-side", "right");
   // The items on screen form a thumb that holds the active item.
   const thumb = outline.locator("button[data-in-view]");
   await expect(thumb.first()).toHaveAttribute("aria-current", "location");

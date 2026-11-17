@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadJuniorTestEnvFiles } from "./tests/fixtures/env";
 
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -22,6 +23,11 @@ export default defineConfig({
         __dirname,
         "tests/fixtures/virtual-config.ts",
       ),
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        __dirname,
+        "../junior-plugin-api/src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",
@@ -42,6 +48,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Inject the `pg` tracing channels that SQL budget tests count.
+    execArgv: [
+      "--import",
+      pathToFileURL(
+        path.resolve(__dirname, "tests/fixtures/pg-tracing-hook.ts"),
+      ).href,
+    ],
     include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",

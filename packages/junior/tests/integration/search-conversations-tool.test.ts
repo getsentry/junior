@@ -1,6 +1,8 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { appendConversationBrief } from "@/chat/briefs/store";
+import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -8,7 +10,7 @@ import { parseSlackTeamId } from "@/chat/slack/ids";
 import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import {
   chatGetPermalinkOk,
@@ -183,6 +185,98 @@ describe("searchConversations", () => {
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_id");
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_name");
     expect(publicResult.conversations[0]).not.toHaveProperty("permalink");
+  });
+
+  it("embeds Briefs again after a model change, so search finds them by meaning", async () => {
+    const db = getDb();
+    const record = async (channelId: string, summary: string) => {
+      const conversationId = `slack:${channelId}:1700000000.100000`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId },
+        nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+        source: "slack",
+        title: summary,
+        visibility: "public",
+      });
+      await appendConversationBrief(db, {
+        conversationId,
+        turnId: `${channelId}-turn`,
+        throughSeq: 1,
+        content: conversationBriefFixture({ summary }),
+        searchText: summary,
+        modelId: "test-model",
+      });
+      // The vector of the model before the change.
+      await db.insert(juniorConversationEmbeddings).values({
+        briefVersion: 1,
+        conversationId,
+        dimensions: 3,
+        embedding: [1, 0, 0],
+        model: "retired-embedding-model",
+        provider: "vercel-ai-gateway",
+      });
+      return conversationId;
+    };
+    const kafka = await record("CKAFKA", "Kafka consumer lag spiked");
+    const lunch = await record("CLUNCH", "Team lunch moved to Friday");
+
+    // The fake model puts text about message queues on one axis.
+    const requests: string[][] = [];
+    const embedder: PluginEmbedder = {
+      model: "current-embedding-model",
+      provider: "vercel-ai-gateway",
+      async embedTexts({ texts }) {
+        requests.push(texts);
+        return {
+          dimensions: 2,
+          model: "current-embedding-model",
+          provider: "vercel-ai-gateway",
+          vectors: texts.map((text) =>
+            /kafka|queue/i.test(text) ? [1, 0] : [0, 1],
+          ),
+        };
+      },
+    };
+
+    await runConversationEmbeddingBackfill(embedder);
+    await runConversationEmbeddingBackfill(embedder);
+
+    // One batch for both Briefs. The second run finds the model done.
+    expect(requests).toEqual([
+      ["Kafka consumer lag spiked", "Team lunch moved to Friday"],
+    ]);
+    await expect(
+      db
+        .select({
+          conversationId: juniorConversationEmbeddings.conversationId,
+          dimensions: juniorConversationEmbeddings.dimensions,
+          model: juniorConversationEmbeddings.model,
+        })
+        .from(juniorConversationEmbeddings)
+        .orderBy(asc(juniorConversationEmbeddings.conversationId)),
+    ).resolves.toEqual([
+      {
+        conversationId: kafka,
+        dimensions: 2,
+        model: "current-embedding-model",
+      },
+      {
+        conversationId: lunch,
+        dimensions: 2,
+        model: "current-embedding-model",
+      },
+    ]);
+
+    const tool = createSearchConversationsTool({
+      conversationId: "local:test:embedding-requester",
+      embedder,
+    });
+    // No Brief has these words. Only the new vectors match.
+    const result = await executeTool(tool, { query: "message queue backlog" });
+    expect(result.conversations).toEqual([
+      expect.objectContaining({ conversation_id: kafka }),
+    ]);
   });
 
   it("lets plugin tools find other Conversations by Annotation", async () => {
