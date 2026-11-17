@@ -230,7 +230,8 @@ async function launch(args) {
 // A failed launch stops what it started, so that the ports are free again.
 async function failLaunch(runDir, message) {
   console.error(message);
-  await stop(runDir);
+  // stderr: the last stdout line of launch is the run directory.
+  await stop(runDir, console.error);
   return 1;
 }
 
@@ -299,7 +300,7 @@ async function doctor(runDir) {
   return results.some(([, problem]) => problem) ? 1 : 0;
 }
 
-async function stop(runDir) {
+async function stop(runDir, log = console.log) {
   const pid = Number(readFileSync(join(runDir, "dev.pid"), "utf8"));
   if (alive(pid)) {
     // `pnpm dev` puts some children in their own process groups, so a group
@@ -308,7 +309,7 @@ async function stop(runDir) {
     for (const p of tree) if (alive(p)) process.kill(p, "SIGTERM");
     for (let i = 0; i < 30 && tree.some(alive); i++) await sleep(1000);
     for (const p of tree) if (alive(p)) process.kill(p, "SIGKILL");
-    console.log(`stopped pnpm dev ${pid} and its children`);
+    log(`stopped pnpm dev ${pid} and its children`);
   }
   const before = readFileSync(join(runDir, "compose-before.txt"), "utf8").split(
     "\n",
@@ -320,10 +321,10 @@ async function stop(runDir) {
       cwd: repoRoot,
       stdio: "ignore",
     });
-    console.log(`stopped compose ${service}`);
+    log(`stopped compose ${service}`);
   }
   removeInjectedDistLinks();
-  console.log(`evidence kept in ${join(runDir, "evidence")}`);
+  log(`evidence kept in ${join(runDir, "evidence")}`);
   return 0;
 }
 
