@@ -391,7 +391,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { exact: true, name: "Conversations" }),
     ).toBeInViewport();
 
-    // The Interface section holds the choices for this browser, and links
+    // The Interface section holds the dashboard choices, and links
     // to each choice still work.
     await page.goto(`${dashboard.baseURL}/settings#open-conversations-at`);
     const openAt = page.getByRole("heading", {
@@ -400,6 +400,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await expect(openAt).toBeInViewport();
     const ui = page.getByRole("region", { exact: true, name: "Interface" });
+    await expect(ui).toContainText("New dashboard");
     await expect(ui).toContainText("Open conversations at");
     await expect(ui).toContainText("Scroll conversations with");
     await expect(ui).toContainText("Message box");

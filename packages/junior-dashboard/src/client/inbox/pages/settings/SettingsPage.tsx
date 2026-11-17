@@ -63,7 +63,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
-      <InterfaceSettings />
+      <InterfaceSettings identity={identity} />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -148,7 +148,6 @@ function GeneralSettings({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
-      <ExperimentalUiSetting identity={identity} />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
@@ -156,14 +155,15 @@ function GeneralSettings({ identity }: SettingsPageProps) {
   );
 }
 
-/** Group the choices for how the dashboard looks and works on this browser. */
-function InterfaceSettings() {
+/** Group the choices for how the dashboard looks and works. */
+function InterfaceSettings({ identity }: SettingsPageProps) {
   return (
     <SettingsSection
       anchor="interface"
-      description="These choices apply to this browser."
+      description="The new dashboard applies to your account. The other choices apply to this browser."
       title="Interface"
     >
+      <ExperimentalUiSetting identity={identity} />
       <ConversationStartSetting />
       <TranscriptScrollerSetting />
       <ComposerAutocorrectSetting />
