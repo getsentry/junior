@@ -1756,18 +1756,23 @@ Conversation: \`local:test:old-conversation\`
       "pull_request.closed_unmerged",
     );
     // Merge conflicts always reach the Watch, so Junior keeps its pull
-    // request ready to merge. A close arrives as a Quiet Event, so later
-    // Turns know the outcome. The configured merge still starts a Turn.
+    // request ready to merge. An approval and a close arrive as Quiet
+    // Events, so later Turns know them. The configured merge still starts a
+    // Turn.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
         "pull_request.review.changes_requested",
         "pull_request.merged",
         "pull_request.merge_conflict",
+        "pull_request.review.approved",
         "pull_request.closed_unmerged",
       ],
       intent: "Report failed checks, requested changes, and merges.",
-      quietEvents: ["pull_request.closed_unmerged"],
+      quietEvents: [
+        "pull_request.review.approved",
+        "pull_request.closed_unmerged",
+      ],
       resource: expect.objectContaining({
         identifier: "getsentry/junior#660",
         type: "pull_request",
@@ -1797,10 +1802,20 @@ Conversation: \`local:test:old-conversation\`
       },
       { toolCallId: "call-create-draft-pull-request-watch" },
     );
-    // Junior marks its draft ready when the required checks pass.
+    // Junior marks its draft ready when the required checks pass. A person
+    // can mark it ready first, so later Turns learn that quietly.
     expect(subscribe).toHaveBeenCalledWith(
       expect.objectContaining({
-        events: expect.arrayContaining(["pull_request.checks.recovered"]),
+        events: expect.arrayContaining([
+          "pull_request.checks.recovered",
+          "pull_request.ready_for_review",
+        ]),
+        quietEvents: [
+          "pull_request.review.approved",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
+          "pull_request.ready_for_review",
+        ],
         guidance: expect.objectContaining({
           "pull_request.checks.recovered": expect.stringContaining(
             "mark it ready with github_updatePullRequest and draft false",
@@ -1841,10 +1856,15 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review.commented",
           "pull_request.review_comment.created",
           "pull_request.merge_conflict",
+          "pull_request.review.approved",
           "pull_request.merged",
           "pull_request.closed_unmerged",
         ],
-        quietEvents: ["pull_request.merged", "pull_request.closed_unmerged"],
+        quietEvents: [
+          "pull_request.review.approved",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
+        ],
         intent: expect.stringContaining(
           "Reply on GitHub to review comments and questions",
         ),
