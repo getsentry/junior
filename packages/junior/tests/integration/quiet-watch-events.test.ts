@@ -263,4 +263,28 @@ describe("Quiet Events from GitHub", () => {
     const context = await nextTurnContext("turn-for-merge");
     expect(context).not.toContain(QUIET_NOTE_RULE);
   });
+
+  it("adds the note when the other Watch starts no Turn", async () => {
+    await watchJuniorPullRequest();
+    await watchPullRequest({
+      events: ["pull_request.merged"],
+      intent: "Tell the person when the pull request merges.",
+    });
+    // The automated-turn limit pauses the Watch that would start a Turn.
+    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+    for (let i = 0; i < maxTurns; i += 1) {
+      await countAutomatedTurn({
+        conversationId: CONVERSATION_ID,
+        maxTurns,
+        nowMs: Date.now() + i,
+      });
+    }
+
+    await merge();
+
+    expect(conversationWakes()).toEqual([]);
+    await expect(nextTurnContext("turn-after-pause")).resolves.toContain(
+      `${QUIET_NOTE_RULE} ${LABEL}, pull_request.merged: ${LABEL} was merged.`,
+    );
+  });
 });

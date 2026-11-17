@@ -64,17 +64,20 @@ export async function ingestEvent(
     author.status === "trusted" && author.actor
       ? { mention: slackMention(author.actor.userId), handle: author.handle }
       : undefined;
-  // A Conversation whose Turn gets this Event from another Watch needs no
-  // note that says nobody was told.
-  const turnConversations = new Set(
-    subscriptions
-      .filter((subscription) => !isQuietEvent(subscription, event.eventType))
-      .map((subscription) => subscription.conversationId),
+  // A Conversation whose Turn got this Event from another Watch needs no
+  // note that says nobody was told. Watches that start a Turn go first, so
+  // the set is complete before any Quiet Event. A Watch that the
+  // automated-turn limit pauses, or that fails, adds nothing to it.
+  const turnConversations = new Set<string>();
+  const ordered = [...subscriptions].sort(
+    (left, right) =>
+      Number(isQuietEvent(left, event.eventType)) -
+      Number(isQuietEvent(right, event.eventType)),
   );
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
-  for (const subscription of subscriptions) {
+  for (const subscription of ordered) {
     // A Quiet Event is delivered, but it is not enqueued: it starts no Turn.
     let quiet = false;
     try {
@@ -105,7 +108,9 @@ export async function ingestEvent(
             state: options.state,
             subscription: current,
           });
-          return result.status === "appended";
+          if (result.status !== "appended") return false;
+          turnConversations.add(current.conversationId);
+          return true;
         },
       });
       if (delivered && !quiet) {
