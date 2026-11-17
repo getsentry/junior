@@ -29,6 +29,13 @@ Tier 2, and stops so a person can review `$D/tier2.json`. The second runs
 the Luna distillation, three summary reruns at points 0, 9 and 19, the
 probes and the report.
 
+### Tail-shrink and sectioned-prompt experiments
+
+`experiments --data $D [--dry-run]` runs the sectioned Luna distiller and
+curator at production's tail, then every arm at 32k and 64k tails, and
+writes `$D/tails/report.md`. `tail-report` prints that report again. See
+`METHOD.md` for the arms and the bar.
+
 ### New arms and the behavioral track
 
 ```sh
