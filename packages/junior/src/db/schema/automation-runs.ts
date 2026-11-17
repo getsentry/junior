@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -53,6 +54,9 @@ export const juniorAutomationRuns = pgTable(
     completedAtMs: bigint("completed_at_ms", { mode: "number" }),
     errorMessage: text("error_message"),
     resultMessageTs: text("result_message_ts"),
+    // Cost of the run's Conversation, copied from its usage on each usage
+    // write, so Automation cost totals read only runs.
+    costUsd: doublePrecision("cost_usd"),
   },
   (table) => [
     foreignKey({

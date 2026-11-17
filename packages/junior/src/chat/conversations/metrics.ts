@@ -12,6 +12,8 @@ import {
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
 import { nextDetailVersion } from "./sql/detail-version";
+import { refreshAutomationRunCost } from "@/chat/automations/run-cost";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 
 function finite(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value >= 0
@@ -194,4 +196,8 @@ export async function replaceConversationMetrics(
       detailVersion: nextDetailVersion,
     })
     .where(eq(juniorConversations.conversationId, args.conversationId));
+  await refreshAutomationRunCost(
+    executor.db(),
+    eq(juniorAutomationRuns.conversationId, args.conversationId),
+  );
 }

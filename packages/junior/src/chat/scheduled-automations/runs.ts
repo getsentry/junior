@@ -16,6 +16,7 @@ import {
   existingConversationId,
   refreshAutomationLastRun,
 } from "@/chat/automations/execution-stats";
+import { refreshAutomationRunCost } from "@/chat/automations/run-cost";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -113,6 +114,9 @@ async function writeRun(
     .insert(juniorAutomationRuns)
     .values({ id: stored.id, ...columns })
     .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
+  if (stored.dispatchId) {
+    await refreshAutomationRunCost(db, eq(juniorAutomationRuns.id, stored.id));
+  }
   if (stored.completedAtMs !== undefined) {
     await refreshAutomationLastRun(db, stored.taskId);
   }

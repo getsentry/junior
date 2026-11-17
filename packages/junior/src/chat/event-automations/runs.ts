@@ -7,6 +7,7 @@ import {
   existingConversationId,
   recordAutomationExecution,
 } from "@/chat/automations/execution-stats";
+import { refreshAutomationRunCost } from "@/chat/automations/run-cost";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
@@ -36,6 +37,11 @@ export async function recordEventAutomationRunStarted(
       status: "running",
     })
     .onConflictDoNothing({ target: juniorAutomationRuns.id });
+  // The dispatch can write usage before this row exists.
+  await refreshAutomationRunCost(
+    db,
+    eq(juniorAutomationRuns.id, args.dispatchId),
+  );
 }
 
 /**

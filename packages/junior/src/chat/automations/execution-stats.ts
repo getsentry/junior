@@ -11,10 +11,10 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
+import { refreshAutomationRunCost } from "./run-cost";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   automationTaskDescription,
@@ -204,6 +204,12 @@ export async function recordAutomationExecution(
         },
         setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
       });
+    if (options.conversationId) {
+      await refreshAutomationRunCost(
+        getDb(),
+        eq(juniorAutomationRuns.id, options.executionId),
+      );
+    }
     await refreshAutomationLastRun(getDb(), automationId);
   } catch (error) {
     logWarn("task.execution.stat_failed", {
@@ -227,9 +233,8 @@ export async function readAutomationExecutionSummaries(
   const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
   const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   const costSince = (sinceMs: number) =>
-    sql<number>`coalesce(sum(${conversationCost}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
+    sql<number>`coalesce(sum(${juniorAutomationRuns.costUsd}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
   const summaryRows = db
     .select({
       costLast1Day: costSince(oneDayAgoMs),
@@ -241,11 +246,10 @@ export async function readAutomationExecutionSummaries(
       runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${thirtyDaysAgoMs})::int`,
       runsLast90Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${ninetyDaysAgoMs})::int`,
       automationId: juniorAutomationRuns.automationId,
-      totalCostUsd: sql<number>`coalesce(sum(${conversationCost}), 0)::double precision`,
+      totalCostUsd: sql<number>`coalesce(sum(${juniorAutomationRuns.costUsd}), 0)::double precision`,
       totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorAutomationRuns)
-    .leftJoin(juniorConversations, executionConversation())
     .where(
       and(
         isExecution(),
@@ -659,16 +663,16 @@ async function readExecutionStatusBuckets(args: {
   endMs: number;
   startMs: number;
 }) {
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   return await getDb()
     .select({
       count: count(),
-      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
+      costUsd: sql<
+        number | null
+      >`SUM(${juniorAutomationRuns.costUsd})::double precision`,
       date: args.bucket,
       status: juniorAutomationRuns.status,
     })
     .from(juniorAutomationRuns)
-    .leftJoin(juniorConversations, executionConversation())
     .where(
       and(
         isExecution(),

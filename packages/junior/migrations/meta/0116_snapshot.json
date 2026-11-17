@@ -1,5 +1,5 @@
 {
-  "id": "2eb10129-a170-426e-95c3-fb59c3d8911e",
+  "id": "261e19e5-0c1a-4fe8-a617-41a8befec11c",
   "prevId": "2975fcbf-7615-4d37-b9ee-aa182fc7fbb4",
   "version": "7",
   "dialect": "postgresql",
@@ -936,6 +936,12 @@
         "result_message_ts": {
           "name": "result_message_ts",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_usd": {
+          "name": "cost_usd",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": false
         }
