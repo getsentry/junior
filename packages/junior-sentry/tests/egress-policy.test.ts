@@ -61,6 +61,7 @@ describe("sentry egress policy", () => {
       ],
       ["POST", "https://sentry.io/api/0/issues/123/notes/"],
       ["POST", "https://sentry.io/api/0/groups/123/comments/"],
+      ["PUT", "https://sentry.io/api/0/projects/sentry/junior/issues/?id=123"],
       [
         "POST",
         "https://sentry.io/api/0/organizations/sentry/issues/123/summarize/",
