@@ -4,7 +4,10 @@ import {
   createAgentInvocationForMessage,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/create";
-import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
+import {
+  AgentInvocationLimitError,
+  AgentStoppedError,
+} from "@/chat/agent-invocations/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
 import { getAgentInvocationIdForMessage } from "@/chat/agent-invocations/ids";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
@@ -18,11 +21,7 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import {
-  getConversationStoppedAtMs,
-  markConversationsStopped,
-} from "@/chat/conversations/session-stop";
+import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -685,7 +684,7 @@ describe("child agents that no Agent invocation names", () => {
     }
   });
 
-  it("stops a child agent spawned after its parent's stop", async () => {
+  it("refuses a spawn from a child agent whose run sees its stop late", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -697,16 +696,13 @@ describe("child agents that no Agent invocation names", () => {
         cancelWatches: false,
         state: harness.state,
       });
-      // The child's run sees its stop late, after it spawned a helper.
+      // The child's run has not seen its stop yet when it spawns a helper.
       vi.setSystemTime(1_800_000_001_000);
-      const grandchildId = await spawnChild(harness, "child-turn:call-1", {
-        parentConversationId: open.childConversationId,
-      });
-      await stopChildAgentsOf(open.childConversationId, harness.state);
-
-      await expect(getConversationStoppedAtMs(grandchildId)).resolves.toBe(
-        1_800_000_000_000,
-      );
+      await expect(
+        spawnChild(harness, "child-turn:call-1", {
+          parentConversationId: open.childConversationId,
+        }),
+      ).rejects.toBeInstanceOf(AgentStoppedError);
     } finally {
       await harness.close();
     }

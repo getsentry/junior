@@ -29,6 +29,14 @@ export class AgentDepthLimitError extends Error {
   }
 }
 
+/** A stopped Conversation cannot start child agents until its stop ends. */
+export class AgentStoppedError extends Error {
+  constructor() {
+    super("This conversation is stopped, so it cannot start child agents");
+    this.name = "AgentStoppedError";
+  }
+}
+
 /** A child agent already has the maximum number of open tasks. */
 export class AgentMessageQueueFullError extends Error {
   constructor(limit: number) {

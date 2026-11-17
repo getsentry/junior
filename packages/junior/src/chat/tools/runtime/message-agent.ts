@@ -17,9 +17,9 @@ const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
 const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Target conversation ID"),
   delivery: z
-    .enum(["started", "queued"])
+    .enum(["started", "queued", "noted"])
     .describe(
-      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work.",
+      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work. noted: this conversation is stopped, so the child agent got the message as a note that it sees when it next runs, and it started no work.",
     ),
 });
 

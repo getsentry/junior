@@ -127,8 +127,7 @@ export function buildParentMessage(args: {
 export type ParentMessageDelivery = "message" | "new_child";
 
 /**
- * Append one parent message to its child's mailbox without a wake. Returns
- * whether the message is new.
+ * Append one parent message to its child's mailbox without a wake.
  *
  * A new child gets its task even when the mailbox already saw its id: a
  * spawn that rolled back after its mailbox write left that id, and the child
@@ -148,7 +147,7 @@ export async function appendParentMessage(
     conversationStore?: ConversationStore | undefined;
     state?: StateAdapter | undefined;
   },
-): Promise<boolean> {
+): Promise<void> {
   const conversationId = message.conversationId;
   const work = await getConversationWorkState({
     conversationId,
@@ -165,7 +164,7 @@ export async function appendParentMessage(
     }
   } else {
     if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
-      return false;
+      return;
     }
     await endStopForParentMessage(message, work?.messages ?? [], options);
   }
@@ -184,9 +183,7 @@ export async function appendParentMessage(
         `Task of new child ${conversationId} was taken before it was appended`,
       );
     }
-    return true;
   }
-  return status === "appended";
 }
 
 async function endStopForParentMessage(

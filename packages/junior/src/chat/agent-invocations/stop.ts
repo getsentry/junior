@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
@@ -73,7 +73,10 @@ export async function stopChildAgent(args: {
  * The worker can see its stop late. The stop already reached every child
  * agent that existed then, so this stops only child agents that this
  * Conversation spawned or gave new work to after its stop, even when they
- * already finished, and everything below them. When the stop already ended,
+ * already finished, and everything below them. A child with no agent
+ * invocation stops when it is not stopped yet: a stopped parent gives it no
+ * work, so only a spawn that raced the stop, or a person's resume of a
+ * Thread, leaves it running. When the stop already ended,
  * because a person or the parent gave the Conversation new input, this does
  * nothing.
  *
@@ -323,8 +326,9 @@ async function lockAgentConversationTree(
 }
 
 /**
- * Keep a Conversation, the child agents that it spawned or gave new work to
- * after `taskedAfterMs`, and every Conversation below those child agents.
+ * Keep a Conversation, the child agents that got an agent invocation after
+ * `taskedAfterMs`, the child agents with no agent invocation that are not
+ * stopped, and every Conversation below those child agents.
  */
 async function withChildAgentsTaskedAfter(
   conversationId: string,
@@ -349,8 +353,8 @@ async function withChildAgentsTaskedAfter(
         ),
       ),
     );
-  // A child agent that no agent invocation names was tasked when it was
-  // created, and when its `lastTaskedAt` says.
+  // A child agent that no agent invocation names gets no work from a
+  // stopped parent, so each one that is not stopped yet stops.
   const withoutInvocations = await getSqlExecutor()
     .db()
     .select({
@@ -364,8 +368,7 @@ async function withChildAgentsTaskedAfter(
         isNotNull(juniorConversations.agentConfig),
         or(
           ne(juniorConversations.parentConversationId, conversationId),
-          gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
-          gt(juniorConversations.lastTaskedAt, new Date(taskedAfterMs)),
+          isNull(juniorConversations.stoppedAt),
         ),
       ),
     );
@@ -445,7 +448,8 @@ export type StoppedAgentTree = {
  * `includeRoot: false`, the agent invocations of the Conversation itself stay
  * as they are, and only `pending` results sent to it become `skipped`. With
  * `taskedAfterMs`, only the direct child agents that got an agent invocation
- * after that time, and the Conversations below them, stop.
+ * after that time or have no agent invocation and are not stopped, and the
+ * Conversations below them, stop.
  */
 export async function stopAgentInvocationTree(
   conversationId: string,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { eq } from "drizzle-orm";
+import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -25,6 +26,7 @@ import {
   AgentInvocationLimitError,
   AgentMessageQueueFullError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "./errors";
 import {
   getAgentInvocationId,
@@ -492,19 +494,18 @@ type ChildAgentWorkOptions = {
 /**
  * Give one task or message to a child agent with no Agent invocation. Under
  * the parent lock, `prepare` runs the checks of its caller. Unless it finds
- * a spawn replay, the parent's `subagent_started` marker and the parent
- * message are written, and the child's `lastTaskedAt` when the message is
- * new. The message reaches the mailbox under the lock, so the next spawn
- * counts the child as active. The wake runs after the lock commits, so the
- * child's worker reads the new Conversation; a lost wake is recovered like
- * any other stranded mailbox input.
+ * a spawn replay or leaves a note, the parent's `subagent_started` marker
+ * and the parent message are written. The message reaches the mailbox under
+ * the lock, so the next spawn counts the child as active. The wake runs
+ * after the lock commits, so the child's worker reads the new Conversation;
+ * a lost wake is recovered like any other stranded mailbox input.
  */
 async function giveChildAgentWork<T>(
   work: Parameters<typeof buildParentMessage>[0] &
     Pick<SubagentStart, "agentName" | "reasoningLevel" | "title">,
   options: ChildAgentWorkOptions,
   prepare: (open: AgentInvocation[]) => Promise<{
-    delivery: ParentMessageDelivery | "replay";
+    delivery: ParentMessageDelivery | "noted" | "replay";
     value: T;
   }>,
 ): Promise<T> {
@@ -515,7 +516,7 @@ async function giveChildAgentWork<T>(
       const prepared = await prepare(
         await listOpenAgentInvocations(work.parentConversationId),
       );
-      if (prepared.delivery === "replay") {
+      if (prepared.delivery === "noted" || prepared.delivery === "replay") {
         return prepared;
       }
       // The marker pairs by the parent message id, so the child's end finds
@@ -531,21 +532,13 @@ async function giveChildAgentWork<T>(
         reasoningLevel: work.reasoningLevel,
         title: work.title,
       });
-      if (await appendParentMessage(message, prepared.delivery, options)) {
-        await getSqlExecutor()
-          .db()
-          .update(juniorConversations)
-          .set({
-            detailVersion: nextDetailVersion,
-            lastTaskedAt: new Date(work.nowMs),
-          })
-          .where(
-            eq(juniorConversations.conversationId, work.childConversationId),
-          );
-      }
+      await appendParentMessage(message, prepared.delivery, options);
       return prepared;
     },
   );
+  if (prepared.delivery === "noted") {
+    return prepared.value;
+  }
   await ensureConversationWake({
     conversationId: work.childConversationId,
     conversationStore: options.conversationStore,
@@ -642,6 +635,14 @@ export async function spawnChildAgent(
         await assertSameSpawn(input, child);
         return { delivery: "replay", value: undefined };
       }
+      // A new child has no Turn to read a note, so a stopped parent cannot
+      // start one.
+      if (
+        (await getConversationStoppedAtMs(input.parentConversationId)) !==
+        undefined
+      ) {
+        throw new AgentStoppedError();
+      }
       await createChildAgentConversation(
         input,
         childConversationId,
@@ -665,8 +666,10 @@ export async function spawnChildAgent(
 /**
  * Give one `messageAgent` message to a child agent that no Agent invocation
  * names, as a parent message. `findChildAgentConversationId` must have found
- * the child under this parent. `queued` is true when the child already has
- * open work, so it reads the message after that work.
+ * the child under this parent. `queued` means the child already has open
+ * work, so it reads the message after that work. While the parent is
+ * stopped, the message becomes a Conversation note on the child instead: it
+ * starts no work and ends no stop, and the child's next Turn shows it.
  */
 export async function messageChildAgent(
   input: {
@@ -680,9 +683,9 @@ export async function messageChildAgent(
   },
   options: ChildAgentWorkOptions,
   nowMs = Date.now(),
-): Promise<{ queued: boolean }> {
+): Promise<{ delivery: "noted" | "queued" | "started" }> {
   const sender = await readChildConversationSender(input.childConversationId);
-  const queued = await giveChildAgentWork(
+  const delivery = await giveChildAgentWork(
     {
       ...input,
       agentName: sender?.agentName,
@@ -693,20 +696,33 @@ export async function messageChildAgent(
     },
     options,
     async (open) => {
+      if (
+        (await getConversationStoppedAtMs(input.parentConversationId)) !==
+        undefined
+      ) {
+        await addConversationNote({
+          conversationId: input.childConversationId,
+          createdAtMs: nowMs,
+          key: `stopped-parent-message:${input.parentConversationId}:${input.idempotencyKey}`,
+          text: `Your parent agent sent this message while it was stopped, so it started no work: ${input.input}`,
+        });
+        return { delivery: "noted", value: "noted" as const };
+      }
       await assertCanGiveChildWork(input.parentConversationId, open);
       await assertChildAgentCapacity(open, {
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
+      const queued = (
+        await listOpenChildAgentsWithoutAgentInvocations(
+          input.parentConversationId,
+        )
+      ).includes(input.childConversationId);
       return {
         delivery: "message",
-        value: (
-          await listOpenChildAgentsWithoutAgentInvocations(
-            input.parentConversationId,
-          )
-        ).includes(input.childConversationId),
+        value: queued ? ("queued" as const) : ("started" as const),
       };
     },
   );
-  return { queued };
+  return { delivery };
 }

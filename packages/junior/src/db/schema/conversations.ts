@@ -89,10 +89,6 @@ export const juniorConversations = pgTable(
     // without rows read only these. Agent invocation rows also hold the
     // settings until #3060 step 7 drops the rows; readers read the row first.
     agentConfig: jsonb("agent_config_json").$type<AgentConfig>(),
-    // When the parent last gave this child agent a task or message, for a
-    // child without an Agent invocation row. A late stop of the parent stops
-    // the children that it tasked after the stop.
-    lastTaskedAt: timestamptz("last_tasked_at"),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),

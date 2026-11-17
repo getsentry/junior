@@ -1,1 +1,0 @@
-ALTER TABLE "junior_conversations" ADD COLUMN "last_tasked_at" timestamp with time zone;

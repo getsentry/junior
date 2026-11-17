@@ -106,14 +106,11 @@ export function bindMessageAgent(
       isExperimentalFeatureEnabled("child-agents-without-agent-invocations") &&
       !(await getLatestAgentInvocationForConversation(childConversationId))
     ) {
-      const { queued } = await messageChildAgent(message, {
+      const { delivery } = await messageChildAgent(message, {
         ...options,
         queue,
       });
-      return {
-        conversationId: childConversationId,
-        delivery: queued ? "queued" : "started",
-      };
+      return { conversationId: childConversationId, delivery };
     }
     const { invocation, queued } = await createAgentInvocationForMessage({
       ...message,

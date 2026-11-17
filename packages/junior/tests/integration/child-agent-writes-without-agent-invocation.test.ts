@@ -6,6 +6,7 @@ import { MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT } from "@/chat/agent-invocation
 import {
   AgentInvocationLimitError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import {
   getAgentInvocationId,
@@ -21,6 +22,7 @@ import {
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import type { AgentRun, SpawnAgentInput } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
@@ -486,49 +488,90 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("stops a child again when its parent messaged it after the parent's own stop", async () => {
+  it("leaves a stopped parent's message as a note that the child's next Turn shows", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
       const childId = await spawn(harness, "call-1");
       // A person stops the parent and its tree. The parent's run sees its
-      // stop late, after it messaged the child.
+      // stop late, and messages the child first.
       await markConversationsStopped([slackParentConversationId, childId], {
         cancelWatches: false,
         state: harness.state,
       });
       vi.setSystemTime(1_800_000_001_000);
-      await message(harness, childId, "call-2");
-      await stopChildAgentsOf(slackParentConversationId, harness.state);
-
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(message(harness, childId, "call-2")).resolves.toEqual({
+          conversationId: childId,
+          delivery: "noted",
+        });
+      }
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         1_800_000_000_000,
       );
-      await harness.drain(childId);
-      expect(harness.runs).toEqual([]);
+      await expect(mailboxTexts(harness, childId)).resolves.toEqual([
+        "Check the deploy.",
+      ]);
+
+      // A person writes to the parent, which ends the stop of the tree. The
+      // parent's next message starts the child, and its Turn shows the note.
+      vi.setSystemTime(1_800_000_002_000);
+      await resumeStoppedConversationTree(
+        slackParentConversationId,
+        Date.now(),
+      );
+      await message(harness, childId, "call-3");
+      harness.onPersonRun(finishRun);
+      await harness.processUntilRun(childId);
+      expect(harness.runs).toHaveLength(1);
+      await expect(
+        loadTurnConversationNotes({
+          conversationId: childId,
+          turnId: harness.runs[0]!.turnId,
+        }),
+      ).resolves.toEqual([
+        "Your parent agent sent this message while it was stopped, so it started no work: Check it again.",
+      ]);
     } finally {
       await harness.close();
     }
   });
 
-  it("keeps a child running that a person resumed before the parent's late stop", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+  it("refuses a spawn from a stopped parent", async () => {
     const harness = await createHarness();
     try {
-      const childId = await spawn(harness, "call-1", { kind: "thread" });
-      await markConversationsStopped([slackParentConversationId, childId], {
+      await markConversationsStopped([slackParentConversationId], {
         cancelWatches: false,
         state: harness.state,
       });
-      // A person writes in the Thread, which ends its stop. The parent was
-      // not the one that gave it work after its stop.
+
+      await expect(spawn(harness, "call-1")).rejects.toBeInstanceOf(
+        AgentStoppedError,
+      );
+      expect(harness.queue.sentRecords()).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("stops every child of a parent whose run sees its stop late", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      // The spawn raced the stop, so the stop of the tree missed the child.
+      const childId = await spawn(harness, "call-1");
       vi.setSystemTime(1_800_000_001_000);
-      await resumeStoppedConversationTree(childId, Date.now());
+      await markConversationsStopped([slackParentConversationId], {
+        cancelWatches: false,
+        state: harness.state,
+      });
       await stopChildAgentsOf(slackParentConversationId, harness.state);
 
-      await expect(
-        getConversationStoppedAtMs(childId),
-      ).resolves.toBeUndefined();
+      await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
+        1_800_000_001_000,
+      );
+      await harness.drain(childId);
+      expect(harness.runs).toEqual([]);
     } finally {
       await harness.close();
     }

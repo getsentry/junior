@@ -116,9 +116,11 @@ export type MessageAgentResult = {
   conversationId: string;
   /**
    * `started`: the target child agent starts work on the message now.
-   * `queued`: the target reads it after its current work.
+   * `queued`: the target reads it after its current work. `noted`: the
+   * sender is stopped, so the child got it as a Conversation note and
+   * started no work.
    */
-  delivery: "queued" | "started";
+  delivery: "noted" | "queued" | "started";
 };
 
 /**
