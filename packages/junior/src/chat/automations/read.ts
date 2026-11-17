@@ -781,22 +781,20 @@ export async function readViewerAutomationExecutions(
 ): Promise<AutomationExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [automation, executions, executionDays, executionHours] =
-    await Promise.all([
-      automationSummaryForCandidate(candidate),
-      readAutomationExecutions({
-        automationId: id,
-        limit: TASK_EXECUTION_LIST_LIMIT + 1,
-      }),
-      readAutomationExecutionStatusDays({ automationId: id }),
-      readAutomationExecutionStatusHours({ automationId: id }),
-    ]);
+  // The summary has its own request, so this one skips its totals.
+  const [executions, executionDays, executionHours] = await Promise.all([
+    readAutomationExecutions({
+      automationId: id,
+      limit: TASK_EXECUTION_LIST_LIMIT + 1,
+    }),
+    readAutomationExecutionStatusDays({ automationId: id }),
+    readAutomationExecutionStatusHours({ automationId: id }),
+  ]);
   return {
     executionDays,
     executionHours,
     executionSixHours: automationExecutionStatusSixHours(executionHours),
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
-    automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
   };
 }

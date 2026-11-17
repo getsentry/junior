@@ -657,11 +657,6 @@ describe("Automations API", () => {
             totalTokens: 400,
           },
         ],
-        automation: expect.objectContaining({
-          id: "sched_tasks_api",
-          kind: "scheduled",
-          totalRuns: 2,
-        }),
         truncated: false,
       });
       expect(executionList.executionDays).toHaveLength(90);

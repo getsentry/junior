@@ -271,7 +271,6 @@ export const automationExecutionListSchema = z
     executionHours: z.array(automationExecutionStatusDaySchema).optional(),
     executionSixHours: z.array(automationExecutionStatusDaySchema).optional(),
     executions: z.array(automationExecutionSchema),
-    automation: automationSummarySchema,
     truncated: z.boolean(),
   })
   .strict();
