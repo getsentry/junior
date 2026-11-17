@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import * as z from "zod";
 
 const mocks = vi.hoisted(() => ({
@@ -18,7 +26,6 @@ const mocks = vi.hoisted(() => ({
   })),
   embedMany: vi.fn(),
   generateText: vi.fn(),
-  getActiveSpan: vi.fn(() => ({ origin: "auto.ai.vercelai" })),
   getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
     { id: "openai/gpt-4o-mini" },
   ]),
@@ -79,15 +86,6 @@ vi.mock("ai", () => ({
   transcribe: mocks.transcribe,
 }));
 
-// The SDK's `vercelAIIntegration` span that `ai` callbacks run inside.
-vi.mock("@/chat/sentry", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/sentry")>()),
-  getActiveSpan: mocks.getActiveSpan,
-  spanToJSON: (span: { origin?: string }) => ({
-    attributes: { "sentry.origin": span.origin },
-  }),
-}));
-
 /** Resolve an `ai` call with `result` after running its span callbacks. */
 function resolveWithCallbacks(result: unknown, endEvent: unknown = result) {
   return async (options: {
@@ -136,6 +134,13 @@ describe("resolveGatewayModel", () => {
 });
 
 describe("completeText", () => {
+  beforeEach(() => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
+    });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
@@ -204,10 +209,6 @@ describe("completeText", () => {
   });
 
   it("uses AI SDK structured output for object completions", async () => {
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "oidc",
-      token: "oidc-token",
-    });
     mocks.generateText.mockResolvedValue({
       output: { ok: true },
       finishReason: "stop",
@@ -441,10 +442,6 @@ describe("completeText", () => {
   });
 
   it("adds cost and dimensions to the SDK embedding span", async () => {
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "oidc",
-      token: "oidc-token",
-    });
     const embeddings = [
       [0.1, 0.2, 0.3],
       [0.4, 0.5, 0.6],
@@ -504,10 +501,6 @@ describe("completeText", () => {
   });
 
   it("leaves embedding cost unknown for models without a verified rate", async () => {
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "oidc",
-      token: "oidc-token",
-    });
     mocks.embedMany.mockImplementation(
       resolveWithCallbacks(
         { embeddings: [[0.1, 0.2, 0.3]], usage: { tokens: 8 } },
@@ -545,10 +538,6 @@ describe("completeText", () => {
 
   it("returns rerank scores in input order with the gateway cost", async () => {
     // The SDK sorts by score and AI Gateway reports cost as a decimal string.
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "oidc",
-      token: "oidc-token",
-    });
     mocks.rerank.mockImplementation(
       resolveWithCallbacks({
         providerMetadata: { gateway: { cost: "0.0000074" } },

@@ -56,18 +56,20 @@ registerApiProvider({
 });
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   structuredOutputErrorCause,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
+  getLogContextAttributesForSpan,
   logException,
   logWarn,
+  setSpanAttributes,
   withLogContext,
   type LogContext,
 } from "@/chat/logging";
-import { aiSdkSpanCallbacks } from "@/chat/pi/ai-sdk-span";
 import {
   createProviderError,
   isProviderRetryError,
@@ -251,17 +253,40 @@ function embeddingCostUsd(
 }
 
 function inputCostAttributes(costUsd: number | undefined) {
-  return costUsd === undefined
-    ? undefined
-    : extractGenAiUsageAttributes({
-        cost: { input: costUsd, total: costUsd },
-      });
+  return extractGenAiUsageAttributes({
+    cost: { input: costUsd, total: costUsd },
+  });
 }
 
-function totalCostAttributes(costUsd: number | undefined) {
-  return costUsd === undefined
-    ? undefined
-    : extractGenAiUsageAttributes({ cost: { total: costUsd } });
+function gatewayCostAttributes(event: { providerMetadata: unknown }) {
+  return extractGenAiUsageAttributes({
+    cost: { total: gatewayCostUsd(event.providerMetadata) },
+  });
+}
+
+/**
+ * `ai` runs `onStart` and `onEnd` inside the span that the SDK's
+ * `vercelAIIntegration` starts for the call. Spans are sent when they end, so
+ * Junior attributes must be set here, not after the call returns.
+ */
+function aiSdkSpanCallbacks<TEndEvent>(
+  attributes: Record<string, unknown>,
+  endAttributes?: (event: TEndEvent) => Record<string, unknown>,
+) {
+  return {
+    onStart: () =>
+      setSpanAttributes({
+        ...getLogContextAttributesForSpan("gen_ai.chat"),
+        "app.conversation.privacy":
+          getCurrentConversationPrivacy() ?? "private",
+        ...attributes,
+      }),
+    onEnd: (event: TEndEvent) => {
+      if (endAttributes) {
+        setSpanAttributes(endAttributes(event));
+      }
+    },
+  };
 }
 
 function extractText(message: {
@@ -495,18 +520,16 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
             ? { telemetry: { functionId: params.promptName } }
             : undefined),
           ...aiSdkSpanCallbacks({
-            attributes: {
-              ...(params.promptName
-                ? { "gen_ai.prompt.name": params.promptName }
-                : undefined),
-              "gen_ai.provider.auth_mode": credential.mode,
-              ...(params.thinkingLevel
-                ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-                : undefined),
-              ...(maxOutputTokens !== undefined
-                ? { "gen_ai.request.max_tokens": maxOutputTokens }
-                : undefined),
-            },
+            ...(params.promptName
+              ? { "gen_ai.prompt.name": params.promptName }
+              : undefined),
+            "gen_ai.provider.auth_mode": credential.mode,
+            ...(params.thinkingLevel
+              ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
+              : undefined),
+            ...(maxOutputTokens !== undefined
+              ? { "gen_ai.request.max_tokens": maxOutputTokens }
+              : undefined),
           }),
         }),
     );
@@ -563,18 +586,18 @@ export async function completeDecision<
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
-          ...aiSdkSpanCallbacks<Experimental_DecideEndEvent>({
-            attributes: {
+          ...aiSdkSpanCallbacks(
+            {
               ...(params.promptName
                 ? { "gen_ai.prompt.name": params.promptName }
                 : undefined),
               "gen_ai.provider.auth_mode": credential.mode,
             },
-            endAttributes: (event) =>
+            (event: Experimental_DecideEndEvent) =>
               inputCostAttributes(
                 decisionCostUsd(params.modelId, event.usage.inputTokens),
               ),
-          }),
+          ),
         }),
     );
     const costUsd = decisionCostUsd(params.modelId, result.usage.inputTokens);
@@ -638,9 +661,9 @@ export async function embedTexts(params: {
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
-          ...aiSdkSpanCallbacks<EmbedEndEvent>({
-            attributes: { "gen_ai.provider.auth_mode": credential.mode },
-            endAttributes: (event) => {
+          ...aiSdkSpanCallbacks(
+            { "gen_ai.provider.auth_mode": credential.mode },
+            (event: EmbedEndEvent) => {
               const first = event.embedding[0];
               return {
                 ...(Array.isArray(first)
@@ -651,7 +674,7 @@ export async function embedTexts(params: {
                 ),
               };
             },
-          }),
+          ),
         }),
     );
     const dimensions = result.embeddings[0]?.length;
@@ -725,14 +748,13 @@ export async function rerankTexts(params: {
           model: provider.rerankingModel(params.modelId),
           query,
           documents: params.documents,
-          ...aiSdkSpanCallbacks<{ providerMetadata: unknown }>({
-            attributes: {
+          ...aiSdkSpanCallbacks(
+            {
               "gen_ai.provider.auth_mode": credential.mode,
               "app.rerank.document.count": params.documents.length,
             },
-            endAttributes: (event) =>
-              totalCostAttributes(gatewayCostUsd(event.providerMetadata)),
-          }),
+            gatewayCostAttributes,
+          ),
         }),
     );
     // The SDK sorts by score. Plugins get scores in input order.
@@ -800,16 +822,15 @@ export async function searchWeb(params: {
     ...(params.promptName
       ? { telemetry: { functionId: params.promptName } }
       : undefined),
-    ...aiSdkSpanCallbacks<{ providerMetadata: unknown }>({
-      attributes: {
+    ...aiSdkSpanCallbacks(
+      {
         ...(params.promptName
           ? { "gen_ai.prompt.name": params.promptName }
           : undefined),
         "gen_ai.provider.auth_mode": credential.mode,
       },
-      endAttributes: (event) =>
-        totalCostAttributes(gatewayCostUsd(event.providerMetadata)),
-    }),
+      gatewayCostAttributes,
+    ),
   });
   const costUsd = gatewayCostUsd(response.providerMetadata);
   return {

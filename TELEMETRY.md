@@ -88,7 +88,7 @@ attributes. Nested logs and spans inherit them.
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
-| AI SDK call failed or costly         | spans `gen_ai.invoke_agent`, `gen_ai.embeddings`, `gen_ai.rerank`, `gen_ai.decide`, `app.cost.*`     | `chat/pi/ai-sdk-span.ts`                                        |
+| AI SDK call failed or costly         | spans `gen_ai.invoke_agent`, `gen_ai.embeddings`, `gen_ai.rerank`, `gen_ai.decide`, `app.cost.*`     | `chat/pi/client.ts`                                             |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
 | Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
@@ -121,10 +121,10 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
-- The SDK's `vercelAIIntegration` records the AI SDK calls in `chat/pi/client.ts`
-  (`sentry.origin: auto.ai.vercelai`). Structured output and web search get a
-  `gen_ai.invoke_agent` span named after `gen_ai.prompt.name`, with one
-  `gen_ai.generate_content` child for each model request.
+- `vercelAIIntegration` records structured output and web search as a
+  `gen_ai.invoke_agent` span named after the prompt, with a
+  `gen_ai.generate_content` child for each model request. `sentry.origin:
+  auto.ai.vercelai` tells them from Junior agent spans.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
