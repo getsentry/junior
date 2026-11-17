@@ -457,10 +457,9 @@ test("scrolls with the outline instead of the scrollbar", async ({
 
   // A press released off the list ends there, so a later hover does not
   // move the transcript.
-  const box = (await target.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await target.hover();
   await page.mouse.down();
-  await page.mouse.move(box.x + 300, box.y + box.height / 2, { steps: 5 });
+  await row(transcript, startSeq - 100).hover();
   await page.mouse.up();
   await outline
     .getByRole("button", { name: `Transcript message ${startSeq - 60} with` })
