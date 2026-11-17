@@ -1,15 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { performance } from "node:perf_hooks";
 import {
-  createAssistantMessageEventStream,
   getInitialSystemMessage,
   getSystemMessageText,
-  type AssistantMessageEvent,
-  type AssistantMessageEventStream,
 } from "@earendil-works/pi-ai";
 import {
   streamSimple,
-  type Api,
   type AssistantMessage,
   type Message,
   type SimpleStreamOptions,
@@ -33,7 +29,7 @@ type TraceAttributeValue = string | number | boolean | string[];
 type TraceAttributes = Record<string, TraceAttributeValue>;
 
 /** Junior attributes for the `gen_ai.chat` spans of one model request. */
-export interface ChatRequestTelemetry {
+interface ChatRequestTelemetry {
   /** Attributes known before the request, such as `gen_ai.prompt.name`. */
   attributes?: TraceAttributes;
   /** Attributes from the final message. */
@@ -134,48 +130,6 @@ function buildEndAttributes(message: AssistantMessage): TraceAttributes {
   return attributes;
 }
 
-// Events that do not carry model content. Pi pushes `start` when the HTTP
-// response resolves. Content block events (`*_start`, `*_delta`, `*_end`) all
-// count as content: a block start arrives when the model starts that block,
-// and a tool call start already carries the tool name.
-const NON_CONTENT_EVENT_TYPES = new Set(["start", "done", "error"]);
-
-// Records when the first event and the first content event arrive. A terminal
-// `error` event is not a response chunk, so a call that fails or aborts before
-// any event records no timing.
-function createResponseTiming(requestStartedAtMs: number): {
-  observe: (event: AssistantMessageEvent) => void;
-  attributes: () => TraceAttributes;
-} {
-  let firstByteAtMs: number | undefined;
-  let firstToken: { type: string; receivedAtMs: number } | undefined;
-  return {
-    observe: (event) => {
-      if (firstByteAtMs === undefined && event.type !== "error") {
-        firstByteAtMs = Date.now();
-      }
-      if (!firstToken && !NON_CONTENT_EVENT_TYPES.has(event.type)) {
-        firstToken = { type: event.type, receivedAtMs: Date.now() };
-      }
-    },
-    attributes: () => {
-      if (firstByteAtMs === undefined) {
-        return {};
-      }
-      return {
-        "app.ai.time_to_first_byte_ms": firstByteAtMs - requestStartedAtMs,
-        ...(firstToken
-          ? {
-              "gen_ai.response.time_to_first_chunk":
-                (firstToken.receivedAtMs - requestStartedAtMs) / 1000,
-              "app.ai.first_token_type": firstToken.type,
-            }
-          : undefined),
-      };
-    },
-  };
-}
-
 // Wraps `onResponse`, which Pi calls when the response headers arrive. It
 // records the Vercel edge request id (its POP chain) and the event loop
 // utilization since the request started. High utilization means a busy event
@@ -226,54 +180,6 @@ function traceRequestPayload(
   };
 }
 
-// A pi-ai event stream has one consumer. This relay is the consumer of the
-// provider stream: it shows each event to `onEvent`, and calls `onEnd` with
-// the final message before the relayed stream settles. The SDK ends the span
-// when the relayed stream settles, so `onEnd` attributes reach the span.
-function relayStream(
-  source: AssistantMessageEventStream,
-  onEvent: (event: AssistantMessageEvent) => void,
-  onEnd: (message: AssistantMessage) => void,
-): AssistantMessageEventStream {
-  const relayed = createAssistantMessageEventStream();
-  let ended = false;
-  const end = (message: AssistantMessage) => {
-    if (ended) return;
-    ended = true;
-    try {
-      onEnd(message);
-    } catch {
-      // Diagnostic only.
-    }
-  };
-  const finished = (async () => {
-    try {
-      for await (const event of source) {
-        onEvent(event);
-        if (event.type === "done") end(event.message);
-        if (event.type === "error") end(event.error);
-        relayed.push(event);
-      }
-    } finally {
-      relayed.end();
-    }
-  })();
-  // A provider can end its stream with `end(message)` and no terminal event.
-  // Pass that message on only after every event is relayed, because the
-  // relayed stream drops events pushed after it ends. pi-ai's `result()` does
-  // not reject.
-  void finished
-    .then(() => source.result())
-    .then(
-      (message) => {
-        end(message);
-        relayed.end(message);
-      },
-      () => {},
-    );
-  return relayed;
-}
-
 /**
  * Adds Junior attributes to the `gen_ai.chat` span that the SDK's
  * `piAiIntegration` starts for each request. Register the result as the
@@ -281,9 +187,9 @@ function relayStream(
  * for example when the build has no Sentry instrumentation, it calls `base`
  * unchanged.
  */
-export function withChatSpanAttributes<TApi extends Api>(
-  base: StreamFunction<TApi, SimpleStreamOptions>,
-): StreamFunction<TApi, SimpleStreamOptions> {
+export function withChatSpanAttributes(
+  base: StreamFunction<"anthropic-messages", SimpleStreamOptions>,
+): StreamFunction<"anthropic-messages", SimpleStreamOptions> {
   return (model, context, options) => {
     const span = activePiAiChatSpan();
     if (!span) {
@@ -294,19 +200,19 @@ export function withChatSpanAttributes<TApi extends Api>(
       ...buildStartAttributes(context.messages),
       ...telemetry?.attributes,
     });
-    const requestStartedAtMs = Date.now();
-    const responseTiming = createResponseTiming(requestStartedAtMs);
-    const source = base(
+    const stream = base(
       model,
       context,
       traceRequestPayload(span, traceResponseHeaders(span, options)),
     );
-    return relayStream(source, responseTiming.observe, (message) => {
+    // The SDK ends the span in a `result()` callback that it adds after this
+    // function returns, so this callback runs first.
+    void stream.result().then((message) => {
       span.setAttributes({
         ...buildEndAttributes(message),
-        ...responseTiming.attributes(),
         ...telemetry?.endAttributes?.(message),
       });
     });
+    return stream;
   };
 }

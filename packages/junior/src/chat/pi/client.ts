@@ -45,8 +45,6 @@ import {
 // registration relies on opaque dynamic import() calls that break under
 // Nitro's rolldown bundler (the lazy import paths resolve relative to the
 // bundled chunk, not the original module).
-// Pi calls `streamSimple` inside the `gen_ai.chat` span of the SDK's
-// `piAiIntegration`, which adds Junior attributes to that span.
 registerApiProvider({
   api: "anthropic-messages",
   stream: withEnabledGatewayProviders(streamAnthropic),
@@ -61,8 +59,8 @@ import {
   structuredOutputErrorCause,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
-import { extractGenAiUsageAttributes } from "@/chat/logging";
 import {
+  extractGenAiUsageAttributes,
   logException,
   logWarn,
   withLogContext,

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
-  type AssistantMessageEvent,
   type Message,
   type Model,
   type SimpleStreamOptions,
@@ -74,16 +73,10 @@ function fakeMessage(): AssistantMessage {
   };
 }
 
-// Lets the relay read pushed events before the test continues.
-function flushEvents(): Promise<void> {
-  return new Promise((r) => setImmediate(r));
-}
-
 type Provider = StreamFunction<"anthropic-messages", SimpleStreamOptions>;
 
 describe("withChatSpanAttributes", () => {
   afterEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
     sentry.activeSpan = undefined;
     sentry.origin = "auto.ai.pi_ai";
@@ -144,53 +137,32 @@ describe("withChatSpanAttributes", () => {
     });
   });
 
-  it("sets the end attributes before the returned stream settles", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(10_000);
+  it("sets the end attributes before a later result() callback runs", async () => {
     const span = activeChatSpan();
     const stream = createAssistantMessageEventStream();
     const returned = withChatRequestTelemetry(
       { endAttributes: () => ({ "app.compaction.next_input.size": 7 }) },
       () =>
-        withChatSpanAttributes<"anthropic-messages">(() => stream)(
+        withChatSpanAttributes(() => stream)(
           model,
           transcript([{ role: "user", content: "hi", timestamp: 0 }]),
           undefined,
         ),
     );
+    // Like the SDK, which ends the span in a `result()` callback that it adds
+    // after the provider returns.
+    const attributesAtEnd = returned.result().then(() => ({
+      ...span.attributes,
+    }));
 
     const finalMessage = {
       ...fakeMessage(),
       usage: { ...fakeMessage().usage, cacheRead: 300, cacheWrite1h: 3 },
     };
-    const events: AssistantMessageEvent[] = [
-      { type: "start", partial: finalMessage },
-      { type: "text_start", contentIndex: 0, partial: finalMessage },
-      { type: "done", reason: "stop", message: finalMessage },
-    ];
-    vi.setSystemTime(10_250);
-    stream.push(events[0]!);
-    await flushEvents();
-    vi.setSystemTime(10_900);
-    for (const event of events.slice(1)) {
-      stream.push(event);
-    }
+    stream.push({ type: "done", reason: "stop", message: finalMessage });
 
-    // The SDK ends the span when `result()` settles. The attributes must
-    // already be there.
-    const attributesAtSettle = await returned
-      .result()
-      .then(() => ({ ...span.attributes }));
-    const received: AssistantMessageEvent[] = [];
-    for await (const event of returned) {
-      received.push(event);
-    }
-
-    expect(received).toEqual(events);
-    expect(attributesAtSettle).toMatchObject({
-      "app.ai.time_to_first_byte_ms": 250,
-      "gen_ai.response.time_to_first_chunk": 0.9,
-      "app.ai.first_token_type": "text_start",
+    expect(returned).toBe(stream);
+    expect(await attributesAtEnd).toMatchObject({
       "app.ai.usage.cache_write_1h": 3,
       "gen_ai.usage.cache_hit_ratio": 0.75,
       "app.compaction.next_input.size": 7,
@@ -198,14 +170,10 @@ describe("withChatSpanAttributes", () => {
     });
   });
 
-  it("records the provider error before the returned stream settles", async () => {
+  it("records the provider error", async () => {
     const span = activeChatSpan();
     const stream = createAssistantMessageEventStream();
-    const returned = withChatSpanAttributes<"anthropic-messages">(() => stream)(
-      model,
-      transcript([]),
-      undefined,
-    );
+    withChatSpanAttributes(() => stream)(model, transcript([]), undefined);
 
     const errorMessage = {
       ...fakeMessage(),
@@ -213,27 +181,9 @@ describe("withChatSpanAttributes", () => {
       errorMessage: "upstream exploded",
     };
     stream.push({ type: "error", reason: "error", error: errorMessage });
+    await stream.result();
 
-    await expect(returned.result()).resolves.toBe(errorMessage);
     expect(span.attributes["error.type"]).toBeDefined();
-    // An error before any event records no timing.
-    expect(span.attributes["app.ai.time_to_first_byte_ms"]).toBeUndefined();
-  });
-
-  it("passes on a final message that ends the stream without an event", async () => {
-    const span = activeChatSpan();
-    const stream = createAssistantMessageEventStream();
-    const returned = withChatSpanAttributes<"anthropic-messages">(() => stream)(
-      model,
-      transcript([]),
-      undefined,
-    );
-
-    const finalMessage = fakeMessage();
-    stream.end(finalMessage);
-
-    await expect(returned.result()).resolves.toBe(finalMessage);
-    expect(span.attributes["gen_ai.output.message_count"]).toBe(1);
   });
 
   it("hashes the provider request body and leaves it unchanged", async () => {
