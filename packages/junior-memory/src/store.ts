@@ -510,30 +510,35 @@ async function findByIdempotencyKey(args: {
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),
     );
-  for (const alias of aliasRows) {
-    if (!alias.supersededById) {
-      continue;
-    }
-    const rows = await args.db
-      .select()
-      .from(juniorMemoryMemories)
-      .where(
-        and(
-          eq(juniorMemoryMemories.id, alias.supersededById),
-          eq(juniorMemoryMemories.scope, args.scope.scope),
-          eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
-          isNull(juniorMemoryMemories.archivedAtMs),
-          isNull(juniorMemoryMemories.supersededAtMs),
-          isNull(juniorMemoryMemories.supersededById),
-          or(
-            isNull(juniorMemoryMemories.expiresAtMs),
-            gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
-          ),
+  const targetIds = aliasRows.flatMap((alias) =>
+    alias.supersededById ? [alias.supersededById] : [],
+  );
+  if (targetIds.length === 0) {
+    return undefined;
+  }
+  const rows = await args.db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        inArray(juniorMemoryMemories.id, targetIds),
+        eq(juniorMemoryMemories.scope, args.scope.scope),
+        eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+        isNull(juniorMemoryMemories.archivedAtMs),
+        isNull(juniorMemoryMemories.supersededAtMs),
+        isNull(juniorMemoryMemories.supersededById),
+        or(
+          isNull(juniorMemoryMemories.expiresAtMs),
+          gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
         ),
-      )
-      .limit(1);
-    if (rows[0]) {
-      return { memory: parseMemoryRow(rows[0]), outcome: "duplicate" };
+      ),
+    );
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  // The newest alias with a live target wins.
+  for (const id of targetIds) {
+    const row = rowsById.get(id);
+    if (row) {
+      return { memory: parseMemoryRow(row), outcome: "duplicate" };
     }
   }
   return undefined;

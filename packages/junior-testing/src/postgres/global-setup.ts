@@ -19,10 +19,14 @@ async function applyMigrations(
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
-    for (const migration of migrations) {
-      await client.query(
-        await readFile(resolve(migrationsDir, migration), "utf8"),
-      );
+    const statements = await Promise.all(
+      migrations.map((migration) =>
+        readFile(resolve(migrationsDir, migration), "utf8"),
+      ),
+    );
+    for (const statement of statements) {
+      // oxlint-disable-next-line no-await-in-loop -- Migrations apply in order.
+      await client.query(statement);
     }
   } finally {
     await client.end();

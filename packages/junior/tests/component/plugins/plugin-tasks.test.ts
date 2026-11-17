@@ -228,7 +228,11 @@ describe("plugin background tasks", () => {
       (message) => queue.send(message),
     );
     const messages = queue.queuedMessages();
-    expect(messages).toHaveLength(1);
+    // Core event search also stores lexemes after every completed Turn.
+    expect(messages.map((message) => message.plugin)).toEqual([
+      "task-demo",
+      "event-search",
+    ]);
 
     await processPluginTask(messages[0]!);
 
@@ -862,6 +866,7 @@ describe("plugin background tasks", () => {
     expect(attempted.map((message) => message.plugin)).toEqual([
       "task-send-failure-demo",
       "task-send-success-demo",
+      "event-search",
     ]);
   });
 

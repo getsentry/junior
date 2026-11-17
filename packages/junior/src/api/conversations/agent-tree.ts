@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
@@ -8,9 +9,6 @@ import type { ConversationAgentTreeNode } from "../schema/conversation";
 import type { ConversationAccessReader } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
-
-// Child agent labels that one tree read loads at once.
-const CHILD_AGENT_LABEL_CONCURRENCY = 8;
 
 /** Bound the parent chain that one agent tree reads. */
 const MAX_AGENT_TREE_DEPTH = 16;
@@ -59,7 +57,7 @@ export async function readConversationAgentTree(
     readAutomationTitlesByConversationId(root ? [root] : []),
     readFirstHumanMessageTexts(getDb(), root ? [root] : []),
   ]);
-  const limit = pLimit(CHILD_AGENT_LABEL_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   return await Promise.all(
     ids.map((id) =>
       limit(async () => {
