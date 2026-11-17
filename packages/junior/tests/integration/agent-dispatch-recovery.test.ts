@@ -10,6 +10,7 @@ import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import {
   createConversationWorkHarness,
@@ -46,7 +47,7 @@ describe("agent dispatch recovery", () => {
     vi.restoreAllMocks();
   });
 
-  it("projects the diagnostic from a terminal model failure", async () => {
+  it("projects the diagnostic of a failed turn, also without a dispatch outcome", async () => {
     const dispatch = await createDispatch("model-failure-detail");
     const firstRun = await createConversationWorkHarness(
       createModelAgentRunner(
@@ -81,20 +82,38 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
+    // A resume path can fail the turn before it records a dispatch outcome.
+    const unrecorded = await createDispatch("failed-without-outcome");
+    await saveTurnCheckpoint({
+      conversationId: getDispatchConversationId(unrecorded),
+      dispatchId: unrecorded.id,
+      errorMessage: "Paused turn failed before it could run",
+      messages: [],
+      mode: "failed",
+      sliceId: 2,
+      turnId: getDispatchTurnId(unrecorded.id),
+    });
+
     const replay = await createConversationWorkHarness(neverRunAgentRunner());
-    await enqueueAgentDispatch(dispatch, {
-      queue: replay.queue,
-      state: replay.state,
-    });
-    await processConversationQueueMessage(replay.queue.takeMessage(), {
-      queue: replay.queue,
-      run: replay.run,
-      state: replay.state,
-    });
+    for (const replayed of [dispatch, unrecorded]) {
+      await enqueueAgentDispatch(replayed, {
+        queue: replay.queue,
+        state: replay.state,
+      });
+      await processConversationQueueMessage(replay.queue.takeMessage(), {
+        queue: replay.queue,
+        run: replay.run,
+        state: replay.state,
+      });
+    }
 
     expect(replay.queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
+      status: "failed",
+    });
+    await expect(getDispatchRecord(unrecorded.id)).resolves.toMatchObject({
+      errorMessage: "Paused turn failed before it could run",
       status: "failed",
     });
   });

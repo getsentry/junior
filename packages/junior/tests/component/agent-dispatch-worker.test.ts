@@ -110,18 +110,51 @@ describe("agent dispatch worker contract", () => {
     expect(runTurn).not.toHaveBeenCalled();
   });
 
-  it("retries when the runtime returns without a durable outcome", async () => {
-    const dispatch = await createDispatch("missing-outcome");
-    const runTurn = vi.fn(async () => ({}));
+  it("fails the dispatch when the runtime leaves no turn record", async () => {
+    const dispatch = await createDispatch("missing-turn");
+    const runTurn = vi.fn(async () => undefined);
     const worker = createAgentDispatchConversationWorker({
       resumeTurn: vi.fn(),
       runTurn,
     });
     const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).rejects.toThrow(
-      "returned without a durable outcome",
-    );
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      errorMessage: "Dispatch turn record is missing",
+      status: "failed",
+    });
+  });
+
+  it("waits when the runtime leaves its turn running", async () => {
+    const dispatch = await createDispatch("still-running");
+    const runTurn = vi.fn(async () => {
+      await recordTurnSummary({
+        actor: dispatch.actor,
+        conversationId: getDispatchConversationId(dispatch),
+        destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
+        dispatchId: dispatch.id,
+        turnId: getDispatchTurnId(dispatch.id),
+        sliceId: 1,
+        source: dispatch.source,
+        state: "running",
+        surface: "api",
+      });
+      return undefined;
+    });
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn: vi.fn(),
+      runTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "deferred",
+    });
     expect(ack).not.toHaveBeenCalled();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "running",
