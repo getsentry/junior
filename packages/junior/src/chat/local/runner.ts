@@ -569,23 +569,17 @@ async function runLocalAgentTurnInContext(
           conversationId: input.conversationId,
           sessionId: turnId,
         },
-        {
-          send: async (message) => {
-            try {
-              await processPluginTask(message);
-            } catch (error) {
-              logException(
-                error,
-                "local.plugin.session_completion_task.failed",
-                {
-                  conversationId: input.conversationId,
-                  pluginName: message.plugin,
-                  taskName: message.name,
-                  turnId,
-                },
-              );
-            }
-          },
+        async (message) => {
+          try {
+            await processPluginTask(message);
+          } catch (error) {
+            logException(error, "local.plugin.session_completion_task.failed", {
+              conversationId: input.conversationId,
+              pluginName: message.plugin,
+              taskName: message.name,
+              turnId,
+            });
+          }
         },
       );
     } catch (error) {

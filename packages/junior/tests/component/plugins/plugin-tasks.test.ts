@@ -225,7 +225,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const messages = queue.queuedMessages();
     expect(messages).toHaveLength(1);
@@ -339,7 +339,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -452,7 +452,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -579,7 +579,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -649,7 +649,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -753,7 +753,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -801,7 +801,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
 
@@ -850,13 +850,11 @@ describe("plugin background tasks", () => {
     await expect(
       scheduleSessionCompletedPluginTasks(
         { conversationId: "local:test:send-failure", sessionId: "turn-1" },
-        {
-          async send(message) {
-            attempted.push(message);
-            if (message.plugin === "task-send-failure-demo") {
-              throw new Error("enqueue failure marker");
-            }
-          },
+        async (message) => {
+          attempted.push(message);
+          if (message.plugin === "task-send-failure-demo") {
+            throw new Error("enqueue failure marker");
+          }
         },
       ),
     ).rejects.toThrow("enqueue failure marker");
@@ -893,7 +891,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
     setPlugins([]);

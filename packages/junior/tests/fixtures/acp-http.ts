@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import * as acp from "@agentclientprotocol/sdk";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
 import type { StateAdapter } from "chat";
@@ -87,6 +88,7 @@ export function createIndependentConversationWork(
     conversationStore: harness.conversationStore,
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue: harness.queue,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner: harness.agentRunner },
     state,
   });
