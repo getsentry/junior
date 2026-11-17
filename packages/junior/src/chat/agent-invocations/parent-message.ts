@@ -215,6 +215,29 @@ async function endStopForParentMessage(
 }
 
 /**
+ * Drop every parent message that waits in a Conversation's mailbox. A tree
+ * stop calls this before it stops the Conversation's work: no task from
+ * before the stop runs, and an idle Conversation gets no stop request that
+ * could cancel its next Turn after the stop ends.
+ */
+export async function dropWaitingParentMessages(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  const work = await getConversationWorkState({ conversationId, state });
+  const waiting = (work?.messages ?? []).filter(
+    (message) => readParentMessage(message) !== undefined,
+  );
+  if (waiting.length > 0) {
+    await dropPendingMessages({
+      conversationId,
+      inboundMessageIds: waiting.map((message) => message.inboundMessageId),
+      ...(state ? { state } : undefined),
+    });
+  }
+}
+
+/**
  * Read the parent message that one mailbox input is, if it is one. Check its
  * sender with `isFromStoredParent` before it gets any authority.
  */

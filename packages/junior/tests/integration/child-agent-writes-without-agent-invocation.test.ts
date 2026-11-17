@@ -509,6 +509,84 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
+  it("runs a grandchild's new task after a tree stop, and not its task from before the stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      const childRun = { ...parentRun("child-turn"), conversationId: childId };
+      const deps = { queue: harness.queue, state: harness.state };
+      const { childConversationId: grandchildId } = await bindSpawnAgent(
+        childRun,
+        {
+          ...deps,
+          conversationStore: harness.conversationStore,
+          maxAgentDepth: 1,
+        },
+      )!({ task: "Run the old check." }, { toolCallId: "child-call-1" });
+      await expect(
+        createStopAgentTool(slackParentConversationId).execute!(
+          { conversation_id: childId },
+          {},
+        ),
+      ).resolves.toMatchObject({ stopped: true });
+
+      // New work ends the stop of the tree, and the child gives the
+      // grandchild a new task.
+      vi.setSystemTime(1_800_000_001_000);
+      await message(harness, childId, "call-2");
+      await bindMessageAgent(childRun, deps)!(
+        { text: "Run the new check.", to: grandchildId },
+        { toolCallId: "child-call-2" },
+      );
+      harness.onPersonRun(finishRun);
+      await harness.drain(grandchildId);
+
+      expect(harness.runs).toHaveLength(1);
+      expect(harness.runs[0]!.instruction.text).toContain("Run the new check.");
+      expect(harness.runs[0]!.instruction.text).not.toContain(
+        "Run the old check.",
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("runs parent messages from different Actors as separate Turns", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      const otherActor = { ...slackInvocationInput.actor, userId: "U999" };
+      const otherRun: AgentRun = {
+        ...parentRun(),
+        actor: otherActor,
+        credentialContext: { actor: { type: "user", userId: "U999" } },
+      };
+      vi.setSystemTime(1_800_000_001_000);
+      await bindMessageAgent(otherRun, {
+        queue: harness.queue,
+        state: harness.state,
+      })!({ text: "Check it again.", to: childId }, { toolCallId: "call-2" });
+      harness.onPersonRun(finishRun);
+      await harness.drain(childId);
+
+      expect(harness.runs).toMatchObject([
+        {
+          actor: slackInvocationInput.actor,
+          credentialContext: parentRun().credentialContext,
+        },
+        { actor: otherActor, credentialContext: otherRun.credentialContext },
+      ]);
+      expect(harness.runs[0]!.instruction.text).not.toContain(
+        "Check it again.",
+      );
+      expect(harness.runs[1]!.instruction.text).toContain("Check it again.");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("leaves a stopped parent's message as a note that the child's next Turn shows", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

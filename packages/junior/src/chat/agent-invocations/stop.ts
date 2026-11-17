@@ -15,6 +15,7 @@ import {
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { recordChildAgentEnded, recordSubagentEnded } from "./markers";
+import { dropWaitingParentMessages } from "./parent-message";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
@@ -277,17 +278,19 @@ async function finishStoppedTree(
   for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
   }
-  // The stop skips the parent messages that still wait, so their work ends.
+  // The stop cancels the parent messages that still wait, so their work
+  // ends and none of them runs after the stop.
   const limit = pLimit(FAN_OUT_CONCURRENCY);
   await Promise.all(
     conversationIdsToStop.map((conversationId) =>
-      limit(() =>
-        recordChildAgentEnded(conversationId, "aborted", {
+      limit(async () => {
+        await recordChildAgentEnded(conversationId, "aborted", {
           includeWaiting: true,
           nowMs: options.nowMs,
           state: options.state,
-        }),
-      ),
+        });
+        await dropWaitingParentMessages(conversationId, options.state);
+      }),
     ),
   );
   await markConversationsStopped(conversationIdsToStop, options);
