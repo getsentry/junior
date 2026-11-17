@@ -335,18 +335,21 @@ async function readDispatchTurnResult(
       return { outcome: "completed" };
     case "abandoned":
     case "failed":
-      // A failure path can end the turn before it records a dispatch
-      // outcome. The turn cannot run again, so the dispatch failed.
+      // A failure that ends the dispatch records its outcome above. Any
+      // other failure, such as a thrown runtime error, can run again.
       return {
         ...(errorMessage ? { errorMessage } : undefined),
-        outcome: "failed",
+        outcome: "retryable",
       };
   }
 }
 
 async function projectDispatchTurnResult(
   dispatchId: string,
-  result: Exclude<DispatchTurnResult, { outcome: "still_running" }>,
+  result: Exclude<
+    DispatchTurnResult,
+    { outcome: "retryable" | "still_running" }
+  >,
 ): Promise<void> {
   switch (result.outcome) {
     case "awaiting_resume":
@@ -524,10 +527,17 @@ export function createAgentDispatchConversationWorker(
             checkIn: context.checkIn,
           })) ?? (await readDispatchTurnResult(dispatch));
       }
+      // This worker holds the conversation lease, so no other worker runs
+      // the turn. Throw so the retry budget caps another attempt.
       if (result.outcome === "still_running") {
-        // Another worker still owns the turn. Wait for the next wake, which
-        // recovers the turn if that worker is gone.
-        return { status: "deferred" };
+        throw new Error(
+          `Dispatch turn ${dispatch.id} is still running after its attempt`,
+        );
+      }
+      if (result.outcome === "retryable") {
+        throw new Error(
+          result.errorMessage ?? `Dispatch turn ${dispatch.id} failed`,
+        );
       }
       await projectDispatchTurnResult(dispatch.id, result);
       if (!acknowledged) {

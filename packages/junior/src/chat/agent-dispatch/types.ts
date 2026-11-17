@@ -92,7 +92,12 @@ export type DispatchTurnResult =
       outcome: "blocked" | "completed" | "failed";
       resultMessageTs?: string;
     }
-  /** The turn record is running, and its worker may still own it. */
+  /**
+   * The turn failed before it recorded a dispatch outcome. A later Run may
+   * still finish it.
+   */
+  | { errorMessage?: string; outcome: "retryable" }
+  /** The turn record is running, but no Run advances it. */
   | { outcome: "still_running" }
   /** The dispatch has no turn record. */
   | { outcome: "not_started" };

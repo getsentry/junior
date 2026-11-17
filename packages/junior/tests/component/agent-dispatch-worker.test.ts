@@ -129,7 +129,7 @@ describe("agent dispatch worker contract", () => {
     });
   });
 
-  it("waits when the runtime leaves its turn running", async () => {
+  it("retries when the runtime leaves its turn running", async () => {
     const dispatch = await createDispatch("still-running");
     const runTurn = vi.fn(async () => {
       await recordTurnSummary({
@@ -152,9 +152,9 @@ describe("agent dispatch worker contract", () => {
     });
     const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "deferred",
-    });
+    await expect(worker(context, dispatch.id)).rejects.toThrow(
+      "is still running after its attempt",
+    );
     expect(ack).not.toHaveBeenCalled();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "running",

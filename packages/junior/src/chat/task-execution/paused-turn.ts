@@ -62,6 +62,7 @@ import {
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
+  recordFailedDispatchTurn,
   type PausedTurnRequest,
   type PausedTurns,
 } from "@/chat/task-execution/turn-wake";
@@ -385,29 +386,13 @@ async function failPausedTurn(args: {
   });
   if (!failed) return;
 
-  if (failed.dispatchId) {
-    try {
-      const routing = await resolveTurnResumeRouting({
-        conversationId: args.conversationId,
-        dispatchId: failed.dispatchId,
-      });
-      await recordTurnSummary({
-        conversationId: args.conversationId,
-        destination: routing.destination,
-        dispatchId: failed.dispatchId,
-        dispatchOutcome: "failed",
-        turnId: failed.turnId,
-        sliceId: failed.sliceId,
-        source: routing.source,
-        state: "failed",
-        surface: failed.surface,
-      });
-    } catch (error) {
-      logException(error, "agent.continue.dispatch_failure_summary.failed", {
-        "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.summary.turnId,
-      });
-    }
+  try {
+    await recordFailedDispatchTurn(failed);
+  } catch (error) {
+    logException(error, "agent.continue.dispatch_failure_summary.failed", {
+      "app.ai.conversation_id": args.conversationId,
+      "app.ai.session_id": args.summary.turnId,
+    });
   }
 }
 

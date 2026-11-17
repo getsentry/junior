@@ -47,20 +47,26 @@ describe("agent dispatch recovery", () => {
     vi.restoreAllMocks();
   });
 
-  it("projects the diagnostic of a failed turn, also without a dispatch outcome", async () => {
+  it("projects a failed turn's diagnostic and runs a turn again after a thrown error", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const firstRun = await createConversationWorkHarness(
-      createModelAgentRunner(
-        createModelStream([
-          {
-            type: "error",
-            errorMessage: "Model provider quota exhausted",
-          },
-        ]),
-      ),
+    const agentRunner = createModelAgentRunner(
+      createModelStream([
+        {
+          type: "error",
+          errorMessage: "Model provider quota exhausted",
+        },
+        {
+          type: "toolCall",
+          name: "reply",
+          arguments: { text: "Recovered digest" },
+        },
+      ]),
     );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, runtime, state } =
+      await createConversationWorkHarness(agentRunner);
     await expect(
-      firstRun.runtime.runDispatchTurn(dispatch, {
+      runtime.runDispatchTurn(dispatch, {
         ack: vi.fn(async () => {}),
       }),
     ).resolves.toMatchObject({
@@ -82,39 +88,55 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
-    // A resume path can fail the turn before it records a dispatch outcome.
-    const unrecorded = await createDispatch("failed-without-outcome");
+    // A paused run whose resume fails ends the dispatch on that delivery.
+    const unresumable = await createDispatch("resume-failure");
     await saveTurnCheckpoint({
-      conversationId: getDispatchConversationId(unrecorded),
-      dispatchId: unrecorded.id,
-      errorMessage: "Paused turn failed before it could run",
-      messages: [],
-      mode: "failed",
-      sliceId: 2,
-      turnId: getDispatchTurnId(unrecorded.id),
+      conversationId: getDispatchConversationId(unresumable),
+      dispatchId: unresumable.id,
+      messages: [
+        {
+          role: "user",
+          content: unresumable.input,
+          timestamp: unresumable.createdAtMs,
+        },
+      ],
+      mode: "paused",
+      reason: "yield",
+      sliceId: 1,
+      turnId: getDispatchTurnId(unresumable.id),
     });
+    // A thrown runtime error fails the turn without a dispatch outcome, so
+    // the next delivery runs it again.
+    const interrupted = await createDispatch("thrown-error");
+    runAgent.mockRejectedValueOnce(new Error("Sandbox setup failed"));
 
-    const replay = await createConversationWorkHarness(neverRunAgentRunner());
-    for (const replayed of [dispatch, unrecorded]) {
-      await enqueueAgentDispatch(replayed, {
-        queue: replay.queue,
-        state: replay.state,
-      });
-      await processConversationQueueMessage(replay.queue.takeMessage(), {
-        queue: replay.queue,
-        run: replay.run,
-        state: replay.state,
+    for (const replayed of [dispatch, unresumable, interrupted]) {
+      await enqueueAgentDispatch(replayed, { queue, state });
+    }
+    let deliveries = 0;
+    while (queue.hasQueuedMessages()) {
+      deliveries += 1;
+      if (deliveries > 6) {
+        throw new Error("Dispatch queue did not drain");
+      }
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        state,
       });
     }
 
-    expect(replay.queue.hasQueuedMessages()).toBe(false);
+    expect(deliveries).toBe(4);
+    expect(runAgent).toHaveBeenCalledTimes(3);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       status: "failed",
     });
-    await expect(getDispatchRecord(unrecorded.id)).resolves.toMatchObject({
-      errorMessage: "Paused turn failed before it could run",
+    await expect(getDispatchRecord(unresumable.id)).resolves.toMatchObject({
       status: "failed",
+    });
+    await expect(getDispatchRecord(interrupted.id)).resolves.toMatchObject({
+      status: "completed",
     });
   });
 
