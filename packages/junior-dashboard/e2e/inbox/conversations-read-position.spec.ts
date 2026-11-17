@@ -693,6 +693,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         ].map((match) => Number(match[1])),
       ),
     ]);
-    expect(shown.at(-1)! - shown[0] + 1).toBe(shown.length);
+    expect(shown.at(-1)! - shown[0]! + 1).toBe(shown.length);
   });
 });

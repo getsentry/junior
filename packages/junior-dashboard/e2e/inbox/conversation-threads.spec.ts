@@ -119,8 +119,12 @@ test.describe("new UI", { tag: "@new" }, () => {
             element.getAttribute("aria-label") ?? element.textContent ?? "",
         ),
       );
-    const lastThread = names.findLastIndex((name) =>
-      /Check pinned row order|Recheck pin order in Safari/.test(name),
+    const lastThread = names.reduce(
+      (last, name, index) =>
+        /Check pinned row order|Recheck pin order in Safari/.test(name)
+          ? index
+          : last,
+      -1,
     );
     const bar = names.lastIndexOf("Open conversation");
     expect(lastThread).toBeGreaterThan(-1);

@@ -96,8 +96,7 @@ import {
   parseInboxView,
 } from "../review-desk/inboxModel";
 import { useInboxTodoCount } from "../review-desk/inboxQueries";
-import { useInboxTabIcon } from "../review-desk/inboxTabIcon";
-import { useDocumentTitleCount } from "../documentTitle";
+import { useInboxTabCount } from "../review-desk/inboxTabIcon";
 import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
 import { useVersionsPoll } from "../versions";
@@ -306,8 +305,7 @@ function Shell() {
       conversationDisplayTitle(mobileConversation))
     : undefined;
   const inboxCount = useInboxTodoCount(loggedIn);
-  useDocumentTitleCount(inboxCount);
-  useInboxTabIcon(inboxCount);
+  useInboxTabCount(inboxCount);
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
     loading,

@@ -389,7 +389,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     releasePage();
     await expect(record).toBeInViewport();
     const marks = await page.evaluate(
-      () => (window as Window & { askMarks: { count: number } }).askMarks.count,
+      () =>
+        (window as Window & { askMarks?: { count: number } }).askMarks?.count,
     );
     expect(marks).toBe(0);
   });
@@ -464,7 +465,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       const marks = await page.evaluate(
         () =>
-          (window as Window & { askMarks: { count: number } }).askMarks.count,
+          (window as Window & { askMarks?: { count: number } }).askMarks?.count,
       );
       expect(marks).toBe(0);
     });
@@ -512,6 +513,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         "[data-quick-question-message-id]",
       );
       const reply = replies[replies.length - 1];
+      if (!reply) return;
       const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
       let node = walker.nextNode();
       while (node && (node.textContent ?? "").trim().length < 12) {
