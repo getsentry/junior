@@ -63,16 +63,13 @@ function renderConversationMessageLine(
     message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
   );
 
+  // Plain words for the model. The skipped reason is internal routing state.
   const markers: string[] = [];
-  if (message.meta?.replied === false) {
-    markers.push(
-      escapeXml(
-        `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
-      ),
-    );
-  }
   if (message.meta?.explicitMention) {
     markers.push("explicit mention");
+    if (message.meta.replied === false) markers.push("you did not reply");
+  } else if (message.meta?.replied === false) {
+    markers.push("not addressed to you");
   }
 
   const markerSuffix = markers.length > 0 ? ` (${markers.join("; ")})` : "";
@@ -267,6 +264,8 @@ export function latestConversationMessageSeq(
 /** A rendered thread context block and the counts that telemetry reports. */
 export interface ThreadContextBlock {
   text?: string;
+  /** Ids of the shown Messages, in block order. */
+  messageIds: string[];
   shownMessages: number;
   /** Messages that matched but did not fit under the size cap. */
   omittedMessages: number;
@@ -286,6 +285,8 @@ export function buildConversationContext(
   options: {
     /** Turn input Messages, which the prompt already holds. */
     excludeMessageIds?: readonly string[];
+    /** False for a Turn that a person did not open: skipped Messages wait. */
+    includeUntagged?: boolean;
     /**
      * Set when agent history exists. `afterSeq` is the cursor of the previous
      * Turn. A Conversation from before cursors has none.
@@ -293,11 +294,12 @@ export function buildConversationContext(
     history?: { afterSeq?: number | undefined };
   } = {},
 ): ThreadContextBlock {
-  const { history } = options;
+  const { history, includeUntagged = true } = options;
   const candidates = conversation.messages.filter(
     (entry) =>
       !options.excludeMessageIds?.includes(entry.id) &&
       !isTakeOrDismissOnly(entry) &&
+      (includeUntagged || !isUntaggedThreadMessage(entry)) &&
       (!history ||
         (isUntaggedThreadMessage(entry) &&
           (history.afterSeq === undefined ||
@@ -318,12 +320,12 @@ export function buildConversationContext(
     chars += size;
     first -= 1;
   }
-  const shown = candidates
-    .slice(first)
-    .map((message, index) =>
-      renderThreadContextMessage(message, conversation, index + 1),
-    );
+  const shownMessages = candidates.slice(first);
+  const shown = shownMessages.map((message, index) =>
+    renderThreadContextMessage(message, conversation, index + 1),
+  );
   const counts = {
+    messageIds: shownMessages.map((message) => message.id),
     shownMessages: shown.length,
     omittedMessages: candidates.length - shown.length,
   };

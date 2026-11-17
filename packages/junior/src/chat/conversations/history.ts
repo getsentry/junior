@@ -309,8 +309,13 @@ const turnStartedEventDataSchema = z
     turnId: z.string().min(1),
     inputMessageIds: z.array(z.string().min(1)).min(1),
     surface: conversationTurnSurfaceSchema,
-    /** Highest Message seq known when the Turn built its thread context. */
+    /**
+     * The Message seq that the thread context of the Turn covers. A Turn that
+     * a person did not open keeps the cursor of the previous Turn.
+     */
     threadContextThroughSeq: z.number().int().nonnegative().optional(),
+    /** Skipped Messages that the Turn shows as thread context. */
+    threadContextMessageIds: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict()
   .refine(

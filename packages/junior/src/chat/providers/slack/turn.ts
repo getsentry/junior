@@ -76,7 +76,6 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
-  latestConversationMessageSeq,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -143,7 +142,10 @@ import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import {
+  buildTurnThreadContext,
+  startTurnThreadContext,
+} from "@/chat/conversations/thread-context";
 import {
   scheduleSessionCompletedPluginTasks,
   type SendPluginTask,
@@ -152,6 +154,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import {
   deliversFinalText,
+  isPersonInput,
   postsRunNotices,
 } from "@/chat/conversations/kind-behavior";
 import type {
@@ -670,6 +673,16 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           conversation: preparedState.conversation,
           nextTurnId: turnId,
         });
+        // Queued mentions steer in as history. Queued untagged Messages
+        // reach the agent only through thread context.
+        const threadContextExcludeIds = [
+          ...(options.queuedMessages ?? [])
+            .filter((queued) => queued.explicitMention)
+            .map((queued) => queued.message.id),
+          ...(preparedState.userMessageId ? [preparedState.userMessageId] : []),
+        ];
+        // A dispatch Turn has an Automation or plugin Source, not a person.
+        const personStarted = isPersonInput(source.kind);
         if (conversationId && preparedState.userMessageId) {
           await turnLifecycle.start({
             conversationId,
@@ -683,9 +696,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ]),
             ],
             surface: options.execution?.surface ?? "slack",
-            threadContextThroughSeq: latestConversationMessageSeq(
-              preparedState.conversation,
-            ),
+            ...(await startTurnThreadContext({
+              conversation: preparedState.conversation,
+              conversationId,
+              excludeMessageIds: threadContextExcludeIds,
+              personStarted,
+              turnId,
+            })),
             turnId,
           });
         }
@@ -1035,17 +1052,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           const promptConversationContext = await buildTurnThreadContext({
             conversation: preparedState.conversation,
             conversationId,
-            // Queued mentions steer in as history. Queued untagged Messages
-            // reach the agent only through thread context.
-            excludeMessageIds: [
-              ...(options.queuedMessages ?? [])
-                .filter((queued) => queued.explicitMention)
-                .map((queued) => queued.message.id),
-              ...(preparedState.userMessageId
-                ? [preparedState.userMessageId]
-                : []),
-            ],
+            excludeMessageIds: threadContextExcludeIds,
             hasHistory,
+            personStarted,
             turnId,
           });
           const drainSteeringMessages = options.drainSteeringMessages

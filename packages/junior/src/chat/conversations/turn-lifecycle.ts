@@ -11,7 +11,9 @@ export interface StartConversationTurnInput {
   createdAtMs: number;
   inputMessageIds: string[];
   surface: "slack" | "api" | "scheduler" | "internal";
-  /** Highest Message seq known when the Turn built its thread context. */
+  /** Skipped Messages that the Turn shows as thread context. */
+  threadContextMessageIds?: string[] | undefined;
+  /** The Message seq that the thread context of the Turn covers. */
   threadContextThroughSeq?: number | undefined;
   turnId: string;
 }
@@ -64,6 +66,9 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           ...(input.threadContextThroughSeq === undefined
             ? undefined
             : { threadContextThroughSeq: input.threadContextThroughSeq }),
+          ...(input.threadContextMessageIds?.length
+            ? { threadContextMessageIds: input.threadContextMessageIds }
+            : undefined),
         },
       },
     ]);

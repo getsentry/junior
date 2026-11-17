@@ -296,9 +296,14 @@ export function transcriptMessagesFromEvents(
       } else if (latestUserMessage) {
         latestUserMessageByTurn.set(data.turnId, latestUserMessage);
       }
-      for (const message of inputMessages ?? []) {
+      // A skipped Message that the Turn read as input or thread context.
+      for (const messageId of [
+        ...(data.inputMessageIds ?? []),
+        ...(data.threadContextMessageIds ?? []),
+      ]) {
+        const message = messagesById.get(messageId);
         if (
-          message.role === "user" &&
+          message?.role === "user" &&
           message.explicitMention === false &&
           !message.eventType
         ) {

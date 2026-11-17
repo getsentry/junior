@@ -438,6 +438,9 @@ function reportEventData(args: {
         ...(data.inputMessageIds.length > 0
           ? { inputMessageIds: data.inputMessageIds }
           : undefined),
+        ...(data.threadContextMessageIds
+          ? { threadContextMessageIds: data.threadContextMessageIds }
+          : undefined),
       };
     case "turn_context":
       if (!args.canExposePayload) {
