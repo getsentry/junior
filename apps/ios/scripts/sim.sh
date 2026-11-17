@@ -177,8 +177,11 @@ cmd_ui_test() {
   boot_device
   local args=()
   for test in "${only[@]}"; do args+=("-only-testing:JuniorUITests/${test#JuniorUITests/}"); done
+  # On a newly booted simulator, the first accessibility snapshot can take
+  # 30 seconds and miss a test's wait. Run a failed test one more time.
   "$ios_dir/scripts/xcbuild.sh" test-without-building -scheme JuniorUITests \
-    -destination "platform=iOS Simulator,id=$udid" "${args[@]}"
+    -destination "platform=iOS Simulator,id=$udid" \
+    -retry-tests-on-failure -test-iterations 2 "${args[@]}"
 }
 
 case "${1:-}" in
