@@ -1,6 +1,7 @@
 import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "./db";
 import { logWarn } from "@/chat/logging";
+import { isPostgresErrorCode } from "./postgres-error";
 
 // A statement such as ADD COLUMN is instant once it has its table lock. While
 // it waits for that lock behind an open app transaction, every later query on
@@ -49,17 +50,6 @@ function concurrentIndexes(
   });
 }
 
-function isLockTimeout(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current instanceof Error && depth < 5; depth += 1) {
-    if ("code" in current && current.code === LOCK_NOT_AVAILABLE) {
-      return true;
-    }
-    current = current.cause;
-  }
-  return false;
-}
-
 /**
  * Wait for the migration lock by polling `pg_try_advisory_lock`. A session
  * blocked in `pg_advisory_lock` holds a snapshot, and `CREATE INDEX
@@ -83,7 +73,10 @@ async function retryOnLockTimeout(
       await apply();
       return;
     } catch (error) {
-      if (attempt >= LOCK_ATTEMPTS || !isLockTimeout(error)) {
+      if (
+        attempt >= LOCK_ATTEMPTS ||
+        !isPostgresErrorCode(error, LOCK_NOT_AVAILABLE)
+      ) {
         throw error;
       }
       logWarn("db.migration.lock_timeout", {

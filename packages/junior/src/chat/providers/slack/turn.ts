@@ -4,6 +4,7 @@
  * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
+import pLimit from "p-limit";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -146,7 +147,7 @@ import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import {
   scheduleSessionCompletedPluginTasks,
-  type ScheduleSessionCompletedPluginTasksOptions,
+  type SendPluginTask,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
@@ -165,6 +166,9 @@ import {
   resolveSlackChannelFacts,
   saveSteeringMessages,
 } from "@/chat/providers/slack/input";
+
+// Queued messages whose input one steer loads at once.
+const STEERING_INPUT_CONCURRENCY = 8;
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -245,9 +249,7 @@ interface SlackTurnDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  sendPluginTask?:
-    | ScheduleSessionCompletedPluginTasksOptions["send"]
-    | undefined;
+  sendPluginTask: SendPluginTask;
 }
 
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
@@ -471,34 +473,39 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
+          const limit = pLimit(STEERING_INPUT_CONCURRENCY);
           return await Promise.all(
-            queuedMessages.map(async (queued) => {
-              const attachments = queued.message.attachments;
-              // An answer steers in as its Review item tag.
-              const reviewItemInput = await loadReviewItemInput(
-                getMessageReviewItemChange(queued.message),
-              );
-              return {
-                actor: inboundMessageActor(queued),
-                ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
-                provenance: inboundMessageProvenance(queued, teamId),
-                text: reviewItemInput ?? queued.userText,
-                timestampMs: queued.message.metadata.dateSent.getTime(),
-                omittedImageAttachmentCount:
-                  !canReadImages() && hasPotentialImageAttachment(attachments)
-                    ? countPotentialImageAttachments(attachments)
-                    : 0,
-                attachments: await deps.resolveUserAttachments(attachments, {
-                  conversationId,
-                  threadId,
-                  actorId: queued.message.author.userId,
-                  channelId,
-                  runId,
-                  conversation: preparedState.conversation,
-                  messageTs: getMessageTimestamp(queued.message),
-                }),
-              };
-            }),
+            queuedMessages.map((queued) =>
+              limit(async () => {
+                const attachments = queued.message.attachments;
+                // An answer steers in as its Review item tag.
+                const reviewItemInput = await loadReviewItemInput(
+                  getMessageReviewItemChange(queued.message),
+                );
+                return {
+                  actor: inboundMessageActor(queued),
+                  ...(reviewItemInput
+                    ? { kind: "runtime" as const }
+                    : undefined),
+                  provenance: inboundMessageProvenance(queued, teamId),
+                  text: reviewItemInput ?? queued.userText,
+                  timestampMs: queued.message.metadata.dateSent.getTime(),
+                  omittedImageAttachmentCount:
+                    !canReadImages() && hasPotentialImageAttachment(attachments)
+                      ? countPotentialImageAttachments(attachments)
+                      : 0,
+                  attachments: await deps.resolveUserAttachments(attachments, {
+                    conversationId,
+                    threadId,
+                    actorId: queued.message.author.userId,
+                    channelId,
+                    runId,
+                    conversation: preparedState.conversation,
+                    messageTs: getMessageTimestamp(queued.message),
+                  }),
+                };
+              }),
+            ),
           );
         };
         /** Save new messages before completing the mailbox delivery. */
@@ -1429,7 +1436,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   conversationId,
                   sessionId: turnId,
                 },
-                deps.sendPluginTask ? { send: deps.sendPluginTask } : undefined,
+                deps.sendPluginTask,
               );
             } catch (error) {
               logException(

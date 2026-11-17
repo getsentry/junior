@@ -72,6 +72,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
+- `design/`: the goals and rules of each major system.
 - `policies/correctness-complexity.md`: how much design a fix needs.
 - `policies/interface-design.md`: function and module shape, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
@@ -86,6 +87,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/serverless-background-work.md`: work that must survive request
   edges.
 - `policies/observability.md`: telemetry for diagnosis.
+- `policies/performance.md`: awaits, fan-out, and query refreshes.
 - `policies/system-prompt.md`: system prompt blocks.
 - `policies/prompt-markers.md`: tags, untrusted text, IDs, and escaping in
   model-read text.

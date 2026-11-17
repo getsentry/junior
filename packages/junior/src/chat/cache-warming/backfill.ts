@@ -42,6 +42,7 @@ import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 import {
   juniorAgentInvocations,
   juniorConversationEvents,
@@ -83,11 +84,14 @@ const CONVERSATION_BATCH_SIZE = 10;
 const CONVERSATION_PAGE_SIZE = 500;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
-// The JSON escape of a NUL character, and a Postgres regex for each one that
-// is not itself escaped: it follows an even number of backslashes.
-const NUL_ESCAPE = String.raw`\u0000`;
-const NUL_ESCAPE_PATTERN = String.raw`(?<!\\)((?:\\\\)*)\\u0000`;
-const NUL_ESCAPE_REPLACEMENT = String.raw`\1`;
+// Agent history is stored with JSON.stringify, so its text is valid JSON.
+// jsonb rejects only some `\uXXXX` escapes, such as a NUL character or a
+// lone surrogate from text cut inside an emoji. This regex finds each
+// `\uXXXX` escape that is not itself escaped: it follows an even number of
+// backslashes.
+const UNICODE_ESCAPE = String.raw`\u`;
+const UNICODE_ESCAPE_PATTERN = String.raw`(?<!\\)((?:\\\\)*)\\u[0-9a-fA-F]{4}`;
+const UNICODE_ESCAPE_REPLACEMENT = String.raw`\1`;
 /**
  * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
  * most of its function time for the writes and the other heartbeat work.
@@ -236,15 +240,15 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const isToolResult = sql`${events.type} = 'tool_result'`;
   const messageText = sql`${events.payload}->>'message'`;
   // Newer rows keep the fields that replay reads as payload keys. Older rows
-  // keep them only in the message string. jsonb rejects the escape of a NUL
-  // character, and one such message would fail the query of its whole batch,
-  // so the cast drops these escapes.
+  // keep them only in the message string. One message that jsonb rejects
+  // would fail the query of its whole batch, so the cast drops every Unicode
+  // escape. The fields that replay reads have none.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
     WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
     WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
-    WHEN strpos(${messageText}, ${NUL_ESCAPE}) = 0 THEN (${messageText})::jsonb
-    ELSE regexp_replace(${messageText}, ${NUL_ESCAPE_PATTERN}, ${NUL_ESCAPE_REPLACEMENT}, 'g')::jsonb
+    WHEN strpos(${messageText}, ${UNICODE_ESCAPE}) = 0 THEN (${messageText})::jsonb
+    ELSE regexp_replace(${messageText}, ${UNICODE_ESCAPE_PATTERN}, ${UNICODE_ESCAPE_REPLACEMENT}, 'g')::jsonb
   END`;
   return await getDb()
     .select({
@@ -477,16 +481,6 @@ function byConversation<Row extends { conversationId: string }>(
   return grouped;
 }
 
-function isQueryCanceled(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (typeof current !== "object") return false;
-    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
 /** Idle periods of a history scan, and how much of the history it read. */
 export interface HistoryScan {
   periods: ReplayedIdlePeriod[];
@@ -528,7 +522,7 @@ async function replayConversations(
     } catch (error) {
       // A batch with too much history for one query is skipped. The budget
       // check still stops the scan in time.
-      if (!isQueryCanceled(error)) throw error;
+      if (!isPostgresErrorCode(error, QUERY_CANCELED)) throw error;
       canceledBatches += 1;
       continue;
     }

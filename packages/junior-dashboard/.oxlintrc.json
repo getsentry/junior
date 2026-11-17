@@ -31,6 +31,10 @@
     {
       "name": "time-format",
       "specifier": "./oxlint/time-format.ts"
+    },
+    {
+      "name": "query-invalidation",
+      "specifier": "./oxlint/query-invalidation.ts"
     }
   ],
   "ignorePatterns": [
@@ -49,6 +53,7 @@
   ],
   "rules": {
     "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
@@ -82,6 +87,7 @@
     "text-control/no-raw-text-control": "error",
     "px-geometry/px-constant-sizes-element": "error",
     "image-src/no-raw-external-image-src": "error",
+    "query-invalidation/no-broad-query-invalidation": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -138,6 +144,24 @@
       }
     },
     {
+      "files": ["src/**"],
+      "rules": {
+        "junior/bounded-fan-out": "error",
+        "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": [
+        "src/client/pages/automations/**",
+        "src/client/inbox/pages/automations/**",
+        "src/client/review-desk/inboxQueries.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off",
+        "query-invalidation/no-broad-query-invalidation": "off"
+      }
+    },
+    {
       "files": ["src/client/time.ts"],
       "rules": {
         "time-format/no-raw-time-format": "off"
@@ -157,7 +181,10 @@
       }
     },
     {
-      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "files": [
+        "src/client/conversations/ConversationSectionList.tsx",
+        "src/client/inbox/conversations/ConversationSectionList.tsx"
+      ],
       "rules": {
         "no-restricted-imports": "off"
       }

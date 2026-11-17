@@ -97,9 +97,9 @@ async function writeResponse(
 ): Promise<void> {
   target.statusCode = response.status;
   target.statusMessage = response.statusText;
-  response.headers.forEach((value, key) => {
+  for (const [key, value] of response.headers) {
     target.setHeader(key, value);
-  });
+  }
 
   if (!response.body) {
     target.end();

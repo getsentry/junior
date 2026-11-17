@@ -476,16 +476,16 @@ function nameMatch(document: SearchDocument, query: QueryTerm[]): number {
     return 0;
   }
   let best = 0;
-  query.forEach((term, actionIndex) => {
+  for (const [actionIndex, term] of query.entries()) {
     const actionWeight = term.get(action) ?? 0;
     if (actionWeight === 0) {
-      return;
+      continue;
     }
     const covered = objects.filter((object) =>
       query.some((other, index) => index !== actionIndex && other.has(object)),
     ).length;
     best = Math.max(best, (actionWeight * covered) / objects.length);
-  });
+  }
   return best;
 }
 
@@ -628,9 +628,15 @@ function selectedSourceSummaries(
   return knownSources.filter((source) => matchedSourceIds.has(source.id));
 }
 
+/**
+ * Tell the model that a `params` preview is not enough to call a tool. Both
+ * the searchTools description and the Code Mode hint use it.
+ */
+export const PARAMS_PREVIEW_HINT =
+  "A result with only params is a preview: search its exact name to get its input_schema before you call it.";
+
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
-  const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. The best match has its full input_schema. Other results have params, a preview for choosing a tool: before you call one, search its exact name to get its input_schema.";
+  const intro = `Search the executable tool catalog. Deferred tools are grouped by source. List a source, or search with a query. The first result of a query has its full input_schema. ${PARAMS_PREVIEW_HINT} Then call the tool with executeTool and its exact tool_name.`;
   if (knownSources.length === 0) {
     return intro;
   }
@@ -777,7 +783,7 @@ export function createSearchToolsTool(
         ? listCatalogTools(catalogTools, requestedSource).length
         : 0;
       const includePerToolSource = requestedSource === null;
-      // A source listing has no best match, so it shows no full schema.
+      // A source listing is not ranked, so it shows no full schema.
       const renderedTools = matches.map((name, index) =>
         toolMetadata(
           name,

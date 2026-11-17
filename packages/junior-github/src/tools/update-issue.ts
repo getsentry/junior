@@ -1,9 +1,8 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
   type PluginEgress,
   type Source,
@@ -21,6 +20,7 @@ import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
@@ -122,18 +122,13 @@ export const gitHubUpdateIssueTool = definePluginTool({
     _options,
     ctx: {
       actor?: Actor | undefined;
-      automationLink?: { url: string };
       conversationId?: string | undefined;
       egress: PluginEgress;
       log: PluginLogger;
       events: ToolRegistrationHookContext["events"];
       conversationLink?: { url: string };
+      resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
       source?: Source | undefined;
-      users: {
-        resolveActor(): Promise<
-          { identity?: Identity; user?: User } | undefined
-        >;
-      };
     },
   ): Promise<Result> {
     const parsedInput = inputSchema.safeParse(input);
@@ -150,7 +145,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
         : undefined;
     // Check before any write, so a failed assignment changes nothing.
     const assignee = update.assign_requester
-      ? linkedGitHubLogin(requester?.user)
+      ? linkedGitHubLogin(requesterPerson(requester)?.user)
       : undefined;
     if (update.assign_requester && !assignee) {
       throw new PluginToolInputError(
@@ -171,7 +166,6 @@ export const gitHubUpdateIssueTool = definePluginTool({
             body: appendGitHubFooter(
               appendGitHubRequesterAttribution(
                 update.body,
-                ctx,
                 requester,
                 currentBody,
               ),

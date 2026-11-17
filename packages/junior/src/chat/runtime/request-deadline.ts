@@ -25,7 +25,7 @@ export function getTurnRequestDeadline(): TurnRequestDeadline | undefined {
   return requestDeadlineStorage.getStore();
 }
 
-/** Run work with one host request deadline shared by nested queued turns. */
+/** Run work under the current host request deadline, or start one. */
 export function runWithTurnRequestDeadline<T>(
   callback: () => T,
   startedAtMs = Date.now(),

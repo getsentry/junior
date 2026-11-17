@@ -57,7 +57,7 @@ export function mockAnthropicStream(
             },
           },
         ];
-        blocks.forEach((block, index) => {
+        for (const [index, block] of blocks.entries()) {
           events.push({
             type: "content_block_start",
             index,
@@ -75,7 +75,7 @@ export function mockAnthropicStream(
             });
           }
           events.push({ type: "content_block_stop", index });
-        });
+        }
         events.push(
           {
             type: "message_delta",

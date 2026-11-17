@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { getConversationStore } from "@/chat/db";
@@ -16,6 +17,7 @@ export function createOAuthWork(agentRunner: AgentRunner) {
     queue,
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
+    sendPluginTask: sendVercelPluginTask,
   });
   return {
     queue,

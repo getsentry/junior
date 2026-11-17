@@ -447,9 +447,9 @@ const RUN_BUILT_TOOL_BUILDERS = {
         )
       : undefined,
   imageGenerate: (run) =>
-    run.hooks.writeGeneratedArtifacts
+    run.hooks.writeGeneratedFiles
       ? createImageGenerateTool(
-          { writeGeneratedArtifacts: run.hooks.writeGeneratedArtifacts },
+          { writeGeneratedFiles: run.hooks.writeGeneratedFiles },
           {
             modelId: botConfig.imageGenerationModelId,
             canSendFilesToActiveConversation:

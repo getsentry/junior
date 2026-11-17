@@ -64,6 +64,11 @@ export const pluginUserPageContentSchema = z
     metrics: z.array(pluginUserPageMetricSchema).max(6).optional(),
     nextCursor: nonBlankStringSchema.max(1_000).optional(),
     records: z.array(pluginUserPageRecordSchema).max(100),
+    /**
+     * Set when `read` matches `input.query`. The dashboard's command palette
+     * then keeps every returned record as a match; without it, the palette
+     * matches titles and descriptions itself.
+     */
     searchPlaceholder: nonBlankStringSchema.max(120).optional(),
     type: z.literal("list"),
   })

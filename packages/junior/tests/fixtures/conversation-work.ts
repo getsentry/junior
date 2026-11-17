@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
@@ -495,6 +496,7 @@ export async function createConversationWorkHarness(
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
+    sendPluginTask: sendVercelPluginTask,
     ...(options.services ? { services: options.services } : undefined),
     state,
   });

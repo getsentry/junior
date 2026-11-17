@@ -5,6 +5,7 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
+import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -55,18 +56,22 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
-  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
+// Plugin task messages that one run sends at once.
+const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
+
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: ((message: PluginTaskQueueMessage) => Promise<void>) | undefined;
-}
+/**
+ * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
+ * by default, or an in-process queue.
+ */
+export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
@@ -466,7 +471,7 @@ function findPluginTask(message: PluginTaskQueueMessage) {
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
-  options: ScheduleSessionCompletedPluginTasksOptions = {},
+  send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
   const taskRegistrations = [
@@ -485,16 +490,18 @@ export async function scheduleSessionCompletedPluginTasks(
   if (!record || record.state !== "completed") {
     throw new Error("Completed plugin task session record is not ready");
   }
-  const send = options.send ?? sendVercelPluginTask;
   const messages = taskRegistrations.map(({ name, plugin }) => ({
     name,
     params: coreParams,
     plugin: plugin.manifest.name,
   }));
+  const limit = pLimit(PLUGIN_MESSAGE_SEND_CONCURRENCY);
   await Promise.all(
-    messages.map(async (message) => {
-      await send(message);
-    }),
+    messages.map((message) =>
+      limit(async () => {
+        await send(message);
+      }),
+    ),
   );
 }
 

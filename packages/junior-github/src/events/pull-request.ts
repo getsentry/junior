@@ -95,8 +95,9 @@ export interface GitHubPullRequestSubscriptionConfig {
  * Junior maintains the pull requests it creates. The pull request is its own
  * work, so it answers and fixes review feedback without asking first.
  * GitHub already tells people about reviews, approvals, merges, and closes,
- * and the review desk shows the next action. So the Watch skips those
- * outcomes and posts in the thread only when a person must act.
+ * and the review desk shows the next action. So the Watch gets approvals,
+ * merges, and closes only as Quiet Events, and posts in the thread only when
+ * a person must act.
  */
 const DEFAULT_PULL_REQUEST_SUBSCRIPTION: GitHubPullRequestSubscriptionConfig = {
   events: [
@@ -131,6 +132,18 @@ const DRAFT_CHECKS_RECOVERED_GUIDANCE =
   "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft: marking it ready would ask the code owners to review, or break the AGENTS.md rule. Tell the person who asked for it in the originating thread that the checks pass and the draft waits for their review, and name why: the code owners that marking it ready asks, or the AGENTS.md rule. If you already told them for this head commit, stay silent. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
 
 /**
+ * State changes that need no action but that a later Turn must know, so that
+ * it does not call an approved pull request unreviewed, or a merged or
+ * closed one open. An app config that lists one of them keeps it as a
+ * normal Event that starts a Turn.
+ */
+const QUIET_PULL_REQUEST_EVENTS = [
+  "pull_request.review.approved",
+  "pull_request.merged",
+  "pull_request.closed_unmerged",
+] as const satisfies readonly GitHubPullRequestEvent[];
+
+/**
  * Build the Watch created after Junior creates a pull request. Only a draft
  * Watch gets passing checks, so a ready pull request is not woken by each
  * passing check suite.
@@ -142,7 +155,14 @@ export function gitHubPullRequestCreateWatch(
   events: GitHubPullRequestEvent[];
   guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
   intent: string;
+  quietEvents?: GitHubPullRequestEvent[];
 } {
+  const quietEvents = [
+    ...QUIET_PULL_REQUEST_EVENTS,
+    // A draft can leave draft state without Junior, such as when a person
+    // marks it ready. A ready pull request has no such change to learn.
+    ...(pullRequest.draft ? ["pull_request.ready_for_review" as const] : []),
+  ].filter((eventType) => !config.events.includes(eventType));
   return {
     events: [
       ...new Set([
@@ -153,8 +173,10 @@ export function gitHubPullRequestCreateWatch(
         ...(pullRequest.draft
           ? ["pull_request.checks.recovered" as const]
           : []),
+        ...quietEvents,
       ]),
     ],
+    ...(quietEvents.length > 0 ? { quietEvents } : undefined),
     ...(pullRequest.draft
       ? {
           guidance: {

@@ -259,9 +259,9 @@ function requestHeaders(rawHeaders: string[]): Headers {
 
 async function writeResponse(response: Response, res: http.ServerResponse) {
   const headers: Record<string, string | string[]> = {};
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     if (name !== "set-cookie" && !HOP_BY_HOP.has(name)) headers[name] = value;
-  });
+  }
   const cookies = response.headers.getSetCookie();
   if (cookies.length > 0) headers["set-cookie"] = cookies;
   res.writeHead(response.status, headers);

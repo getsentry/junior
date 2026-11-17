@@ -1,4 +1,7 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type {
+  AutomationListItem,
+  AutomationSummary,
+} from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 
 import {
@@ -24,7 +27,7 @@ import { agentNamePossessive } from "../../agentName";
 export function AutomationStateChip({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   const unavailable =
     automation.kind === "event" && automation.trigger.problems.length > 0;
@@ -84,7 +87,7 @@ export function AutomationStatus({
 }
 
 /** Name the one problem the Overview notice explains, if there is one. */
-function automationProblem(automation: AutomationSummary) {
+function automationProblem(automation: AutomationListItem) {
   if (
     automation.status === "blocked" ||
     (automation.status === "paused" && automation.statusReason)
@@ -109,7 +112,7 @@ export type AutomationProblemSummary = {
 
 /** Summarize the problem the Overview notice explains, for one list row. */
 export function automationProblemSummary(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): AutomationProblemSummary | undefined {
   const problem = automationProblem(automation);
   if (!problem) return undefined;
@@ -154,7 +157,7 @@ export function automationProblemSummary(
 
 /** True when the Overview shows a notice, so the notice owns the main action. */
 export function automationNeedsAttention(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): boolean {
   return automationProblem(automation) !== undefined;
 }
@@ -257,7 +260,7 @@ export function AutomationAttention({
 function AutomationNextTrigger({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   let description: string;
   if (automation.status === "completed") description = "No future runs";

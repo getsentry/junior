@@ -6,6 +6,7 @@ import {
   automationExecutionListSchema,
   automationListSchema,
   automationRunListSchema,
+  automationSummarySchema,
 } from "@/api/schema/automation";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -381,7 +382,8 @@ describe("Automations API", () => {
         "http://localhost/api/automations",
       );
       expect(response.status).toBe(200);
-      expect(automationListSchema.parse(await response.json())).toEqual({
+      const listed = automationListSchema.parse(await response.json());
+      expect(listed).toEqual({
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
@@ -424,9 +426,7 @@ describe("Automations API", () => {
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
-            runs: runWindows(eventRunAtMs),
             source: "linear",
-            totalRuns: 1,
             // Linear is not enabled here, so the saved trigger has a problem.
             trigger: {
               events: ["issue closed"],
@@ -448,11 +448,6 @@ describe("Automations API", () => {
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
-            // Spend sums the linked Conversation cost of each run.
-            costUsd: costWindows(
-              [scheduledRun1AtMs, 0.18],
-              [scheduledRun2AtMs, 0.42],
-            ),
             // The list strip gets the newest runs, oldest first.
             recentRuns: [
               {
@@ -466,13 +461,10 @@ describe("Automations API", () => {
                 status: "failed",
               },
             ],
-            runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             timezone: "UTC",
             status: "active",
             title: "Post the daily digest.",
-            totalCostUsd: 0.6,
-            totalRuns: 2,
           }),
         ],
         total: 4,
@@ -482,6 +474,38 @@ describe("Automations API", () => {
         creators: expect.any(Array),
         destinations: expect.any(Array),
       });
+
+      // List rows leave out the totals that read every run; the
+      // Automation page reads them from the summary.
+      for (const automation of listed.automations) {
+        expect(automation).not.toHaveProperty("totalRuns");
+        expect(automation).not.toHaveProperty("costUsd");
+      }
+      const summaryResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/sched_tasks_api");
+      expect(summaryResponse.status).toBe(200);
+      expect(
+        automationSummarySchema.parse(await summaryResponse.json()),
+      ).toEqual(
+        expect.objectContaining({
+          // Spend sums the linked Conversation cost of each run.
+          costUsd: costWindows(
+            [scheduledRun1AtMs, 0.18],
+            [scheduledRun2AtMs, 0.42],
+          ),
+          lastConversationId: "agent-dispatch:sched-run-2",
+          lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
+          lastRunStatus: "failed",
+          recentRuns: [
+            expect.objectContaining({ status: "completed" }),
+            expect.objectContaining({ status: "failed" }),
+          ],
+          runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
+          totalCostUsd: 0.6,
+          totalRuns: 2,
+        }),
+      );
 
       // An avatar does not make an unverified email a profile link.
       await fixture.sql
@@ -511,6 +535,48 @@ describe("Automations API", () => {
           .parse(await searchResponse.json())
           .automations.map((task) => task.id),
       ).toEqual(["event_automations_api"]);
+
+      // `sort=activity` lists the latest run, or else creation, first, and
+      // pages by cursor. Mine and All page the same way.
+      const activityPage = async (query: string) => {
+        const pageResponse = await authenticatedApi(
+          "viewer@example.com",
+        ).request(`http://localhost/api/automations?sort=activity&${query}`);
+        expect(pageResponse.status).toBe(200);
+        return automationListSchema.parse(await pageResponse.json());
+      };
+      const ids = (page: { automations: Array<{ id: string }> }) =>
+        page.automations.map((automation) => automation.id);
+      const firstPage = await activityPage("scope=all&pageSize=3");
+      expect(ids(firstPage)).toEqual([
+        "event_public_tasks_api",
+        "sched_public_tasks_api",
+        "sched_tasks_api",
+      ]);
+      expect(firstPage.total).toBe(4);
+      expect(firstPage.nextCursor).toEqual(expect.any(String));
+      const secondPage = await activityPage(
+        `scope=all&pageSize=3&cursor=${firstPage.nextCursor}`,
+      );
+      expect(ids(secondPage)).toEqual(["event_automations_api"]);
+      expect(secondPage.nextCursor).toBeUndefined();
+      const mineFirst = await activityPage("scope=mine&pageSize=1");
+      expect(ids(mineFirst)).toEqual(["sched_tasks_api"]);
+      expect(mineFirst.total).toBe(2);
+      const mineLast = await activityPage(
+        `scope=mine&pageSize=1&cursor=${mineFirst.nextCursor}`,
+      );
+      expect(ids(mineLast)).toEqual(["event_automations_api"]);
+      expect(mineLast.nextCursor).toBeUndefined();
+      for (const query of [
+        `sort=newest&cursor=${firstPage.nextCursor}`,
+        "sort=activity&cursor=not-a-cursor",
+      ]) {
+        const invalid = await authenticatedApi("viewer@example.com").request(
+          `http://localhost/api/automations?${query}`,
+        );
+        expect(invalid.status).toBe(400);
+      }
 
       const runsResponse = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/automations/runs",

@@ -55,13 +55,14 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
       )
     );
   });
+  const actor = {
+    platform: "slack" as const,
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor,
     conversationId: "slack:C123:123.456",
     source: {
       kind: "slack" as const,
@@ -80,9 +81,11 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
       })),
     },
     conversationLink: { url: "https://example.com/session" },
-    users: {
-      resolveActor: async () => (user ? { user } : undefined),
-    },
+    resolveWorkOwner: async () => ({
+      kind: "person" as const,
+      actor,
+      ...(user ? { user } : undefined),
+    }),
   };
   return {
     fetch,

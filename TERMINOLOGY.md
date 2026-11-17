@@ -57,6 +57,9 @@ Canonical words for Junior code and docs. One concept, one word.
   defaults that need people use Participants. A Conversation has no owner.
   The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
   Participant like any other, and is kept only for attribution such as spend.
+- **Work owner**: who a Turn's work is credited to, for attribution only: the
+  person Actor of the Turn, else the root Actor if it is a person, else the
+  system record that started the root, such as an Automation run.
 - **Admin**: a User with the Junior-wide admin role, set only by
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed
@@ -74,6 +77,8 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Quiet Event**: a Watch Event that the code that made the Watch marked
+  quiet. Core saves it as a Conversation note and starts no Turn.
 - **Event author**: the account that wrote the content of an Event, such as
   a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
   with no author is a system Event. The author never becomes the Turn Actor.
@@ -147,6 +152,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Done** (Inbox): the view of done and dismissed Review items. Not
+  Conversation archive.
 - **Plan**: the durable list of work that outlives a Turn in one
   Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
   entry, with a status and one Assignee: the Conversation's own agent, one of

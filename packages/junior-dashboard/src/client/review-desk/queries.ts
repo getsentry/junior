@@ -6,6 +6,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
@@ -25,9 +26,17 @@ import { fetchDashboardJson, post } from "../http";
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
 type ReviewItemListFilters = {
+  /** Lists the done and dismissed items instead, newest closed first. */
+  closed?: boolean;
   conversationId?: string;
+  enabled?: boolean;
   forViewer?: boolean;
   q?: string;
+  /**
+   * `waiting` pages the open items that wait on the viewer first, so the
+   * first page holds what needs them now.
+   */
+  sort?: "waiting";
 };
 
 function reviewItemListSearch(filters: ReviewItemListFilters) {
@@ -37,7 +46,31 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
+}
+
+/** Key one Review item. Each Review item row reads its own item. */
+export function reviewItemQueryKey(id: string | undefined) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
+}
+
+const REVIEW_ITEM_COLLECTIONS = ["count", "list", "waiting-conversations"];
+
+/**
+ * Refresh the Review item reads that a change to known items moves: the
+ * count, the lists, and the waiting Conversations. Write each changed item
+ * to its own key, so the rows of the other items do not refetch.
+ */
+export function invalidateReviewItemCollections(queryClient: QueryClient) {
+  return Promise.all(
+    REVIEW_ITEM_COLLECTIONS.map((collection) =>
+      queryClient.invalidateQueries({
+        queryKey: [...REVIEW_ITEMS_QUERY_KEY, collection],
+      }),
+    ),
+  );
 }
 
 /** Key the Review item list that these filters read. */
@@ -54,6 +87,7 @@ export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
 export function useReviewItemsData(filters: ReviewItemListFilters) {
   const search = reviewItemListSearch(filters);
   const query = useInfiniteQuery({
+    enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
     queryKey: reviewItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {
@@ -88,7 +122,7 @@ export function useReviewItemData(
   return useQuery({
     enabled: Boolean(id),
     placeholderData: placeholder,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+    queryKey: reviewItemQueryKey(id),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemSchema,
@@ -197,15 +231,16 @@ export function useReviewItemAction() {
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
       ),
+    onError: (_error, args) =>
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: reviewItemQueryKey(args.id),
+      }),
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
     onSuccess: (item) =>
-      queryClient.setQueryData(
-        [...REVIEW_ITEMS_QUERY_KEY, "detail", item.id],
-        item,
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
+      queryClient.setQueryData(reviewItemQueryKey(item.id), item),
+    onSettled: () => invalidateReviewItemCollections(queryClient),
   });
 }
 

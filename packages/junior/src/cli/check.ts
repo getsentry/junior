@@ -431,10 +431,23 @@ async function collectPackageJsPluginSources(
   packageDir: string,
   packageName: string,
 ): Promise<PluginSource[]> {
+  // Core ships skills but is not a plugin, and its entry reads app env at import.
+  if (packageName === "@sentry/junior") {
+    return [];
+  }
   const entryPath = await resolvePackageEntryPath(packageDir);
   if (!entryPath) {
     return [];
   }
+
+  const errorSource = (manifestPath: string, error: unknown): PluginSource => ({
+    pluginDir: packageDir,
+    packageName,
+    manifestPath,
+    errors: [
+      `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+    ],
+  });
 
   let moduleExports: Record<string, unknown>;
   try {
@@ -442,8 +455,8 @@ async function collectPackageJsPluginSources(
       string,
       unknown
     >;
-  } catch {
-    return [];
+  } catch (error) {
+    return [errorSource(entryPath, error)];
   }
 
   const pluginSources: PluginSource[] = [];
@@ -454,17 +467,18 @@ async function collectPackageJsPluginSources(
       continue;
     }
 
+    const manifestPath = `${entryPath}#${exportName}`;
     let registration: unknown;
     try {
       registration = await exportedValue();
-    } catch {
+    } catch (error) {
+      pluginSources.push(errorSource(manifestPath, error));
       continue;
     }
     if (!isPluginRegistrationLike(registration)) {
       continue;
     }
 
-    const manifestPath = `${entryPath}#${exportName}`;
     try {
       pluginSources.push({
         pluginDir: packageDir,
@@ -473,14 +487,7 @@ async function collectPackageJsPluginSources(
         manifest: parseInlinePluginManifest(registration.manifest, packageDir),
       });
     } catch (error) {
-      pluginSources.push({
-        pluginDir: packageDir,
-        packageName,
-        manifestPath,
-        errors: [
-          `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
-        ],
-      });
+      pluginSources.push(errorSource(manifestPath, error));
     }
   }
 

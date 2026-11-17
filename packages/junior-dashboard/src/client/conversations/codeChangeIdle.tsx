@@ -14,9 +14,22 @@ import { formatDuration } from "../time";
 const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
 
-// The last push, review, or comment on a change. Until a code plugin records
-// activity, opening is the last known activity.
-function lastActivity(change: CodeChangeSummaryReport): string {
+/**
+ * Whether an open change counts as idle: the same rule as the code
+ * overview's `summary.idle`.
+ */
+export function isIdleChange(
+  nowMs: number,
+  change: CodeChangeSummaryReport,
+): boolean {
+  return change.state === "open" && idleDays(nowMs, change) > IDLE_CHANGE_DAYS;
+}
+
+/**
+ * The last push, review, or comment on a change. Until a code plugin records
+ * activity, opening is the last known activity.
+ */
+export function lastActivity(change: CodeChangeSummaryReport): string {
   return change.lastActivityAt ?? change.openedAt;
 }
 

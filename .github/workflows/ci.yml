@@ -416,15 +416,17 @@ jobs:
           informational-patch: true
 
   dashboard-e2e:
-    name: test / dashboard e2e
+    name: test / dashboard e2e (${{ matrix.project }})
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     permissions:
-      actions: read
       contents: read
-    outputs:
-      frameshift-mode: ${{ steps.frameshift.outputs.mode }}
-    # Healthy runs finish in ~2-3m; keep a hard cap so install/test hangs fail fast.
+    # One job per Playwright project, so each stays under the cap.
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [classic, inbox]
+    # Keep a hard cap so install/test hangs fail fast.
     timeout-minutes: 15
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
     env:
@@ -458,20 +460,58 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm test:e2e:dashboard
+      - name: Run dashboard e2e
+        env:
+          PLAYWRIGHT_PROJECT: ${{ matrix.project }}
+        run: pnpm test:e2e:dashboard --project="$PLAYWRIGHT_PROJECT"
+      - name: Upload dashboard screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dashboard-screenshots-${{ matrix.project }}
+          path: .playwright/junior-dashboard/screenshots
+          if-no-files-found: error
+          retention-days: 7
+
+  # Frameshift saves or compares one screenshot set per run, so it runs once,
+  # on the screenshots of both e2e jobs.
+  dashboard-screenshots:
+    name: test / dashboard screenshots
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: dashboard-e2e
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      frameshift-mode: ${{ steps.frameshift.outputs.mode }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # Frameshift runs its scripts with Node. setup-node v4 caches only when
+      # `cache` is set, and this step sets none.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 # zizmor: ignore[cache-poisoning]
+        with:
+          node-version: "24.22.1"
+      # Both projects can save a shot with the same name. Classic downloads
+      # last, so the current UI's shot is the one that is compared.
+      - name: Download inbox screenshots
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dashboard-screenshots-inbox
+          path: .playwright/junior-dashboard/screenshots
+      - name: Download classic screenshots
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dashboard-screenshots-classic
+          path: .playwright/junior-dashboard/screenshots
       - name: Find Frameshift baseline
         if: github.event_name == 'pull_request'
         id: frameshift-baseline
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          artifact="frameshift-baseline-v1-${BASE_SHA}"
-          found="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact}" --jq '.artifacts | any(.expired == false)')"
-          echo "found=${found}" >> "$GITHUB_OUTPUT"
-          if [[ "$found" != "true" ]]; then
-            echo "No baseline exists for ${BASE_SHA}. The first default-branch run will create it."
-          fi
+        run: scripts/find-frameshift-baseline.sh
       - name: Record dashboard screenshots
         if: >-
           github.event_name != 'pull_request' ||
@@ -483,9 +523,9 @@ jobs:
 
   frameshift:
     name: visual / dashboard
-    needs: dashboard-e2e
+    needs: dashboard-screenshots
     if: >-
-      needs.dashboard-e2e.outputs.frameshift-mode == 'report' &&
+      needs.dashboard-screenshots.outputs.frameshift-mode == 'report' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -612,6 +652,7 @@ jobs:
       - plugin-tests
       - dashboard-tests
       - dashboard-e2e
+      - dashboard-screenshots
       - build-packages
       - build-example
       - docs-check
