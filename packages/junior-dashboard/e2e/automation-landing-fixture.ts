@@ -54,8 +54,13 @@ function executions(id: string, title: string, plan: RunPlan) {
   });
 }
 
+/** `Omit` for each member of a union, so each kind keeps its own fields. */
+type OmitEach<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
 function automation(
-  base: Omit<
+  base: OmitEach<
     AutomationSummary,
     | "costUsd"
     | "createdAt"
@@ -63,6 +68,7 @@ function automation(
     | "destination"
     | "runs"
     | "outcomes"
+    | "totalCostUsd"
     | "totalRuns"
     | "recentRuns"
     | "lastRunAt"
