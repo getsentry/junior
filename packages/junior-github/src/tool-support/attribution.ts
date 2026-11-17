@@ -63,6 +63,18 @@ function cleanDisplayValue(
   return cleaned;
 }
 
+/**
+ * Whether a person started this Turn from its own surface. An Automation run,
+ * Event, plugin dispatch, or Agent invocation acts for no person. Core's
+ * Automation tools use the same rule.
+ */
+export function startedByPerson(ctx: {
+  actor?: Actor | undefined;
+  source?: Source | undefined;
+}): boolean {
+  return !!ctx.actor && ctx.actor.platform === ctx.source?.kind;
+}
+
 /** Name the Automation run that made this write. */
 function automationLabel(
   source: Source | undefined,

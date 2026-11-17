@@ -12,6 +12,7 @@ import {
   gitHubCommentMatchFields,
   gitHubSenderMatchFields,
 } from "./comment.js";
+import { startedByPerson } from "../tool-support/attribution.js";
 import { gitHubRepoDataSchema, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_ISSUE_EVENTS = [
@@ -159,11 +160,9 @@ export async function watchGitHubIssue(
     ...input,
   });
   if (!subscribable) return {};
-  // Watch only when a person started this Turn from its own surface. An
-  // Automation run, Event, plugin dispatch, or Agent invocation acts for no
-  // person, and a run that triages many issues would get a Watch for each.
-  // Core's Automation tools use the same rule.
-  if (!ctx.actor || ctx.actor.platform !== ctx.source?.kind) {
+  // A run that acts for no person, such as one that triages many issues,
+  // would get a Watch for each issue.
+  if (!startedByPerson(ctx)) {
     return { subscribable };
   }
   try {
