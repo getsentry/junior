@@ -1,11 +1,5 @@
-import { createWebSource } from "@sentry/junior-plugin-api";
-import { githubPlugin } from "@sentry/junior-github";
-import { createApp, defineJuniorPlugins } from "@/app";
-import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { renderCompactionSummary } from "@/chat/services/context-compaction";
+import { randomBytes } from "node:crypto";
 import { estimateTextTokens } from "@/chat/services/token-estimate";
-import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
-import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ArmContext } from "./arms";
@@ -32,7 +26,7 @@ import {
   type ChatToolCall,
   type ToolSpec,
 } from "./models";
-import { firstTurnAfter, type BenchTurn } from "./turns";
+import type { BenchTurn } from "./turns";
 
 type Chat = (request: ChatRequest) => Promise<ChatResult>;
 
@@ -50,11 +44,41 @@ async function unavailable(): Promise<never> {
   throw new Error("The behavioral replay stubs every tool.");
 }
 
+/** The production pieces a replayed Turn needs. */
+export interface ReplayRuntime {
+  system: string;
+  tools: ToolSpec[];
+  renderSummary: (summary: string) => string;
+}
+
 /**
- * Junior's model-facing tools for a root web Conversation, built with the
- * production builder, as the Guardian evals do. Nothing executes them.
+ * Junior's system prompt and model-facing tools for a root Turn on the local
+ * web platform, built with the production builders, as the Guardian evals
+ * do. Nothing executes the tools. The app modules read their config when
+ * they load, so they load here, with a database URL that nothing opens and
+ * a throwaway key that encrypts nothing.
  */
-export async function replayTools(): Promise<ToolSpec[]> {
+export async function replayRuntime(): Promise<ReplayRuntime> {
+  process.env["DATABASE_URL"] ??= "postgres://benchmark@127.0.0.1:1/unused";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
+    `k1:${randomBytes(32).toString("base64url")}`;
+  const [
+    { createWebSource },
+    { githubPlugin },
+    { createApp, defineJuniorPlugins },
+    { turnBehavior },
+    { renderCompactionSummary },
+    { buildDeploymentSystemPrompt },
+    { createTools },
+  ] = await Promise.all([
+    import("@sentry/junior-plugin-api"),
+    import("@sentry/junior-github"),
+    import("@/app"),
+    import("@/chat/conversations/kind-behavior"),
+    import("@/chat/services/context-compaction"),
+    import("@/chat/system-prompt"),
+    import("@/chat/tools"),
+  ]);
   await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
   const conversationId = "local:web:compaction-benchmark";
   // Nothing runs these tools, so no tool touches the sandbox or storage.
@@ -78,20 +102,19 @@ export async function replayTools(): Promise<ToolSpec[]> {
     string,
     AnyToolDefinition
   >;
-  return Object.entries(tools).map(([name, tool]) => ({
-    type: "function",
-    function: {
-      name,
-      description: tool.description,
-      // TypeBox schemas are JSON Schema plus symbol keys; JSON drops those.
-      parameters: JSON.parse(JSON.stringify(tool.inputSchema)) as unknown,
-    },
-  }));
-}
-
-/** The system prompt of a root Turn on the local web platform. */
-export function replaySystemPrompt(): Promise<string> {
-  return buildDeploymentSystemPrompt("local", "conversation");
+  return {
+    system: await buildDeploymentSystemPrompt("local", "conversation"),
+    tools: Object.entries(tools).map(([name, tool]) => ({
+      type: "function",
+      function: {
+        name,
+        description: tool.description,
+        // TypeBox schemas are JSON Schema plus symbol keys; JSON drops them.
+        parameters: JSON.parse(JSON.stringify(tool.inputSchema)) as unknown,
+      },
+    })),
+    renderSummary: renderCompactionSummary,
+  };
 }
 
 function chatRole(message: BenchMessage): "user" | "assistant" {
@@ -144,53 +167,65 @@ function resultKey(name: string, args: unknown): string {
   return `${name}:${JSON.stringify(args)}`;
 }
 
-/** Build the replay case of each point that has a next Turn. */
+/**
+ * Build replay cases: the first `turnsPerPoint` real Turns after each
+ * compaction, before the next one. Later Turns keep the history between the
+ * compaction and their start, as production did.
+ */
 export function replayCases(
   events: readonly BenchEvent[],
   points: readonly CompactionPoint[],
   turns: readonly BenchTurn[],
+  turnsPerPoint = 1,
 ): ReplayCase[] {
-  return points.flatMap((point) => {
-    const turn = firstTurnAfter(turns, point.seq);
-    if (!turn) return [];
-    const firstCall = turn.callSeqs[0] ?? turn.endSeq + 1;
-    const recorded = new Map<string, string>();
-    const calls = new Map<string, string>();
-    for (const event of events) {
-      if (event.seq < turn.startSeq || event.seq > turn.endSeq) continue;
-      const content = event.data.content;
-      if (event.data.type === "assistant_message" && Array.isArray(content)) {
-        for (const part of content as Array<Record<string, unknown>>) {
-          if (part["type"] === "toolCall") {
-            calls.set(
-              String(part["id"]),
-              resultKey(String(part["name"]), part["arguments"]),
-            );
+  const later = (point: CompactionPoint) =>
+    turns
+      .filter(
+        (turn) =>
+          turn.startSeq > point.seq && turn.startSeq < point.windowEndSeq,
+      )
+      .slice(0, turnsPerPoint);
+  return points
+    .flatMap((point) => later(point).map((turn) => ({ point, turn })))
+    .flatMap(({ point, turn }) => {
+      const firstCall = turn.callSeqs[0] ?? turn.endSeq + 1;
+      const recorded = new Map<string, string>();
+      const calls = new Map<string, string>();
+      for (const event of events) {
+        if (event.seq < turn.startSeq || event.seq > turn.endSeq) continue;
+        const content = event.data.content;
+        if (event.data.type === "assistant_message" && Array.isArray(content)) {
+          for (const part of content as Array<Record<string, unknown>>) {
+            if (part["type"] === "toolCall") {
+              calls.set(
+                String(part["id"]),
+                resultKey(String(part["name"]), part["arguments"]),
+              );
+            }
           }
         }
+        if (event.data.type === "tool_result") {
+          const key = calls.get(String(event.data["toolCallId"]));
+          const text = eventText(event.data);
+          if (key && text) recorded.set(key, text.slice(0, RESULT_CHARS));
+        }
       }
-      if (event.data.type === "tool_result") {
-        const key = calls.get(String(event.data["toolCallId"]));
-        const text = eventText(event.data);
-        if (key && text) recorded.set(key, text.slice(0, RESULT_CHARS));
-      }
-    }
-    return [
-      {
-        point,
-        turn,
-        kept: [
-          ...point.tail,
-          ...messagesBetween(events, point.seq, turn.startSeq),
-        ],
-        input: messagesBetween(events, turn.startSeq, firstCall).filter(
-          (message) => message.role === "user",
-        ),
-        real: recordedActions(events, turn),
-        recorded,
-      },
-    ];
-  });
+      return [
+        {
+          point,
+          turn,
+          kept: [
+            ...point.tail,
+            ...messagesBetween(events, point.seq, turn.startSeq),
+          ],
+          input: messagesBetween(events, turn.startSeq, firstCall).filter(
+            (message) => message.role === "user",
+          ),
+          real: recordedActions(events, turn),
+          recorded,
+        },
+      ];
+    });
 }
 
 /** A canned result per tool, or the recorded result of the same call. */
@@ -224,6 +259,7 @@ function stubResult(replay: ReplayCase, call: ChatToolCall): string {
 export interface BehaviorResult {
   arm: string;
   point: number;
+  turn: string;
   /** `completed`: the Turn ended. `step_cap`: it was still calling tools. */
   ending: "completed" | "step_cap";
   actions: Action[];
@@ -241,8 +277,7 @@ export async function replayTurn(args: {
   entry: ArmContext | undefined;
   replay: ReplayCase;
   standing: ReadonlyMap<string, number>;
-  system: string;
-  tools: ToolSpec[];
+  runtime: ReplayRuntime;
   chat: Chat;
 }): Promise<BehaviorResult> {
   const rules = applicableRules({
@@ -261,13 +296,18 @@ export async function replayTurn(args: {
       content: [
         {
           type: "text",
-          text: args.system,
+          text: args.runtime.system,
           cache_control: { type: "ephemeral" },
         },
       ],
     },
     ...(context
-      ? [{ role: "user" as const, content: renderCompactionSummary(context) }]
+      ? [
+          {
+            role: "user" as const,
+            content: args.runtime.renderSummary(context),
+          },
+        ]
       : []),
     ...historyMessages(args.replay.kept),
     {
@@ -278,10 +318,10 @@ export async function replayTurn(args: {
     },
   ];
   const fixedTokens = estimateTextTokens(
-    args.system + JSON.stringify(args.tools),
+    args.runtime.system + JSON.stringify(args.runtime.tools),
   );
   const baseTokens = estimateTextTokens(
-    JSON.stringify(base) + JSON.stringify(args.tools),
+    JSON.stringify(base) + JSON.stringify(args.runtime.tools),
   );
   const messages = [...base];
   const actions: Action[] = [];
@@ -292,7 +332,7 @@ export async function replayTurn(args: {
       stage: `behavior-${args.arm}`,
       modelId: MODELS.opus,
       messages,
-      tools: args.tools,
+      tools: args.runtime.tools,
       maxTokens: 4_000,
       expectedOutputTokens: 600,
       cachedPrefixTokens: step === 0 ? fixedTokens : baseTokens,
@@ -347,6 +387,7 @@ export async function replayTurn(args: {
   return {
     arm: args.arm,
     point: args.replay.point.index,
+    turn: args.replay.turn.id,
     ending,
     actions,
     outcomes,

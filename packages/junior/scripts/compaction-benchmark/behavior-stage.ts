@@ -3,8 +3,7 @@ import { join } from "node:path";
 import type { ArmContext, Tier2Item } from "./arms";
 import {
   replayCases,
-  replaySystemPrompt,
-  replayTools,
+  replayRuntime,
   replayTurn,
   type BehaviorResult,
   type ReplayCase,
@@ -34,7 +33,7 @@ function readItems(dir: string): Tier2Item[] {
 }
 
 /** Replay cases that have at least one applicable rule, with those rules. */
-function scoredCases(dir: string, indexes?: number[]) {
+function scoredCases(dir: string, turnsPerPoint: number, indexes?: number[]) {
   const { events, points, turns } = loadData(dir);
   const standing = ruleStandingPoints(readItems(dir));
   const wanted = indexes ? new Set(indexes) : undefined;
@@ -42,6 +41,7 @@ function scoredCases(dir: string, indexes?: number[]) {
     events,
     points.filter((point) => !wanted || wanted.has(point.index)),
     turns,
+    turnsPerPoint,
   )
     .map((replay) => ({
       replay,
@@ -57,8 +57,8 @@ function scoredCases(dir: string, indexes?: number[]) {
 }
 
 /** Print where each rule stands and at which points it applies. No model. */
-export function rules(dir: string) {
-  const { cases, standing } = scoredCases(dir);
+export function rules(dir: string, turnsPerPoint = 1) {
+  const { cases, standing } = scoredCases(dir, turnsPerPoint);
   for (const rule of BEHAVIOR_RULES) {
     const at = cases
       .filter((entry) => entry.rules.some((applied) => applied.id === rule.id))
@@ -68,7 +68,7 @@ export function rules(dir: string) {
     );
   }
   console.log(
-    `points with at least one rule: ${cases.length} (${cases.map((entry) => entry.replay.point.index).join(", ")})`,
+    `${turnsPerPoint} Turn(s) per point: ${cases.length} replayed Turns have at least one rule, at points ${[...new Set(cases.map((entry) => entry.replay.point.index))].join(", ")}`,
   );
 }
 
@@ -81,20 +81,22 @@ export async function behavior(
   options: {
     arms?: string[];
     points?: number[];
+    turnsPerPoint?: number;
     extraArms?: Record<string, ArmContext[]>;
   } = {},
 ): Promise<BehaviorResult[]> {
-  const { cases, standing } = scoredCases(ctx.dir, options.points);
+  const { cases, standing } = scoredCases(
+    ctx.dir,
+    options.turnsPerPoint ?? 1,
+    options.points,
+  );
   const arms = { ...loadArms(ctx.dir), ...options.extraArms };
   const names = options.arms ?? BEHAVIOR_ARMS;
   const missing = names.filter((name) => !arms[name]);
   if (missing.length) {
     throw new Error(`behavior: build these arms first: ${missing.join(", ")}`);
   }
-  const [system, tools] = await Promise.all([
-    replaySystemPrompt(),
-    replayTools(),
-  ]);
+  const runtime = await replayRuntime();
   const jobs: Array<{ arm: string; replay: ReplayCase }> = names.flatMap(
     (arm) => cases.map(({ replay }) => ({ arm, replay })),
   );
@@ -109,8 +111,7 @@ export async function behavior(
             ),
       replay: job.replay,
       standing,
-      system,
-      tools,
+      runtime,
       chat: ctx.chat,
     }),
   );
@@ -120,7 +121,7 @@ export async function behavior(
       ? (JSON.parse(readFileSync(path, "utf8")) as BehaviorResult[]).filter(
           (row) =>
             !names.includes(row.arm) ||
-            !cases.some((entry) => entry.replay.point.index === row.point),
+            !cases.some((entry) => entry.replay.turn.id === row.turn),
         )
       : [];
     writeFileSync(path, JSON.stringify([...kept, ...results], null, 1));

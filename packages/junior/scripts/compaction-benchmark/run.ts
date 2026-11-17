@@ -40,6 +40,7 @@ const { positionals, values } = parseArgs({
     behavior: { type: "boolean", default: false },
     "behavior-arms": { type: "string" },
     "behavior-points": { type: "string" },
+    "behavior-turns": { type: "string", default: "1" },
     provider: { type: "string" },
     "pinned-tokens": { type: "string" },
     "meta-tokens": { type: "string" },
@@ -74,6 +75,7 @@ const indexes = values.points?.split(",").map(Number);
 const newArms = values.arms?.split(",");
 const behaviorArms = values["behavior-arms"]?.split(",") ?? BEHAVIOR_ARMS;
 const behaviorPoints = values["behavior-points"]?.split(",").map(Number);
+const turnsPerPoint = Number(values["behavior-turns"]);
 const budgets: LoreBudgets = {
   pinnedTokens: Number(values["pinned-tokens"] ?? DEFAULT_BUDGETS.pinnedTokens),
   metaTokens: Number(values["meta-tokens"] ?? DEFAULT_BUDGETS.metaTokens),
@@ -173,6 +175,7 @@ async function estimateNew() {
       behavior(ctx, {
         arms: behaviorArms,
         points: behaviorPoints,
+        turnsPerPoint,
         extraArms: built,
       }),
     );
@@ -197,7 +200,7 @@ async function allNew(maxUsd: number) {
     return;
   }
   tier1(data!);
-  rules(data!);
+  rules(data!, turnsPerPoint);
   const estimate = await estimateNew();
   const { ctx, ledger } = context(false, maxUsd);
   const remaining = maxUsd - ledger.spentUsd;
@@ -209,7 +212,11 @@ async function allNew(maxUsd: number) {
   await lore(ctx, budgets);
   if (newArms) await probe(ctx, { arms: newArms });
   if (values.behavior) {
-    await behavior(ctx, { arms: behaviorArms, points: behaviorPoints });
+    await behavior(ctx, {
+      arms: behaviorArms,
+      points: behaviorPoints,
+      turnsPerPoint,
+    });
   }
   score(data!);
   report(data!);
@@ -275,7 +282,11 @@ async function modelStage() {
     await probe(ctx, newArms ? { arms: newArms } : {});
   } else if (command === "lore") await lore(ctx, budgets);
   else if (command === "behavior") {
-    await behavior(ctx, { arms: behaviorArms, points: behaviorPoints });
+    await behavior(ctx, {
+      arms: behaviorArms,
+      points: behaviorPoints,
+      turnsPerPoint,
+    });
     if (!dryRun) behaviorReport(data!);
   } else throw new Error(`Unknown command ${command}`);
   console.log(
@@ -291,7 +302,7 @@ async function main() {
   } else if (command === "rebuild") rebuild(data!);
   else if (command === "tier1") tier1(data!);
   else if (command === "score") score(data!);
-  else if (command === "rules") rules(data!);
+  else if (command === "rules") rules(data!, turnsPerPoint);
   else if (command === "report") {
     report(data!);
     behaviorReport(data!);

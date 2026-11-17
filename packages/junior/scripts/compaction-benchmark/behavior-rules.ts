@@ -133,6 +133,17 @@ function mentions(turn: BenchTurn, pattern: RegExp): boolean {
   return pattern.test(turn.input);
 }
 
+// Input triggers name an action that the rule governs, not just a topic:
+// child-agent reports mention comments and pushes they already made.
+const ASKS_PR_BODY =
+  /\b(edit|update|rewrite|fix|change) (the )?PR (body|description)\b/i;
+const ASKS_PUBLIC_WRITE =
+  /\b(edit|update|rewrite|fix|change) (the )?PR (body|description)\b|\b(post|leave|add) (a )?(PR |review )?comment\b|\breply (to|on) (the )?(review|thread|comment)|\bopen (a )?(new )?PR\b|\breopen\b|\bresolve (the )?(review )?threads?\b/i;
+const ASKS_PUSH =
+  /\b(can't|cannot|please|then|and) push\b|\bpush (it|the fix|to|this|that|your)\b/i;
+const ASKS_RESTART =
+  /\b(restart|kill)\b[^.\n]{0,40}\b(server|process|dev)\b|\bdev server\b/i;
+
 /**
  * Rules from `tier2.json` that tool calls can prove. A negative rule
  * ("never X") passes only when the Turn finished without X; the runner turns
@@ -162,7 +173,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     id: "push-ancestor-check-and-lease",
     stated: /is-ancestor|ancestor check|force-with-lease/i,
     applies: (turn, real) =>
-      mentions(turn, /\bpush\b/i) ||
+      mentions(turn, ASKS_PUSH) ||
       commands(real).some(({ text }) => PUSH.test(text)),
     check: (actions) => {
       const shell = commands(actions);
@@ -189,19 +200,14 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     stated: /addReviewItem|card first|review card/i,
     applies: (turn, real) =>
       !/<review-item-answer/.test(turn.input) &&
-      (real.some(isPublicWrite) ||
-        mentions(
-          turn,
-          /\b(PR body|description|comment|reply|open (a )?(new )?PR|reopen|resolve)/i,
-        )),
+      (real.some(isPublicWrite) || mentions(turn, ASKS_PUBLIC_WRITE)),
     check: (actions) => {
       const write = firstIndex(actions, isPublicWrite);
       const card = firstIndex(
         actions,
         (action) => action.name === "addReviewItem",
       );
-      if (write === undefined)
-        return card === undefined ? "inconclusive" : "pass";
+      if (write === undefined) return "inconclusive";
       return card !== undefined && card < write ? "pass" : "fail";
     },
   },
@@ -222,7 +228,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     id: "no-self-matching-pkill",
     stated: /pkill|pgrep|kill (dev )?process|bracket pattern/i,
     applies: (turn, real) =>
-      mentions(turn, /\b(restart|preview|dev server)\b/i) ||
+      mentions(turn, ASKS_RESTART) ||
       commands(real).some(({ text }) => /\b(pkill|pgrep|kill)\b/.test(text)),
     check: (actions) => {
       const kills = commands(actions).filter(({ text }) =>
@@ -242,8 +248,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     id: "no-via-byk-in-pr-body",
     stated: /via @BYK[^"]*(once|footer|don't add|no )|footer adds it/i,
     applies: (turn, real) =>
-      prBodies(real).length > 0 ||
-      mentions(turn, /\b(PR body|PR description)\b/i),
+      prBodies(real).length > 0 || mentions(turn, ASKS_PR_BODY),
     check: (actions) => {
       const bodies = prBodies(actions);
       if (!bodies.length) return "inconclusive";
@@ -254,8 +259,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     id: "pr-body-via-github-tool",
     stated: /github_updatePullRequest/i,
     applies: (turn, real) =>
-      prBodies(real).length > 0 ||
-      mentions(turn, /\b(PR body|PR description)\b/i),
+      prBodies(real).length > 0 || mentions(turn, ASKS_PR_BODY),
     check: (actions) => {
       if (commands(actions).some(({ text }) => /\bgh\s+pr\s+edit\b/.test(text)))
         return "fail";

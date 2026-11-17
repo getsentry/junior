@@ -1,59 +1,57 @@
 # Compaction benchmark
 
-Offline benchmark that compares today's capacity compaction summary with
-Lore-style distillation on one real, long Conversation. It replays the
-event log, cuts the history at each recorded `compaction`, and scores what
-each arm keeps of the facts that later Turns needed.
+Offline benchmark of compaction retention on one long session. It reads an
+event-log export at run time and rebuilds the history before each recorded
+capacity compaction. It compares today's summary with other arms on the
+facts that later Turns needed, and on modeled cost.
 
-The data directory holds Conversation content. Keep it outside git. The
-script refuses a data directory inside a git work tree. Do not commit,
-post, or attach its files.
+Fixtures and results stay out of git. `run.ts` refuses a data directory
+inside a Git work tree. `METHOD.md` holds the method, the frozen bar and
+the frozen arm configs.
 
 ## Data
 
-The data directory holds an export made with the agent conversation tools:
-
-- `pages/*.json`: `searchConversationEvents` pages, 100 events each.
-- `payloads/*.jsonl`: one `readConversationEvent` result per line, for
-  events whose page entry has `payload_omitted`.
-
-`merge` writes `events.jsonl` and fails while a payload that the benchmark
-reads is missing.
-
-Known gap: after the first compaction, rebuilt counts are one entry
-below the recorded `inputMessageCount`. The export reports only a count
-for the replacement history, and the rebuild adds back only the summary.
+`D` is the unpacked export directory: `events.jsonl` after `merge`, plus
+`tier1.json`, `tier2.json`, `arms/`, `lore/`, `probes.json`,
+`behavior.json`, `report.md`, `behavior.md` and `cache/`.
 
 ## Quick start
 
-Run from `packages/junior` with `AI_GATEWAY_API_KEY` set. `D` is the
-unpacked export directory.
+Run from `packages/junior` with `AI_GATEWAY_API_KEY` set.
 
 ```sh
 pnpm exec tsx scripts/compaction-benchmark/run.ts all --data $D
 pnpm exec tsx scripts/compaction-benchmark/run.ts all --continue --data $D
 ```
 
-The first command runs the free stages (merge, rebuild, tier1, score),
-prints a dry-run estimate for every model stage, mines Tier 2, and stops.
-Review `$D/tier2.json` and fix or delete wrong items. The second command
-runs the Luna distillation, three summary reruns at points 0, 9, and 19,
-the probes, and the report.
+The first command runs the free stages, prints a dry-run estimate, mines
+Tier 2, and stops so a person can review `$D/tier2.json`. The second runs
+the Luna distillation, three summary reruns at points 0, 9 and 19, the
+probes and the report.
 
-Set `OPENROUTER_API_KEY` instead to send the same model ids through
-OpenRouter's OpenAI-compatible API. Spend then comes from OpenRouter's
-returned cost. Its provider routing can differ slightly from AI Gateway, so
-compare runs on one provider. The cache keys include the provider.
+### New arms and the behavioral track
 
-`--max-usd` caps the total spend in `$D/cache` across both commands. It
-defaults to 30. `all --dry-run --data $D` prints only the estimate. A run
-stops before a call that would pass the cap and exits with code 3. Results
-are cached by content hash, so the same command resumes. An existing
-`tier2.json` is never overwritten; a new mine goes to `tier2.mined.json`.
+```sh
+R="pnpm exec tsx scripts/compaction-benchmark/run.ts"
+$R all --arms lore,hybrid --behavior --dry-run --data $D
+$R all --arms lore,hybrid --behavior --data $D --max-usd 90
+```
+
+This reuses `tier2.json` and the cache, and makes only the new calls: the
+`lore` stage (curator and meta calls), the probes of `lore` and `hybrid`,
+and the behavioral replays. Drop `--behavior` for the recall arms alone,
+or drop `--arms` for the behavioral track alone.
+
+`--max-usd` caps the total spend in `$D/cache`, including earlier runs. It
+defaults to 30. Set it to the spend so far plus the estimate. A run stops
+before a call that would pass the cap and exits with code 3. Results are
+cached by content hash, so the same command resumes.
+
+Set `OPENROUTER_API_KEY` and pass `--provider openrouter` to send the same
+model ids through OpenRouter. Cache keys include the provider, so a cache
+made on one provider is reused only on that provider.
 
 ## Stages
-
-Each stage also runs alone. Set `R="pnpm exec tsx scripts/compaction-benchmark/run.ts"`.
 
 | Stage | Command | Model |
 | --- | --- | --- |
@@ -61,46 +59,21 @@ Each stage also runs alone. Set `R="pnpm exec tsx scripts/compaction-benchmark/r
 | Rebuild compaction points | `$R rebuild --data $D` | none |
 | Mine Tier 1 facts | `$R tier1 --data $D` | none |
 | Tier 1 presence and modeled cost | `$R score --data $D` | none |
+| Behavioral rules and where they apply | `$R rules --data $D` | none |
 | Mine Tier 2 probes | `$R tier2 --data $D --max-usd 15` | Opus |
 | Distillation arm | `$R distill --data $D --max-usd 5` | Luna |
 | Summary reruns | `$R rerun-summary --runs 3 --points 0,9,19 --data $D --max-usd 10` | Opus |
-| Probe answers | `$R probe --data $D --max-usd 10` | Luna |
+| Lore and hybrid arms | `$R lore --data $D --max-usd N` | Luna |
+| Probe answers | `$R probe [--arms lore,hybrid] --data $D --max-usd N` | Luna |
+| Behavioral replays | `$R behavior --data $D --max-usd N` | Opus |
 | Report | `$R report --data $D` | none |
 
-Model stages run alone need `--max-usd` and take `--dry-run`. Luna is the
-distiller. To compare another text model later, pass its Gateway model id
-with `--model`; the arm is named after the id.
+Model stages run alone need `--max-usd` and take `--dry-run`. To compare
+another distiller later, pass its model id with `--model`.
 
-## Arms
-
-- `empty`: nothing. Lower bound.
-- `recorded`: the summaries that production wrote. No model cost here; the
-  cost is the recorded `compaction_prepared` spend.
-- `removed`: all removed history. Upper bound.
-- `rerun-N`: today's `SUMMARY_INSTRUCTION` on rebuilt history, for spread.
-- `distill-gpt-6-luna`: #2050's observer prompt per 16k-token segment,
-  appended across compactions. Past 20 observations, the oldest merge
-  into one meta summary.
-
-`probe` asks each arm every Tier 1 and Tier 2 question twice: with the
-arm's context alone, and with keyword search results from the removed
-history. Junior's event search has no text query, so the second setting is
-an upper bound for the raw tier.
-
-## Scores
-
-- Tier 1: identifiers (PRs, SHAs, UUIDs, paths, URLs, agent names) that
-  the agent used after a compaction before the new version showed them,
-  and that only removed history held.
-- Tier 2: model-mined open asks, assignments, queued briefs, decisions, and
-  constraints, checked by a person.
-- Recall uses Lore's `scoreRetrieval`. Age is the number of compactions
-  since the fact first appeared. Leaks count superseded values.
-- Modeled cost follows #2029: one cold Opus write of the replacement, then
-  cached reads for each recorded call in the next version, plus worker
-  spend.
-
-`report` prints WORTH IT only when a distillation arm beats `recorded` by
-more than 10 points and twice the rerun spread on Tier 1 and Tier 2, with
-and without search, does no worse at age 5 or more, leaks no more, and
-costs at most 1.5 times the recorded summary spend.
+Lore budgets: `--pinned-tokens` (2000), `--meta-tokens` (2000),
+`--lore-inject-tokens` (3000) and `--hybrid-inject-tokens` (2000).
+Behavioral options: `--behavior-arms` (empty, recorded,
+distill-gpt-6-luna, lore, hybrid), `--behavior-points`, and
+`--behavior-turns` (1: replay the first real Turn after each compaction).
+Changing any of these after a scored run breaks the freeze in `METHOD.md`.
