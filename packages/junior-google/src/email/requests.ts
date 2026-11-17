@@ -4,8 +4,10 @@
  *
  * Each heartbeat reads new inbox history. This plugin proves who sent each
  * email (Google's DMARC pass for the `From` domain) and drops automated
- * mail. Core decides whether that address belongs to a trusted person and
- * starts the work. The bot cannot send email.
+ * mail. Mail with the account in To is a request. Mail that only CCs it is
+ * a request only when the sender's words ask the bot. Core decides whether
+ * that address belongs to a trusted person and starts the work. The bot
+ * cannot send email.
  */
 import type {
   HeartbeatHookContext,
@@ -19,6 +21,7 @@ import {
   readMessage,
   type GmailHistoryPage,
 } from "./gmail";
+import { emailAsksAccount } from "./intent";
 import { readEmailRequest, type EmailRequest } from "./message";
 
 const HISTORY_CURSOR_KEY = "email-requests:history-id";
@@ -66,9 +69,22 @@ async function handleMessage(
     return false;
   }
   const { request } = read;
+  const input = renderEmailRequestInput(request);
+  if (
+    !request.to.includes(config.accountEmail) &&
+    !(await emailAsksAccount(ctx.decider, {
+      accountEmail: config.accountEmail,
+      message: input,
+    }))
+  ) {
+    ctx.log.info("google.email_request.dropped", {
+      "app.google.email_request.reason": "not_asked",
+    });
+    return false;
+  }
   const result = await ctx.agent.dispatchForIdentity({
     idempotencyKey: `google-email:${request.messageId}`,
-    input: renderEmailRequestInput(request),
+    input,
     verifiedEmail: request.senderEmail,
   });
   if (result.status === "not_linked") {

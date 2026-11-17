@@ -78,7 +78,10 @@ new public Conversation for the sender. It does not send email.
 The heartbeat reads new inbox mail every minute. The plugin drops an email
 unless Google's `Authentication-Results` header shows DMARC pass for the
 From domain, and the email is not automated mail, a calendar reply, or mail
-from the Junior account. Core then starts work only when the From address is
+from the Junior account. An email with the account in To is a request. An
+email that only CCs the account, such as a reply-all, is a request only when
+the decision model finds that the sender's own words ask Junior to do
+something. Core then starts work only when the From address is
 the primary email of a trusted User, the same as for every Identity
 dispatch. `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` does not apply to senders.
 

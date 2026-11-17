@@ -2,6 +2,7 @@ import type {
   HeartbeatHookContext,
   IdentityDispatchOptions,
   IdentityDispatchResult,
+  PluginDecider,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,10 +41,12 @@ function googleAuth(domain: string, dmarc = "pass"): string {
 function gmailMessage(
   id: string,
   input: {
+    cc?: string;
     from?: string;
     headers?: [string, string][];
     parts?: object[];
     text?: string;
+    to?: string;
   } = {},
 ) {
   const from = input.from ?? "Alice Doe <alice@example.com>";
@@ -54,8 +57,8 @@ function gmailMessage(
       headers: [
         ...(input.headers ?? [["Authentication-Results", googleAuth(domain)]]),
         ["From", from],
-        ["To", "Sam Lee <sam@example.com>, candidate@outside.test"],
-        ["Cc", ACCOUNT_EMAIL],
+        ["To", input.to ?? "Sam Lee <sam@example.com>, candidate@outside.test"],
+        ["Cc", input.cc ?? ACCOUNT_EMAIL],
         ["Subject", "Re: Interview"],
       ].map(([name, value]) => ({ name, value })),
       mimeType: "multipart/alternative",
@@ -124,6 +127,15 @@ describe("Google email requests", () => {
     >
   >;
   const log = { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
+  // Stands in for the decision model: the messages it judged, and its answer.
+  let decided: string[];
+  let asks: (message: string) => boolean;
+  const decider: PluginDecider = {
+    async decide<TChoice extends string>(input: { state: string }) {
+      decided.push(input.state);
+      return { choice: (asks(input.state) ? "asks" : "informs") as TChoice };
+    },
+  };
 
   async function connect(scope = `${API_SCOPES} ${GMAIL_SCOPE}`) {
     await saveGoogleAccount(fixture.db(), {
@@ -146,6 +158,7 @@ describe("Google email requests", () => {
       },
       codeChanges: unused("codeChanges"),
       db: fixture.db(),
+      decider,
       embedder: unused("embedder"),
       events: unused("events"),
       log,
@@ -162,6 +175,8 @@ describe("Google email requests", () => {
     vi.stubEnv("GOOGLE_WORKSPACE_EMAIL_REQUESTS", "true");
     fixture = await createGoogleDb();
     state = createState();
+    decided = [];
+    asks = () => true;
     dispatchForIdentity = vi.fn(async (options) =>
       "verifiedEmail" in options && options.verifiedEmail === KNOWN_SENDER
         ? { conversationId: "conversation-1", status: "created" as const }
@@ -293,6 +308,65 @@ describe("Google email requests", () => {
       "calendar_reply",
       "deleted",
     ]);
+  });
+
+  it("starts work for mail to the account, and for a CC only when the sender asks", async () => {
+    await connect();
+    asks = (message) => message.includes("can you find us 30 minutes");
+    const messages: Record<string, ReturnType<typeof gmailMessage>> = {
+      toAccount: gmailMessage("toAccount", {
+        cc: "",
+        text: "Please review the hiring plan in the doc.",
+        to: ACCOUNT_EMAIL,
+      }),
+      ccAsks: gmailMessage("ccAsks", {
+        text: "Sam, meet Alex. Junior, can you find us 30 minutes next week?",
+      }),
+      ccInforms: gmailMessage("ccInforms", {
+        text: "Sam, meet Alex. I added Junior so it has the context.",
+      }),
+      // The ask is only in the quoted text, so it is not the sender's.
+      replyAll: gmailMessage("replyAll", {
+        text: [
+          "Thanks, Tuesday works for me.",
+          "",
+          "On Mon, Nov 16, 2026 at 9:00 AM Alice Doe <alice@example.com> wrote:",
+          "> Junior, can you find us 30 minutes next week?",
+        ].join("\n"),
+      }),
+    };
+    stubGoogle({
+      "/history": () =>
+        Response.json({
+          history: Object.keys(messages).map((id, index) => ({
+            id: String(101 + index),
+            messagesAdded: [{ message: { id } }],
+          })),
+          historyId: "110",
+        }),
+      ...Object.fromEntries(
+        Object.entries(messages).map(([id, message]) => [
+          `/messages/${id}`,
+          () => Response.json(message),
+        ]),
+      ),
+    });
+    state.values.set("email-requests:history-id", "100");
+
+    await expect(heartbeat()).resolves.toEqual({ dispatchCount: 2 });
+    expect(
+      dispatchForIdentity.mock.calls.map(([options]) => options.idempotencyKey),
+    ).toEqual(["google-email:toAccount", "google-email:ccAsks"]);
+    // Mail to the account needs no decision. A CC is judged on the sender's
+    // own words, without the quoted ask.
+    expect(decided).toHaveLength(3);
+    expect(decided[2]).toContain("Thanks, Tuesday works for me.");
+    expect(decided[2]).not.toContain("can you find");
+    expect(
+      log.info.mock.calls.map(
+        (call) => call[1]["app.google.email_request.reason"],
+      ),
+    ).toEqual(["not_asked", "not_asked"]);
   });
 
   it("restarts at the current mailbox when Gmail no longer has the history", async () => {
