@@ -4,30 +4,26 @@ Read the reference files at the end when your work touches their area.
 
 ## Rules
 
-- Don't state the obvious. In UI copy, agent replies, Slack messages, docs,
-  and PR text, cut what the context already shows.
-- Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
-- Build the smallest design that solves the proven problem. No speculative
-  abstractions, configuration, or wrappers.
-- Write TypeScript, not Java: functions, plain objects, simple types, small
-  modules.
-- Search every consumer before you change a shared signature, error contract,
-  or name. Use a hard cutover unless compatibility is required.
-- Let unexpected failures reach the owning boundary. Retry only expected
-  transient failures.
-- Core owns the runtime and provider-neutral plugin contracts. Plugins own
-  provider routes, API fields, permissions, errors, and formatting.
-- No mutable runtime globals. No test-only singleton mutation APIs.
-- Query tables with the Drizzle query builder. Use `sql` only for
-  expressions inside a builder query, or for statements without a table.
-- Group files by feature. No feature-directory barrels.
-- Exported functions get a brief JSDoc that states intent.
-- Docs use ASD-STE100 English: common words, active voice, short sentences.
-- This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
-  a code comment next to the code that it governs.
-- Change this file or a `README.md` only when intent, an invariant, or a
-  boundary changes. Delete completed plans. Plans in `openspec/changes/`
-  cannot override policy.
+Each rule names what enforces it. When you correct an agent, add or tighten
+the check first. A rule that only review enforces is a judgment call.
+
+| Rule | Enforced by |
+| --- | --- |
+| Don't state the obvious. In UI copy, agent replies, Slack messages, docs, and PR text, cut what the context already shows. | Review |
+| Use the words in `TERMINOLOGY.md`. Do not invent synonyms. | Review |
+| Build the smallest design that solves the proven problem. When output lacks information, use the data the system already stores before you add a hook or lookup. No speculative abstractions, hooks, configuration, or wrappers. | Review, `policies/correctness-complexity.md` |
+| Write TypeScript, not Java: functions, plain objects, simple types, small modules. | Review |
+| Search every consumer before you change a shared signature, error contract, or name. Use a hard cutover unless compatibility is required. | `pnpm typecheck` |
+| Let unexpected failures reach the owning boundary. Retry only expected transient failures. | `tool-error-classification:check` for tools, review elsewhere |
+| Core owns the runtime and provider-neutral plugin contracts. Plugins own provider routes, API fields, permissions, errors, and formatting. | ast-grep `no-core-plugin-*` |
+| No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
+| Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
+| Group files by feature. No feature-directory barrels. | Review |
+| Exported functions get a brief JSDoc that states intent. | Review |
+| Docs use ASD-STE100 English: common words, active voice, short sentences. | Review |
+| A check baseline may only shrink. Fix the new violation. Do not add or raise an entry. | `baseline-growth:check` |
+| This is the only `AGENTS.md`. Do not add one in a directory. Put intent in a code comment next to the code that it governs. | `file-length:check` |
+| Change this file or a `README.md` only when intent, an invariant, or a boundary changes. Delete completed plans. Plans in `openspec/changes/` cannot override policy. | Review |
 
 ## Enforcement
 
