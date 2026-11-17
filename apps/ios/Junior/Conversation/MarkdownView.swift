@@ -7,6 +7,8 @@ struct MarkdownView: View {
   let blocks: [MarkdownBlock]
   var step: TextStep = .base
   var color: Color = Tokens.text
+  /// 12pt between blocks; 6pt inside a list item (`li > * + *`).
+  var spacing: CGFloat = 12
 
   init(_ source: String, step: TextStep = .base, color: Color = Tokens.text) {
     self.blocks = parseMarkdown(source)
@@ -14,14 +16,15 @@ struct MarkdownView: View {
     self.color = color
   }
 
-  init(blocks: [MarkdownBlock], step: TextStep, color: Color) {
+  init(blocks: [MarkdownBlock], step: TextStep, color: Color, spacing: CGFloat = 12) {
     self.blocks = blocks
     self.step = step
     self.color = color
+    self.spacing = spacing
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: spacing) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
         BlockView(block: block, step: step, color: color)
       }
@@ -93,9 +96,8 @@ private struct ListBlockView: View {
           marker(index, item)
             .frame(width: 24, alignment: ordered ? .trailing : .center)
             .padding(.trailing, ordered ? 6 : 2)
-          MarkdownView(blocks: item.blocks, step: step, color: color)
+          MarkdownView(blocks: item.blocks, step: step, color: color, spacing: 6)
         }
-        .padding(.vertical, 4)
       }
     }
   }
@@ -125,8 +127,7 @@ struct CodeBlockView: View {
 
   var body: some View {
     Text(highlighted)
-      .type(.sm, family: .mono)
-      .lineSpacing(14 * 0.43)
+      .type(.sm, family: .mono, lineHeight: 1.625)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
       .frame(maxWidth: .infinity, alignment: .leading)

@@ -160,7 +160,9 @@ struct ConversationCard: View {
     Button {
       app.path.append(.conversation(row.conversationId))
     } label: {
-      HStack(alignment: .top, spacing: 12) {
+      // A card with only a title centers it against the tile, as the web's
+      // stretched column does.
+      HStack(alignment: hasBody ? .top : .center, spacing: 12) {
         tile
         VStack(alignment: .leading, spacing: 0) {
           HStack(spacing: 12) {
@@ -208,6 +210,15 @@ struct ConversationCard: View {
       parts.append(line.count > 140 ? String(line.prefix(139)) + "…" : line)
     }
     return parts.joined(separator: ", ")
+  }
+
+  private var hasBody: Bool {
+    row.activityPreview != nil || row.status == .active || tagCount > 0
+  }
+
+  private var tagCount: Int {
+    let slack = slackLocationLabel(channel: row.channel, name: row.channelName, redacted: row.channelNameRedacted)
+    return (slack != nil && slack != row.title ? 1 : 0) + (row.annotations ?? []).filter { $0.url != nil }.count
   }
 
   private var tile: some View {

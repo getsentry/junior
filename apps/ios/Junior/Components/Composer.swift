@@ -60,13 +60,12 @@ struct ComposerField: View {
     TextField(
       "", text: $text, prompt: Text(placeholder).foregroundStyle(Tokens.textFaint), axis: .vertical
     )
-    .type(.base)
-    .lineSpacing(6)
+    .type(.base, lineHeight: 1.625)
     .foregroundStyle(Tokens.text)
     .lineLimit(1...4)
     .focused(focused)
     .padding(.horizontal, 12)
-    .padding(.vertical, 15)
+    .padding(.vertical, 12)
     .frame(minHeight: 48, alignment: .topLeading)
     .accessibilityLabel(placeholder)
   }

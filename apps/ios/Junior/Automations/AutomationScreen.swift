@@ -85,14 +85,14 @@ struct AutomationScreen: View {
       statusLine(automation)
     }
     actions(automation)
-      .padding(.top, 8)
+      .padding(.top, 12)
     Rectangle().fill(Tokens.borderSubtle).frame(height: 1)
     if let actionError { InlineError(text: actionError) }
     RecentRunsCard(automation: automation, runs: runs) { tab = .runs }
     if let instruction = automation.task?.instruction {
       VStack(alignment: .leading, spacing: 12) {
         Text("Instruction").type(.sm, .semibold).foregroundStyle(Tokens.text)
-        Text(instruction).type(.sm).lineSpacing(8).foregroundStyle(Tokens.text)
+        Text(instruction).type(.sm, lineHeight: 1.625).foregroundStyle(Tokens.text)
           .lineLimit(8)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -284,7 +284,7 @@ private struct RecentRunsCard: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
       if let next = automation.nextRunAt {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
           Text("Next \(app.clock.relative(next))").type(.sm).foregroundStyle(Tokens.text)
           Text(app.clock.dateTimeWithZone(next)).type(.xs).foregroundStyle(Tokens.textMuted)
         }
@@ -346,7 +346,7 @@ private struct RecentRunsCard: View {
           Text(title).foregroundStyle(Tokens.textMuted).lineLimit(1).padding(.leading, 18)
         }
       }
-      .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.vertical, 10)
       Text(
         [run.durationMs.map { formatEventDuration($0) }, run.costUsd.map { formatCost($0) }]
@@ -363,6 +363,7 @@ private struct RecentRunsCard: View {
       .accessibilityLabel("Open conversation")
     }
     .font(.dashboard(.xs))
+    .frame(minHeight: 40)
     .padding(.leading, 16)
     .hairline(.top, Tokens.borderSubtle)
   }
@@ -376,10 +377,13 @@ struct IsSeparator: LayoutValueKey {
 /// Wraps items onto lines and hides a separator that would start a line, as
 /// the dashboard's status line does.
 struct SeparatedFlow: Layout {
+  /// Matches the web's wrapped status line (`gap-y` plus its line box).
+  static let lineGap: CGFloat = 7
+
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     let lines = arrange(width: proposal.width ?? .infinity, subviews: subviews)
     let width = lines.map(\.width).max() ?? 0
-    let height = lines.map(\.height).reduce(0, +) + CGFloat(max(0, lines.count - 1)) * 4
+    let height = lines.map(\.height).reduce(0, +) + CGFloat(max(0, lines.count - 1)) * Self.lineGap
     return CGSize(width: proposal.width ?? width, height: height)
   }
 
@@ -395,7 +399,7 @@ struct SeparatedFlow: Layout {
           at: CGPoint(x: x, y: y + (line.height - size.height) / 2), proposal: ProposedViewSize(size))
         x += size.width
       }
-      y += line.height + 4
+      y += line.height + Self.lineGap
     }
     // Hidden separators get no space.
     for index in subviews.indices where !placed.contains(index) {

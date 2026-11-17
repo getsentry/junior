@@ -133,7 +133,6 @@ private struct NavRow: View {
       .type(.sm, .medium)
       .foregroundStyle(active ? Tokens.accentText : Tokens.textMuted)
       .padding(12)
-      .frame(minHeight: 44)
       .background(active ? Tokens.accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 8))
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }

@@ -60,6 +60,8 @@ struct AppHeader<Trailing: View, Below: View>: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
+      // Above `below`, so its buttons keep their taps where the tags tuck under.
+      .zIndex(1)
       below
     }
     .background(Tokens.bg.opacity(0.95))

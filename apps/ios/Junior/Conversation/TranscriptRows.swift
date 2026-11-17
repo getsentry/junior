@@ -169,7 +169,7 @@ struct ActivityRow: View {
       } else if activity.isLive {
         if let reasoning = activity.latestReasoning {
           Text(styledInline(reasoning, step: .sm, color: Tokens.textMuted))
-            .lineSpacing(14 * 0.415)
+            .type(.sm, lineHeight: 1.625)
             .lineLimit(3)
             .transition(.opacity)
         }

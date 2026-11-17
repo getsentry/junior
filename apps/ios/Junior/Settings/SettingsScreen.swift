@@ -163,11 +163,12 @@ struct SettingsScreen: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(label).type(.sm, .semibold).foregroundStyle(Tokens.text)
+      // `text-sm` with `py-2`, as the web input.
       content()
-        .font(.dashboard(.base))
+        .font(.dashboard(.sm))
         .foregroundStyle(Tokens.text)
         .padding(.horizontal, 12)
-        .frame(height: 40)
+        .frame(height: 37)
         .background(Tokens.ink, in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
       if let help {
@@ -188,7 +189,8 @@ struct SettingsScreen: View {
           .padding(.top, 2)
         VStack(alignment: .leading, spacing: 2) {
           Text(label).type(.sm, .medium).foregroundStyle(Tokens.text)
-          Text(help).type(.xs, lineHeight: 1.625).foregroundStyle(Tokens.textMuted)
+          // `text-xs/4`: a 16pt line.
+          Text(help).type(.xs, lineHeight: 16.0 / 13).foregroundStyle(Tokens.textMuted)
             .fixedSize(horizontal: false, vertical: true)
         }
         Spacer(minLength: 0)

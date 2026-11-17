@@ -47,8 +47,7 @@ struct ConversationDetailsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
           if let summary = detail.brief?.content?.summary {
             Text(summary)
-              .type(.sm)
-              .lineSpacing(9)
+              .type(.sm, lineHeight: 1.71)
               .foregroundStyle(Tokens.text)
               .padding(.bottom, 4)
           }
@@ -145,7 +144,7 @@ struct ConversationDetailsSheet: View {
           Link(destination: URL(string: annotation.url!)!) {
             HStack(alignment: .top, spacing: 10) {
               PathIcon.octicon(presentation.icon, size: 16).foregroundStyle(presentation.color)
-              VStack(alignment: .leading, spacing: 2) {
+              VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                   Text(annotation.label).type(.sm, .medium).foregroundStyle(Tokens.text)
                   Icon("external-link", size: 11).foregroundStyle(Tokens.textMuted).opacity(0.6)
@@ -232,7 +231,16 @@ struct ConversationDetailsSheet: View {
           }
         }
         if let seen = detail.lastSeenAt?.date { stat("Last activity", app.clock.relative(seen)) }
-        if let runtime = detail.cumulativeDurationMs { stat("Runtime", formatEventDuration(runtime)) }
+        if let runtime = detail.cumulativeDurationMs {
+          HStack {
+            Text("Runtime").foregroundStyle(Tokens.textMuted)
+            Spacer()
+            Text(formatEventDuration(runtime)).foregroundStyle(Tokens.text).monospacedDigit()
+              .underline(pattern: .dot, color: Tokens.borderHeavy)
+          }
+          .type(.xs)
+          .accessibilityElement(children: .combine)
+        }
       }
       if let usage = detail.cumulativeUsage {
         Rectangle().fill(Tokens.borderSubtle).frame(height: 1).padding(.vertical, 4)
@@ -328,21 +336,26 @@ private struct PlanRow: View {
   let setStatus: (String) -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      HStack(alignment: .firstTextBaseline, spacing: 10) {
-        icon
-        Text(item.title ?? "Hidden item")
-          .type(.sm, .medium)
-          .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
-          .strikethrough(!item.isOpen)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        Text(assignee).type(.xs).foregroundStyle(Tokens.textMuted).lineLimit(1)
-        if canEdit { menu }
+    // The menu is its own top-aligned column, so it neither floats above the
+    // title nor makes the row taller (`ConversationPlan.tsx`).
+    HStack(alignment: .top, spacing: 4) {
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          icon
+          Text(item.title ?? "Hidden item")
+            .type(.sm, .medium)
+            .foregroundStyle(item.isOpen ? Tokens.text : Tokens.textMuted)
+            .strikethrough(!item.isOpen)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Text(assignee).type(.xs).foregroundStyle(Tokens.textMuted).lineLimit(1)
+        }
+        if let notes = item.notes {
+          Text(notes).type(.xs).foregroundStyle(Tokens.textMuted).padding(.leading, 24)
+        }
       }
-      if let notes = item.notes {
-        Text(notes).type(.xs).foregroundStyle(Tokens.textMuted).padding(.leading, 24)
-      }
+      if canEdit { menu.padding(.vertical, -5) }
     }
+    .padding(.vertical, 2.5)
     .accessibilityElement(children: .contain)
   }
 
@@ -355,7 +368,7 @@ private struct PlanRow: View {
         Button("Reopen", systemImage: "arrow.uturn.backward.circle") { setStatus("pending") }
       }
     } label: {
-      Icon("ellipsis", size: 16).foregroundStyle(Tokens.textMuted).frame(width: 32, height: 32).hitArea()
+      Icon("ellipsis", size: 16).foregroundStyle(Tokens.textMuted).frame(width: 28, height: 28).hitArea()
     }
     .accessibilityLabel("Plan item actions")
   }

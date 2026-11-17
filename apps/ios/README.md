@@ -41,7 +41,8 @@ decode fixtures that are real responses from the mock dashboard.
 
    A shot is `name|dashboard path|theme`. The app opens the path like the web
    router does. `?drawer=1` opens the drawer and `?details=1` opens a
-   Conversation's details.
+   Conversation's details. UI tests call `POST /__reset` on the mock server
+   first, so writes from one test do not affect the next.
 
 4. Run UI tests, one suite or test at a time:
 
@@ -92,7 +93,7 @@ says so. A native sign-in or a write scope for tokens needs a server change.
 
 ## Not in the app yet
 
-The dashboard pages that the app opens in the in-app browser instead: Code,
-System, people profiles, Automation editing, and the event log. Also not here:
-the "New" read-position line, Quick questions, Thread lists in details,
-Automation versions, and queued-message edit or steer.
+The app opens these dashboard pages in the in-app browser: Code, System,
+people profiles, Automation editing, and the event log. Also not in the app:
+Quick questions, Thread lists in Conversation details, Automation versions,
+and queued-message edit or steer.

@@ -192,7 +192,8 @@ struct ConversationScreen: View {
             if model.refreshFailed {
               Text("Could not refresh. Retrying…").type(.xs).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
             }
-            Color.clear.frame(height: 8).id("bottom")
+            // The web's scroller `pb-4` plus the row's own padding.
+            Color.clear.frame(height: 28).id("bottom")
               .onScrollVisibilityChange { atBottom = $0 }
           }
           .padding(.horizontal, 16)

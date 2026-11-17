@@ -234,7 +234,7 @@ private struct ReviewItemDetails: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
           if let body = item.body, !body.isEmpty {
-            Text(body).type(.sm).lineSpacing(8).foregroundStyle(Tokens.textMuted)
+            Text(body).type(.sm, lineHeight: 1.625).foregroundStyle(Tokens.textMuted)
           }
           card("Assignees") {
             if assignees.isEmpty {

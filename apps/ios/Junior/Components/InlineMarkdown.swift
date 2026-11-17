@@ -38,5 +38,20 @@ func styledInline(
     output[run.range].font = Font(font)
     output[run.range].foregroundColor = foreground
   }
+  return padCodeRuns(output)
+}
+
+/// Pad inline code with thin spaces inside its tint, like `px-1` on the web.
+private func padCodeRuns(_ text: AttributedString) -> AttributedString {
+  var output = AttributedString()
+  for run in text.runs {
+    var piece = AttributedString(text[run.range])
+    if run.inlinePresentationIntent?.contains(.code) == true {
+      var pad = AttributedString("\u{2009}")
+      pad.mergeAttributes(run.attributes)
+      piece = pad + piece + pad
+    }
+    output += piece
+  }
   return output
 }
