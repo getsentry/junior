@@ -1312,7 +1312,7 @@ ORDER BY metric
       ).toEqual([
         { metric: "cache_creation_tokens", value: 2 },
         { metric: "cached_input_tokens", value: 5 },
-        { metric: "cost_usd", value: 0.015 },
+        { metric: "cost_micro_usd", value: 15_000 },
         { metric: "duration_ms", value: 1_500 },
         { metric: "input_tokens", value: 5 },
         { metric: "output_tokens", value: 3 },
