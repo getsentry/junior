@@ -11,11 +11,12 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
+  watchResultSchema,
   type PluginToolOutput,
-  type SubscribableResource,
+  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { gitHubIssueSubscribable } from "../events/issue.js";
+import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
@@ -73,13 +74,13 @@ const issueSchema = z.object({
   number: z.number(),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
   title: z.string(),
   url: z.string(),
 });
 type Issue = z.output<typeof issueSchema>;
 interface Result extends PluginToolOutput, Issue {
   target: "updateIssue";
-  subscribable?: SubscribableResource;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   issueSchema.extend({
@@ -125,7 +126,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       conversationId?: string | undefined;
       egress: PluginEgress;
       log: PluginLogger;
-      events: { canSubscribe: boolean };
+      events: ToolRegistrationHookContext["events"];
       conversationLink?: { url: string };
       source?: Source | undefined;
       users: {
@@ -227,8 +228,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
         `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
       );
     }
-    const subscribable = gitHubIssueSubscribable({
-      canSubscribe: ctx.events.canSubscribe,
+    const watch = await watchGitHubIssue(ctx, {
       number: providerResult.number,
       repo: repo.ref,
     });
@@ -249,7 +249,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       body: providerResult.body,
       number: providerResult.number,
       state: providerResult.state,
-      ...(subscribable ? { subscribable } : undefined),
+      ...watch,
       title: providerResult.title,
       url: providerResult.html_url,
     };

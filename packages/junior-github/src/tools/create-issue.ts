@@ -9,6 +9,8 @@ import {
   subscribableResourceSchema,
   type SubscribableResource,
   type PluginToolExecuteOptions,
+  type WatchResult,
+  watchResultSchema,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
@@ -17,7 +19,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { gitHubIssueSubscribable } from "../events/issue.js";
+import { watchGitHubIssue } from "../events/issue.js";
 import {
   appendGitHubRequesterAttribution,
   resolveGitHubRequester,
@@ -119,6 +121,7 @@ interface GitHubIssueResult {
 
 interface GitHubIssueData extends GitHubIssueResult {
   subscribable?: SubscribableResource;
+  subscription?: WatchResult;
 }
 
 interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
@@ -128,6 +131,7 @@ interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
 const gitHubIssueDataSchema = z.object({
   number: z.number(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
   url: z.string(),
 });
 
@@ -137,21 +141,20 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
-function gitHubIssueToolResult(
+async function gitHubIssueToolResult(
+  ctx: ToolRegistrationHookContext,
   input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
-  canSubscribe: boolean,
-): GitHubIssueToolResult {
+): Promise<GitHubIssueToolResult> {
   const repo = parseRepo(input.repo);
-  const subscribable = gitHubIssueSubscribable({
-    canSubscribe,
+  const watch = await watchGitHubIssue(ctx, {
     number: result.number,
     repo: `${repo.owner}/${repo.name}`,
   });
   const data = {
     number: result.number,
     url: result.url,
-    ...(subscribable ? { subscribable } : undefined),
+    ...watch,
   };
   return {
     objectAnnotations: [
@@ -314,10 +317,10 @@ export const gitHubIssueTool = definePluginTool({
             number: state.number,
             url: state.url,
           };
-          return gitHubIssueToolResult(
+          return await gitHubIssueToolResult(
+            ctx,
             completedInput,
             completedResult,
-            ctx.events.canSubscribe,
           );
         }
         if (state?.status === "pending") {
@@ -356,11 +359,7 @@ export const gitHubIssueTool = definePluginTool({
               { cause: error },
             );
           }
-          return gitHubIssueToolResult(
-            parsedInput,
-            result,
-            ctx.events.canSubscribe,
-          );
+          return await gitHubIssueToolResult(ctx, parsedInput, result);
         } catch (error) {
           if (
             isEgressAuthRequired(error) ||
