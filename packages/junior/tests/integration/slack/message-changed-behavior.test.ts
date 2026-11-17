@@ -36,6 +36,9 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         channel: "D12345",
         channel_type: "im",
         hidden: true,
+        // Slack omits this field. Set it so membership passes and only the
+        // subtype filter can drop the edit.
+        user: original.event.user,
         ts: "1700000200.000200",
         event_ts: "1700000200.000200",
         message: {
