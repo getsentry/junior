@@ -77,7 +77,7 @@ Put all evidence in `$RUN_DIR/evidence/<feature>/`. `$RUN_DIR` defaults to `${TM
 node $S/instance.mjs stop $RUN_DIR
 ```
 
-It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It drops the run database and flushes the run Redis database. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. Run it after a failed launch or drive too, so that no process keeps port 3000. Then check that `$RUN_DIR/evidence` still has the artifacts.
+It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It drops the run database and flushes the run Redis database. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. A failed launch runs it by itself. Run it after a failed drive too, so that no process keeps port 3000. Then check that `$RUN_DIR/evidence` still has the artifacts.
 
 ## Map
 

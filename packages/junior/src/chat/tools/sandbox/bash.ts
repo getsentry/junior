@@ -9,6 +9,9 @@ export const bashToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
+  // Guardian reviews every command: `auto` reviews each call that is not
+  // marked read-only and not destructive.
+  approvalMode: "auto",
   description:
     "Run a bash command inside the isolated sandbox workspace. Use this for repository inspection/execution tasks that need shell access. Do not use for network-sensitive or destructive actions unless explicitly required.",
   inputSchema: z.object({
