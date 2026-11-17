@@ -38,6 +38,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { SubqueryWithSelection } from "drizzle-orm/pg-core";
+import { fuseRankedLists } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import { setSpanAttributes } from "@/chat/logging";
 import {
@@ -61,7 +62,6 @@ import { eventFromRow } from "./sql/history";
 // the same searches take about 0.2 s and 1.2 s when every event matches.
 const MAX_COMPUTED_EVENTS = 20_000;
 const CANDIDATES_PER_LEG = 100;
-const RECIPROCAL_RANK_FUSION_K = 60;
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
@@ -135,18 +135,12 @@ export function rankKeywordCandidates(
 export function fuseEventRanks(
   lists: readonly (readonly number[])[],
 ): number[] {
-  const scores = new Map<number, number>();
-  for (const list of lists) {
-    for (const [index, seq] of list.entries()) {
-      scores.set(
-        seq,
-        (scores.get(seq) ?? 0) + 1 / (RECIPROCAL_RANK_FUSION_K + index + 1),
-      );
-    }
-  }
-  return [...scores.entries()]
-    .sort((left, right) => right[1] - left[1] || right[0] - left[0])
-    .map(([seq]) => seq);
+  return fuseRankedLists(
+    lists.map((list) =>
+      list.map((seq, index) => ({ item: seq, rank: index + 1 })),
+    ),
+    { key: (seq) => seq, tiebreak: (left, right) => right - left },
+  );
 }
 
 function searchBounds(
