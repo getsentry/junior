@@ -6,6 +6,11 @@ import {
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import {
+  classifySandboxCredentialRequest,
+  sandboxRequestGetsCredential,
+} from "@/chat/sandbox/egress/credential-request";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
@@ -161,6 +166,33 @@ function continueSandboxEgressTrace<T>(
 }
 
 /**
+ * Choose whether this request gets the plugin's credential. Only a request
+ * that asks for one gets it, so Sandbox code does not act as the Actor only
+ * because it calls a provider domain.
+ */
+function credentialRequestInput(
+  provider: string,
+  request: Request,
+): { withoutCredential?: "carried" | "none" } {
+  const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
+  if (!manifest) {
+    throw new Error(`Plugin "${provider}" has no manifest for sandbox egress`);
+  }
+  const credentialRequest = classifySandboxCredentialRequest(
+    manifest,
+    request.headers,
+  );
+  if (
+    credentialRequest === "placeholder" ||
+    sandboxRequestGetsCredential(manifest, credentialRequest)
+  ) {
+    return {};
+  }
+  // Narrowed by the placeholder check above.
+  return { withoutCredential: credentialRequest };
+}
+
+/**
  * Run one sandbox egress request that its sandbox provider authenticated.
  *
  * This is the shared authorization boundary. It rejects upstream hosts that no
@@ -231,6 +263,7 @@ export async function executeSandboxEgressRequest(
         provider,
         request,
         upstreamUrl,
+        ...credentialRequestInput(provider, request),
       });
       // The sandbox command reads this signal to ask the person to connect.
       if (result.authRequired) {

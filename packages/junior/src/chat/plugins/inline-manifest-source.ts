@@ -172,6 +172,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "env-vars", manifest.envVars);
   setDefined(
     result,
+    "tools-send-no-credential",
+    manifest.toolsSendNoCredential,
+  );
+  setDefined(
+    result,
     "credentials",
     inlineCredentialsSource(manifest.credentials),
   );
