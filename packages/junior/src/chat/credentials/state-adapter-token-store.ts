@@ -82,9 +82,11 @@ export class StateAdapterTokenStore implements UserTokenStore {
     tokens: StoredTokens,
   ): Promise<void> {
     const parsed = storedTokensSchema.parse(tokens);
-    const expiresAt = parsed.refreshTokenExpiresAt ?? parsed.expiresAt;
-    const ttlMs = expiresAt
-      ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
+    const ttlMs = parsed.refreshTokenExpiresAt
+      ? Math.max(
+          parsed.refreshTokenExpiresAt - Date.now() + BUFFER_MS,
+          BUFFER_MS,
+        )
       : LONG_LIVED_TTL_MS;
     await this.secrets.set(tokenKey(userId, provider), parsed, ttlMs);
   }

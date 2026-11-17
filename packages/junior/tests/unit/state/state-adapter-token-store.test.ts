@@ -42,6 +42,23 @@ describe("StateAdapterTokenStore", () => {
     );
   });
 
+  it("keeps a refresh token with no stated expiry past its access token expiry", async () => {
+    const adapter = createAdapter();
+    const store = new StateAdapterTokenStore(adapter);
+
+    await store.set("U123", "asana", {
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+
+    expect(adapter.set).toHaveBeenCalledWith(
+      "oauth-token:U123:asana",
+      expect.stringMatching(/^jenc:v1:/),
+      365 * 24 * 60 * 60 * 1000,
+    );
+  });
+
   it("uses refresh token expiry instead of access token expiry for ttl", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-24T00:00:00Z"));
