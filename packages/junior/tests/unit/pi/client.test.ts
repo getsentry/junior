@@ -451,7 +451,7 @@ describe("completeText", () => {
             cacheRead: 0,
             cacheWrite: 0,
           },
-          outputTokens: { total: 10_500, text: 5, reasoning: 10_495 },
+          outputTokens: { total: 8_500, text: 5, reasoning: 8_495 },
         },
         warnings: [],
       },
@@ -490,12 +490,12 @@ describe("completeText", () => {
       ).not.toContain('{"ok": tr');
       return true;
     });
-    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(10_500);
+    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(8_500);
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
         "gen_ai.response.finish_reasons": ["length"],
-        "gen_ai.usage.output_tokens": 10_500,
-        "gen_ai.usage.reasoning.output_tokens": 10_495,
+        "gen_ai.usage.output_tokens": 8_500,
+        "gen_ai.usage.reasoning.output_tokens": 8_495,
       }),
     );
   });
@@ -509,7 +509,7 @@ describe("completeText", () => {
     [
       "keeps the full limit for a model outside the catalog",
       "plugin/custom",
-      10_500,
+      8_500,
     ],
   ] as const)("%s", async (_name, modelId, maxOutputTokens) => {
     mocks.getModels.mockReturnValueOnce([

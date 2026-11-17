@@ -4,9 +4,10 @@ import { extractGenAiUsageAttributes } from "@/chat/logging";
 /**
  * Output tokens added on top of the object size that a caller asks for.
  * Reasoning models spend output tokens before they write the object, and the
- * provider counts both against one `maxOutputTokens` limit.
+ * provider counts both against one `maxOutputTokens` limit. With Guardian's
+ * 2,000-token assessment, this keeps the 8,000 limit its evals pass at.
  */
-const STRUCTURED_OUTPUT_REASONING_TOKENS = 8_000;
+const STRUCTURED_OUTPUT_REASONING_TOKENS = 6_000;
 
 /**
  * Output token limit for an object of `objectTokens`, with room for reasoning.
