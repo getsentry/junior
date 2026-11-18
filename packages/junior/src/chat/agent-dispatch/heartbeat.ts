@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { isBriefsEnabled } from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
@@ -13,7 +12,7 @@ import {
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -179,16 +178,13 @@ async function runPerMailbox<T>(
     const mailbox = mailboxOf(item);
     byMailbox.set(mailbox, [...(byMailbox.get(mailbox) ?? []), item]);
   }
-  await pLimit(FAN_OUT_CONCURRENCY).map(
-    [...byMailbox.values()],
-    async (group) => {
-      /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
-      for (const item of group) {
-        await work(item);
-      }
-      /* oxlint-enable no-await-in-loop */
-    },
-  );
+  await mapBounded([...byMailbox.values()], async (group) => {
+    /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
+    for (const item of group) {
+      await work(item);
+    }
+    /* oxlint-enable no-await-in-loop */
+  });
 }
 
 /** Repair invocation creation that stopped before its idempotent mailbox append. */
