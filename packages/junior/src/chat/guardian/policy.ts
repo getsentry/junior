@@ -209,7 +209,7 @@ export function guardianPluginFacts(
         .join(", ");
       facts.push({
         plugin: manifest.name,
-        text: `\`$${credentials.authTokenEnv}\` in the Sandbox holds a placeholder. The runtime adds the real credential only to Sandbox requests to ${domains}, the plugin's own service, so sending this variable there does not expose a secret.`,
+        text: `\`$${credentials.authTokenEnv}\` in the Sandbox holds a placeholder. The runtime adds the real credential only to Sandbox requests to ${domains}, so sending this variable to them does not expose a secret.`,
       });
     }
     return facts;
