@@ -260,6 +260,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A phone shows the toggle in the app header, beside the menu.
     await page.setViewportSize({ height: 844, width: 390 });
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // Touch opens no tooltip, so the help is the accessible description.
+    await expect(toggle).toHaveAccessibleDescription(/linked work is merged/);
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
   });

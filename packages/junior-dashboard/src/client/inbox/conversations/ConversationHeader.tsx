@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { displayPlainText } from "../../display-text/plainText";
-import { Hourglass, Menu, PanelRight } from "lucide-react";
+import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
 import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
@@ -397,22 +397,62 @@ function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
   );
 }
 
+const AUTO_ARCHIVE_HELP =
+  "Archive this conversation for everyone when its linked work is merged or closed and nobody replies during your wait time.";
+
 /** Turn the viewer's auto-archive on or off for this Conversation. */
 function AutoArchiveButton(props: { on: boolean; onToggle(): void }) {
+  const helpId = useId();
   return (
-    <HeaderIconButton
-      label="Auto archive"
-      onClick={props.onToggle}
-      pressed={props.on}
-      tooltip={
-        <>
-          <TooltipTitle>Auto archive is {props.on ? "on" : "off"}</TooltipTitle>
-          Archive this conversation for everyone when its linked work is merged
-          or closed and nobody replies during your wait time.
-        </>
-      }
+    <>
+      {/* Tooltips do not open on touch screens, so the help stays in the
+          accessible description. */}
+      <span className="sr-only" id={helpId}>
+        {AUTO_ARCHIVE_HELP}
+      </span>
+      <HeaderIconButton
+        aria-describedby={helpId}
+        // Blue marks it on, so the pressed fill would repeat it.
+        aria-pressed={props.on}
+        label="Auto archive"
+        onClick={props.onToggle}
+        tooltip={
+          <>
+            <TooltipTitle>
+              Auto archive is {props.on ? "on" : "off"}
+            </TooltipTitle>
+            {AUTO_ARCHIVE_HELP}
+          </>
+        }
+      >
+        <AutoArchiveIcon
+          className={props.on ? "text-dashboard-accent-text" : undefined}
+        />
+      </HeaderIconButton>
+    </>
+  );
+}
+
+/** An archive box inside a circular arrow: archiving that runs on its own. */
+function AutoArchiveIcon(props: { className?: string | undefined }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={props.className}
+      fill="none"
+      height={17}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.9}
+      viewBox="0 0 24 24"
+      width={17}
     >
-      <Hourglass aria-hidden="true" size={15} strokeWidth={2} />
-    </HeaderIconButton>
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <rect height="2.5" rx="0.5" width="8" x="8" y="8.5" />
+      <path d="M9 11v3.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V11" />
+      <path d="M11 13h2" />
+    </svg>
   );
 }
