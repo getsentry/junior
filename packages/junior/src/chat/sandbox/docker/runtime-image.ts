@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import { dockerJson } from "@/chat/sandbox/docker/api";
 import {
   DockerApiError,
-  dockerJson,
   dockerOkStream,
   dockerRequest,
   readStream,
-} from "@/chat/sandbox/docker/api";
+} from "@/core/tool-execution-environment/docker/api";
 import {
   COMMAND_STATE_DIR,
   runRawExec,
