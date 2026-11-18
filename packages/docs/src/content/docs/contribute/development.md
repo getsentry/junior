@@ -48,6 +48,8 @@ Before the app starts, `pnpm dev` runs `docker compose up -d --wait`. This start
 
 With BullMQ, `pnpm dev` starts one queue worker process next to Nitro. Nitro accepts requests and sends jobs. The worker runs them. A new Junior build restarts both processes. A change to `apps/example/server.ts`, `plugins.ts`, `dashboard.ts` or `apps/example/app/` restarts only the worker. The worker and Nitro must share state, so `pnpm dev` keeps state in that Redis unless you set `JUNIOR_STATE_ADAPTER`. `JUNIOR_STATE_ADAPTER=memory` does not work with BullMQ. Each queue topic runs up to 4 jobs at the same time. Set `JUNIOR_QUEUE_WORKER_CONCURRENCY` to change that number.
 
+`pnpm dev` runs inside `sentry local run`. Nitro and the queue worker send their errors, spans, and logs to one Sentry Local server on `http://localhost:8969`, and the terminal shows them. The server keeps its events when Nitro or the worker restarts. To read them as NDJSON from another terminal, run `pnpm exec sentry local serve --format json`. When `SENTRY_SPOTLIGHT` is already set, `pnpm dev` uses that server and starts none.
+
 To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
 
 ```bash
