@@ -409,16 +409,15 @@ async function runsOnConversationLoop(
   pending: readonly InboundMessage[],
   mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const routes = await Promise.all(
-    pending
-      .filter((message) => answersParent(kind, message.source))
-      .map((message) =>
-        limit(() => routeChildInput(message, latest, stoppedAtMs)),
-      ),
-  );
-  if (routes.includes("Conversation loop")) {
-    return true;
+  for (const message of pending) {
+    if (
+      answersParent(kind, message.source) &&
+      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
+      (await routeChildInput(message, latest, stoppedAtMs)) ===
+        "Conversation loop"
+    ) {
+      return true;
+    }
   }
   return mailboxTurnSources.some((source) => answersParent(kind, source?.kind));
 }
