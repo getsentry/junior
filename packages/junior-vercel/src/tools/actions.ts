@@ -56,6 +56,7 @@ const aliasOutput = pluginToolOutputSchema.extend({
   redirect: text.nullable(),
 });
 
+/** Select the safe deployment fields from a Vercel deployment response. */
 function deploymentResult(data: unknown) {
   const value = deploymentSchema.parse(data);
   return {
@@ -67,6 +68,18 @@ function deploymentResult(data: unknown) {
     project_id: value.projectId ?? null,
     commit_sha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
+  };
+}
+
+/**
+ * Return a deployment the Conversation created, with its Annotation. Only
+ * tools that change the deployment may annotate it; reads must use
+ * `deploymentResult`.
+ */
+function createdDeploymentResult(data: unknown) {
+  const value = deploymentSchema.parse(data);
+  return {
+    ...deploymentResult(value),
     objectAnnotations: [
       {
         kind: "object",
@@ -206,7 +219,7 @@ export const vercelActionTools = {
         ref: input.ref,
         sha: input.commit_sha?.toLowerCase(),
       };
-      return deploymentResult(
+      return createdDeploymentResult(
         await request(
           ctx.egress,
           "vercel.deployment.create",
