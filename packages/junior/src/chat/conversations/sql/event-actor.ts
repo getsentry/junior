@@ -9,7 +9,7 @@ import {
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
-import type { ConversationEventData } from "../history";
+import type { ConversationEventData } from "@/db/conversation-history/events";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

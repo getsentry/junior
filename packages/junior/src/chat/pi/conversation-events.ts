@@ -8,11 +8,11 @@ import type {
   ConversationEvent,
   ConversationEventData,
   AgentHistoryItem,
-} from "@/chat/conversations/history";
-import { agentHistoryItemSchema } from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
+import { agentHistoryItemSchema } from "@/db/conversation-history/events";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
-import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
-import { contextProvenance } from "@/chat/conversations/provenance";
+import { type ConversationMessageProvenance } from "@/db/conversation-history/provenance";
+import { contextProvenance } from "@/db/conversation-history/provenance";
 type AuthorizationCompletedEventData = Extract<
   ConversationEventData,
   { type: "authorization_completed" }

@@ -4,7 +4,7 @@ import { createActor, parseActorUserId } from "@/chat/actor";
 import {
   instructionProvenanceFor,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import {
   commitMessages,
   loadConversationProjection,

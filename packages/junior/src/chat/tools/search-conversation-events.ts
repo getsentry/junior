@@ -4,7 +4,7 @@ import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
   type KnownConversationEventType,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import {
   assertCanReadConversationEvents,
   stripReplacementHistory,

@@ -48,7 +48,7 @@ import {
   instructionProvenanceFor,
   sameActorIdentity,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,

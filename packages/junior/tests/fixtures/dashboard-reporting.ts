@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { encodeHistoryPayload } from "@/chat/conversations/history-payload";
+import { encodeHistoryPayload } from "@/db/conversation-history/payload";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";

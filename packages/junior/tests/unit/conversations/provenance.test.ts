@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   instructionActors,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 
 describe("instructionActors", () => {
   it("deduplicates actor identities while preserving the first representation", () => {

@@ -14,7 +14,7 @@ import {
   decodeStoredConversationEvent,
   type ConversationEvent,
   type ConversationEventData,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 
 function event(
   seq: number,

@@ -2,7 +2,7 @@ import { getChatConfig, type SqlDriver } from "@/chat/config";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import type { ConversationEventStore } from "@/chat/conversations/history";
+import type { ConversationEventStore } from "@/db/conversation-history/events";
 import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
 import type { ConversationMessageSearchStore } from "@/chat/conversations/message-search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";

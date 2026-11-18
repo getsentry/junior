@@ -11,7 +11,7 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
-import { nextDetailVersion } from "./sql/detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import { costMicroUsdExpr } from "@/chat/automations/run-cost";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { microUsdToUsd, microUsdToUsdSql, usdToMicroUsd } from "@/db/micro-usd";

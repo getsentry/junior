@@ -4,7 +4,7 @@ import { getConversationEventStore } from "@/chat/db";
 import {
   agentInstructionProvenance,
   contextProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";

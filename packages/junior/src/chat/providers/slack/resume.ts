@@ -45,7 +45,7 @@ import {
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import type { ConversationTurnFailureCode } from "@/db/conversation-history/events";
 import {
   recordTurnSummary,
   saveTurnCheckpoint,

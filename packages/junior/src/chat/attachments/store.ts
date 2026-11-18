@@ -21,7 +21,7 @@ import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import {
   conversationDetailTouch,
   touchConversationDetail,
-} from "@/chat/conversations/sql/detail-version";
+} from "@/db/conversation-detail-version";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   AttachmentSourceUnavailableError,

@@ -6,7 +6,7 @@ import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, type juniorDestinations } from "@/db/schema";
 import type { ProviderConversationBinding } from "./bindings";
-import { nextDetailVersion } from "./detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
 

@@ -46,7 +46,7 @@ import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
   sameActorIdentity,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import {
   getTurnRecord,
   type TurnRecord,

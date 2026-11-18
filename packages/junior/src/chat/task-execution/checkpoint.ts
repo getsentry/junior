@@ -21,7 +21,7 @@ import {
 } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import type { ConversationMessageProvenance } from "@/db/conversation-history/provenance";
 import {
   isContinuablePiBoundary,
   trimTrailingAssistantMessages,

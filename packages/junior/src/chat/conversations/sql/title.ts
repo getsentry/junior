@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
-import { nextDetailVersion } from "./detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import { withConversationMutationLock } from "./store";
 
 /**

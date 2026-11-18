@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";

@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import type { JuniorDatabase } from "@/db/db";
 import {

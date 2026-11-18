@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
-import { nextDetailVersion } from "./detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 
 /**
  * Establish the conversation metadata row on first contact for content writes

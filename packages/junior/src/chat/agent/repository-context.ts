@@ -1,4 +1,4 @@
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import type { ConversationMessageProvenance } from "@/db/conversation-history/provenance";
 import type { UserContentPart } from "@/chat/agent/prompt";
 import type { PiMessage } from "@/chat/pi/messages";
 import { withSpan } from "@/chat/logging";

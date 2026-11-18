@@ -3,7 +3,7 @@ import {
   conversationEventSchema,
   type ConversationEvent,
   type ConversationEventData,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 
 function event(

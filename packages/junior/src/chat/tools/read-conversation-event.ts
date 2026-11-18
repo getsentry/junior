@@ -3,7 +3,7 @@ import {
   assertCanReadConversationEvents,
   stripReplacementHistory,
 } from "@/chat/conversations/event-access";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";

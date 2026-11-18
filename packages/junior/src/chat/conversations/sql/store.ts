@@ -53,7 +53,7 @@ import {
   conversationKindFromRow,
   ensureConversationRow,
 } from "./conversation-row";
-import { nextDetailVersion } from "./detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;

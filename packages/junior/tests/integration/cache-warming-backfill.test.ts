@@ -22,7 +22,7 @@ import {
   agentInstructionProvenance,
   contextProvenance,
   instructionProvenanceFor,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import {
   getConversationEventStore,
   getConversationStore,

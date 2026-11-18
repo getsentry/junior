@@ -13,8 +13,8 @@ import {
   juniorAgentInvocations,
   juniorReviewItems,
 } from "@/db/schema";
-import { touchConversationDetail } from "./detail-version";
-import { withConversationEventLock } from "./event-lock";
+import { touchConversationDetail } from "@/db/conversation-detail-version";
+import { withConversationEventLock } from "@/db/conversation-history/event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";

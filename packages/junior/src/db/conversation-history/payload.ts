@@ -1,5 +1,5 @@
 import * as z from "zod";
-import type { ConversationEventData } from "./history";
+import type { ConversationEventData } from "./events";
 
 const messageFieldsSchema = z.record(z.string(), z.unknown());
 const replacementEntrySchema = z.object({ item: z.string() }).passthrough();

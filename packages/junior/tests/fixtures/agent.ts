@@ -2,7 +2,7 @@ import type { Context, Message } from "@earendil-works/pi-ai";
 import { vi } from "vitest";
 import type { BotConfig } from "@/chat/config";
 import { botConfig } from "@/chat/config";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";

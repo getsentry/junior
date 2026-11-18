@@ -6,7 +6,7 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import type { ConversationMessageProvenance } from "@/db/conversation-history/provenance";
 import {
   CooperativeTurnYieldError,
   TurnInputCommitLostError,

@@ -67,7 +67,10 @@ import {
   excerptTerms,
   SEARCHABLE_EVENT_TYPES,
 } from "./event-search-text";
-import type { ConversationEvent, KnownConversationEventType } from "./history";
+import type {
+  ConversationEvent,
+  KnownConversationEventType,
+} from "@/db/conversation-history/events";
 import { eventFromRow } from "./sql/history";
 
 // Keyword search computes lexemes for at most this many of the newest events

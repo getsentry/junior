@@ -17,9 +17,9 @@ import {
 } from "@/chat/services/background-compaction";
 import type { BackgroundCompactionMessage } from "@/chat/services/background-compaction-queue";
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
-import type { HistoryReplacement } from "@/chat/conversations/history";
+import type { HistoryReplacement } from "@/db/conversation-history/events";
 import { openConversationProjection } from "@/chat/conversations/projection";
-import { contextProvenance } from "@/chat/conversations/provenance";
+import { contextProvenance } from "@/db/conversation-history/provenance";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { closeConversationFixture } from "../fixtures/conversation";

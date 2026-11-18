@@ -21,7 +21,7 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import { juniorConversations } from "@/db/schema";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import {
   conversationSubtree,
   conversationSubtreeColumns,

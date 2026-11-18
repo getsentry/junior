@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
-import { agentInstructionProvenance } from "@/chat/conversations/provenance";
+import { agentInstructionProvenance } from "@/db/conversation-history/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,

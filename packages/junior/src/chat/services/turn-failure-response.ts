@@ -1,4 +1,4 @@
-import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
+import type { ConversationTurnFailureReason } from "@/db/conversation-history/events";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {

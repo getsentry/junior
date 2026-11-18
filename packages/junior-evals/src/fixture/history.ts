@@ -27,7 +27,7 @@ import {
 import {
   contextProvenance,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { WebActor } from "@/chat/actor";
 import {

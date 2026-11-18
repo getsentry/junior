@@ -8,7 +8,7 @@ import {
   canAccessConversation,
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { getConversationStore, getDb } from "@/chat/db";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";

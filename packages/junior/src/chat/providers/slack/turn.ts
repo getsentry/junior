@@ -111,7 +111,7 @@ import {
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
-import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
+import type { ConversationTurnFailureReason } from "@/db/conversation-history/events";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import {

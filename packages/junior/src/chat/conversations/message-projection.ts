@@ -1,4 +1,7 @@
-import type { ConversationEvent, MessageHistory } from "./history";
+import type {
+  ConversationEvent,
+  MessageHistory,
+} from "@/db/conversation-history/events";
 import type {
   ConversationAuthor,
   ConversationMessage,

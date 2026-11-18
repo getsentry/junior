@@ -9,7 +9,7 @@
  */
 import * as z from "zod";
 import { conversationMessageProvenanceSchema } from "./provenance";
-import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
+import { decodeHistoryPayload, isEncodedHistoryType } from "./payload";
 
 const userMessageEventDataSchema = z
   .object({

@@ -2,7 +2,7 @@
  * Saved agent history: the model context that Junior committed for a
  * Conversation, as the runtime's history reader returns it. Read-only.
  */
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import type { ConversationMessageProvenance } from "@/db/conversation-history/provenance";
 import { getConversationEventStore } from "@/chat/db";
 
 /** One saved agent-history item, in commit order. */

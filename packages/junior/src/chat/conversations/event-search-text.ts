@@ -9,7 +9,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { juniorConversationEvents } from "@/db/schema";
 import { RUNTIME_CONTEXT_TEXT_STARTS } from "@/chat/pi/transcript";
-import type { KnownConversationEventType } from "./history";
+import type { KnownConversationEventType } from "@/db/conversation-history/events";
 import { storedMessageJson } from "./sql/message-json";
 
 /** Event types that have searchable text. Other events never match a query. */

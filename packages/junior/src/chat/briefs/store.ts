@@ -2,7 +2,7 @@ import { and, desc, eq, lte, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { microUsdToUsd, usdToMicroUsd } from "@/db/micro-usd";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
-import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/db/conversation-detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import {
   conversationBriefSchema,

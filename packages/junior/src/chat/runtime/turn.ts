@@ -1,5 +1,5 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import type { ConversationTurnFailureCode } from "@/db/conversation-history/events";
 
 export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 

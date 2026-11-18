@@ -7,7 +7,7 @@ import {
   conversationEventDataSchema,
   conversationEventSchema,
   newConversationEventSchema,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import {

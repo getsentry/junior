@@ -4,11 +4,11 @@ import type { User } from "@sentry/junior-plugin-api";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
-} from "./history";
+} from "@/db/conversation-history/events";
 import { loadTurnProjection } from "./projection";
-import { contextProvenance } from "./provenance";
-import { nextDetailVersion } from "./sql/detail-version";
-import { withConversationEventLock } from "./sql/event-lock";
+import { contextProvenance } from "@/db/conversation-history/provenance";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
+import { withConversationEventLock } from "@/db/conversation-history/event-lock";
 import {
   createConversationId,
   recordWebConversationActivity,

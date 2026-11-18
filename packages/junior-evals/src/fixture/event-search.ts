@@ -13,7 +13,7 @@ import { searchConversationEventText } from "@/chat/conversations/event-search";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { DEFAULT_EVENT_SEARCH_LIMIT } from "@/chat/tools/search-conversation-events";
 

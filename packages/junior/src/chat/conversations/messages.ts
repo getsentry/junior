@@ -10,7 +10,7 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import type { ConversationEventStore } from "./history";
+import type { ConversationEventStore } from "@/db/conversation-history/events";
 
 /** Author role of a visible conversation message. */
 export type ConversationMessageRole = "user" | "assistant" | "system";

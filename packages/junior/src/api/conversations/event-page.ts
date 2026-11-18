@@ -13,7 +13,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { eventFromRow } from "@/chat/conversations/sql/history";
 import { startSpan } from "@/chat/sentry";
 import type { JuniorSqlDatabase } from "@/db/db";

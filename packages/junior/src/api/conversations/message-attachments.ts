@@ -1,5 +1,5 @@
 import { matchSlackAttachments } from "@/chat/slack/attachments";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { JuniorSqlDatabase } from "@/db/db";
 

@@ -48,7 +48,7 @@ import {
   isConversationWorkDone,
   listConversationWork,
 } from "@/chat/plugins/unfinished-work";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { awaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";

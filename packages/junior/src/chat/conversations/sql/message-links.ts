@@ -6,7 +6,7 @@ import {
   juniorMessageAttachments,
 } from "@/db/schema";
 import { batchMessageLinks, urlAttachmentId } from "../message-links";
-import { conversationDetailTouch } from "./detail-version";
+import { conversationDetailTouch } from "@/db/conversation-detail-version";
 
 type EventRow = {
   conversationId: string;

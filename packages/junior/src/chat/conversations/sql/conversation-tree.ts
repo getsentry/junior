@@ -3,7 +3,7 @@ import type { ConversationKind } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { conversationKindFromRow } from "./conversation-row";
-import { nextDetailVersion } from "./detail-version";
+import { nextDetailVersion } from "@/db/conversation-detail-version";
 
 /** One Conversation in a tree, with the fields that archive rules read. */
 export type ConversationTreeNode = {

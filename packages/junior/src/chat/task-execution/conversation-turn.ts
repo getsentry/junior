@@ -31,7 +31,7 @@ import {
 } from "@/chat/task-execution/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import type { ConversationTurnFailureCode } from "@/db/conversation-history/events";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { logException, setTags } from "@/chat/logging";

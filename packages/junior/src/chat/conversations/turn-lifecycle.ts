@@ -2,7 +2,7 @@ import type {
   ConversationEventStore,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-} from "./history";
+} from "@/db/conversation-history/events";
 import { getConversationEventStore } from "@/chat/db";
 
 /** Product-owned inputs for opening one correlated conversation turn. */

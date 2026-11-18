@@ -12,7 +12,7 @@ import {
   agentInstructionProvenance,
   contextProvenance,
   sameActorIdentity,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";

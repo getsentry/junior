@@ -27,7 +27,7 @@ import {
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
-} from "../history";
+} from "@/db/conversation-history/events";
 import { ensureConversationRow } from "./conversation-row";
 import { refreshLastMessageAt } from "./last-message";
 import {
@@ -36,10 +36,10 @@ import {
 } from "./event-actor";
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
-import { encodeHistoryPayload } from "../history-payload";
+import { encodeHistoryPayload } from "@/db/conversation-history/payload";
 import { restoreArchivedPath } from "./conversation-tree";
-import { conversationDetailTouch } from "./detail-version";
-import { withConversationEventLock } from "./event-lock";
+import { conversationDetailTouch } from "@/db/conversation-detail-version";
+import { withConversationEventLock } from "@/db/conversation-history/event-lock";
 import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,

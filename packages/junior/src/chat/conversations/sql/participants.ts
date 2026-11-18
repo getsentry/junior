@@ -5,7 +5,7 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
-import { touchConversationDetail } from "./detail-version";
+import { touchConversationDetail } from "@/db/conversation-detail-version";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(

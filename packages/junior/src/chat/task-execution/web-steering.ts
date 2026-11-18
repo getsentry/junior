@@ -7,7 +7,7 @@ import {
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { persistConversationMessages } from "@/chat/conversations/messages";
-import { instructionProvenanceFor } from "@/chat/conversations/provenance";
+import { instructionProvenanceFor } from "@/db/conversation-history/provenance";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { upsertConversationMessage } from "@/chat/services/conversation-memory";
 import type {

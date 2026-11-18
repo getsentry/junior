@@ -35,7 +35,7 @@ import {
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
-import { contextProvenance } from "@/chat/conversations/provenance";
+import { contextProvenance } from "@/db/conversation-history/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {

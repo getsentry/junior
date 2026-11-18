@@ -2,7 +2,7 @@ import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";

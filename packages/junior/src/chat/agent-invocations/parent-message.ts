@@ -2,7 +2,7 @@ import { actorSchema } from "@sentry/junior-plugin-api";
 import { and, desc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
-import { agentInstructionProvenance } from "@/chat/conversations/provenance";
+import { agentInstructionProvenance } from "@/db/conversation-history/provenance";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";

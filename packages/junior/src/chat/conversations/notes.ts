@@ -5,7 +5,7 @@
  * context, never user intent, and only core adds one.
  */
 import { getConversationEventStore } from "@/chat/db";
-import type { ConversationTurnFailureCode } from "./history";
+import type { ConversationTurnFailureCode } from "@/db/conversation-history/events";
 import {
   conversationNoteEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,

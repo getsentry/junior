@@ -33,7 +33,7 @@ import {
   runWithConversationPrivacy,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
 import {

@@ -8,7 +8,7 @@ import type {
   HistoryReplacementResult,
   MessageHistory,
   NewConversationEvent,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 
 class MemoryConversationEventStore implements ConversationEventStore {

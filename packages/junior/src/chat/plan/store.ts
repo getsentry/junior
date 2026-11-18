@@ -13,7 +13,7 @@ import {
   juniorPlanItemVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { touchConversationDetail } from "@/db/conversation-detail-version";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PlanItem, PlanItemStatus } from "./types";
 

@@ -12,7 +12,7 @@ import {
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
-import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/db/conversation-detail-version";
 import { fileFields } from "@/chat/attachments/store";
 
 /** Save the vision summary for a stored Slack attachment. */

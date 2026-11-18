@@ -11,7 +11,7 @@ import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";

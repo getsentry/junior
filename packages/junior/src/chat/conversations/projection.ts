@@ -10,13 +10,13 @@ import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import type {
   AuthorizationKind,
   ConversationEvent,
   ConversationEventData,
   ConversationEventStore,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
   agentsInstructionsUpdatedEvent,
@@ -31,7 +31,7 @@ import {
   claimProviderConversation,
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { withConversationEventLock } from "@/db/conversation-history/event-lock";
 import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,

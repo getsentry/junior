@@ -9,7 +9,7 @@ import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
-import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { conversationDetailTouch } from "@/db/conversation-detail-version";
 
 function annotationFromRow(row: {
   annotation: unknown;

@@ -1,4 +1,4 @@
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { hasAgentTurnUsage } from "@/chat/usage";
 import type { ConversationReportEvent } from "../schema/conversation";

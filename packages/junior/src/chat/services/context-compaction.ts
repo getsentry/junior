@@ -26,7 +26,7 @@ import {
 import {
   contextProvenance,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";

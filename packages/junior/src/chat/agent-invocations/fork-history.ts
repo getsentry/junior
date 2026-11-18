@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";

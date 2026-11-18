@@ -18,12 +18,12 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/db/conversation-history/events";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
+} from "@/db/conversation-history/provenance";
 import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";

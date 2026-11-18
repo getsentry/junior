@@ -20,8 +20,8 @@
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import type { ConversationEvent } from "@/chat/conversations/history";
-import { sameActorIdentity } from "@/chat/conversations/provenance";
+import type { ConversationEvent } from "@/db/conversation-history/events";
+import { sameActorIdentity } from "@/db/conversation-history/provenance";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   ROOT_LINE_BREAK,

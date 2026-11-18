@@ -55,7 +55,7 @@ import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";

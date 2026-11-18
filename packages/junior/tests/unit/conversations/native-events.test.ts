@@ -8,7 +8,7 @@ import {
 import {
   conversationEventSchema,
   type ConversationEventData,
-} from "@/chat/conversations/history";
+} from "@/db/conversation-history/events";
 
 describe("junior native authentication events", () => {
   it("renders linked and unlinked presentation safely", () => {
