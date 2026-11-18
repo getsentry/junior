@@ -266,7 +266,11 @@ async function recordDashboardRoot(
 }
 
 /** Record one assistant reply. */
-async function recordAnswer(conversationId: string, n: number): Promise<void> {
+async function recordAnswer(
+  conversationId: string,
+  n: number,
+  createdAtMs = Date.now(),
+): Promise<void> {
   await getConversationEventStore().append(conversationId, [
     {
       data: {
@@ -275,7 +279,7 @@ async function recordAnswer(conversationId: string, n: number): Promise<void> {
         role: "assistant",
         text: "It shipped.",
       },
-      createdAtMs: Date.now(),
+      createdAtMs,
     },
   ]);
 }
@@ -498,6 +502,28 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await recordStarterMessage(conversationId);
     await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("finds the latest answer by transcript order, not by time", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-answer-order",
+    );
+    await recordAnswer(conversationId, 1);
+    const firstSeq = await lastSeq(conversationId);
+    // A later answer can carry an earlier time.
+    await recordAnswer(conversationId, 2, Date.now() - 60_000);
+    const read = await fixture.request(
+      `${detailPath(conversationId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: firstSeq }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
   it("counts an answer delivered to Slack as read", async () => {
