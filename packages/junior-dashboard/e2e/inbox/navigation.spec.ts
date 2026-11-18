@@ -389,17 +389,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title).toBeVisible();
     await expect(conversations).toHaveAttribute("aria-current", "page");
 
-    // Opened from the Inbox, it stays in the Inbox after a reload.
+    // Opened from the Inbox, it stays in the Inbox after a reload. The
+    // Inbox lists no Conversations, so it opens from In flight.
     await page.goto(dashboard.baseURL);
-    await openRow(
-      page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: /^Checkout latency triage/ }),
-    );
-    await expect(page).toHaveURL(/\/conversations\//);
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link", { name: /Investigate checkout latency/ })
+      .click();
+    const running = page.getByRole("heading", {
+      name: "Investigate checkout latency",
+    });
+    await expect(running).toBeVisible();
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await page.reload();
-    await expect(title).toBeVisible();
+    await expect(running).toBeVisible();
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await expect(conversations).not.toHaveAttribute("aria-current");
     await expect(backToInbox).toHaveAttribute("href", "/");

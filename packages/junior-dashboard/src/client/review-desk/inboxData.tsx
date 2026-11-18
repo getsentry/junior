@@ -278,8 +278,6 @@ function useBuildInboxData(input: {
     );
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
-  // The Inbox's own stream leaves notices to its FYI list.
-  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every running Conversation. Running rows come
   // first, a running pin with them, then the other pins in the viewer's
@@ -353,18 +351,6 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
-    /**
-     * The oldest activity in the loaded feed pages. The feed reads newest
-     * activity first, so each later page is older.
-     */
-    feedOldestSeenAt: conversations.reduce<string | undefined>(
-      (oldest, conversation) =>
-        oldest === undefined ||
-        Date.parse(conversation.lastSeenAt) < Date.parse(oldest)
-          ? conversation.lastSeenAt
-          : oldest,
-      undefined,
-    ),
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),
@@ -373,7 +359,6 @@ function useBuildInboxData(input: {
     holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(running),
     /** Collapsed In flight: every pin, and running rows up to the limit. */

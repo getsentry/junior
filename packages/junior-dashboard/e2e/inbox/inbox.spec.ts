@@ -49,12 +49,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The Inbox has no heading of its own, and closed items show only in Done.
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
-    // A To do Conversation does not show again under the time sections.
-    await expect(
-      page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: new RegExp(checkout) }),
-    ).toHaveCount(0);
     await screenshot(page, "inbox", { lightTheme: true });
 
     // A collapsed To do stays collapsed after a reload.
@@ -275,12 +269,10 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
-    const row = page
-      .locator("[data-inbox-row]")
-      .filter({ hasText: checkout })
-      .first();
-    await row.hover();
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link", { name: new RegExp(checkout) })
+      .click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page
       .getByRole("navigation", { name: "Primary" })
