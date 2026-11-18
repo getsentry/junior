@@ -15,7 +15,7 @@ import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { answerLine } from "./reviewItemFormat";
+import { answerLine, reviewItemText } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
@@ -39,7 +39,9 @@ function DoneRow(props: {
     : "An agent";
   const outcome = outcomeOf(item);
   const text =
-    item.kind === "notice" || !item.request ? item.body : item.request.question;
+    item.kind === "notice" || !item.request
+      ? reviewItemText(item)
+      : item.request.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
@@ -121,7 +123,6 @@ function DoneRow(props: {
             <DisplayText text={text} />
             {item.subject ? (
               <ReviewItemSubjectPreview
-                body={text}
                 conversationId={item.addedByConversationId}
                 subject={item.subject}
               />

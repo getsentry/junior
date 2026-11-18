@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
@@ -139,10 +140,8 @@ export async function sendPushNotificationToUser(args: {
 }): Promise<PushNotificationResult> {
   const subscriptions = await listPushSubscriptions(args.db, args.userId);
   const body = JSON.stringify(args.payload);
-  const outcomes = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendToDevice(subscription, body, args.config),
-    ),
+  const outcomes = await mapBounded(subscriptions, (subscription) =>
+    sendToDevice(subscription, body, args.config),
   );
   const gone = subscriptions
     .filter((_, index) => outcomes[index] === "gone")

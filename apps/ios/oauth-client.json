@@ -1,0 +1,6 @@
+{
+  "client_id": "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json",
+  "client_name": "Junior for iOS",
+  "redirect_uris": ["http://127.0.0.1/callback"],
+  "token_endpoint_auth_method": "none"
+}

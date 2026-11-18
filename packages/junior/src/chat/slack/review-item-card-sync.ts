@@ -184,12 +184,17 @@ export async function syncReviewItemSlackCards(args: {
           // shares the thread of its parent, so an item linked to both shows
           // one card. The row names the Conversation whose routing found the
           // thread.
-          const [linked, carded] = await Promise.all([
-            Promise.all(item.conversationIds.map(resolveCardThread)),
-            Promise.all(
-              rows.map((row) => resolveCardThread(row.conversationId)),
-            ),
-          ]);
+          const conversationIds = [
+            ...new Set([
+              ...item.conversationIds,
+              ...rows.map((row) => row.conversationId),
+            ]),
+          ];
+          const resolved = await mapBounded(conversationIds, resolveCardThread);
+          const threadOf = (conversationId: string) =>
+            resolved[conversationIds.indexOf(conversationId)];
+          const linked = item.conversationIds.map(threadOf);
+          const carded = rows.map((row) => threadOf(row.conversationId));
           const linkedThreads = new Map<string, CardThread>();
           for (const thread of linked) {
             if (thread && !linkedThreads.has(threadKey(thread))) {

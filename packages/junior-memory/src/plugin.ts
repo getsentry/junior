@@ -122,14 +122,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async operationalReport(ctx) {
-        const extractionDays = await memoryCostsByDay(
-          ctx.eventStats,
-          extractionCostFlow,
-          90,
-        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
-          extractionDays,
+          extractionDays: memoryCostsByDay(
+            ctx.eventStats,
+            extractionCostFlow,
+            90,
+          ),
           nowMs: ctx.nowMs,
         });
       },
