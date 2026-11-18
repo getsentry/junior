@@ -4,6 +4,7 @@ import {
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
+import { cn, dashboardCountClass } from "../styles";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -177,7 +178,7 @@ function CommandPaletteBody(props: {
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
                   {item.meta ? (
-                    <span className="text-xs tabular-nums text-dashboard-text-faint">
+                    <span className={cn("text-xs", dashboardCountClass)}>
                       {item.meta}
                     </span>
                   ) : null}

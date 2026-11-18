@@ -16,6 +16,7 @@ import { SidebarAnnotationIcon } from "../../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../../conversations/codeChangeIdle";
 import { HomeDayStrip } from "../../conversations/HomeDayStrip";
 import { HomeMergeDelta } from "../../conversations/HomeMergeDelta";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 const WEEK_DAYS = 7;
 /** Open code changes shown before the reader expands the list. */
@@ -139,7 +140,13 @@ function SummaryCard(props: {
   return (
     <Card className={cardClass}>
       <div className="flex h-4 items-center justify-between gap-3">
-        <span className="truncate font-sans text-xs font-medium text-dashboard-text-muted">
+        <span
+          className={cn(
+            fadeOverflowClass,
+            "font-sans text-xs font-medium text-dashboard-text-muted",
+          )}
+          ref={fadeWhenOverflowing}
+        >
           {props.label}
         </span>
         {props.aside}
@@ -148,7 +155,13 @@ function SummaryCard(props: {
         <span className="font-display text-3xl font-light leading-none tracking-[-0.04em] text-dashboard-text tabular-nums">
           {props.value}
         </span>
-        <span className="min-w-0 truncate font-sans text-xs text-dashboard-text-muted">
+        <span
+          className={cn(
+            fadeOverflowClass,
+            "font-sans text-xs text-dashboard-text-muted",
+          )}
+          ref={fadeWhenOverflowing}
+        >
           {props.detail}
         </span>
       </div>
@@ -247,15 +260,19 @@ function OpenChangeRow(props: {
           // The PR icon marks the row, so the link has no outbound icon. It
           // still opens GitHub in a new tab.
           <a
-            className="min-w-0 truncate text-inherit no-underline underline-offset-2 hover:underline"
+            className="flex min-w-0 text-inherit no-underline underline-offset-2 hover:underline"
             href={change.url}
             rel="noreferrer"
             target="_blank"
           >
-            {title}
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {title}
+            </span>
           </a>
         ) : (
-          <span className="min-w-0 truncate">{title}</span>
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+            {title}
+          </span>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-4 font-sans text-xs text-dashboard-text-muted">

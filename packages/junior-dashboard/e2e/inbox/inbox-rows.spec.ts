@@ -175,6 +175,37 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAttribute("data-summary-lines", "1");
   });
 
+  test("a title that does not fit fades out, and one that fits does not", async ({
+    dashboard,
+    page,
+  }) => {
+    const long = `Package release and self-update${", with every step it took to ship".repeat(8)}`;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{ displayTitle: string }>;
+        };
+        for (const row of feed.conversations) {
+          if (row.displayTitle === "Package release and self-update")
+            row.displayTitle = long;
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const title = (text: string) =>
+      page
+        .locator("li[data-inbox-row] [data-inbox-head]")
+        .getByText(text, { exact: true })
+        .first();
+    await expect(title(long)).toHaveAttribute("data-overflow");
+    await expect(title(SENTAUR)).toBeVisible();
+    await expect(title(SENTAUR)).not.toHaveAttribute("data-overflow");
+  });
+
   test("a row's actions sit beside its time and pin, and never hide them", async ({
     dashboard,
     page,
