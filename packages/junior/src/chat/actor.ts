@@ -5,7 +5,6 @@
  * remains explicit so durable conversation metadata is not repaired on read.
  */
 import * as z from "zod";
-import { actorSchema } from "@sentry/junior-plugin-api";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -62,12 +61,6 @@ export interface SlackActorProfile {
 }
 
 export type StoredSlackActor = z.output<typeof storedSlackActorSchema>;
-
-/** Parse a serialized runtime actor that crossed a durable boundary. */
-export function parseActor(value: unknown): Actor | undefined {
-  const result = actorSchema.safeParse(value);
-  return result.success ? result.data : undefined;
-}
 
 /** Return whether an actor is a platform-scoped user actor. */
 export function isUserActor(actor: Actor | undefined): actor is UserActor {

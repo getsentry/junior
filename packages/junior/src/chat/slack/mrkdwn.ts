@@ -13,7 +13,7 @@ export function escapeSlackMrkdwnText(text: string): string {
 }
 
 /** Escape a URL for Slack explicit link syntax while preserving query semantics. */
-export function escapeSlackLinkUrl(url: string): string {
+function escapeSlackLinkUrl(url: string): string {
   return url
     .replaceAll("&", "&amp;")
     .replaceAll("<", "%3C")
