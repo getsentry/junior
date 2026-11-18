@@ -147,11 +147,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // In the Inbox, its two asks stack as rows; Conversations keeps the
+    // Conversation row and its summary.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
-      .getByRole("listitem")
-      .filter({ hasText: "Package release and self-update" });
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: "Package release and self-update" })
+      .first();
     const paragraphs = row
       .locator('[data-inbox-slot="summary"]')
       .getByRole("paragraph");
