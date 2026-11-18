@@ -39,7 +39,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(question.getByLabel("Reason")).toHaveValue("MIT license, no");
 
     await question.getByLabel("Reason").fill("MIT license, no change.");
+    // The row drops the item at once. The draft clears when the server
+    // accepts the answer.
+    const accepted = page.waitForResponse((response) =>
+      response.url().includes(`/api/review-items/${license.id}/actions`),
+    );
     await question.getByRole("button", { name: "Send" }).click();
+    await accepted;
     await expect.poll(() => actions.length).toBe(1);
     expect(actions[0]).toMatchObject({
       body: {
