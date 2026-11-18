@@ -57,3 +57,6 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   and answer it.
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
+- The "Needs you" group of the classic Inbox also shows open actions for
+  Everyone and actions with no assignees. The Inbox count and To do in the
+  new Inbox leave them out. This breaks "'Needs you' means one thing".
