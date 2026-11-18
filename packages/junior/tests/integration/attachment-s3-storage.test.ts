@@ -226,6 +226,7 @@ describe("S3 attachment storage", () => {
       createConversationRoutes({
         attachmentStorage: storage,
         queue: createConversationWorkQueueTestAdapter(),
+        waitUntil: () => undefined,
       }),
     );
 
