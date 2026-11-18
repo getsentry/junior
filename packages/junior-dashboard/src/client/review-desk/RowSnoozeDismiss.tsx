@@ -1,5 +1,11 @@
 import { Check, Clock3 } from "lucide-react";
-import { type KeyboardEvent, type ReactElement, useId, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  useId,
+  useState,
+} from "react";
 
 import { Button } from "../components/ui/button";
 import { FieldError } from "../components/ui/field";
@@ -46,6 +52,8 @@ function localInputValue(ms: number): string {
  * pick the menu rows.
  */
 export function RowSnoozeButton(props: {
+  /** A row's quick action: smaller, and only its icon on a narrow screen. */
+  compact?: boolean;
   /** "Snooze" by default. */
   label?: string;
   onOpenChange(open: boolean): void;
@@ -85,13 +93,18 @@ export function RowSnoozeButton(props: {
       <PopoverTrigger
         render={
           props.trigger ?? (
-            <Button variant="ghost">
+            <Button
+              className={props.compact ? COMPACT_BUTTON_CLASS : undefined}
+              variant="ghost"
+            >
               <Clock3
                 aria-hidden="true"
                 className={ATTENTION_TONE_CLASS}
                 size={15}
               />
-              {props.label ?? "Snooze"}
+              <ButtonLabel compact={props.compact}>
+                {props.label ?? "Snooze"}
+              </ButtonLabel>
             </Button>
           )
         }
@@ -203,13 +216,32 @@ function CustomSnooze(props: {
  * right-most.
  */
 export function RowDismissButton(props: {
+  /** A row's quick action: smaller, and only its icon on a narrow screen. */
+  compact?: boolean;
   disabled?: boolean;
   onClick(): void;
 }) {
   return (
-    <Button disabled={props.disabled} onClick={props.onClick} variant="outline">
+    <Button
+      className={props.compact ? COMPACT_BUTTON_CLASS : undefined}
+      disabled={props.disabled}
+      onClick={props.onClick}
+      variant="outline"
+    >
       <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-      Dismiss
+      <ButtonLabel compact={props.compact}>Dismiss</ButtonLabel>
     </Button>
+  );
+}
+
+// A row's quick actions fit beside its time. A narrow screen shows only
+// their icons; the hidden label still names them.
+const COMPACT_BUTTON_CLASS = "h-7 gap-1.5 px-2 max-sm:w-7 max-sm:px-0";
+
+function ButtonLabel(props: { children: ReactNode; compact?: boolean }) {
+  return props.compact ? (
+    <span className="max-sm:sr-only">{props.children}</span>
+  ) : (
+    props.children
   );
 }

@@ -170,6 +170,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(0);
     await row.hover();
     await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(1);
+    // They use the action bar's words.
+    await expect(quick("Snooze")).toHaveText("Snooze");
+    await expect(quick("Dismiss")).toHaveText("Dismiss");
     await expect(
       row.getByRole("link", { name: "Open conversation" }),
     ).toBeVisible();
@@ -290,6 +293,34 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(snoozed).toContainText("2");
     expect(actions).toEqual([]);
+  });
+
+  test("Snooze all puts away a stack whose newest ask snoozed by itself", async ({
+    dashboard,
+    page,
+  }) => {
+    const newest = childAsks[0]!;
+    await mockReviewItems(page, {
+      open: [rollout, childReview, childLicense, newest],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = rowOf(page, newest);
+    await row.hover();
+    await row.getByRole("button", { exact: true, name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(row).toHaveCount(0);
+    await stackOf(page)
+      .getByRole("button", { exact: true, name: "Snooze all" })
+      .click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(stackOf(page)).toHaveCount(0);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${conversationId}"]`),
+    ).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
+      "4",
+    );
   });
 
   test("a row that closes elsewhere leaves, and the open row stays open", async ({

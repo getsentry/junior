@@ -1,4 +1,4 @@
-import { ArrowUpRight, Check, Clock3 } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 
 /** What one card does by itself: its Dismiss and Snooze. */
 export type InboxCardActions = {
@@ -66,28 +66,18 @@ export function RowQuickActions(props: {
       <RowOpenLink to={props.to} />
       {!props.expanded && actions.onSnooze ? (
         <RowSnoozeButton
+          compact
           onOpenChange={actions.onSnoozeMenu}
           onSnooze={actions.onSnooze}
           open={actions.snoozeMenuOpen}
-          trigger={
-            <button
-              aria-label="Snooze"
-              className={ROW_ACTION_BUTTON_CLASS}
-              title="Snooze"
-              type="button"
-            >
-              <Clock3 aria-hidden="true" size={14} />
-            </button>
-          }
         />
       ) : null}
+      {/* Dismiss is the main action, so it goes right-most. */}
       {!props.expanded && actions.onDismiss ? (
-        <RowActionButton
+        <RowDismissButton
+          compact
           disabled={actions.pending}
-          icon={<Check aria-hidden="true" size={14} />}
-          label="Dismiss"
           onClick={actions.onDismiss}
-          tooltip="Dismiss"
         />
       ) : null}
     </>

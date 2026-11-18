@@ -203,8 +203,10 @@ function useBuildInboxData(input: {
       .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
       .map((bundle) => bundle.conversationId),
   );
+  const asleepInStacks = snoozes.asleepInStacks(shown);
   const asleep = (item: ReviewItemPayload) =>
     sleepingConversations.has(itemStackId(item)) ||
+    asleepInStacks.has(item.id) ||
     snoozes.sleeps(item.id, item.id);
   const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.

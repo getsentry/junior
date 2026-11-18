@@ -12,9 +12,15 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * One snoozed stack or card: until when, its newest item at the snooze, and
- * every item it put away, so the count counts items, not stacks.
+ * every item it put away, so the count counts items, not stacks. A Snooze
+ * all also keeps when it was set, so only a later item wakes its stack.
  */
-type Snooze = { itemIds?: string[]; newestItemId: string; untilMs: number };
+type Snooze = {
+  itemIds?: string[];
+  newestItemId: string;
+  snoozedAtMs?: number;
+  untilMs: number;
+};
 
 /**
  * Every key that can snooze a row: the row itself, its Conversation, and
@@ -133,6 +139,8 @@ export function useInboxSnoozes(nowMs: number) {
     const snooze = snoozes[key];
     return (
       snooze !== undefined &&
+      // A Snooze all holds only its own items (`asleepInStacks`).
+      snooze.snoozedAtMs === undefined &&
       snooze.untilMs > nowMs &&
       snooze.newestItemId === newestItemId
     );
@@ -143,9 +151,32 @@ export function useInboxSnoozes(nowMs: number) {
       [bundle.key]: {
         itemIds: bundle.items.map((item) => item.id),
         newestItemId: bundle.newest.id,
+        snoozedAtMs: Date.now(),
         untilMs,
       },
     });
+  /**
+   * The items that a Snooze all put away and that still sleep. A stack can
+   * hold only some items of its Conversation, as in To do or after one card
+   * snoozed by itself, so each snooze holds the items it named. An item of
+   * the stack that is newer than the snooze wakes them all.
+   */
+  const asleepInStacks = (items: readonly ReviewItemPayload[]) => {
+    const asleep = new Set<string>();
+    for (const [key, snooze] of Object.entries(snoozes)) {
+      const { itemIds, snoozedAtMs } = snooze;
+      if (!itemIds || snoozedAtMs === undefined || snooze.untilMs <= nowMs)
+        continue;
+      const woken = items.some(
+        (item) =>
+          itemStackId(item) === key &&
+          !itemIds.includes(item.id) &&
+          Date.parse(item.createdAt) > snoozedAtMs,
+      );
+      if (!woken) for (const id of itemIds) asleep.add(id);
+    }
+    return asleep;
+  };
   /** Snooze one card. The rest of its stack stays. */
   const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
     setSnoozes({
@@ -180,5 +211,5 @@ export function useInboxSnoozes(nowMs: number) {
   };
   const until = (bundle: InboxBundle) =>
     Math.max(...[...rowKeys(bundle)].map((key) => snoozes[key]?.untilMs ?? 0));
-  return { sleeps, snooze, snoozeItem, until, wake, wakeItem };
+  return { asleepInStacks, sleeps, snooze, snoozeItem, until, wake, wakeItem };
 }
