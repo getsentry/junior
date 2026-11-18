@@ -105,15 +105,13 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await comfortable(page);
     await page.goto(`${dashboard.baseURL}/`);
-    const row = page
+    const summary = page
       .getByRole("region", { name: "To do" })
       .getByRole("listitem")
-      .filter({ hasText: "Package release and self-update" });
-    const summary = row.locator('[data-inbox-slot="summary"]');
-    // The closed row shows the first paragraphs only, so open it.
-    await expandRow(row.locator("[data-inbox-head]"));
+      .filter({ hasText: "Package release and self-update" })
+      .locator('[data-inbox-slot="summary"]');
     // A person shows a chip. A Conversation and a pull request show their
-    // titles as plain links.
+    // titles as plain links, also past the closed row's clamp.
     await expect(
       summary.getByRole("link", { name: /Morgan Lee/ }).first(),
     ).toBeVisible();

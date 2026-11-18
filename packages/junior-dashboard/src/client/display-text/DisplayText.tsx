@@ -9,7 +9,7 @@ import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
 import { PreviewLinksProvider } from "./links";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
-import { MessageObjectsProvider } from "./resolvedObjects";
+import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
 export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
@@ -31,7 +31,8 @@ export const DisplayText = memo(function DisplayText(props: {
   /**
    * Inline mode: show links as messages do. A bare URL shows its object
    * title, and a person shows as a chip. Only outside a link or a button.
-   * The links take the quiet look of a row preview.
+   * The links take the quiet look of a row preview, and resolve once the
+   * text shows, also past a clamp.
    */
   chips?: boolean;
   /** Keep body line height compact in narrow panels. */
@@ -53,31 +54,38 @@ export const DisplayText = memo(function DisplayText(props: {
   paragraphs?: boolean;
   text: string;
 }) {
+  const chips = Boolean(props.inline && props.chips);
   return (
     <MessageObjectsProvider>
       <MentionPeopleProvider
         links={props.links ?? true}
         mentions={props.mentions ?? NO_MENTIONS}
       >
-        {props.inline ? (
-          <PreviewLinksProvider value={props.chips ?? false}>
-            <MarkdownText
-              chips={props.chips}
-              inline
-              paragraphs={props.paragraphs}
+        {/* Set in every mode, so text nested in a preview's hover card
+            draws its own links. */}
+        <PreviewLinksProvider value={chips}>
+          {chips ? (
+            <ResolveWhenVisible block={props.paragraphs ?? false}>
+              <MarkdownText
+                chips
+                inline
+                paragraphs={props.paragraphs}
+                text={props.text}
+              />
+            </ResolveWhenVisible>
+          ) : props.inline ? (
+            <MarkdownText inline text={props.text} />
+          ) : props.document ? (
+            // One tree, so reference links and footnotes resolve across fences.
+            <MarkdownText document text={props.text} />
+          ) : (
+            <DisplayTextBlocks
+              chat={props.chat}
+              compact={props.compact}
               text={props.text}
             />
-          </PreviewLinksProvider>
-        ) : props.document ? (
-          // One tree, so reference links and footnotes resolve across fences.
-          <MarkdownText document text={props.text} />
-        ) : (
-          <DisplayTextBlocks
-            chat={props.chat}
-            compact={props.compact}
-            text={props.text}
-          />
-        )}
+          )}
+        </PreviewLinksProvider>
       </MentionPeopleProvider>
     </MessageObjectsProvider>
   );
