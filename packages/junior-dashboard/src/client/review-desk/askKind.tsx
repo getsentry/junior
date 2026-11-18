@@ -10,8 +10,8 @@ import {
 import { cn } from "../styles";
 
 // One icon per kind of ask, so a row scans by shape before its words. The
-// icons share the muted text color: the kind is not a status. The kind's name
-// stays in the accessible name and the tooltip.
+// icons share the muted text color: the kind is not a status. An ask pill
+// also shows the kind's name next to its icon.
 const ASK_ICONS: Record<string, LucideIcon> = {
   Approval: Stamp,
   FYI: Info,

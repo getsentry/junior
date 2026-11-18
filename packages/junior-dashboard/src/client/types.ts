@@ -11,7 +11,6 @@ import type {
   ActorIdentity,
   ConversationReportMessageEvent,
   ConversationFeedItem,
-  ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -220,10 +219,7 @@ export type DashboardCoreData = {
   me: Identity;
 };
 
-export type SystemData = DashboardCoreData & {
-  conversationStats?: ConversationStatsReport;
-  conversationStatsError: boolean;
-  conversationStatsLoading: boolean;
+export type SystemPluginsData = {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
