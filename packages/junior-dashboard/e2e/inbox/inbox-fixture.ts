@@ -160,6 +160,51 @@ export const prReview = {
   title: "Review requested · #91",
 };
 
+// The release Conversation saved the card of this pull request, with its
+// description.
+const releaseConversationId = "slack:CQA456:1770021600.000600";
+const pinPullRequest = {
+  id: "https://github.com/getsentry/payments/pull/91",
+  objectType: "code_change" as const,
+  title: "Pin the release train to payments 4.2 (#91)",
+  url: "https://github.com/getsentry/payments/pull/91",
+};
+
+// The GitHub plugin's review ask, as it writes it: the URL alone on a line.
+export const pinReview = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:20:00.000Z",
+  id: "item-pin-review",
+  subject: pinPullRequest,
+  title: "Review requested · #91",
+};
+
+// The GitHub plugin's merge conflict notice about the same pull request, with
+// the URL inside its sentence.
+export const pinConflict = {
+  ...pinReview,
+  body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+  createdAt: "2026-08-07T09:40:00.000Z",
+  id: "item-pin-conflict",
+  kind: "notice" as const,
+  title: "Merge conflict · #91",
+};
+
+// A notice in the same Conversation about nothing that an ask names.
+export const releaseNotes = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  body: "Release notes for 0.288.0 are drafted in the release PR.",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:30:00.000Z",
+  id: "item-release-notes",
+  kind: "notice" as const,
+  title: "Release notes drafted",
+};
+
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,

@@ -5,6 +5,8 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { withoutStandaloneUrl } from "../display-text/DisplayText";
+
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
@@ -33,6 +35,18 @@ export function reviewItemSubjectHref(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Return the text of an item without a bare URL to its subject, for a
+ * surface that shows the subject's own card.
+ */
+export function reviewItemText(
+  item: Pick<ReviewItemPayload, "body" | "subject">,
+): string {
+  return item.subject?.url
+    ? withoutStandaloneUrl(item.body, item.subject.url)
+    : item.body;
 }
 
 /** Name the state of an item: what it needs while open, or how it closed. */

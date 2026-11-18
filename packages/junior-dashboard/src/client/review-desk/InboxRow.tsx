@@ -44,6 +44,7 @@ import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import { FoldedNotice } from "./FoldedNotice";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -74,10 +75,15 @@ import {
 import { isImageMedia } from "./useConversationImages";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+import {
+  itemNeedsViewer,
+  reviewItemText,
+  type InboxBundle,
+} from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
+const NO_NOTICES: readonly ReviewItemPayload[] = [];
 
 /** The second line: the Brief, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
@@ -104,6 +110,8 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  /** Notices about the item's subject (`foldNotices`). */
+  notices: readonly ReviewItemPayload[];
   take?: string;
 }) {
   const { item } = props;
@@ -142,17 +150,19 @@ function RowItem(props: {
             className="max-w-[80ch] leading-6"
             label={item.title}
             lines={4}
-            text={item.body}
+            text={reviewItemText(item)}
           />
         ) : null}
         {item.subject ? (
           <ReviewItemSubjectPreview
-            body={showBody ? item.body : undefined}
             conversationId={props.conversationId}
             subject={item.subject}
           />
         ) : null}
       </ReviewItemObjects>
+      {props.notices.map((notice) => (
+        <FoldedNotice key={notice.id} notice={notice} />
+      ))}
       {/* The row's bar holds Dismiss. A card on its own, as in a
           Conversation, keeps its own. */}
       <ReviewItemActions
@@ -233,6 +243,8 @@ type InboxRowProps = {
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
+  /** The notices that fold into each ask, by the ask's id. */
+  foldedNotices?: ReadonlyMap<string, readonly ReviewItemPayload[]>;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
@@ -810,6 +822,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               take={props.take}
             />
           ))}

@@ -11,7 +11,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import type { InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
@@ -198,40 +198,49 @@ function useBuildInboxData(input: {
   const asleep = (item: ReviewItemPayload) =>
     sleepingConversations.has(item.addedByConversationId) ||
     snoozes.sleeps(item.id, item.id);
-  const awake = live.filter((item) => !asleep(item));
+  // A notice about the subject of an ask shows on that ask's row instead.
+  const { folded: foldedNotices, shown: awake } = foldNotices(
+    live.filter((item) => !asleep(item)),
+  );
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
 
-  const bundles = inboxBundles(awake);
-  const bundleByConversation = new Map(
-    bundles.map((bundle) => [bundle.conversationId, bundle]),
-  );
-  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  // To do holds the asks that name the viewer. Asks for Everyone are up for
+  // grabs, and notices are FYI.
+  const asks = awake.filter((item) => item.kind === "action");
   const todoRows = inboxBundles(
-    awake.filter((item) => !itemUpForGrabs(item)),
+    asks.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
-  const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
+  const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(live.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
-  // activity. A Conversation outside the loaded feed joins when it has
-  // open items.
-  const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map((conversation): ConversationRow => ({
-      bundle: bundleByConversation.get(conversation.id),
-      conversation,
-      conversationId: conversation.id,
-      time: activityAt(conversation),
-    })),
-    bundles
-      .filter((bundle) => !conversationById.has(bundle.conversationId))
-      .map((bundle): ConversationRow => ({
-        bundle,
-        conversationId: bundle.conversationId,
-        time: bundle.newest.createdAt,
+  // activity, with its items. A Conversation outside the loaded feed joins
+  // when it has open items.
+  const rowsByTime = (bundles: InboxBundle[]) => {
+    const bundleByConversation = new Map(
+      bundles.map((bundle) => [bundle.conversationId, bundle]),
+    );
+    return withRowsByTime(
+      pinnedFirst(conversations).map((conversation): ConversationRow => ({
+        bundle: bundleByConversation.get(conversation.id),
+        conversation,
+        conversationId: conversation.id,
+        time: activityAt(conversation),
       })),
-  );
+      bundles
+        .filter((bundle) => !conversationById.has(bundle.conversationId))
+        .map((bundle): ConversationRow => ({
+          bundle,
+          conversationId: bundle.conversationId,
+          time: bundle.newest.createdAt,
+        })),
+    );
+  };
+  const conversationRows = rowsByTime(inboxBundles(awake));
+  // The Inbox's own stream leaves notices to its FYI list.
+  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin, each one click away, and running Conversations in
   // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
@@ -270,9 +279,13 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
+    /** The notices that fold into each ask's row, by the ask's id. */
+    foldedNotices,
+    fyiRows: fyiRows(awake),
     holdOpenRow,
     includedId: linkedId,
     includeItem,
+    inboxStreamRows,
     inFlight,
     inFlightCount: running.length + pinned.length,
     isPinned,

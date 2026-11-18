@@ -77,14 +77,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-ask-kind",
       "Ready to merge",
     );
-    // An FYI is its icon alone.
-    const fyi = row.getByRole("button", { name: "FYI", exact: true });
-    await expect(fyi).toHaveAttribute("title", "FYI");
-    await expect(fyi).toHaveText("");
     // The changes the pills name get no chip of their own.
     await expect(row.locator("[data-linked-work-chip]")).toHaveText([
       "Return 429 before parsing oversized envelopes#44",
     ]);
+
+    // An FYI is its icon alone. To do leaves it out, so Conversations shows it.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const fyi = page
+      .getByRole("listitem")
+      .filter({ hasText: "Package release and self-update" })
+      .getByRole("button", { name: "FYI", exact: true });
+    await expect(fyi).toHaveAttribute("title", "FYI");
+    await expect(fyi).toHaveText("");
 
     // Pull requests mark their asks the same way.
     await page.goto(`${dashboard.baseURL}/?view=prs`);
