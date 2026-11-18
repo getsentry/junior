@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-restream",
-  "version": "0.307.0",
+  "version": "0.307.1",
   "private": false,
   "publishConfig": {
     "access": "public"
