@@ -15,8 +15,15 @@ export type ToolExecutionEnvironment = {
    * exit code is a result, not a throw. A timeout or an abort throws.
    */
   exec(command: string, options: ExecOptions): Promise<ExecResult>;
-  /** Returns the bytes of a file. Throws when the file does not exist. */
-  readFile(path: string, signal: AbortSignal): Promise<Uint8Array>;
+  /**
+   * Returns the bytes of a file as a stream, or `undefined` when the file does
+   * not exist. A caller that needs only part of the file cancels the stream
+   * when it has enough, so a large file is never read in full.
+   */
+  readFile(
+    path: string,
+    signal: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array> | undefined>;
   /** Creates or replaces a file, and creates its missing parent directories. */
   writeFile(
     path: string,
