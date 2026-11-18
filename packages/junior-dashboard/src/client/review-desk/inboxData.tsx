@@ -130,6 +130,7 @@ function useBuildInboxData(input: {
   const snoozes = useInboxSnoozes({
     failed: snoozedFailed,
     itemIds: snoozedItemIds,
+    itemsUpdatedAtMs: snoozedQuery.dataUpdatedAt,
     listUpdatedAtMs: itemsQuery.dataUpdatedAt,
   });
   // A link can name an open item past the loaded page. It joins the list

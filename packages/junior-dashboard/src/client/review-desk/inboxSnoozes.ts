@@ -19,6 +19,8 @@ interface SnoozedRead {
   failed: boolean;
   /** The open items of the snoozed rows, once every page is read. */
   itemIds?: ReadonlySet<string>;
+  /** When Snoozed last read the server, as `Date.now()`. */
+  itemsUpdatedAtMs: number;
   /** When the Inbox list last read the server, as `Date.now()`. */
   listUpdatedAtMs: number;
 }
@@ -34,10 +36,15 @@ interface SnoozedRead {
 export function useInboxSnoozes(read: SnoozedRead) {
   const queryClient = useQueryClient();
   const toast = useToastManager();
-  // When each just-snoozed row's snooze saved, by row key; Infinity while
-  // it saves. A list read after that time already leaves the row out.
+  // When the lists refetched after each just-snoozed row's snooze saved, by
+  // row key; Infinity until then. A list read after that time already
+  // leaves the row out. A read that started before the save does not count:
+  // the refetch cancels it.
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
+  // When the lists refetched after the viewer's last snooze change;
+  // Infinity until then. Snoozed read before that time may be stale.
+  const [changedAtMs, setChangedAtMs] = useState(-Infinity);
   const hide = (key: string, savedAtMs: number | undefined) =>
     setHidden((current) => {
       const next = new Map(current);
@@ -52,7 +59,9 @@ export function useInboxSnoozes(read: SnoozedRead) {
    * Conversation; a row of one item, such as an FYI notice, only that item.
    */
   const snooze = async (bundle: InboxBundle, untilMs: number) => {
+    const lastChangedAtMs = changedAtMs;
     hide(bundle.key, Infinity);
+    setChangedAtMs(Infinity);
     try {
       const body: InboxSnoozeCreateBody = {
         conversationId: bundle.conversationId,
@@ -65,21 +74,29 @@ export function useInboxSnoozes(read: SnoozedRead) {
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.
       hide(bundle.key, undefined);
+      setChangedAtMs(lastChangedAtMs);
       toast.add({ title: "The row could not be snoozed", type: "error" });
       return;
     }
-    hide(bundle.key, Date.now());
+    // The refetch cancels reads in flight, so only reads that start after
+    // the save can show the row again.
     await invalidateReviewItemCollections(queryClient);
+    hide(bundle.key, Date.now());
+    setChangedAtMs(Date.now());
   };
   /** Wake a snoozed row now: undo the viewer's snoozes on its Conversation. */
   const wake = async (bundle: InboxBundle) => {
+    const lastChangedAtMs = changedAtMs;
     setWaking((current) => new Set(current).add(bundle.key));
+    setChangedAtMs(Infinity);
     try {
       await deleteDashboardResource(SNOOZES_PATH, {
         conversationId: bundle.conversationId,
       });
       await invalidateReviewItemCollections(queryClient);
+      setChangedAtMs(Date.now());
     } catch {
+      setChangedAtMs(lastChangedAtMs);
       // The row stays in Snoozed, so say why it did not wake.
       toast.add({ title: "The row could not be woken", type: "error" });
     } finally {
@@ -103,10 +120,13 @@ export function useInboxSnoozes(read: SnoozedRead) {
       item.conversationIds.some(hiddenNow),
     /**
      * A snooze hides this item from the viewer. Undefined while that is
-     * unknown: until Snoozed reads every page, or when a read fails.
+     * unknown: until Snoozed reads every page after the viewer's last
+     * snooze change, or when a read fails.
      */
     hidesItem: (itemId: string): boolean | undefined =>
-      read.failed || !read.itemIds ? undefined : read.itemIds.has(itemId),
+      read.failed || !read.itemIds || read.itemsUpdatedAtMs <= changedAtMs
+        ? undefined
+        : read.itemIds.has(itemId),
     /** Snoozed could not be read, so `hidesItem` stays unknown. */
     failed: read.failed,
     snooze,

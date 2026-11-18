@@ -402,7 +402,7 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
-/** When each snoozed Conversation's row wakes. */
+/** When each snoozed item wakes, by item id, like the server's snoozes. */
 const snoozes = new Map<string, number>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
@@ -411,11 +411,11 @@ export function resetMockReviewItems(): void {
   snoozes.clear();
 }
 
-/** The Conversations whose rows a snooze hides now. */
-function snoozedConversationIds(nowMs: number): Set<string> {
+/** The items that a snooze hides now. */
+function snoozedItemIds(nowMs: number): Set<string> {
   return new Set(
-    [...snoozes].flatMap(([conversationId, wakeAtMs]) =>
-      wakeAtMs > nowMs ? [conversationId] : [],
+    [...snoozes].flatMap(([itemId, wakeAtMs]) =>
+      wakeAtMs > nowMs ? [itemId] : [],
     ),
   );
 }
@@ -425,22 +425,23 @@ function snoozedConversationIds(nowMs: number): Set<string> {
  * and returns the open items that it hides.
  */
 export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
-  snoozes.set(body.conversationId, Date.parse(body.wakeAt));
-  return {
-    reviewItemIds: seeds(nowMs)
-      .filter(
-        (seed) =>
-          seed.conversationId === body.conversationId &&
-          isOpen(seed) &&
-          (!body.reviewItemId || seed.id === body.reviewItemId),
-      )
-      .map((seed) => seed.id),
-  };
+  const reviewItemIds = seeds(nowMs)
+    .filter(
+      (seed) =>
+        seed.conversationId === body.conversationId &&
+        isOpen(seed) &&
+        (!body.reviewItemId || seed.id === body.reviewItemId),
+    )
+    .map((seed) => seed.id);
+  for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+  return { reviewItemIds };
 }
 
 /** Wake a mock row, like `DELETE /api/inbox/snoozes`. */
-export function wakeMockRow(conversationId: string): void {
-  snoozes.delete(conversationId);
+export function wakeMockRow(nowMs: number, conversationId: string): void {
+  for (const seed of seeds(nowMs)) {
+    if (seed.conversationId === conversationId) snoozes.delete(seed.id);
+  }
 }
 
 function isOpen(seed: MockItemSeed): boolean {
@@ -521,7 +522,7 @@ export function readMockReviewItems(
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
-  const snoozed = snoozedConversationIds(nowMs);
+  const snoozed = snoozedItemIds(nowMs);
   const all = seeds(nowMs);
   const items = all
     .filter(
@@ -530,8 +531,8 @@ export function readMockReviewItems(
           seed.conversationId === filters.conversationId) &&
         (!q || seed.title.toLowerCase().includes(q)) &&
         (filters.snoozed
-          ? snoozed.has(seed.conversationId)
-          : !filters.forViewer || !snoozed.has(seed.conversationId)),
+          ? snoozed.has(seed.id)
+          : !filters.forViewer || !snoozed.has(seed.id)),
     )
     .map((seed) => payload(seed, all));
   if (filters.closed)
@@ -644,7 +645,12 @@ export function readMockReviewItemCounts(nowMs: number) {
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: snoozedConversationIds(nowMs).size,
+    // Like the server: one per Conversation that added a snoozed open item.
+    snoozed: new Set(
+      seeds(nowMs)
+        .filter((seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id))
+        .map((seed) => seed.conversationId),
+    ).size,
   };
 }
 
