@@ -61,7 +61,10 @@ import {
 import { useAnimatedHeight } from "./rowMotion";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
-import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import {
+  ReviewItemSubjectPreview,
+  SubjectMergeConflict,
+} from "./ReviewItemSubjectPreview";
 import { askPills, Pill, type AskPill } from "./inboxAsks";
 import { InboxFiles } from "./InboxFiles";
 import { InboxImageStrip, type ImageWork } from "./InboxImageStrip";
@@ -172,6 +175,7 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
+      {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
       {props.notices.map((notice) => (
         <FoldedNotice
           key={notice.id}

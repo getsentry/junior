@@ -50,8 +50,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAttribute("aria-expanded", "true");
     await expect(description).toContainText("Merge after the 4.2 deploy");
 
+    // The pull request's live card says that it conflicts: a quiet line on
+    // the review, not an item.
+    await expect(asks.locator("[data-merge-conflict]")).toHaveText(
+      "Merge conflict",
+    );
     // The notice is a quiet line on the review, not a row or a card.
     await expect(rowHead(page, pinChecks.title)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "FYI" })).toHaveCount(0);
     const checks = asks.locator("[data-folded-notice]");
     await expect(checks).toHaveText("Checks failed");
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
