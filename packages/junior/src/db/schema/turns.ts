@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Location } from "@/chat/conversations/location";
 import { juniorConversationEvents } from "./conversation-events";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
@@ -136,8 +137,9 @@ export const juniorTurnOutbox = pgTable(
       .notNull()
       .references(() => juniorTurns.id),
     eventSeq: integer("event_seq").notNull(),
-    // Copied when the row is made. The Location's plugin owns the shape.
-    location: jsonb("location").$type<Record<string, unknown>>().notNull(),
+    // Copied when the row is made, so a later Location change does not move
+    // a pending delivery.
+    location: jsonb("location").$type<Location>().notNull(),
     state: text("state").$type<"pending" | "sent" | "failed">().notNull(),
     attempts: integer("attempts").default(0).notNull(),
     providerMessageId: text("provider_message_id"),
