@@ -229,7 +229,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     // FYI dismisses its notices and says so; the questions stay.
-    await page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }).click();
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
     await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
@@ -241,18 +241,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }),
+      page.getByRole("button", { name: "Dismiss 2 in FYI" }),
     ).toBeVisible();
     // Only section headers sweep. No label says "need you".
-    const sweeps = page.getByRole("button", { name: /^Dismiss \d+ FYIs? in / });
+    const sweeps = page.getByRole("button", { name: /^Dismiss \d+ in / });
     await expect(sweeps).toHaveText(
-      Array(await sweeps.count()).fill(/^Dismiss \d+ FYIs?$/),
+      Array(await sweeps.count()).fill(/^Dismiss \d+$/),
     );
     await expect(page.getByText(/\bneeds? you\b/i)).toHaveCount(0);
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }).click();
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
@@ -269,7 +269,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const clearFyi = page.getByRole("button", {
-      name: /^Dismiss \d+ FYIs? in FYI$/,
+      name: /^Dismiss \d+ in FYI$/,
     });
     await clearFyi.click();
     await expect(page.getByText(/^Dismissed \d+ FYIs?$/)).toBeVisible();
@@ -311,9 +311,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page
-      .getByRole("button", { name: /^Dismiss \d+ FYIs? in FYI$/ })
-      .click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     await expect(page.getByText(/^Could not dismiss \d+ FYIs?$/)).toBeVisible({
       timeout: 10_000,
