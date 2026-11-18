@@ -7,7 +7,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
