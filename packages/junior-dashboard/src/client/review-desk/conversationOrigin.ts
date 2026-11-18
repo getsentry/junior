@@ -1,9 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { NavigationType, useNavigationType, type Location } from "react-router";
 import * as z from "zod";
 
-import type { InboxView } from "../../review-desk/inboxModel";
-import { isInboxView, type PaneRow } from "./paneRows";
+import { isInboxView } from "../components/layout/paneRows";
+import type { InboxView } from "./inboxModel";
 
 // Origins by history entry key, as React Router's scroll restoration keeps
 // scroll offsets. The browser keeps an entry's key across reload, Back, and
@@ -14,26 +14,30 @@ const MAX_ORIGINS = 100;
 
 /**
  * Name the Inbox view that opened the Conversation in this history entry,
- * so the pane marks it after a reload, Back, or Forward too. An entry that
- * the dashboard did not open itself, such as a direct link, has none.
- * `lastRow` is the row of the page that the reader came from.
+ * so the pane and Back keep it after a reload, Back, or Forward too. An
+ * entry that the dashboard did not open itself, such as a direct link, has
+ * none. `lastView` is the Inbox view of the page that the reader came
+ * from, if it was one.
  */
 export function useConversationOrigin(
   location: Location,
-  lastRow: PaneRow,
+  lastView: InboxView | undefined,
 ): InboxView | undefined {
   const navigationType = useNavigationType();
-  const saved = useMemo(() => readOrigins()[location.key], [location.key]);
-  const origin = isInboxView(saved)
-    ? saved
-    : navigationType !== NavigationType.Pop && isInboxView(lastRow)
-      ? lastRow
-      : undefined;
   const conversation = location.pathname.startsWith("/conversations/");
+  // Read on each render, not memoized by key: a fast Back can return to an
+  // entry before the render that saved it shows.
+  const saved = conversation ? readOrigins()[location.key] : undefined;
+  const origin = !conversation
+    ? undefined
+    : isInboxView(saved)
+      ? saved
+      : navigationType !== NavigationType.Pop
+        ? lastView
+        : undefined;
   useEffect(() => {
-    if (conversation && origin && origin !== saved)
-      saveOrigin(location.key, origin);
-  }, [conversation, location.key, origin, saved]);
+    if (origin && origin !== saved) saveOrigin(location.key, origin);
+  }, [location.key, origin, saved]);
   return origin;
 }
 
@@ -46,7 +50,7 @@ function readOrigins(): Record<string, string> {
     );
     return parsed.success ? parsed.data : {};
   } catch {
-    // Without the store, the pane still marks the origin until a reload.
+    // Without the store, the origin still holds until a reload.
     return {};
   }
 }
@@ -62,6 +66,6 @@ function saveOrigin(key: string, origin: InboxView) {
       JSON.stringify(Object.fromEntries([...kept, [key, origin]])),
     );
   } catch {
-    // Without the store, the pane still marks the origin until a reload.
+    // Without the store, the origin still holds until a reload.
   }
 }

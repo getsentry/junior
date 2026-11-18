@@ -226,18 +226,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       const composer = page.getByLabel("Start a conversation");
       await expect(composer).toBeFocused();
 
-      // A browser back and forward is not a request to type.
-      await page.getByRole("link", { name: "Back to Inbox" }).click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      // A browser back and forward is not a request to type. A direct link
+      // has no origin, so Back goes to Conversations.
+      const conversationsUrl = `${dashboard.baseURL}/?view=conversations`;
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
       await page.goForward();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
       await expect(composer).toBeVisible();
       await expect(composer).not.toBeFocused();
 
       // "+" asks to type.
-      await page.getByRole("link", { name: "Back to Inbox" }).click();
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
       await page.getByRole("button", { name: "New conversation" }).click();
       await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
       await expect(composer).toBeFocused();

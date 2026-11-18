@@ -331,7 +331,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("marks the view that opened a Conversation, across reload and Back", async ({
+  test("marks the view that opened a Conversation, and Back returns there, across reload", async ({
     page,
     dashboard,
   }) => {
@@ -347,12 +347,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     const title = page.getByRole("heading", {
       name: "Checkout latency triage",
     });
+    const backToConversations = page.getByRole("link", {
+      name: "Back to Conversations",
+    });
+    const backToInbox = page.getByRole("link", { name: "Back to Inbox" });
 
-    // A direct link has no origin, so Conversations owns the page.
+    // A direct link has no origin, so Conversations owns the page, and
+    // Back goes there.
     await page.goto(conversationUrl);
     await expect(title).toBeVisible();
     await expect(conversations).toHaveAttribute("aria-current", "page");
     await expect(inbox).not.toHaveAttribute("aria-current");
+    await expect(backToConversations).toHaveAttribute(
+      "href",
+      "/?view=conversations",
+    );
+    await backToConversations.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
 
     // Opened from Conversations, it stays there after a reload, Back, and
     // Forward.
@@ -368,6 +379,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title).toBeVisible();
     await expect(conversations).toHaveAttribute("aria-current", "page");
     await expect(inbox).not.toHaveAttribute("aria-current");
+    await expect(backToConversations).toHaveAttribute(
+      "href",
+      "/?view=conversations",
+    );
     await page.goBack();
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
     await page.goForward();
@@ -387,6 +402,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title).toBeVisible();
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await expect(conversations).not.toHaveAttribute("aria-current");
+    await expect(backToInbox).toHaveAttribute("href", "/");
   });
 
   test("keeps the density choice", async ({ page, dashboard }) => {
