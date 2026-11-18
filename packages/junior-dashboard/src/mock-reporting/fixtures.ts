@@ -1471,64 +1471,69 @@ function longConversation(nowMs: number): ConversationDetailReport {
   );
   nextSeq += 1;
   events.push(
-    reportEvent(nextSeq, iso(Date.parse(startedAt), 166_000), {
-      type: "message",
-      messageId: "release-assistant",
-      role: "assistant",
-      // Links to the Annotations below show as a link, a hover card, and a
-      // full card.
-      text: [
-        "Released the package.",
-        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
-        "",
-        "https://github.com/getsentry/payments/pull/91",
-        "",
-        // No Annotations: the API resolves these dashboard links.
-        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
-        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
-        "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
-        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
-        "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
-        "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
-        "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
-        "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
-        "Feedback on the new checkout pings the team: https://acme.sentry.io/monitors/alerts/6363564/",
-        "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
-        "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
-        "The team watches it on https://acme.sentry.io/dashboard/42/",
-        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
-        "",
-        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
-        "",
-        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
-        "",
-        "https://blog.example.com/posts/release-4-2",
-        "",
-        // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, the trace, the event, the release, the
-        // dashboard, the monitor, and the alert show a card, and the
-        // repeated pull request shows no second card.
-        "https://www.youtube.com/watch?v=MockLaunchDemo",
-        "",
-        "https://acme.slack.com/archives/CQA456/p1770021700000100",
-        "",
-        "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
-        "",
-        "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
-        "",
-        "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
-        "",
-        "https://acme.sentry.io/releases/junior%404.2.0/",
-        "",
-        "https://acme.sentry.io/dashboard/42/",
-        "",
-        "https://acme.sentry.io/monitors/4021/",
-        "",
-        "https://acme.sentry.io/monitors/alerts/6363564/",
-        "",
-        "https://github.com/getsentry/payments/pull/91",
-      ].join("\n"),
-    }),
+    reportEvent(
+      nextSeq,
+      iso(Date.parse(startedAt), 166_000),
+      {
+        type: "message",
+        messageId: "release-assistant",
+        role: "assistant",
+        // Links to the Annotations below show as a link, a hover card, and a
+        // full card.
+        text: [
+          "Released the package.",
+          "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+          "",
+          "https://github.com/getsentry/payments/pull/91",
+          "",
+          // No Annotations: the API resolves these dashboard links.
+          `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+          "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+          "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+          "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+          "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+          "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+          "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+          "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
+          "Feedback on the new checkout pings the team: https://acme.sentry.io/monitors/alerts/6363564/",
+          "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+          "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
+          "The team watches it on https://acme.sentry.io/dashboard/42/",
+          "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+          "",
+          "<@U123> wrote the launch steps in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+          "",
+          "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+          "",
+          "https://blog.example.com/posts/release-4-2",
+          "",
+          // Alone on their lines: the video shows only its thumbnail, the
+          // Slack message, the chart, the trace, the event, the release, the
+          // dashboard, the monitor, and the alert show a card, and the
+          // repeated pull request shows no second card.
+          "https://www.youtube.com/watch?v=MockLaunchDemo",
+          "",
+          "https://acme.slack.com/archives/CQA456/p1770021700000100",
+          "",
+          "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+          "",
+          "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+          "",
+          "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+          "",
+          "https://acme.sentry.io/releases/junior%404.2.0/",
+          "",
+          "https://acme.sentry.io/dashboard/42/",
+          "",
+          "https://acme.sentry.io/monitors/4021/",
+          "",
+          "https://acme.sentry.io/monitors/alerts/6363564/",
+          "",
+          "https://github.com/getsentry/payments/pull/91",
+        ].join("\n"),
+      },
+      { mentions: [MOCK_MENTION_MORGAN] },
+    ),
   );
   return detail(nowMs, {
     conversationId: LONG_CONVERSATION_ID,

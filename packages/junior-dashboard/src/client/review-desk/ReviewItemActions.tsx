@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useFailedReviewItemAnswer, useReviewItemAction } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -142,6 +143,7 @@ export function ReviewItemActions(props: {
           <div className="font-medium">
             <DisplayText text={item.request.question} />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             draft={draft}
             onUnsentChange={setUnsent}
