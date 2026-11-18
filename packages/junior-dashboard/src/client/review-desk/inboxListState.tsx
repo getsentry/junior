@@ -26,6 +26,7 @@ type ListPlace = { expandedKey: string; loaded: number };
 type LinkedItems = { closed?: string; open?: string };
 
 type InboxListValue = {
+  inFlightExpanded: readonly [boolean, (expanded: boolean) => void];
   linkedItems: readonly [
     LinkedItems,
     (update: (current: LinkedItems) => LinkedItems) => void,
@@ -50,13 +51,14 @@ const NEW_PLACE: ListPlace = { expandedKey: "", loaded: INBOX_PAGE_SIZE };
  * Keep the place of each Inbox list for the session: its entry, scroll
  * position, expanded row, how many rows it shows, the older feed pages it
  * loaded, and the items that links added. Opening a Conversation replaces the list, and Back brings it
- * back as it was.
+ * back as it was. The pane's In flight list stays expanded the same way.
  */
 export function InboxListProvider(props: { children: ReactNode }) {
   const [places, setPlaces] = useState<
     Readonly<Partial<Record<InboxView, ListPlace>>>
   >({});
   const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
+  const [inFlightExpanded, setInFlightExpanded] = useState(false);
   const [returnPath, setReturnPath] = useState("/");
   const composerShown = useRef(false);
   const showComposer = useCallback(() => {
@@ -85,6 +87,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
   );
   const value = useMemo(
     () => ({
+      inFlightExpanded: [inFlightExpanded, setInFlightExpanded] as const,
       linkedItems: [linkedItems, setLinkedItems] as const,
       places,
       returnPath,
@@ -93,7 +96,15 @@ export function InboxListProvider(props: { children: ReactNode }) {
       setReturnPath,
       showComposer,
     }),
-    [linkedItems, places, returnPath, scroll, setPlace, showComposer],
+    [
+      inFlightExpanded,
+      linkedItems,
+      places,
+      returnPath,
+      scroll,
+      setPlace,
+      showComposer,
+    ],
   );
   return (
     <InboxListContext.Provider value={value}>
@@ -184,6 +195,14 @@ export function useInboxReturnHere(path: string | undefined) {
  */
 export function useLinkedInboxItems() {
   return useInboxListContext().linkedItems;
+}
+
+/**
+ * Whether the pane lists every in-flight Conversation, for the session. The
+ * pane remounts when a row opens its Conversation, and the list stays open.
+ */
+export function useInFlightExpanded() {
+  return useInboxListContext().inFlightExpanded;
 }
 
 /**
