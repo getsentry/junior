@@ -42,14 +42,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // Conversations lists the row. It says the answer in place of the ask,
-    // after a reload too.
+    // Conversations lists the row. It says the answer in place of the ask
+    // at once, and after a reload too.
     const answered = page.waitForResponse(
       /\/api\/review-items\/[^/]+\/actions$/,
     );
     release();
     await answered;
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { exact: true, name: "Conversations" })
+      .click();
     const summary = rollout(page).locator('[data-inbox-slot="summary"]');
     await expect(summary).toHaveText("You answered Hold");
     await expect(page.getByText(ask)).toHaveCount(0);

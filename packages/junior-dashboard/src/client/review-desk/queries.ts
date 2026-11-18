@@ -13,6 +13,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import {
+  answeredChoices,
   automationListSchema,
   conversationDetailReportSchema,
   reviewItemActionSchema,
@@ -30,6 +31,11 @@ import {
   type ConversationSnapshot,
 } from "../conversations/queries";
 import { clearAnswerDraft } from "../components/answerDrafts";
+import { patchFeedConversation } from "../conversations/conversationArchive";
+import {
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "../conversations/conversationFeedCache";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
@@ -440,6 +446,32 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
   if (restored) changeCounts(queryClient, item, 1);
 }
 
+/**
+ * Put the viewer's answer on its Conversation's feed rows, as the next feed
+ * read sends it, so a row says "You answered Hold" at once.
+ */
+function showAnswerOnFeedRows(
+  queryClient: QueryClient,
+  item: ReviewItemPayload,
+): void {
+  if (!item.answer || !item.request || !item.closedAt) return;
+  const viewerAnswer = {
+    choices: answeredChoices(item.request, item.answer),
+    closedAt: item.closedAt,
+  };
+  queryClient.setQueriesData<ConversationFeedCache>(
+    { queryKey: ["dashboard", "conversations"] },
+    (feed) =>
+      feed
+        ? mapConversationFeedCache(feed, (conversations) =>
+            patchFeedConversation(conversations, item.addedByConversationId, {
+              viewerAnswer,
+            }),
+          )
+        : feed,
+  );
+}
+
 /** How many Review item actions are in flight. */
 export function reviewItemActionsInFlight(queryClient: QueryClient): number {
   return queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY });
@@ -475,9 +507,11 @@ export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: (item) => {
+    onSuccess: (item, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(reviewItemQueryKey(item.id), item);
+      if (args.body.action === "submit")
+        showAnswerOnFeedRows(queryClient, item);
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>
