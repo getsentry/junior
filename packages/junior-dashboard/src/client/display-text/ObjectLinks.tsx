@@ -22,7 +22,7 @@ import {
   textHasStandaloneUrl,
   type KnownObjects,
 } from "./knownObjects";
-import { ANCHOR_CLASS } from "./links";
+import { useAnchorClass } from "./links";
 import { PersonMention } from "./people";
 
 // Fits most live cards, such as a pull request or a task. A taller card
@@ -210,10 +210,11 @@ export function ObjectTitleLink(props: {
   live?: boolean;
   reserveHeight?: boolean;
 }) {
+  const className = useAnchorClass();
   return (
     <ObjectLinkPreview
       card={props.card}
-      className={ANCHOR_CLASS}
+      className={className}
       href={props.href}
       live={props.live}
       reserveHeight={props.reserveHeight}
@@ -266,11 +267,12 @@ export function PersonLink(props: {
 }) {
   const { card } = props;
   const facts = card.facts?.type === "person" ? card.facts : undefined;
+  const className = useAnchorClass("person");
   return (
     <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
       <ObjectLinkPreview
         card={card}
-        className={ANCHOR_CLASS}
+        className={className}
         href={props.href}
         live={props.live}
         reserveHeight={props.reserveHeight}

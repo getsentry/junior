@@ -105,15 +105,17 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await comfortable(page);
     await page.goto(`${dashboard.baseURL}/`);
-    const summary = page
+    const row = page
       .getByRole("region", { name: "To do" })
       .getByRole("listitem")
-      .filter({ hasText: "Package release and self-update" })
-      .locator('[data-inbox-slot="summary"]');
+      .filter({ hasText: "Package release and self-update" });
+    const summary = row.locator('[data-inbox-slot="summary"]');
+    // The closed row shows the first paragraphs only, so open it.
+    await expandRow(row.locator("[data-inbox-head]"));
     // A person shows a chip. A Conversation and a pull request show their
     // titles as plain links.
     await expect(
-      summary.getByRole("link", { name: /Morgan Lee/ }),
+      summary.getByRole("link", { name: /Morgan Lee/ }).first(),
     ).toBeVisible();
     await expect(
       summary.getByRole("link", { name: "Investigate checkout latency" }),
@@ -124,6 +126,32 @@ test.describe("new UI", { tag: "@new" }, () => {
         .first(),
     ).toBeVisible();
     await expect(summary).not.toContainText("https://");
+  });
+
+  test("a row's summary keeps its paragraphs and line breaks", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = page
+      .getByRole("region", { name: "To do" })
+      .getByRole("listitem")
+      .filter({ hasText: "Package release and self-update" });
+    const paragraphs = row
+      .locator('[data-inbox-slot="summary"]')
+      .getByRole("paragraph");
+    // The message's first paragraph keeps its line break.
+    await expect(paragraphs.first()).toHaveText(
+      /^Released the package\.\nOpened the update pull request/,
+      { useInnerText: true },
+    );
+    // The open row shows each paragraph on its own.
+    await expandRow(row.locator("[data-inbox-head]"));
+    await expect(paragraphs.nth(1)).toHaveText(
+      "Pin the release train to payments 4.2 (#91)",
+    );
+    await expect(paragraphs.nth(2)).toHaveText(/^Deployment is ready\./);
   });
 
   const SENTAUR = "Triage Sentaur GoCD deployment failures";

@@ -6,6 +6,7 @@ import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
 import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
+import { PreviewLinksProvider } from "./links";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
@@ -30,6 +31,7 @@ export const DisplayText = memo(function DisplayText(props: {
   /**
    * Inline mode: show links as messages do. A bare URL shows its object
    * title, and a person shows as a chip. Only outside a link or a button.
+   * The links take the quiet look of a row preview.
    */
   chips?: boolean;
   /** Keep body line height compact in narrow panels. */
@@ -44,6 +46,11 @@ export const DisplayText = memo(function DisplayText(props: {
   links?: boolean;
   /** People that the API resolved for this text. */
   mentions?: readonly ActorIdentity[] | undefined;
+  /**
+   * Inline mode with chips: keep the text's paragraphs, line breaks, and
+   * lists, for a preview with room for more than one line.
+   */
+  paragraphs?: boolean;
   text: string;
 }) {
   return (
@@ -53,7 +60,14 @@ export const DisplayText = memo(function DisplayText(props: {
         mentions={props.mentions ?? NO_MENTIONS}
       >
         {props.inline ? (
-          <MarkdownText chips={props.chips} inline text={props.text} />
+          <PreviewLinksProvider value={props.chips ?? false}>
+            <MarkdownText
+              chips={props.chips}
+              inline
+              paragraphs={props.paragraphs}
+              text={props.text}
+            />
+          </PreviewLinksProvider>
         ) : props.document ? (
           // One tree, so reference links and footnotes resolve across fences.
           <MarkdownText document text={props.text} />
