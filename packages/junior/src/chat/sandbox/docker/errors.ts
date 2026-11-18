@@ -1,5 +1,5 @@
 import { findInErrorChain } from "@/chat/sandbox/errors";
-import { DockerApiError } from "@/chat/sandbox/docker/api";
+import { DockerApiError } from "@/core/tool-execution-environment/docker/api";
 import type { SandboxErrorChecks } from "@/chat/sandbox/provider";
 
 // Module overview: sort Docker Engine API errors into the cases that shared
