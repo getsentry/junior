@@ -287,7 +287,7 @@ function ConversationCard(props: ConversationCardProps) {
         {showStatus ? (
           <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
-              status={status}
+              turnActive={running}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>

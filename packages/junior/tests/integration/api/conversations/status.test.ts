@@ -542,6 +542,21 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
+  it("counts an old answer with no source as sent to Slack", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000260",
+    );
+    // Delivery pauses did not exist yet, so the answer reached Slack.
+    await recordAnswer(
+      conversationId,
+      1,
+      Date.parse("2026-08-01T00:00:00.000Z"),
+    );
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
   it("does not wait on a read when the root has no starter", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordDashboardRoot(

@@ -14,6 +14,7 @@ import {
   ConversationListStatusIcon,
   ConversationStatusText,
 } from "../../conversations/ConversationListStatusIcon";
+import { conversationTurnIsActive } from "../../conversations/turnActivity";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { conversationDisplayTitle, slackLocationLabel } from "../../format";
 import type { Conversation } from "../../types";
@@ -65,7 +66,10 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
       />
       <div className="pointer-events-none relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-          <ConversationListStatusIcon status={status} waitingOnViewer={false} />
+          <ConversationListStatusIcon
+            turnActive={conversationTurnIsActive(conversation)}
+            waitingOnViewer={false}
+          />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">
           {title}

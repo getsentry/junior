@@ -74,6 +74,10 @@ export function conversationTurnFailedSql(
   return sql<boolean>`(${conversation.executionStatus} = 'failed' or ${newestSeq("turn_failed")} > coalesce(greatest(${newestSeq("turn_started")}, ${newestSeq("turn_completed")}), -1))`;
 }
 
+// When #3050 merged; its deploy came later, so no reply before this was
+// held back by a delivery pause.
+const DELIVERY_PAUSE_START = sql.raw(`'2026-11-10T02:48:39Z'::timestamptz`);
+
 const starterRoot = alias(juniorConversations, "status_starter_root");
 const starterIdentity = alias(juniorIdentities, "status_starter_identity");
 const replyReader = alias(juniorIdentities, "status_reply_reader");
@@ -121,10 +125,12 @@ function conversationWaitsOnStarterSql(
       sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
     )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const replySeq = latestReply(sql`${juniorConversationEvents.seq}`);
-  // `slack` only when Slack accepted the Message. A paused root's reply
-  // has no Slack source.
-  const replySource = latestReply(
-    sql`${juniorConversationEvents.payload}->'meta'->>'source'`,
+  // A reply has source `slack` only when Slack accepted it. A reply that a
+  // delivery pause held back has no source and no other mark. Pauses started
+  // with #3050, so a reply with no source from before then reached Slack.
+  // TODO(dcramer): Drop the date once no root's latest reply predates it.
+  const replyInSlack = latestReply(
+    sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START})`,
   );
   const starterUserId = sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
     starterIdentity.id,
@@ -137,8 +143,8 @@ function conversationWaitsOnStarterSql(
     and(
       sql`${conversation.parentConversationId} is null`,
       sql`${conversation.location} is not null`,
-      // A null source must read false: `not (null)` is null, not true.
-      sql`coalesce(${replySource} = 'slack', false)`,
+      // No reply must read false: `not (null)` is null, not true.
+      sql`coalesce(${replyInSlack}, false)`,
     ),
     sql`exists (select 1 from ${juniorConversationEvents} join ${juniorIdentities} as ${replyReader} on ${eq(
       replyReader.id,
