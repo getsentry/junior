@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.308.0
+
+### New Features ✨
+
+- (agents) Let a root's child agents start their own by default by @dcramer with @sentry-junior in [#3641](https://github.com/getsentry/junior/pull/3641)
+- (dashboard) Suggest skills when you type $ in the composer by @sergical and @dcramer with @sentry-junior in [#3611](https://github.com/getsentry/junior/pull/3611)
+
+### Bug Fixes 🐛
+
+- (egress) Stop treating Node fetch as a browser by @dcramer with @sentry-junior in [#3643](https://github.com/getsentry/junior/pull/3643)
+- (slack) Keep Markdown table rows together in replies by @sergical with @sentry-junior in [#3115](https://github.com/getsentry/junior/pull/3115)
+
 ## 0.307.1
 
 ### Bug Fixes 🐛
