@@ -163,19 +163,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     }) => {
       await page.emulateMedia({ reducedMotion: motion });
       await page.goto(`${dashboard.baseURL}/`);
-      // To do opens with a stack whose one ask comes before its FYI. The
-      // ask's Dismiss takes the stack, and the next stack's first row opens.
-      const entries = page
-        .getByRole("region", { name: "To do" })
-        .locator(":scope > ul > li");
-      const first = entries.first().locator("li[data-inbox-row]").first();
+      // Each To do entry is a row, or a stack of rows. When the first
+      // entry's last ask leaves, the next entry's first row opens.
+      const entryRow = (index: number) =>
+        page
+          .getByRole("region", { name: "To do" })
+          .locator(":scope > ul > li")
+          .nth(index)
+          .locator("xpath=descendant-or-self::li[@data-inbox-row][1]");
+      const first = entryRow(0);
       const firstKey = await first.getAttribute("data-inbox-row");
-      const nextKey = await entries
-        .nth(1)
-        .locator("li[data-inbox-row]")
-        .first()
-        .getAttribute("data-inbox-row");
-      await first.locator("[data-inbox-head]").click();
+      const nextKey = await entryRow(1).getAttribute("data-inbox-row");
+      await expandRow(first.locator("[data-inbox-head]").first());
       const open = page.locator(
         `li[data-inbox-row="${firstKey}"][data-expanded]`,
       );

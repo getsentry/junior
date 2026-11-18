@@ -29,6 +29,7 @@ import type {
   ToolActionReviewer,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
+import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
@@ -472,29 +473,6 @@ export const MAX_TOOL_ACTION_BATCH = 10;
 /** Most Guardian reviews of one batch that run at the same time. */
 const MAX_CONCURRENT_REVIEWS = 4;
 
-/** Map items with at most `limit` calls of `fn` in flight, in input order. */
-async function mapConcurrent<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  const worker = async () => {
-    /* oxlint-disable no-await-in-loop -- Each worker takes the next item after its current one ends; this is the limiter. */
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(items[index]!);
-    }
-    /* oxlint-enable no-await-in-loop */
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
-}
-
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
@@ -680,10 +658,10 @@ export function createToolActionReview(options: {
           // Each action sees the same prior rejections, so the order in
           // which concurrent reviews finish cannot change a proposal.
           const rejections = [...priorRejections];
-          const steps = await mapConcurrent(
+          const steps = await mapBounded(
             actions,
-            MAX_CONCURRENT_REVIEWS,
             (action) => reviewStep(action, rejections, signal),
+            MAX_CONCURRENT_REVIEWS,
           );
           // Change gate state in batch order, so it does not depend on
           // which review finished first.

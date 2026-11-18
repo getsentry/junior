@@ -213,6 +213,24 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Review requested · #91",
     },
     {
+      // The merge conflict notice about the same pull request folds into
+      // its review ask.
+      body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(60),
+      id: "qa-conflict-91",
+      kind: "notice",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/payments/pull/91",
+        objectType: "code_change",
+        title: "Pin the release train to payments 4.2",
+        url: "https://github.com/getsentry/payments/pull/91",
+      },
+      title: "Merge conflict · #91",
+    },
+    {
       assignedToEveryone: true,
       body: "The canary deploy paused after the error budget alert. Nothing to do unless it stays paused.",
       conversationId: DEPLOY_CONVERSATION_ID,
@@ -281,7 +299,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Two agents lost their lease",
     },
-    // Two more, so the stack folds past its fourth row.
+    // Three more asks, so the stack folds past its fourth row.
     {
       body: "The canary stage fails on a lost agent three runs out of ten.",
       childLabel: "Check the last ten Sentaur pipeline runs",
@@ -308,9 +326,39 @@ function seeds(nowMs: number): MockItemSeed[] {
       conversationId: SENTAUR_LOGS_THREAD_ID,
       createdAt: at(31),
       id: "qa-sentaur-agent-9",
-      kind: "notice",
+      request: {
+        question: "Put agent 9 back in the canary pool?",
+        fields: [
+          {
+            id: "pool",
+            kind: "choice",
+            label: "Agent 9",
+            options: [{ label: "Put it back" }, { label: "Keep it out" }],
+          },
+        ],
+      },
       status: "open",
-      title: "Agent 9 is back",
+      title: "Put agent 9 back in the pool",
+    },
+    {
+      body: "Three canary runs failed on a lost agent this week.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(30),
+      id: "qa-sentaur-rerun",
+      request: {
+        question: "Rerun the three failed canary runs?",
+        fields: [
+          {
+            id: "rerun",
+            kind: "choice",
+            label: "Runs",
+            options: [{ label: "Rerun" }, { label: "Skip" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Rerun the failed canary runs",
     },
     // Older items, so the inbox has Today, This week, and Earlier.
     {

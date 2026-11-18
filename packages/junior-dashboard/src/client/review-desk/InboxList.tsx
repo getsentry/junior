@@ -48,9 +48,8 @@ import {
   INBOX_VIEW_LABELS,
   inboxViewPath,
   itemRowSubtitle,
-  linkedInboxRowKey,
+  linkedRowOf,
   singleRow,
-  stackRowKey,
   sweepOf,
   timeGroups,
   viewRows,
@@ -167,7 +166,7 @@ export function InboxList(props: {
   const [held, setHeld] = useState<RowPlaces>();
   const latestStreamRows =
     view === "inbox"
-      ? data.conversationRows.filter(
+      ? data.inboxStreamRows.filter(
           (row) =>
             !todoIds.has(row.conversationId) &&
             !grabIds.has(row.conversationId),
@@ -204,31 +203,19 @@ export function InboxList(props: {
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
       : done.items;
-  // A snoozed item is still open. Its link opens Snoozed, with its row.
-  const snoozedRow = linkedId
-    ? data.snoozedRows.find((row) =>
-        row.items.some((item) => item.id === linkedId),
-      )
-    : undefined;
-  const snoozedKey =
-    snoozedRow && linkedId ? stackRowKey(snoozedRow, linkedId) : undefined;
-  const linkedOpen = data.awake.find((open) => open.id === linkedId);
-  const linkedRowKey = (() => {
-    if (!linkedId) return undefined;
-    if (view === "snoozed") return snoozedKey;
-    if (view === "done")
-      return doneItems.some((item) => item.id === linkedId)
-        ? linkedId
-        : undefined;
-    if (!linkedOpen) return undefined;
-    if (view === "prs" || view === "decisions") return linkedOpen.id;
-    if (view !== "inbox") return `conversation:${itemStackId(linkedOpen)}`;
-    return linkedInboxRowKey(linkedOpen, {
-      grabs: data.grabRows,
-      stream: streamBundles,
-      todo: data.todoRows,
-    });
-  })();
+  const {
+    key: linkedRowKey,
+    open: linkedOpen,
+    snoozedKey,
+  } = linkedRowOf(view, linkedId, {
+    awake: data.awake,
+    done: doneItems,
+    foldedNotices: data.foldedNotices,
+    grabs: data.grabRows,
+    snoozed: data.snoozedRows,
+    stream: streamBundles,
+    todo: data.todoRows,
+  });
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
   // An item that is not in this list may be closed, or past its first page.
@@ -251,9 +238,18 @@ export function InboxList(props: {
     const current = new URLSearchParams(window.location.search).get("item");
     if (current !== linkedId) return;
     if (linkedRowKey) {
-      // A collapsed To do has no rows, so a link into it opens it first.
+      // A collapsed To do or FYI has no rows, so a link into it opens it
+      // first.
       if (linkedRowKey.startsWith("todo:") && todoCollapsed) {
         setTodoCollapsed(false);
+        return;
+      }
+      if (linkedRowKey.startsWith("fyi:") && collapsed.has("fyi")) {
+        setCollapsed((current) => {
+          const next = new Set(current);
+          next.delete("fyi");
+          return next;
+        });
         return;
       }
       if (expandedKey !== linkedRowKey) {
@@ -302,6 +298,7 @@ export function InboxList(props: {
       });
     }
   }, [
+    collapsed,
     expandedKey,
     includeItem,
     includedId,
@@ -372,13 +369,13 @@ export function InboxList(props: {
             : undefined,
         onSnooze: options.snoozed
           ? undefined
-          : (choice) => {
+          : (untilMs) => {
               setSnoozeKey(undefined);
               putAway(
                 key,
                 item.id,
                 async () => {
-                  flushSync(() => snoozes.snoozeItem(item, choice));
+                  flushSync(() => snoozes.snoozeItem(item, untilMs));
                   return true;
                 },
                 passing,
@@ -431,6 +428,7 @@ export function InboxList(props: {
         conversationId={row.conversationId}
         drag={options.drag}
         expanded={state.expandedKey === key || loneKey === key}
+        foldedNotices={data.foldedNotices}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
           options.itemRow
@@ -449,9 +447,9 @@ export function InboxList(props: {
         onSnooze={
           options.snoozed
             ? undefined
-            : (choice) => {
+            : (untilMs) => {
                 setSnoozeKey(undefined);
-                leave(key, () => snoozes.snooze(row, choice));
+                leave(key, () => snoozes.snooze(row, untilMs));
               }
         }
         onWake={
@@ -501,9 +499,9 @@ export function InboxList(props: {
         onSnooze={
           options.snoozed
             ? undefined
-            : (choice) => {
+            : (untilMs) => {
                 setSnoozeKey(undefined);
-                snoozes.snooze(row, choice);
+                snoozes.snooze(row, untilMs);
               }
         }
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
@@ -574,9 +572,9 @@ export function InboxList(props: {
                 onDismiss: () =>
                   leave(key, () => data.alerts.dismiss(automation)),
                 onMenu: (open) => setSnoozeKey(open ? key : undefined),
-                onSnooze: (choice) => {
+                onSnooze: (untilMs) => {
                   setSnoozeKey(undefined);
-                  leave(key, () => data.alerts.snooze(automation, choice));
+                  leave(key, () => data.alerts.snooze(automation, untilMs));
                 },
               }
             : undefined
@@ -762,6 +760,18 @@ export function InboxList(props: {
         >
           {data.grabRows.map((row) =>
             stackRow(row, STACK_ROW_KEYS.grabs, { take: "I'll take it" }),
+          )}
+        </InboxSection>
+        {/* Notices wait on no one: one quiet row each, after the asks. */}
+        <InboxSection
+          action={sweepControl(data.fyiRows, "FYI")}
+          collapsed={collapsed.has("fyi")}
+          count={data.fyiRows.length}
+          label="FYI"
+          onToggle={() => toggleSection("fyi")}
+        >
+          {data.fyiRows.map((row) =>
+            bundleRow(row, { itemRow: true, key: `fyi:${row.key}` }),
           )}
         </InboxSection>
         {automationsError}

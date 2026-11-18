@@ -5,7 +5,6 @@ import { useConversationDensity } from "../conversations/conversationDensity";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 
@@ -29,7 +28,7 @@ export function InboxStack(props: {
   expandedKey: string;
   keys: readonly string[];
   /** Snooze all: every row of the stack. A snoozed stack has none. */
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   snoozeMenuOpen: boolean;
   title: string;

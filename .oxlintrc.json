@@ -136,6 +136,15 @@
     },
     {
       "files": [
+        "packages/junior-evals/src/fixture/**",
+        "packages/junior-testing/src/**"
+      ],
+      "rules": {
+        "junior/bounded-fan-out": "off"
+      }
+    },
+    {
+      "files": [
         "packages/junior/src/chat/cache-warming/warmup.ts",
         "packages/junior/src/chat/pi/traced-stream.ts",
         "packages/junior/src/chat/sandbox/egress/vercel.ts"

@@ -334,11 +334,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       panel.getByText("Effectiveness", { exact: true }),
     ).toBeVisible();
     await expect(
-      panel.getByText(/of possible savings had no warm state/),
+      panel.getByText(/of possible savings on live days had no warm state/),
     ).toBeVisible();
-    await expect(
-      panel.getByText(/Excludes 8 days without warmup cost/),
-    ).toBeVisible();
+    await expect(panel.getByText(/Includes 4 days from history/)).toBeVisible();
     await expect(
       panel.getByLabel("Cache warming net savings and effectiveness per day"),
     ).toBeVisible();

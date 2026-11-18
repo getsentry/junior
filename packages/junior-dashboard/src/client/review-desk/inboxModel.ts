@@ -113,6 +113,67 @@ export function viewRows(
   return itemsInView(items, view).map(singleRow).sort(queueOrder);
 }
 
+/**
+ * Fold each open notice about the subject of an open action item into that
+ * item, matched by subject id or URL, so the item's row shows it as a status
+ * line. The notice stays open on its own: closing the action item does not
+ * close it, and it then shows on its own again.
+ */
+export function foldNotices(items: readonly ReviewItemPayload[]): {
+  /** The notices that fold into each action item, by the item's id. */
+  folded: ReadonlyMap<string, ReviewItemPayload[]>;
+  /** Every other item, in the same order. */
+  shown: ReviewItemPayload[];
+} {
+  const subjectKeys = (item: ReviewItemPayload) =>
+    [item.subject?.id, item.subject?.url].filter(
+      (key): key is string => key !== undefined,
+    );
+  const hosts = new Map<string, ReviewItemPayload>();
+  for (const item of [...items].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  )) {
+    if (item.status !== "open" || item.kind !== "action") continue;
+    for (const key of subjectKeys(item))
+      if (!hosts.has(key)) hosts.set(key, item);
+  }
+  const folded = new Map<string, ReviewItemPayload[]>();
+  const shown = items.filter((item) => {
+    if (item.status !== "open" || item.kind !== "notice") return true;
+    const host = subjectKeys(item)
+      .map((key) => hosts.get(key))
+      .find(Boolean);
+    if (!host) return true;
+    folded.set(host.id, [...(folded.get(host.id) ?? []), item]);
+    return false;
+  });
+  return { folded, shown };
+}
+
+/**
+ * The FYI list: one row per open notice, newest first. Notices wait on no
+ * one, so they are not in To do.
+ */
+export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
+  return items
+    .filter((item) => item.status === "open" && item.kind === "notice")
+    .map(singleRow)
+    .sort(
+      (a, b) =>
+        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
+        a.key.localeCompare(b.key),
+    );
+}
+
+/**
+ * The status line of a notice folded into an item, such as "Merge conflict".
+ * The item's card already names the subject, so the reference that plugin
+ * titles add after ` · ` drops out.
+ */
+export function foldedNoticeLabel(notice: ReviewItemPayload): string {
+  return notice.title.split(" · ")[0] || notice.title;
+}
+
 /** One labelled group of rows in the stream. */
 type InboxSection = { key: string; label: string; rows: InboxBundle[] };
 
@@ -291,7 +352,7 @@ export function itemRowSubtitle(
  * The key of the row that shows an item of `bundle`: in a stack of more
  * than one ask, the item's own row; else the Conversation's row.
  */
-export function stackRowKey(bundle: InboxBundle, itemId: string): string {
+function stackRowKey(bundle: InboxBundle, itemId: string): string {
   return bundle.items.length > 1 ? itemId : bundle.key;
 }
 
@@ -299,7 +360,7 @@ export function stackRowKey(bundle: InboxBundle, itemId: string): string {
  * The key of the Inbox row that shows a linked open item: in Up for grabs,
  * To do, or the stream, and in its stack, the item's own row.
  */
-export function linkedInboxRowKey(
+function linkedInboxRowKey(
   item: ReviewItemPayload,
   rows: {
     grabs: readonly InboxBundle[];
@@ -322,4 +383,46 @@ export function linkedInboxRowKey(
     rowIn("conversation", rows.stream) ??
     `conversation:${conversationId}`
   );
+}
+
+/**
+ * The row that a link to one item opens in a list, and the open item that
+ * the row shows. A snoozed item opens its row in Snoozed. A notice folded
+ * into an ask opens the ask's row.
+ */
+export function linkedRowOf(
+  view: InboxView,
+  linkedId: string | undefined,
+  rows: {
+    awake: readonly ReviewItemPayload[];
+    done: readonly ReviewItemPayload[];
+    foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+    grabs: readonly InboxBundle[];
+    snoozed: readonly InboxBundle[];
+    stream: readonly InboxBundle[];
+    todo: readonly InboxBundle[];
+  },
+): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {
+  if (!linkedId) return {};
+  const snoozedRow = rows.snoozed.find((row) =>
+    row.items.some((item) => item.id === linkedId),
+  );
+  const snoozedKey = snoozedRow ? stackRowKey(snoozedRow, linkedId) : undefined;
+  const hostId = [...rows.foldedNotices].find(([, notices]) =>
+    notices.some((notice) => notice.id === linkedId),
+  )?.[0];
+  const open = rows.awake.find((item) => item.id === (hostId ?? linkedId));
+  const key = (() => {
+    if (view === "snoozed") return snoozedKey;
+    if (view === "done")
+      return rows.done.some((item) => item.id === linkedId)
+        ? linkedId
+        : undefined;
+    if (!open) return undefined;
+    if (view === "prs" || view === "decisions") return open.id;
+    if (view !== "inbox") return `conversation:${itemStackId(open)}`;
+    if (open.kind === "notice") return `fyi:${open.id}`;
+    return linkedInboxRowKey(open, rows);
+  })();
+  return { key, open, snoozedKey };
 }

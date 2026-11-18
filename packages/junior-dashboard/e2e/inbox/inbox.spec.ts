@@ -250,10 +250,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // Each section clears its own rows. In To do, the notice in the
-    // question's row goes; the question stays.
-    await page.getByRole("button", { name: "Clear 1 in To do" }).click();
-    await expect(page.getByText("Cleared 1 item")).toBeVisible();
+    // FYI clears its notices; the questions stay.
+    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
+    await expect(page.getByText("Cleared 2 items")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -264,7 +263,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Clear 1 in To do" }),
+      page.getByRole("button", { name: "Clear 2 in FYI" }),
     ).toBeVisible();
     // Only section headers clear. No label says "need you".
     await expect(page.getByRole("button", { name: /^Clear/ })).toHaveText(
@@ -276,7 +275,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
@@ -292,12 +291,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const clearToday = page.getByRole("button", {
-      name: /^Clear \d+ in Today$/,
-    });
-    await clearToday.click();
+    const clearFyi = page.getByRole("button", { name: /^Clear \d+ in FYI$/ });
+    await clearFyi.click();
     await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
-    await expect(clearToday).toHaveCount(0);
+    await expect(clearFyi).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
@@ -317,7 +314,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await page.goBack();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(clearToday).toBeVisible();
+    await expect(clearFyi).toBeVisible();
     expect(actions).toEqual([]);
   });
 
@@ -330,15 +327,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // A sweep closes asks, not Conversations: the row stays, without its FYI.
     const digestFyi = page
-      .getByRole("listitem")
-      .filter({
-        has: page.getByRole("link", { name: /Daily operations digest/ }),
-      })
-      .getByRole("button", { name: "FYI" });
+      .getByRole("region", { name: "FYI" })
+      .locator("[data-inbox-row]")
+      .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
       timeout: 10_000,

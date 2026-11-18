@@ -35,34 +35,34 @@ function formatUsd(value: number): string {
  * Conversations leaves the report with them; the labels say so.
  */
 export async function buildBriefsOperationalReport(args: {
-  briefDays: PluginConversationEventCostDay[];
+  briefDays: Promise<PluginConversationEventCostDay[]>;
   db: JuniorDatabase;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
   const newestDay = startOfUtcDay(args.nowMs);
   const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
   const windowEnd = new Date(newestDay.getTime() + DAY_MS);
-  const [[counts], recentCounts] = await Promise.all([
+  const inWindow = and(
+    gte(juniorConversationBriefs.createdAt, windowStart),
+    lt(juniorConversationBriefs.createdAt, windowEnd),
+  );
+  const [[counts], briefDays] = await Promise.all([
+    // One scan serves the total and the window count.
     args.db
       .select({
         conversations:
           sql<number>`count(distinct ${juniorConversationBriefs.conversationId})`.mapWith(
             Number,
           ),
+        recent: sql<number>`count(*) filter (where ${inWindow})`.mapWith(
+          Number,
+        ),
         stored: sql<number>`count(*)`.mapWith(Number),
       })
       .from(juniorConversationBriefs),
-    args.db
-      .select({ stored: sql<number>`count(*)`.mapWith(Number) })
-      .from(juniorConversationBriefs)
-      .where(
-        and(
-          gte(juniorConversationBriefs.createdAt, windowStart),
-          lt(juniorConversationBriefs.createdAt, windowEnd),
-        ),
-      ),
+    args.briefDays,
   ]);
-  const recentDays = args.briefDays.filter((day) => {
+  const recentDays = briefDays.filter((day) => {
     const dayStart = Date.parse(`${day.date}T00:00:00.000Z`);
     return dayStart >= windowStart.getTime() && dayStart < windowEnd.getTime();
   });
@@ -84,7 +84,7 @@ export async function buildBriefsOperationalReport(args: {
       },
       {
         label: "briefs · 30d",
-        value: formatCount(recentCounts[0]?.stored ?? 0),
+        value: formatCount(counts?.recent ?? 0),
       },
       { label: "cost · 30d · retained", value: formatUsd(recentCost) },
       {
@@ -94,7 +94,7 @@ export async function buildBriefsOperationalReport(args: {
     ],
     widgets: [
       {
-        categories: args.briefDays.map((day) => ({
+        categories: briefDays.map((day) => ({
           id: day.date,
           label: day.date,
           values: { briefs: day.events, costUsd: day.costUsd },

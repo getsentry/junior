@@ -46,6 +46,7 @@ import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import { FoldedNotice } from "./FoldedNotice";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -53,7 +54,6 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { useAnimatedHeight } from "./rowMotion";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -80,7 +80,11 @@ import {
   type InboxCardActions,
 } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+import {
+  itemNeedsViewer,
+  reviewItemText,
+  type InboxBundle,
+} from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 import {
   fadeOverflowClass,
@@ -89,6 +93,7 @@ import {
 } from "../textFade";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
+const NO_NOTICES: readonly ReviewItemPayload[] = [];
 
 /** The second line: the Brief, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
@@ -114,6 +119,8 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  /** Notices about the item's subject (`foldNotices`). */
+  notices: readonly ReviewItemPayload[];
   take?: string;
 }) {
   const { actions, item } = props;
@@ -190,17 +197,19 @@ function RowItem(props: {
             className="max-w-[80ch] leading-6"
             label={item.title}
             lines={4}
-            text={item.body}
+            text={reviewItemText(item)}
           />
         ) : null}
         {item.subject ? (
           <ReviewItemSubjectPreview
-            body={showBody ? item.body : undefined}
             conversationId={props.conversationId}
             subject={item.subject}
           />
         ) : null}
       </ReviewItemObjects>
+      {props.notices.map((notice) => (
+        <FoldedNotice key={notice.id} notice={notice} />
+      ))}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
@@ -232,13 +241,15 @@ type InboxRowProps = {
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
+  /** The notices that fold into each ask, by the ask's id. */
+  foldedNotices?: ReadonlyMap<string, readonly ReviewItemPayload[]>;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -836,6 +847,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               take={props.take}
             />
           ))}
@@ -878,7 +890,7 @@ function rowActions(props: InboxRowProps) {
 function ExpandedActions(props: {
   conversation?: Conversation;
   openPath: string;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;

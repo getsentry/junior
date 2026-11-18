@@ -7,13 +7,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 
 /** What one card does by itself: its Dismiss and Snooze. */
 export type InboxCardActions = {
   onDismiss?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   pending: boolean;
   snoozeMenuOpen: boolean;

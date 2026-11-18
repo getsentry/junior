@@ -87,6 +87,7 @@ describe("web file delivery", () => {
       createConversationRoutes({
         attachmentStorage: storage,
         queue: fixture.queue,
+        waitUntil: () => undefined,
       }),
     );
     const base = `/api/conversations/${encodeURIComponent(conversationId)}`;
