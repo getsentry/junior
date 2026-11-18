@@ -1,7 +1,7 @@
 import { RadioTower } from "lucide-react";
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
-import { cn } from "../../styles";
+import { cn, dashboardIconTileClass } from "../../styles";
 import { PluginBarChart } from "./PluginBarChart";
 import { PluginReportRecordSet } from "./PluginReportRecordSet";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -21,7 +21,7 @@ export function PluginReports(props: {
     return (
       <Card padding="md">
         <div className="flex items-center gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+          <div className={cn(dashboardIconTileClass, "size-10")}>
             <RadioTower aria-hidden="true" size={17} />
           </div>
           <div>

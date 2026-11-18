@@ -39,6 +39,8 @@ import {
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
 import { formatRelativeTime, formatTime } from "../../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { cn } from "../../styles";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -48,8 +50,6 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
-  /** Viewer's auto-archive control. Null for non-participants. */
-  autoArchive: ReactNode;
   brief?: Brief | undefined;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
@@ -112,7 +112,13 @@ export function ConversationDetails(props: {
             >
               <ArrowLeft aria-hidden="true" size={15} />
             </Button>
-            <h2 className="m-0 truncate font-sans text-sm font-semibold text-dashboard-text">
+            <h2
+              className={cn(
+                fadeOverflowClass,
+                "m-0 font-sans text-sm font-semibold text-dashboard-text",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               Memories
             </h2>
           </div>
@@ -149,7 +155,7 @@ export function ConversationDetails(props: {
         {/* The Brief leads: what the work is and where it stands. */}
         {props.brief ? <BriefCard brief={props.brief} /> : null}
         {parent ? (
-          <DetailsCard flat title="Parent">
+          <DetailsCard title="Parent">
             <DetailsRow
               icon={<CornerLeftUp aria-hidden="true" size={14} />}
               title={parent.label}
@@ -167,7 +173,6 @@ export function ConversationDetails(props: {
           // work and what Junior waits on read as one list.
           <DetailsCard
             count={props.links.length || watches.length}
-            flat
             title={props.links.length > 0 ? "Linked work" : "Waiting on"}
           >
             {props.links.length > 0 ? (
@@ -186,10 +191,6 @@ export function ConversationDetails(props: {
             ) : null}
           </DetailsCard>
         ) : null}
-        {/* Linked work decides when auto-archive runs, so it follows. */}
-        {props.autoArchive != null ? (
-          <DetailsCard>{props.autoArchive}</DetailsCard>
-        ) : null}
         {tasks.length > 0 ? (
           <ConversationTasks
             onOpenTask={(target) => {
@@ -201,13 +202,11 @@ export function ConversationDetails(props: {
           />
         ) : null}
         {props.overview != null ? (
-          <DetailsCard flat>{props.overview}</DetailsCard>
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {props.usage}
         {props.identity != null ? (
-          <DetailsCard flat title="Participants">
-            {props.identity}
-          </DetailsCard>
+          <DetailsCard title="Participants">{props.identity}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard
@@ -241,7 +240,11 @@ function BriefCard(props: { brief: Brief }) {
             ·
           </span>
           <time
-            className="truncate text-xs font-normal text-dashboard-text-muted"
+            className={cn(
+              fadeOverflowClass,
+              "text-xs font-normal text-dashboard-text-muted",
+            )}
+            ref={fadeWhenOverflowing}
             dateTime={brief.updatedAt}
             title={formatTime(brief.updatedAt, {
               dateStyle: "medium",
