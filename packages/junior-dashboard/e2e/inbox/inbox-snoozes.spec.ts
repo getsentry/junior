@@ -4,6 +4,8 @@ import {
   expandRow,
   license,
   mockReviewItems,
+  pinConflict,
+  pinReview,
   prReady,
   prReview,
   rollout,
@@ -67,6 +69,89 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(page.getByText("The row could not be snoozed")).toBeVisible();
     await expect(rowHead(todo, checkout)).toBeVisible();
+  });
+
+  test("a wake that fails keeps the row in Snoozed and says so", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [license, rollout],
+      snoozes: [
+        {
+          conversationId: rollout.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    await page.route("**/api/inbox/snoozes", (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({ json: { error: "Failed" }, status: 500 })
+        : route.fallback(),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await expandRow(rowHead(page, checkout));
+    await page.getByRole("button", { name: "Wake" }).click();
+    await expect(page.getByText("The row could not be woken")).toBeVisible();
+    await expect(rowHead(page, checkout)).toBeVisible();
+  });
+
+  test("an item that links a snoozed Conversation leaves with its row", async ({
+    dashboard,
+    page,
+  }) => {
+    // Another Conversation added this ask, and it links the release one.
+    const linked = {
+      ...license,
+      addedByConversationId: "slack:CLINK:1770030000.000100",
+      conversationIds: [
+        "slack:CLINK:1770030000.000100",
+        pinReview.addedByConversationId,
+      ],
+      id: "item-linked-release",
+      title: "Approve the release window",
+    };
+    await mockReviewItems(page, { open: [license, pinReview, linked] });
+    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const linkedRow = todo
+      .locator("[data-inbox-row]")
+      .filter({ hasText: "Approve the release window" });
+    await expect(linkedRow).toHaveCount(1);
+    // Hold the reads that follow the snooze, so only the page hides the rows.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/review-items?**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await todo
+      .getByRole("region", { name: /: asks$/ })
+      .getByRole("button", { name: "Snooze" })
+      .click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(linkedRow).toHaveCount(0);
+    release();
+    await expect(linkedRow).toHaveCount(0);
+  });
+
+  test("a link to a notice folded into a snoozed ask opens the ask's row", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [pinReview, pinConflict],
+      snoozes: [
+        {
+          conversationId: pinReview.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    // The link opens the row, so its Wake shows.
+    await expect(page.getByRole("button", { name: "Wake" })).toBeVisible();
   });
 
   test("a link to an item opens no row while Snoozed cannot load", async ({

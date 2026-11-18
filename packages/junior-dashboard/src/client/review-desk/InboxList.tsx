@@ -197,11 +197,18 @@ export function InboxList(props: {
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
       : done.items;
+  // A notice folded into an ask's row opens that row, awake or snoozed.
+  const hostId = linkedId
+    ? [...data.foldedNotices].find(([, notices]) =>
+        notices.some((notice) => notice.id === linkedId),
+      )?.[0]
+    : undefined;
+  const rowItemId = hostId ?? linkedId;
   // A snoozed item is still open. Its link opens Snoozed, with its row.
-  const linkedSnoozed = linkedId ? data.snoozes.hidesItem(linkedId) : false;
-  const snoozedKey = linkedId
+  const linkedSnoozed = rowItemId ? data.snoozes.hidesItem(rowItemId) : false;
+  const snoozedKey = rowItemId
     ? data.snoozedRows.find((row) =>
-        row.items.some((item) => item.id === linkedId),
+        row.items.some((item) => item.id === rowItemId),
       )?.key
     : undefined;
   const linkedRowKey = (() => {
@@ -211,11 +218,7 @@ export function InboxList(props: {
       return doneItems.some((item) => item.id === linkedId)
         ? linkedId
         : undefined;
-    // A notice folded into an ask's row opens that row.
-    const hostId = [...data.foldedNotices].find(([, notices]) =>
-      notices.some((notice) => notice.id === linkedId),
-    )?.[0];
-    const item = data.awake.find((open) => open.id === (hostId ?? linkedId));
+    const item = data.awake.find((open) => open.id === rowItemId);
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
     const conversationId = item.addedByConversationId;

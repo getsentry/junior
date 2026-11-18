@@ -304,10 +304,18 @@ export async function mockReviewItems(
       ),
     );
   };
+  // As on the server, a Conversation snooze also hides items that link it.
   const asleep = (
     sleeping: Set<string>,
-    item: { addedByConversationId: string; id: string },
-  ) => sleeping.has(item.id) || sleeping.has(item.addedByConversationId);
+    item: {
+      addedByConversationId: string;
+      conversationIds: readonly string[];
+      id: string;
+    },
+  ) =>
+    sleeping.has(item.id) ||
+    sleeping.has(item.addedByConversationId) ||
+    item.conversationIds.some((id) => sleeping.has(id));
   await page.route("**/api/inbox/snoozes", async (route) => {
     const request = route.request();
     const body = request.postDataJSON();

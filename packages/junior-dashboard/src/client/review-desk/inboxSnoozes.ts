@@ -79,6 +79,9 @@ export function useInboxSnoozes(read: SnoozedRead) {
         conversationId: bundle.conversationId,
       });
       await invalidateReviewItemCollections(queryClient);
+    } catch {
+      // The row stays in Snoozed, so say why it did not wake.
+      toast.add({ title: "The row could not be woken", type: "error" });
     } finally {
       setWaking((current) => {
         const next = new Set(current);
@@ -90,10 +93,14 @@ export function useInboxSnoozes(read: SnoozedRead) {
   return {
     /**
      * The item's row was just snoozed, and the lists have not refreshed
-     * yet: its Conversation, or the item alone.
+     * yet: the item alone, or a Conversation that added or links it. The
+     * server also hides items that link a thread of that Conversation;
+     * those leave when the lists refresh.
      */
     hides: (item: ReviewItemPayload) =>
-      hiddenNow(item.addedByConversationId) || hiddenNow(item.id),
+      hiddenNow(item.id) ||
+      hiddenNow(item.addedByConversationId) ||
+      item.conversationIds.some(hiddenNow),
     /**
      * A snooze hides this item from the viewer. Undefined while that is
      * unknown: until Snoozed reads every page, or when a read fails.
