@@ -61,7 +61,6 @@ import {
 import { Kbd } from "../../components/ui/kbd";
 import { formatCompactAge } from "../../time";
 import { fadeTextClass } from "../../textFade";
-import { cn } from "../../styles";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
