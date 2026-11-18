@@ -45,7 +45,7 @@ CREATE TABLE "junior_turns" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"ended_at" timestamp with time zone,
 	CONSTRAINT "junior_turns_state_check" CHECK ("junior_turns"."state" in ('queued', 'running', 'completed', 'failed', 'cancelled')),
-	CONSTRAINT "junior_turns_lease_check" CHECK (("junior_turns"."state" = 'running') = ("junior_turns"."lease_owner" is not null and "junior_turns"."lease_expires_at" is not null)),
+	CONSTRAINT "junior_turns_lease_check" CHECK (("junior_turns"."state" = 'running') = ("junior_turns"."lease_owner" is not null) and ("junior_turns"."state" = 'running') = ("junior_turns"."lease_expires_at" is not null)),
 	CONSTRAINT "junior_turns_ended_check" CHECK (("junior_turns"."state" in ('completed', 'failed', 'cancelled')) = ("junior_turns"."ended_at" is not null)),
 	CONSTRAINT "junior_turns_counters_check" CHECK ("junior_turns"."step_seq" >= 0 and "junior_turns"."lease_epoch" >= 0 and "junior_turns"."attempts" >= 0)
 );
