@@ -36,7 +36,24 @@ describe("normalizeIncomingSlackThreadId", () => {
     );
   });
 
+  it("ignores adapter thread id parts and uses raw event fields", () => {
+    expect(
+      normalizeIncomingSlackThreadId("slack:WRONG:WRONG", {
+        raw: { channel: "D123", ts: "1700000000.500" },
+      }),
+    ).toBe("slack:D123:1700000000.500");
+  });
+
   it("returns non-slack thread ids as-is", () => {
     expect(normalizeIncomingSlackThreadId("thread-123", {})).toBe("thread-123");
+  });
+
+  it("returns original thread id when message is null or undefined", () => {
+    expect(normalizeIncomingSlackThreadId("slack:C123:", null)).toBe(
+      "slack:C123:",
+    );
+    expect(normalizeIncomingSlackThreadId("slack:C123:", undefined)).toBe(
+      "slack:C123:",
+    );
   });
 });

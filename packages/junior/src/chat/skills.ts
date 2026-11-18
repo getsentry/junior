@@ -4,8 +4,10 @@ import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
+import { skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
+import { mapBounded } from "@/chat/fan-out";
 
 // ---------------------------------------------------------------------------
 // Skill frontmatter parsing
@@ -376,31 +378,33 @@ export async function discoverSkills(
     return skillCache.skills;
   }
 
-  const discovered: SkillMetadata[] = [];
-  const seen = new Set<string>();
-
-  for (const root of roots) {
+  // List every root, then read the skill directories of all roots under one
+  // cap. The first root that has a skill name still wins, so keep the root
+  // and entry order when merging.
+  const directoriesByRoot = await mapBounded(roots, async (root) => {
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const entry of entries.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      )) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const skill = await readSkillDirectory(path.join(root, entry.name));
-        if (skill && !seen.has(skill.name)) {
-          seen.add(skill.name);
-          discovered.push(skill);
-        }
-      }
+      return entries
+        .filter((entry) => entry.isDirectory())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((entry) => path.join(root, entry.name));
     } catch (error) {
       logWarn("skill.root.read.failed", {
         "file.directory": root,
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
+      return [];
+    }
+  });
+  const skills = await mapBounded(directoriesByRoot.flat(), readSkillDirectory);
+
+  const discovered: SkillMetadata[] = [];
+  const seen = new Set<string>();
+  for (const skill of skills) {
+    if (skill && !seen.has(skill.name)) {
+      seen.add(skill.name);
+      discovered.push(skill);
     }
   }
 
@@ -411,22 +415,6 @@ export async function discoverSkills(
     skills: sorted,
   };
   return sorted;
-}
-
-function isCommonEnvironmentVariable(name: string): boolean {
-  return [
-    "HOME",
-    "LANG",
-    "PATH",
-    "PWD",
-    "SHELL",
-    "TEMP",
-    "TERM",
-    "TMP",
-    "TMPDIR",
-    "USER",
-    "XDG_CONFIG_HOME",
-  ].includes(name.toUpperCase());
 }
 
 /**
@@ -440,33 +428,9 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Any non-word character can come before `$`, so `$name` also matches
-  // after a tag, such as `<instructions>$name` in an Automation run, or in
-  // Slack code. A word before it, such as `US$5`, is not a reference.
-  const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
-  for (const match of trimmed.matchAll(dollarPattern)) {
-    const skillName = match[1]?.toLowerCase();
-    if (!skillName) {
-      continue;
-    }
-    if (isCommonEnvironmentVariable(skillName)) {
-      continue;
-    }
-    if (availableSkills.some((skill) => skill.name === skillName)) {
-      return { skillName };
-    }
-  }
-
-  // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
-  const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
-  for (const match of trimmed.matchAll(slashPattern)) {
-    const skillName = match[1]?.toLowerCase();
-    if (
-      skillName &&
-      availableSkills.some((skill) => skill.name === skillName)
-    ) {
-      return { skillName };
-    }
+  const [referencedSkill] = skillReferences(trimmed, availableSkills);
+  if (referencedSkill) {
+    return { skillName: referencedSkill };
   }
 
   const namedSkill = availableSkills.find((skill) => {
@@ -507,13 +471,7 @@ export async function loadSkillsByName(
   available: SkillMetadata[],
 ): Promise<Skill[]> {
   const selected = new Set(skillNames);
-  const skills: Skill[] = [];
-
-  for (const meta of available) {
-    if (!selected.has(meta.name)) {
-      continue;
-    }
-
+  const loadSkill = async (meta: SkillMetadata): Promise<Skill> => {
     const skillFile = path.join(meta.skillPath, "SKILL.md");
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseSkillFile(raw, meta.name);
@@ -535,11 +493,14 @@ export async function loadSkillsByName(
         : undefined),
     };
 
-    skills.push({
+    return {
       ...loadedMeta,
       body: applyPluginRuntimeBoundary(plugin, parsed.skill.body),
-    });
-  }
+    };
+  };
 
-  return skills;
+  return await mapBounded(
+    available.filter((meta) => selected.has(meta.name)),
+    loadSkill,
+  );
 }

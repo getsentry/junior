@@ -500,6 +500,45 @@ describe("searchConversationEvents", () => {
     await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
       events: [{ seq: 6 }],
     });
+
+    // The input of the running Turn is in the model context already, so a
+    // search in that Turn does not return it.
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 10,
+        data: {
+          type: "message",
+          messageId: "m-ask",
+          role: "user",
+          text: "Which lease.ts line failed?",
+        },
+      },
+      {
+        createdAtMs: 11,
+        data: {
+          type: "turn_started",
+          turnId: "turn-ask",
+          inputMessageIds: ["m-ask"],
+          surface: "slack",
+        },
+      },
+      {
+        createdAtMs: 12,
+        data: {
+          type: "user_message",
+          content: [{ type: "text", text: "Which lease.ts line failed?" }],
+          timestamp: 12,
+          provenance: { authority: "instruction" },
+        },
+      },
+    ]);
+    const withInput = await executeTool({ query: "lease.ts" });
+    expect(
+      withInput.events.map((event) => event.seq).sort((a, b) => a - b),
+    ).toEqual([2, 9, 11]);
+    await expect(
+      executeTool({ query: "lease.ts" }, { ...context(), turnId: "turn-ask" }),
+    ).resolves.toMatchObject({ events: [{ seq: 2 }] });
   });
 
   it("omits replacement history from unknown event versions", async () => {

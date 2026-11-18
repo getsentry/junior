@@ -1,8 +1,15 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { eq, gte, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
-import { juniorDestinations } from "@/db/schema";
+import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
+import {
+  juniorConversationMetrics,
+  juniorConversations,
+  juniorDestinations,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
 import {
   slackLocationLabel,
   summaryFromRow,
@@ -22,17 +29,19 @@ import {
   activityDays,
   activityHours,
   activitySixHours,
+  conversationRootId,
   emptyActivityDay,
   emptyTotals,
+  metricSum,
   normalizeEmail,
-  personTurns,
+  personRootJoin,
+  personRoots,
+  personTotalColumns,
   recentActorRows,
+  rootAggregateColumns,
   statsItems,
-  turnAggregateColumns,
-  turnBucket,
-  turnPersonColumns,
   turnRoot,
-  turnRootJoin,
+  verifiedActorWhere,
 } from "./shared";
 import { trailingUtcHourWindow } from "../reporting-window";
 
@@ -120,19 +129,112 @@ function locationLabel(row: {
 }
 
 function activityBuckets(
-  rows: (AggregateRow & { costUsd: number | null; date: string })[],
+  rows: (AggregateRow & { costMicroUsd: number | null; date: string })[],
 ): Map<string, ActorActivityDayReport> {
   return new Map(
-    rows.map(({ costUsd, tokens, ...row }) => [
+    rows.map(({ costMicroUsd, tokens, ...row }) => [
       row.date,
       {
         ...emptyActivityDay(row.date),
         ...row,
-        ...(costUsd !== null ? { costUsd } : undefined),
+        ...(costMicroUsd !== null
+          ? { costUsd: microUsdToUsd(costMicroUsd) }
+          : undefined),
         ...(tokens !== null ? { tokens } : undefined),
       },
     ]),
   );
+}
+
+/**
+ * Sum one person's Turns into UTC day or hour buckets since `since`. A root
+ * counts once in each bucket where the person ran a Turn in it. Its current
+ * status counts only in the bucket of their last Turn in that root, so a
+ * status change does not mark every past bucket.
+ */
+function rootBucketRows(args: {
+  email: string;
+  since: Date;
+  unit: "day" | "hour";
+}) {
+  const metrics = juniorConversationMetrics;
+  // A literal, so the grouped and selected bucket expressions match.
+  const unit = sql.raw(`'${args.unit}'`);
+  const bucket = sql<Date>`date_trunc(${unit}, ${metrics.occurredAt} AT TIME ZONE 'UTC')`;
+  const format = args.unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
+  // All of the person's Turns, so the last Turn of each root is known.
+  const rootBuckets = getDb()
+    .select({
+      bucket: bucket.as("bucket_start"),
+      rootConversationId: conversationRootId.as("bucket_root_id"),
+      lastAt: sql`max(${metrics.occurredAt})`.as("bucket_last_at"),
+      costMicroUsd: metricSum("cost_micro_usd").as("bucket_cost_micro_usd"),
+      durationMs: metricSum("duration_ms").as("bucket_duration_ms"),
+      tokens: metricSum("total_tokens").as("bucket_tokens"),
+    })
+    .from(metrics)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, metrics.actorIdentityId),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, metrics.conversationId),
+    )
+    .where(
+      and(
+        verifiedActorWhere(args.email),
+        inArray(metrics.metric, [
+          "cost_micro_usd",
+          "duration_ms",
+          "total_tokens",
+        ]),
+      ),
+    )
+    .groupBy(bucket, conversationRootId)
+    .as("person_root_buckets");
+  // The window reads one row per bucket and root, not one per metric row.
+  const buckets = getDb()
+    .select({
+      bucket: rootBuckets.bucket,
+      rootConversationId: rootBuckets.rootConversationId,
+      isLastTurn:
+        sql<boolean>`${rootBuckets.lastAt} = max(${rootBuckets.lastAt}) OVER (
+        PARTITION BY ${rootBuckets.rootConversationId}
+      )`.as("bucket_has_last_turn"),
+      costMicroUsd: rootBuckets.costMicroUsd,
+      durationMs: rootBuckets.durationMs,
+      tokens: rootBuckets.tokens,
+    })
+    .from(rootBuckets)
+    .as("person_buckets");
+  return getDb()
+    .select({
+      active: sql<number>`(count(*) FILTER (
+        WHERE ${buckets.isLastTurn} AND ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
+      ))::integer`,
+      conversations: sql<number>`count(*)::integer`,
+      costMicroUsd: microUsdSql(sql`sum(${buckets.costMicroUsd})`),
+      date: sql<string>`TO_CHAR(${buckets.bucket}, ${sql.raw(`'${format}'`)})`,
+      durationMs: sql<number>`COALESCE(sum(${buckets.durationMs}), 0)::double precision`,
+      // A stopped Conversation reports `stopped`, not `failed`.
+      failed: sql<number>`(count(*) FILTER (
+        WHERE ${buckets.isLastTurn}
+          AND ${turnRoot.executionStatus} = 'failed'
+          AND ${turnRoot.stoppedAt} IS NULL
+      ))::integer`,
+      tokens: sql<number | null>`sum(${buckets.tokens})::double precision`,
+    })
+    .from(buckets)
+    .innerJoin(
+      turnRoot,
+      eq(turnRoot.conversationId, buckets.rootConversationId),
+    )
+    .where(
+      sql`${buckets.bucket} >= (${args.since.toISOString()}::timestamptz AT TIME ZONE 'UTC')`,
+    )
+    .groupBy(buckets.bucket);
 }
 
 /** Load one complete person profile while bounding only its recent-conversation list. */
@@ -148,32 +250,25 @@ export async function readPeopleProfileFromSql(
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
-  const turns = personTurns(normalizedEmail);
-  const aggregate = turnAggregateColumns(turns);
+  const roots = personRoots(normalizedEmail);
+  const aggregate = rootAggregateColumns(roots);
   const surface = surfaceExpression(turnRoot);
   const channel = channelExpression(turnRoot);
-  const day = turnBucket(turns, "day");
-  const hour = turnBucket(turns, "hour");
   const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
   const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
     await Promise.all([
       getDb()
-        .select({ ...turnPersonColumns(turns), ...aggregate })
-        .from(turns)
-        .innerJoin(turnRoot, turnRootJoin(turns))
-        .groupBy(turns.email, turns.fullName),
-      getDb()
-        .select({ date: day, ...aggregate })
-        .from(turns)
-        .innerJoin(turnRoot, turnRootJoin(turns))
-        .where(gte(turns.occurredAt, start))
-        .groupBy(day),
-      getDb()
-        .select({ date: hour, ...aggregate })
-        .from(turns)
-        .innerJoin(turnRoot, turnRootJoin(turns))
-        .where(gte(turns.occurredAt, hourWindow.start))
-        .groupBy(hour),
+        .select(personTotalColumns(roots))
+        .from(roots)
+        .innerJoin(juniorUsers, eq(juniorUsers.id, roots.userId))
+        .innerJoin(turnRoot, personRootJoin(roots))
+        .groupBy(juniorUsers.id),
+      rootBucketRows({ email: normalizedEmail, since: start, unit: "day" }),
+      rootBucketRows({
+        email: normalizedEmail,
+        since: hourWindow.start,
+        unit: "hour",
+      }),
       getDb()
         .select({
           channel,
@@ -182,8 +277,8 @@ export async function readPeopleProfileFromSql(
           surface,
           ...aggregate,
         })
-        .from(turns)
-        .innerJoin(turnRoot, turnRootJoin(turns))
+        .from(roots)
+        .innerJoin(turnRoot, personRootJoin(roots))
         .leftJoin(
           juniorDestinations,
           eq(juniorDestinations.id, turnRoot.destinationId),
@@ -196,8 +291,8 @@ export async function readPeopleProfileFromSql(
         ),
       getDb()
         .select({ surface, ...aggregate })
-        .from(turns)
-        .innerJoin(turnRoot, turnRootJoin(turns))
+        .from(roots)
+        .innerJoin(turnRoot, personRootJoin(roots))
         .groupBy(surface),
       recentActorRows(normalizedEmail),
     ]);

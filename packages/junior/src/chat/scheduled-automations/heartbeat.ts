@@ -279,6 +279,7 @@ export async function runScheduledAutomationHeartbeat(args: {
   await settleEventAutomationRuns(db, args.nowMs);
   let processedCount = 0;
   let dispatchCount = 0;
+  /* oxlint-disable no-await-in-loop -- Settle runs in schedule order, so each Automation's runs finish in order. */
   for (const run of await listIncompleteScheduledRuns(db)) {
     if (!run.dispatchId) continue;
     const dispatch = await getScheduledAutomationDispatch(run.dispatchId);
@@ -320,7 +321,9 @@ export async function runScheduledAutomationHeartbeat(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
+  /* oxlint-disable no-await-in-loop -- Claim one due run at a time, up to the heartbeat limit. */
   for (
     let index = processedCount;
     index < SCHEDULED_AUTOMATION_HEARTBEAT_LIMIT;
@@ -437,5 +440,6 @@ export async function runScheduledAutomationHeartbeat(args: {
     );
     dispatchCount += 1;
   }
+  /* oxlint-enable no-await-in-loop */
   return dispatchCount;
 }

@@ -594,11 +594,6 @@ export async function mockDashboardApis(
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
             firstSeenAt: "2026-03-15T00:00:00.000Z",
             lastSeenAt: "2026-06-12T00:00:00.000Z",
             actor: {

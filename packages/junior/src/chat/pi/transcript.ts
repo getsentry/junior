@@ -11,12 +11,20 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
-import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
+import { openingTag, stripTags } from "@sentry/junior-plugin-api";
+import {
+  hasCurrentInstruction,
+  unwrapCurrentInstruction,
+} from "@/chat/current-instruction";
+import {
+  isRuntimeInputText,
+  readParentAgentTask,
+  THREAD_CONTEXT_TAGS,
+} from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
-const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
+const RUNTIME_TURN_CONTEXT_START = openingTag(TURN_CONTEXT_TAG);
 const AGENTS_INSTRUCTIONS_START = "# AGENTS.md instructions";
 
 /** Starts of user text parts that hold runtime context, not a person's words. */
@@ -70,7 +78,7 @@ export function hasTurnInput(message: PiMessage): boolean {
       const text = textPartValue(part);
       return (
         text !== undefined &&
-        (text.includes("<current-instruction") || isRuntimeInputText(text))
+        (hasCurrentInstruction(text) || isRuntimeInputText(text))
       );
     }) ?? false
   );
@@ -93,26 +101,6 @@ export function isStandaloneRuntimeContextMessage(
     hasTurnInput(next),
   );
 }
-
-// Prior-thread context blocks the runtime embeds beside the <current-instruction>
-// block (see buildUserTurnText and renderThreadContextForPrompt). Each holds
-// other participants' verbatim messages, so completed-run projections must drop
-// them and keep only the instruction. Legacy tag names stay stripable for older
-// durable history.
-const EMBEDDED_THREAD_CONTEXT_TAGS = [
-  "thread-context",
-  "recent-thread-messages",
-  "thread-compactions",
-  "thread-transcript",
-  "thread-background",
-] as const;
-
-// Greedy body so a raw closing tag inside ambient text cannot end the match
-// early; the last matching closer wins for that envelope name.
-const EMBEDDED_THREAD_CONTEXT_PATTERN = new RegExp(
-  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*</\\1>`,
-  "g",
-);
 
 /** Type guard for Pi SDK assistant messages. */
 export function isAssistantMessage(value: unknown): value is AssistantMessage {
@@ -239,9 +227,7 @@ export function instructionTextForProjection(text: string): string {
   // Drop ambient envelopes first, then read the instruction. Unwrapping before
   // strip would let ambient text that embeds a full <current-instruction>
   // block win over the real turn instruction.
-  const withoutContext = text
-    .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
-    .trim();
+  const withoutContext = stripTags(text, THREAD_CONTEXT_TAGS).trim();
   return unwrapCurrentInstruction(withoutContext) ?? withoutContext;
 }
 
@@ -261,9 +247,7 @@ export function getUserMessageInstructionText(message: PiMessage): string {
       ? [message.content]
       : message.content.flatMap((part) => textPartValue(part) ?? []);
   const inputs = texts.flatMap((text) => {
-    const withoutContext = text
-      .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
-      .trim();
+    const withoutContext = stripTags(text, THREAD_CONTEXT_TAGS).trim();
     if (isRuntimeInputText(withoutContext)) {
       return [readParentAgentTask(withoutContext) ?? withoutContext];
     }

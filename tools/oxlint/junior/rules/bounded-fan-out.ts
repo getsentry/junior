@@ -27,7 +27,7 @@ export const boundedFanOutRule = defineRule({
     },
     messages: {
       unbounded:
-        "This starts one async call per list item at once. Read the items in one batched call, or run each call through a p-limit limiter: `const limit = pLimit(N)` and `list.map((item) => limit(() => work(item)))`. See policies/performance.md.",
+        "This starts one async call per list item at once. Read the items in one batched call, or bound the calls with `mapBounded(list, work)` from `@/chat/fan-out` (in a plugin, `pLimit(N).map(list, work)`). See policies/performance.md.",
     },
   },
   create(context) {

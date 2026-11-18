@@ -10,10 +10,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { mapBounded } from "@/chat/fan-out";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -105,6 +107,7 @@ async function acquireSubscriptionLock(
   subscriptionId: string,
   waitDeadlineMs = Date.now() + SUBSCRIPTION_LOCK_WAIT_MS,
 ): Promise<Lock> {
+  /* oxlint-disable no-await-in-loop -- Poll the lock until it is free or the wait ends. */
   while (true) {
     const lock = await state.acquireLock(
       subscriptionLockKey(subscriptionId),
@@ -118,6 +121,7 @@ async function acquireSubscriptionLock(
     }
     await sleep(SUBSCRIPTION_LOCK_RETRY_MS);
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Run one subscription lifecycle transition while keeping its lease alive. */
@@ -213,15 +217,17 @@ async function withIndexLock<T>(
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock = await state.acquireLock(indexLockKey(key), INDEX_LOCK_TTL_MS);
-  if (!lock) {
+  // Parallel Watch writes in one Conversation, such as watchEvents and
+  // watchTimer in one step, contend here. Each holder writes a few keys, so
+  // wait out even a crashed holder's TTL before calling it a failure.
+  const attempt = await withLock(state, indexLockKey(key), callback, {
+    ttlMs: INDEX_LOCK_TTL_MS,
+    waitMs: INDEX_LOCK_TTL_MS,
+  });
+  if (!attempt.acquired) {
     throw new Error(`Could not acquire event index lock for ${key}`);
   }
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
+  return attempt.value;
 }
 
 async function addToIndex(
@@ -498,6 +504,7 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
   const state = getStateAdapter();
   await state.connect();
   const watches: Watch[] = [];
+  /* oxlint-disable no-await-in-loop -- A stale entry updates the timer index, whose lock does not wait. */
   for (const id of await updateTimerIndex(state, { kind: "claim", nowMs })) {
     await withSubscriptionLock(state, id, async () => {
       const watch = parseSubscription(await state.get(subscriptionKey(id)));
@@ -508,6 +515,7 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
       }
     });
   }
+  /* oxlint-enable no-await-in-loop */
   return watches;
 }
 
@@ -601,6 +609,7 @@ export async function cancelSubscriptions(input: {
   state?: StateAdapter | undefined;
 }): Promise<void> {
   const subscriptions = await listWatches(input);
+  /* oxlint-disable no-await-in-loop -- Each cancel updates the timer index, whose lock does not wait. */
   for (const subscription of subscriptions) {
     await cancelWatch({
       conversationId: input.conversationId,
@@ -609,6 +618,7 @@ export async function cancelSubscriptions(input: {
       state: input.state,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -633,12 +643,17 @@ export async function collectEventMatchKeys(input: {
   const identifiers = new Set(
     input.identifiers.map((value) => value.trim()).filter(Boolean),
   );
-  for (const identifier of identifiers) {
-    const ids = await readSubscriptionIdIndex(
-      state,
-      resourceIndexKey(input.namespace, identifier),
-    );
-    const records = await readSubscriptions(state, ids);
+  const recordsByIdentifier = await mapBounded(
+    identifiers,
+    async (identifier) => {
+      const ids = await readSubscriptionIdIndex(
+        state,
+        resourceIndexKey(input.namespace, identifier),
+      );
+      return { identifier, records: await readSubscriptions(state, ids) };
+    },
+  );
+  for (const { identifier, records } of recordsByIdentifier) {
     for (const record of records) {
       if (!record) continue;
       if (record.namespace !== input.namespace) continue;

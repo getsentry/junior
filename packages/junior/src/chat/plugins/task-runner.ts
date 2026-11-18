@@ -5,7 +5,6 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
-import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -61,6 +60,7 @@ import {
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import { mapBounded } from "@/chat/fan-out";
 
 // Plugin task messages that one run sends at once.
 const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
@@ -119,17 +119,22 @@ function toolResultText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
@@ -495,13 +500,12 @@ export async function scheduleSessionCompletedPluginTasks(
     params: coreParams,
     plugin: plugin.manifest.name,
   }));
-  const limit = pLimit(PLUGIN_MESSAGE_SEND_CONCURRENCY);
-  await Promise.all(
-    messages.map((message) =>
-      limit(async () => {
-        await send(message);
-      }),
-    ),
+  await mapBounded(
+    messages,
+    async (message) => {
+      await send(message);
+    },
+    PLUGIN_MESSAGE_SEND_CONCURRENCY,
   );
 }
 

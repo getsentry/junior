@@ -7,7 +7,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
@@ -61,6 +61,7 @@ jobs:
               - 'packages/junior/src/chat/system-prompt-rules.ts'
               - 'packages/junior/src/chat/discovery.ts'
               - 'packages/junior/src/chat/services/context-compaction.ts'
+              - 'packages/junior/src/chat/tools/**'
 
       - id: decision
         env:

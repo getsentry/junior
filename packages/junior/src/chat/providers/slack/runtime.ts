@@ -67,6 +67,7 @@ import {
   getTurnLifecycle,
   type FailConversationTurnInput,
 } from "@/chat/conversations/turn-lifecycle";
+import { mapBounded } from "@/chat/fan-out";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -614,22 +615,24 @@ export function createSlackTurnRuntime<
     messages: SteeringCandidateMessage[];
     thread: Thread;
   }): Promise<SteeringMessageSelection> => {
-    const selected: SteeringMessageDecision[] = [];
-    for (const candidate of args.messages) {
-      const decision = await decideSteeringMessage(
-        args.thread,
-        candidate,
-        args.conversationContext,
-        args.conversationId,
-      );
-      selected.push({
-        context: decision.context,
-        decision: decision.decision,
-        inboundMessageId: candidate.inboundMessageId,
-        message: candidate.message,
-        text: decision.text,
-      });
-    }
+    const selected: SteeringMessageDecision[] = await mapBounded(
+      args.messages,
+      async (candidate) => {
+        const decision = await decideSteeringMessage(
+          args.thread,
+          candidate,
+          args.conversationContext,
+          args.conversationId,
+        );
+        return {
+          context: decision.context,
+          decision: decision.decision,
+          inboundMessageId: candidate.inboundMessageId,
+          message: candidate.message,
+          text: decision.text,
+        };
+      },
+    );
     if (selected.some((message) => message.decision.shouldUnsubscribe)) {
       return {
         accepted: [],
@@ -666,6 +669,7 @@ export function createSlackTurnRuntime<
     thread: Thread;
   }): Promise<void> => {
     for (const skipped of args.skipped) {
+      // oxlint-disable-next-line no-await-in-loop -- Handle skipped messages in arrival order.
       await maybeHandleThreadOptOutDecision({
         conversationId: args.conversationId,
         thread: args.thread,
@@ -673,6 +677,7 @@ export function createSlackTurnRuntime<
         beforeFirstResponsePost: args.beforeFirstResponsePost,
       });
       logSkippedSubscribedDecision(skipped);
+      // oxlint-disable-next-line no-await-in-loop -- Handle skipped messages in arrival order.
       await deps.recordSkippedSteeringMessage({
         conversationId: args.conversationId,
         message: skipped.message,
@@ -692,6 +697,7 @@ export function createSlackTurnRuntime<
     try {
       while (args.pending.length > 0) {
         const skipped = args.pending.shift()!;
+        // oxlint-disable-next-line no-await-in-loop -- Record skipped messages in arrival order.
         await deps.recordSkippedSteeringMessage({
           conversationId: args.conversationId,
           message: skipped.message,

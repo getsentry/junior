@@ -1492,6 +1492,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
+        "Feedback on the new checkout pings the team: https://acme.sentry.io/monitors/alerts/6363564/",
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
         "The team watches it on https://acme.sentry.io/dashboard/42/",
@@ -1505,8 +1506,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         // Alone on their lines: the video shows only its thumbnail, the
         // Slack message, the chart, the trace, the event, the release, the
-        // dashboard, and the monitor show a card, and the repeated pull
-        // request shows no second card.
+        // dashboard, the monitor, and the alert show a card, and the
+        // repeated pull request shows no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1522,6 +1523,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://acme.sentry.io/dashboard/42/",
         "",
         "https://acme.sentry.io/monitors/4021/",
+        "",
+        "https://acme.sentry.io/monitors/alerts/6363564/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
@@ -3865,34 +3868,19 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
-    ActorSummaryReport & {
-      dates: Set<string>;
-      summaries: ConversationSummaryReport[];
-    }
+    ActorSummaryReport & { summaries: ConversationSummaryReport[] }
   >();
   for (const summary of summaries) {
     const identity = summary.actorIdentity;
     const email = identity?.email?.toLowerCase();
     if (!identity || !email) continue;
     const existing = byEmail.get(email) ?? {
-      active: 0,
-      activeDays: 0,
       actor: { ...identity, email },
-      conversations: 0,
-      dates: new Set<string>(),
-      durationMs: 0,
-      failed: 0,
       firstSeenAt: summary.startedAt,
       lastSeenAt: summary.lastSeenAt,
       summaries: [],
       windows: mockActorWindows(nowMs, []),
     };
-    existing.active += summary.status === "active" ? 1 : 0;
-    existing.conversations += 1;
-    existing.dates.add(summary.lastSeenAt.slice(0, 10));
-    existing.activeDays = existing.dates.size;
-    existing.durationMs += summary.cumulativeDurationMs;
-    existing.failed += summary.status === "failed" ? 1 : 0;
     existing.summaries.push(summary);
     existing.firstSeenAt =
       Date.parse(summary.startedAt) < Date.parse(existing.firstSeenAt)
@@ -3902,8 +3890,6 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
       Date.parse(summary.lastSeenAt) > Date.parse(existing.lastSeenAt)
         ? summary.lastSeenAt
         : existing.lastSeenAt;
-    const tokens = summaryTokenTotal(summary);
-    if (tokens) existing.tokens = (existing.tokens ?? 0) + tokens;
     byEmail.set(email, existing);
   }
   const activityDays = mockPeopleActivityDays(nowMs, summaries);
@@ -3914,7 +3900,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
     activitySixHours: mockPeopleActivitySixHours(nowMs, summaries),
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
-      .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({
+      .map(({ summaries: personSummaries, ...person }) => ({
         ...person,
         windows: mockActorWindows(nowMs, personSummaries),
       }))

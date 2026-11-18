@@ -1,5 +1,3 @@
-import { AnchorHeading } from "../../components/layout/AnchorHeading";
-import { Card } from "../../components/layout/Card";
 import {
   Field,
   FieldContent,
@@ -11,6 +9,7 @@ import {
   useTranscriptScroller,
   type TranscriptScroller,
 } from "../../conversations/transcriptScroller";
+import { SettingFrame, type SettingFrameKind } from "./SettingFrame";
 
 const scrollerOptions: {
   description: string;
@@ -34,15 +33,15 @@ const scrollerOptions: {
  * Let the user choose what scrolls a transcript on this browser. Phones skip
  * it: the outline shows only beside a wide transcript.
  */
-export function TranscriptScrollerSetting() {
+export function TranscriptScrollerSetting(props: { frame?: SettingFrameKind }) {
   const [scroller, setScroller] = useTranscriptScroller();
   return (
-    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="scroll-conversations-with"
-        className="m-0 text-lg font-bold"
-        title="Scroll conversations with"
-      />
+    <SettingFrame
+      anchor="scroll-conversations-with"
+      className="hidden md:block"
+      frame={props.frame}
+      title="Scroll conversations with"
+    >
       <RadioGroup<TranscriptScroller>
         aria-label="Scroll conversations with"
         className="mt-4 grid gap-3"
@@ -67,6 +66,6 @@ export function TranscriptScrollerSetting() {
           </Field>
         ))}
       </RadioGroup>
-    </Card>
+    </SettingFrame>
   );
 }

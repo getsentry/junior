@@ -5,6 +5,7 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { logWarn } from "@/chat/logging";
 import { juniorConversations } from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 
 export type ConversationWork = {
   assignedIds: string[];
@@ -92,9 +93,10 @@ export async function listConversationWork(
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
   let failed = false;
-  for (const plugin of getPlugins()) {
+  // Merging is order-free: sets, and the latest finish time.
+  await mapBounded(getPlugins(), async (plugin) => {
     const hook = plugin.hooks?.unfinishedWork;
-    if (!hook) continue;
+    if (!hook) return;
     try {
       const result = await hook({
         conversationIds: queriedIds,
@@ -127,15 +129,15 @@ export async function listConversationWork(
       }
     } catch (error) {
       failed = true;
-      // Fail open: a broken plugin must not invent assigned or unfinished work
-      // and demote recent conversations out of Priority.
+      // Fail open: a broken plugin must not invent assigned or unfinished
+      // work and demote recent conversations out of Priority.
       logWarn("plugin.unfinished_work.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
     }
-  }
+  });
   return {
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),

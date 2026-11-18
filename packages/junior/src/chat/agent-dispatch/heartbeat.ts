@@ -66,7 +66,7 @@ async function runWithTimeout<T>(
 }
 
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
-export async function runPluginHeartbeats(args: {
+async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
   dispatchForIdentity: IdentityDispatcher;
   events: AppEventPublisher;
@@ -75,6 +75,7 @@ export async function runPluginHeartbeats(args: {
   showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   let count = 0;
+  /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
@@ -116,6 +117,7 @@ export async function runPluginHeartbeats(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -132,6 +134,7 @@ export async function recoverPendingDispatchMailboxAppends(args: {
     0,
     DISPATCH_MAILBOX_APPEND_LIMIT,
   );
+  /* oxlint-disable no-await-in-loop -- Each confirm takes the shared pending-append index lock, which does not wait. */
   for (const id of ids) {
     try {
       const dispatch = await getDispatchRecord(id);
@@ -157,6 +160,7 @@ export async function recoverPendingDispatchMailboxAppends(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Repair invocation creation that stopped before its idempotent mailbox append. */
@@ -167,6 +171,7 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   const invocations = await listPendingAgentInvocationMailboxAppends(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
+  /* oxlint-disable no-await-in-loop -- Append to mailboxes in the order that the invocations started. */
   for (const invocation of invocations) {
     try {
       await enqueueAgentInvocation(invocation, {
@@ -179,6 +184,7 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Repair terminal agent invocation results that never reached their parent. */
@@ -189,6 +195,7 @@ export async function recoverPendingAgentInvocationResults(args: {
   const invocations = await listPendingAgentInvocationResults(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
+  /* oxlint-disable no-await-in-loop -- Append results to mailboxes in the order that the invocations ended. */
   for (const invocation of invocations) {
     try {
       await recordSubagentEnded(invocation);
@@ -202,6 +209,7 @@ export async function recoverPendingAgentInvocationResults(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Run the core heartbeat phases. */

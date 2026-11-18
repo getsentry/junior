@@ -134,7 +134,8 @@
     {
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
-        "junior/no-regex-url-parsing": "error"
+        "junior/no-regex-url-parsing": "error",
+        "junior/no-value-switch": "error"
       }
     },
     {
@@ -147,6 +148,7 @@
       "files": ["src/**"],
       "rules": {
         "junior/bounded-fan-out": "error",
+        "junior/prefer-map-bounded": "error",
         "no-await-in-loop": "error"
       }
     },

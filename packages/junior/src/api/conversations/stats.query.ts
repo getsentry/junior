@@ -9,6 +9,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { microUsdToUsd } from "@/db/micro-usd";
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
@@ -47,6 +48,7 @@ function emptyStatsItem(label: string): ConversationStatsItem {
   };
 }
 
+// Usage and event JSON keep provider USD floats, so their sums need rounding.
 function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
 }
@@ -217,8 +219,8 @@ function applyMetricBuckets(
       row.cachedInputTokens = metric.value;
     } else if (metric.metric === "cache_creation_tokens") {
       row.cacheCreationTokens = metric.value;
-    } else if (metric.metric === "cost_usd") {
-      row.costUsd = metric.value;
+    } else if (metric.metric === "cost_micro_usd") {
+      row.costUsd = microUsdToUsd(metric.value);
     } else if (metric.metric === "duration_ms") {
       row.durationMs = metric.value;
     } else if (metric.metric === "input_tokens") {
@@ -270,7 +272,7 @@ function metricPoint(
       ? { cacheCreationTokens: row.cacheCreationTokens }
       : undefined),
     ...(row?.costUsd !== null && row?.costUsd !== undefined
-      ? { costUsd: addUsd(undefined, row.costUsd) }
+      ? { costUsd: row.costUsd }
       : undefined),
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }

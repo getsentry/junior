@@ -18,7 +18,7 @@ import {
 
 // Characters of one event that keyword search and excerpts read. The
 // tsvector of this much text stays far below the 1 MB Postgres limit.
-export const MAX_SEARCHED_EVENT_CHARS = 200_000;
+const MAX_SEARCHED_EVENT_CHARS = 200_000;
 // A run takes about 4 s on a local Postgres 17 for events of 5 KB each. A
 // long Conversation catches up over later Turns.
 const MAX_EVENTS_PER_RUN = 2_000;

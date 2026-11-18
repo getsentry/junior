@@ -18,7 +18,10 @@ import { MatchedLabel } from "../../components/MatchedLabel";
 import { skillLabel } from "../../components/SkillLink";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../styles";
-import { searchSkills, type SkillSearchRow } from "./skillSearch";
+import {
+  searchSkills,
+  type SkillSearchRow,
+} from "../../components/skillSearch";
 
 /**
  * Choose the skill an Automation runs. A saved skill that is no longer

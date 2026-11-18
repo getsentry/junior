@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { randomBytes } from "node:crypto";
 import type { WebActor } from "@/chat/actor";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
@@ -53,33 +52,28 @@ export async function listConnections(
   const plugins = pluginCatalogRuntime
     .getProviders()
     .filter((plugin) => Boolean(plugin.manifest.oauth));
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  return await Promise.all(
-    plugins.map((plugin) =>
-      limit(async () => {
-        const tokens = await readConnectedOAuthTokens(
-          userId,
-          plugin,
-          userTokenStore,
-        );
-        const account = tokens?.account;
-        return {
-          provider: plugin.manifest.name,
-          displayName: plugin.manifest.displayName,
-          description: plugin.manifest.description,
-          connected: Boolean(tokens),
-          ...(account
-            ? {
-                account: {
-                  label: account.label ?? account.id,
-                  ...(account.url ? { url: account.url } : undefined),
-                },
-              }
-            : undefined),
-        };
-      }),
-    ),
-  );
+  return await mapBounded(plugins, async (plugin) => {
+    const tokens = await readConnectedOAuthTokens(
+      userId,
+      plugin,
+      userTokenStore,
+    );
+    const account = tokens?.account;
+    return {
+      provider: plugin.manifest.name,
+      displayName: plugin.manifest.displayName,
+      description: plugin.manifest.description,
+      connected: Boolean(tokens),
+      ...(account
+        ? {
+            account: {
+              label: account.label ?? account.id,
+              ...(account.url ? { url: account.url } : undefined),
+            },
+          }
+        : undefined),
+    };
+  });
 }
 
 /** True when the provider is an installed plugin with user OAuth. */

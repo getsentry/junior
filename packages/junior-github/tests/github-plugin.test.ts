@@ -499,7 +499,7 @@ function githubToolsContext(input?: {
         _ttlMs: number,
         callback: () => Promise<T>,
       ) {
-        return await callback();
+        return { acquired: true as const, value: await callback() };
       },
     },
     egressRequests() {

@@ -4,7 +4,6 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../../components/StatusChip";
 import { DisplayText } from "../../display-text/DisplayText";
-import { cn } from "../../styles";
 import { ReviewItemActions } from "../../review-desk/ReviewItemActions";
 import { ReviewItemObjects } from "../../review-desk/ReviewItemObjects";
 import {
@@ -28,15 +27,9 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
       className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel font-sans text-sm text-dashboard-text"
     >
       <header className="flex items-start gap-3 px-4 pb-3 pt-4 md:px-5">
-        {/* The accent tile marks an item that still needs a person. */}
         <span
           aria-hidden="true"
-          className={cn(
-            "grid size-9 shrink-0 place-items-center rounded-lg border",
-            open
-              ? "border-dashboard-accent/30 bg-dashboard-accent/10 text-dashboard-accent"
-              : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
-          )}
+          className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted"
         >
           <Inbox size={18} />
         </span>
