@@ -1,3 +1,4 @@
+import { desktop, mobile } from "../screenshot";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -28,6 +29,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     answering = true;
     await card.getByRole("button", { name: "Hold" }).click();
+    await expect(card.getByRole("status")).toHaveText("You answered Hold");
+    // It stays when the card mounts again: a phone shows the menu here.
+    await page.setViewportSize(mobile);
+    await expect(card).toHaveCount(0);
+    await page.setViewportSize(desktop);
     await expect(card.getByRole("status")).toHaveText("You answered Hold");
 
     // The row says the answer in place of the ask, after a reload too.

@@ -4,6 +4,7 @@ import type {
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { useDashboardCoreData } from "../api";
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
@@ -84,14 +85,17 @@ export function ReviewItemActions(props: {
   const inbox = useInboxUi();
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
-  const [submitted, setSubmitted] = useState(false);
   const [unsent, setUnsent] = useState(false);
   useReportUnsentAnswer(item, unsent);
   // An Inbox row shows its items as the list read them until it leaves, so
-  // the saved answer shows here, where it was given.
+  // the viewer's saved answer shows here, where it was given.
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const saved = useSavedReviewItem(item.id);
   const answered =
-    inbox && submitted && saved && saved.status !== "open"
+    inbox &&
+    saved &&
+    saved.status !== "open" &&
+    saved.closedBy?.email === viewerEmail
       ? viewerAnswerLine(saved)
       : undefined;
 
@@ -113,11 +117,9 @@ export function ReviewItemActions(props: {
 
   async function run(body: ReviewItemActionBody) {
     setError(undefined);
-    setSubmitted(body.action === "submit");
     try {
       await action.mutateAsync({ body, id: item.id });
     } catch (failure) {
-      setSubmitted(false);
       setError(actionError(failure));
       throw failure;
     }
