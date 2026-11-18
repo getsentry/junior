@@ -54,9 +54,10 @@ export type ToolResult<TDetails extends JsonValue = JsonValue> = {
   /** The call failed in a way the model should see and can react to. */
   isError?: boolean;
   /**
-   * End the Turn after this batch, with no model request for this result,
-   * such as when the user must sign in first. The Turn ends only when every
-   * call in the batch sets it, as pi-agent-core's `terminate` does.
+   * Hint that the Turn should end after the current tool batch, such as when
+   * the user must sign in first. The Turn ends only when every result in the
+   * batch sets this to true. Otherwise the Turn continues and the model sees
+   * every result. Same rule as pi-agent-core's `terminate`.
    */
   endsTurn?: boolean;
 };
