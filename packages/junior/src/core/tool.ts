@@ -5,7 +5,7 @@ import type {
   TextContent,
   Tool,
 } from "@earendil-works/pi-ai";
-import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment";
+import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
 /**
  * A tool: the declaration that the model sees, and the code that runs one
