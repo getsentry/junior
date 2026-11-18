@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.307.1
+
+### Bug Fixes 🐛
+
+- (nitro) Bundle the @sentry/nitro runtime plugin in nitro dev by @dcramer with @sentry-junior in [#3634](https://github.com/getsentry/junior/pull/3634)
+- (release) Apply Junior's release-age policy strictly in the release consumer by @dcramer with @sentry-junior in [#3638](https://github.com/getsentry/junior/pull/3638)
+
 ## 0.307.0
 
 Junior now offers richer workflows and navigation, safer request handling, clearer recovery and operations, stronger documentation, and more bounded internal execution.
