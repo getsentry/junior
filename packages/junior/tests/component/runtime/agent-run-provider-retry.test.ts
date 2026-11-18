@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -747,7 +748,7 @@ describe("agent run continuation", () => {
         instruction: {
           text: "Make a large generated-file edit.",
         },
-        history: [
+        history: committedHistory([
           {
             role: "user",
             content: [{ type: "text", text: "previous question" }],
@@ -763,7 +764,7 @@ describe("agent run continuation", () => {
             stopReason: "stop",
             timestamp: 2,
           },
-        ] satisfies PiMessage[],
+        ] satisfies PiMessage[]),
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -814,7 +815,7 @@ describe("agent run continuation", () => {
         instruction: {
           text: currentInstruction,
         },
-        history: priorMessages,
+        history: committedHistory(priorMessages),
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1007,7 +1008,7 @@ describe("agent run continuation", () => {
         instruction: {
           text: "help me",
         },
-        history: priorMessages,
+        history: committedHistory(priorMessages),
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1502,7 +1503,7 @@ describe("agent run continuation", () => {
         conversationId,
         turnId: sessionId,
         instruction: { text: "help me" },
-        history: [checkpointedPrompt],
+        history: committedHistory([checkpointedPrompt]),
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },

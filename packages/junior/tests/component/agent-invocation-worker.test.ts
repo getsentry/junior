@@ -497,7 +497,7 @@ describe("agent invocation worker", () => {
       const histories: (readonly PiMessage[])[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
-          histories.push(run.history ?? []);
+          histories.push(run.history?.messages ?? []);
           return {
             status: "completed" as const,
             result: {

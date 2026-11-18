@@ -28,6 +28,7 @@ async function resumeState(conversationId: string, turnId: string) {
   return {
     boundary: checkpoint.record?.piMessages ?? [],
     resume: createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => undefined,
@@ -60,6 +61,7 @@ describe("agent resume", () => {
     const conversationId = "local:test:auth-park-failure";
     const turnId = "turn-auth-park-failure";
     const resume = createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => {
@@ -164,6 +166,7 @@ describe("agent resume", () => {
       messages: [message("committed")],
     });
     const resume = createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: { onInputCommitted: async () => undefined },
       recordActiveMcpProviders: async () => undefined,

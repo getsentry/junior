@@ -32,7 +32,7 @@ import {
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -272,9 +272,13 @@ describe("agent invocation conversation work", () => {
       await expect(getAgentInvocation(created.invocationId)).resolves.toEqual(
         completed,
       );
-      await expect(
-        loadProjection({ conversationId: created.childConversationId }),
-      ).resolves.toEqual(
+      expect(
+        (
+          await loadConversationProjection({
+            conversationId: created.childConversationId,
+          })
+        ).messages,
+      ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             role: "assistant",
@@ -792,9 +796,11 @@ describe("agent invocation conversation work", () => {
             getAgentInvocationTurnId(invocationId),
           ),
         ).resolves.not.toMatchObject({ state: "paused" });
-        const projection = await loadProjection({
-          conversationId: childConversationId,
-        });
+        const projection = (
+          await loadConversationProjection({
+            conversationId: childConversationId,
+          })
+        ).messages;
         expect(
           projection.filter(
             (message) =>

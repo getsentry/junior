@@ -1763,7 +1763,7 @@ describe("turn checkpoint", () => {
   it("checks a checkpoint against history written after its turn record was read", async () => {
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const { loadProjection, recordAuthorizationCompleted } =
+    const { loadConversationProjection, recordAuthorizationCompleted } =
       await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-stale-read";
@@ -1795,7 +1795,9 @@ describe("turn checkpoint", () => {
       actorId: "U123",
       authorizationId: "authorization-stale-read",
     });
-    const [, authObservation] = await loadProjection({ conversationId });
+    const [, authObservation] = (
+      await loadConversationProjection({ conversationId })
+    ).messages;
 
     await expect(save([request], read)).rejects.toThrow(
       "changed before its committed boundary",
@@ -2008,7 +2010,8 @@ describe("turn checkpoint", () => {
   it("keeps older turn records pinned to their committed projection after reset", async () => {
     const { failTurnRecord, getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const { loadProjection } = await import("@/chat/conversations/projection");
+    const { loadConversationProjection } =
+      await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
     const oldRequest: PiMessage = {
       role: "user",
@@ -2068,11 +2071,13 @@ describe("turn checkpoint", () => {
       errorMessage: "stale timeout callback",
     });
 
-    await expect(
-      loadProjection({
-        conversationId: "conversation-projection-pin",
-      }),
-    ).resolves.toEqual([newRequest, newFollowup]);
+    expect(
+      (
+        await loadConversationProjection({
+          conversationId: "conversation-projection-pin",
+        })
+      ).messages,
+    ).toEqual([newRequest, newFollowup]);
   });
 
   it("resumes an unfinished turn from a committed history replacement", async () => {

@@ -387,7 +387,11 @@ class SqlConversationEventStore implements ConversationEventStore {
               parsed,
             ),
           );
-        return { status: "replaced" as const, historyVersion };
+        return {
+          status: "replaced" as const,
+          historyVersion,
+          seq: cursor.nextSeq,
+        };
       },
     );
   }

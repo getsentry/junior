@@ -36,6 +36,7 @@ import {
 } from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
+import type { HistoryReplacementResult } from "@/chat/conversations/history";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
@@ -75,6 +76,11 @@ const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 export interface CompactContextResult {
   compacted: boolean;
   piMessages?: PiMessage[];
+  /**
+   * Event seq of each replacement message: its source seq when it kept one,
+   * otherwise the seq of the compaction event.
+   */
+  piMessageSeqs?: number[];
   reason?:
     | "below_threshold"
     | "deferred"
@@ -935,31 +941,34 @@ async function compactActiveAboveThreshold(
     );
   }
   args.signal?.throwIfAborted();
-  await getConversationEventStore().replaceHistory(args.conversationId, {
-    createdAtMs: Date.now(),
-    data: {
-      type: "compaction",
-      modelId: args.modelId,
-      details: {
-        reason: "capacity",
-        estimatedInputTokens: source.estimatedTokens,
-        replacementInputTokens,
-        triggerTokens,
-        inputLimitTokens,
-        inputMessageCount: source.messages.length,
-        retainedMessageCount,
-        summaryChars: summary.length,
+  const result = await getConversationEventStore().replaceHistory(
+    args.conversationId,
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "compaction",
+        modelId: args.modelId,
+        details: {
+          reason: "capacity",
+          estimatedInputTokens: source.estimatedTokens,
+          replacementInputTokens,
+          triggerTokens,
+          inputLimitTokens,
+          inputMessageCount: source.messages.length,
+          retainedMessageCount,
+          summaryChars: summary.length,
+        },
+        ...(costUsd === undefined ? undefined : { costUsd }),
+        summary,
+        replacementHistory: replacement.map((entry) => ({
+          item: historyItemFromPiMessage(entry.message, entry.provenance),
+          ...(entry.sourceEventSeq === undefined
+            ? undefined
+            : { sourceEventSeq: entry.sourceEventSeq }),
+        })),
       },
-      ...(costUsd === undefined ? undefined : { costUsd }),
-      summary,
-      replacementHistory: replacement.map((entry) => ({
-        item: historyItemFromPiMessage(entry.message, entry.provenance),
-        ...(entry.sourceEventSeq === undefined
-          ? undefined
-          : { sourceEventSeq: entry.sourceEventSeq }),
-      })),
     },
-  });
+  );
   setSpanAttributes({
     "app.compaction.outcome": "compacted",
     "app.compaction.input_messages": source.messages.length,
@@ -970,5 +979,20 @@ async function compactActiveAboveThreshold(
     "app.compaction.input_limit": inputLimitTokens,
     "app.compaction.threshold": triggerTokens,
   });
-  return { compacted: true, piMessages: messages };
+  return {
+    compacted: true,
+    piMessages: messages,
+    piMessageSeqs: replacementSeqs(replacement, result),
+  };
+}
+
+/** The event seq of each replacement entry after `replaceHistory`. */
+export function replacementSeqs(
+  replacement: readonly { sourceEventSeq?: number | undefined }[],
+  result: HistoryReplacementResult,
+): number[] {
+  if (result.status !== "replaced") {
+    throw new Error("A conflicting history replacement has no seqs");
+  }
+  return replacement.map((entry) => entry.sourceEventSeq ?? result.seq);
 }

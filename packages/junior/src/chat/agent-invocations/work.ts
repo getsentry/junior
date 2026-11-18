@@ -6,7 +6,11 @@ import {
   instructionForInputs,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
-import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import type {
+  AgentHistory,
+  AgentRun,
+  AgentSteeringMessage,
+} from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -14,7 +18,7 @@ import {
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { openConversationProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -53,7 +57,6 @@ import {
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
-import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurn } from "./thread-turn";
 import { agentTypeInstructions } from "./agent-types";
@@ -747,7 +750,7 @@ export function createAgentInvocationWorker(
       getConversationEventStore(),
     );
     let sandboxRef: SandboxRef | undefined;
-    let history: PiMessage[];
+    let history: AgentHistory;
     let location: Location | undefined;
     try {
       if (invocation.childConversationId !== context.conversationId) {
@@ -807,7 +810,7 @@ export function createAgentInvocationWorker(
       });
       const [persisted, projection, child] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
-        openConversationProjection({
+        loadConversationProjection({
           conversationId: invocation.childConversationId,
         }),
         getConversationStore().get({
@@ -815,7 +818,7 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      history = projection.messages;
+      history = projection;
       location = child?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {

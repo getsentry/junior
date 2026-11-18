@@ -57,8 +57,8 @@ interface ResumeStateArgs {
   startedAtMs: number;
   surface: AgentTurnSurface;
   turnStart?: TurnStart | undefined;
-  /** History that the caller loaded for a slice that has no Turn record. */
-  history?: readonly PiMessage[] | undefined;
+  /** Event seq of each message of the history that the caller loaded. */
+  historySeqs: readonly number[];
 }
 
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
@@ -73,29 +73,28 @@ function extractSliceUsage(
   return hasAgentTurnUsage(usage) ? usage : undefined;
 }
 
-/** Stable fingerprint of one message. */
-function messageKey(message: PiMessage): string {
-  const record = message as {
-    role?: unknown;
-    timestamp?: unknown;
-    toolCallId?: unknown;
-    content?: unknown;
-  };
-  const content =
-    typeof record.content === "string"
-      ? record.content
-      : JSON.stringify(record.content ?? null);
-  return [
-    String(record.role ?? ""),
-    String(record.timestamp ?? ""),
-    String(record.toolCallId ?? ""),
-    content,
-  ].join("\u0001");
-}
-
 /** Stable fingerprint of a parked boundary. */
 function boundaryKey(messages: PiMessage[]): string {
-  return messages.map(messageKey).join("\u0002");
+  return messages
+    .map((message) => {
+      const record = message as {
+        role?: unknown;
+        timestamp?: unknown;
+        toolCallId?: unknown;
+        content?: unknown;
+      };
+      const content =
+        typeof record.content === "string"
+          ? record.content
+          : JSON.stringify(record.content ?? null);
+      return [
+        String(record.role ?? ""),
+        String(record.timestamp ?? ""),
+        String(record.toolCallId ?? ""),
+        content,
+      ].join("\u0001");
+    })
+    .join("\u0002");
 }
 
 /** Create resume state for one slice. */
@@ -107,42 +106,12 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
-  // Event seq of each committed agent message, by message. A history
-  // replacement keeps the source seq of each message that it keeps, so the
-  // lookup does not depend on positions. A message that is not here is not
-  // committed yet: this slice added it.
-  const committedSeqs = new Map<string, number>();
-  const rememberCommitted = (
-    messages: readonly PiMessage[],
-    seqs: readonly number[],
-  ) => {
-    for (const [index, message] of messages.entries()) {
-      const seq = seqs[index];
-      const key = messageKey(message);
-      if (seq !== undefined && !committedSeqs.has(key)) {
-        committedSeqs.set(key, seq);
-      }
-    }
-  };
-  const record = args.checkpoint.record;
-  if (record) {
-    rememberCommitted(record.piMessages, record.piMessageSeqs);
-  } else {
-    // Without a Turn record, the Turn committed nothing. Its owner records
-    // `turn_started` after the input and any fork history are committed, so
-    // the loaded history is all below the start.
-    for (const message of args.history ?? []) {
-      committedSeqs.set(messageKey(message), -1);
-    }
-  }
-  // A Turn without a `turn_started` event starts after the history that this
-  // slice found committed.
-  const turnStart: TurnStart = args.turnStart ?? {
-    seq: (record?.piMessageSeqs ?? []).reduce(
-      (max, seq) => Math.max(max, seq),
-      -1,
-    ),
-  };
+  // Event seq of each committed agent message, by position. A slice only
+  // appends to its messages, so a message past the end is not committed yet:
+  // this slice added it. A history replacement brings its own seqs.
+  let committedSeqs: readonly number[] = args.checkpoint.resumed
+    ? args.checkpoint.record.piMessageSeqs
+    : args.historySeqs;
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
@@ -186,16 +155,24 @@ export function createResumeState(args: ResumeStateArgs) {
     get timedOut(): boolean {
       return timedOut;
     },
-    /** True when the agent message at `index` belongs to this Turn. */
+    /**
+     * True when the agent message at `index` belongs to this Turn. Without
+     * a `turn_started` event, nothing tells committed messages of this Turn
+     * from earlier history, so only the messages that this slice added
+     * belong to it.
+     */
     isTurnMessageAt(messages: readonly PiMessage[], index: number): boolean {
       const message = messages[index];
+      if (!message || message.role === "system") {
+        return false;
+      }
+      const seq = committedSeqs[index];
+      if (seq === undefined) {
+        return true;
+      }
       return (
-        message !== undefined &&
-        isTurnMessage(
-          turnStart,
-          committedSeqs.get(messageKey(message)) ?? Number.POSITIVE_INFINITY,
-          message,
-        )
+        args.turnStart !== undefined &&
+        isTurnMessage(args.turnStart, seq, message)
       );
     },
     /** The agent messages that belong to this Turn. */
@@ -226,6 +203,10 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
+    },
+    /** Use the seqs of a history replacement that is already committed. */
+    adoptReplacementSeqs(seqs: readonly number[]): void {
+      committedSeqs = seqs;
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
@@ -273,7 +254,7 @@ export function createResumeState(args: ResumeStateArgs) {
       if (!saved) {
         return false;
       }
-      rememberCommitted(saved.piMessages, saved.piMessageSeqs);
+      committedSeqs = saved.piMessageSeqs;
       latestSafeBoundaryMessages = [...messages];
       // Writing the same boundary does not count as progress.
       const persistedKey = boundaryKey(continuableMessages(messages, messages));

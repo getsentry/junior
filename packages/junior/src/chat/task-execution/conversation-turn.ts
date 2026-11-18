@@ -14,7 +14,7 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
   commitParentMessageFork,
@@ -619,7 +619,7 @@ export function createConversationTurnWorker(
                 : [],
             savedParentMessage,
           });
-          const piMessages = await loadProjection({
+          const history = await loadConversationProjection({
             conversationId: context.conversationId,
           });
           failureCode = "agent_run_failed";
@@ -647,11 +647,11 @@ export function createConversationTurnWorker(
                   conversation,
                   conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
-                  hasHistory: piMessages.length > 0,
+                  hasHistory: history.messages.length > 0,
                   turnId,
                 }),
               },
-              history: piMessages,
+              history,
               ...childTurn.run,
               actor,
               credentialContext: credentialContextForActor(

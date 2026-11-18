@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import {
@@ -1290,7 +1291,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-restore-auth",
         },
         {
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     ).catch((error) => error);
@@ -1328,7 +1329,7 @@ describe("executeAgentRun progressive MCP loading", () => {
             turnId: "turn-restore-auth",
           },
           {
-            history: priorMessages,
+            history: committedHistory(priorMessages),
           },
         ),
       ),
@@ -1382,7 +1383,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           instruction: {
             context: "duplicated prior transcript",
           },
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     );
@@ -1505,7 +1506,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-crash-retry",
         },
         {
-          history: strippedHistory,
+          history: committedHistory(strippedHistory),
         },
       ),
     );
@@ -1550,7 +1551,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-history-with-context",
         },
         {
-          history: priorMessages,
+          history: committedHistory(priorMessages),
         },
       ),
     );

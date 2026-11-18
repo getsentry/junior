@@ -350,7 +350,7 @@ async function executeAgentRunInPrivacyContext(
       : undefined,
     inboundAttachmentCount: run.instruction.inboundAttachmentCount,
     omittedImageAttachmentCount: run.instruction.omittedImageAttachmentCount,
-    piMessages: run.history ? [...run.history] : undefined,
+    piMessages: run.history ? [...run.history.messages] : undefined,
     conversationContext: run.instruction.context,
   };
   const routing = {
@@ -605,7 +605,7 @@ async function executeAgentRunInPrivacyContext(
       startedAtMs: replyStartedAtMs,
       surface,
       turnStart,
-      history: input.piMessages,
+      historySeqs: run.history?.seqs ?? [],
     });
     const runResume = resume;
     const recordParentToolExecutionStart = async (event: {
@@ -920,9 +920,14 @@ async function executeAgentRunInPrivacyContext(
             summaryStreamFn,
           ),
       );
-      if (!compaction.compacted || !compaction.piMessages) {
+      if (
+        !compaction.compacted ||
+        !compaction.piMessages ||
+        !compaction.piMessageSeqs
+      ) {
         return false;
       }
+      runResume.adoptReplacementSeqs(compaction.piMessageSeqs);
 
       priorPhaseUsage = addAgentTurnUsage(
         priorPhaseUsage,

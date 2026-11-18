@@ -237,16 +237,6 @@ function storedProjection(events: ConversationEvent[]): StoredProjection {
   };
 }
 
-/** Load the current Pi agent history for a conversation. */
-export async function loadProjection(
-  args: ScopedConversation,
-): Promise<PiMessage[]> {
-  const events = await getConversationEventStore().loadCurrentHistory(
-    args.conversationId,
-  );
-  return projectConversationEvents(events).messages;
-}
-
 /** Load current Pi context with aligned provenance and source event sequences. */
 export async function loadConversationProjection(
   args: ScopedConversation,

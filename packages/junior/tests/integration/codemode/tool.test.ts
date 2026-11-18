@@ -69,6 +69,7 @@ describe("codemode tool", () => {
       },
     );
     const resume = createResumeState({
+      historySeqs: [],
       checkpoint: { resumed: false, sliceId: 1 },
       conversationId: CONVERSATION_ID,
       destination: DESTINATION,

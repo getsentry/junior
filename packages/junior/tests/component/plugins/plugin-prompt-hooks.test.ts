@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
@@ -395,14 +396,14 @@ describe("plugin prompt hook composition", () => {
       instruction: {
         text: "again",
       },
-      history: [
+      history: committedHistory([
         firstPromptMessage,
         {
           role: "assistant",
           content: [{ type: "text", text: "Done." }],
           stopReason: "stop",
         },
-      ] as never,
+      ] as never),
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     });

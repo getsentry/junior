@@ -191,7 +191,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(second.childConversationId).not.toBe(first.childConversationId);
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
-      expect(requests.map((request) => request.history)).toEqual([[], []]);
+      expect(requests.map((request) => request.history?.messages)).toEqual([
+        [],
+        [],
+      ]);
       await expect(
         getAgentInvocation(first.invocationId),
       ).resolves.toMatchObject({
@@ -243,19 +246,19 @@ describe("agent invocation identity and concurrency", () => {
       expect(second.childConversationId).toBe(first.childConversationId);
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
-      expect(requests[0]?.history).toEqual([]);
+      expect(requests[0]?.history?.messages).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
       expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
       // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
       expect(requests[1]?.disabledFeatures).toEqual(["interactive-auth"]);
-      expect(requests[1]?.history).toEqual(
+      expect(requests[1]?.history?.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
           expect.objectContaining({ role: "assistant" }),
         ]),
       );
-      expect(JSON.stringify(requests[1]?.history)).toContain(
+      expect(JSON.stringify(requests[1]?.history?.messages)).toContain(
         "result:first named task",
       );
       await expect(
@@ -314,7 +317,10 @@ describe("agent invocation identity and concurrency", () => {
         Object.fromEntries(
           harness
             .requests()
-            .map((request) => [request.instruction.text, request.history]),
+            .map((request) => [
+              request.instruction.text,
+              request.history?.messages,
+            ]),
         ),
       ).toEqual({
         "parallel first": [],
