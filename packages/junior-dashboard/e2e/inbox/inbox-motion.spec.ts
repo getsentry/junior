@@ -537,10 +537,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    // Reduced motion leaves a row with no animation, so a wrong leave has
+    // already opened the next row by the next frames.
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const asks = await closableAsks(page, { pageSize: 3 });
     await page.goto(`${dashboard.baseURL}/`);
     await asks.row(0).locator('a[aria-controls^="inbox-row-"]').first().click();
     await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+    const openRows = page.locator("li[data-inbox-row][data-expanded]");
+    const stillOpen = async () => {
+      await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+      await expect(openRows).toHaveCount(1);
+    };
 
     // A newer ask fills the first page, so the open row's ask is on the
     // next one. Its own read says that it is still open.
@@ -548,15 +556,25 @@ test.describe("new UI", { tag: "@new" }, () => {
       (response) =>
         new URL(response.url()).pathname === `/api/review-items/${prReview.id}`,
     );
-    await asks.addAndRefocus({
+    const newer = {
       ...license,
       addedByConversationId: "slack:CNEWER:1770003600.000600",
       createdAt: "2026-08-07T08:30:00.000Z",
       id: "item-newer",
-    });
+    };
+    await asks.addAndRefocus(newer);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${newer.addedByConversationId}"]`),
+    ).toBeVisible();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await stillOpen();
     await reread;
-    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
-    await expect(asks.row(1)).not.toHaveAttribute("data-expanded");
+    await stillOpen();
     expect(asks.actions).toEqual([]);
   });
 });
