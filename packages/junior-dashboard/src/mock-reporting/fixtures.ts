@@ -3855,34 +3855,19 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
-    ActorSummaryReport & {
-      dates: Set<string>;
-      summaries: ConversationSummaryReport[];
-    }
+    ActorSummaryReport & { summaries: ConversationSummaryReport[] }
   >();
   for (const summary of summaries) {
     const identity = summary.actorIdentity;
     const email = identity?.email?.toLowerCase();
     if (!identity || !email) continue;
     const existing = byEmail.get(email) ?? {
-      active: 0,
-      activeDays: 0,
       actor: { ...identity, email },
-      conversations: 0,
-      dates: new Set<string>(),
-      durationMs: 0,
-      failed: 0,
       firstSeenAt: summary.startedAt,
       lastSeenAt: summary.lastSeenAt,
       summaries: [],
       windows: mockActorWindows(nowMs, []),
     };
-    existing.active += summary.status === "active" ? 1 : 0;
-    existing.conversations += 1;
-    existing.dates.add(summary.lastSeenAt.slice(0, 10));
-    existing.activeDays = existing.dates.size;
-    existing.durationMs += summary.cumulativeDurationMs;
-    existing.failed += summary.status === "failed" ? 1 : 0;
     existing.summaries.push(summary);
     existing.firstSeenAt =
       Date.parse(summary.startedAt) < Date.parse(existing.firstSeenAt)
@@ -3892,8 +3877,6 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
       Date.parse(summary.lastSeenAt) > Date.parse(existing.lastSeenAt)
         ? summary.lastSeenAt
         : existing.lastSeenAt;
-    const tokens = summaryTokenTotal(summary);
-    if (tokens) existing.tokens = (existing.tokens ?? 0) + tokens;
     byEmail.set(email, existing);
   }
   const activityDays = mockPeopleActivityDays(nowMs, summaries);
@@ -3904,7 +3887,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
     activitySixHours: mockPeopleActivitySixHours(nowMs, summaries),
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
-      .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({
+      .map(({ summaries: personSummaries, ...person }) => ({
         ...person,
         windows: mockActorWindows(nowMs, personSummaries),
       }))

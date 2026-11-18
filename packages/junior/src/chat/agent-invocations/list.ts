@@ -406,6 +406,7 @@ async function runsOnConversationLoop(
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
+      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
       (await routeChildInput(message, latest, stoppedAtMs)) ===
         "Conversation loop"
     ) {

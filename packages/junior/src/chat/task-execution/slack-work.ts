@@ -502,15 +502,14 @@ export async function clearSlackPendingReactions(args: {
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
-  for (const record of args.messages) {
-    if (record.source !== "slack") continue;
+  const clear = async (record: InboundMessage) => {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
-      if (!metadata || metadata.route !== "mention") continue;
+      if (!metadata || metadata.route !== "mention") return;
       const timestamp = getMessageTs(Message.fromJSON(metadata.message));
       // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       const target = parseSlackThreadId(metadata.thread.id);
-      if (!timestamp || !target) continue;
+      if (!timestamp || !target) return;
       await runWithSlackInstallation({
         adapter: args.getSlackAdapter(),
         installation: metadata.installation ?? {},
@@ -529,7 +528,11 @@ export async function clearSlackPendingReactions(args: {
         "messaging.message.id": record.inboundMessageId,
       });
     }
-  }
+  };
+  await mapBounded(
+    args.messages.filter((record) => record.source === "slack"),
+    clear,
+  );
 }
 
 function compareInboundMessages(

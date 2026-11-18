@@ -24,6 +24,7 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
+import { mapBounded } from "@/chat/fan-out";
 import {
   normalizeMessageSenders,
   withMessageSenders,
@@ -721,6 +722,7 @@ async function withIndexLock<T>(
   const startedAtMs = now();
   let lock: Lock | null;
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the index lock is free.
     lock = await state.acquireLock(
       indexLockKey(indexKey),
       CONVERSATION_INDEX_LOCK_TTL_MS,
@@ -733,6 +735,7 @@ async function withIndexLock<T>(
         `Could not acquire conversation index lock for ${indexKey}`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
     await sleep(CONVERSATION_INDEX_LOCK_RETRY_MS);
   }
   try {
@@ -996,6 +999,7 @@ async function acquireMutationLock(
 ): Promise<Lock> {
   const startedAtMs = now();
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the mutation lock is free.
     const lock = await state.acquireLock(
       mutationLockKey(conversationId),
       CONVERSATION_MUTATION_LOCK_TTL_MS,
@@ -1008,6 +1012,7 @@ async function acquireMutationLock(
         `Could not acquire conversation mutation lock for ${conversationId}`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
     await sleep(CONVERSATION_MUTATION_RETRY_MS);
   }
 }
@@ -2756,21 +2761,29 @@ export async function listConversationsByActivity(
     offset: args.offset,
     order: "desc",
   });
-  const conversations: ConversationExecutionState[] = [];
-  for (const entry of entries) {
+  const reads = await mapBounded(entries, async (entry) => {
     try {
-      const conversation = await readConversation(state, entry.conversationId);
-      if (conversation) {
-        conversations.push(conversation);
-      }
+      return {
+        conversation: await readConversation(state, entry.conversationId),
+        entry,
+      };
     } catch (error) {
       if (!(error instanceof InvalidConversationRecordError)) {
         throw error;
       }
+      return { conversation: undefined, entry, invalid: true };
+    }
+  });
+  const conversations: ConversationExecutionState[] = [];
+  for (const read of reads) {
+    if (read.conversation) {
+      conversations.push(read.conversation);
+    } else if ("invalid" in read) {
+      // oxlint-disable-next-line no-await-in-loop -- Each removal takes the shared index lock.
       await removeIndexEntry({
         state,
         indexKey: CONVERSATION_BY_ACTIVITY_INDEX_KEY,
-        conversationId: entry.conversationId,
+        conversationId: read.entry.conversationId,
       });
     }
   }

@@ -55,7 +55,15 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import { escapeXml } from "@/chat/xml";
+import {
+  escapeClosingTag,
+  escapeTagText,
+  escapeTagTextAndQuotes,
+  renderInlineTag,
+  renderTag,
+  startsWithTag,
+} from "@sentry/junior-plugin-api";
+import { renderThreadContext, THREAD_CONTEXT_TAGS } from "@/chat/input-tags";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
@@ -132,20 +140,13 @@ interface PromptReplayArgs {
  *
  * Producers already emit `<thread-context>`. Only wrap plain unstructured
  * background text so ambient messages never look like more instruction.
+ * Other people wrote that text, so it is escaped.
  */
 function renderThreadContextForPrompt(context: string): string {
-  if (
-    /^<(?:thread-context|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
-      context,
-    )
-  ) {
+  if (startsWithTag(context, THREAD_CONTEXT_TAGS)) {
     return context;
   }
-  return [
-    '<thread-context authority="evidence-only">',
-    context,
-    "</thread-context>",
-  ].join("\n");
+  return renderThreadContext([escapeTagText(context)]);
 }
 
 /** Render the current actor's instruction without host-owned thread context. */
@@ -206,15 +207,22 @@ function renderInputParts(instruction: AgentInstruction): string[] {
 
 /** Render an explicitly selected skill as instructions for the current turn. */
 export function renderExplicitSkillInstructions(skill: Skill): string {
-  return [
-    "<skill>",
-    `<name>${escapeXml(skill.name)}</name>`,
-    `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
-    `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
-    `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
-    skill.body,
-    "</skill>",
-  ].join("\n");
+  return renderTag("skill", {}, [
+    renderInlineTag("name", escapeTagTextAndQuotes(skill.name)),
+    renderInlineTag(
+      "path",
+      escapeTagTextAndQuotes(sandboxSkillFile(skill.name)),
+    ),
+    renderInlineTag(
+      "working_directory",
+      escapeTagTextAndQuotes(sandboxSkillDir(skill.name)),
+    ),
+    renderInlineTag(
+      "path_resolution",
+      escapeTagTextAndQuotes(sandboxSkillPathResolution(skill.name)),
+    ),
+    escapeClosingTag(skill.body, "skill"),
+  ]);
 }
 
 /** Redact image data from prompt content parts for observability. */
@@ -236,14 +244,12 @@ export function toObservablePromptPart(
 }
 
 function buildOmittedImageAttachmentNotice(count: number): string {
-  return [
-    "<omitted-image-attachments>",
+  return renderTag("omitted-image-attachments", {}, [
     `count: ${count}`,
     "Slack included image attachments with this turn, but this runtime cannot analyze images because no vision model is configured.",
     "Do not claim that no image was attached.",
     "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
-    "</omitted-image-attachments>",
-  ].join("\n");
+  ]);
 }
 
 function buildUserTurnInput(args: {
