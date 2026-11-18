@@ -28,11 +28,7 @@ data, does not run.
   the work is correct or well proven is not its concern.
 - The install, not the agent, states facts about destinations. Each plugin
   can declare where its writes go, such as which destinations people outside
-  the organization can read. Guardian gets these facts in its system prompt,
-  sorted by plugin name, so the prompt is the same for every review in a
-  deployment and stays cached. The agent prompt and the tool catalog never
-  include them. A fact never authorizes an action. The `data_exposure` rule
-  does the blocking.
+  the organization can read. A fact never authorizes an action.
 - For each plugin that declares `credentials`, Guardian knows that its
   Sandbox env var holds a placeholder, and which domains get the real
   credential. A command that sends that env var to those domains does not

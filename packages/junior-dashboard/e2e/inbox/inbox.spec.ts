@@ -39,7 +39,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       todo.getByRole("link", { name: new RegExp(audit.title) }),
     ).toBeVisible();
-    // The badge and To do read the same server count.
+    // The badge and To do count the same cards.
     const tab = page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
@@ -159,7 +159,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).not.toBeChecked();
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
-    // A phone view would remount the row and drop the picks.
     await screenshot(page, "inbox-row-answer", {
       lightTheme: true,
       view: "desktop",

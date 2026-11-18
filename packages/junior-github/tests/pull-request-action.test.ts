@@ -692,7 +692,7 @@ describe("next action item", () => {
       // review again. GitHub then asks for the review, so the item stays.
       requests.length = 0;
       await markReviewAddressed(301);
-      expect(requests).toEqual(["pull", "request requester"]);
+      expect(requests).toEqual(["pull", "reviews", "request requester"]);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toHaveLength(3);
 
@@ -757,27 +757,44 @@ describe("next action item", () => {
   });
 
   it.each([
-    { reviewState: "APPROVED", webhookState: "approved" as const },
-    { reviewState: "COMMENTED", webhookState: "commented" as const },
+    {
+      name: "an approval",
+      reviews: [{ id: 301, state: "APPROVED" }],
+      webhookState: "approved" as const,
+    },
+    {
+      name: "a comment",
+      reviews: [{ id: 301, state: "COMMENTED" }],
+      webhookState: "commented" as const,
+    },
+    {
+      // With auto-merge on, a push after the approval can merge with no
+      // other person, so asking again would only bother the requester.
+      autoMerge: true,
+      name: "an approval that follows a change request",
+      reviews: [
+        { id: 301, state: "CHANGES_REQUESTED" },
+        { id: 302, state: "APPROVED" },
+      ],
+      webhookState: "approved" as const,
+    },
   ])(
-    "does not ask the requester again after an $webhookState review",
-    async ({ reviewState, webhookState }) => {
+    "does not ask the requester again after $name",
+    async ({ autoMerge, reviews, webhookState }) => {
       const fixture = await createGitHubFixture();
       const calls: ReviewItemCall[] = [];
       const requests: string[] = [];
       const github: GitHubState = {
+        autoMerge,
         draft: false,
         mergeableStates: ["blocked"],
         merged: false,
         requestedReviewers: [],
-        reviews: [
-          {
-            commit_id: "head-1",
-            id: 301,
-            state: reviewState,
-            user: { login: "requester" },
-          },
-        ],
+        reviews: reviews.map((review) => ({
+          ...review,
+          commit_id: "head-1",
+          user: { login: "requester" },
+        })),
         state: "open",
       };
       mockGitHub(github, requests);
