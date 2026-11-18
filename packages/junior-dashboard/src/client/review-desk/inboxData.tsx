@@ -283,10 +283,10 @@ function useBuildInboxData(input: {
   const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Busy rows come first, a busy
-  // pin with them, then the other pins in the viewer's order. Collapsed,
-  // every pin shows, each one click away, and busy Conversations fill the
-  // rows left, up to IN_FLIGHT_LIMIT.
+  // the viewer, works, or watches for an Event or Timer. Busy rows come
+  // first, a busy pin with them, then the other pins in the viewer's order.
+  // Collapsed, every pin shows, each one click away, and busy Conversations
+  // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );

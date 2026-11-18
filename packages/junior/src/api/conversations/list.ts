@@ -307,12 +307,12 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * dashboard can record which inputs moved it.
  *
  * The token holds only what a feed row shows, so a Task moves it only when
- * the tree state moves. Watches live outside SQL. A Turn makes or cancels
- * one, and the end of that Turn moves the status or the tree's work, so a
- * read after it sees the Watch. A stop anywhere in the tree moves it too,
- * since a stopped Conversation's Watches start no Turn. A Watch that
- * expires on its own moves nothing, so its row shows `watching` until the
- * feed reads again. Every Event of a live Turn moves `last_activity_at`, but
+ * the tree state moves. Watches and Timers live outside SQL. A Turn makes
+ * or cancels one, and the end of that Turn moves the status or the tree's
+ * work, so a read after it sees the change. A Timer that fires starts a
+ * Turn. A stop anywhere in the tree moves it too, since a stopped
+ * Conversation's Watches start no Turn. A Watch that expires on its own
+ * moves nothing, so its row shows `watching` until the feed reads again. Every Event of a live Turn moves `last_activity_at`, but
  * a running row shows its running state in place of the age, so the token
  * holds no activity for it. Other rows show an age in whole minutes, so the
  * token holds its minute. The end of the Turn moves the status.
