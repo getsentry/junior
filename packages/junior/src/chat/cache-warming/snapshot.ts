@@ -30,8 +30,7 @@ import type {
   Message,
   TextContent,
 } from "@earendil-works/pi-ai/compat";
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { KEY_PREFIX, type ConnectedState } from "./request";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
@@ -183,14 +182,9 @@ export async function loadSnapshot(
   const parts = context.messages
     .flatMap(imageParts)
     .filter((part) => part.data.startsWith(IMAGE_REF_PREFIX));
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const images = await Promise.all(
-    parts.map((part) =>
-      limit(() =>
-        state.get<string>(
-          imageKey(conversationId, part.data.slice(IMAGE_REF_PREFIX.length)),
-        ),
-      ),
+  const images = await mapBounded(parts, (part) =>
+    state.get<string>(
+      imageKey(conversationId, part.data.slice(IMAGE_REF_PREFIX.length)),
     ),
   );
   for (const [index, part] of parts.entries()) {

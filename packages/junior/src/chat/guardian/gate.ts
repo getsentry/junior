@@ -481,11 +481,13 @@ async function mapConcurrent<T, R>(
   const results: R[] = [];
   let next = 0;
   const worker = async () => {
+    /* oxlint-disable no-await-in-loop -- Each worker takes the next item after its current one ends; this is the limiter. */
     while (next < items.length) {
       const index = next;
       next += 1;
       results[index] = await fn(items[index]!);
     }
+    /* oxlint-enable no-await-in-loop */
   };
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, worker),

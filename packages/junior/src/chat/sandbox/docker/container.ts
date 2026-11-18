@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import pLimit from "p-limit";
 import {
   DockerApiError,
   dockerJson,
@@ -14,7 +13,7 @@ import {
 import { packTar } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { sleep } from "@/chat/sleep";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 // Module overview: the lifecycle of one sandbox container.
 //
@@ -129,17 +128,15 @@ async function pruneNetworks(): Promise<void> {
     Name: string;
     Labels: Record<string, string>;
   }>("networks");
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    networks
-      .filter((network) => !used.has(network.Labels[DOCKER_SANDBOX_LABEL]))
-      .map((network) =>
-        limit(async () => {
-          // An egress relay is not a sandbox, but it holds the network.
-          await forceRemove(egressRelayName(network.Name));
-          await removeNetwork(network.Name);
-        }),
-      ),
+  await mapBounded(
+    networks.filter(
+      (network) => !used.has(network.Labels[DOCKER_SANDBOX_LABEL]),
+    ),
+    async (network) => {
+      // An egress relay is not a sandbox, but it holds the network.
+      await forceRemove(egressRelayName(network.Name));
+      await removeNetwork(network.Name);
+    },
   );
 }
 

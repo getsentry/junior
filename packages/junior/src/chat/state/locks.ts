@@ -42,6 +42,7 @@ export async function withLock<T>(
   const ttlMs = options.ttlMs ?? ACTIVE_LOCK_TTL_MS;
   const startedAtMs = Date.now();
   let lock: Lock | null;
+  /* oxlint-disable no-await-in-loop -- Poll the lock until it is free or the wait ends. */
   while (true) {
     lock = await state.acquireLock(key, ttlMs);
     if (lock) break;
@@ -50,6 +51,7 @@ export async function withLock<T>(
     }
     await sleep(options.retryMs ?? 25, undefined, { ref: false });
   }
+  /* oxlint-enable no-await-in-loop */
   const heartbeat = options.keepAlive
     ? setInterval(
         // A failed extend is caught by the next fenceLock before any write.

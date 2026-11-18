@@ -602,7 +602,7 @@ export function InboxList(props: {
             action={sweepControl(data.todoRows, "To do")}
             badge={
               data.todoCount > 0 ? (
-                <span className="mb-0.5 rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+                <span className="text-xs font-medium tabular-nums text-dashboard-text-muted">
                   {data.todoCount}
                 </span>
               ) : null

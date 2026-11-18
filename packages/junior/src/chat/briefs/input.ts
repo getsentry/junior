@@ -17,6 +17,7 @@ async function readReportEventsThrough(
 ): Promise<ConversationReportEvent[]> {
   const pages: ConversationReportEvent[][] = [];
   let beforeSeq: number | undefined = throughSeq + 1;
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   do {
     const page = await readConversationEventPage(executor, {
       beforeSeq,
@@ -27,6 +28,7 @@ async function readReportEventsThrough(
     pages.unshift(page.events);
     beforeSeq = page.previousSeq;
   } while (beforeSeq !== undefined);
+  /* oxlint-enable no-await-in-loop */
 
   const bySequence = new Map<number, ConversationReportEvent>();
   for (const event of pages.flat()) bySequence.set(event.seq, event);

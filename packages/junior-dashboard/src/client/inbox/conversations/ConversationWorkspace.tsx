@@ -377,7 +377,7 @@ function PhoneNewButton(props: { onClick(): void }) {
   return (
     <button
       aria-label="New conversation"
-      className="absolute right-4 bottom-5 grid size-14 place-items-center rounded-2xl bg-dashboard-accent text-2xl text-dashboard-text-inverse shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      className="absolute right-4 bottom-5 grid size-14 place-items-center rounded-2xl bg-dashboard-text-solid text-2xl text-dashboard-text-inverse focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={props.onClick}
       type="button"
     >

@@ -2,11 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as z from "zod";
 import { parse as parseYaml } from "yaml";
+import pLimit from "p-limit";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import { skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 // ---------------------------------------------------------------------------
 // Skill frontmatter parsing
@@ -377,31 +379,38 @@ export async function discoverSkills(
     return skillCache.skills;
   }
 
+  // Read every root and skill directory at once. The first root that has a
+  // skill name still wins, so keep the root and entry order when merging.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const skillsByRoot = await Promise.all(
+    roots.map(async (root) => {
+      try {
+        const entries = await fs.readdir(root, { withFileTypes: true });
+        const directories = entries
+          .filter((entry) => entry.isDirectory())
+          .sort((a, b) => a.name.localeCompare(b.name));
+        return await Promise.all(
+          directories.map((entry) =>
+            limit(() => readSkillDirectory(path.join(root, entry.name))),
+          ),
+        );
+      } catch (error) {
+        logWarn("skill.root.read.failed", {
+          "file.directory": root,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    }),
+  );
+
   const discovered: SkillMetadata[] = [];
   const seen = new Set<string>();
-
-  for (const root of roots) {
-    try {
-      const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const entry of entries.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      )) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const skill = await readSkillDirectory(path.join(root, entry.name));
-        if (skill && !seen.has(skill.name)) {
-          seen.add(skill.name);
-          discovered.push(skill);
-        }
-      }
-    } catch (error) {
-      logWarn("skill.root.read.failed", {
-        "file.directory": root,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
+  for (const skill of skillsByRoot.flat()) {
+    if (skill && !seen.has(skill.name)) {
+      seen.add(skill.name);
+      discovered.push(skill);
     }
   }
 
@@ -468,13 +477,8 @@ export async function loadSkillsByName(
   available: SkillMetadata[],
 ): Promise<Skill[]> {
   const selected = new Set(skillNames);
-  const skills: Skill[] = [];
-
-  for (const meta of available) {
-    if (!selected.has(meta.name)) {
-      continue;
-    }
-
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const loadSkill = async (meta: SkillMetadata): Promise<Skill> => {
     const skillFile = path.join(meta.skillPath, "SKILL.md");
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseSkillFile(raw, meta.name);
@@ -496,11 +500,15 @@ export async function loadSkillsByName(
         : undefined),
     };
 
-    skills.push({
+    return {
       ...loadedMeta,
       body: applyPluginRuntimeBoundary(plugin, parsed.skill.body),
-    });
-  }
+    };
+  };
 
-  return skills;
+  return await Promise.all(
+    available
+      .filter((meta) => selected.has(meta.name))
+      .map((meta) => limit(() => loadSkill(meta))),
+  );
 }

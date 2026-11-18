@@ -68,6 +68,7 @@ async function acquireConversationLock(
   key: string,
   waitDeadlineMs = Date.now() + AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS,
 ): Promise<Lock> {
+  /* oxlint-disable no-await-in-loop -- Poll the lock until it is free or the wait ends. */
   while (true) {
     const lock = await state.acquireLock(
       lockKey(key),
@@ -81,6 +82,7 @@ async function acquireConversationLock(
     }
     await sleep(AUTOMATED_TURN_LIMIT_LOCK_RETRY_MS);
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 async function withConversationLock<T>(
