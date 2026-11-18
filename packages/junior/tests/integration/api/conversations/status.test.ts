@@ -429,5 +429,3 @@ describe("conversation status", () => {
     expect(item?.status).toBe("open");
   });
 });
-
-/** Watch one Vercel deployment from `conversationId`. */
