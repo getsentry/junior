@@ -16,6 +16,14 @@ export type ToolDefinition<
   TDetails extends JsonValue = JsonValue,
 > = Tool & {
   /**
+   * Whether a step that runs again may run this call again. A step runs again
+   * when its earlier attempt did not commit, so a call may have run without a
+   * saved result. `safe`: running it twice does no harm, such as a read.
+   * `unsafe`: it has a side effect, so the retry gives the model an error
+   * result and does not run it.
+   */
+  replay: "safe" | "unsafe";
+  /**
    * Runs one call. `args` are already validated against `parameters`. A throw
    * becomes an error result that the model sees.
    */
@@ -45,4 +53,10 @@ export type ToolResult<TDetails extends JsonValue = JsonValue> = {
   details?: TDetails;
   /** The call failed in a way the model should see and can react to. */
   isError?: boolean;
+  /**
+   * End the Turn after this batch, with no model request for this result,
+   * such as when the user must sign in first. The Turn ends only when every
+   * call in the batch sets it, as pi-agent-core's `terminate` does.
+   */
+  endsTurn?: boolean;
 };
