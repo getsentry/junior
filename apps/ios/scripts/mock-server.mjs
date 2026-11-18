@@ -724,8 +724,9 @@ createServer((req, res) => {
   }
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) value.forEach((v) => headers.append(name, v));
-    else if (value !== undefined) headers.set(name, value);
+    if (Array.isArray(value)) {
+      for (const v of value) headers.append(name, v);
+    } else if (value !== undefined) headers.set(name, value);
   }
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const request = new Request(new URL(req.url ?? "/", baseURL), {
@@ -737,7 +738,7 @@ createServer((req, res) => {
   void Promise.resolve(routeMcp(request) ?? app.fetch(request))
     .then(async (response) => {
       res.statusCode = response.status;
-      response.headers.forEach((value, name) => res.setHeader(name, value));
+      for (const [name, value] of response.headers) res.setHeader(name, value);
       res.end(Buffer.from(await response.arrayBuffer()));
     })
     .catch((error) => {
