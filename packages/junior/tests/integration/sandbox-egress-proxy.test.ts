@@ -1,5 +1,7 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { generateKeyPairSync } from "node:crypto";
+import { createServer, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import {
   createLocalSource,
@@ -142,6 +144,23 @@ function proxiedRequest(input: {
       ...(input.headers ?? {}),
     },
   });
+}
+
+/** Return the headers that Node's built-in fetch sends on its own. */
+async function nodeFetchHeaders(): Promise<Record<string, string>> {
+  const server = createServer((_request, response) => response.end());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const received = new Promise<IncomingHttpHeaders>((resolve) =>
+    server.once("request", (request) => resolve(request.headers)),
+  );
+  try {
+    const { port } = server.address() as AddressInfo;
+    await fetch(`http://127.0.0.1:${port}/`);
+    const { host: _host, connection: _connection, ...headers } = await received;
+    return headers as Record<string, string>;
+  } finally {
+    server.close();
+  }
 }
 
 async function registerManagedEgressPlugin(input?: {
@@ -2212,9 +2231,10 @@ describe("sandbox egress proxy integration", () => {
   it("sandbox-credentials#browser-none: adds no credential to a browser request", async () => {
     await registerManagedEgressPlugin({ toolsSendNoCredential: true });
 
-    // Node's built-in fetch sends `Sec-Fetch-Mode` but is not a browser.
+    // CLIs such as `sentry` use Node's built-in fetch, which sends
+    // `Sec-Fetch-Mode` but is not a browser. Send the headers that it sends.
     const nodeFetch = await sendFromSandbox({
-      headers: { "sec-fetch-mode": "cors" },
+      headers: await nodeFetchHeaders(),
       upstreamHost: PROVIDER_HOST,
     });
     expect(nodeFetch.upstream[0]?.get("authorization")).toBe(
