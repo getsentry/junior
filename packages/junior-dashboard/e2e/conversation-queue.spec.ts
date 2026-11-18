@@ -79,7 +79,7 @@ test("stops the active Turn and returns queued text to the composer", async ({
         {
           ...detail,
           isParticipant: true,
-          status: active ? "active" : "idle",
+          status: active ? "working" : "done",
         },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),

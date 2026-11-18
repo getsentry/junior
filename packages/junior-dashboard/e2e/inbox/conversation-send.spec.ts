@@ -513,7 +513,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           mailbox,
           eventHistory: { status: "available" },
           isParticipant: true,
-          status: active ? "active" : "idle",
+          status: active ? "working" : "done",
           events: [
             ...detail.events,
             ...committed.map((message, index) => ({

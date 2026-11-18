@@ -747,9 +747,9 @@ test.describe("new UI", { tag: "@new" }, () => {
           // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
           // shows it first.
           conversations: [
-            pin(0, "Alpha pin", "idle"),
-            pin(1, "Bravo pin", "idle"),
-            pin(2, "Charlie pin", "active"),
+            pin(0, "Alpha pin", "done"),
+            pin(1, "Bravo pin", "done"),
+            pin(2, "Charlie pin", "working"),
           ],
           nextCursor: undefined,
         },
@@ -852,7 +852,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         isParticipant: true,
         pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: pinned ? "idle" : "active",
+        status: pinned ? "done" : "working",
       });
       return route.fulfill({
         response,
