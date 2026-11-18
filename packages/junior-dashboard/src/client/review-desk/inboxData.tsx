@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
+import { useDashboardCoreData } from "../api";
 import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
@@ -33,6 +34,7 @@ import {
 import {
   inboxBundles,
   itemUpForGrabs,
+  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -189,6 +191,16 @@ function useBuildInboxData(input: {
       ? [...read, ...held, ...left]
       : read;
   }, [closedElsewhere, leaving, missing, read, states]);
+  // Closed items, newest closed first, as Done lists them. A Conversation
+  // row says what the viewer answered until the Conversation moves on.
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
+  const { items: closed } = useReviewItemsData({
+    closed: true,
+    enabled: signedIn,
+    forViewer: true,
+  });
+  const answerOf = (conversation: Conversation): string | undefined =>
+    conversationAnswerLine(closed, conversation, viewerEmail);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -279,8 +291,6 @@ function useBuildInboxData(input: {
     );
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
-  // The Inbox's own stream leaves notices to its FYI list.
-  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
   // the viewer, works, or watches for an Event or Timer. Busy rows come
@@ -349,8 +359,12 @@ function useBuildInboxData(input: {
 
   return {
     alerts,
+    /** What the viewer answered last in a Conversation, while it is news. */
+    answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
+    /** The Automations that need attention are in, so To do is complete. */
+    automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
     /** The open row's items, held after a read shows them all closed. */
     closedElsewhere,
@@ -358,18 +372,6 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
-    /**
-     * The oldest activity in the loaded feed pages. The feed reads newest
-     * activity first, so each later page is older.
-     */
-    feedOldestSeenAt: conversations.reduce<string | undefined>(
-      (oldest, conversation) =>
-        oldest === undefined ||
-        Date.parse(conversation.lastSeenAt) < Date.parse(oldest)
-          ? conversation.lastSeenAt
-          : oldest,
-      undefined,
-    ),
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),
@@ -378,7 +380,6 @@ function useBuildInboxData(input: {
     holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(busyRows),
     /** Collapsed In flight: every pin, and busy rows up to the limit. */

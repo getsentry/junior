@@ -1,4 +1,4 @@
-import { Check, Clock3 } from "lucide-react";
+import { Clock3, X } from "lucide-react";
 import { type KeyboardEvent, useId, useState } from "react";
 
 import { Button } from "../components/ui/button";
@@ -10,10 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  ATTENTION_TONE_CLASS,
-  OPEN_TONE_CLASS,
-} from "../conversations/ConversationMeta";
+import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
 import { atLocalHour, snoozeChoicesAt } from "./inboxSnooze";
@@ -192,13 +189,13 @@ function CustomSnooze(props: {
 }
 
 /**
- * Dismiss an Inbox row: the main action of its action bar, so it goes
- * right-most.
+ * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
+ * has no check mark, so it does not read as an answer or an approval.
  */
 export function RowDismissButton(props: { onClick(): void }) {
   return (
-    <Button onClick={props.onClick} variant="outline">
-      <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
+    <Button onClick={props.onClick} variant="ghost">
+      <X aria-hidden="true" size={15} />
       Dismiss
     </Button>
   );

@@ -191,39 +191,6 @@ export function timeSectionAt(iso: string, nowMs: number): string {
   return "earlier";
 }
 
-/**
- * How many rows Earlier shows in the Inbox. A fixed number, not a time
- * window: Earlier starts where This week ends, and a window such as 30 days
- * still grows without end for a busy viewer. Older work is in Done.
- */
-const EARLIER_LIMIT = 10;
-
-/**
- * Keep the Inbox stream's rows up to the first `EARLIER_LIMIT` rows of
- * Earlier, so the Inbox ends. `full` says Earlier has all the rows that it
- * shows, so older pages need not load. `cut` says rows were left out.
- */
-export function capEarlier<Row>(
-  rows: readonly Row[],
-  timeOf: (row: Row) => string,
-  nowMs: number,
-): { cut: boolean; full: boolean; rows: Row[] } {
-  const kept: Row[] = [];
-  let earlier = 0;
-  for (const row of rows) {
-    if (timeSectionAt(timeOf(row), nowMs) === "earlier") {
-      earlier += 1;
-      if (earlier > EARLIER_LIMIT) continue;
-    }
-    kept.push(row);
-  }
-  return {
-    cut: earlier > EARLIER_LIMIT,
-    full: earlier >= EARLIER_LIMIT,
-    rows: kept,
-  };
-}
-
 /** Split rows into Today, This week, and Earlier, keeping their order. */
 export function timeGroups<Row>(
   rows: readonly Row[],
@@ -346,7 +313,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -361,6 +328,11 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
 }
 
 /**

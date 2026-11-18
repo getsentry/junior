@@ -9,6 +9,7 @@ import type {
   ConversationReportEventData,
   ConversationSummaryReport,
   LocationDetailReport,
+  ConversationStatsReport,
   LocationDirectoryReport,
   Plugin,
 } from "@sentry/junior/api/schema";
@@ -45,7 +46,11 @@ import {
 import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
-import type { ConversationTranscript, SystemData } from "../src/client/types";
+import type {
+  ConversationTranscript,
+  DashboardCoreData,
+  SystemPluginsData,
+} from "../src/client/types";
 
 // Browser journeys cover portals and focus. These checks cover transcript data.
 vi.mock("../src/client/components/Drawer", () => ({
@@ -118,17 +123,24 @@ function renderTranscript(detail: ConversationTranscript): string {
   );
 }
 
-function systemData(): SystemData {
+type SystemFixture = SystemPluginsData & {
+  conversationStats: ConversationStatsReport;
+};
+
+const systemCoreData: DashboardCoreData = {
+  config: {
+    allowedDomainCount: 0,
+    authPath: "/api/auth",
+    authRequired: false,
+    basePath: "/",
+    sentryConversationLinks: false,
+    version: "0.0.0-test",
+  },
+  me: { user: { email: "viewer@example.com", isAdmin: false } },
+};
+
+function systemData(): SystemFixture {
   return {
-    config: {
-      allowedDomainCount: 0,
-      authPath: "/api/auth",
-      authRequired: false,
-      basePath: "/",
-      sentryConversationLinks: false,
-      version: "0.0.0-test",
-    },
-    me: { user: { email: "viewer@example.com", isAdmin: false } },
     conversationStats: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       guardian: {
@@ -163,8 +175,6 @@ function systemData(): SystemData {
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-10-03T00:00:00.000Z",
     },
-    conversationStatsError: false,
-    conversationStatsLoading: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -175,6 +185,42 @@ function systemData(): SystemData {
     plugins: [],
     skills: [],
   };
+}
+
+// Seed the queries that the System page reads, so it renders without a fetch.
+function renderSystemPage(path: string, data: SystemFixture): string {
+  const systemClient = new QueryClient();
+  systemClient.setQueryData(
+    ["dashboard", "conversation-stats"],
+    data.conversationStats,
+  );
+  systemClient.setQueryData(["dashboard", "plugins"], data.plugins);
+  systemClient.setQueryData(["dashboard", "skills"], data.skills);
+  if (!data.pluginReportsLoading) {
+    systemClient.setQueryData(
+      ["dashboard", "plugin-reports"],
+      data.pluginReports,
+    );
+  }
+  if (data.pluginReportsError) {
+    const reports = systemClient
+      .getQueryCache()
+      .build(systemClient, { queryKey: ["dashboard", "plugin-reports"] });
+    reports.setState({
+      ...reports.state,
+      error: new Error("plugin reports failed"),
+      errorUpdatedAt: Date.now(),
+      fetchStatus: "idle",
+      status: "error",
+    });
+  }
+  return renderToStaticMarkup(
+    <QueryClientProvider client={systemClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <SystemPage coreData={systemCoreData} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
@@ -1689,11 +1735,7 @@ describe("dashboard canonical-event components", () => {
     const loading = systemData();
     loading.pluginReportsLoading = true;
     loading.plugins = [plugin("github")];
-    const loadingHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins/github"]}>
-        <SystemPage data={loading} />
-      </MemoryRouter>,
-    );
+    const loadingHtml = renderSystemPage("/system/plugins/github", loading);
     expect(loadingHtml).not.toContain("Loading plugin stats.");
     expect(loadingHtml).toContain(">GitHub<");
     expect(loadingHtml).toContain('href="/system/plugins"');
@@ -1702,10 +1744,9 @@ describe("dashboard canonical-event components", () => {
       "This plugin does not expose operational activity yet.",
     );
 
-    const reportOnlyPluginHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins/briefs"]}>
-        <SystemPage data={loading} />
-      </MemoryRouter>,
+    const reportOnlyPluginHtml = renderSystemPage(
+      "/system/plugins/briefs",
+      loading,
     );
     expect(reportOnlyPluginHtml).toContain("Loading plugin");
     expect(reportOnlyPluginHtml).toContain(
@@ -1722,11 +1763,7 @@ describe("dashboard canonical-event components", () => {
         title: "Scheduler",
       },
     ];
-    const staleHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins/scheduler"]}>
-        <SystemPage data={stale} />
-      </MemoryRouter>,
-    );
+    const staleHtml = renderSystemPage("/system/plugins/scheduler", stale);
     expect(staleHtml).toContain("Plugin stats failed to load.");
     expect(staleHtml).toContain("Scheduler");
     expect(staleHtml).toContain("active");
@@ -1734,20 +1771,10 @@ describe("dashboard canonical-event components", () => {
       "This plugin does not expose operational activity yet.",
     );
 
-    const overviewHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/system"]}>
-          <SystemPage data={stale} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    const overviewHtml = renderSystemPage("/system", stale);
     expect(overviewHtml).not.toContain("Plugin stats failed to load.");
 
-    const inventoryHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins"]}>
-        <SystemPage data={stale} />
-      </MemoryRouter>,
-    );
+    const inventoryHtml = renderSystemPage("/system/plugins", stale);
     expect(inventoryHtml).toContain("Plugin stats failed to load.");
     expect(inventoryHtml).toContain(
       "Showing the last operational reports Assistant received.",
@@ -1765,13 +1792,7 @@ describe("dashboard canonical-event components", () => {
       },
     ];
 
-    const systemHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/system"]}>
-          <SystemPage data={data} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    const systemHtml = renderSystemPage("/system", data);
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain("Missing data in 1 of 1");
@@ -1802,11 +1823,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">1 loaded<");
     expect(systemHtml).not.toContain(">$triage<");
 
-    const pluginsHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
+    const pluginsHtml = renderSystemPage("/system/plugins", data);
     expect(pluginsHtml).toContain(">Plugins<");
     expect(pluginsHtml).toContain(">Skills<");
     expect(pluginsHtml).toContain(">GitHub<");
@@ -1846,11 +1863,7 @@ describe("dashboard canonical-event components", () => {
       },
     ];
 
-    const html = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system/plugins/scheduler"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
+    const html = renderSystemPage("/system/plugins/scheduler", data);
 
     expect(html).toContain('aria-label="System navigation"');
     expect(html).not.toContain('href="/system/plugins/github"');

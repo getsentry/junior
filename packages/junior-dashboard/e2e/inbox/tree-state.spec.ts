@@ -66,9 +66,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await expect(watching).toBeVisible();
     // A pin shows its pin only while its tree waits on nothing.
-    const today = page.getByRole("region", { name: "Today" });
-    await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
-    await today
+    // The Inbox lists only what needs the viewer, so pin from Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await list.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
+    await list
       .getByRole("button", { name: "Pin Roll out payments-v42" })
       .click();
     await expect(
@@ -79,7 +84,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-tree-state", { lightTheme: true });
 
     // Each Conversation row shows the same one icon.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
       .getByRole("listitem")
       .filter({
