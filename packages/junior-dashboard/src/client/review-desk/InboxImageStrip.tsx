@@ -5,8 +5,15 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent,
   type RefObject,
+  type SyntheticEvent,
 } from "react";
+import {
+  ImagePreview,
+  shouldPreviewImageAttachment,
+  type PreviewImage,
+} from "../components/ImageAttachment";
 import { conversationAttachmentUrl } from "../conversations/TranscriptAttachment";
 import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
@@ -31,6 +38,8 @@ const FRAME =
 const BOX = cn(FRAME, "block w-64");
 // How near an image comes to the strip's edge before it loads.
 const NEAR = "0px 320px";
+// How far a press moves before it is a drag, not a click.
+const DRAG_PX = 4;
 
 // Whether `target` has come near the visible part of `root`. Native lazy
 // loading decides by distance to the page viewport, so it loads images far
@@ -83,24 +92,56 @@ function LazyImage(props: {
 /** What an ask icon on a PR card expands: the row's asks, as a pill does. */
 type AskToggle = { controls: string; expanded: boolean; onToggle(): void };
 
+/** What a tile needs to show its image, or to drop it when it fails. */
+type TileImage = {
+  failed: boolean;
+  onError(): void;
+  onPreview(event: MouseEvent<HTMLAnchorElement>): void;
+};
+
+function workPreview(work: ImageWork): PreviewImage {
+  return {
+    context: work.title ? work.label : undefined,
+    filename: work.title ?? work.label,
+    src: work.imageUrl,
+  };
+}
+
+function mediaPreview(
+  conversationId: string,
+  media: ConversationMedia,
+): PreviewImage {
+  return {
+    filename: media.filename,
+    src: conversationAttachmentUrl(conversationId, media.id),
+  };
+}
+
 // A PR card: its image, then its line. An ask on it shows as its kind icon.
 function WorkTile(props: {
   ask: AskPill | undefined;
   askToggle: AskToggle;
+  image: TileImage;
   main: string | undefined;
   root: RefObject<HTMLElement | null>;
   work: ImageWork;
 }) {
-  const { ask, work } = props;
-  // A preview that fails to load leaves no empty box or alt text.
-  const [failed, setFailed] = useState(false);
+  const { ask, image, work } = props;
   return (
     <div className="grid w-64 shrink-0 snap-start gap-1" data-image-tile="work">
-      {failed ? null : (
-        <a className={BOX} href={work.url} rel="noreferrer" target="_blank">
+      {/* A preview that fails to load leaves no empty box or alt text. The
+          line under it links the work. */}
+      {image.failed ? null : (
+        <a
+          className={BOX}
+          href={work.imageUrl}
+          onClick={image.onPreview}
+          rel="noreferrer"
+          target="_blank"
+        >
           <LazyImage
             alt={`Preview of ${work.title}`}
-            onError={() => setFailed(true)}
+            onError={image.onError}
             root={props.root}
             src={work.imageUrl}
           />
@@ -129,30 +170,37 @@ function WorkTile(props: {
 }
 
 function MediaTile(props: {
-  conversationId: string;
-  media: ConversationMedia;
+  image: TileImage;
+  preview: PreviewImage;
   root: RefObject<HTMLElement | null>;
 }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  const href = conversationAttachmentUrl(props.conversationId, props.media.id);
+  const { image, preview } = props;
+  if (image.failed) return null;
   return (
     <a
       className={cn(BOX, "snap-start")}
       data-image-tile="media"
-      href={href}
+      href={preview.src}
+      onClick={image.onPreview}
       rel="noreferrer"
       target="_blank"
-      title={props.media.filename}
+      title={preview.filename}
     >
       <LazyImage
-        alt={props.media.filename}
-        onError={() => setFailed(true)}
+        alt={preview.filename}
+        onError={image.onError}
         root={props.root}
-        src={href}
+        src={preview.src}
       />
     </a>
   );
+}
+
+// The viewer renders in a portal, but React bubbles its events through the
+// row. The row would take a press as a pin drag, and a right click or long
+// press as its menu.
+function stopAtRow(event: SyntheticEvent) {
+  event.stopPropagation();
 }
 
 // Which ends of the strip have more images past them.
@@ -234,6 +282,7 @@ export function InboxImageStrip(props: {
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLSpanElement>(null);
+  const press = useRef<{ left: number; x: number; y: number }>(undefined);
   const mayHaveMore = props.media.length >= FEED_MEDIA_LIMIT;
   const [wantOlder, setWantOlder] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -250,6 +299,26 @@ export function InboxImageStrip(props: {
       return true;
     },
   );
+  // Images that fail to load leave the strip and the viewer.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
+  // The viewer's first image, as its place in the gallery.
+  const [shown, setShown] = useState<number>();
+  const previews = [
+    ...props.work.map(workPreview),
+    ...images.map((media) => mediaPreview(props.conversationId, media)),
+  ];
+  const gallery = previews.filter((preview) => !failed.has(preview.src));
+  const tile = (preview: PreviewImage): TileImage => ({
+    failed: failed.has(preview.src),
+    onError: () => setFailed((current) => new Set(current).add(preview.src)),
+    // A plain click opens the viewer. A modified or middle click keeps the
+    // link, so it opens the image in a new tab.
+    onPreview: (event) => {
+      if (!shouldPreviewImageAttachment(event)) return;
+      event.preventDefault();
+      setShown(gallery.indexOf(preview));
+    },
+  });
   const canLoad = mayHaveMore && !older.done;
   const { edges, update } = useScrollEdges(
     scroller,
@@ -287,7 +356,28 @@ export function InboxImageStrip(props: {
   };
   if (props.work.length === 0 && images.length === 0) return null;
   return (
-    <div className="group/strip relative min-w-0">
+    // A click on the strip's empty space goes on to the row and opens it. A
+    // press that drags or scrolls the strip stops here.
+    <div
+      className="group/strip relative min-w-0"
+      onClick={(event) => {
+        const start = press.current;
+        if (
+          start &&
+          (scroller.current?.scrollLeft !== start.left ||
+            Math.hypot(event.clientX - start.x, event.clientY - start.y) >
+              DRAG_PX)
+        )
+          event.stopPropagation();
+      }}
+      onPointerDown={(event) => {
+        press.current = {
+          left: scroller.current?.scrollLeft ?? 0,
+          x: event.clientX,
+          y: event.clientY,
+        };
+      }}
+    >
       <div
         aria-label="Images"
         className="flex snap-x snap-proximity items-start gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 [scrollbar-width:thin] focus-visible:outline-2 focus-visible:outline-dashboard-focus"
@@ -302,21 +392,22 @@ export function InboxImageStrip(props: {
         // Arrow keys scroll it once it has focus.
         tabIndex={0}
       >
-        {props.work.map((work) => (
+        {props.work.map((work, index) => (
           <WorkTile
             ask={props.asks.get(work.url)}
             askToggle={props.askToggle}
+            image={tile(previews[index]!)}
             key={work.key}
             main={props.main}
             root={scroller}
             work={work}
           />
         ))}
-        {images.map((media) => (
+        {images.map((media, index) => (
           <MediaTile
-            conversationId={props.conversationId}
+            image={tile(previews[props.work.length + index]!)}
             key={`${media.id}\n${media.filename}`}
-            media={media}
+            preview={previews[props.work.length + index]!}
             root={scroller}
           />
         ))}
@@ -345,6 +436,20 @@ export function InboxImageStrip(props: {
         onClick={() => scrollBy(1)}
         shown={edges.end}
       />
+      {shown === undefined ? null : (
+        <span
+          className="contents"
+          onContextMenu={stopAtRow}
+          onMouseDown={stopAtRow}
+          onTouchStart={stopAtRow}
+        >
+          <ImagePreview
+            images={gallery}
+            initialIndex={shown}
+            onClose={() => setShown(undefined)}
+          />
+        </span>
+      )}
     </div>
   );
 }
