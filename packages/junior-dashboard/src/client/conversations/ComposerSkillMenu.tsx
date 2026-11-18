@@ -4,10 +4,11 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { Info } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import type { SkillReport } from "@sentry/junior/api/schema";
 import { useSkillsData } from "../api";
@@ -15,6 +16,7 @@ import { MatchedLabel } from "../components/MatchedLabel";
 import { searchSkills, type SkillSearchRow } from "../components/skillSearch";
 import { SkillDrawer, skillLabel, skillSource } from "../components/SkillLink";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import { cn } from "../styles";
@@ -29,7 +31,7 @@ export function useComposerSkillMenu(
   textareaRef: RefObject<HTMLTextAreaElement | null>,
   onInsert: (text: string) => void,
 ) {
-  const listboxId = useId();
+  const gridId = useId();
   const detailsId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<SkillToken>();
@@ -42,10 +44,12 @@ export function useComposerSkillMenu(
   const skills = useSkillsData({ enabled: wanted }).data;
   // The skill whose SKILL.md drawer is open. The menu stays open under it.
   const [viewing, setViewing] = useState<string>();
+  // The row that shows its description below it on narrow screens.
+  const [expanded, setExpanded] = useState<string>();
   const rows = token && skills ? skillRows(skills, token.query) : [];
   const open = rows.length > 0;
   const active = Math.min(activeIndex, rows.length - 1);
-  const optionId = (index: number) => `${listboxId}-${index}`;
+  const cellId = (index: number) => `${gridId}-${index}`;
 
   // The composer moves with the layout, so follow it while the menu is open.
   useEffect(() => {
@@ -60,7 +64,7 @@ export function useComposerSkillMenu(
   useEffect(() => {
     if (!open) return;
     document
-      .getElementById(optionId(active))
+      .getElementById(cellId(active))
       ?.scrollIntoView({ block: "nearest" });
   });
 
@@ -92,7 +96,7 @@ export function useComposerSkillMenu(
     if (!pressingMenu.current && !viewing) close();
   };
 
-  /** Open a SKILL.md from a press on a row's info button. */
+  /** Open a SKILL.md from a press on a View full skill button. */
   const view = (name: string) => {
     pressingMenu.current = false;
     setViewing(name);
@@ -179,9 +183,9 @@ export function useComposerSkillMenu(
 
   // A textbox supports these. `aria-expanded` needs the combobox role.
   const textboxProps = {
-    "aria-activedescendant": open ? optionId(active) : undefined,
+    "aria-activedescendant": open ? cellId(active) : undefined,
     "aria-autocomplete": "list" as const,
-    "aria-controls": open ? listboxId : undefined,
+    "aria-controls": open ? gridId : undefined,
   };
 
   // A portal, because docks around the composer clip their overflow.
@@ -207,30 +211,51 @@ export function useComposerSkillMenu(
                 textareaRef.current?.focus({ preventScroll: true });
               }}
             >
+              {/* A grid, not a listbox: narrow rows hold real buttons. */}
               <div
                 aria-label="Skills"
                 className="thin-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5 md:w-[45%] md:flex-none"
-                id={listboxId}
-                role="listbox"
+                id={gridId}
+                role="grid"
               >
                 {rows.map((row, index) => (
-                  <SkillOption
+                  <SkillRow
                     active={index === active}
                     describedBy={
                       index === active
-                        ? `${detailsId}-source ${detailsId}-keys`
+                        ? `${detailsId}-source ${detailsId}-description ${detailsId}-keys`
                         : undefined
                     }
-                    id={optionId(index)}
+                    expanded={expanded === row.skill.name}
+                    id={cellId(index)}
                     key={row.skill.name}
                     onHover={() => setActiveIndex(index)}
                     onSelect={() => insert(row.skill.name)}
+                    onToggle={() =>
+                      setExpanded((name) =>
+                        name === row.skill.name ? undefined : row.skill.name,
+                      )
+                    }
                     onView={() => view(row.skill.name)}
                     row={row}
                   />
                 ))}
               </div>
-              <SkillDetails id={detailsId} skill={rows[active]!.skill} />
+              <div className="thin-scrollbar hidden min-w-0 flex-1 overflow-y-auto overscroll-contain border-l border-input p-3 md:block">
+                <SkillDetails
+                  id={detailsId}
+                  onView={() => view(rows[active]!.skill.name)}
+                  skill={rows[active]!.skill}
+                >
+                  <div
+                    className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-dashboard-text-muted"
+                    id={`${detailsId}-keys`}
+                  >
+                    <Kbd>Enter</Kbd> insert · <Kbd>{platformShortcut("i")}</Kbd>{" "}
+                    view SKILL.md · <Kbd>Esc</Kbd> close
+                  </div>
+                </SkillDetails>
+              </div>
             </div>,
             document.body,
           )
@@ -289,65 +314,87 @@ function skillRows(
     .map((skill) => ({ skill }));
 }
 
-function SkillOption(props: {
+function SkillRow(props: {
   active: boolean;
   describedBy?: string;
+  expanded: boolean;
   id: string;
   row: SkillSearchRow;
   onHover(): void;
   onSelect(): void;
+  onToggle(): void;
   onView(): void;
 }) {
   const { skill } = props.row;
+  const panelId = `${props.id}-panel`;
   return (
-    <div
-      aria-describedby={props.describedBy}
-      aria-selected={props.active}
-      className={cn(
-        "flex cursor-pointer items-center gap-1 rounded-md pr-0.5 pl-2.5 font-sans text-sm text-foreground select-none",
-        props.active && "bg-dashboard-fill-hover",
-      )}
-      id={props.id}
-      onClick={props.onSelect}
-      onMouseMove={props.active ? undefined : props.onHover}
-      role="option"
-    >
-      {/* One line beside the details pane. Below it, the description gets two. */}
-      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5 md:flex-nowrap">
-        <span className="shrink-0 font-mono">
-          $
-          <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
-        </span>
-        {skill.disableModelInvocation ? <ManualOnlyBadge /> : null}
-        <span className="min-w-0 text-xs text-dashboard-text-muted max-md:line-clamp-2 max-md:basis-full md:flex-1 md:truncate">
-          {skill.description}
-        </span>
-      </div>
-      {/* Pointer only: an option cannot hold a button. Keys use Ctrl or Cmd I. */}
-      <span
-        aria-hidden="true"
+    <>
+      <div
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-md text-dashboard-text-muted hover:text-foreground md:size-6",
-          !props.active && "md:invisible",
+          "flex items-center rounded-md font-sans text-sm text-foreground select-none",
+          props.active && "bg-dashboard-fill-hover",
         )}
-        onClick={(event) => {
-          // A tap here opens the SKILL.md. It must not insert the skill.
-          event.stopPropagation();
-          props.onView();
-        }}
-        title="View SKILL.md"
+        onMouseMove={props.active ? undefined : props.onHover}
+        role="row"
       >
-        <Info className="size-4" />
-      </span>
-    </div>
+        <div
+          aria-describedby={props.describedBy}
+          aria-selected={props.active}
+          className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-3 px-2.5 md:min-h-0 md:py-1.5"
+          id={props.id}
+          onClick={props.onSelect}
+          role="gridcell"
+        >
+          <span className="truncate font-mono">
+            $
+            <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
+          </span>
+          {skill.disableModelInvocation ? <ManualOnlyBadge /> : null}
+        </div>
+        {/* The details pane takes this role on wide screens. */}
+        <div className="md:hidden" role="gridcell">
+          <button
+            aria-controls={panelId}
+            aria-expanded={props.expanded}
+            aria-label={`Details for ${skillLabel(skill.name)}`}
+            className="flex size-10 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-dashboard-text-muted"
+            onClick={props.onToggle}
+            type="button"
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-4 transition-transform",
+                props.expanded && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+      </div>
+      {props.expanded ? (
+        <div className="px-2.5 pt-1 pb-2.5 md:hidden" id={panelId} role="row">
+          <div className="grid gap-2.5" role="gridcell">
+            <p className="m-0 text-sm [overflow-wrap:anywhere] text-dashboard-text-muted">
+              {skill.description}
+            </p>
+            <ViewSkillButton className="w-full" onView={props.onView} />
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
-/** Describe the active skill beside the list. Narrow screens have no room. */
-function SkillDetails(props: { id: string; skill: SkillReport }) {
+/** Describe one skill: name, source, the full description, and a way in. */
+function SkillDetails(props: {
+  children?: ReactNode;
+  id: string;
+  skill: SkillReport;
+  onView(): void;
+}) {
   const { skill } = props;
   return (
-    <div className="thin-scrollbar hidden min-w-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain border-l border-input p-3 font-sans md:flex">
+    <div className="flex min-h-full flex-col gap-1 font-sans">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm font-semibold [overflow-wrap:anywhere] text-foreground">
           {skillLabel(skill.name)}
@@ -360,17 +407,34 @@ function SkillDetails(props: { id: string; skill: SkillReport }) {
       >
         {skillSource(skill)}
       </div>
-      <p className="m-0 mt-1 text-sm [overflow-wrap:anywhere] text-foreground">
+      <p
+        className="m-0 mt-1 text-sm [overflow-wrap:anywhere] text-foreground"
+        id={`${props.id}-description`}
+      >
         {skill.description}
       </p>
-      <div
-        className="mt-auto flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-3 text-xs text-dashboard-text-muted"
-        id={`${props.id}-keys`}
-      >
-        <Kbd>Enter</Kbd> insert · <Kbd>{platformShortcut("i")}</Kbd> view
-        SKILL.md · <Kbd>Esc</Kbd> close
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-3">
+        <ViewSkillButton onView={props.onView} />
+        {props.children}
       </div>
     </div>
+  );
+}
+
+function ViewSkillButton(props: { className?: string; onView(): void }) {
+  return (
+    <Button
+      className={props.className}
+      onClick={(event) => {
+        // The menu's own click puts focus back in the textarea. The drawer
+        // takes focus instead.
+        event.stopPropagation();
+        props.onView();
+      }}
+      variant="outline"
+    >
+      View full skill
+    </Button>
   );
 }
 

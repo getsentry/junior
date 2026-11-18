@@ -47,28 +47,36 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await page.goto(dashboard.baseURL);
   const composer = page.getByLabel("Start a conversation");
   await composer.fill("Run $");
-  const skills = page.getByRole("listbox", { name: "Skills" });
-  await expect(skills.getByRole("option")).toHaveCount(3);
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(skills.getByRole("row")).toHaveCount(3);
+  // Rows show names. The details pane shows the description.
+  await expect(skills).not.toContainText("Run a quality pass");
 
   // The details pane follows the active row.
   await composer.press("ArrowDown");
-  const active = skills.getByRole("option", { selected: true });
+  const active = skills.getByRole("gridcell", { selected: true });
   await expect(active).toContainText("$release-check");
   await expect(active).toHaveAccessibleDescription(/^App or local skill/);
   await expect(
     page.getByText("then post a short summary to the release channel."),
-  ).toHaveCount(2);
+  ).toBeVisible();
   await screenshot(page, "composer-skill-details", { view: "desktop" });
   await composer.press("ArrowDown");
   await expect(active).toHaveAccessibleDescription(/^From the github plugin/);
   await composer.press("ArrowUp");
 
-  await composer.press("ControlOrMeta+i");
   const drawer = page.getByRole("dialog", { name: "$release-check" });
+  const closeDrawer = drawer.getByRole("button", {
+    name: "Close $release-check",
+    exact: true,
+  });
+  await page.getByRole("button", { name: "View full skill" }).click();
   await expect(drawer).toContainText("Compare the release branch");
-  await drawer
-    .getByRole("button", { name: "Close $release-check", exact: true })
-    .click();
+  await closeDrawer.click();
+  await expect(drawer).toBeHidden();
+  await composer.press("ControlOrMeta+i");
+  await expect(drawer).toContainText("Compare the release branch");
+  await closeDrawer.click();
   // Back in the composer with the caret and the active row where they were.
   await expect(composer).toBeFocused();
   await expect(active).toContainText("$release-check");
@@ -79,7 +87,7 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("opens SKILL.md from a row's info button @classic", async ({
+  test("expands a row and opens SKILL.md from it @classic", async ({
     page,
     dashboard,
   }) => {
@@ -88,15 +96,25 @@ test.describe("on a touch screen", () => {
     await page.goto(dashboard.baseURL);
     const composer = page.getByLabel("Start a conversation");
     await composer.fill("$");
-    const row = page
-      .getByRole("listbox", { name: "Skills" })
-      .getByRole("option", { name: /^\$release-check/ });
+    const skills = page.getByRole("grid", { name: "Skills" });
+    const row = skills.getByRole("gridcell", { name: /^\$release-check/ });
+    const description = skills.getByText("Check release readiness across");
     await expect(row).toBeVisible();
-    // No details pane on a narrow screen.
+    // No details pane on a narrow screen, and rows show names only.
     await expect(page.getByText("App or local skill")).toBeHidden();
+    await expect(description).toHaveCount(0);
     await screenshot(page, "composer-skill-menu", { view: "mobile" });
 
-    await row.getByTitle("View SKILL.md").tap();
+    const details = page.getByRole("button", {
+      name: "Details for $release-check",
+    });
+    await details.tap();
+    await expect(details).toHaveAttribute("aria-expanded", "true");
+    await expect(description).toBeVisible();
+    await expect(composer).toHaveValue("$");
+    await screenshot(page, "composer-skill-menu-expanded", { view: "mobile" });
+
+    await page.getByRole("button", { name: "View full skill" }).tap();
     const drawer = page.getByRole("dialog", { name: "$release-check" });
     await expect(drawer).toContainText("Compare the release branch");
     await expect(composer).toHaveValue("$");
