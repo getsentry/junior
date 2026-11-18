@@ -14,6 +14,9 @@
 # JUNIOR_IOS_REUSE_UDID=<udid> uses a simulator that is already booted
 # instead of booting a second one. The run installs the app there and
 # uninstalls it at the end; it never shuts that simulator down.
+#
+# JUNIOR_IOS_SERVER=http://127.0.0.1:<port> points the app and the UI tests
+# at a mock server that you started with PORT=<port>.
 set -euo pipefail
 
 ios_dir="$(cd "$(dirname "$0")/.." && pwd)"

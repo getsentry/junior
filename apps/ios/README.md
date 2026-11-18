@@ -32,9 +32,6 @@ browser.
    node apps/ios/scripts/mock-server.mjs
    ```
 
-   To use another port, set `PORT` for the server and `JUNIOR_IOS_SERVER`
-   (for example `http://127.0.0.1:4318`) for `scripts/sim.sh`.
-
 2. Run the logic tests on macOS. They need no simulator:
 
    ```bash

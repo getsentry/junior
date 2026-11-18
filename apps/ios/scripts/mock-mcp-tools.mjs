@@ -900,7 +900,8 @@ export function createMockMcpTools({ app, origin }) {
           api("GET", `/automations/${enc(id)}/executions`),
         ]);
         for (const result of [automation, list]) {
-          if (result.status === 404) throw new ToolError("Automation not found.");
+          if (result.status === 404)
+            throw new ToolError("Automation not found.");
           if (!result.ok) throw apiFailure(result);
         }
         return {
