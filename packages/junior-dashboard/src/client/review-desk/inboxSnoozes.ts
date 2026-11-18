@@ -36,14 +36,13 @@ interface SnoozedRead {
 export function useInboxSnoozes(read: SnoozedRead) {
   const queryClient = useQueryClient();
   const toast = useToastManager();
-  // When the lists refetched after each just-snoozed row's snooze saved, by
-  // row key; Infinity until then. A list read after that time already
-  // leaves the row out. A read that started before the save does not count:
-  // the refetch cancels it.
+  // When each just-snoozed row's snooze saved, by row key; Infinity until
+  // the lists refetch after it. A list read after that time already leaves
+  // the row out: the refetch cancels reads that started before the save.
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
-  // When the lists refetched after the viewer's last snooze change;
-  // Infinity until then. Snoozed read before that time may be stale.
+  // When the viewer's last snooze change saved; Infinity until the lists
+  // refetch after it. Snoozed read before that time may be stale.
   const [changedAtMs, setChangedAtMs] = useState(-Infinity);
   const hide = (key: string, savedAtMs: number | undefined) =>
     setHidden((current) => {
@@ -78,11 +77,12 @@ export function useInboxSnoozes(read: SnoozedRead) {
       toast.add({ title: "The row could not be snoozed", type: "error" });
       return;
     }
-    // The refetch cancels reads in flight, so only reads that start after
-    // the save can show the row again.
+    // The refetch cancels reads in flight, so every read that ends after
+    // it started after the save.
+    const savedAtMs = Date.now();
     await invalidateReviewItemCollections(queryClient);
-    hide(bundle.key, Date.now());
-    setChangedAtMs(Date.now());
+    hide(bundle.key, savedAtMs);
+    setChangedAtMs(savedAtMs);
   };
   /** Wake a snoozed row now: undo the viewer's snoozes on its Conversation. */
   const wake = async (bundle: InboxBundle) => {
@@ -93,8 +93,9 @@ export function useInboxSnoozes(read: SnoozedRead) {
       await deleteDashboardResource(SNOOZES_PATH, {
         conversationId: bundle.conversationId,
       });
+      const savedAtMs = Date.now();
       await invalidateReviewItemCollections(queryClient);
-      setChangedAtMs(Date.now());
+      setChangedAtMs(savedAtMs);
     } catch {
       setChangedAtMs(lastChangedAtMs);
       // The row stays in Snoozed, so say why it did not wake.
