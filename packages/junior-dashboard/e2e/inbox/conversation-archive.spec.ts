@@ -248,7 +248,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       applyToChildren: true,
       archived: true,
     });
-    await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+    // A direct link has no origin, so the archive returns to Conversations.
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   });
 
   test("shows why a child restore is refused", async ({ page, dashboard }) => {
