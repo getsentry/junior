@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { actOnReviewItem } from "@/chat/review-items/actions";
 import { closeReviewItem, getReviewItem } from "@/chat/review-items/store";
 import {
   juniorAutomations,
@@ -542,13 +543,13 @@ describe("review item tools", () => {
       conversationId: "slack:CPUB:1.000001",
     });
     expect(own?.execution.pendingMessages ?? []).toEqual([]);
-    await expect(
-      execute(agent.update, {
-        id: added.item.id,
-        status: "done",
-        reason: "again",
-      }),
-    ).rejects.toThrow("is already closed");
+    // A later close with another status keeps the first close.
+    const again = await execute(agent.update, {
+      id: added.item.id,
+      status: "done",
+      reason: "again",
+    });
+    expect(again.item).toEqual(closed.item);
     expect((await execute(agent.search, {})).count).toBe(0);
     expect((await execute(agent.search, { status: "any" })).count).toBe(1);
 
@@ -561,5 +562,74 @@ describe("review item tools", () => {
       dedupe_key: "pr:7",
     });
     expect(next.created).toBe(true);
+  });
+
+  it("keeps a person's close when the agent closes the item after them", async () => {
+    await conversation("slack:CPUB:1.000001", "CPUB", "public");
+    await conversation("slack:CPUB:1.000002", "CPUB", "public");
+    const ana = await user("ana@example.com");
+    const context = automationRun("slack:CPUB:1.000001");
+    const shown: string[] = [];
+    const agent = {
+      ...tools(context),
+      update: createUpdateReviewItemTool(context, {
+        ...services,
+        show: async (itemId) => {
+          shown.push(itemId);
+        },
+      }),
+    };
+    const added = await execute(agent.add, {
+      kind: "action",
+      title: "Approve the entry?",
+      body: "It waits on a decision.",
+      assignees: [ana.email],
+      conversation_ids: ["slack:CPUB:1.000002"],
+      request: REQUEST,
+    });
+    await actOnReviewItem({
+      action: "submit",
+      answer: { requestId: added.item.id, values: { decision: ["Approve"] } },
+      delivery: { queue, show: async () => {} },
+      id: added.item.id,
+      user: ana,
+    });
+    const pending = async () =>
+      await Promise.all(
+        ["slack:CPUB:1.000001", "slack:CPUB:1.000002"].map(
+          async (conversationId) =>
+            (await getConversation({ conversationId }))?.execution
+              .pendingMessages ?? [],
+        ),
+      );
+    const answered = await getReviewItem(getDb(), added.item.id);
+    const before = await pending();
+
+    // Ana answered it, and then the agent closes it, with any status.
+    const done = await execute(agent.update, {
+      id: added.item.id,
+      status: "done",
+      reason: "the entry was approved",
+    });
+    expect(done.item).toMatchObject({
+      status: "done",
+      closed_by: ana.email,
+      answer: { values: { decision: ["Approve"] } },
+    });
+    expect(done.item.close_reason).not.toBe("the entry was approved");
+    const dismissed = await execute(agent.update, {
+      id: added.item.id,
+      status: "dismissed",
+      reason: "no longer needed",
+    });
+    expect(dismissed.item).toEqual(done.item);
+    expect(await getReviewItem(getDb(), added.item.id)).toEqual(answered);
+    expect(await pending()).toEqual(before);
+    expect(shown).toEqual([]);
+
+    // An edit of a closed item still fails.
+    await expect(
+      execute(agent.update, { id: added.item.id, body: "New body." }),
+    ).rejects.toThrow("is already closed");
   });
 });

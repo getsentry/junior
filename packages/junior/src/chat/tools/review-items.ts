@@ -404,7 +404,7 @@ export function createAddReviewItemTool(
 
 export const updateReviewItemToolDefinition = zodToolDefinition({
   description:
-    "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
+    "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. A close of a closed item changes nothing and returns how it closed. You cannot submit the answer to an action item: only an assignee can.",
   exposure: "deferred",
   source: REVIEW_DESK_TOOL_SOURCE,
   annotations: {
@@ -471,7 +471,12 @@ export function createUpdateReviewItemTool(
         input.status === item.status &&
         input.reason === item.closeReason;
       if (item.status !== "open" && !retriesClose) {
-        throw new ToolInputError(`Review item ${item.id} is already closed.`);
+        if (changesContent || !input.status || !input.reason) {
+          throw new ToolInputError(`Review item ${item.id} is already closed.`);
+        }
+        // The first close wins, even with another status: a person's answer
+        // or dismiss stays on record. The result shows who closed it and why.
+        return { item: itemResult(item) };
       }
       if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
