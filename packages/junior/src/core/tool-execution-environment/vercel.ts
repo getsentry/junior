@@ -133,6 +133,7 @@ async function exec(
     cwd: options.cwd,
     env: options.env,
     detached: true,
+    signal,
     timeoutMs:
       options.timeoutMs === undefined
         ? undefined
