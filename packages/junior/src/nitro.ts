@@ -58,10 +58,27 @@ export function withSentryConfig(
   config: SentryNitroConfig,
   options: SentryNitroOptions = {},
 ): SentryNitroConfig {
-  return withSentryNitroConfig(config, {
+  return withSentryNitroConfig(bundleSentryNitroRuntime(config), {
     ...options,
     release: { name: getDeploymentServiceVersion(), ...options.release },
   });
+}
+
+// `@sentry/nitro` adds its runtime plugin from `node_modules`, and since
+// 11.11.0 that plugin imports the virtual module `#nitro/virtual/tasks`.
+// `nitro dev` keeps `node_modules` files external, so Node loads the plugin
+// and fails with ERR_PACKAGE_IMPORT_NOT_DEFINED. Production builds already
+// bundle it. TODO: Remove when `@sentry/nitro` marks its runtime noExternal.
+const SENTRY_NITRO_RUNTIME = /[/\\]@sentry[/\\]nitro[/\\]build[/\\]esm[/\\]runtime[/\\]/;
+
+function bundleSentryNitroRuntime(
+  config: SentryNitroConfig,
+): SentryNitroConfig {
+  if (config.noExternals === true) return config;
+  return {
+    ...config,
+    noExternals: [...(config.noExternals || []), SENTRY_NITRO_RUNTIME],
+  };
 }
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
