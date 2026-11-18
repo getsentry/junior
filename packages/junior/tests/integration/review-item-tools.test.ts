@@ -527,6 +527,7 @@ describe("review item tools", () => {
       });
     await retry();
     const closed = await retry();
+    expect(closed).not.toHaveProperty("already_closed");
     expect(closed.item).toMatchObject({
       status: "dismissed",
       closed_by: "agent",
@@ -549,7 +550,7 @@ describe("review item tools", () => {
       status: "done",
       reason: "again",
     });
-    expect(again.item).toEqual(closed.item);
+    expect(again).toEqual({ already_closed: true, item: closed.item });
     expect((await execute(agent.search, {})).count).toBe(0);
     expect((await execute(agent.search, { status: "any" })).count).toBe(1);
 
@@ -611,18 +612,19 @@ describe("review item tools", () => {
       status: "done",
       reason: "the entry was approved",
     });
+    expect(done.already_closed).toBe(true);
     expect(done.item).toMatchObject({
       status: "done",
       closed_by: ana.email,
       answer: { values: { decision: ["Approve"] } },
     });
-    expect(done.item.close_reason).not.toBe("the entry was approved");
+    expect(done.item).not.toHaveProperty("close_reason");
     const dismissed = await execute(agent.update, {
       id: added.item.id,
       status: "dismissed",
       reason: "no longer needed",
     });
-    expect(dismissed.item).toEqual(done.item);
+    expect(dismissed).toEqual(done);
     expect(await getReviewItem(getDb(), added.item.id)).toEqual(answered);
     expect(await pending()).toEqual(before);
     expect(shown).toEqual([]);
@@ -631,5 +633,19 @@ describe("review item tools", () => {
     await expect(
       execute(agent.update, { id: added.item.id, body: "New body." }),
     ).rejects.toThrow("is already closed");
+    // A Conversation that cannot change the item still gets that error.
+    await conversation("slack:CPRIV:1.000001", "CPRIV", "private");
+    const privateAgent = tools({
+      conversationId: "slack:CPRIV:1.000001",
+      resolveActorIdentity: asActor(ana),
+      source: { kind: "slack" } as any,
+    });
+    await expect(
+      execute(privateAgent.update, {
+        id: added.item.id,
+        status: "done",
+        reason: "the entry was approved",
+      }),
+    ).rejects.toThrow("A public item changes only from a public Conversation");
   });
 });

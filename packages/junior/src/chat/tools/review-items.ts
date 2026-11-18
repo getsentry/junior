@@ -182,6 +182,12 @@ function itemResult(item: ReviewItem) {
   };
 }
 
+// A close of an item that was already closed changes nothing. The flag
+// tells the model that this call did not close it.
+function alreadyClosedResult(item: ReviewItem) {
+  return { already_closed: true, item: itemResult(item) };
+}
+
 function subjectInput(
   subject: z.output<typeof subjectSchema> | null | undefined,
 ) {
@@ -470,13 +476,9 @@ export function createUpdateReviewItemTool(
         !item.closedBy &&
         input.status === item.status &&
         input.reason === item.closeReason;
-      if (item.status !== "open" && !retriesClose) {
-        if (changesContent || !input.status || !input.reason) {
-          throw new ToolInputError(`Review item ${item.id} is already closed.`);
-        }
-        // The first close wins, even with another status: a person's answer
-        // or dismiss stays on record. The result shows who closed it and why.
-        return { item: itemResult(item) };
+      const closesOnly = !changesContent && input.status && input.reason;
+      if (item.status !== "open" && !retriesClose && !closesOnly) {
+        throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
       if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
@@ -487,6 +489,11 @@ export function createUpdateReviewItemTool(
         throw new ToolInputError(
           "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
         );
+      }
+      // The first close wins, even with another status: a person's answer
+      // or dismiss stays on record.
+      if (item.status !== "open" && !retriesClose) {
+        return alreadyClosedResult(item);
       }
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
@@ -563,7 +570,12 @@ export function createUpdateReviewItemTool(
             status: input.status,
           }));
         if (!closed) {
-          throw new ToolInputError(`Review item ${item.id} is already closed.`);
+          if (changesContent) {
+            throw new ToolInputError(
+              `Review item ${item.id} is already closed.`,
+            );
+          }
+          return alreadyClosedResult(await readableItem(item.id, scope));
         }
         const closedItem = await readableItem(item.id, scope);
         await deliverReviewItemChange({
