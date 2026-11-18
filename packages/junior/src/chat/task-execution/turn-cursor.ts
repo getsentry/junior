@@ -564,6 +564,18 @@ export async function getStoredTurnFields(
   );
 }
 
+/**
+ * Index of the first message after the one with `turnStartSeq`. After a
+ * prepared-summary swap, seqs are out of order: kept messages keep their
+ * source seq, and the summary gets the seq of the swap.
+ */
+function turnStartIndexAfterSeq(seqs: number[], turnStartSeq: number): number {
+  const index = seqs.lastIndexOf(turnStartSeq);
+  return index === -1
+    ? seqs.filter((seq) => seq <= turnStartSeq).length
+    : index + 1;
+}
+
 /** Read a materialized turn cursor for resume and history loading. */
 async function materializeStoredTurnRecord(
   conversationId: string,
@@ -602,7 +614,7 @@ async function materializeStoredTurnRecord(
     ? 0
     : parsed.turnStartSeq === undefined
       ? undefined
-      : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
+      : turnStartIndexAfterSeq(piProjection.seqs, parsed.turnStartSeq);
 
   const conversationStore = getConversationStore();
   const conversation = await conversationStore.get({ conversationId });
@@ -992,7 +1004,7 @@ async function upsertTurnRecordLocked(
     durableTurnStartMessageIndex ??
     (turnStartSeq === undefined
       ? undefined
-      : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
+      : turnStartIndexAfterSeq(commit.messageSeqs, turnStartSeq));
 
   // TODO(dcramer): Remove the stored publishExternally field after no deployed
   // Turn cursor reader requires it. Current workers ignore the field.

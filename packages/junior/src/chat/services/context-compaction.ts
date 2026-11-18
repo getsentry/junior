@@ -75,6 +75,11 @@ const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 export interface CompactContextResult {
   compacted: boolean;
   piMessages?: PiMessage[];
+  /**
+   * Index in `piMessages` where the current Turn starts. Unset: the whole
+   * replacement belongs to the current Turn.
+   */
+  turnStartMessageIndex?: number;
   reason?:
     | "below_threshold"
     | "deferred"

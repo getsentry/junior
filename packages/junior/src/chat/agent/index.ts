@@ -932,10 +932,10 @@ async function executeAgentRunInPrivacyContext(
         usageSinceCurrentBoundary(messages),
       );
       const replacement = [...compaction.piMessages];
-      // The whole replacement belongs to this Turn. Set the Turn start first,
-      // so the checkpoint does not keep an index into the old history.
+      // Set the Turn start first, so the checkpoint does not keep an index
+      // into the old history.
       const previousTurnStartMessageIndex = runResume.turnStartMessageIndex;
-      runResume.setTurnStartMessageIndex(0);
+      runResume.setTurnStartMessageIndex(compaction.turnStartMessageIndex ?? 0);
       try {
         await runResume.requireDurableInputCheckpoint(replacement);
       } catch (error) {

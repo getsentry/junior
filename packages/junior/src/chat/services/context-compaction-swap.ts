@@ -395,5 +395,16 @@ async function applyPreparedSummary(
     "app.compaction.outcome": "applied",
     "app.compaction.summary_chars": prepared.summary.length,
   });
-  return { compacted: true, piMessages: messages };
+  // Kept messages before the Turn start belong to earlier Turns and can hold
+  // their answers. Before the kept messages, the replacement has only user
+  // messages, the summary, and system state.
+  const turnStart = args.turnStartMessageIndex;
+  const turnStartMessageIndex =
+    turnStart === undefined || turnStart <= markIndex
+      ? 0
+      : messages.length -
+        pendingMessages.length -
+        kept.length +
+        (turnStart - markIndex);
+  return { compacted: true, piMessages: messages, turnStartMessageIndex };
 }
