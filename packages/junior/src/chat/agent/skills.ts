@@ -9,6 +9,7 @@ import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { mapBounded } from "@/chat/fan-out";
 import { readTaskInstructions } from "@/chat/task-input";
 
 let startupDiscoveryLogged = false;
@@ -151,8 +152,8 @@ export async function restoreTurnSkills(args: {
     return;
   }
   const names = [...new Set(loadedSkillNames(args.currentTurnMessages))];
-  const loaded = await Promise.all(
-    names.map((name) => args.skillSandbox.loadSkill(name)),
+  const loaded = await mapBounded(names, (name) =>
+    args.skillSandbox.loadSkill(name),
   );
   for (const skill of loaded) {
     if (skill) {
