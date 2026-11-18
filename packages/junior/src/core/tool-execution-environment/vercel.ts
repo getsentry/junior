@@ -1,5 +1,5 @@
 import { APIError, Sandbox, StreamError } from "@vercel/sandbox";
-import type { Session } from "@vercel/sandbox";
+import type { Command, Session } from "@vercel/sandbox";
 import * as z from "zod";
 import {
   ToolExecutionEnvironmentUnavailableError,
@@ -58,30 +58,42 @@ export function createVercelToolExecutionEnvironmentManager(): ToolExecutionEnvi
 // stopped session again by itself, and a restart must be visible to the
 // caller because it loses running processes.
 function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
-  async function call<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (isStopped(error)) {
-        throw new ToolExecutionEnvironmentUnavailableError(id, {
-          cause: error,
-        });
-      }
-      throw error;
-    }
-  }
-
   return {
     cwd: session.cwd,
-    exec: (argv, options) => call(() => exec(session, argv, options)),
+    exec: (argv, options) =>
+      mapStoppedToUnavailable(id, () => exec(session, argv, options)),
     readFile: (path, signal) =>
-      call(async () => {
-        const stream = await session.readFile({ path }, { signal });
-        return stream ? toWebStream(stream) : undefined;
-      }),
+      mapStoppedToUnavailable(id, () => readFile(session, path, signal)),
     writeFile: (path, content, signal) =>
-      call(() => session.writeFiles([{ path, content }], { signal })),
+      mapStoppedToUnavailable(id, () =>
+        session.writeFiles([{ path, content }], { signal }),
+      ),
   };
+}
+
+// Callers own the lifecycle and must not import the Vercel SDK, so a stopped
+// session becomes the one provider-neutral error that tells them to resume.
+async function mapStoppedToUnavailable<T>(
+  id: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isStopped(error)) {
+      throw new ToolExecutionEnvironmentUnavailableError(id, { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function readFile(
+  session: Session,
+  path: string,
+  signal: AbortSignal,
+): Promise<ReadableStream<Uint8Array> | undefined> {
+  const stream = await session.readFile({ path }, { signal });
+  return stream ? toWebStream(stream) : undefined;
 }
 
 async function exec(
@@ -115,11 +127,7 @@ async function exec(
 
   try {
     const [, finished] = await Promise.all([
-      (async () => {
-        for await (const line of command.logs({ signal })) {
-          options.onOutputChunk({ stream: line.stream, text: line.data });
-        }
-      })(),
+      forwardOutput(command, signal, options.onOutputChunk),
       command.wait({ signal }),
     ]);
     return { exitCode: finished.exitCode };
@@ -127,6 +135,16 @@ async function exec(
     if (!signal.aborted) throw error;
     await command.kill("SIGKILL");
     throw signal.reason;
+  }
+}
+
+async function forwardOutput(
+  command: Command,
+  signal: AbortSignal,
+  onOutputChunk: ExecOptions["onOutputChunk"],
+): Promise<void> {
+  for await (const line of command.logs({ signal })) {
+    onOutputChunk({ stream: line.stream, text: line.data });
   }
 }
 
