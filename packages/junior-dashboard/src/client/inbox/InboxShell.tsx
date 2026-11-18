@@ -48,7 +48,7 @@ import {
 } from "../components/layout/AreaSidebar";
 import { paneRowForPath } from "../components/layout/paneRows";
 import { useNewAutomationAction } from "../pages/automations/newAutomation";
-import { InboxDataProvider } from "../review-desk/inboxData";
+import { InboxDataProvider, useInboxData } from "../review-desk/inboxData";
 import { InboxNav } from "../review-desk/InboxNav";
 import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
@@ -95,7 +95,6 @@ import {
   inboxViewOfPath,
   parseInboxView,
 } from "../review-desk/inboxModel";
-import { useInboxTodoCount } from "../review-desk/inboxQueries";
 import { useInboxTabCount } from "../review-desk/inboxTabIcon";
 import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
@@ -304,7 +303,8 @@ function Shell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const inboxCount = useInboxTodoCount(loggedIn);
+  // To do's own count, so the header and the tab match its cards.
+  const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
