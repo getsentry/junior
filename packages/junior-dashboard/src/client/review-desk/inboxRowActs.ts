@@ -171,3 +171,30 @@ export function inboxCardActions(input: {
       };
     };
 }
+
+/**
+ * A stack's own actions: Snooze all, and Dismiss all, which closes every
+ * open ask of the stack that the viewer can act on. A snoozed stack has
+ * neither.
+ */
+export function inboxStackActions(input: {
+  act: ReturnType<typeof useInboxRowActs>;
+  row: ActedRow;
+  snooze(untilMs: number): void;
+  snoozed?: boolean;
+}): { onDismiss?(): void; onSnooze?(untilMs: number): void } {
+  if (input.snoozed) return {};
+  const open = input.row.items.filter(
+    (item) => item.status === "open" && item.canAct,
+  );
+  return {
+    onDismiss:
+      open.length > 0
+        ? () =>
+            void input
+              .act(input.row, open, { action: "dismiss" })
+              .catch(() => {})
+        : undefined,
+    onSnooze: input.snooze,
+  };
+}

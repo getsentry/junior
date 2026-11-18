@@ -218,6 +218,8 @@ function CustomSnooze(props: {
 export function RowDismissButton(props: {
   /** A row's quick action: smaller, and only its icon on a narrow screen. */
   compact?: boolean;
+  /** "Dismiss" by default. */
+  label?: string;
   onClick(): void;
 }) {
   return (
@@ -227,7 +229,9 @@ export function RowDismissButton(props: {
       variant="outline"
     >
       <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-      <ButtonLabel compact={props.compact}>Dismiss</ButtonLabel>
+      <ButtonLabel compact={props.compact}>
+        {props.label ?? "Dismiss"}
+      </ButtonLabel>
     </Button>
   );
 }

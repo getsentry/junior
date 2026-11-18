@@ -1,11 +1,5 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
-import {
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationListItem,
@@ -58,8 +52,13 @@ import {
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
 import { PageEnd, RetryRow } from "./PageEnd";
-import { inboxCardActions, useInboxRowActs } from "./inboxRowActs";
+import {
+  inboxCardActions,
+  inboxStackActions,
+  useInboxRowActs,
+} from "./inboxRowActs";
 import { useLeaveCard, useLeaveRow } from "./rowMotion";
+import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import {
   InboxStack,
@@ -337,10 +336,6 @@ export function InboxList(props: {
       scope={scope}
     />
   );
-  // Cards that close elsewhere and are leaving, so a later read does not
-  // start their leave again.
-  const leaving = useRef(new Set<string>());
-  const { releaseHeld } = data;
   // Each card of a stack answers, dismisses, and snoozes by itself.
   const cardActions = inboxCardActions({
     act,
@@ -459,23 +454,25 @@ export function InboxList(props: {
       return bundleRow(row, { ...options, key: stackKey });
     // Built here, so the list knows each row's items as it renders.
     const rows = stackRows(row, keyOf, options.todo);
+    const title = titleOf(row.conversationId) ?? row.newest.title;
     return (
       <InboxStack
         conversationId={row.conversationId}
         expandedKey={state.expandedKey}
         key={stackKey}
         keys={rows.map((stacked) => stacked.key)}
-        onSnooze={
-          options.snoozed
-            ? undefined
-            : (untilMs) => {
-                setSnoozeKey(undefined);
-                snoozes.snooze(row, untilMs);
-              }
-        }
+        {...inboxStackActions({
+          act,
+          row: { items: row.items, key: stackKey, title },
+          snooze: (untilMs) => {
+            setSnoozeKey(undefined);
+            snoozes.snooze(row, untilMs);
+          },
+          snoozed: options.snoozed,
+        })}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
         snoozeMenuOpen={snoozeKey === stackKey}
-        title={titleOf(row.conversationId) ?? row.newest.title}
+        title={title}
       >
         {rows.map(({ item, key, passing }) =>
           bundleRow(singleRow(item), {
@@ -867,53 +864,16 @@ export function InboxList(props: {
       );
   }
 
-  // A card of the open stack that closes elsewhere, as when an agent or a
-  // Watch closes it, leaves as it does on Dismiss, and the next card of the
-  // stack takes focus. When every card closes, the row leaves and the next
-  // row opens. The data holds the items until then. Other rows leave with
-  // the read.
-  const openItems = rowItems.get(expandedKey) ?? [];
-  const { closedElsewhere, holdOpenRow } = data;
-  useEffect(() => holdOpenRow(openItems));
-  useEffect(() => () => holdOpenRow([]), [holdOpenRow]);
-  const closedKey =
-    openItems.length > 0 &&
-    openItems.every((item) => closedElsewhere.includes(item))
-      ? expandedKey
-      : undefined;
-  const closedCards = closedKey
-    ? []
-    : openItems
-        .filter(
-          (item) =>
-            closedElsewhere.includes(item) && !leaving.current.has(item.id),
-        )
-        .map((item) => item.id);
-  // The next row opens at once, so the open row's hold moves to the
-  // leaving hold, which keeps the row until its motion ends.
-  const { holdLeaving } = data;
-  const leaveClosed = useEffectEvent((key: string) => {
-    holdLeaving(openItems, true);
-    leave(key, () => holdLeaving(openItems, false));
+  useLeaveClosedElsewhere({
+    closedElsewhere: data.closedElsewhere,
+    expandedKey,
+    holdLeaving: data.holdLeaving,
+    holdOpenRow: data.holdOpenRow,
+    leave,
+    leaveCard,
+    openItems: rowItems.get(expandedKey) ?? [],
+    releaseHeld: data.releaseHeld,
   });
-  // A card that leaves, then the list stops holding it, so its shut card
-  // never shows again.
-  const leaveClosedCards = useEffectEvent(() => {
-    for (const id of closedCards) {
-      leaving.current.add(id);
-      leaveCard(expandedKey, id, () => {
-        releaseHeld(id);
-        leaving.current.delete(id);
-      });
-    }
-  });
-  useEffect(() => {
-    if (closedKey) leaveClosed(closedKey);
-  }, [closedKey]);
-  const closedCardsKey = closedCards.join(" ");
-  useEffect(() => {
-    if (closedCardsKey) leaveClosedCards();
-  }, [closedCardsKey]);
 
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];

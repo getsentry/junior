@@ -29,7 +29,8 @@ an item and who can act on it.
 - The stack title, which opens the root Conversation.
 - A row click, which opens the row and its answer form.
 - On each row, on hover and always on touch: Open, Snooze, and Dismiss.
-- On a stack: Snooze all.
+- On a stack: Snooze all and Dismiss all, with the row bar's buttons.
+  Dismiss all is the main action, so it goes right-most.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules
@@ -92,6 +93,6 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- Snooze all has no leave motion. The stack goes at once.
+- Snooze all and Dismiss all have no leave motion. The stack goes at once.
 - A snooze lives in one browser. Another browser of the same viewer shows
   the item.

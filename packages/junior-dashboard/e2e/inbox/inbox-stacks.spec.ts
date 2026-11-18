@@ -270,6 +270,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
   });
 
+  test("Dismiss all closes every ask of the stack, and the stack leaves", async ({
+    dashboard,
+    page,
+  }) => {
+    const actions = await mockReviewItems(page, {
+      open: [rollout, childReview, childLicense, other],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    await stackOf(page)
+      .getByRole("button", { exact: true, name: "Dismiss all" })
+      .click();
+    await expect(stackOf(page)).toHaveCount(0);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${other.addedByConversationId}"]`),
+    ).toHaveCount(1);
+    await expect
+      .poll(() => actions.map((action) => action.id).sort())
+      .toEqual([childLicense.id, childReview.id, rollout.id].sort());
+  });
+
   test("Snooze all snoozes the stack, and Wake wakes one row", async ({
     dashboard,
     page,

@@ -6,7 +6,7 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
-import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 
 const QUIET_BUTTON_CLASS =
   "cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus";
@@ -27,6 +27,8 @@ export function InboxStack(props: {
   conversationId: string;
   expandedKey: string;
   keys: readonly string[];
+  /** Dismiss all: every open ask of the stack that the viewer can act on. */
+  onDismiss?(): void;
   /** Snooze all: every row of the stack. A snoozed stack has none. */
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -59,19 +61,22 @@ export function InboxStack(props: {
             {props.title}
           </span>
         </Link>
+        {/* The row bar's own buttons. Dismiss all is the main action, so it
+            goes right-most. */}
         {props.onSnooze ? (
           <RowSnoozeButton
+            compact
+            label="Snooze all"
             onOpenChange={props.onSnoozeMenu}
             onSnooze={props.onSnooze}
             open={props.snoozeMenuOpen}
-            trigger={
-              <button
-                className={cn(QUIET_BUTTON_CLASS, "shrink-0 whitespace-nowrap")}
-                type="button"
-              >
-                Snooze all
-              </button>
-            }
+          />
+        ) : null}
+        {props.onDismiss ? (
+          <RowDismissButton
+            compact
+            label="Dismiss all"
+            onClick={props.onDismiss}
           />
         ) : null}
       </div>
