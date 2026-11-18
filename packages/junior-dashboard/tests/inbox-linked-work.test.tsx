@@ -5,9 +5,9 @@ import {
   WorkLine,
 } from "../src/client/review-desk/InboxLinkedWork";
 
-// The visible text of rendered markup.
+// The visible text of rendered markup: its text nodes, in order.
 function text(markup: string): string {
-  return markup.replace(/<[^>]*>/g, "");
+  return [...markup.matchAll(/>([^<]+)</g)].map((match) => match[1]).join("");
 }
 
 describe("linked work short names", () => {
