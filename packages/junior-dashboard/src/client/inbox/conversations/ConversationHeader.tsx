@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { displayPlainText } from "../../display-text/plainText";
-import { Menu, PanelRight } from "lucide-react";
+import { Hourglass, Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
 import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
+import { TooltipTitle } from "../../components/ui/tooltip";
 import { cn } from "../../styles";
 import {
   MobileHeaderActionsPortal,
@@ -23,6 +24,7 @@ import {
   type ConversationBriefReport,
 } from "../../conversations/ConversationBrief";
 import { ConversationOverflowMenu } from "../../conversations/ConversationOverflowMenu";
+import { useSetConversationAutoArchive } from "../../conversations/autoArchiveQueries";
 import { TranscriptSearchBar } from "../../conversations/TranscriptSearchBar";
 import type { TranscriptViewMode } from "../../conversations/transcriptRenderModel";
 import {
@@ -44,6 +46,8 @@ const NO_ANCHOR = { current: null };
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The viewer's auto-archive setting. Unset for non-participants. */
+  autoArchive?: boolean | undefined;
   /** The current Brief. Its outcome and intent show under the title. */
   brief?: ConversationBriefReport | undefined;
   contextTags?: ReactNode;
@@ -86,6 +90,19 @@ export function ConversationHeader(props: {
   const openMobileNavigation = useOpenMobileNavigation();
   const zen = useZenMode();
   const { onDetailsClick } = props;
+  const autoArchive = useSetConversationAutoArchive(props.menu.conversationId);
+  const errors = autoArchive.isError
+    ? [...props.errors, "Could not save auto-archive."]
+    : props.errors;
+  const autoArchiveButton =
+    props.autoArchive === undefined ? null : (
+      <AutoArchiveButton
+        on={props.autoArchive}
+        onToggle={() => {
+          if (!autoArchive.isPending) autoArchive.mutate(!props.autoArchive);
+        }}
+      />
+    );
   // In Zen mode, showing details leaves it first.
   const openDetails = () => {
     if (zen.active) zen.toggle();
@@ -209,7 +226,7 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.errors.length > 0 ||
+    errors.length > 0 ||
     Boolean(props.forks) ||
     Boolean(props.agentTree) ||
     Boolean(props.brief);
@@ -227,6 +244,7 @@ export function ConversationHeader(props: {
   return (
     <>
       <MobileHeaderActionsPortal>
+        {autoArchiveButton}
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
           {menuActions("mobile")}
           {openMobileNavigation ? (
@@ -300,6 +318,7 @@ export function ConversationHeader(props: {
                 {props.cost}
               </span>
             ) : null}
+            {autoArchiveButton}
             <ConversationOverflowMenu>
               {menuActions("desktop")}
             </ConversationOverflowMenu>
@@ -347,7 +366,7 @@ export function ConversationHeader(props: {
             value={props.search}
           />
         ) : null}
-        {props.errors.map((error) => (
+        {errors.map((error) => (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7" key={error}>
             {error}
           </div>
@@ -375,5 +394,25 @@ function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
         {intent}
       </span>
     </button>
+  );
+}
+
+/** Turn the viewer's auto-archive on or off for this Conversation. */
+function AutoArchiveButton(props: { on: boolean; onToggle(): void }) {
+  return (
+    <HeaderIconButton
+      label="Auto archive"
+      onClick={props.onToggle}
+      pressed={props.on}
+      tooltip={
+        <>
+          <TooltipTitle>Auto archive is {props.on ? "on" : "off"}</TooltipTitle>
+          Archive this conversation for everyone when its linked work is merged
+          or closed and nobody replies during your wait time.
+        </>
+      }
+    >
+      <Hourglass aria-hidden="true" size={15} strokeWidth={2} />
+    </HeaderIconButton>
   );
 }
