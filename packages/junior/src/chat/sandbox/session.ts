@@ -11,7 +11,6 @@ import {
   isAlreadyExistsError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
-import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
@@ -29,8 +28,6 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   stopSession,
   type CreateSandboxSessionInput,
-  type SandboxCommandResult,
-  type SandboxFileSystem,
   type SandboxNetworkPolicy,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
@@ -39,18 +36,11 @@ import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
-  SANDBOX_COMMAND_PATH,
-  SANDBOX_WORKSPACE_ROOT,
-} from "@/chat/sandbox/paths";
-/**
- * Size limit on the stdout and stderr that one command keeps, each. It keeps
- * a runaway command from filling the result and the Conversation history.
- * The tool pipeline cuts what the model sees to a much smaller size. The
- * providers still read all output before this limit applies.
- */
-const MAX_CAPTURED_OUTPUT_CHARS = 1_000_000;
-const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+  createToolExecutors,
+  type SandboxToolExecutors,
+} from "@/chat/sandbox/tool-executors";
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
@@ -68,27 +58,6 @@ interface SandboxAcquisition {
   promise: Promise<AcquiredSandbox>;
   settled: boolean;
   waiters: number;
-}
-
-interface SandboxToolExecutors {
-  sessionId: string;
-  bash: (input: {
-    command: string;
-    cwd?: string;
-    env?: Record<string, string>;
-    signal?: AbortSignal;
-    timeoutMs?: number;
-  }) => Promise<{
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    stdoutTruncated: boolean;
-    stderrTruncated: boolean;
-    aborted?: boolean;
-    timedOut?: boolean;
-  }>;
-  fs: SandboxFileSystem;
-  runCommand: SandboxSession["runCommand"];
 }
 
 interface SandboxRuntime {
@@ -138,33 +107,12 @@ interface SandboxRuntimeOptions {
     | undefined;
 }
 
-function captureOutput(output: string): { value: string; truncated: boolean } {
-  if (output.length <= MAX_CAPTURED_OUTPUT_CHARS) {
-    return { value: output, truncated: false };
-  }
-  return {
-    value: `${output.slice(0, MAX_CAPTURED_OUTPUT_CHARS)}\n\n[output over the ${MAX_CAPTURED_OUTPUT_CHARS} char size limit: ${output.length - MAX_CAPTURED_OUTPUT_CHARS} chars not kept]`,
-    truncated: true,
-  };
-}
-
 function parseKeepAliveMs(): number {
   const parsed = Number.parseInt(
     process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] ?? "0",
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function getCommandAbortedResult() {
-  return {
-    stdout: "",
-    stderr: "Command aborted because the agent turn was cancelled.",
-    exitCode: 130,
-    stdoutTruncated: false,
-    stderrTruncated: false,
-    aborted: true as const,
-  };
 }
 
 /** Own sandbox acquisition, preparation, and session-scoped tool caching. */
@@ -340,6 +288,19 @@ export function createSandboxRuntime(
         }
       },
     );
+  };
+
+  /** Tell a command killed by a session stop from one that exited by signal. */
+  const throwIfSessionStopped = async (
+    targetSandbox: SandboxSession,
+  ): Promise<void> => {
+    try {
+      await probeSession(targetSandbox);
+    } catch (error) {
+      // Only a stopped session changes the result. Any other probe failure
+      // proves nothing about the command, so its own exit stands.
+      if (getSandboxProvider().errors.isUnavailable(error)) throw error;
+    }
   };
 
   const createSandboxFromSnapshot = async (
@@ -740,26 +701,6 @@ export function createSandboxRuntime(
     }
   };
 
-  const readCommandOutput = async (
-    commandResult: SandboxCommandResult,
-  ): Promise<{
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    stdoutTruncated: boolean;
-    stderrTruncated: boolean;
-  }> => {
-    const stdout = captureOutput(commandResult.stdout);
-    const stderr = captureOutput(commandResult.stderr);
-    return {
-      stdout: stdout.value,
-      stderr: stderr.value,
-      exitCode: commandResult.exitCode,
-      stdoutTruncated: stdout.truncated,
-      stderrTruncated: stderr.truncated,
-    };
-  };
-
   const extendKeepAlive = async (session: SandboxSession): Promise<void> => {
     const keepAliveMs = parseKeepAliveMs();
     if (keepAliveMs === 0) return;
@@ -802,88 +743,6 @@ export function createSandboxRuntime(
       keepAliveTimer.unref?.();
     };
     schedule();
-  };
-
-  const createToolExecutors = (
-    sandboxInstance: SandboxSession,
-  ): SandboxToolExecutors => {
-    return {
-      sessionId: sandboxInstance.sessionId,
-      bash: async (input) => {
-        let timedOut = false;
-        let aborted = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let onAbort: (() => void) | undefined;
-        try {
-          if (input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          const sandboxCommandEnv = await resolveCommandEnv();
-          if (input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          const script = buildNonInteractiveShellScript(input.command, {
-            env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
-            path: SANDBOX_COMMAND_PATH,
-          });
-          const controller = new AbortController();
-          const timeoutMs =
-            input.timeoutMs && input.timeoutMs > 0
-              ? input.timeoutMs
-              : DEFAULT_BASH_COMMAND_TIMEOUT_MS;
-          onAbort = () => {
-            aborted = true;
-            controller.abort(input.signal?.reason);
-          };
-          if (input.signal) {
-            input.signal.addEventListener("abort", onAbort, { once: true });
-            if (input.signal.aborted) {
-              onAbort();
-            }
-          }
-          timeoutId = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-          }, timeoutMs);
-          timeoutId.unref?.();
-          const commandResult = await sandboxInstance.runCommand({
-            cmd: "bash",
-            args: ["-c", script],
-            cwd: input.cwd ?? SANDBOX_WORKSPACE_ROOT,
-            signal: controller.signal,
-          });
-          return await readCommandOutput(commandResult);
-        } catch (error) {
-          if (timedOut) {
-            return {
-              stdout: "",
-              stderr: `Command timed out after ${
-                input.timeoutMs && input.timeoutMs > 0
-                  ? input.timeoutMs
-                  : DEFAULT_BASH_COMMAND_TIMEOUT_MS
-              }ms`,
-              exitCode: 124,
-              stdoutTruncated: false,
-              stderrTruncated: false,
-              timedOut: true,
-            };
-          }
-          if (aborted || input.signal?.aborted) {
-            return getCommandAbortedResult();
-          }
-          throw error;
-        } finally {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          if (input.signal && onAbort) {
-            input.signal.removeEventListener("abort", onAbort);
-          }
-        }
-      },
-      fs: sandboxInstance.fs,
-      runCommand: async (input) => await sandboxInstance.runCommand(input),
-    };
   };
 
   const ensureReadySandbox = async (
@@ -970,7 +829,10 @@ export function createSandboxRuntime(
       return (await getOrAcquireSandbox(signal)).session;
     },
     async tools(signal) {
-      return createToolExecutors(await ensureReadySandbox(signal));
+      return createToolExecutors(await ensureReadySandbox(signal), {
+        commandEnv: resolveCommandEnv,
+        throwIfSessionStopped,
+      });
     },
     async refreshNetworkPolicy(traceHeaders) {
       const active = activeSandbox;

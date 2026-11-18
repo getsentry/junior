@@ -49,6 +49,7 @@ import {
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
+import type { SandboxToolExecutors } from "@/chat/sandbox/tool-executors";
 import {
   isHostFileMissingError,
   resolveHostDataPath,
@@ -121,6 +122,21 @@ export interface SandboxOptions {
 interface SandboxToolCallContext {
   readonly signal?: AbortSignal | undefined;
   fileSystem(): Promise<SandboxFileSystem>;
+  /** Record the session that this call runs on. */
+  useSession(tools: SandboxToolExecutors): void;
+  /** True when this call runs on a new sandbox without the earlier state. */
+  readonly sandboxReplaced: boolean;
+}
+
+const SANDBOX_REPLACED_NOTICE =
+  "This call ran in a new sandbox. Files, local commits, and other state from earlier calls are gone, so check the checkout, such as HEAD and the branch, before you act.";
+
+/** Add the replaced-sandbox notice to a structured sandbox tool result. */
+function withSandboxReplacedNotice(result: { details: object }) {
+  return makeStructuredToolOutput({
+    ...result.details,
+    sandbox_notice: SANDBOX_REPLACED_NOTICE,
+  });
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -262,6 +278,20 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     };
   };
   let activeWorkspace = options.workspace;
+  // Session of the last sandbox tool call in this Run. Only tool calls set
+  // it, so a replacement that a between-step read finds first still reaches
+  // the next tool result.
+  let toolSession:
+    | Pick<SandboxToolExecutors, "sandboxId" | "sessionId">
+    | undefined;
+  const replacesToolSession = (tools: SandboxToolExecutors): boolean => {
+    const previous = toolSession;
+    toolSession = { sandboxId: tools.sandboxId, sessionId: tools.sessionId };
+    if (!previous || previous.sessionId === tools.sessionId) return false;
+    return (
+      previous.sandboxId !== tools.sandboxId || !tools.keepsFilesAcrossSessions
+    );
+  };
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
     workspace: options.workspace,
@@ -291,17 +321,26 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     signal?: AbortSignal,
   ): SandboxToolCallContext => {
     let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
+    let sandboxReplaced = false;
 
-    return {
+    const context: SandboxToolCallContext = {
       signal,
       fileSystem() {
         signal?.throwIfAborted();
-        return (fileSystemPromise ??= runtime.tools(signal).then(({ fs }) => {
+        return (fileSystemPromise ??= runtime.tools(signal).then((tools) => {
           signal?.throwIfAborted();
-          return bindSandboxFileSystem(fs, signal);
+          context.useSession(tools);
+          return bindSandboxFileSystem(tools.fs, signal);
         }));
       },
+      useSession(tools) {
+        sandboxReplaced = replacesToolSession(tools);
+      },
+      get sandboxReplaced() {
+        return sandboxReplaced;
+      },
     };
+    return context;
   };
 
   const withSandboxSpan = <T>(
@@ -337,11 +376,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
   };
 
-  const executeBashTool = async <T>(
+  const executeBashTool = async (
     rawInput: Record<string, unknown>,
     command: string,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const env = parseEnv(rawInput["env"]);
     const cwd =
       typeof rawInput["cwd"] === "string"
@@ -363,6 +402,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (bashTurn.waited) {
         tools = await runtime.tools(context.signal);
       }
+      context.useSession(tools);
       const { bash: executeBash, sessionId: activeSessionId } = tools;
       await clearEgressSignals(activeSessionId);
       const result = await withSandboxToolSpan(
@@ -451,16 +491,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         ...(permissionDenied
           ? { permission_denied: permissionDenied }
           : undefined),
-      }) as T;
+      });
     } finally {
       bashTurn.release();
     }
   };
 
-  const executeReadFileTool = async <T>(
+  const executeReadFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
@@ -490,7 +530,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             path: filePath,
             offset,
             limit,
-          }) as T;
+          });
         } catch (error) {
           if (!isHostFileMissingError(error)) {
             throw error;
@@ -541,13 +581,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
     );
 
-    return result as T;
+    return result;
   };
 
-  const executeWriteFileTool = async <T>(
+  const executeWriteFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
@@ -585,13 +625,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       target: filePath,
       path: filePath,
       bytes_written: Buffer.byteLength(content, "utf8"),
-    }) as T;
+    });
   };
 
-  const executeEditFileTool = async <T>(
+  const executeEditFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
@@ -622,7 +662,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
     );
 
-    return result as T;
+    return result;
   };
 
   const execute = async <T>(params: SandboxToolCall): Promise<T> => {
@@ -639,21 +679,25 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
     }
 
+    const finish = (result: { details: object }): T =>
+      (context.sandboxReplaced
+        ? withSandboxReplacedNotice(result)
+        : result) as T;
     try {
       if (bashCommand !== undefined) {
-        return await executeBashTool(rawInput, bashCommand, context);
+        return finish(await executeBashTool(rawInput, bashCommand, context));
       }
 
       if (params.toolName === "readFile") {
-        return await executeReadFileTool(rawInput, context);
+        return finish(await executeReadFileTool(rawInput, context));
       }
 
       if (params.toolName === "editFile") {
-        return await executeEditFileTool(rawInput, context);
+        return finish(await executeEditFileTool(rawInput, context));
       }
 
       if (params.toolName === "writeFile") {
-        return await executeWriteFileTool(rawInput, context);
+        return finish(await executeWriteFileTool(rawInput, context));
       }
     } catch (error) {
       params.signal?.throwIfAborted();
@@ -775,6 +819,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     async switchWorkspace(recipe, signal) {
       await runtime.switchWorkspace(recipe, signal);
       activeWorkspace = recipe;
+      // The switch result already says that files do not carry over.
+      toolSession = undefined;
     },
     tools: {
       supports(toolName: string) {
