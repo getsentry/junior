@@ -94,11 +94,11 @@ function richTextField(
   };
 }
 
+// Slack requires exactly one primary column, and it must be `text`, not
+// `rich_text`. Slack adds the `todo_completed`, `todo_assignee`, and
+// `todo_due_date` columns when a list is created with `todo_mode: true`.
 const DEFAULT_TODO_SCHEMA = [
-  { key: "task", name: "Task", type: "rich_text", is_primary_column: true },
-  { key: "completed", name: "Completed", type: "checkbox" },
-  { key: "assignee", name: "Assignee", type: "user" },
-  { key: "due_date", name: "Due Date", type: "date" },
+  { key: "task", name: "Task", type: "text", is_primary_column: true },
 ];
 
 /** Create a new Slack todo list with the default schema. */
