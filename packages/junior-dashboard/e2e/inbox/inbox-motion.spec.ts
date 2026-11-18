@@ -443,7 +443,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   // test closes them on the server, as an agent or a Watch does, and the
   // viewer comes back to the tab after the reads went stale, so the Inbox
   // reads its asks again.
-  async function closableAsks(page: Page) {
+  async function closableAsks(page: Page, options: { pageSize?: number } = {}) {
     const asks = [
       { ...prReview, createdAt: "2026-08-07T08:00:00.000Z" },
       {
@@ -458,23 +458,30 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     ];
     const open = [...asks];
-    const actions = await mockReviewItems(page, { open });
+    const actions = await mockReviewItems(page, { ...options, open });
     let nowMs = NOW_MS;
+    const refocus = async () => {
+      nowMs += 60_000;
+      await page.clock.setFixedTime(nowMs);
+      const read = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/review-items",
+      );
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("visibilitychange")),
+      );
+      await read;
+    };
     return {
       actions,
+      async addAndRefocus(item: (typeof asks)[number]) {
+        open.push(item);
+        await refocus();
+      },
       async closeAndRefocus(index: number) {
         open.splice(open.indexOf(asks[index]!), 1);
-        nowMs += 60_000;
-        await page.clock.setFixedTime(nowMs);
-        const read = page.waitForResponse(
-          (response) =>
-            response.request().method() === "GET" &&
-            new URL(response.url()).pathname === "/api/review-items",
-        );
-        await page.evaluate(() =>
-          window.dispatchEvent(new Event("visibilitychange")),
-        );
-        await read;
+        await refocus();
       },
       row: (index: number) =>
         page.locator(
@@ -523,6 +530,33 @@ test.describe("new UI", { tag: "@new" }, () => {
     // the one after it.
     await asks.closeAndRefocus(0);
     await expect(asks.row(2)).toHaveAttribute("data-expanded", "true");
+    expect(asks.actions).toEqual([]);
+  });
+
+  test("an open row that only leaves the loaded page stays open", async ({
+    dashboard,
+    page,
+  }) => {
+    const asks = await closableAsks(page, { pageSize: 3 });
+    await page.goto(`${dashboard.baseURL}/`);
+    await asks.row(0).locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+    // A newer ask fills the first page, so the open row's ask is on the
+    // next one. Its own read says that it is still open.
+    const reread = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/review-items/${prReview.id}`,
+    );
+    await asks.addAndRefocus({
+      ...license,
+      addedByConversationId: "slack:CNEWER:1770003600.000600",
+      createdAt: "2026-08-07T08:30:00.000Z",
+      id: "item-newer",
+    });
+    await reread;
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+    await expect(asks.row(1)).not.toHaveAttribute("data-expanded");
     expect(asks.actions).toEqual([]);
   });
 });

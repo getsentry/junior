@@ -18,6 +18,7 @@ import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useLinkedConversationTitles,
   useReviewItemData,
+  useReviewItemStates,
   useReviewItemsData,
 } from "./queries";
 import {
@@ -126,19 +127,35 @@ function useBuildInboxData(input: {
         : loaded,
     [linked, loaded],
   );
-  const closedElsewhere = useMemo(() => {
-    // Before the first read, no item has closed.
-    if (!itemsQuery.data) return [];
-    const closed = openRow.filter(
-      (item) => !read.some((open) => open.id === item.id),
-    );
-    // A row with an item still open stays, without the closed ones.
-    return closed.length === openRow.length ? closed : [];
-  }, [itemsQuery.data, openRow, read]);
-  const list = useMemo(
-    () => (closedElsewhere.length > 0 ? [...read, ...closedElsewhere] : read),
-    [closedElsewhere, read],
+  // Before the first read, no item has left it.
+  const missing = useMemo(
+    () =>
+      itemsQuery.data
+        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        : [],
+    [itemsQuery.data, openRow, read],
   );
+  // An item can leave the loaded pages and still be open, so each one's
+  // own read says whether it closed. Until then, it stays.
+  const states = useReviewItemStates(missing.map((item) => item.id));
+  const closedElsewhere = useMemo(
+    () =>
+      // A row with an item still open stays, without the closed ones.
+      missing.length === openRow.length &&
+      states.every((state) => state === "closed")
+        ? missing
+        : [],
+    [missing, openRow, states],
+  );
+  const list = useMemo(() => {
+    const held = missing.flatMap((item, index) => {
+      const state = states[index] ?? "pending";
+      if (state === "pending") return [item];
+      if (state !== "closed") return [state];
+      return closedElsewhere.length > 0 ? [item] : [];
+    });
+    return held.length > 0 ? [...read, ...held] : read;
+  }, [closedElsewhere, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
