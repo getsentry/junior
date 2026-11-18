@@ -4,9 +4,9 @@
  * Junior pushes with the App installation token, so a push lands as the App
  * no matter who asked. Junior proposes changes through pull requests. It
  * never updates or deletes the repository's default branch, and it pushes
- * only branches. It also refuses a push that would leave an open pull request
- * with no commits ahead of its base, because GitHub then closes the pull
- * request at once. Other protected branches rely on GitHub rulesets.
+ * only branches. It never moves an existing branch to a commit that GitHub
+ * already has, because that can close the branch's pull request. Other
+ * protected branches rely on GitHub rulesets.
  */
 import {
   EgressPolicyDenied,
@@ -17,18 +17,14 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { GitHubRepository } from "./credential-support.js";
 import { loadDefaultBranch } from "./default-branch.js";
-import {
-  findEmptiedPullRequests,
-  type EmptiedPullRequest,
-} from "./open-pull-request-heads.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 
 const DENIAL_NOTE =
   "This is a runtime policy denial, not a GitHub permission failure.";
 const NEW_BRANCH_GUIDANCE =
   "Push to a new branch and open a pull request with github_createPullRequest.";
-const EMPTIED_PULL_REQUEST_GUIDANCE =
-  "Check that the local branch has the pull request's commits on top of its base before you push again.";
+const EXISTING_COMMIT_GUIDANCE =
+  "Check that the local branch has the intended commits before you push again. To undo a commit, push a new revert commit.";
 
 const UNREADABLE_MESSAGES: Record<PluginGitPushUnreadableReason, string> = {
   gzip: "The runtime cannot read a gzip-compressed Git push.",
@@ -52,8 +48,8 @@ function deny(
 
 /**
  * Refuse a Git push that changes the default branch, changes a ref outside
- * `refs/heads/`, or leaves an open pull request with no commits ahead of its
- * base. Returns the audit attributes for an allowed push.
+ * `refs/heads/`, or moves an existing branch to a commit that GitHub already
+ * has. Returns the audit attributes for an allowed push.
  */
 export async function assertGitHubPushAllowed(input: {
   cache: PluginCache;
@@ -108,35 +104,26 @@ export async function assertGitHubPushAllowed(input: {
       { auditAttributes: attributes },
     );
   }
-  const repositoryName = `${input.repository.owner}/${input.repository.name}`;
-  let emptied: EmptiedPullRequest[];
-  try {
-    emptied = await findEmptiedPullRequests(
-      input.env,
-      input.repository,
-      updates,
-    );
-  } catch (error) {
-    deny(
-      `The runtime could not read the open pull requests of ${repositoryName} for the pushed branches, so it refused the push.`,
-      { auditAttributes: attributes, cause: error },
-    );
-  }
-  if (emptied.length > 0) {
-    const pulls = emptied.map(
-      (pull) =>
-        `${repositoryName}#${pull.number} (branch ${pull.branch}, base ${pull.base})`,
+  // An existing branch moved to a commit that GitHub already has, such as
+  // old main, can be left with no commits ahead of a pull request's base.
+  // GitHub then closes the pull request. The pack shows this without a
+  // GitHub request: Git sends no objects that the remote already has.
+  const movedToExisting =
+    input.gitPush.packObjectCount === 0
+      ? updates.filter((update) => !update.creates && !update.deletes)
+      : [];
+  if (movedToExisting.length > 0) {
+    const branches = movedToExisting.map((update) =>
+      update.ref.slice("refs/heads/".length),
     );
     deny(
-      `The runtime refused the push because GitHub would close ${pulls.join(", ")}: the branch would have no commits ahead of its base.`,
+      `The runtime refused to move ${branches.join(", ")} to a commit that GitHub already has, such as an older commit or another branch's commit. If the branch has an open pull request, GitHub would close it when the branch has no commits ahead of its base.`,
       {
         auditAttributes: {
           ...attributes,
-          "app.github.emptied_pull_requests": emptied.map((pull) =>
-            String(pull.number),
-          ),
+          "app.github.moved_to_existing_commit": true,
         },
-        guidance: EMPTIED_PULL_REQUEST_GUIDANCE,
+        guidance: EXISTING_COMMIT_GUIDANCE,
       },
     );
   }

@@ -315,14 +315,10 @@ function mockGitHubInstallationToken() {
   return requests;
 }
 
-/** The reads of the Git push policy: the default branch and no open pull requests. */
-function mockGitHubPushPolicyReads() {
+function mockGitHubDefaultBranch() {
   mswServer.use(
     http.get("https://api.github.com/repos/getsentry/junior", () =>
       HttpResponse.json({ default_branch: "main" }),
-    ),
-    http.get("https://api.github.com/repos/getsentry/junior/pulls", () =>
-      HttpResponse.json([]),
     ),
   );
 }
@@ -334,10 +330,15 @@ function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array([
     ...new TextEncoder().encode(commands),
     ...new TextEncoder().encode("PACK"),
+    // Pack version 2, then one object.
     0x00,
     0x00,
     0x00,
     0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
     0x9c,
     0xff,
     0x80,
@@ -1291,7 +1292,7 @@ describe("sandbox egress proxy integration", () => {
 
   it("forwards a Git branch push with its pack bytes and records its refs", async () => {
     configureGitHubAppEnv();
-    mockGitHubPushPolicyReads();
+    mockGitHubDefaultBranch();
     await registerGitHubPlugin({ appPermissions: { contents: "write" } });
     const records: EmittedLogRecord[] = [];
     const unregister = modules.logging.registerLogRecordSink((record) => {
@@ -1353,7 +1354,7 @@ describe("sandbox egress proxy integration", () => {
 
   it("denies a Git push to the default branch with a policy signal", async () => {
     configureGitHubAppEnv();
-    mockGitHubPushPolicyReads();
+    mockGitHubDefaultBranch();
     await registerGitHubPlugin({ appPermissions: { contents: "write" } });
     const records: EmittedLogRecord[] = [];
     const unregister = modules.logging.registerLogRecordSink((record) => {
