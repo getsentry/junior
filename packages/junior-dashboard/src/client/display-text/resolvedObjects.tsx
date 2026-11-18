@@ -144,12 +144,31 @@ export function useResolvedObject(href: string | undefined): {
   return { card: url ? data?.get(url) : undefined, request, settled };
 }
 
+/**
+ * Ask for the cards of the links inside once the text first shows. Clamped
+ * text, such as a row preview, needs this: a link past the clamp never
+ * scrolls into view on its own.
+ */
+export function ResolveWhenVisible(props: {
+  block: boolean;
+  children: ReactNode;
+}) {
+  const observe = useWhenVisible(useContext(MessageObjectsContext).request);
+  return props.block ? (
+    <div className="min-w-0" ref={observe}>
+      {props.children}
+    </div>
+  ) : (
+    <span ref={observe}>{props.children}</span>
+  );
+}
+
 /** Return a ref that calls `onVisible` once, when its element first shows. */
 export function useWhenVisible(
   onVisible: () => void,
-): RefCallback<HTMLAnchorElement> {
+): RefCallback<HTMLElement> {
   return useCallback(
-    (element: HTMLAnchorElement | null) => {
+    (element: HTMLElement | null) => {
       if (!element || typeof IntersectionObserver === "undefined") return;
       const observer = new IntersectionObserver((entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
