@@ -43,6 +43,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     // shows nothing, not a bare link.
     await expect(links.getByRole("link")).toHaveCount(1);
     await expect(links.getByRole("link")).toHaveAttribute("href", person);
+    // Its label repeats its title, so the card names it once.
+    await expect(links.getByRole("link")).toHaveText("Morgan Lee");
+    await expect(links.getByRole("link")).toHaveAttribute(
+      "title",
+      "Morgan Lee",
+    );
     await expect(row.locator(`a[href="${unknown}"]`)).toHaveCount(0);
   });
 

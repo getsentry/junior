@@ -1904,6 +1904,14 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
             "- No change blocks the next release.",
             "",
             "I will flag it in the weekly summary if the trend changes.",
+            // The newest reply links two web pages, one with a long title,
+            // so the Inbox row shows them as lines that must not overlap.
+            ...(turn === 23
+              ? [
+                  "",
+                  "The tax cache is https://code.example.com/acme/checkout/pull/5378, and https://news.example.com/checkout-4-2-session-tax-cache covers it.",
+                ]
+              : []),
           ].join("\n"),
         },
       ),
