@@ -7,6 +7,8 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
+import { dockerRequest } from "@/core/tool-execution-environment/docker/api";
+import { createDockerToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/docker";
 import { instrumentToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/instrument";
 import {
   createVercelToolExecutionEnvironmentManager,
@@ -90,7 +92,7 @@ function describeManagerContract(
               onOutputChunk: () => {},
             }),
           ).rejects.toMatchObject({ name: "TimeoutError" });
-          expect(await isRunning(environment, "sleep")).toBe(false);
+          expect(await isRunning(environment, ["sleep", "60"])).toBe(false);
         },
         TEST_TIMEOUT_MS,
       );
@@ -101,15 +103,22 @@ function describeManagerContract(
           const { environment } = await createEnvironment();
           const controller = new AbortController();
           const reason = new Error("caller stopped");
-          setTimeout(() => controller.abort(reason), 1_000);
 
-          await expect(
-            environment.exec(["sleep", "60"], {
-              signal: controller.signal,
-              onOutputChunk: () => {},
-            }),
-          ).rejects.toBe(reason);
-          expect(await isRunning(environment, "sleep")).toBe(false);
+          const running = environment.exec(["sleep", "60"], {
+            signal: controller.signal,
+            onOutputChunk: () => {},
+          });
+          // Also proves that isRunning sees a running command, so the false
+          // checks below mean something.
+          await expect
+            .poll(() => isRunning(environment, ["sleep", "60"]), {
+              timeout: TEST_TIMEOUT_MS,
+            })
+            .toBe(true);
+          controller.abort(reason);
+
+          await expect(running).rejects.toBe(reason);
+          expect(await isRunning(environment, ["sleep", "60"])).toBe(false);
         },
         TEST_TIMEOUT_MS,
       );
@@ -248,14 +257,25 @@ async function read(
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+// Reads /proc, so it needs no tool from the image. The command line is
+// matched at its end, because Amazon Linux runs coreutils through one binary,
+// and it comes in through env, so this check never matches itself.
 async function isRunning(
   environment: ToolExecutionEnvironment,
-  processName: string,
+  argv: readonly string[],
 ): Promise<boolean> {
-  const result = await environment.exec(["pgrep", "-x", processName], {
-    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
-    onOutputChunk: () => {},
-  });
+  const result = await environment.exec(
+    [
+      "sh",
+      "-c",
+      'for p in /proc/[0-9]*; do case "$(tr "\\0" " " < "$p/cmdline" 2>/dev/null)" in *"$COMMAND_LINE ") exit 0 ;; esac; done; exit 1',
+    ],
+    {
+      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+      env: { COMMAND_LINE: argv.join(" ") },
+      onOutputChunk: () => {},
+    },
+  );
   return result.exitCode === 0;
 }
 
@@ -294,4 +314,35 @@ describeManagerContract(
       },
     };
   },
+);
+
+/**
+ * Creates real containers on the local Docker daemon, so it runs only when
+ * `JUNIOR_DOCKER_SANDBOX_TEST=1`. Amazon Linux 2023 is the base image of
+ * Vercel Sandbox.
+ */
+describeManagerContract(
+  "Docker",
+  Boolean(process.env["JUNIOR_DOCKER_SANDBOX_TEST"]),
+  () => ({
+    manager: instrumentToolExecutionEnvironmentManager(
+      createDockerToolExecutionEnvironmentManager({
+        image: "amazonlinux:2023",
+      }),
+    ),
+    async stop(id) {
+      await dockerRequest({
+        method: "POST",
+        path: `/containers/${id}/stop`,
+        query: { t: 0 },
+      });
+    },
+    async remove(id) {
+      await dockerRequest({
+        method: "DELETE",
+        path: `/containers/${id}`,
+        query: { force: true },
+      });
+    },
+  }),
 );

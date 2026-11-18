@@ -9,6 +9,7 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
+import { toWebStream } from "@/core/tool-execution-environment/web-stream";
 
 // Vercel enforces this after our own timer, so a command still stops when
 // this process dies, but our timer fires first and the call throws.
@@ -166,29 +167,4 @@ function isStopped(error: unknown): boolean {
     error.response.status === 422 &&
     (code === "sandbox_stopping" || code === "sandbox_snapshotting")
   );
-}
-
-// The SDK returns a Node stream whose chunks are typed as strings or Buffers.
-// Cancelling the web stream ends the iterator, which destroys the Node stream.
-function toWebStream(
-  stream: NodeJS.ReadableStream,
-): ReadableStream<Uint8Array> {
-  const chunks = stream[Symbol.asyncIterator]();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const next = await chunks.next();
-      if (next.done) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(
-        typeof next.value === "string"
-          ? new TextEncoder().encode(next.value)
-          : next.value,
-      );
-    },
-    async cancel() {
-      await chunks.return?.();
-    },
-  });
 }
