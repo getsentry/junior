@@ -475,6 +475,11 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await recordBrief(conversationId, 5, "blocked");
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    // A queued Turn works on it, so it waits on no one.
+    await expect(
+      fixture.send(conversationId, "status-brief-retry"),
+    ).resolves.toMatchObject({ status: "accepted" });
+    await expect(fixture.status(conversationId)).resolves.toBe("working");
   });
 
   it("covers only the Conversation's own work, not its child agents", async () => {

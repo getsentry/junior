@@ -139,6 +139,7 @@ export function useVersionsPoll(
       refreshChangedReads(client, previous, next, conversationId);
       return next;
     },
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
     refetchInterval: () =>
       readerIsAway(lastInputAtMs.current) ? AWAY_POLL_MS : VERSIONS_POLL_MS,
     retry: false,

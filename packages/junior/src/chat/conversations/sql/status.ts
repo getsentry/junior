@@ -66,9 +66,10 @@ const replyReader = alias(juniorIdentities, "status_reply_reader");
  * the User of the root's actor: the person whose message started the root,
  * or the creator of an Automation run. A Task reports to its parent, so
  * only a root, an Automation run, or a Thread waits on its starter. A stop
- * ends what the Conversation waits on. One of these applies:
+ * ends what the Conversation waits on, and a queued or running Turn is
+ * `working`, not waiting. One of these applies:
  *
- * - The latest Turn failed, and no newer input is queued.
+ * - The latest Turn failed.
  * - The latest Brief outcome is `partial` or `blocked`.
  * - The latest assistant Message is an answer that the starter has not
  *   read. It is an answer when the latest Brief is `answered` or does not
@@ -128,8 +129,9 @@ function conversationWaitsOnStarterSql(
   const unreadAnswer = sql`${replySeq} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
   return sql<boolean>`(${conversation.stoppedAt} is null
     and coalesce(${conversation.kind}, 'root') <> 'task'
+    and not ${conversationIsActiveSql(conversation)}
     and (
-      (${conversationTurnFailedSql(conversation)} and not ${conversationIsActiveSql(conversation)})
+      ${conversationTurnFailedSql(conversation)}
       or ${briefStatus} in ('partial', 'blocked')
       or (${unreadAnswer})
     ))`;

@@ -33,6 +33,10 @@ data, does not run.
   deployment and stays cached. The agent prompt and the tool catalog never
   include them. A fact never authorizes an action. The `data_exposure` rule
   does the blocking.
+- For each plugin with a credential, Guardian knows that its Sandbox env
+  var holds a placeholder, and which domains get the real credential. A
+  command that sends that env var to those domains does not expose a
+  secret.
 
 ## Entry points
 
