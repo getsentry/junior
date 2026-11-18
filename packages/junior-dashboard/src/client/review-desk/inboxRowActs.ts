@@ -2,6 +2,7 @@ import type {
   ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import pLimit from "p-limit";
 import type { RefObject } from "react";
 
 import { useToastManager } from "../components/ui/toast";
@@ -14,6 +15,9 @@ type ActedRow = {
   key: string;
   title: string;
 };
+
+// Action requests that one row sends at once.
+const ROW_ACTION_REQUESTS = 8;
 
 const FAILED_TITLES: Record<ReviewItemActionBody["action"], string> = {
   dismiss: "Could not dismiss",
@@ -74,8 +78,11 @@ export function useInboxRowActs(options: {
       holdLeaving(open, true);
       opened = leave(row.key, () => holdLeaving(open, false));
     }
+    const limit = pLimit(ROW_ACTION_REQUESTS);
     const results = await Promise.allSettled(
-      items.map((item) => action.mutateAsync({ body, id: item.id })),
+      items.map((item) =>
+        limit(() => action.mutateAsync({ body, id: item.id })),
+      ),
     );
     const failed = items.filter(
       (_, index) => results[index]?.status === "rejected",
