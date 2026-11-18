@@ -123,7 +123,8 @@ function conversationWaitsOnStarterSql(
     sql`${juniorConversationBriefs.throughSeq}`,
   );
   // Transcript order, the order of read positions, is `seq`, not time.
-  // Reads `junior_conversation_events_type_idx` backward.
+  // Reads `junior_conversation_events_message_role_idx` and sorts the
+  // Conversation's assistant Messages by `seq`.
   const replySeq = sql`(select ${juniorConversationEvents.seq} from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, id),
     eq(juniorConversationEvents.type, "message"),
@@ -152,7 +153,7 @@ function conversationWaitsOnStarterSql(
   );
   const unreadAnswer = sql`${replySeq} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
   return sql<boolean>`(${conversation.stoppedAt} is null
-    and coalesce(${conversation.kind}, 'root') <> 'task'
+    and coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'root' else 'task' end) <> 'task'
     and not ${conversationIsActiveSql(conversation)}
     and (
       ${conversationTurnFailedSql(conversation)}

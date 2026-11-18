@@ -30,6 +30,7 @@ import {
   ROW_ACTIONS_REVEAL_CLASS,
 } from "./sidebarRowActions";
 import { formatCompactAge } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.
@@ -120,7 +121,7 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {props.conversation.status === "working" ? null : (
+          {conversationTurnIsActive(props.conversation) ? null : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",

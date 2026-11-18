@@ -39,6 +39,7 @@ import {
 import type { ReorderPins } from "../../conversations/useReorderPinnedConversations";
 import { formatActivityDay, formatTime } from "../../time";
 import { fadeTextClass } from "../../textFade";
+import { conversationTurnIsActive } from "../../conversations/turnActivity";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
@@ -240,16 +241,15 @@ function ConversationCard(props: ConversationCardProps) {
     },
   });
   const status = conversation.status;
-  // An open action item reads `needs_input` while a Turn runs.
-  const running = conversation.turnActive;
+  const running = conversationTurnIsActive(conversation);
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
   const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
-  // Only a wait on the viewer gets a badge. A running card shows its spinner
-  // in place of the time, and failed and stopped are text beside the time.
+  // Only a wait on the viewer gets a badge. A card whose Turn runs shows its
+  // spinner in place of the time.
   const showStatus = props.waitingOnViewer && !running;
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (

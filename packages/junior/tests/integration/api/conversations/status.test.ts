@@ -505,6 +505,9 @@ describe("conversation status", () => {
     await recordAnswer(conversationId, 1);
     // A dashboard answer waits until the starter reads it.
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    const before = await fixture.request(detailPath(conversationId));
+    const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
+    expect(version).toBeTruthy();
     const read = await fixture.request(
       `${detailPath(conversationId)}/read-position`,
       {
@@ -514,7 +517,14 @@ describe("conversation status", () => {
       },
     );
     expect(read.status).toBe(200);
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // The read ends the wait, so a poll with the old version reloads.
+    const polled = await fixture.request(detailPath(conversationId), {
+      headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: version! },
+    });
+    expect(polled.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await polled.json()).status,
+    ).toBe("done");
 
     // A later Message from the starter also reads it.
     await recordAnswer(conversationId, 2);
@@ -626,6 +636,16 @@ describe("conversation status", () => {
         eq(juniorConversations.conversationId, answered.childConversationId),
       );
     await recordAnswer(answered.childConversationId, 1);
+    await expect(fixture.status(answered.childConversationId)).resolves.toBe(
+      "done",
+    );
+    // A Task stored before `kind` existed is still a Task.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: null })
+      .where(
+        eq(juniorConversations.conversationId, answered.childConversationId),
+      );
     await expect(fixture.status(answered.childConversationId)).resolves.toBe(
       "done",
     );

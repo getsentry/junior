@@ -1,0 +1,509 @@
+{
+  "conversations": [
+    {
+      "conversationId": "slack:CQA123:1770003600.000200",
+      "title": "Investigate checkout latency",
+      "status": "working",
+      "turnActive": true,
+      "surface": "slack",
+      "channelName": "proj-checkout",
+      "locationUrl": "https://sentry.slack.com/archives/CQA123/p1770003600000200?thread_ts=1770003600.000200&cid=CQA123",
+      "startedAt": "2026-08-07T11:54:00.000Z",
+      "lastSeenAt": "2026-08-07T11:59:50.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA123%3A1770003600.000200"
+    },
+    {
+      "conversationId": "slack:DQA123:1770007200.000300",
+      "title": "Direct Message",
+      "status": "done",
+      "turnActive": false,
+      "surface": "slack",
+      "startedAt": "2026-08-07T11:36:00.000Z",
+      "lastSeenAt": "2026-08-07T11:39:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ADQA123%3A1770007200.000300"
+    },
+    {
+      "conversationId": "internal:question-qa",
+      "title": "Roll out payments-v42",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-07T11:00:00.000Z",
+      "lastSeenAt": "2026-08-07T11:34:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Aquestion-qa"
+    },
+    {
+      "conversationId": "slack:CQA777:1770014400.000500",
+      "title": "Deployment investigation failed",
+      "status": "needs_input",
+      "turnActive": false,
+      "surface": "slack",
+      "channelName": "proj-incidents",
+      "startedAt": "2026-08-07T11:24:00.000Z",
+      "lastSeenAt": "2026-08-07T11:25:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA777%3A1770014400.000500"
+    },
+    {
+      "conversationId": "internal:questions-qa",
+      "title": "Plan the billing migration",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-07T11:15:00.000Z",
+      "lastSeenAt": "2026-08-07T11:20:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Aquestions-qa"
+    },
+    {
+      "conversationId": "slack:CQA123:1770000000.000100",
+      "title": "Checkout latency triage",
+      "status": "done",
+      "turnActive": false,
+      "surface": "slack",
+      "channelName": "proj-checkout",
+      "startedAt": "2026-08-07T11:16:00.000Z",
+      "lastSeenAt": "2026-08-07T11:19:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA123%3A1770000000.000100"
+    },
+    {
+      "conversationId": "slack:CQA456:1770021600.000600",
+      "title": "Package release and self-update",
+      "status": "done",
+      "turnActive": false,
+      "surface": "slack",
+      "channelName": "proj-release",
+      "startedAt": "2026-08-07T10:28:00.000Z",
+      "lastSeenAt": "2026-08-07T10:39:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA456%3A1770021600.000600"
+    },
+    {
+      "conversationId": "agent-dispatch:event-1",
+      "title": "Closed issue summary",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-07T09:00:00.000Z",
+      "lastSeenAt": "2026-08-07T09:00:14.000Z",
+      "url": "http://127.0.0.1:4317/conversations/agent-dispatch%3Aevent-1"
+    },
+    {
+      "conversationId": "internal:dashboard-qa",
+      "title": "Dashboard QA edge cases",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-07T07:00:00.000Z",
+      "lastSeenAt": "2026-08-07T08:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Adashboard-qa"
+    },
+    {
+      "conversationId": "slack:CQA999:1770010800.000400",
+      "title": "Sandbox validation",
+      "status": "done",
+      "turnActive": false,
+      "surface": "slack",
+      "startedAt": "2026-08-07T07:00:00.000Z",
+      "lastSeenAt": "2026-08-07T08:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA999%3A1770010800.000400"
+    },
+    {
+      "conversationId": "scheduler:daily-ops-digest",
+      "title": "Daily operations digest",
+      "status": "done",
+      "turnActive": false,
+      "surface": "scheduler",
+      "startedAt": "2026-08-07T07:00:00.000Z",
+      "lastSeenAt": "2026-08-07T08:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/scheduler%3Adaily-ops-digest"
+    },
+    {
+      "conversationId": "slack:CQA456:1770025200.000700",
+      "title": "Quarterly reliability review",
+      "status": "done",
+      "turnActive": false,
+      "surface": "slack",
+      "startedAt": "2026-08-06T10:00:00.000Z",
+      "lastSeenAt": "2026-08-06T10:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/slack%3ACQA456%3A1770025200.000700"
+    },
+    {
+      "conversationId": "internal:history-1",
+      "title": "Release notes draft 1",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-05T12:00:00.000Z",
+      "lastSeenAt": "2026-08-05T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-1"
+    },
+    {
+      "conversationId": "internal:history-2",
+      "title": "Flaky test triage 2",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-04T07:12:00.000Z",
+      "lastSeenAt": "2026-08-04T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-2"
+    },
+    {
+      "conversationId": "internal:history-3",
+      "title": "Quota alert follow-up 3",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-03T02:24:00.000Z",
+      "lastSeenAt": "2026-08-03T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-3"
+    },
+    {
+      "conversationId": "internal:history-4",
+      "title": "Onboarding doc review 4",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-08-01T21:36:00.000Z",
+      "lastSeenAt": "2026-08-01T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-4"
+    },
+    {
+      "conversationId": "internal:history-5",
+      "title": "Dependency bump 5",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-31T16:48:00.000Z",
+      "lastSeenAt": "2026-07-31T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-5"
+    },
+    {
+      "conversationId": "internal:history-6",
+      "title": "Billing export check 6",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-30T12:00:00.000Z",
+      "lastSeenAt": "2026-07-30T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-6"
+    },
+    {
+      "conversationId": "internal:history-7",
+      "title": "Incident timeline 7",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-29T07:12:00.000Z",
+      "lastSeenAt": "2026-07-29T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-7"
+    },
+    {
+      "conversationId": "internal:history-8",
+      "title": "SDK changelog summary 8",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-28T02:24:00.000Z",
+      "lastSeenAt": "2026-07-28T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-8"
+    },
+    {
+      "conversationId": "internal:history-9",
+      "title": "Release notes draft 9",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-26T21:36:00.000Z",
+      "lastSeenAt": "2026-07-26T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-9"
+    },
+    {
+      "conversationId": "internal:history-10",
+      "title": "Flaky test triage 10",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-25T16:48:00.000Z",
+      "lastSeenAt": "2026-07-25T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-10"
+    },
+    {
+      "conversationId": "internal:history-11",
+      "title": "Quota alert follow-up 11",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-24T12:00:00.000Z",
+      "lastSeenAt": "2026-07-24T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-11"
+    },
+    {
+      "conversationId": "internal:history-12",
+      "title": "Onboarding doc review 12",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-23T07:12:00.000Z",
+      "lastSeenAt": "2026-07-23T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-12"
+    },
+    {
+      "conversationId": "internal:history-13",
+      "title": "Dependency bump 13",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-22T02:24:00.000Z",
+      "lastSeenAt": "2026-07-22T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-13"
+    },
+    {
+      "conversationId": "internal:history-14",
+      "title": "Billing export check 14",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-20T21:36:00.000Z",
+      "lastSeenAt": "2026-07-20T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-14"
+    },
+    {
+      "conversationId": "internal:history-15",
+      "title": "Incident timeline 15",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-19T16:48:00.000Z",
+      "lastSeenAt": "2026-07-19T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-15"
+    },
+    {
+      "conversationId": "internal:history-16",
+      "title": "SDK changelog summary 16",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-18T12:00:00.000Z",
+      "lastSeenAt": "2026-07-18T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-16"
+    },
+    {
+      "conversationId": "internal:history-17",
+      "title": "Release notes draft 17",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-17T07:12:00.000Z",
+      "lastSeenAt": "2026-07-17T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-17"
+    },
+    {
+      "conversationId": "internal:history-18",
+      "title": "Flaky test triage 18",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-16T02:24:00.000Z",
+      "lastSeenAt": "2026-07-16T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-18"
+    },
+    {
+      "conversationId": "internal:history-19",
+      "title": "Quota alert follow-up 19",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-14T21:36:00.000Z",
+      "lastSeenAt": "2026-07-14T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-19"
+    },
+    {
+      "conversationId": "internal:history-20",
+      "title": "Onboarding doc review 20",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-13T16:48:00.000Z",
+      "lastSeenAt": "2026-07-13T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-20"
+    },
+    {
+      "conversationId": "internal:history-21",
+      "title": "Dependency bump 21",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-12T12:00:00.000Z",
+      "lastSeenAt": "2026-07-12T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-21"
+    },
+    {
+      "conversationId": "internal:history-22",
+      "title": "Billing export check 22",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-11T07:12:00.000Z",
+      "lastSeenAt": "2026-07-11T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-22"
+    },
+    {
+      "conversationId": "internal:history-23",
+      "title": "Incident timeline 23",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-10T02:24:00.000Z",
+      "lastSeenAt": "2026-07-10T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-23"
+    },
+    {
+      "conversationId": "internal:history-24",
+      "title": "SDK changelog summary 24",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-08T21:36:00.000Z",
+      "lastSeenAt": "2026-07-08T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-24"
+    },
+    {
+      "conversationId": "internal:history-25",
+      "title": "Release notes draft 25",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-07T16:48:00.000Z",
+      "lastSeenAt": "2026-07-07T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-25"
+    },
+    {
+      "conversationId": "internal:history-26",
+      "title": "Flaky test triage 26",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-06T12:00:00.000Z",
+      "lastSeenAt": "2026-07-06T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-26"
+    },
+    {
+      "conversationId": "internal:history-27",
+      "title": "Quota alert follow-up 27",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-05T07:12:00.000Z",
+      "lastSeenAt": "2026-07-05T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-27"
+    },
+    {
+      "conversationId": "internal:history-28",
+      "title": "Onboarding doc review 28",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-04T02:24:00.000Z",
+      "lastSeenAt": "2026-07-04T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-28"
+    },
+    {
+      "conversationId": "internal:history-29",
+      "title": "Dependency bump 29",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-02T21:36:00.000Z",
+      "lastSeenAt": "2026-07-02T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-29"
+    },
+    {
+      "conversationId": "internal:history-30",
+      "title": "Billing export check 30",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-07-01T16:48:00.000Z",
+      "lastSeenAt": "2026-07-01T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-30"
+    },
+    {
+      "conversationId": "internal:history-31",
+      "title": "Incident timeline 31",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-30T12:00:00.000Z",
+      "lastSeenAt": "2026-06-30T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-31"
+    },
+    {
+      "conversationId": "internal:history-32",
+      "title": "SDK changelog summary 32",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-29T07:12:00.000Z",
+      "lastSeenAt": "2026-06-29T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-32"
+    },
+    {
+      "conversationId": "internal:history-33",
+      "title": "Release notes draft 33",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-28T02:24:00.000Z",
+      "lastSeenAt": "2026-06-28T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-33"
+    },
+    {
+      "conversationId": "internal:history-34",
+      "title": "Flaky test triage 34",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-26T21:36:00.000Z",
+      "lastSeenAt": "2026-06-26T21:36:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-34"
+    },
+    {
+      "conversationId": "internal:history-35",
+      "title": "Quota alert follow-up 35",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-25T16:48:00.000Z",
+      "lastSeenAt": "2026-06-25T16:48:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-35"
+    },
+    {
+      "conversationId": "internal:history-36",
+      "title": "Onboarding doc review 36",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-24T12:00:00.000Z",
+      "lastSeenAt": "2026-06-24T12:00:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-36"
+    },
+    {
+      "conversationId": "internal:history-37",
+      "title": "Dependency bump 37",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-23T07:12:00.000Z",
+      "lastSeenAt": "2026-06-23T07:12:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-37"
+    },
+    {
+      "conversationId": "internal:history-38",
+      "title": "Billing export check 38",
+      "status": "done",
+      "turnActive": false,
+      "surface": "internal",
+      "startedAt": "2026-06-22T02:24:00.000Z",
+      "lastSeenAt": "2026-06-22T02:24:00.000Z",
+      "url": "http://127.0.0.1:4317/conversations/internal%3Ahistory-38"
+    }
+  ]
+}

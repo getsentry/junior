@@ -29,10 +29,10 @@ data, does not run.
 - The install, not the agent, states facts about destinations. Each plugin
   can declare where its writes go, such as which destinations people outside
   the organization can read. A fact never authorizes an action.
-- For each plugin with a credential, Guardian knows that its Sandbox env
-  var holds a placeholder, and which domains get the real credential. A
-  command that sends that env var to those domains does not expose a
-  secret.
+- For each plugin that declares `credentials`, Guardian knows that its
+  Sandbox env var holds a placeholder, and which domains get the real
+  credential. A command that sends that env var to those domains does not
+  expose a secret.
 
 ## Entry points
 
