@@ -15,8 +15,8 @@ import type {
   AuthorizationKind,
   ConversationEvent,
   ConversationEventData,
-  ConversationEventStore,
 } from "@/db/conversation-history/events";
+import type { ConversationEventStore } from "@/chat/conversations/event-store";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
   agentsInstructionsUpdatedEvent,

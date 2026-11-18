@@ -1,8 +1,8 @@
 import type {
-  ConversationEventStore,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
 } from "@/db/conversation-history/events";
+import type { ConversationEventStore } from "@/chat/conversations/event-store";
 import { getConversationEventStore } from "@/chat/db";
 
 /** Product-owned inputs for opening one correlated conversation turn. */

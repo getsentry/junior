@@ -1,7 +1,5 @@
-import type {
-  ConversationEvent,
-  MessageHistory,
-} from "@/db/conversation-history/events";
+import type { ConversationEvent } from "@/db/conversation-history/events";
+import type { MessageHistory } from "@/chat/conversations/event-store";
 import type {
   ConversationAuthor,
   ConversationMessage,

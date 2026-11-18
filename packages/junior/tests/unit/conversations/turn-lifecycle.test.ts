@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type {
   ConversationEvent,
+  HistoryReplacement,
+  NewConversationEvent,
+} from "@/db/conversation-history/events";
+import type {
   ConversationEventPage,
   ConversationEventQuery,
   ConversationEventStore,
-  HistoryReplacement,
   HistoryReplacementResult,
   MessageHistory,
-  NewConversationEvent,
-} from "@/db/conversation-history/events";
+} from "@/chat/conversations/event-store";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 
 class MemoryConversationEventStore implements ConversationEventStore {

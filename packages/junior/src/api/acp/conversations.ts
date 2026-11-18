@@ -12,7 +12,7 @@ import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-t
 import { stopConversation } from "@/chat/conversations/stop";
 import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import type { ConversationEventStore } from "@/db/conversation-history/events";
+import type { ConversationEventStore } from "@/chat/conversations/event-store";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";

@@ -17,17 +17,19 @@ import {
   historyReplacementSchema,
   newConversationEventSchema,
   type ConversationEvent,
-  type ConversationEventPage,
-  type ConversationEventQuery,
-  type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
-  type HistoryReplacementResult,
   type KnownConversationEventType,
-  type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
 } from "@/db/conversation-history/events";
+import type {
+  ConversationEventPage,
+  ConversationEventQuery,
+  ConversationEventStore,
+  HistoryReplacementResult,
+  MessageHistory,
+} from "@/chat/conversations/event-store";
 import { ensureConversationRow } from "./conversation-row";
 import { refreshLastMessageAt } from "./last-message";
 import {
