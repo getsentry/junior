@@ -245,7 +245,7 @@ const TOOL_POLICY_RULES = [
 /** Block 5, `<skill-policy>`: when to load a skill and how to use one. */
 const SKILL_POLICY_RULES = [
   "- Scan `<available-skills>` before acting. Load the most specific skill whose description matches the request; do not answer from memory when one fits. If none fits, do not load a skill.",
-  "- A person invokes a skill by writing `$name` in their own message. Call `loadSkill` for each skill they invoke before you act on the request. When you name a skill in a reply, write `$name`.",
+  "- A person invokes a skill by writing `$name` in their own message, and an Automation in skill mode names its skill as `$name` in its task. Call `loadSkill` for each invoked skill before you act on the request. When you name a skill in a reply, write `$name`.",
   "- Only call `loadSkill` with an exact name from `<available-skills>`, a skill that the current request invokes, or `loadable_skills` in a `loadSkill` result.",
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];

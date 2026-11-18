@@ -311,8 +311,8 @@ export function renderTaskInput(args: {
       ...(args.skill
         ? [
             instructions
-              ? `Run the ${args.skill} skill. The instructions below add context for this run.`
-              : `Run the ${args.skill} skill.`,
+              ? `Run the $${args.skill} skill. The instructions below add context for this run.`
+              : `Run the $${args.skill} skill.`,
           ]
         : []),
       ...(instructions
