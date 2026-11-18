@@ -61,7 +61,11 @@ export function reviewItemQueryKey(id: string | undefined) {
   return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
 }
 
-const REVIEW_ITEM_COLLECTIONS = ["count", "list", "waiting-conversations"];
+const REVIEW_ITEM_COLLECTIONS = [
+  "count",
+  "list",
+  "waiting-conversations",
+] as const;
 
 /**
  * Refresh the Review item reads that a change to known items moves: the

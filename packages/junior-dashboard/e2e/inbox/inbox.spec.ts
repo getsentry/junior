@@ -176,11 +176,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row stays open while it has items.
     await expect(licenseItem).toBeVisible();
 
-    // The row's Dismiss closes every item of the row.
+    // The row's Dismiss closes every ask of the row. Its notice is FYI.
     await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
     await expect
       .poll(() => actions.map((action) => action.id).sort())
-      .toEqual([audit.id, license.id, prReady.id].sort());
+      .toEqual([audit.id, license.id].sort());
   });
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
@@ -228,10 +228,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // Each section dismisses its own FYIs and says so. In To do, the notice
-    // in the question's row goes; the question stays.
-    await page.getByRole("button", { name: "Dismiss 1 FYI in To do" }).click();
-    await expect(page.getByText("Dismissed 1 FYI")).toBeVisible();
+    // FYI dismisses its notices and says so; the questions stay.
+    await page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }).click();
+    await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -242,7 +241,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Dismiss 1 FYI in To do" }),
+      page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }),
     ).toBeVisible();
     // Only section headers sweep. No label says "need you".
     const sweeps = page.getByRole("button", { name: /^Dismiss \d+ FYIs? in / });
@@ -253,9 +252,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page
-      .getByRole("button", { name: /^Dismiss \d+ FYIs? in Today$/ })
-      .click();
+    await page.getByRole("button", { name: "Dismiss 2 FYIs in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
@@ -271,12 +268,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const clearToday = page.getByRole("button", {
-      name: /^Dismiss \d+ FYIs? in Today$/,
+    const clearFyi = page.getByRole("button", {
+      name: /^Dismiss \d+ FYIs? in FYI$/,
     });
-    await clearToday.click();
+    await clearFyi.click();
     await expect(page.getByText(/^Dismissed \d+ FYIs?$/)).toBeVisible();
-    await expect(clearToday).toHaveCount(0);
+    await expect(clearFyi).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
@@ -296,7 +293,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await page.goBack();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(clearToday).toBeVisible();
+    await expect(clearFyi).toBeVisible();
     expect(actions).toEqual([]);
   });
 
@@ -309,16 +306,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // A sweep closes asks, not Conversations: the row stays, without its FYI.
     const digestFyi = page
-      .getByRole("listitem")
-      .filter({
-        has: page.getByRole("link", { name: /Daily operations digest/ }),
-      })
-      .getByRole("button", { name: "FYI" });
+      .getByRole("region", { name: "FYI" })
+      .locator("[data-inbox-row]")
+      .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
     await page
-      .getByRole("button", { name: /^Dismiss \d+ FYIs? in Today$/ })
+      .getByRole("button", { name: /^Dismiss \d+ FYIs? in FYI$/ })
       .click();
     await expect(digestFyi).toHaveCount(0);
     await expect(page.getByText(/^Could not dismiss \d+ FYIs?$/)).toBeVisible({
@@ -603,7 +597,9 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // A Conversation row's head names the Conversation, so the ask keeps its
     // title.
-    await page.goto(`${dashboard.baseURL}/?item=${prReady.id}`);
+    await page.goto(
+      `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
+    );
     await expect(
       page
         .getByRole("region", { name: /: asks$/ })

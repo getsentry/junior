@@ -68,7 +68,7 @@ describe("memory operational report", () => {
         });
         return await buildMemoryOperationalReport({
           db,
-          extractionDays: emptyExtractionDays(),
+          extractionDays: Promise.resolve(emptyExtractionDays()),
           nowMs: TEST_NOW_MS,
         });
       });
@@ -92,7 +92,7 @@ describe("memory operational report", () => {
     try {
       const report = await buildMemoryOperationalReport({
         db: fixture.db(),
-        extractionDays: emptyExtractionDays(),
+        extractionDays: Promise.resolve(emptyExtractionDays()),
         nowMs: TEST_NOW_MS,
       });
       expect(report).toMatchObject({
@@ -186,7 +186,7 @@ describe("memory operational report", () => {
 
       const report = await buildMemoryOperationalReport({
         db,
-        extractionDays,
+        extractionDays: Promise.resolve(extractionDays),
         nowMs: TEST_NOW_MS,
       });
 

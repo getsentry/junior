@@ -18,7 +18,6 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
 import { fadeTextClass } from "../textFade";
@@ -73,7 +72,7 @@ export function InboxAutomationRow(props: {
     menuOpen: boolean;
     onDismiss(): void;
     onMenu(open: boolean): void;
-    onSnooze(choice: SnoozeChoice): void;
+    onSnooze(untilMs: number): void;
   };
 }) {
   const { putAway } = props;

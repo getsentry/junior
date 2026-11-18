@@ -29,7 +29,17 @@ export function fadeWhenOverflowing(element: HTMLElement | null) {
       element.scrollWidth > element.clientWidth,
     );
   measure();
-  const observer = new ResizeObserver(measure);
-  observer.observe(element);
-  return () => observer.disconnect();
+  // A stretched element keeps its size when its text changes, so watch both.
+  const resize = new ResizeObserver(measure);
+  resize.observe(element);
+  const text = new MutationObserver(measure);
+  text.observe(element, {
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
+  return () => {
+    resize.disconnect();
+    text.disconnect();
+  };
 }

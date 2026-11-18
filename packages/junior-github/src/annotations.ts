@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import {
   objectFactsMatchType,
   type ConversationAnnotation,
@@ -139,6 +140,9 @@ async function updateGitHubAnnotation(
   });
 }
 
+/** Conversations whose annotation one update changes at once. */
+export const ANNOTATION_UPDATE_CONCURRENCY = 8;
+
 /**
  * Refresh the status of one object in each linked conversation. One failed
  * conversation does not stop the others. Each failure is logged.
@@ -149,11 +153,14 @@ export async function updateGitHubAnnotations(args: {
   log?: Pick<PluginLogger, "error"> | undefined;
   update: Parameters<typeof updateGitHubAnnotation>[1];
 }): Promise<void> {
+  const limit = pLimit(ANNOTATION_UPDATE_CONCURRENCY);
   const results = await Promise.allSettled(
     args.conversationIds.map((conversationId) =>
-      updateGitHubAnnotation(
-        args.annotations.forConversation(conversationId),
-        args.update,
+      limit(() =>
+        updateGitHubAnnotation(
+          args.annotations.forConversation(conversationId),
+          args.update,
+        ),
       ),
     ),
   );
