@@ -132,6 +132,68 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
   });
 
+  test.describe("in a hidden tab", () => {
+    test.use({ controlTimers: true });
+    test("the tab count refreshes about once a minute", async ({
+      dashboard,
+      page,
+    }) => {
+      // The mock counts this list on each request.
+      const open: unknown[] = [rollout];
+      await mockReviewItems(page, { automations: () => 0, open });
+      const versions = {
+        conversations: "mock",
+        reviewItems: "review-1",
+        spend: "mock",
+      };
+      // Page clock time of each answered check.
+      const checks: number[] = [];
+      // A timer that fires while a check is in flight joins that check. Let
+      // the page finish each answer before the clock moves.
+      const answered = async (count: number) => {
+        await expect.poll(() => checks.length).toBe(count);
+        await page.evaluate(
+          () => new Promise((resolve) => setTimeout(resolve)),
+        );
+      };
+      await page.route("**/api/versions*", async (route) => {
+        const at = await page.evaluate(() => Date.now());
+        await route.fulfill({ json: versions });
+        checks.push(at);
+      });
+      await page.goto(`${dashboard.baseURL}/settings`);
+      await expect(page).toHaveTitle("(1) Settings - Junior");
+      await answered(1);
+      const icon = page.locator('link[rel="icon"]');
+      await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
+      const oneIcon = await icon.getAttribute("href");
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "hidden",
+        });
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => true,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      // The check that was due runs, then one each minute.
+      await page.clock.fastForward(5_000);
+      await answered(2);
+      open.push(license);
+      versions.reviewItems = "review-2";
+      await page.clock.fastForward(30_000);
+      await page.clock.fastForward(30_000);
+      await answered(3);
+      expect(checks[2]! - checks[1]!).toBeGreaterThanOrEqual(60_000);
+      await expect(page).toHaveTitle("(2) Settings - Junior");
+      await expect(icon).not.toHaveAttribute("href", oneIcon!);
+      await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
+    });
+  });
+
   test("moving between pages never flashes the bare agent name in the tab", async ({
     dashboard,
     page,

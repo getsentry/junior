@@ -114,8 +114,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await openRow(
       page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: /^Checkout latency triage/ }),
+        .getByRole("region", { name: "To do" })
+        .getByRole("link", { name: /^Investigate checkout latency/ })
+        .first(),
     );
     await setDetails(page, true);
     await page.locator("body").focus();
@@ -217,6 +218,28 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=conversations$/);
     await expect(older).toBeVisible();
     expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
+  });
+
+  test("a link to an ask that waits on someone else leaves the Inbox as it is", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = {
+      ...rollout,
+      addedByConversationId: "slack:COTHER:1770000000.000100",
+      assignees: [],
+      canAct: false,
+      id: "item-other",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [rollout, other] });
+    await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
+    // The Inbox has no row for it, so the link leaves the URL.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await expect(page.getByText(other.title)).toHaveCount(0);
   });
 
   test("an item link and the Inbox tab share one place", async ({
@@ -387,16 +410,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     }).toPass();
     expect(oldestAttempts).toBe(1);
 
-    // The Inbox ends after the first rows of Earlier, so it reads no older
-    // page, and the failure does not show there.
+    // The Inbox lists no Conversations, so it reads no older page, and the
+    // failure does not show there.
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Inbox\b/ }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    const toDone = page.getByRole("link", { name: "Older work is in Done" });
-    await expect(async () => {
-      await scrollToEnd("Inbox");
-      await expect(toDone).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await scrollToEnd("Inbox");
     await expect(retry).toHaveCount(0);
     expect(oldestAttempts).toBe(1);
 

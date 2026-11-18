@@ -3,29 +3,46 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
-test.describe("new UI: In flight", { tag: "@new" }, () => {
+test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
 
-  test("In flight lists running and pinned Conversations", async ({
+  test("In flight lists running and pinned Conversations, and the Inbox lists neither", async ({
     dashboard,
     page,
   }) => {
     await mockReviewItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(
       inFlight.getByRole("link", { name: new RegExp(checkout) }),
     ).toBeVisible();
 
     // A pin from a row joins In flight.
-    const today = page.getByRole("region", { name: "Today" });
-    await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
-    await today
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await list.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
+    await list
       .getByRole("button", { name: "Pin Roll out payments-v42" })
       .click();
+    const pinned = inFlight.getByRole("link", {
+      name: /Roll out payments-v42/,
+    });
+    await expect(pinned).toBeVisible();
+
+    // The Inbox lists what needs the viewer. A pinned or running
+    // Conversation shows only in In flight.
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Inbox/ })
+      .click();
+    const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
+    await expect(inbox.getByRole("region", { name: "To do" })).toBeVisible();
     await expect(
-      inFlight.getByRole("link", { name: /Roll out payments-v42/ }),
-    ).toBeVisible();
+      inbox.getByRole("link", { name: /^Roll out payments-v42/ }),
+    ).toHaveCount(0);
+    await expect(pinned).toBeVisible();
     await screenshot(page, "inbox-in-flight", { view: "desktop" });
 
     await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
