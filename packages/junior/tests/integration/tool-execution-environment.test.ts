@@ -288,61 +288,56 @@ function vercelCredentialsFromEnv(): VercelCredentials | undefined {
   return { token, teamId, projectId };
 }
 
+const vercelCredentials = vercelCredentialsFromEnv();
+
 /**
- * Creates real sandboxes, so it runs only when `JUNIOR_VERCEL_SANDBOX_TEST=1`.
- * It uses `VERCEL_TOKEN`, `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID` when all
- * three are set, and the SDK's OIDC auth otherwise.
+ * Creates real Vercel Sandboxes, so it runs only with credentials: either
+ * `VERCEL_TOKEN`, `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID`, or the SDK's own
+ * `VERCEL_OIDC_TOKEN`.
  */
 describeManagerContract(
   "Vercel",
-  Boolean(process.env["JUNIOR_VERCEL_SANDBOX_TEST"]),
-  () => {
-    const credentials = vercelCredentialsFromEnv();
-    return {
-      // Instrumented, as production uses it, so the spans pass every result
-      // and error through unchanged.
-      manager: instrumentToolExecutionEnvironmentManager(
-        createVercelToolExecutionEnvironmentManager(credentials),
-      ),
-      async stop(id) {
-        const sandbox = await Sandbox.get({ ...credentials, name: id });
-        await sandbox.stop();
-      },
-      async remove(id) {
-        const sandbox = await Sandbox.get({ ...credentials, name: id });
-        await sandbox.delete();
-      },
-    };
-  },
-);
-
-/**
- * Creates real containers on the local Docker daemon, so it runs only when
- * `JUNIOR_DOCKER_SANDBOX_TEST=1`. Amazon Linux 2023 is the base image of
- * Vercel Sandbox.
- */
-describeManagerContract(
-  "Docker",
-  Boolean(process.env["JUNIOR_DOCKER_SANDBOX_TEST"]),
+  Boolean(vercelCredentials ?? process.env["VERCEL_OIDC_TOKEN"]),
   () => ({
+    // Instrumented, as production uses it, so the spans pass every result
+    // and error through unchanged.
     manager: instrumentToolExecutionEnvironmentManager(
-      createDockerToolExecutionEnvironmentManager({
-        image: "amazonlinux:2023",
-      }),
+      createVercelToolExecutionEnvironmentManager(vercelCredentials),
     ),
     async stop(id) {
-      await dockerRequest({
-        method: "POST",
-        path: `/containers/${id}/stop`,
-        query: { t: 0 },
-      });
+      const sandbox = await Sandbox.get({ ...vercelCredentials, name: id });
+      await sandbox.stop();
     },
     async remove(id) {
-      await dockerRequest({
-        method: "DELETE",
-        path: `/containers/${id}`,
-        query: { force: true },
-      });
+      const sandbox = await Sandbox.get({ ...vercelCredentials, name: id });
+      await sandbox.delete();
     },
   }),
 );
+
+/**
+ * Creates real containers on the local Docker daemon, so it needs Docker
+ * running. Amazon Linux 2023 is the image the legacy Docker provider builds
+ * on to match Vercel Sandbox.
+ */
+describeManagerContract("Docker", true, () => ({
+  manager: instrumentToolExecutionEnvironmentManager(
+    createDockerToolExecutionEnvironmentManager({
+      image: "amazonlinux:2023",
+    }),
+  ),
+  async stop(id) {
+    await dockerRequest({
+      method: "POST",
+      path: `/containers/${id}/stop`,
+      query: { t: 0 },
+    });
+  },
+  async remove(id) {
+    await dockerRequest({
+      method: "DELETE",
+      path: `/containers/${id}`,
+      query: { force: true },
+    });
+  },
+}));
