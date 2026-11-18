@@ -5,8 +5,12 @@ init:
 	rbenv install --skip-existing
 	rbenv exec bundle install
 
-# Generate Junior.xcodeproj from project.yml and open it.
-.PHONY: xcode
-xcode:
+# Generate Junior.xcodeproj from project.yml.
+.PHONY: xcodegen
+xcodegen:
 	xcodegen generate
+
+# Generate the project and open it in Xcode.
+.PHONY: xcode
+xcode: xcodegen
 	open Junior.xcodeproj

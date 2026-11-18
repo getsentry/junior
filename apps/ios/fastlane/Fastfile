@@ -30,7 +30,7 @@ platform :ios do
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
 
     # `sh` runs in fastlane/; the project is generated and not committed.
-    sh("cd .. && xcodegen generate")
+    sh("make -C .. xcodegen")
     # Local device builds sign automatically with their own team (Signing.xcconfig).
     # Only this lane signs with the App Store profile.
     update_code_signing_settings(
