@@ -5,6 +5,7 @@ import { expect, test } from "../test";
 import {
   audit,
   conversationId,
+  expandRow,
   license,
   mockReviewItems,
   prReview,
@@ -36,7 +37,7 @@ const other = { ...audit, createdAt: "2026-08-07T12:00:00.000Z" };
 test.describe("new UI", { tag: "@new" }, () => {
   async function openStack(page: Page) {
     const stack = page.locator(`li[data-inbox-row="todo:${conversationId}"]`);
-    await stack.locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expandRow(stack.locator("a[data-inbox-head]").first());
     await expect(stack).toHaveAttribute("data-expanded", "true");
     const asks = stack.getByRole("region", { name: /: asks$/ });
     return {

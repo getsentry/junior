@@ -59,6 +59,7 @@ import {
   AUTOMATION_VERSION_PARAM,
   AutomationVersionsTab,
 } from "./AutomationVersionsTab";
+import { fadeTextClass } from "../../../textFade";
 
 const RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
 const RANGE_DAYS = {
@@ -384,7 +385,12 @@ function AutomationHeader(props: {
         >
           <ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />
         </Link>
-        <h1 className="m-0 min-w-0 flex-1 truncate font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text">
+        <h1
+          className={cn(
+            fadeTextClass,
+            "m-0 flex-1 font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text",
+          )}
+        >
           {props.title}
         </h1>
         {props.actions}
