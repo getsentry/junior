@@ -92,6 +92,7 @@ import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
+import { guardianPluginFacts } from "@/chat/guardian/policy";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
@@ -532,13 +533,9 @@ export async function wireAgentTools(
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
-      destinationFacts: pluginCatalogRuntime
-        .getProviders()
-        .flatMap(({ manifest }) =>
-          manifest.reviewContext
-            ? [{ plugin: manifest.name, text: manifest.reviewContext }]
-            : [],
-        ),
+      destinationFacts: guardianPluginFacts(
+        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+      ),
       modelId: botConfig.guardianModelId,
     }),
   });
