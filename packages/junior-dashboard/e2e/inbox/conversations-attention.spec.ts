@@ -19,7 +19,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const page = "page" in scope ? scope.page() : scope;
     return scope
       .getByRole("link", { exact: true, name: title })
-      .and(page.locator('a[aria-controls^="inbox-row-"]'));
+      .and(page.locator("a[data-inbox-head]"));
   }
 
   /** Label of the list section that holds the first row matching `title`. */

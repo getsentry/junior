@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
+import { expandRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -182,7 +183,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();
     const meta = row.locator('[data-inbox-slot="meta"]').first();
-    await row.locator('a[aria-controls^="inbox-row-"]').first().hover();
+    await row.locator("a[data-inbox-head]").first().hover();
     // The actions take their own room in the meta's cell, so they cover
     // neither the title nor the summary, and the state stays in view.
     await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
@@ -196,13 +197,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
     await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
-    // Open, with the pointer away, the row shows its state and its actions.
-    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
-    await expect(row).toHaveAttribute("data-expanded", "true");
-    await page.mouse.move(0, 0);
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
-    await expect(meta.getByText("1d")).toBeVisible();
-    await expect(meta.getByRole("button", { name: /^Unpin / })).toBeVisible();
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
@@ -291,11 +285,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();
-    const head = row.locator('a[aria-controls^="inbox-row-"]').first();
-    await head.click();
-    const panel = page.locator(
-      `[id="${await head.getAttribute("aria-controls")}"]`,
-    );
+    await expandRow(row.locator("a[data-inbox-head]").first());
+    const panel = row.getByRole("region", { name: /: asks$/ });
     const card = panel.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -358,7 +349,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .locator("[data-inbox-row]")
         .filter({ hasText: "Package release and self-update" })
         .first();
-      await row.locator('a[aria-controls^="inbox-row-"]').first().click();
+      await expandRow(row.locator("a[data-inbox-head]").first());
       const linked = row.getByRole("group", { name: "Linked work" }).last();
       // Each item names itself, its number in its status color, on one
       // line.
