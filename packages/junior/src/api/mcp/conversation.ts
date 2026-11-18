@@ -20,12 +20,12 @@ export const mcpConversationSchema = z
     conversationId: z.string(),
     title: z.string(),
     status: conversationReportStatusSchema.describe(
-      "`needs_input` while it waits on a person: a Review item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop. An open Review item reads `needs_input` while a Turn runs, so use `turnActive` to tell whether a Turn runs.",
+      "`needs_input` while it waits on a person: a Review item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
     ),
     turnActive: z
       .boolean()
       .describe(
-        "True while a Turn runs or waits to start, also when `status` is `needs_input`.",
+        "True while a Turn runs or waits to start, whatever `status` is. To follow a Conversation, wait until it is false.",
       ),
     surface: conversationSurfaceSchema.describe(
       "Where it started: `slack`, `api` (the dashboard or MCP), `scheduler` (an automation), or `internal`.",

@@ -3,7 +3,7 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI: In flight", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
 
   test("In flight lists running and pinned Conversations", async ({
@@ -46,12 +46,13 @@ test.describe("new UI", { tag: "@new" }, () => {
           pinnedAt: string | null;
           pinPosition?: number;
           status: string;
-          turnActive: boolean;
+          turnActive?: boolean;
         },
       ) => ({
         ...feed.conversations[0],
         conversationId: `slack:CFLIGHT:${1770000000 + index}.000100`,
         displayTitle,
+        turnActive: fields.status === "working",
         ...fields,
       });
       return route.fulfill({
@@ -62,22 +63,22 @@ test.describe("new UI", { tag: "@new" }, () => {
             ...Array.from({ length: 6 }, (_, index) =>
               conversation(index, `Running conversation ${index + 1}`, {
                 pinnedAt: null,
-                // A running Turn that also waits on a person still runs.
-                status: index === 0 ? "needs_input" : "working",
-                turnActive: true,
+                // An open action item reads `needs_input` while a Turn
+                // runs. It still runs, so it is in flight.
+                ...(index === 0
+                  ? { status: "needs_input", turnActive: true }
+                  : { status: "working" }),
               }),
             ),
             conversation(6, "Running pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 0,
               status: "working",
-              turnActive: true,
             }),
             conversation(7, "Idle pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 1,
               status: "done",
-              turnActive: false,
             }),
           ],
           nextCursor: undefined,
