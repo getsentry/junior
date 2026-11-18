@@ -104,16 +104,19 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
-  // Event seq and provenance of the committed prefix of the agent messages.
+  // The last committed agent messages, with the event seq and provenance of
+  // each.
   let committed: {
+    messages: PiMessage[];
     seqs: number[];
     provenance: ConversationMessageProvenance[];
   } = args.checkpoint.resumed
     ? {
+        messages: args.checkpoint.record.piMessages,
         seqs: args.checkpoint.record.piMessageSeqs,
         provenance: args.checkpoint.record.piMessageProvenance,
       }
-    : { seqs: [], provenance: [] };
+    : { messages: [], seqs: [], provenance: [] };
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
@@ -208,11 +211,19 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
-      // A resumed slice can drop a trailing prompt that it sends again.
-      committed = {
-        seqs: committed.seqs.slice(0, messages.length),
-        provenance: committed.provenance.slice(0, messages.length),
-      };
+      // A resumed slice can drop a trailing prompt that it sends again. A
+      // history replacement whose checkpoint failed is not committed, so the
+      // old seqs do not describe it.
+      const length = messages.length;
+      committed =
+        boundaryKey(committed.messages.slice(0, length)) ===
+        boundaryKey(messages)
+          ? {
+              messages: committed.messages.slice(0, length),
+              seqs: committed.seqs.slice(0, length),
+              provenance: committed.provenance.slice(0, length),
+            }
+          : { messages: [], seqs: [], provenance: [] };
       latestSafeBoundaryMessages = [...messages];
       resumeMessages = [...messages];
     },
@@ -258,6 +269,7 @@ export function createResumeState(args: ResumeStateArgs) {
         return false;
       }
       committed = {
+        messages: saved.piMessages,
         seqs: saved.piMessageSeqs,
         provenance: saved.piMessageProvenance,
       };
