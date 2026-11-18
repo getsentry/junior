@@ -79,7 +79,7 @@ function formatUsd(value: number): string {
 /** Build aggregate memory storage and indexing diagnostics for the System page. */
 export async function buildMemoryOperationalReport(args: {
   db: MemoryDb;
-  extractionDays: PluginConversationEventCostDay[];
+  extractionDays: Promise<PluginConversationEventCostDay[]>;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
   const active = and(
@@ -91,7 +91,7 @@ export async function buildMemoryOperationalReport(args: {
       gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
     ),
   );
-  const [[counts], memoryDays] = await Promise.all([
+  const [[counts], memoryDays, extractionDays] = await Promise.all([
     args.db
       .select({
         active: sql<number>`count(*) filter (where ${active})`.mapWith(Number),
@@ -115,12 +115,13 @@ export async function buildMemoryOperationalReport(args: {
       })
       .from(juniorMemoryMemories),
     aggregateMemoryDays(args),
+    args.extractionDays,
   ]);
 
   const activeCount = counts?.active ?? 0;
   const embeddedCount = counts?.embedded ?? 0;
   const embeddingCoverage = activeCount === 0 ? 0 : embeddedCount / activeCount;
-  const extractionThirtyDays = args.extractionDays.slice(-30);
+  const extractionThirtyDays = extractionDays.slice(-30);
   const extractionCostThirtyDays = extractionThirtyDays.reduce(
     (total, day) => total + day.costUsd,
     0,
@@ -164,7 +165,7 @@ export async function buildMemoryOperationalReport(args: {
     ],
     widgets: [
       {
-        categories: args.extractionDays.map((day) => ({
+        categories: extractionDays.map((day) => ({
           id: day.date,
           label: day.date,
           values: { costUsd: day.costUsd },
