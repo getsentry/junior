@@ -200,6 +200,8 @@ export type Conversation = {
   sentryTraceUrl?: string | undefined;
   startedAt: string;
   status: ConversationStatus;
+  /** What the Conversation and its child Conversations wait on. */
+  treeState?: ConversationSummaryReport["treeState"] | undefined;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;

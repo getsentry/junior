@@ -43,6 +43,20 @@ export const conversationReportStatusSchema = z.enum([
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
 const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
+/**
+ * What a Conversation and its child Conversations wait on, for one viewer.
+ * See "Tree state" in `TERMINOLOGY.md`. Unset when nothing applies.
+ */
+export const conversationTreeStateSchema = z.enum([
+  "needs_you",
+  "working",
+  "waiting",
+]);
+
+export type ConversationTreeState = z.output<
+  typeof conversationTreeStateSchema
+>;
+
 export const conversationSurfaceSchema = z.enum([
   "api",
   "internal",
@@ -262,6 +276,8 @@ export const conversationSummaryReportSchema = z
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
+    /** Feed rows and the detail only. */
+    treeState: conversationTreeStateSchema.optional(),
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),

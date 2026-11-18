@@ -51,6 +51,11 @@ Canonical words for Junior code and docs. One concept, one word.
   or run outcome, never a Conversation status.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
+- **Tree state**: what a Conversation and its child Conversations wait on,
+  for one viewer. `needs_you`: an open action Review item in the tree waits
+  on the viewer. `working`: a Conversation in the tree is `active`.
+  `waiting`: a Conversation in the tree that is not stopped has an active
+  Watch or Timer. The first that applies wins. It is not a status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.

@@ -1,0 +1,113 @@
+import { mockReviewItems } from "./inbox-fixture";
+import { screenshot } from "../screenshot";
+import { expect, test } from "../test";
+
+// Only the inbox project runs `@new` tests.
+test.describe("new UI", { tag: "@new" }, () => {
+  test("one icon shows what each tree waits on", async ({
+    dashboard,
+    page,
+  }) => {
+    // The API derives each state from the whole tree for the viewer.
+    const release = "slack:CQA456:1770021600.000600";
+    const treeStates: Record<string, string> = {
+      [release]: "working",
+      "slack:CQA456:1770025200.000700": "needs_you",
+      "internal:dashboard-qa": "waiting",
+    };
+    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+      const response = await route.fetch();
+      const feed = await response.json();
+      return route.fulfill({
+        response,
+        json: {
+          ...feed,
+          conversations: feed.conversations.map(
+            (conversation: { conversationId: string }) => {
+              const treeState = treeStates[conversation.conversationId];
+              return treeState ? { ...conversation, treeState } : conversation;
+            },
+          ),
+        },
+      });
+    });
+    await page.route(
+      new RegExp(`/api/conversations/${encodeURIComponent(release)}(\\?.*)?$`),
+      async (route) => {
+        const response = await route.fetch();
+        const detail = await response.json();
+        return route.fulfill({
+          response,
+          json: { ...detail, treeState: "working" },
+        });
+      },
+    );
+    await mockReviewItems(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    const inFlight = page.getByRole("list", { name: "In flight" });
+    const flightRow = (title: RegExp) =>
+      inFlight
+        .getByRole("listitem")
+        .filter({ has: page.getByRole("link", { name: title }) });
+    // The root is idle, but a Task under it works, so it is in flight.
+    await expect(
+      flightRow(/Package release and self-update/).getByRole("status", {
+        name: "Working",
+      }),
+    ).toBeVisible();
+    await expect(
+      flightRow(/Quarterly reliability review/).getByRole("img", {
+        name: "Waiting on you",
+      }),
+    ).toBeVisible();
+    await expect(
+      flightRow(/Dashboard QA edge cases/).getByRole("img", {
+        name: "Waiting for an event",
+      }),
+    ).toBeVisible();
+    // A pin shows its pin only while its tree waits on nothing.
+    const today = page.getByRole("region", { name: "Today" });
+    await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
+    await today
+      .getByRole("button", { name: "Pin Roll out payments-v42" })
+      .click();
+    await expect(
+      flightRow(/Roll out payments-v42/).getByRole("img", { name: "Pinned" }),
+    ).toBeVisible();
+    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
+    await screenshot(page, "inbox-tree-state", { lightTheme: true });
+
+    // Each Conversation row shows the same one icon.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = page
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /^Quarterly reliability review/ }),
+      })
+      .first();
+    const meta = row.locator('[data-inbox-slot="meta"]').first();
+    await expect(
+      meta.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+
+    // So does the Conversation header.
+    await flightRow(/Package release and self-update/)
+      .getByRole("link")
+      .click();
+    await expect(page).toHaveURL(/\/conversations\/slack%3ACQA456/);
+    await expect(
+      page
+        .locator("header")
+        .filter({
+          has: page.getByRole("heading", {
+            name: "Package release and self-update",
+          }),
+        })
+        .getByRole("status", { name: "Working" }),
+    ).toBeVisible();
+    await screenshot(page, "inbox-tree-state-header", {
+      lightTheme: true,
+      view: "desktop",
+    });
+  });
+});

@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
+import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -188,20 +189,24 @@ function useBuildInboxData(input: {
       })),
   );
 
-  // In flight: every pin, each one click away, and running Conversations in
-  // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
-  // pin with them, then the other pins in the viewer's order.
+  // In flight: every pin, each one click away, and Conversations whose tree
+  // waits on the viewer, works, or waits for an Event in the rows left, up to
+  // IN_FLIGHT_LIMIT. Those rows come first, such a pin with them, then the
+  // other pins in the viewer's order.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
-  const running = conversations.filter(
-    (conversation) =>
-      conversation.status === "active" && !conversation.pinnedAt,
+  const busy = (conversation: Conversation) => {
+    const state = conversationDisplayState(conversation);
+    return state !== undefined && state !== "pinned";
+  };
+  const busyRows = conversations.filter(
+    (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
   const inFlight = [
-    ...running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
-    ...pinned.filter((conversation) => conversation.status === "active"),
-    ...pinned.filter((conversation) => conversation.status !== "active"),
+    ...busyRows.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+    ...pinned.filter(busy),
+    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   // The server counts each entry, so items past the loaded pages count
@@ -226,7 +231,7 @@ function useBuildInboxData(input: {
     includedId: linkedId,
     includeItem,
     inFlight,
-    inFlightCount: running.length + pinned.length,
+    inFlightCount: busyRows.length + pinned.length,
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
     itemPages: scrollPages(itemsQuery),

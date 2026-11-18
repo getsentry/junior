@@ -64,7 +64,7 @@ describe("conversation detail API", () => {
     const app = createJuniorApi();
     const detailResponse = await expectSqlBudget(
       () => app.request(`http://localhost/api/conversations/${conversationId}`),
-      { statements: 14, serialRounds: 3 },
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),

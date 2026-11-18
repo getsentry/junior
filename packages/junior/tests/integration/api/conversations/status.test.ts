@@ -20,12 +20,18 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import {
+  cancelWatch,
+  createTimerWatch,
+  createWatch,
+} from "@/chat/events/store";
 import { juniorReviewItems } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
   webTestActor,
@@ -121,6 +127,20 @@ async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
       const response = await request(detailPath(conversationId));
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json()).status;
+    },
+    treeState: async (conversationId: string) => {
+      const response = await request(detailPath(conversationId));
+      expect(response.status).toBe(200);
+      return conversationDetailReportSchema.parse(await response.json())
+        .treeState;
+    },
+    feedTreeState: async (conversationId: string) => {
+      const response = await request("/api/conversations");
+      return conversationFeedSchema
+        .parse(await response.json())
+        .conversations.find(
+          (conversation) => conversation.conversationId === conversationId,
+        )?.treeState;
     },
     feedStatus: async (conversationId: string) => {
       const response = await request("/api/conversations");
@@ -351,5 +371,181 @@ describe("conversation status", () => {
       .from(juniorReviewItems)
       .where(eq(juniorReviewItems.addedByConversationId, conversationId));
     expect(item?.status).toBe("open");
+  });
+});
+
+/** Watch one Vercel deployment from `conversationId`. */
+async function watchDeployment(conversationId: string) {
+  return await createWatch({
+    conversationId,
+    events: ["deployment.succeeded"],
+    expiresAtMs: Date.now() + 3_600_000,
+    identifier: "prj_junior:production",
+    intent: "Report deploy results.",
+    label: "Vercel deployment junior-prod",
+    namespace: "vercel",
+    resourceType: "deployment",
+  });
+}
+
+describe("conversation tree state", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("orders needs_you, working, and waiting across the whole tree", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000400",
+    );
+    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+
+    await watchDeployment(conversationId);
+    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
+
+    const args = {
+      conversationStore: fixture.conversationStore,
+      destination: SLACK_DESTINATION,
+      parentConversationId: conversationId,
+      queue: fixture.queue,
+      state: fixture.state,
+    };
+    const running = await startRunningChildAgent({
+      ...args,
+      idempotencyKey: "tree-running-child",
+    });
+    // The parent's own status stays idle; its tree works.
+    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
+    await expect(
+      fixture.treeState(running.invocation.childConversationId),
+    ).resolves.toBe("working");
+
+    const asking = await spawnChildAgent({
+      ...args,
+      idempotencyKey: "tree-asking-child",
+    });
+    fixture.queue.takeMessageFor(asking.childConversationId);
+    // An item for Everyone needs no one in particular.
+    const everyone = await addItem(asking.childConversationId, {
+      ...ACTION_ITEM,
+      assignees: ["everyone"],
+    });
+    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
+    await closeReviewItem(getDb(), {
+      id: everyone,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+
+    const item = await addItem(asking.childConversationId, ACTION_ITEM);
+    await expect(fixture.treeState(conversationId)).resolves.toBe("needs_you");
+    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
+      "needs_you",
+    );
+    await expect(fixture.treeState(asking.childConversationId)).resolves.toBe(
+      "needs_you",
+    );
+
+    await closeReviewItem(getDb(), {
+      id: item,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
+    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
+      "working",
+    );
+  });
+
+  it("waits on a child's Timer and stops waiting when the Watch ends", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000500",
+    );
+    const childConversationId = "agent:tree-timer-child";
+    await fixture.conversationStore.createChild({
+      childConversationId,
+      kind: "task",
+      parentConversationId: conversationId,
+      title: "Check the deployment later",
+    });
+    const timer = await createTimerWatch({
+      afterMs: 600_000,
+      conversationId: childConversationId,
+      intent: "Check the deployment.",
+      toolCallId: "tree-timer",
+    });
+    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
+    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
+      "waiting",
+    );
+    await expect(fixture.treeState(childConversationId)).resolves.toBe(
+      "waiting",
+    );
+
+    await cancelWatch({ conversationId: childConversationId, id: timer.id });
+    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+
+    // A stopped Conversation starts no Turn for its Watches.
+    await watchDeployment(conversationId);
+    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
+    const stopped = await fixture.request(
+      `${detailPath(conversationId)}/stop`,
+      { method: "POST" },
+    );
+    expect(stopped.status).toBe(200);
+    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+  });
+
+  it("reads the tree state of a feed page and a detail in one statement", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000600",
+    );
+    await recordSlackRoot(fixture.conversationStore, "1700000000.000700");
+    const addChildren = async (childIds: string[]) => {
+      for (const childConversationId of childIds) {
+        await fixture.conversationStore.createChild({
+          childConversationId,
+          kind: "task",
+          parentConversationId: conversationId,
+        });
+      }
+    };
+    // The feed and the detail keep one budget however big the tree grows.
+    const expectBudget = async (treeState: string) => {
+      const feed = await expectSqlBudget(
+        () => fixture.request("/api/conversations"),
+        { statements: 20, serialRounds: 5 },
+      );
+      expect(
+        conversationFeedSchema
+          .parse(await feed.json())
+          .conversations.find((row) => row.conversationId === conversationId)
+          ?.treeState,
+      ).toBe(treeState);
+      const detail = await expectSqlBudget(
+        () => fixture.request(detailPath(conversationId)),
+        { statements: 20, serialRounds: 5 },
+      );
+      expect(
+        conversationDetailReportSchema.parse(await detail.json()).treeState,
+      ).toBe(treeState);
+    };
+
+    await addChildren(["agent:tree-budget-a"]);
+    await watchDeployment("agent:tree-budget-a");
+    await expectBudget("waiting");
+    await addChildren([
+      "agent:tree-budget-b",
+      "agent:tree-budget-c",
+      "agent:tree-budget-d",
+    ]);
+    await addItem("agent:tree-budget-d", ACTION_ITEM);
+    await expectBudget("needs_you");
   });
 });

@@ -7,6 +7,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   not,
   or,
   sql,
@@ -25,8 +26,10 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
+import { reviewItemNeedsUser } from "@/chat/review-items/access";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -44,7 +47,10 @@ import {
   conversationRecordColumns,
   conversationRecordJoins,
 } from "./record";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import {
+  conversationIsActiveSql,
+  conversationStatusSql,
+} from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
 import { conversationFeedSchema } from "../schema/conversation-feed";
 import type {
@@ -72,6 +78,7 @@ import { readConversationFeedBriefs } from "./feed-brief";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
+import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
 import {
@@ -295,10 +302,11 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * for each feed-row input as `name:token`, separated by spaces, so the
  * dashboard can record which inputs moved it.
  *
- * The token holds only what a feed row shows, so a Task's own writes do not
- * move it. Every Event of a live Turn moves `last_activity_at`, but a
- * running row shows its running state in place of the age, so the token
- * holds no activity for it. Other rows show an age in whole minutes, so the
+ * The token holds only what a feed row shows, so a Task moves it only when
+ * the tree state moves. Watches live outside SQL; the Turn that makes one
+ * ends and moves the status. Every Event of a live Turn moves
+ * `last_activity_at`, but a running row shows its running state in place of
+ * the age, so the token holds no activity for it. Other rows show an age in whole minutes, so the
  * token holds its minute. The end of the Turn moves the status.
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
@@ -311,12 +319,18 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
-  // The fields of each nested Thread row. An archive anywhere in the tree
-  // can hide Threads under it.
+  // The fields of each nested Thread row, and the tree state inputs that
+  // SQL holds. The root's own work is in its status. An archive anywhere in
+  // the tree can hide Threads under it.
   const tree = db
     .select({
       version: sql<string>`concat_ws(':',
         count(*) filter (where ${feedTree.archivedAt} is not null),
+        coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
+        bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
+          eq(juniorReviewItems.addedByConversationId, feedTree.conversationId),
+          reviewItemNeedsUser(userId),
+        )})),
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
           ${conversationStatusSql(feedTree)},
@@ -539,6 +553,7 @@ export async function readConversationFeedFromSql(
     briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
+    treeStateByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -572,6 +587,7 @@ export async function readConversationFeedFromSql(
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
+    readConversationTreeStates(db, conversationIds, options.viewer?.id),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -676,9 +692,13 @@ export async function readConversationFeedFromSql(
             )
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
+      const treeState = treeStateByConversation.get(
+        conversation.conversationId,
+      );
       return {
         ...summary,
         ...work,
+        ...(treeState ? { treeState } : undefined),
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
           : undefined),

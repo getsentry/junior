@@ -708,6 +708,7 @@ export function buildConversations(
       sentryTraceUrl: summary.sentryTraceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
+      treeState: summary.treeState,
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,

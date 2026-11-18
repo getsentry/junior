@@ -12,6 +12,17 @@ export interface ConversationStatusColumns {
 }
 
 /**
+ * SQL: the Conversation's own work is `active`. Execution is pending,
+ * running, or paused. The tree state reads it for each child too.
+ */
+export function conversationIsActiveSql(
+  conversation: Pick<ConversationStatusColumns, "executionStatus">,
+): SQL<boolean> {
+  // TODO(dcramer): Drop awaiting_resume with the store reader's alias for it.
+  return sql<boolean>`${conversation.executionStatus} in ('pending', 'running', 'paused', 'awaiting_resume')`;
+}
+
+/**
  * SQL for the status of one Conversation's own work. This is the only place
  * that derives it; readers, counts, feed tokens, and auto-archive select it.
  * When more than one applies: `active` > `stopped` > `failed` >
@@ -42,9 +53,8 @@ export function conversationStatusSql(
     eq(juniorReviewItems.addedByConversationId, conversation.conversationId),
     reviewItemNeedsInput(),
   )})`;
-  // TODO(dcramer): Drop awaiting_resume with the store reader's alias for it.
   return sql<ConversationReportStatus>`case
-    when ${conversation.executionStatus} in ('pending', 'running', 'paused', 'awaiting_resume') then 'active'
+    when ${conversationIsActiveSql(conversation)} then 'active'
     when ${conversation.stoppedAt} is not null then 'stopped'
     when ${conversation.executionStatus} = 'failed' or ${lastTurnFailed} then 'failed'
     when ${needsInput} then 'needs_input'
