@@ -193,6 +193,8 @@ function egressRequest(
     scheme?: string | null;
     port?: string;
     body?: BodyInit;
+    /** The Authorization header. `null` sends none. */
+    credential?: string | null;
     headers?: Record<string, string>;
   } = {},
 ): Request {
@@ -216,6 +218,11 @@ function egressRequest(
         ? { "vercel-forwarded-path": forwardedPath }
         : undefined),
       ...(input.port ? { "vercel-forwarded-port": input.port } : undefined),
+      ...(input.credential === null
+        ? undefined
+        : {
+            authorization: input.credential ?? "Bearer host_managed_credential",
+          }),
       ...(input.headers ?? {}),
     },
     ...(input.body === undefined ? undefined : { body: input.body }),

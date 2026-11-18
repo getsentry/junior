@@ -7,10 +7,10 @@ dedupePeerDependents: false
 catalog:
   "@earendil-works/pi-agent-core": 1.5.2
   "@earendil-works/pi-ai": 1.5.2
-  "@sentry/browser": 11.10.0
-  "@sentry/nitro": 11.10.0
-  "@sentry/node": 11.10.0
-  "@sentry/server-utils": 11.10.0
+  "@sentry/browser": 11.14.0
+  "@sentry/nitro": 11.14.0
+  "@sentry/node": 11.14.0
+  "@sentry/server-utils": 11.14.0
   "@sentry/starlight-theme": ^0.9.1
   # Node 24 is the supported runtime in development, CI, and deployments.
   "@types/node": ^24.19.2
@@ -50,13 +50,18 @@ minimumReleaseAgeExclude:
   - "@vitest-evals/core@0.16.1"
   - "@vitest-evals/report-ui@0.16.1"
   - "vitest-evals@0.16.1"
-  - "@sentry/bundler-plugins@11.10.0"
-  - "@sentry/core@11.10.0"
-  - "@sentry/nitro@11.10.0"
-  - "@sentry/node@11.10.0"
-  - "@sentry/opentelemetry@11.10.0"
-  - "@sentry/server-runtime-injection@11.10.0"
-  - "@sentry/server-utils@11.10.0"
+  - "@sentry/browser@11.14.0"
+  - "@sentry/browser-utils@11.14.0"
+  - "@sentry/bundler-plugins@11.14.0"
+  - "@sentry/core@11.14.0"
+  - "@sentry/feedback@11.14.0"
+  - "@sentry/nitro@11.14.0"
+  - "@sentry/node@11.14.0"
+  - "@sentry/opentelemetry@11.14.0"
+  - "@sentry/replay@11.14.0"
+  - "@sentry/replay-canvas@11.14.0"
+  - "@sentry/server-runtime-injection@11.14.0"
+  - "@sentry/server-utils@11.14.0"
   # Sentry publishes @sentry/api, so a new release is trusted.
   - "@sentry/api@2.3.0"
   - "@earendil-works/pi-agent-core"

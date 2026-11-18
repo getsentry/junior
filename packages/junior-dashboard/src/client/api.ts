@@ -551,8 +551,9 @@ export function useLocationDetailData(locationId: string | undefined) {
 }
 
 /** Fetch discovered skills used by System navigation and capability views. */
-export function useSkillsData() {
+export function useSkillsData(options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: ["dashboard", "skills"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(skillReportsSchema, "/api/skills", signal),

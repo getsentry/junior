@@ -4,6 +4,7 @@ import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
+import { skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 
@@ -413,22 +414,6 @@ export async function discoverSkills(
   return sorted;
 }
 
-function isCommonEnvironmentVariable(name: string): boolean {
-  return [
-    "HOME",
-    "LANG",
-    "PATH",
-    "PWD",
-    "SHELL",
-    "TEMP",
-    "TERM",
-    "TMP",
-    "TMPDIR",
-    "USER",
-    "XDG_CONFIG_HOME",
-  ].includes(name.toUpperCase());
-}
-
 /**
  * Extract an explicit skill invocation from a user message. `$name` is the
  * canonical form; `/name` still works for older messages and automations.
@@ -440,33 +425,9 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Any non-word character can come before `$`, so `$name` also matches
-  // after a tag, such as `<instructions>$name` in an Automation run, or in
-  // Slack code. A word before it, such as `US$5`, is not a reference.
-  const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
-  for (const match of trimmed.matchAll(dollarPattern)) {
-    const skillName = match[1]?.toLowerCase();
-    if (!skillName) {
-      continue;
-    }
-    if (isCommonEnvironmentVariable(skillName)) {
-      continue;
-    }
-    if (availableSkills.some((skill) => skill.name === skillName)) {
-      return { skillName };
-    }
-  }
-
-  // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
-  const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
-  for (const match of trimmed.matchAll(slashPattern)) {
-    const skillName = match[1]?.toLowerCase();
-    if (
-      skillName &&
-      availableSkills.some((skill) => skill.name === skillName)
-    ) {
-      return { skillName };
-    }
+  const [referencedSkill] = skillReferences(trimmed, availableSkills);
+  if (referencedSkill) {
+    return { skillName: referencedSkill };
   }
 
   const namedSkill = availableSkills.find((skill) => {

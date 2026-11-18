@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   doublePrecision,
   foreignKey,
@@ -60,5 +61,18 @@ export const juniorConversationMetrics = pgTable(
       table.occurredAt,
       table.metric,
     ),
+    // Covers time-bounded reads of Turn duration, tokens, and cost, such as
+    // the People list, so they scan only the index.
+    index("junior_conversation_metrics_turn_metric_occurred_at_idx")
+      .on(
+        table.metric,
+        table.occurredAt,
+        table.actorIdentityId,
+        table.conversationId,
+        table.value,
+      )
+      .where(
+        sql`${table.metric} IN ('duration_ms', 'total_tokens', 'cost_micro_usd')`,
+      ),
   ],
 );

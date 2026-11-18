@@ -35,6 +35,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import pLimit from "p-limit";
 import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -49,6 +50,7 @@ import {
   juniorConversationEvents,
   juniorConversations,
 } from "@/db/schema";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -506,6 +508,7 @@ async function replayConversations(
     let children: ChildAgentRow[];
     try {
       const ids = batch.map((row) => row.conversationId);
+      // oxlint-disable-next-line no-await-in-loop -- Load one batch at a time to bound memory.
       [rows, children] = await Promise.all([
         loadEvents(ids),
         loadChildAgents(ids),
@@ -644,11 +647,18 @@ export async function backfillCacheWarmingGaps(args: {
       // Check before the scan, so live gaps that arrive during the scan do
       // not stop the fill. A list that has gaps now has live gaps, or gaps
       // from a run that failed while it wrote. Both are kept as they are.
-      const emptySegments = new Set<string>();
-      for (const segment of BACKFILL_SEGMENTS) {
-        const gaps = await state.getList(segmentGapsKey(segment));
-        if (gaps.length === 0) emptySegments.add(segment);
-      }
+      const limit = pLimit(FAN_OUT_CONCURRENCY);
+      const segments = [...BACKFILL_SEGMENTS];
+      const gapCounts = await Promise.all(
+        segments.map((segment) =>
+          limit(
+            async () => (await state.getList(segmentGapsKey(segment))).length,
+          ),
+        ),
+      );
+      const emptySegments = new Set(
+        segments.filter((_segment, index) => gapCounts[index] === 0),
+      );
       const { periods, scanned, canceledBatches, budgetExceeded } =
         await scanIdlePeriods({
           windowStartMs: args.nowMs - GLOBAL_GAPS_TTL_MS,
@@ -678,6 +688,7 @@ export async function backfillCacheWarmingGaps(args: {
         const key = segmentGapsKey(segment);
         const newest = gaps.slice(-BACKFILL_GAPS_MAX);
         for (const gapMs of newest) {
+          // oxlint-disable-next-line no-await-in-loop -- Append the gaps of a list in time order.
           await state.appendToList(key, gapMs, {
             maxLength: GLOBAL_GAPS_MAX,
             ttlMs: GLOBAL_GAPS_TTL_MS,

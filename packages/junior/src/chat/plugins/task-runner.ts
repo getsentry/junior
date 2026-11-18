@@ -119,17 +119,22 @@ function toolResultText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */

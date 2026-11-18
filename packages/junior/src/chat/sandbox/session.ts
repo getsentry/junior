@@ -355,6 +355,7 @@ export function createSandboxRuntime(
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Boot again only after the try before fails.
         return await createSession({
           timeoutMs,
           ...(networkPolicy
@@ -371,6 +372,7 @@ export function createSandboxRuntime(
         ) {
           throw error;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Wait before the next boot try.
         await sleep(SNAPSHOT_BOOT_RETRY_DELAY_MS, signal);
       }
     }
@@ -709,6 +711,7 @@ export function createSandboxRuntime(
       let removeAbortListener: (() => void) | undefined;
       try {
         if (!signal) {
+          // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
           return await acquisition.promise;
         }
         const aborted = new Promise<never>((_resolve, reject) => {
@@ -717,6 +720,7 @@ export function createSandboxRuntime(
           removeAbortListener = () =>
             signal.removeEventListener("abort", onAbort);
         });
+        // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
         return await Promise.race([acquisition.promise, aborted]);
       } catch (error) {
         signal?.throwIfAborted();

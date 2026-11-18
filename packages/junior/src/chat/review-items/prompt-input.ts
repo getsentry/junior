@@ -10,7 +10,7 @@ import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstruction } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
-import { escapeTagText, renderTag } from "@/chat/input-tags";
+import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ReviewItemChangeRecord } from "./change-record";
