@@ -56,7 +56,7 @@ browser.
    apps/ios/scripts/sim.sh ui-test NavigationUITests/testAnswerQuestion
    ```
 
-In `apps/ios`, `make init` installs the tools and `xcodegen generate` makes the Xcode project.
+In `apps/ios`, `make init` installs the tools and `make xcode` makes and opens the Xcode project.
 
 ### On an iPhone
 
