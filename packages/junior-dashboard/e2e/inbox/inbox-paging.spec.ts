@@ -408,119 +408,44 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
-  test("the Inbox ends after a few rows of Earlier, with a link to Done", async ({
+  test("an Inbox with only done Conversations lists none of them, and reads no older page", async ({
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
-    const older = page.getByRole("link", { name: "Older work is in Done" });
-    // The mock feed has more old Conversations than Earlier shows.
-    await expect(async () => {
-      await page
-        .locator("[data-inbox-scroll]")
-        .evaluate((node) => (node.scrollTop = node.scrollHeight));
-      await expect(older).toBeVisible({ timeout: 1_000 });
-    }).toPass();
-    await expect(
-      page.getByRole("region", { name: "Earlier" }).locator("[data-inbox-row]"),
-    ).toHaveCount(10);
-    await older.click();
-    await expect(page).toHaveURL(/\/\?view=done$/);
-  });
-
-  test("a full Earlier still reads the feed until it is past This week", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockFeedPages(page, "today");
-    await page.goto(`${dashboard.baseURL}/`);
-    const today = page.getByRole("region", { name: "Today" });
-    await expect(async () => {
-      await scrollToEnd(page);
-      await expect(today.getByText("Feed Conversation 99")).toBeVisible({
-        timeout: 1_000,
-      });
-    }).toPass({ timeout: 10_000 });
-    await expect(
-      page.getByRole("region", { name: "Earlier" }).locator("[data-inbox-row]"),
-    ).toHaveCount(10);
-  });
-
-  test("a failed feed page shows Try again, not the link to Done", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockFeedPages(page, "fails");
-    await page.goto(`${dashboard.baseURL}/`);
-    const retry = page.getByRole("button", { name: "Try again" });
-    await expect(async () => {
-      await scrollToEnd(page);
-      await expect(retry).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
-    await expect(
-      page.getByRole("link", { name: "Older work is in Done" }),
-    ).toHaveCount(0);
-  });
-
-  async function scrollToEnd(page: Page) {
-    await page
-      .locator("[data-inbox-scroll]")
-      .evaluate((node) => (node.scrollTop = node.scrollHeight));
-  }
-
-  /**
-   * Serve two feed pages in the mock feed's shape. The feed reads newest
-   * activity first, but a row shows its last message. The first page fills
-   * Earlier with Conversations active a minute ago whose last message is a
-   * month old. As on the server, it ends with a Conversation that waits on
-   * the viewer, of any age: here two months. The next page holds a
-   * Conversation from today, or fails.
-   */
-  async function mockFeedPages(page: Page, next: "today" | "fails") {
-    const minutes = (count: number) =>
-      new Date(NOW_MS - count * 60_000).toISOString();
-    // The mock feed has no later pages, so its first page gives the shape.
-    let body: { conversations: Array<Record<string, unknown>> } | undefined;
+    await mockReviewItems(page, { automations: () => 0, open: [] });
+    let olderReads = 0;
     await page.route(/\/api\/conversations(\?|$)/, async (route) => {
-      const later = new URL(route.request().url()).searchParams.has("cursor");
-      if (later && next === "fails") {
-        return route.fulfill({ json: { error: "Feed failed" }, status: 500 });
+      if (new URL(route.request().url()).searchParams.has("cursor")) {
+        olderReads += 1;
       }
-      body ??= await (await route.fetch()).json();
-      if (!body) throw new Error("The mock feed read no page");
-      const base = body.conversations.find(
+      const body = await (await route.fetch()).json();
+      const done = body.conversations.filter(
         (conversation: { pinnedAt?: string; status?: string }) =>
           !conversation.pinnedAt && conversation.status !== "active",
       );
-      const conversation = (index: number, seen: number, message: number) => ({
-        ...base,
-        conversationId: `slack:CFEED:17700${String(index).padStart(5, "0")}.000100`,
-        displayTitle: `Feed Conversation ${index}`,
-        lastMessageAt: minutes(message),
-        lastProgressAt: minutes(message),
-        lastSeenAt: minutes(seen),
-        threads: [],
-      });
       await route.fulfill({
-        json: later
-          ? {
-              ...body,
-              conversations: [conversation(99, 120, 120)],
-              nextCursor: undefined,
-            }
-          : {
-              ...body,
-              conversations: [
-                ...Array.from({ length: 12 }, (_, index) =>
-                  conversation(index, index + 1, 43_200 + index),
-                ),
-                conversation(50, 86_400, 86_400),
-              ],
-              nextCursor: "page-2",
-            },
+        json: { ...body, conversations: done, nextCursor: "older" },
       });
     });
-  }
+    await page.goto(`${dashboard.baseURL}/`);
+    const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
+    await expect(inbox.getByText("Nothing left here")).toBeVisible();
+    await inbox
+      .locator("[data-inbox-scroll]")
+      .evaluate((node) => (node.scrollTop = node.scrollHeight));
+    await expect(inbox.locator("[data-inbox-row]")).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "In flight" })).toHaveCount(0);
+    expect(olderReads).toBe(0);
+
+    // Conversations still lists them.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await expect(
+      page
+        .getByRole("region", { exact: true, name: "Conversations" })
+        .locator("[data-inbox-row]")
+        .first(),
+    ).toBeVisible();
+  });
 
   /** Twelve questions, each in its own Conversation, two to a page. */
   function questionsByPage() {

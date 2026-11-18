@@ -245,6 +245,8 @@ function rowConversationPath(props: InboxRowProps): string {
 }
 
 type InboxRowProps = {
+  /** What the viewer answered, such as "You answered Hold": the summary. */
+  answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
   cardActions?(item: ReviewItemPayload): InboxCardActions;
@@ -569,7 +571,11 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const summary = props.itemTitle ? undefined : rowSummary(conversation);
+  const found = props.itemTitle ? undefined : rowSummary(conversation);
+  // The viewer's answer replaces the line that asked for it.
+  const summary = props.answered
+    ? { mentions: undefined, status: found?.status, text: props.answered }
+    : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];

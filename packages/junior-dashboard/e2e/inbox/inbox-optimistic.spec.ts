@@ -287,7 +287,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("Clear marks notices done at once, and Retry clears the ones that failed", async ({
+  test("Dismissing FYIs closes them at once, and Retry dismisses the ones that failed", async ({
     dashboard,
     page,
   }) => {
@@ -309,12 +309,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     const toast = page
       .locator('[data-slot="toast"]')
-      .filter({ hasText: "Could not clear 1 item" });
-    // The Clear goes out when its Undo toast closes.
+      .filter({ hasText: "Could not dismiss 1 FYI" });
+    // The sweep goes out when its Undo toast closes.
     await expect(toast).toBeVisible({ timeout: 10_000 });
     await expect(digestFyi).toBeVisible();
     expect(sent).toHaveLength(1);

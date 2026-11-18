@@ -1,6 +1,6 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationListItem,
   ReviewItemPayload,
@@ -39,14 +39,12 @@ import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
-  capEarlier,
   inboxViewPath,
   itemRowSubtitle,
   linkedRowOf,
   singleRow,
   sweepOf,
   timeGroups,
-  timeSectionAt,
   viewRows,
   viewSections,
 } from "./inboxModel";
@@ -60,12 +58,7 @@ import {
 import { useLeaveCard, useLeaveRow } from "./rowMotion";
 import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
-import {
-  InboxStack,
-  STACK_ROW_KEYS,
-  stackRows,
-  useLoneRowKey,
-} from "./InboxStack";
+import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import type { InboxBundle } from "./reviewItemFormat";
@@ -157,8 +150,6 @@ export function InboxList(props: {
     setExpandedKey: state.setExpandedKey,
   });
 
-  const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
-  const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
   const pullRequests = usePullRequestSections(
     viewRows(data.awake, "prs"),
     data.itemPages,
@@ -166,31 +157,11 @@ export function InboxList(props: {
   );
   // While the pointer is on the list, a feed refresh moves no row under it.
   const [held, setHeld] = useState<RowPlaces>();
-  // The Inbox ends after a few rows of Earlier. Conversations lists all.
-  const inboxStream =
-    view === "inbox"
-      ? capEarlier(
-          data.inboxStreamRows.filter(
-            (row) =>
-              !todoIds.has(row.conversationId) &&
-              !grabIds.has(row.conversationId),
-          ),
-          (row) => row.time,
-          nowMs,
-        )
-      : undefined;
+  // Only Conversations lists Conversations. The Inbox holds what needs the
+  // viewer, and In flight in the pane holds what runs or is pinned.
   const latestStreamRows =
-    inboxStream?.rows ??
-    (view === "conversations" ? data.conversationRows : []);
+    view === "conversations" ? data.conversationRows : [];
   const streamRows = heldRows(latestStreamRows, held);
-  const streamBundles = streamRows.flatMap((row) =>
-    row.bundle ? [row.bundle] : [],
-  );
-  const loneKey = useLoneRowKey(
-    streamBundles,
-    state.expandedKey,
-    state.setExpandedKey,
-  );
 
   // `?item=` names one item, as old Inbox links and notifications do. Its
   // row expands, the list shows rows until it renders, and it scrolls into
@@ -216,7 +187,6 @@ export function InboxList(props: {
     foldedNotices: data.foldedNotices,
     grabs: data.grabRows,
     snoozed: data.snoozedRows,
-    stream: streamBundles,
     todo: data.todoRows,
   });
   const linkedLoaded =
@@ -346,6 +316,7 @@ export function InboxList(props: {
   const bundleRow = (
     row: InboxBundle,
     options: {
+      answered?: string;
       conversation?: Conversation;
       drag?: PinnedRowDrag;
       itemRow?: boolean;
@@ -370,6 +341,7 @@ export function InboxList(props: {
     const acted = { items: row.items, key, passing: options.passing, title };
     return (
       <InboxRow
+        answered={options.answered}
         bundle={row}
         cardActions={cardActions(acted, options)}
         // Conversations rows keep their Pin and Archive.
@@ -383,7 +355,7 @@ export function InboxList(props: {
         }
         conversationId={row.conversationId}
         drag={options.drag}
-        expanded={state.expandedKey === key || loneKey === key}
+        expanded={state.expandedKey === key}
         foldedNotices={data.foldedNotices}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
@@ -447,10 +419,8 @@ export function InboxList(props: {
     const stackKey = keyOf(row.key);
     // Built here, so the list knows each row's items as it renders.
     const rows = stackRows(row, keyOf, options.todo);
-    // A Conversation section shows a Conversation's row. Elsewhere, a lone
-    // item shows its own row: an item row is always one actionable item.
-    if (row.items.length === 1 && keyOf === STACK_ROW_KEYS.conversation)
-      return bundleRow(row, { ...options, key: stackKey });
+    // A lone item shows its own row: an item row is always one actionable
+    // item.
     if (rows.length === 1)
       return bundleRow(row, {
         ...options,
@@ -498,13 +468,12 @@ export function InboxList(props: {
   };
   const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
     const key = `conversation:${row.conversationId}`;
-    if (row.bundle && view === "inbox")
-      return stackRow(row.bundle, STACK_ROW_KEYS.conversation, {
-        conversation: row.conversation,
-        time: row.time,
-      });
+    const answered = row.conversation
+      ? data.answerOf(row.conversation)
+      : undefined;
     if (row.bundle)
       return bundleRow(row.bundle, {
+        answered,
         conversation: row.conversation,
         drag,
         key,
@@ -512,6 +481,7 @@ export function InboxList(props: {
       });
     return (
       <InboxRow
+        answered={answered}
         conversation={row.conversation}
         conversationId={row.conversationId}
         drag={drag}
@@ -563,19 +533,9 @@ export function InboxList(props: {
   // into view. When every loaded row shows, the next page of what the list
   // reads loads: the feed, the open asks, or Done.
   const hidden = Math.max(0, streamRows.length - state.loaded);
-  // Older feed pages hold only rows that Earlier leaves out once it is full
-  // and the feed has read past This week. The feed reads by activity and a
-  // row shows its last message, so a newer row can still be on a later page
-  // until then.
-  const feedDone =
-    Boolean(inboxStream?.full) &&
-    data.feedReadThrough !== undefined &&
-    timeSectionAt(data.feedReadThrough, nowMs) === "earlier";
   const pages: InboxFeedPages[] =
     view === "inbox"
-      ? feedDone
-        ? [data.itemPages]
-        : [data.feed, data.itemPages]
+      ? [data.itemPages]
       : view === "conversations"
         ? [data.feed]
         : view === "prs" || view === "decisions"
@@ -600,13 +560,6 @@ export function InboxList(props: {
     hidden > 0 ||
     (failed.length === 0 && pages.some((source) => source.hasMore));
   const loadingMore = pages.some((source) => source.loadingMore);
-  // Earlier left rows out, so the Inbox ends with where they are. After a
-  // failed page, Try again shows instead: rows may still be missing.
-  const older =
-    ready &&
-    !more &&
-    failed.length === 0 &&
-    Boolean(inboxStream?.cut || (feedDone && data.feed.hasMore));
   // The trigger asks again whenever rows arrive or show.
   const progress = [
     view,
@@ -644,10 +597,7 @@ export function InboxList(props: {
 
   const stream = () => {
     const shown = streamRows.slice(0, state.loaded);
-    const pinned =
-      view === "conversations"
-        ? shown.filter((row) => row.conversation?.pinnedAt)
-        : [];
+    const pinned = shown.filter((row) => row.conversation?.pinnedAt);
     const rest = shown.filter((row) => !pinned.includes(row));
     const pinnedConversations = pinned.flatMap((row) =>
       row.conversation ? [row.conversation] : [],
@@ -709,6 +659,16 @@ export function InboxList(props: {
   } else if (!ready) {
     body = <RowsLoading />;
   } else if (view === "inbox") {
+    // Empty only once Automations are in: they can still add To do cards,
+    // and a failed read must not read as nothing left.
+    const nothingLeft =
+      data.automationsLoaded &&
+      !todoMore &&
+      data.todoRows.length +
+        data.todoAutomations.length +
+        data.grabRows.length +
+        data.fyiRows.length ===
+        0;
     const pinnedTodo = data.todoRows.filter((row) =>
       data.isPinned(row.conversationId),
     );
@@ -765,7 +725,7 @@ export function InboxList(props: {
           {data.fyiRows.map((row) => stackRow(row, STACK_ROW_KEYS.fyi, {}))}
         </InboxSection>
         {automationsError}
-        {stream()}
+        {nothingLeft ? <InboxEmptyState label="Nothing left here" /> : null}
       </>
     );
   } else if (view === "conversations") {
@@ -925,16 +885,6 @@ export function InboxList(props: {
             <InboxPreviewGate>{body}</InboxPreviewGate>
           </InboxFocusProvider>
           {data.itemsError ? null : listEnd}
-          {older ? (
-            <p className="m-0 py-4 text-center font-sans text-xs text-dashboard-text-muted">
-              <Link
-                className="text-inherit no-underline hover:text-dashboard-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-                to={inboxViewPath("done")}
-              >
-                Older work is in Done
-              </Link>
-            </p>
-          ) : null}
           {props.error ? (
             <InlineError className="py-2">{props.error}</InlineError>
           ) : null}

@@ -114,8 +114,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await openRow(
       page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: /^Checkout latency triage/ }),
+        .getByRole("region", { name: "To do" })
+        .locator("li[data-inbox-stack]")
+        .filter({ hasText: "Investigate checkout latency" })
+        .locator("li[data-inbox-row] [data-inbox-head]")
+        .first(),
     );
     await setDetails(page, true);
     await page.locator("body").focus();
@@ -149,32 +152,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-new-conversation", { lightTheme: true });
     await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  });
-
-  test("In flight lists running and pinned Conversations", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockReviewItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(
-      inFlight.getByRole("link", { name: new RegExp(checkout) }),
-    ).toBeVisible();
-
-    // A pin from a row joins In flight.
-    const today = page.getByRole("region", { name: "Today" });
-    await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
-    await today
-      .getByRole("button", { name: "Pin Roll out payments-v42" })
-      .click();
-    await expect(
-      inFlight.getByRole("link", { name: /Roll out payments-v42/ }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-in-flight", { view: "desktop" });
-
-    await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
-    await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
   });
 
   test("the list loads older Conversations as it scrolls", async ({
@@ -243,6 +220,29 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=conversations$/);
     await expect(older).toBeVisible();
     expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
+  });
+
+  test("a link to an ask that waits on someone else leaves the Inbox as it is", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = {
+      ...rollout,
+      addedByConversationId: "slack:COTHER:1770000000.000100",
+      rootConversationId: "slack:COTHER:1770000000.000100",
+      assignees: [],
+      canAct: false,
+      id: "item-other",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [rollout, other] });
+    await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
+    // The Inbox has no row for it, so the link leaves the URL.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await expect(page.getByText(other.title)).toHaveCount(0);
   });
 
   test("an item link and the Inbox tab share one place", async ({
@@ -343,108 +343,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=conversations$/);
   });
 
-  test("In flight shows every pin past five running Conversations, and Show all lists the rest", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const conversation = (
-        index: number,
-        displayTitle: string,
-        fields: {
-          pinnedAt: string | null;
-          pinPosition?: number;
-          status: string;
-        },
-      ) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CFLIGHT:${1770000000 + index}.000100`,
-        displayTitle,
-        ...fields,
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          conversations: [
-            ...Array.from({ length: 6 }, (_, index) =>
-              conversation(index, `Running conversation ${index + 1}`, {
-                pinnedAt: null,
-                status: "active",
-              }),
-            ),
-            conversation(6, "Running pin", {
-              pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 0,
-              status: "active",
-            }),
-            conversation(7, "Idle pin", {
-              pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 1,
-              status: "completed",
-            }),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockReviewItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    // Pins always show. Running Conversations fill the rows left, up to five.
-    await expect(
-      inFlight.getByRole("link", { name: /Running pin/ }),
-    ).toBeVisible();
-    await expect(
-      inFlight.getByRole("link", { name: /Idle pin/ }),
-    ).toBeVisible();
-    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
-
-    // Show all lists every in-flight row in place, in the same order.
-    const showAll = page.getByRole("button", { name: "Show all" });
-    await expect(showAll).toHaveAttribute("aria-expanded", "false");
-    await showAll.click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      ...Array.from(
-        { length: 6 },
-        (_, index) => new RegExp(`Running conversation ${index + 1}`),
-      ),
-      /Running pin/,
-      /Idle pin/,
-    ]);
-    const showFewer = page.getByRole("button", { name: "Show fewer" });
-    await expect(showFewer).toHaveAttribute("aria-expanded", "true");
-    await screenshot(page, "inbox-in-flight-expanded", { lightTheme: true });
-
-    // A pin still drags while the list is expanded.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await inFlight.getByRole("link", { name: /Idle pin/ }).focus();
-    await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [7, 6].map(
-        (index) => `slack:CFLIGHT:${1770000000 + index}.000100`,
-      ),
-    });
-
-    // The list stays expanded when a row opens its Conversation.
-    await inFlight
-      .getByRole("link", { name: /Running conversation 6/ })
-      .click();
-    await expect(page).toHaveURL(/\/conversations\/slack%3ACFLIGHT/);
-    await expect(inFlight.getByRole("listitem")).toHaveCount(8);
-
-    await showFewer.click();
-    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
-    await expect(showAll).toHaveAttribute("aria-expanded", "false");
-  });
-
   test("a failed page still lets another list show its loaded rows", async ({
     dashboard,
     page,
@@ -515,16 +413,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     }).toPass();
     expect(oldestAttempts).toBe(1);
 
-    // The Inbox ends after the first rows of Earlier, so it reads no older
-    // page, and the failure does not show there.
+    // The Inbox lists no Conversations, so it reads no older page, and the
+    // failure does not show there.
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Inbox\b/ }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    const toDone = page.getByRole("link", { name: "Older work is in Done" });
-    await expect(async () => {
-      await scrollToEnd("Inbox");
-      await expect(toDone).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await scrollToEnd("Inbox");
     await expect(retry).toHaveCount(0);
     expect(oldestAttempts).toBe(1);
 

@@ -1,4 +1,4 @@
-import { Check, Clock3 } from "lucide-react";
+import { Clock3, X } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -16,10 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  ATTENTION_TONE_CLASS,
-  OPEN_TONE_CLASS,
-} from "../conversations/ConversationMeta";
+import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
 import { atLocalHour, snoozeChoicesAt } from "./inboxSnooze";
@@ -215,8 +212,8 @@ function CustomSnooze(props: {
 }
 
 /**
- * Dismiss an Inbox row: the main action of its action bar, so it goes
- * right-most.
+ * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
+ * has no check mark, so it does not read as an answer or an approval.
  */
 export function RowDismissButton(props: {
   /** The action bar's look by default (`ButtonLook`). */
@@ -231,10 +228,9 @@ export function RowDismissButton(props: {
       className={props.look && LOOK_CLASSES[props.look]}
       onClick={props.onClick}
       title={props.look === "icon" ? label : undefined}
-      // A stack header stays quiet, so its main action is not loud either.
-      variant={props.look === "quiet" ? "ghost" : "outline"}
+      variant="ghost"
     >
-      <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
+      <X aria-hidden="true" size={15} />
       <ButtonLabel look={props.look}>{label}</ButtonLabel>
     </Button>
   );

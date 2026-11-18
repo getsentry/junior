@@ -13,8 +13,8 @@ on its own. `./review-desk.md` owns who sees an item and who can act on it.
   its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
   always one actionable item, such as a question or a pull request. A
-  Conversation row is a different row, for the Conversation sections. A
-  row action never applies to a group of items. A pull request review and a question are
+  Conversation row is a different row, for the Conversations view. A row
+  action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
   next row in the same stack first, so the context that the reader just
@@ -25,8 +25,8 @@ on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 ## Entry points
 
-- Dashboard: Inbox, with To do, Up for grabs, FYI, the Conversation
-  sections, and Snoozed.
+- Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
+  Conversations view.
 - The stack title, which opens the root Conversation.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
@@ -53,7 +53,7 @@ Grouping:
 - A stack of more than four rows shows the first four and "+N more in this
   Conversation". That control shows the rest in place. A stack also shows
   the rest when its open row is past the first four.
-- The Conversation sections keep one Conversation row each, with Pin and
+- The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
 Actions:

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useConversationDensity } from "../conversations/conversationDensity";
@@ -131,32 +131,8 @@ export function stackRows(
 
 /** The row key of an item or a Conversation in each section with stacks. */
 export const STACK_ROW_KEYS = {
-  conversation: (id: string) => `conversation:${id}`,
   fyi: (id: string) => `fyi:${id}`,
   grabs: (id: string) => `grabs:${id}`,
   snoozed: (id: string) => id,
   todo: (id: string) => `todo:${id}`,
 };
-
-/**
- * In a Conversation section, a stack that shrinks to one item shows the
- * normal row of its Conversation, under the Conversation's key. While the
- * open row is that item's own, this returns the normal row's key and opens
- * that row, so the item stays open. To do, Up for grabs, and Snoozed keep
- * the item's own row, so their keys do not change.
- */
-export function useLoneRowKey(
-  conversationRows: readonly InboxBundle[],
-  expandedKey: string,
-  setExpandedKey: (key: string) => void,
-): string | undefined {
-  const keyOf = STACK_ROW_KEYS.conversation;
-  const lone = conversationRows
-    .filter((row) => row.items.length === 1)
-    .map((row) => [keyOf(row.newest.id), keyOf(row.key)] as const)
-    .find(([itemKey]) => itemKey === expandedKey)?.[1];
-  useEffect(() => {
-    if (lone) setExpandedKey(lone);
-  }, [lone, setExpandedKey]);
-  return lone;
-}

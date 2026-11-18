@@ -194,39 +194,6 @@ export function timeSectionAt(iso: string, nowMs: number): string {
   return "earlier";
 }
 
-/**
- * How many rows Earlier shows in the Inbox. A fixed number, not a time
- * window: Earlier starts where This week ends, and a window such as 30 days
- * still grows without end for a busy viewer. Older work is in Done.
- */
-const EARLIER_LIMIT = 10;
-
-/**
- * Keep the Inbox stream's rows up to the first `EARLIER_LIMIT` rows of
- * Earlier, so the Inbox ends. `full` says Earlier has all the rows that it
- * shows, so older pages need not load. `cut` says rows were left out.
- */
-export function capEarlier<Row>(
-  rows: readonly Row[],
-  timeOf: (row: Row) => string,
-  nowMs: number,
-): { cut: boolean; full: boolean; rows: Row[] } {
-  const kept: Row[] = [];
-  let earlier = 0;
-  for (const row of rows) {
-    if (timeSectionAt(timeOf(row), nowMs) === "earlier") {
-      earlier += 1;
-      if (earlier > EARLIER_LIMIT) continue;
-    }
-    kept.push(row);
-  }
-  return {
-    cut: earlier > EARLIER_LIMIT,
-    full: earlier >= EARLIER_LIMIT,
-    rows: kept,
-  };
-}
-
 /** Split rows into Today, This week, and Earlier, keeping their order. */
 export function timeGroups<Row>(
   rows: readonly Row[],
@@ -349,7 +316,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -364,6 +331,11 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -382,42 +354,23 @@ export function itemRowSubtitle(
 }
 
 /**
- * The key of the row that shows an item of `bundle` in a Conversation
- * section: in a stack of more than one item, the item's own row; else the
- * Conversation's row. To do, Up for grabs, and Snoozed show an item's own
- * row always.
- */
-function streamRowKey(bundle: InboxBundle, itemId: string): string {
-  return bundle.items.length > 1 ? itemId : bundle.key;
-}
-
-/**
- * The key of the Inbox row that shows a linked open item: in Up for grabs,
- * To do, or the stream, and in its stack, the item's own row.
+ * The key of the Inbox row that shows a linked open item: its own row, in
+ * Up for grabs or To do. The Inbox lists no Conversations, so an item in
+ * neither has no row here.
  */
 function linkedInboxRowKey(
   item: ReviewItemPayload,
-  rows: {
-    grabs: readonly InboxBundle[];
-    stream: readonly InboxBundle[];
-    todo: readonly InboxBundle[];
-  },
-): string {
-  const conversationId = item.rootConversationId;
-  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) => {
-    const row = bundles.find(
-      (bundle) => bundle.conversationId === conversationId,
-    );
-    if (!row) return undefined;
-    return `${prefix}:${prefix === "conversation" ? streamRowKey(row, item.id) : item.id}`;
-  };
+  rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
+): string | undefined {
+  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
+    bundles.some((bundle) => bundle.conversationId === item.rootConversationId)
+      ? `${prefix}:${item.id}`
+      : undefined;
   const grab = rowIn("grabs", rows.grabs);
   return (
     (itemUpForGrabs(item) ? grab : undefined) ??
     rowIn("todo", rows.todo) ??
-    grab ??
-    rowIn("conversation", rows.stream) ??
-    `conversation:${conversationId}`
+    grab
   );
 }
 
@@ -435,7 +388,6 @@ export function linkedRowOf(
     foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
     grabs: readonly InboxBundle[];
     snoozed: readonly InboxBundle[];
-    stream: readonly InboxBundle[];
     todo: readonly InboxBundle[];
   },
 ): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {

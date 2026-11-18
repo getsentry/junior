@@ -1,4 +1,4 @@
-import { CheckCheck } from "lucide-react";
+import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/ui/button";
@@ -68,23 +68,24 @@ export function InboxEmptyState(props: { label: string }) {
   );
 }
 
-/** Clear the notices and FYI items in some rows. Asks stay. */
+/** Dismiss the FYIs in some rows. Asks stay. */
 export function SweepControl(props: {
   clear: number;
   onSweep(): void;
   scope: string;
 }) {
   if (props.clear === 0) return null;
+  // Bulk actions read `<verb> <number>`; the section names what it dismisses.
+  const label = `Dismiss ${props.clear}`;
   return (
     <Button
-      aria-label={`Clear ${props.clear} in ${props.scope}`}
+      aria-label={`${label} in ${props.scope}`}
       className="h-6 gap-1 px-1.5 text-xs"
       onClick={props.onSweep}
-      title="Mark notices and FYI items done. Questions and approvals stay."
       variant="ghost"
     >
-      <CheckCheck aria-hidden="true" className="size-3.5" />
-      Clear {props.clear}
+      <X aria-hidden="true" className="size-3.5" />
+      {label}
     </Button>
   );
 }
