@@ -34,6 +34,46 @@ describe("Asking a Person", () => {
     expect(askedRequests(conversation)).not.toHaveLength(0);
   });
 
+  test("when a question suggests an answer, cite the evidence for it and against it on the item", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        [
+          "payments-v42 is on the canary. The error rate has been flat for 30 minutes: https://sentry.example.com/organizations/acme/canary/payments-v42/",
+          "Morgan posted in #proj-checkout that checkout p95 went from 210 ms to 890 ms right after payments-v42 landed: https://sentry.example.com/organizations/acme/explore/traces/checkout-p95/",
+          "I have to decide whether to roll it out to every region. Ask me on the review desk, with what you would pick.",
+        ].join("\n"),
+        { author: MAYA },
+      ),
+    );
+
+    const asks = completedToolCalls("addReviewItem", conversation)
+      .map(
+        (call) =>
+          call.input as {
+            evidence?: Array<{ url?: string | null }> | null;
+            kind?: string;
+            request?: {
+              fields: Array<{ options?: Array<{ recommended?: boolean }> }>;
+            };
+          },
+      )
+      .filter((input) => input.kind === "action");
+    expect(asks).toHaveLength(1);
+    const [ask] = asks;
+    expect(
+      ask!.request?.fields.some((field) =>
+        field.options?.some((option) => option.recommended),
+      ),
+    ).toBe(true);
+    // Whichever answer it suggests, one source supports it and the other
+    // argues against it, so the item cites both.
+    const urls = (ask!.evidence ?? []).map((entry) => entry.url ?? "");
+    expect(urls.some((url) => url.includes("/canary/payments-v42"))).toBe(true);
+    expect(urls.some((url) => url.includes("/checkout-p95"))).toBe(true);
+  });
+
   test("when a scope choice does not block the work, choose the conventional option and state it without an item", async ({
     run,
   }) => {

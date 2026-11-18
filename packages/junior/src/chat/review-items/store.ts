@@ -39,6 +39,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemEvidence } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -80,6 +81,7 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  evidence?: ReviewItemEvidence[];
   id: string;
   kind: ReviewItemKind;
   request?: UserInputRequest;
@@ -99,6 +101,7 @@ export interface ReviewItemContent {
   assigneeUserIds: string[];
   body: string;
   conversationIds: string[];
+  evidence?: ReviewItemEvidence[] | undefined;
   kind: ReviewItemKind;
   request?: UserInputRequest;
   subject?: ReviewItemSubject | undefined;
@@ -183,6 +186,7 @@ async function hydrate(
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
+      ...(row.evidence?.length ? { evidence: row.evidence } : undefined),
       ...(row.request ? { request: row.request } : undefined),
       ...(row.provider && row.providerTenantId
         ? {
@@ -209,6 +213,7 @@ function contentColumns(content: ReviewItemContent) {
   return {
     assignedToEveryone: content.assignedToEveryone,
     body: content.body,
+    evidence: content.evidence?.length ? content.evidence : null,
     kind: content.kind,
     request: content.request ?? null,
     subjectId: content.subject?.id ?? null,

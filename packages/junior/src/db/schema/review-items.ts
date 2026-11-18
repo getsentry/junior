@@ -9,6 +9,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { ReviewItemEvidence } from "@/chat/review-items/evidence";
 import type {
   UserInputAnswer,
   UserInputRequest,
@@ -39,6 +40,8 @@ export const juniorReviewItems = pgTable(
     body: text("body").notNull(),
     request: jsonb("request").$type<UserInputRequest>(),
     answer: jsonb("answer").$type<UserInputAnswer>(),
+    /** Sources that the agent cites for the item, in its order. */
+    evidence: jsonb("evidence").$type<ReviewItemEvidence[]>(),
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
       .default(false),

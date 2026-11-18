@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import { reviewItemEvidenceSchema } from "@/chat/review-items/evidence";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 const answerSchema = z
@@ -39,8 +40,30 @@ export const reviewItemSchema = z
     closedBy: personSchema.optional(),
     conversationIds: z.array(z.string().min(1)),
     createdAt: z.string().datetime(),
+    /** Sources that the agent cites for the item, in its order. */
+    evidence: z.array(reviewItemEvidenceSchema).optional(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
+    /**
+     * Other open work that the viewer can see on the same subject or linked
+     * work. Only an open item has it.
+     */
+    related: z
+      .object({
+        /** Linked Conversations other than the one that added the item. */
+        conversationIds: z.array(z.string().min(1)),
+        /**
+         * Open items with the same subject id or URL, or linked to one of
+         * those Conversations, newest first.
+         */
+        items: z.array(
+          z
+            .object({ id: z.string().min(1), title: z.string().min(1) })
+            .strict(),
+        ),
+      })
+      .strict()
+      .optional(),
     request: userInputRequestSchema.optional(),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
