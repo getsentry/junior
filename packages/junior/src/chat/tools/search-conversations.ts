@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import * as z from "zod";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
@@ -298,8 +299,8 @@ export function createSearchConversationsTool(context: {
         },
       });
       return {
-        conversations: await Promise.all(
-          matches.map((match) => conversationMatch(match, channels)),
+        conversations: await mapBounded(matches, (match) =>
+          conversationMatch(match, channels),
         ),
       };
     },

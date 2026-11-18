@@ -31,6 +31,7 @@ import type {
   TextContent,
 } from "@earendil-works/pi-ai/compat";
 import { mapBounded } from "@/chat/fan-out";
+import { setStateValues } from "@/chat/state/adapter";
 import { KEY_PREFIX, type ConnectedState } from "./request";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
@@ -155,10 +156,13 @@ export async function saveSnapshot(
   }
   // Write the images after the snapshot, so they expire after it.
   await state.set(key, snapshot, ttlMs);
-  await Promise.all(
-    [...images].map(([sha256, data]) =>
-      state.set(imageKey(conversationId, sha256), data, ttlMs),
-    ),
+  await setStateValues(
+    state,
+    [...images].map(([sha256, data]) => ({
+      key: imageKey(conversationId, sha256),
+      value: data,
+    })),
+    ttlMs,
   );
   return size;
 }

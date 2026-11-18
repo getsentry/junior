@@ -3,7 +3,11 @@ import { runAdmin } from "@/cli/admin";
 import { CLI_USAGE } from "@/cli/run";
 import { getDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import {
+  listAdminUsersFromSql,
+  resolveViewerUserFromSql,
+} from "@/chat/plugins/viewer";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
 describe("junior admin CLI", () => {
@@ -26,6 +30,33 @@ describe("junior admin CLI", () => {
 
       await expect(runAdmin(["list"])).resolves.toBe(0);
       expect(log).toHaveBeenLastCalledWith("Person@Example.com");
+
+      // The list reads the identities of every admin in one query.
+      const slack = await upsertIdentity(fixture.sql, {
+        email: "person@example.com",
+        emailVerified: true,
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U123",
+        providerTenantId: "T123",
+      });
+      await upsertLinkedIdentity(fixture.sql, slack.userId!, {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "42",
+      });
+      await expect(runAdmin(["grant", "other@example.com"])).resolves.toBe(0);
+      const admins = await listAdminUsersFromSql(getDb());
+      expect(
+        admins.map((admin) => [
+          admin.email,
+          admin.identities.map((identity) => identity.provider),
+        ]),
+      ).toEqual([
+        ["other@example.com", []],
+        ["Person@Example.com", ["github", "slack"]],
+      ]);
+      await expect(runAdmin(["revoke", "other@example.com"])).resolves.toBe(0);
 
       await expect(runAdmin(["revoke", "person@example.com"])).resolves.toBe(0);
       const revoked = await resolveViewerUserFromSql(

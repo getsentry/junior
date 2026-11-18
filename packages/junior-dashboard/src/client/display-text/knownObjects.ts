@@ -116,6 +116,35 @@ export function splitStandaloneUrls(text: string): {
   return { prose: parts.join("\n\n"), urls };
 }
 
+/**
+ * Drop each paragraph that is only a bare URL for `url`, so a surface that
+ * shows that object's card itself does not show it again in the text. Code
+ * fences stay.
+ */
+export function withoutStandaloneUrl(text: string, url: string): string {
+  const key = objectUrlKey(url);
+  if (!key) return text;
+  const dropUrl = (prose: string) =>
+    prose
+      .split(/\n[ \t]*\n/)
+      .filter((paragraph) => {
+        const bare = standaloneUrl(
+          slackLinksToMarkdown(paragraph).replace(/^\n+/, ""),
+        );
+        return !bare || objectUrlKey(bare) !== key;
+      })
+      .join("\n\n")
+      .trim();
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const fence of text.matchAll(MARKDOWN_FENCE)) {
+    parts.push(dropUrl(text.slice(cursor, fence.index)), fence[0]);
+    cursor = fence.index + fence[0].length;
+  }
+  parts.push(dropUrl(text.slice(cursor)));
+  return parts.filter(Boolean).join("\n\n");
+}
+
 /** Return the `objectUrlKey` of each bare URL alone in a paragraph. */
 export function standaloneUrlKeys(markdown: string): string[] {
   return slackLinksToMarkdown(markdown)

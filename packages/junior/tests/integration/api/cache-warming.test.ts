@@ -9,6 +9,7 @@ import {
 import { connectedState } from "@/chat/cache-warming/request";
 import {
   addHistoryPeriod,
+  addHistoryWarmupCost,
   recordIdlePeriodSavings,
   recordWarmupCost,
   replaceHistorySavings,
@@ -124,8 +125,8 @@ describe("cache warming API", () => {
       false,
     );
     await recordWarmupCost("anthropic/claude-opus-5.5", 0.1);
-    // A day from history has no warmup cost, so net savings and
-    // effectiveness leave it out.
+    // A day from history counts in the totals, with its recorded warmup
+    // cost.
     const history: HistorySavings = {};
     addHistoryPeriod(
       history,
@@ -133,6 +134,7 @@ describe("cache warming API", () => {
       "anthropic/claude-opus-5.5",
       { hit: true, oracleUsd: 2, savedUsd: 3 },
     );
+    addHistoryWarmupCost(history, "2031-05-08", 0.5);
     await replaceHistorySavings(history, {
       start: "2031-05-08",
       end: "2031-05-09",
@@ -156,10 +158,13 @@ describe("cache warming API", () => {
     ]);
     expect(report.days.at(-3)).toMatchObject({
       date: "2031-05-08",
+      history: true,
       savedUsd: expect.closeTo(3),
-      netSavingsUsd: null,
+      warmupCostUsd: expect.closeTo(0.5),
+      netSavingsUsd: expect.closeTo(2.5),
     });
     expect(report.days.at(-1)).toMatchObject({
+      history: false,
       idlePeriods: 1,
       hits: 0,
       netSavingsUsd: expect.closeTo(-0.1),
@@ -170,12 +175,12 @@ describe("cache warming API", () => {
       idlePeriods: 3,
       hits: 2,
       savedUsd: expect.closeTo(4),
-      warmupCostUsd: expect.closeTo(0.4),
-      netSavingsUsd: expect.closeTo(0.6),
+      warmupCostUsd: expect.closeTo(0.9),
+      netSavingsUsd: expect.closeTo(3.1),
       oracleSavingsUsd: expect.closeTo(3),
-      knownCostOracleSavingsUsd: expect.closeTo(1),
-      effectiveness: expect.closeTo(0.6),
-      unknownCostDays: 1,
+      liveOracleSavingsUsd: expect.closeTo(1),
+      effectiveness: expect.closeTo(3.1 / 3),
+      historyDays: 1,
     });
 
     // A range with no idle periods has no effectiveness.

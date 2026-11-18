@@ -4,10 +4,12 @@
  *
  * Live recording (`savings.ts`) counts only idle periods and tool waits that
  * end after it is deployed. A re-fill replays the stored model calls of the
- * last `REFILL_DAYS` with the same rules into the days before the first day
- * with live counters. It replaces those days, so a second re-fill does not
- * add to the first. It never writes a live day: live days have data that
- * history does not, the real warmup cost and the warm state split.
+ * last `REFILL_DAYS` into the days before the first day with live counters,
+ * with the rules of `historyPeriodSavings`. Idle periods that ended before
+ * the first recorded warmup call count nothing: warming did not run yet. Each
+ * day gets the recorded cost of its warmup calls. A re-fill replaces those
+ * days, so a second re-fill does not add to the first. It never writes a
+ * live day: live days have the warm state split, which history does not.
  *
  * The start request only stores a pending job. The heartbeat runs one slice
  * of the scan each minute, with a time budget. Each slice keeps its sums and
@@ -23,21 +25,24 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 import {
   BACKFILL_BUDGET_MS,
   countHistoryConversations,
+  firstWarmupMs,
   scanIdlePeriodSlice,
+  warmupCostUsdByDay,
   type ReplayedToolWait,
 } from "./backfill";
 import { MINUTE_MS } from "./model";
 import { connectedState, providerCacheTtlMs } from "./request";
 import {
   addHistoryPeriod,
+  addHistoryWarmupCost,
   firstLiveSavingsDate,
-  idlePeriodSavings,
+  historyPeriodSavings,
   replaceHistorySavings,
 } from "./savings";
 
-// v2 job sums are in micro-USD. A v1 job in progress has older units, so it
-// is dropped and an admin starts a new one.
-const JOB_KEY = "junior:cache_warming:savings_refill:v2";
+// v3 jobs have the warming start and count only warmed hits. An older job in
+// progress is dropped, and an admin starts a new one.
+const JOB_KEY = "junior:cache_warming:savings_refill:v3";
 // Only one slice runs at a time. A slice that dies holds it for this long.
 const SLICE_LOCK_KEY = "junior:cache_warming:savings_refill:v1:slice";
 const SLICE_LOCK_TTL_MS = 5 * MINUTE_MS;
@@ -70,6 +75,8 @@ const refillJobSchema = z
     windowStartMs: z.number(),
     /** First day with live counters. The job writes only days before it. */
     liveStartDate: z.string(),
+    /** First recorded warmup call. Unset when no warmup call was recorded. */
+    warmingStartMs: z.number().optional(),
     afterConversationId: z.string().optional(),
     scannedConversations: z.number(),
     totalConversations: z.number(),
@@ -147,6 +154,7 @@ export async function startSavingsRefill(
       return { started: false, refill: toStatus(current, nowMs) };
     }
     const windowStartMs = Date.parse(utcDate(nowMs - REFILL_DAYS * DAY_MS));
+    const warmingStartMs = await firstWarmupMs();
     const job: RefillJob = {
       id: randomUUID(),
       status: "pending",
@@ -154,6 +162,7 @@ export async function startSavingsRefill(
       leaseExpiresAtMs: nowMs + LEASE_MS,
       windowStartMs,
       liveStartDate: (await firstLiveSavingsDate()) ?? utcDate(nowMs),
+      ...(warmingStartMs !== undefined ? { warmingStartMs } : undefined),
       scannedConversations: 0,
       totalConversations: await countHistoryConversations(windowStartMs),
       sums: {},
@@ -168,12 +177,17 @@ export async function startSavingsRefill(
   }
 }
 
-// Count the period as live recording would when the stored call ended it. It
-// prices the period with the model of that call, as live recording prices it
-// with the model of the next request. A model that the gateway does not know
-// has no prices, so its periods do not count. An idle period with a next
-// call has the fields of a tool wait.
+// Count the period when the stored call ended it. It prices the period with
+// the model of that call, as live recording prices it with the model of the
+// next request. A model that the gateway does not know has no prices, so its
+// periods do not count. An idle period with a next call has the fields of a
+// tool wait.
 function addPeriod(job: RefillJob, period: ReplayedToolWait): void {
+  const endedAtMs = period.sinceMs + period.gapMs;
+  // A period that ended before the first warmup call had no warming.
+  if (job.warmingStartMs === undefined || endedAtMs < job.warmingStartMs) {
+    return;
+  }
   const modelId = period.next.modelId;
   if (!modelId) return;
   const ttlMs = providerCacheTtlMs(modelId);
@@ -184,7 +198,7 @@ function addPeriod(job: RefillJob, period: ReplayedToolWait): void {
   } catch {
     return;
   }
-  const savings = idlePeriodSavings({
+  const savings = historyPeriodSavings({
     cacheTtlMs: ttlMs,
     gapMs: period.gapMs,
     prefixTokens: period.prefixTokens,
@@ -192,10 +206,11 @@ function addPeriod(job: RefillJob, period: ReplayedToolWait): void {
     cacheWrite: period.next.cacheWrite,
     cacheReadPrice: cost.cacheRead,
     cacheWritePrice: cost.cacheWrite,
+    ...(period.lastWarmupMs !== undefined
+      ? { sinceLastWarmupMs: endedAtMs - period.lastWarmupMs }
+      : undefined),
   });
-  if (savings) {
-    addHistoryPeriod(job.sums, period.sinceMs + period.gapMs, modelId, savings);
-  }
+  if (savings) addHistoryPeriod(job.sums, endedAtMs, modelId, savings);
 }
 
 /**
@@ -270,6 +285,12 @@ export async function runSavingsRefillSlice(args: {
             sums: {},
           } satisfies Partial<RefillJob>);
         } else if (complete) {
+          if (range.start < range.end) {
+            const costs = await warmupCostUsdByDay(range);
+            for (const [date, costUsd] of Object.entries(costs)) {
+              addHistoryWarmupCost(job.sums, date, costUsd);
+            }
+          }
           await replaceHistorySavings(job.sums, range);
           Object.assign(next, {
             status: "done",
