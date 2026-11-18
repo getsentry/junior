@@ -42,11 +42,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // The row says the answer in place of the ask, after a reload too.
+    // The answered ask leaves the Inbox, which lists no Conversations.
     release();
+    await expect(page.getByText(ask)).toHaveCount(0);
+
+    // Conversations says the answer in place of the ask, after a reload too.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = rollout(page).locator('[data-inbox-slot="summary"]');
     await expect(summary).toHaveText("You answered Hold");
-    await expect(page.getByText(ask)).toHaveCount(0);
     await page.reload();
     await expect(summary).toHaveText("You answered Hold");
   });
