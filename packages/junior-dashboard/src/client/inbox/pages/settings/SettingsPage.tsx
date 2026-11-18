@@ -287,7 +287,7 @@ function InboxTabCountSetting() {
   );
 }
 
-/** Let the user turn off the Inbox magnify on this browser. */
+/** Let the user turn on the Inbox magnify on this browser. */
 function InboxMagnifySetting() {
   const [magnify, setMagnify] = useInboxMagnify();
   return (

@@ -21,6 +21,7 @@ import {
   parseInboxView,
   type InboxView,
 } from "./inboxModel";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 const ICONS: Record<InboxView, LucideIcon> = {
   conversations: MessagesSquare,
@@ -85,7 +86,12 @@ function Entry(props: {
           )}
           strokeWidth={1.9}
         />
-        <span className="truncate font-medium">{props.label}</span>
+        <span
+          className={cn(fadeOverflowClass, "font-medium")}
+          ref={fadeWhenOverflowing}
+        >
+          {props.label}
+        </span>
         {props.count ? (
           props.strong ? (
             <span className="text-xs font-semibold tabular-nums">

@@ -10,6 +10,7 @@ import {
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 type CardAnnotation = Annotation & {
@@ -101,15 +102,28 @@ export function mainRepo(
   return main;
 }
 
+// Whether a label names nothing more than its title. A web page's label is
+// its title, maybe with a suffix such as the site name, or its title cut
+// short. A title that is only part of a label, such as "123" in ENG-123,
+// leaves the label to name the work.
+function repeatsTitle(label: string, title: string | undefined): boolean {
+  return Boolean(
+    title &&
+    (label.startsWith(title) || title.startsWith(label.replace(/…$/u, ""))),
+  );
+}
+
 // The short name of a piece of work on its row: its repo when that is not
 // the row's main repo, then #123. Work with no repo, such as a Linear
-// issue, has its label.
+// issue, has its label, and none when the label repeats its title.
 function workRef(
-  work: { key: string; label: string },
+  work: { key: string; label: string; title?: string | undefined },
   main: string | undefined,
-): { number: string; repo?: string | undefined } {
+): { number?: string | undefined; repo?: string | undefined } {
   const repo = repoOf(work.key);
-  if (!repo) return { number: work.label };
+  if (!repo) {
+    return repeatsTitle(work.label, work.title) ? {} : { number: work.label };
+  }
   const number = work.key.slice(work.key.lastIndexOf("#"));
   return repo === main
     ? { number }
@@ -129,7 +143,8 @@ export type WorkLineObject = {
  * One piece of linked work of any kind in one line: its kind and status
  * icon in its status color, its title, then its short name. Work saved
  * with no title shows its icon and short name. A repo name gives way
- * before the title does, and the tooltip names it in full.
+ * before the title does. The title truncates next, then the short name, so
+ * the line stays in its column. The tooltip names both in full.
  */
 export function WorkLine(props: {
   href?: string | undefined;
@@ -156,21 +171,48 @@ export function WorkLine(props: {
           />
         ) : null}
       </span>
-      {name ? (
-        <span className="min-w-0 truncate text-dashboard-text group-hover/card:underline">
-          {name}
-        </span>
-      ) : null}
-      {/* The quiet tier: ids and repos are fainter, so the title leads. */}
-      <span className="flex shrink-[4] items-baseline whitespace-nowrap tabular-nums text-dashboard-text-faint">
-        {ref.repo ? (
-          <span className="min-w-0 max-w-24 truncate" data-work-repo="">
-            {ref.repo}
+      {/* The short name can take the whole line, so it gives way only
+          after the title is gone. Its padding is the gap after the title. */}
+      <span className="flex min-w-0 items-center">
+        {name ? (
+          <span
+            className={cn(
+              fadeOverflowClass,
+              "text-dashboard-text group-hover/card:underline",
+            )}
+            ref={fadeWhenOverflowing}
+          >
+            {name}
           </span>
         ) : null}
-        <span className={cn("shrink-0", !name && "text-dashboard-text-muted")}>
-          {ref.number}
-        </span>
+        {/* The quiet tier: ids and repos are fainter, so the title leads. */}
+        {ref.number ? (
+          <span
+            className={cn(
+              "flex max-w-full shrink-0 items-baseline whitespace-nowrap tabular-nums text-dashboard-text-faint",
+              name && "pl-1.5",
+            )}
+          >
+            {ref.repo ? (
+              <span
+                className={cn(fadeOverflowClass, "max-w-24")}
+                data-work-repo=""
+                ref={fadeWhenOverflowing}
+              >
+                {ref.repo}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                fadeOverflowClass,
+                !name && "text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
+              {ref.number}
+            </span>
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -264,7 +306,8 @@ function shortRef(object: { key: string; label: string }): string {
 }
 
 // A quiet card in one line: the title, or the label of work saved with no
-// title, then the short name in the status color.
+// title, then the short name in the status color. A label that repeats the
+// title shows once.
 function WorkChip(props: { work: Annotation }) {
   const { work } = props;
   const tone = work.objectType
@@ -274,27 +317,38 @@ function WorkChip(props: { work: Annotation }) {
   const name = work.title ?? work.label;
   const ref = shortRef(work);
   const toneClass = tone ? objectToneClass[tone] : "text-dashboard-text-muted";
-  const content =
-    ref === name ? (
+  const content = repeatsTitle(ref, name) ? (
+    <span
+      className={cn(fadeOverflowClass, "tabular-nums", toneClass)}
+      data-status-tone={tone}
+      ref={fadeWhenOverflowing}
+    >
+      {name}
+    </span>
+  ) : (
+    <>
       <span
-        className={cn("truncate tabular-nums", toneClass)}
-        data-status-tone={tone}
+        className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+        ref={fadeWhenOverflowing}
       >
         {name}
       </span>
-    ) : (
-      <>
-        <span className="truncate text-dashboard-text-muted">{name}</span>
-        <span
-          className={cn("shrink-0 tabular-nums", toneClass)}
-          data-status-tone={tone}
-        >
-          {ref}
-        </span>
-      </>
-    );
+      {/* Like a line's short name, it gives way after the title. */}
+      <span
+        className={cn(
+          fadeOverflowClass,
+          "max-w-full shrink-0 pl-1 tabular-nums",
+          toneClass,
+        )}
+        data-status-tone={tone}
+        ref={fadeWhenOverflowing}
+      >
+        {ref}
+      </span>
+    </>
+  );
   const className =
-    "inline-flex min-w-0 max-w-48 shrink-0 items-baseline gap-1 rounded-sm font-sans text-xs no-underline";
+    "inline-flex min-w-0 max-w-48 shrink-0 items-baseline rounded-sm font-sans text-xs no-underline";
   return work.url ? (
     <a
       className={cn(

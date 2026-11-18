@@ -59,6 +59,8 @@ import {
 } from "../../components/ui/command";
 import { Kbd } from "../../components/ui/kbd";
 import { formatCompactAge } from "../../time";
+import { fadeTextClass } from "../../textFade";
+import { cn } from "../../styles";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -303,7 +305,7 @@ function CommandPaletteBody(props: {
                   value={item.id}
                 >
                   <Icon aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">
+                  <span className={cn(fadeTextClass, "flex-1")}>
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
                   {item.meta ? (

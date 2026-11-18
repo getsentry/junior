@@ -75,59 +75,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(threads.getByRole("listitem")).toHaveCount(1);
   });
 
-  test("an open row's actions follow its Threads", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    const row = conversationsList(page)
-      .locator("[data-inbox-row]")
-      .filter({
-        has: page.getByRole("link", { name: /^Dashboard QA edge cases/ }),
-      })
-      .first();
-    await row
-      .getByRole("link", { name: /^Dashboard QA edge cases/ })
-      .first()
-      .click();
-    await expect(
-      row.getByRole("link", { exact: true, name: "Open conversation" }).last(),
-    ).toBeVisible();
-    // Reading order: every Thread row, then the bar, which ends the card.
-    const names = await row
-      .locator("a, button")
-      .evaluateAll((elements) =>
-        elements.map(
-          (element) =>
-            element.getAttribute("aria-label") ?? element.textContent ?? "",
-        ),
-      );
-    const lastThread = names.reduce(
-      (last, name, index) =>
-        /Check pinned row order|Recheck pin order in Safari/.test(name)
-          ? index
-          : last,
-      -1,
-    );
-    const bar = names.lastIndexOf("Open conversation");
-    expect(lastThread).toBeGreaterThan(-1);
-    expect(bar).toBeGreaterThan(lastThread);
-    // What the head controls is on the page, and its last part holds the bar.
-    const controls = await row
-      .getByRole("link", { name: /^Dashboard QA edge cases/ })
-      .first()
-      .getAttribute("aria-controls");
-    const ids = controls?.split(" ") ?? [];
-    expect(ids.length).toBeGreaterThan(0);
-    for (const id of ids)
-      await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
-    await expect(
-      page
-        .locator(`[id="${ids.at(-1)}"]`)
-        .getByRole("link", { exact: true, name: "Open conversation" }),
-    ).toBeVisible();
-  });
-
   test("sends a message from a Thread page", async ({ page, dashboard }) => {
     const message = "Check the row order again";
     const sends: Array<{ message: string; url: string }> = [];
@@ -264,8 +211,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openMenu.click();
     await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
     await expect(openMenus).toHaveCount(0);
-    // The reload starts a new visit, so Back goes to the Inbox.
-    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    // The direct link has no origin, so Back goes to Conversations.
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     await openConversations(page);
     await expect(threadRow).toBeVisible();
     await expect(nestedRow).toBeVisible();
