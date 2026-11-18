@@ -47,7 +47,7 @@ import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
-import { cn } from "../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
@@ -57,7 +57,6 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { useAnimatedHeight } from "./rowMotion";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -251,7 +250,7 @@ type InboxRowProps = {
   onDone?(): void;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -381,7 +380,7 @@ function ConversationInboxRow(
         <ContextMenuTrigger
           {...prefetch}
           {...drag?.listeners}
-          className="group relative min-w-0 rounded-xl"
+          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
           onKeyDown={drag?.onKeyDown}
           ref={drag?.setNodeRef}
         >
@@ -581,7 +580,8 @@ function InboxRowBody(
     <>
       <div
         className={cn(
-          "relative rounded-xl",
+          "relative",
+          dashboardSurfaceRadiusClass,
           props.selected && "bg-dashboard-fill-soft",
           props.expanded && "rounded-b-none",
         )}
@@ -715,7 +715,9 @@ function InboxRowBody(
                           aria-controls={controls}
                           aria-expanded={props.expanded}
                           aria-label={pill.name}
-                          className="shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                          // A pill alone on its line shrinks and truncates
+                          // its label, so a narrow row never cuts it off.
+                          className="flex min-w-0 max-w-full cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                           key={pill.key}
                           onClick={props.onToggle}
                           title={pill.name}
@@ -886,7 +888,7 @@ function ExpandedActions(props: {
   openPath: string;
   donePending?: boolean;
   onDone?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;

@@ -1,3 +1,4 @@
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -22,11 +23,12 @@ const PERSON = "person@example.com";
 const OPEN_KEY = "junior:cache_warming:breaker:anthropic:open";
 const OUTCOMES_KEY = "junior:cache_warming:breaker:anthropic:outcomes";
 
-function authenticatedApi(email: string) {
+// The viewer resolves once here, so a SQL budget counts only the route.
+async function authenticatedApi(email: string) {
+  const viewer = await resolveViewerUser(email);
+  if (!viewer) throw new Error(`missing viewer for ${email}`);
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (c, next) => {
-    const viewer = await resolveViewerUser(email);
-    if (!viewer) throw new Error(`missing viewer for ${email}`);
     c.set("viewer", viewer);
     await next();
   });
@@ -34,7 +36,7 @@ function authenticatedApi(email: string) {
   return app;
 }
 
-async function listBreakers(app: ReturnType<typeof authenticatedApi>) {
+async function listBreakers(app: Awaited<ReturnType<typeof authenticatedApi>>) {
   const response = await app.request(`${BASE_URL}/api/cache-warming/breakers`);
   expect(response.status).toBe(200);
   return cacheWarmingBreakerListSchema.parse(await response.json()).breakers;
@@ -59,8 +61,8 @@ describe("cache warming API", () => {
     const state = await connectedState();
     await state.set(OPEN_KEY, true, 60_000);
     await state.appendToList(OUTCOMES_KEY, 1, { maxLength: 20 });
-    const admin = authenticatedApi(ADMIN);
-    const person = authenticatedApi(PERSON);
+    const admin = await authenticatedApi(ADMIN);
+    const person = await authenticatedApi(PERSON);
 
     // The breaker stops warming for everyone, so only an admin can close it.
     expect(
@@ -107,7 +109,7 @@ describe("cache warming API", () => {
 
   it("serves net savings per day of the range and in total", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    const person = authenticatedApi(PERSON);
+    const person = await authenticatedApi(PERSON);
     vi.setSystemTime(new Date("2031-05-09T08:00:00.000Z"));
     await recordIdlePeriodSavings(
       "anthropic/claude-opus-5.5",
@@ -136,8 +138,10 @@ describe("cache warming API", () => {
       end: "2031-05-09",
     });
 
-    const response = await person.request(
-      `${BASE_URL}/api/cache-warming/savings?days=7`,
+    // One read of the stats rows of the range, however many days it spans.
+    const response = await expectSqlBudget(
+      () => person.request(`${BASE_URL}/api/cache-warming/savings?days=7`),
+      { statements: 1, serialRounds: 1 },
     );
     expect(response.status).toBe(200);
     const report = cacheWarmingSavingsReportSchema.parse(await response.json());
