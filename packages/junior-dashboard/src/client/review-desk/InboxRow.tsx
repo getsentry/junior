@@ -595,6 +595,12 @@ function InboxRowBody(
             if (event.button !== 1 || !opens || onControl(event)) return;
             openConversation(event.nativeEvent);
           }}
+          // A middle press would start the browser's autoscroll, not the
+          // new tab that its click opens.
+          onMouseDown={(event) => {
+            if (event.button === 1 && opens && !onControl(event))
+              event.preventDefault();
+          }}
           onClick={(event) => {
             if (event.button !== 0 || onControl(event)) return;
             if (!opens) return props.onToggle();
@@ -777,6 +783,11 @@ function InboxRowBody(
           <div className="grid min-w-0 gap-3 pr-4 pb-3 pl-8">
             {images ? (
               <InboxImageStrip
+                askToggle={{
+                  controls,
+                  expanded: props.expanded,
+                  onToggle: props.onToggle,
+                }}
                 asks={imageAsks}
                 conversationId={props.conversationId}
                 main={main}
