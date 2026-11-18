@@ -1,5 +1,5 @@
 import { Pin } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useId } from "react";
 import { Link } from "react-router";
 
 import { Spinner } from "../components/ui/spinner";
@@ -10,12 +10,12 @@ import {
   usePinnedRowDrag,
 } from "../conversations/PinnedConversationOrder";
 import { useReorderPinnedConversations } from "../conversations/useReorderPinnedConversations";
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
-import { useInboxReturnHere } from "./inboxListState";
-import { inboxViewPath } from "./inboxModel";
+import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -50,7 +50,10 @@ function InFlightRow(props: {
             role="img"
           />
         )}
-        <span className="truncate text-dashboard-text">
+        <span
+          className={cn(fadeOverflowClass, "text-dashboard-text")}
+          ref={fadeWhenOverflowing}
+        >
           {conversation.displayTitle}
         </span>
       </Link>
@@ -80,6 +83,10 @@ export function InboxNav(props: {
       showActionError(conversation, "Could not reorder"),
     [showActionError],
   );
+  const [expanded, setExpanded] = useInFlightExpanded();
+  const inFlightId = useId();
+  const hidden = data.inFlight.length > data.inFlightCollapsed.length;
+  const rows = expanded ? data.inFlight : data.inFlightCollapsed;
   return (
     <nav
       aria-label="Primary"
@@ -91,13 +98,11 @@ export function InboxNav(props: {
       )}
     >
       <PaneDestinations phone={props.phone} />
-      {data.inFlightCount > 0 ? (
+      {data.inFlight.length > 0 ? (
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
             In flight
-            <span className="tabular-nums text-dashboard-text-faint">
-              {data.inFlightCount}
-            </span>
+            <span className={dashboardCountClass}>{data.inFlight.length}</span>
           </h2>
           {/* Every pin shows, so a drop can place them all. Running pins
               show first, so a drop moves the pin within the stored order,
@@ -107,8 +112,12 @@ export function InboxNav(props: {
             onError={onReorderError}
             reorder={reorderPins}
           >
-            <ul aria-label="In flight" className="m-0 grid gap-0.5 p-0">
-              {data.inFlight.map((conversation) => (
+            <ul
+              aria-label="In flight"
+              className="m-0 grid gap-0.5 p-0"
+              id={inFlightId}
+            >
+              {rows.map((conversation) => (
                 <InFlightRow
                   conversation={conversation}
                   key={conversation.id}
@@ -118,12 +127,17 @@ export function InboxNav(props: {
               ))}
             </ul>
           </PinnedConversationOrder>
-          <Link
-            className="mt-1 ml-10 inline-block font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline"
-            to={inboxViewPath("conversations")}
-          >
-            Show all
-          </Link>
+          {hidden ? (
+            <button
+              aria-controls={inFlightId}
+              aria-expanded={expanded}
+              className="mt-1 ml-10 cursor-pointer border-0 bg-transparent p-0 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+              onClick={() => setExpanded(!expanded)}
+              type="button"
+            >
+              {expanded ? "Show fewer" : "Show all"}
+            </button>
+          ) : null}
         </>
       ) : null}
     </nav>

@@ -32,6 +32,7 @@ import {
 import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { useZenMode, ZEN_MODE_SHORTCUT } from "../../components/layout/PaneNav";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
@@ -178,12 +179,14 @@ export function ConversationHeader(props: {
       <>
         <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
           <button
-            className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
+            className="flex max-w-full cursor-pointer text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
             onClick={() => props.onViewChange("rich")}
             title="Back to conversation"
             type="button"
           >
-            {props.title}
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {props.title}
+            </span>
           </button>
         </h2>
         <span aria-hidden="true" className="text-dashboard-text-faint">
@@ -199,7 +202,11 @@ export function ConversationHeader(props: {
     ) : (
       <h2
         aria-current="page"
-        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+        className={cn(
+          fadeOverflowClass,
+          "m-0 font-display text-base font-medium leading-6 tracking-tight",
+        )}
+        ref={fadeWhenOverflowing}
       >
         {props.title}
       </h2>
@@ -371,7 +378,13 @@ function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
       type="button"
     >
       <BriefOutcomeChip className="shrink-0" status={status} />
-      <span className="min-w-0 truncate text-xs text-dashboard-text-muted group-hover:text-dashboard-text">
+      <span
+        className={cn(
+          fadeOverflowClass,
+          "text-xs text-dashboard-text-muted group-hover:text-dashboard-text",
+        )}
+        ref={fadeWhenOverflowing}
+      >
         {intent}
       </span>
     </button>

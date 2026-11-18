@@ -60,7 +60,7 @@ function ConversationHomeLoading() {
     >
       {Array.from({ length: 6 }, (_, index) => (
         <div
-          className="grid gap-2 rounded-xl border border-dashboard-border px-4 py-3"
+          className="grid gap-2 rounded-lg border border-dashboard-border px-4 py-3"
           key={index}
         >
           <Skeleton className={cn("h-4", index % 2 ? "w-2/5" : "w-3/5")} />

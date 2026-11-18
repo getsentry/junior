@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
+import { expandRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -40,11 +41,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       title.getByRole("button", { name: /^Ready to merge #2201/ }),
     ).toBeVisible();
     // #91 has one: its image card carries the ask's icon, so it has no pill.
+    // The icon is a button that does the pill's job.
     await expect(
       title.getByRole("button", { name: /^Review requested #91/ }),
     ).toHaveCount(0);
     await expect(
-      row.locator('[data-image-tile="work"]').getByRole("img", {
+      row.locator('[data-image-tile="work"]').getByRole("button", {
         name: "Review requested #91: Pin the release train to payments 4.2",
       }),
     ).toBeVisible();
@@ -178,6 +180,37 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAttribute("data-summary-lines", "1");
   });
 
+  test("a title that does not fit fades out, and one that fits does not", async ({
+    dashboard,
+    page,
+  }) => {
+    const long = `Package release and self-update${", with every step it took to ship".repeat(8)}`;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{ displayTitle: string }>;
+        };
+        for (const row of feed.conversations) {
+          if (row.displayTitle === "Package release and self-update")
+            row.displayTitle = long;
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const title = (text: string) =>
+      page
+        .locator("li[data-inbox-row] [data-inbox-head]")
+        .getByText(text, { exact: true })
+        .first();
+    await expect(title(long)).toHaveAttribute("data-overflow");
+    await expect(title(SENTAUR)).toBeVisible();
+    await expect(title(SENTAUR)).not.toHaveAttribute("data-overflow");
+  });
+
   test("a row's actions sit beside its time and pin, and never hide them", async ({
     dashboard,
     page,
@@ -187,7 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();
     const meta = row.locator('[data-inbox-slot="meta"]').first();
-    await row.locator('a[aria-controls^="inbox-row-"]').first().hover();
+    await row.locator("a[data-inbox-head]").first().hover();
     // The actions take their own room in the meta's cell, so they cover
     // neither the title nor the summary, and the state stays in view.
     await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
@@ -201,13 +234,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
     await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
-    // Open, with the pointer away, the row shows its state and its actions.
-    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
+  });
+
+  test("an ask shown on an image card expands its row, as its pill would", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = page
+      .getByRole("region", { name: "To do" })
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: "Package release and self-update" })
+      .first();
+    await row.locator('[data-image-tile="work"] button[data-ask-pill]').click();
     await expect(row).toHaveAttribute("data-expanded", "true");
-    await page.mouse.move(0, 0);
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
-    await expect(meta.getByText("1d")).toBeVisible();
-    await expect(meta.getByRole("button", { name: /^Unpin / })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
@@ -296,11 +338,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();
-    const head = row.locator('a[aria-controls^="inbox-row-"]').first();
-    await head.click();
-    const panel = page.locator(
-      `[id="${await head.getAttribute("aria-controls")}"]`,
-    );
+    await expandRow(row.locator("a[data-inbox-head]").first());
+    const panel = row.getByRole("region", { name: /: asks$/ });
     const card = panel.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -363,7 +402,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .locator("[data-inbox-row]")
         .filter({ hasText: "Package release and self-update" })
         .first();
-      await row.locator('a[aria-controls^="inbox-row-"]').first().click();
+      await expandRow(row.locator("a[data-inbox-head]").first());
       const linked = row.getByRole("group", { name: "Linked work" }).last();
       // Each item names itself, its number in its status color, on one
       // line.

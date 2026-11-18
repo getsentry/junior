@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 import { useInboxUi } from "../uiShell";
 
 /**
@@ -46,9 +46,7 @@ export function ConversationSectionHeading(props: {
         <span className="flex items-center gap-1">
           {props.label}
           {props.collapsed ? (
-            <span className="tabular-nums text-dashboard-text-faint">
-              {props.count}
-            </span>
+            <span className={dashboardCountClass}>{props.count}</span>
           ) : null}
         </span>
       </button>
