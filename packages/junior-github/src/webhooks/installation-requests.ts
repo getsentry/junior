@@ -17,6 +17,7 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
+import { loadLatestReviews } from "../pull-request-reviews.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 import {
   graphqlReactionContent,
@@ -361,14 +362,6 @@ const pullRequestSchema = z.object({
   title: z.string(),
 });
 
-const reviewsSchema = z.array(
-  z.object({
-    commit_id: z.string().nullable().optional(),
-    state: z.string(),
-    user: z.object({ login: z.string() }).nullable(),
-  }),
-);
-
 /** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
@@ -464,30 +457,9 @@ export async function loadPullRequestMergeState(
   const readsApproval = canMerge && state.mergeableState === "clean";
   if (!readsApproval && !readsChanges) return state;
 
-  // A later page can hold a newer review, so read every page. GitHub lists
-  // reviews oldest first.
-  const reviews: z.infer<typeof reviewsSchema> = [];
-  for (let page = 1; ; page++) {
-    const batch = reviewsSchema.parse(
-      // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first short page.
-      await read(`/reviews?per_page=100&page=${page}`),
-    );
-    reviews.push(...batch);
-    if (batch.length < 100) break;
-  }
-  const latestReviews = new Map<
-    string,
-    z.infer<typeof reviewsSchema>[number]
-  >();
-  for (const review of reviews) {
-    if (
-      review.user &&
-      review.state !== "COMMENTED" &&
-      review.state !== "PENDING"
-    ) {
-      latestReviews.set(review.user.login.toLowerCase(), review);
-    }
-  }
+  const latestReviews = await loadLatestReviews(
+    async (query) => await read(`/reviews?${query}`),
+  );
   const reviewStates = [...latestReviews.values()].map(
     (review) => review.state,
   );

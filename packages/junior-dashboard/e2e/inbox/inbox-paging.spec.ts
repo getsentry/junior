@@ -9,6 +9,7 @@ import {
   prMerge,
   prReady,
   prReview,
+  rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 
@@ -367,6 +368,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a linked ask from a later page counts once", async ({
+    dashboard,
+    page,
+  }) => {
+    const decisions = questionsByPage();
+    await mockReviewItems(page, {
+      automations: () => 0,
+      open: decisions,
+      pageSize: 2,
+    });
+    await holdLaterReviewItemPages(page);
+    const linked = decisions[5]!;
+    await page.goto(`${dashboard.baseURL}/?item=${linked.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(rowHead(todo, linked.title)).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+      /^Decisions\s*12$/,
+    );
+    await expect(
+      nav.getByRole("link", { name: /^Inbox/ }),
+    ).toHaveAccessibleName("Inbox, 12 waiting");
+  });
+
   test("the Automations entry counts from the server while its list fails", async ({
     dashboard,
     page,
@@ -382,6 +407,102 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Automations\s*3$/,
     );
   });
+
+  test("the Inbox ends after a few rows of Earlier, with a link to Done", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.goto(`${dashboard.baseURL}/`);
+    const older = page.getByRole("link", { name: "Older work is in Done" });
+    // The mock feed has more old Conversations than Earlier shows.
+    await expect(async () => {
+      await page
+        .locator("[data-inbox-scroll]")
+        .evaluate((node) => (node.scrollTop = node.scrollHeight));
+      await expect(older).toBeVisible({ timeout: 1_000 });
+    }).toPass();
+    await expect(
+      page.getByRole("region", { name: "Earlier" }).locator("[data-inbox-row]"),
+    ).toHaveCount(10);
+    await older.click();
+    await expect(page).toHaveURL(/\/\?view=done$/);
+  });
+
+  test("a full Earlier still reads the feed until it is past This week", async ({
+    dashboard,
+    page,
+  }) => {
+    // The feed reads newest activity first, but a row shows its last
+    // message. The first page fills Earlier with Conversations active a
+    // minute ago whose last message is a month old. A Conversation from
+    // today is on the next page.
+    const minutes = (count: number) =>
+      new Date(NOW_MS - count * 60_000).toISOString();
+    // The mock feed's first page gives the shape. It has no later pages.
+    let body: { conversations: Array<Record<string, unknown>> } | undefined;
+    await page.route(/\/api\/conversations(\?|$)/, async (route) => {
+      const later = new URL(route.request().url()).searchParams.has("cursor");
+      body ??= await (await route.fetch()).json();
+      if (!body) throw new Error("The mock feed read no page");
+      const base = body.conversations.find(
+        (conversation: { pinnedAt?: string; status?: string }) =>
+          !conversation.pinnedAt && conversation.status !== "active",
+      );
+      const conversation = (index: number, seen: string, message: string) => ({
+        ...base,
+        conversationId: `slack:CFEED:17700${String(index).padStart(5, "0")}.000100`,
+        displayTitle: `Feed Conversation ${index}`,
+        lastMessageAt: message,
+        lastProgressAt: message,
+        lastSeenAt: seen,
+        threads: [],
+      });
+      await route.fulfill({
+        json: later
+          ? {
+              ...body,
+              conversations: [conversation(99, minutes(120), minutes(120))],
+              nextCursor: undefined,
+            }
+          : {
+              ...body,
+              conversations: Array.from({ length: 12 }, (_, index) =>
+                conversation(
+                  index,
+                  minutes(index + 1),
+                  minutes(43_200 + index),
+                ),
+              ),
+              nextCursor: "page-2",
+            },
+      });
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const today = page.getByRole("region", { name: "Today" });
+    await expect(async () => {
+      await page
+        .locator("[data-inbox-scroll]")
+        .evaluate((node) => (node.scrollTop = node.scrollHeight));
+      await expect(today.getByText("Feed Conversation 99")).toBeVisible({
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 10_000 });
+    await expect(
+      page.getByRole("region", { name: "Earlier" }).locator("[data-inbox-row]"),
+    ).toHaveCount(10);
+  });
+
+  /** Twelve questions, each in its own Conversation, two to a page. */
+  function questionsByPage() {
+    return Array.from({ length: 12 }, (_, index) => ({
+      ...license,
+      addedByConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+      conversationIds: [],
+      createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
+      id: `item-question-${index}`,
+      title: `Approve rollout step ${index}`,
+    }));
+  }
 
   /**
    * Bring the end of To do into view: the status line after its rows, which

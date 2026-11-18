@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { insertReviewItem } from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import {
   createAddReviewItemTool,
@@ -23,6 +24,7 @@ const ROLLBACK_ID = "slack:CPUB:1.000003";
 const OTHER_ID = "slack:CPUB:1.000004";
 const PRIVATE_ID = "slack:DPRIV:1.000005";
 const OTHER_TENANT_ID = "slack:CEXT:1.000006";
+const BUSY_ID = "slack:CPUB:1.000007";
 const RELEASE = "release:payments-v42";
 
 const REQUEST = {
@@ -244,5 +246,69 @@ describe("review item evidence", () => {
       {},
     );
     expect(changed.item.request.evidence).toEqual(evidence);
+  });
+
+  it("keeps a quiet subject's related work next to a busy subject on the page", async () => {
+    const fixture = await createConversationFixture();
+    for (const id of [ROLLOUT_ID, LATENCY_ID, BUSY_ID]) {
+      await slackConversation(id, "CPUB", "public");
+    }
+    const ana = await user("ana@example.com");
+    const subject = { id: RELEASE, title: "payments-v42" };
+    // The related notice is older than every item on the busy subject.
+    const rose = await add(LATENCY_ID, {
+      assignees: ["ana@example.com"],
+      body: "p95 went from 210 ms to 890 ms after payments-v42.",
+      kind: "notice",
+      subject,
+      title: "Checkout p95 rose after payments-v42",
+    });
+    const tenant = { provider: "slack", providerTenantId: "T123" };
+    const start = Date.now();
+    for (let index = 1; index <= 210; index += 1) {
+      await insertReviewItem(getDb(), {
+        addedByConversationId: BUSY_ID,
+        assignedToEveryone: false,
+        assigneeUserIds: [ana.id],
+        body: "Busy release.",
+        conversationIds: [BUSY_ID],
+        dedupeKey: `busy:${index}`,
+        kind: "notice",
+        nowMs: start + index,
+        subject: { id: "release:busy" },
+        tenant,
+        title: `Busy release ${index}`,
+        visibility: "public",
+      });
+    }
+    const added = await add(ROLLOUT_ID, {
+      assignees: ["ana@example.com"],
+      body: "The canary is clean.",
+      kind: "action",
+      request: REQUEST,
+      subject,
+      title: "Approve the payments-v42 rollout",
+    });
+
+    // The busy subject keeps only its own newest candidates, so the quiet
+    // subject on the same page still finds its older related notice.
+    const list = await (
+      await expectSqlBudget(() => api(fixture, ana)("?sort=waiting"), {
+        statements: 8,
+        serialRounds: 5,
+      })
+    ).json();
+    expect(
+      list.items.some(
+        (item: { subject?: { id: string } }) =>
+          item.subject?.id === "release:busy",
+      ),
+    ).toBe(true);
+    const rollout = list.items.find(
+      (item: { id: string }) => item.id === added.item.id,
+    );
+    expect(rollout.related.items).toEqual([
+      { id: rose.item.id, title: "Checkout p95 rose after payments-v42" },
+    ]);
   });
 });
