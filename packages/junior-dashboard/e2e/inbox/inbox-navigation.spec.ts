@@ -220,6 +220,28 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
   });
 
+  test("a link to an ask that waits on someone else leaves the Inbox as it is", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = {
+      ...rollout,
+      addedByConversationId: "slack:COTHER:1770000000.000100",
+      assignees: [],
+      canAct: false,
+      id: "item-other",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [rollout, other] });
+    await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
+    // The Inbox has no row for it, so the link leaves the URL.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await expect(page.getByText(other.title)).toHaveCount(0);
+  });
+
   test("an item link and the Inbox tab share one place", async ({
     dashboard,
     page,

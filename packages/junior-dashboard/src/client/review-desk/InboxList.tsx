@@ -217,11 +217,13 @@ export function InboxList(props: {
     if (item.kind === "notice") return `fyi:${item.id}`;
     if (itemUpForGrabs(item) && grabIds.has(conversationId))
       return `grabs:${conversationId}`;
+    // The Inbox lists no Conversations, so an ask outside To do and Up for
+    // grabs has no row here.
     return todoIds.has(conversationId)
       ? `todo:${conversationId}`
       : grabIds.has(conversationId)
         ? `grabs:${conversationId}`
-        : `conversation:${conversationId}`;
+        : undefined;
   })();
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
@@ -599,7 +601,10 @@ export function InboxList(props: {
   } else if (!ready) {
     body = <RowsLoading />;
   } else if (view === "inbox") {
+    // Empty only once Automations are in: they can still add To do cards,
+    // and a failed read must not read as nothing left.
     const nothingLeft =
+      data.automationsLoaded &&
       !todoMore &&
       data.todoRows.length +
         data.todoAutomations.length +

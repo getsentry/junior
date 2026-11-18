@@ -344,6 +344,8 @@ function useBuildInboxData(input: {
     alerts,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
+    /** The Automations that need attention are in, so To do is complete. */
+    automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
     /** The open row's items, held after a read shows them all closed. */
     closedElsewhere,

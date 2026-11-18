@@ -505,8 +505,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("Could not load your Automations."),
     ).toBeVisible();
-    // With nothing to do, To do hides, and closed items stay in Done.
+    // With nothing to do, To do hides, and closed items stay in Done. To do
+    // may still hold Automations, so the Inbox does not say it is empty.
     await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
+    await expect(page.getByText("Nothing left here")).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
   });
 
