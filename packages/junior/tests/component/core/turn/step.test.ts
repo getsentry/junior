@@ -110,19 +110,35 @@ describe("runStep", () => {
     });
   });
 
-  it("gives the model an error result when a tool throws", async () => {
+  it("gives the model an error result for a tool that throws, is unknown, or gets invalid arguments", async () => {
+    const ran: string[] = [];
     const broken = tool("broken", {
       replay: "safe",
       execute: () => Promise.reject(new Error("upstream is down")),
     });
+    const search: ToolDefinition = {
+      ...tool("search", {
+        replay: "safe",
+        execute: () => {
+          ran.push("search");
+          return Promise.resolve({ content: [] });
+        },
+      }),
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+      },
+    };
 
     const result = await runStep(
       stepInput({
-        messages: [user, replyWithCalls("broken")],
-        tools: [broken],
+        messages: [user, replyWithCalls("broken", "missing", "search")],
+        tools: [broken, search],
       }),
     );
 
+    expect(ran).toEqual([]);
     expect(result).toMatchObject({
       outcome: "continue",
       messages: [
@@ -131,8 +147,38 @@ describe("runStep", () => {
           content: [{ type: "text", text: "upstream is down" }],
           isError: true,
         },
+        {
+          toolCallId: "call-missing",
+          content: [{ type: "text", text: "Tool missing not found" }],
+          isError: true,
+        },
+        { toolCallId: "call-search", isError: true },
       ],
     });
+  });
+
+  it("runs the calls of a batch at the same time", async () => {
+    let running = 0;
+    let mostRunning = 0;
+    const execute = async () => {
+      running += 1;
+      mostRunning = Math.max(mostRunning, running);
+      await Promise.resolve();
+      running -= 1;
+      return { content: [] };
+    };
+
+    await runStep(
+      stepInput({
+        messages: [user, replyWithCalls("first", "second")],
+        tools: [
+          tool("first", { replay: "safe", execute }),
+          tool("second", { replay: "safe", execute }),
+        ],
+      }),
+    );
+
+    expect(mostRunning).toBe(2);
   });
 
   it("ends the Turn only when every call in the batch ends it", async () => {
@@ -204,7 +250,7 @@ describe("runStep", () => {
     });
   });
 
-  it("does not run calls from a reply that hit the output token limit", async () => {
+  it("does not run calls from a reply that hit the output token limit, but keeps its text", async () => {
     const ran: string[] = [];
     const send = tool("send", {
       replay: "safe",
@@ -213,22 +259,30 @@ describe("runStep", () => {
         return Promise.resolve({ content: [] });
       },
     });
-    const cutOff = fauxAssistantMessage(
+    const cutOffCalls = fauxAssistantMessage(
       [fauxToolCall("send", {}, { id: "call-send" })],
-      {
-        stopReason: "length",
-      },
+      { stopReason: "length" },
     );
+    const cutOffText = fauxAssistantMessage("Here is the first half", {
+      stopReason: "length",
+    });
 
-    const result = await runStep(
-      stepInput({ messages: [user, cutOff], tools: [send] }),
+    const toolStep = await runStep(
+      stepInput({ messages: [user, cutOffCalls], tools: [send] }),
+    );
+    const modelStep = await runStep(
+      stepInput({
+        messages: [user],
+        complete: () => Promise.resolve(cutOffText),
+      }),
     );
 
     expect(ran).toEqual([]);
-    expect(result).toMatchObject({
+    expect(toolStep).toMatchObject({
       outcome: "continue",
       messages: [{ toolCallId: "call-send", isError: true }],
     });
+    expect(modelStep).toEqual({ outcome: "completed", messages: [cutOffText] });
   });
 
   it("fails the Turn when the model request fails", async () => {
@@ -247,6 +301,7 @@ describe("runStep", () => {
 
     expect(result).toEqual({ outcome: "failed", error: "overloaded" });
   });
+
   it("throws instead of returning results when the step is aborted", async () => {
     const stopped = new Error("lease lost");
     const duringModel = new AbortController();
