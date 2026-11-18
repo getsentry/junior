@@ -28,11 +28,11 @@ data, does not run.
   the work is correct or well proven is not its concern.
 - The install, not the agent, states facts about destinations. Each plugin
   can declare where its writes go, such as which destinations people outside
-  the organization can read. Guardian gets these facts in its system prompt,
-  sorted by plugin name, so the prompt is the same for every review in a
-  deployment and stays cached. The agent prompt and the tool catalog never
-  include them. A fact never authorizes an action. The `data_exposure` rule
-  does the blocking.
+  the organization can read. A fact never authorizes an action.
+- For each plugin with a credential, Guardian knows that its Sandbox env
+  var holds a placeholder, and which domains get the real credential. A
+  command that sends that env var to those domains does not expose a
+  secret.
 
 ## Entry points
 
@@ -92,17 +92,6 @@ data, does not run.
 
 ## Gaps
 
-- Plugins cannot declare destination facts yet, so Guardian cannot know that
-  a plugin write reaches a public place, such as a tracker that syncs to a
-  public repo. `data_exposure` then misses private data in that write. This
-  breaks "the install states facts about destinations".
-  getsentry/junior#3596 adds `review-context`.
-- Guardian does not review Sandbox commands, because `bash` never opted in
-  to review. A plugin can deny a write from the Sandbox and send the agent
-  to its reviewed tool, as GitHub does for issue and pull request text.
-  Other writes, such as a git push to a work branch, run with no review.
-  This breaks "a block holds for the outcome, not for the tool". A fix must
-  not ask for confirmation on routine commands.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".

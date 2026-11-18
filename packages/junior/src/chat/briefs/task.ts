@@ -307,12 +307,11 @@ export const briefsTaskRegistration: PluginRegistration = {
   conversationEvents: [briefUpdatedEventV1, briefUpdatedEvent],
   hooks: {
     async operationalReport(context) {
-      const briefDays = await context.eventStats.costsByDay({
-        days: 90,
-        eventName: "brief_updated",
-      });
       return await buildBriefsOperationalReport({
-        briefDays,
+        briefDays: context.eventStats.costsByDay({
+          days: 90,
+          eventName: "brief_updated",
+        }),
         db: context.db as JuniorDatabase,
         nowMs: context.nowMs,
       });

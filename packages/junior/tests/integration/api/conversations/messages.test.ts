@@ -32,6 +32,7 @@ function apiFor(email: string): Hono<JuniorApiEnv> {
     createConversationRoutes({
       attachmentStorage: createMemoryAttachmentStorage(),
       queue: createConversationWorkQueueTestAdapter(),
+      waitUntil: () => undefined,
     }),
   );
   return app;

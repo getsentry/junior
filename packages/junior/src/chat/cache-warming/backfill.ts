@@ -32,6 +32,8 @@ import {
   gte,
   inArray,
   isNull,
+  lt,
+  min,
   or,
   sql,
 } from "drizzle-orm";
@@ -39,6 +41,7 @@ import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
+import { JUNIOR_NATIVE_EVENT_NAMESPACE } from "@/chat/conversations/structured-events";
 import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
@@ -123,8 +126,11 @@ interface ConversationRow {
 
 interface EventRow {
   conversationId: string;
-  /** `tool_result`: only a successful answer tool result. */
-  type: "assistant_message" | "tool_result" | "user_message";
+  /**
+   * `tool_result`: only a successful answer tool result. `warmup`: the cost
+   * event of one warmup call.
+   */
+  type: "assistant_message" | "tool_result" | "user_message" | "warmup";
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
   stopReason: string | null;
@@ -135,6 +141,8 @@ interface EventRow {
   modelId: string | null;
   cacheRead: string | null;
   cacheWrite: string | null;
+  /** Warmup: when its cost was recorded, just after the call. */
+  warmupAtMs: string | null;
 }
 
 /** One idle period of the stored history, as live recording would see it. */
@@ -148,6 +156,8 @@ export interface ReplayedIdlePeriod {
   prefixTokens: number;
   /** The call that ended it. Unset when no call came before now. */
   next?: { modelId: string | null; cacheRead: number; cacheWrite: number };
+  /** The last warmup call before the call that ended it, if any. */
+  lastWarmupMs?: number;
 }
 
 /**
@@ -223,6 +233,58 @@ export async function countHistoryConversations(
   return row?.count ?? 0;
 }
 
+// Each warmup call appends a `cache_warmup` cost event to its Conversation
+// (`core-model.ts`), also a warmup that missed.
+const isWarmupEvent = and(
+  eq(juniorConversationEvents.type, "structured_event"),
+  sql`${juniorConversationEvents.payload}->>'namespace' = ${JUNIOR_NATIVE_EVENT_NAMESPACE}`,
+  sql`${juniorConversationEvents.payload}->>'name' = 'cache_warmup'`,
+);
+
+/**
+ * Return the time of the first recorded warmup call of the install. Warming
+ * did not run before it. Unset when no warmup call was recorded.
+ */
+export async function firstWarmupMs(): Promise<number | undefined> {
+  const [row] = await getDb()
+    .select({ at: min(juniorConversationEvents.createdAt) })
+    .from(juniorConversationEvents)
+    .where(isWarmupEvent);
+  return row?.at ? row.at.getTime() : undefined;
+}
+
+/**
+ * Sum the recorded cost of the warmup calls on each UTC day from `start` up
+ * to `end`, not included. Warmups of idle periods with no return count too.
+ */
+export async function warmupCostUsdByDay(range: {
+  start: string;
+  end: string;
+}): Promise<Record<string, number>> {
+  const events = juniorConversationEvents;
+  const date = sql<string>`TO_CHAR(${events.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+  const cost = sql`CASE
+    WHEN jsonb_typeof(${events.payload}->'content'->'costUsd') = 'number'
+      THEN (${events.payload}->'content'->>'costUsd')::double precision
+    ELSE 0
+  END`;
+  const rows = await getDb()
+    .select({
+      date,
+      costUsd: sql<number>`SUM(${cost})::double precision`.mapWith(Number),
+    })
+    .from(events)
+    .where(
+      and(
+        isWarmupEvent,
+        gte(events.createdAt, new Date(range.start)),
+        lt(events.createdAt, new Date(range.end)),
+      ),
+    )
+    .groupBy(date);
+  return Object.fromEntries(rows.map((row) => [row.date, row.costUsd]));
+}
+
 // Agent history stores each model response as an `assistant_message` and
 // each instruction of a Turn as a `user_message`. Schema version 2 keeps the
 // message fields in a JSON string, version 1 keeps them in the payload.
@@ -232,6 +294,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
+  const isStructuredEvent = sql`${events.type} = 'structured_event'`;
   const messageText = sql`${events.payload}->>'message'`;
   // Newer rows keep the fields that replay reads as payload keys. Older rows
   // keep them only in the message string. The fields that replay reads have
@@ -245,7 +308,9 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   return await getDb()
     .select({
       conversationId: events.conversationId,
-      type: sql<EventRow["type"]>`${events.type}`,
+      type: sql<
+        EventRow["type"]
+      >`CASE WHEN ${isStructuredEvent} THEN 'warmup' ELSE ${events.type} END`,
       personInstruction: sql<
         boolean | null
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
@@ -255,6 +320,9 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       modelId: sql<string | null>`${events.payload}->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+      warmupAtMs: sql<
+        string | null
+      >`CASE WHEN ${isStructuredEvent} THEN (EXTRACT(EPOCH FROM ${events.createdAt}) * 1000)::bigint END`,
     })
     .from(events)
     .innerJoin(
@@ -279,6 +347,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
             isUserMessage,
             sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
           ),
+          isWarmupEvent,
         ),
         gte(events.createdAt, juniorConversations.createdAt),
       ),
@@ -337,6 +406,20 @@ function replayConversation(
     waitsOnPendingWork: boolean;
     childRunning: boolean;
   };
+  // A warmup runs only while the Conversation waits, so one between the
+  // start and the end of a period ran in that period. A warmup whose cost
+  // was recorded after the end does not count.
+  const warmupTimes = events.flatMap((event) =>
+    event.type === "warmup" ? [Number(event.warmupAtMs)] : [],
+  );
+  const lastWarmup = (sinceMs: number, untilMs: number) => {
+    const inPeriod = warmupTimes.filter(
+      (atMs) => atMs > sinceMs && atMs < untilMs,
+    );
+    return inPeriod.length > 0
+      ? { lastWarmupMs: Math.max(...inPeriod) }
+      : undefined;
+  };
   const close = (
     { waitsOnPendingWork, childRunning, ...idle }: Idle,
     untilMs: number,
@@ -349,7 +432,9 @@ function replayConversation(
     // a running child stands for one.
     if (waitsOnPendingWork && !childRunning && !next) return;
     const period: ReplayedIdlePeriod = { ...idle, gapMs };
-    if (next) period.next = next;
+    if (next) {
+      Object.assign(period, { next }, lastWarmup(idle.sinceMs, untilMs));
+    }
     periods.push(period);
   };
   let userActor = false;
@@ -379,7 +464,7 @@ function replayConversation(
     if (toolUse && ending) answerEndings.set(toolUse, ending);
   }
   for (const event of events) {
-    if (event.type === "tool_result") continue;
+    if (event.type === "tool_result" || event.type === "warmup") continue;
     if (event.type === "user_message") {
       if (!inTurn) {
         // `agent/index.ts` counts a Task as not started by a person.
@@ -408,6 +493,7 @@ function replayConversation(
         ...waiting,
         gapMs: startedAtMs - waiting.sinceMs,
         next,
+        ...lastWarmup(waiting.sinceMs, startedAtMs),
       });
     }
     waiting =

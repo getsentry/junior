@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import { storeAttachments } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -110,8 +111,8 @@ export function createSendFilesTool(
     outputSchema: sendFilesResultSchema,
     execute: async ({ files }, options) => {
       const filesToSend = normalizeFiles(files);
-      const materializedFiles = await Promise.all(
-        filesToSend.map((file) => materializeFile(file)),
+      const materializedFiles = await mapBounded(filesToSend, (file) =>
+        materializeFile(file),
       );
       const operationKey = createOperationKey("sendFiles", {
         conversation_id: attachments?.conversationId,

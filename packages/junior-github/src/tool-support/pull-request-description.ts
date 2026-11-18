@@ -10,6 +10,7 @@ import {
 // to send instead.
 const MISSING_REASON_FIX = "Say why the change is needed.";
 
+// Update PULL_REQUEST_BODY_RULES along with these checks.
 const DESCRIPTION_CHECKS = [
   {
     question:
@@ -32,6 +33,13 @@ const DESCRIPTION_CHECKS = [
     fix: MISSING_REASON_FIX,
   },
 ] as const;
+
+/**
+ * The `DESCRIPTION_CHECKS` rules, for the `body` param of the pull request
+ * tools, so the first draft can pass without a rejection.
+ */
+export const PULL_REQUEST_BODY_RULES =
+  "Say what changes and why. Omit your own test or CI results, test plans or coverage, work logs, and the request or chat behind it. Describing what a test tool checks is fine. The runtime appends attribution and the footer.";
 
 /** List the fixes that a pull request description needs. Empty means it passes. */
 export async function pullRequestDescriptionFixes(
