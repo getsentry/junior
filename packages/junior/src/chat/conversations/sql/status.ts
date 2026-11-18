@@ -93,12 +93,13 @@ function conversationWaitsOnStarterSql(
   const briefThroughSeq = latestBrief(
     sql`${juniorConversationBriefs.throughSeq}`,
   );
-  // Reads `junior_conversation_events_message_role_idx`.
+  // Transcript order, the order of read positions, is `seq`, not time.
+  // Reads `junior_conversation_events_type_idx` backward.
   const replySeq = sql`(select ${juniorConversationEvents.seq} from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, id),
     eq(juniorConversationEvents.type, "message"),
     sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-  )} order by ${desc(juniorConversationEvents.createdAt)}, ${desc(juniorConversationEvents.seq)} limit 1)`;
+  )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const starterUserId = sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
     starterIdentity.id,
     starterRoot.actorIdentityId,
