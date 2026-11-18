@@ -11,10 +11,12 @@ export type ToolExecutionEnvironment = {
   /** Absolute directory where commands start and relative paths resolve. */
   readonly cwd: string;
   /**
-   * Runs `command` through the shell and waits for it to exit. A non-zero
-   * exit code is a result, not a throw. A timeout or an abort throws.
+   * Runs `argv[0]` with the rest of `argv` as its arguments, without a shell,
+   * and waits for it to exit. To run a script, pass the shell yourself, for
+   * example `["bash", "-c", script]`. A non-zero exit code is a result, not a
+   * throw. A timeout or an abort throws.
    */
-  exec(command: string, options: ExecOptions): Promise<ExecResult>;
+  exec(argv: readonly string[], options: ExecOptions): Promise<ExecResult>;
   /**
    * Returns the bytes of a file as a stream, or `undefined` when the file does
    * not exist. A caller that needs only part of the file cancels the stream
@@ -40,11 +42,21 @@ export type ExecOptions = {
   /** Variables to add to the command's environment. */
   env?: Record<string, string>;
   timeoutMs?: number;
+  /**
+   * Gets each chunk of output when it arrives, in arrival order across stdout
+   * and stderr. The environment does not keep the output, so the caller keeps
+   * only what it needs. The command never waits for this callback.
+   */
+  onOutput(chunk: OutputChunk): void;
 };
 
-/** Output of a command that exited. */
+/** One piece of a command's output, decoded as UTF-8. */
+export type OutputChunk = {
+  stream: "stdout" | "stderr";
+  text: string;
+};
+
+/** How a command exited. The output went to `onOutput`. */
 export type ExecResult = {
   exitCode: number;
-  stdout: string;
-  stderr: string;
 };
