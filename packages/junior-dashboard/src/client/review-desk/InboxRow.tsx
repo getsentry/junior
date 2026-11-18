@@ -460,18 +460,15 @@ function RowSummary(props: {
   summary: NonNullable<ReturnType<typeof rowSummary>>;
 }) {
   return (
-    <span
+    <div
       className="flex min-w-0 text-sm leading-snug text-dashboard-text-muted"
       data-summary-lines={
         props.expanded ? "all" : props.comfortable ? "2" : "1"
       }
     >
-      <span
+      <div
         className={cn(
           "min-w-0",
-          // Links read as the summary's own words, and underline on hover,
-          // so a line of links does not shout over the title.
-          "[&_a]:font-normal [&_a]:text-dashboard-text [&_a]:no-underline [&_a:hover]:underline",
           props.expanded
             ? "line-clamp-none"
             : props.comfortable
@@ -480,7 +477,8 @@ function RowSummary(props: {
         )}
       >
         {/* As messages show it: links show as chips, so the clamp ends on
-            a word or a chip, not inside a URL. */}
+            a word or a chip, not inside a URL. One line runs the
+            paragraphs together; more lines keep them. */}
         <ReviewItemObjects
           cards={props.objects}
           conversationId={props.conversationId}
@@ -489,11 +487,12 @@ function RowSummary(props: {
             chips
             inline
             mentions={props.summary.mentions}
+            paragraphs={props.expanded || props.comfortable}
             text={props.summary.text}
           />
         </ReviewItemObjects>
-      </span>
-    </span>
+      </div>
+    </div>
   );
 }
 
@@ -760,7 +759,7 @@ function InboxRowBody(
             ) : null}
           </span>
           {summary ? (
-            <span
+            <div
               className="col-span-2 col-start-2 row-start-2 min-w-0"
               data-inbox-slot="summary"
             >
@@ -771,7 +770,7 @@ function InboxRowBody(
                 objects={objects}
                 summary={summary}
               />
-            </span>
+            </div>
           ) : null}
           <span className={INBOX_ROW_META_CLASS} data-inbox-slot="meta">
             {/* The row's actions sit beside its state and never hide it.

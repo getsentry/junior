@@ -12,6 +12,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useInboxUi } from "../uiShell";
 import { useReviewItemAction, useSavedReviewItem } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { answerRows, viewerAnswerLine } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -158,6 +159,7 @@ export function ReviewItemActions(props: {
           <div className="font-medium">
             <DisplayText text={item.request.question} />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             onUnsentChange={setUnsent}
             onSubmit={(answer) =>
