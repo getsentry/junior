@@ -21,6 +21,7 @@ import {
 
 import { cn } from "../styles";
 import { useInboxUi } from "../uiShell";
+import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -221,7 +222,11 @@ function TextField(props: {
  * the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
- * the form has picks or text that the reader has not sent.
+ * the form has picks or text that the reader has not sent. The picks and
+ * text are saved by `requestId` (the Review item id) as the reader makes
+ * them, so the form shows them again after it unmounts or the page
+ * reloads. Restored answers are still unsent. They clear when the item
+ * closes, which a sent answer does.
  *
  * `docked` is for the question above the message box. The message box takes
  * the reader's own words and sends the picks, so Other…, the note, and the
@@ -242,17 +247,40 @@ export function UserInputForm(props: {
   const [picked, setPicked] = useState<string>();
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
-  const [values, setValues] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState("");
-  const [writeOther, setWriteOther] = useState(false);
+  // A docked form has no note, so it neither shows nor sends a saved one,
+  // and keeps it saved for the full form.
+  const [draft] = useState(() => readAnswerDraft(props.requestId));
+  const [values, setValues] = useState(draft.values);
+  const [other, setOther] = useState(props.docked ? "" : draft.other);
+  // Only Other… puts the answers of a button request in a form, so a saved
+  // draft opens it again.
+  const [writeOther, setWriteOther] = useState(
+    () =>
+      !props.docked &&
+      (Boolean(draft.other) || Object.keys(draft.values).length > 0),
+  );
   const buttonField = writeOther
     ? undefined
     : buttonUserInputField(props.request);
   // Other… unmounts the button that had focus, so move focus to the note.
+  // A restored note does not take focus.
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const focusNoteRef = useRef(false);
   useEffect(() => {
-    if (writeOther) noteRef.current?.focus();
+    if (!writeOther || !focusNoteRef.current) return;
+    focusNoteRef.current = false;
+    noteRef.current?.focus();
   }, [writeOther]);
+
+  function changeValues(fieldId: string, fieldValues: string[]) {
+    const next = { ...values, [fieldId]: fieldValues };
+    setValues(next);
+    saveAnswerDraft(props.requestId, { values: next });
+  }
+  function changeOther(next: string) {
+    setOther(next);
+    saveAnswerDraft(props.requestId, { other: next });
+  }
 
   // A ref blocks a second click before React renders the disabled controls.
   // The lock stays after a sent answer; only a failed send can retry.
@@ -322,7 +350,10 @@ export function UserInputForm(props: {
     <Button
       variant="outline"
       disabled={sending}
-      onClick={() => setWriteOther(true)}
+      onClick={() => {
+        focusNoteRef.current = true;
+        setWriteOther(true);
+      }}
     >
       Other…
     </Button>
@@ -413,9 +444,7 @@ export function UserInputForm(props: {
                 disabled={sending}
                 key={field.id}
                 label={field.label}
-                onChange={(value) =>
-                  setValues((current) => ({ ...current, [field.id]: [value] }))
-                }
+                onChange={(value) => changeValues(field.id, [value])}
                 value={values[field.id]?.[0] ?? ""}
               />
             ) : (
@@ -423,9 +452,7 @@ export function UserInputForm(props: {
                 disabled={sending}
                 field={field}
                 key={field.id}
-                onChange={(picked) =>
-                  setValues((current) => ({ ...current, [field.id]: picked }))
-                }
+                onChange={(picked) => changeValues(field.id, picked)}
                 values={values[field.id] ?? []}
               />
             ),
@@ -436,7 +463,7 @@ export function UserInputForm(props: {
               description={USER_INPUT_NOTE.description}
               disabled={sending}
               label={USER_INPUT_NOTE.label}
-              onChange={setOther}
+              onChange={changeOther}
               ref={noteRef}
               value={other}
             />

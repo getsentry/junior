@@ -23,6 +23,7 @@ import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "../conversations/queries";
+import { clearAnswerDraft } from "../components/answerDrafts";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
@@ -307,8 +308,10 @@ export function useReviewItemAction() {
       }),
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: (item) =>
-      queryClient.setQueryData(reviewItemQueryKey(item.id), item),
+    onSuccess: (item) => {
+      if (item.status !== "open") clearAnswerDraft(item.id);
+      queryClient.setQueryData(reviewItemQueryKey(item.id), item);
+    },
     onSettled: () => invalidateReviewItemCollections(queryClient),
   });
 }

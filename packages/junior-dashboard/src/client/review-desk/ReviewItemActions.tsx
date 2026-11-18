@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { clearAnswerDraft } from "../components/answerDrafts";
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
@@ -84,6 +85,10 @@ export function ReviewItemActions(props: {
   const [error, setError] = useState<string>();
   const [unsent, setUnsent] = useState(false);
   useReportUnsentAnswer(item, unsent);
+  // An item can close elsewhere, such as in Slack, with answers unsent here.
+  useEffect(() => {
+    if (item.status !== "open") clearAnswerDraft(item.id);
+  }, [item.id, item.status]);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct) {
