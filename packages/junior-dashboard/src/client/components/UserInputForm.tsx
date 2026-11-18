@@ -221,7 +221,8 @@ function TextField(props: {
  * the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
- * the form has picks or text that the reader has not sent.
+ * the form has picks or text that the reader has not sent. `draft` fills the
+ * form once, when it mounts.
  *
  * `docked` is for the question above the message box. The message box takes
  * the reader's own words and sends the picks, so Other…, the note, and the
@@ -230,6 +231,8 @@ function TextField(props: {
  */
 export function UserInputForm(props: {
   docked?: boolean;
+  /** An answer to start from, such as one that failed to send. */
+  draft?: Pick<UserInputAnswer, "other" | "values">;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
   ref?: Ref<UserInputFormHandle>;
@@ -239,12 +242,19 @@ export function UserInputForm(props: {
 }) {
   const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
-  const [picked, setPicked] = useState<string>();
+  // A failed button answer comes back with its choice picked.
+  const [picked, setPicked] = useState(() => {
+    const field = buttonUserInputField(props.request);
+    return field && props.draft?.values[field.id]?.[0];
+  });
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
-  const [values, setValues] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState("");
-  const [writeOther, setWriteOther] = useState(false);
+  const [values, setValues] = useState<Record<string, string[]>>(
+    () => props.draft?.values ?? {},
+  );
+  const [other, setOther] = useState(props.draft?.other ?? "");
+  // A draft with a note was written in the form, not picked from a button.
+  const [writeOther, setWriteOther] = useState(Boolean(props.draft?.other));
   const buttonField = writeOther
     ? undefined
     : buttonUserInputField(props.request);

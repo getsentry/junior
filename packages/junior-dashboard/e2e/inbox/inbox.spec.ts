@@ -6,6 +6,7 @@ import {
   answered,
   audit,
   digest,
+  expandRow,
   license,
   migration,
   mockReviewItems,
@@ -89,7 +90,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Pull requests\s*2$/,
       /^Decisions\s*4$/,
       new RegExp(checkout),
-      "Show all",
     ]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
@@ -126,7 +126,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("region", { name: "Today" })
-        .locator('a[aria-controls^="inbox-row-"]')
+        .locator("a[data-inbox-head]")
         .getByText(checkout, { exact: true }),
     ).toBeVisible();
     await screenshot(page, "inbox-conversations", { lightTheme: true });
@@ -176,17 +176,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row stays open while it has items.
     await expect(licenseItem).toBeVisible();
 
-    // The row's Dismiss closes every item of the row.
+    // The row's Dismiss closes every ask of the row. Its notice is FYI.
     await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
     await expect
       .poll(() => actions.map((action) => action.id).sort())
-      .toEqual([audit.id, license.id, prReady.id].sort());
+      .toEqual([audit.id, license.id].sort());
   });
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Snooze" }).click();
     await expect(
       page.getByRole("dialog", { name: "Snooze until" }),
@@ -201,7 +201,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
@@ -228,10 +228,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // Each section clears its own rows. In To do, the notice in the
-    // question's row goes; the question stays.
-    await page.getByRole("button", { name: "Clear 1 in To do" }).click();
-    await expect(page.getByText("Cleared 1 item")).toBeVisible();
+    // FYI clears its notices; the questions stay.
+    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
+    await expect(page.getByText("Cleared 2 items")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -242,7 +241,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Clear 1 in To do" }),
+      page.getByRole("button", { name: "Clear 2 in FYI" }),
     ).toBeVisible();
     // Only section headers clear. No label says "need you".
     await expect(page.getByRole("button", { name: /^Clear/ })).toHaveText(
@@ -254,7 +253,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
@@ -270,12 +269,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const clearToday = page.getByRole("button", {
-      name: /^Clear \d+ in Today$/,
-    });
-    await clearToday.click();
+    const clearFyi = page.getByRole("button", { name: /^Clear \d+ in FYI$/ });
+    await clearFyi.click();
     await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
-    await expect(clearToday).toHaveCount(0);
+    await expect(clearFyi).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
@@ -295,7 +292,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await page.goBack();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(clearToday).toBeVisible();
+    await expect(clearFyi).toBeVisible();
     expect(actions).toEqual([]);
   });
 
@@ -308,15 +305,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // A sweep closes asks, not Conversations: the row stays, without its FYI.
     const digestFyi = page
-      .getByRole("listitem")
-      .filter({
-        has: page.getByRole("link", { name: /Daily operations digest/ }),
-      })
-      .getByRole("button", { name: "FYI" });
+      .getByRole("region", { name: "FYI" })
+      .locator("[data-inbox-row]")
+      .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
       timeout: 10_000,
@@ -595,7 +589,9 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // A Conversation row's head names the Conversation, so the ask keeps its
     // title.
-    await page.goto(`${dashboard.baseURL}/?item=${prReady.id}`);
+    await page.goto(
+      `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
+    );
     await expect(
       page
         .getByRole("region", { name: /: asks$/ })
@@ -624,7 +620,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    await rowHead(todo, checkout).click();
+    await expandRow(rowHead(todo, checkout));
     await page.getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "3 hours" }).click();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
@@ -855,6 +851,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await page.evaluate(() => {
       localStorage.setItem("junior:density", "comfortable");
+      // The magnifier is off until the viewer turns it on.
+      localStorage.setItem("junior:inbox:magnify", "true");
     });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.reload();
@@ -893,9 +891,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       { idleDays: 1, number: 91, title: "Pin the release train" },
       { idleDays: 0, number: 42, title: "Tune the retry backoff" },
     ]);
-    await page.addInitScript(() =>
-      localStorage.setItem("junior:density", "comfortable"),
-    );
+    await page.addInitScript(() => {
+      localStorage.setItem("junior:density", "comfortable");
+      localStorage.setItem("junior:inbox:magnify", "true");
+    });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     const change = page.getByRole("listitem", {
       name: "Pin the release train",

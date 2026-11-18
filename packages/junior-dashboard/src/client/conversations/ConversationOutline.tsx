@@ -2,12 +2,13 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@dashboard/lib/utils";
 import {
   conversationOutlineSchema,
@@ -35,12 +36,18 @@ import {
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
+import {
+  prefetchHistoryAround,
+  unheldLinkStart,
+} from "./transcriptAroundHistory";
 import { useScrollsWithOutline } from "./transcriptScroller";
 
 const NO_EVENTS: ConversationReportEvent[] = [];
 
 /** Room above a selected message, so it does not touch the viewport edge. */
 const JUMP_MARGIN_PX = 12;
+/** A preview that stays this long reads the page of its message. */
+const PREFETCH_DELAY_MS = 100;
 
 /**
  * Show the person messages of a Conversation in an outline beside the
@@ -85,10 +92,29 @@ export function ConversationOutline(props: {
   const seqsInView = useOutlineSeqsInView(items, scrollRef, scrollsWithOutline);
   const activeIndex = items.findIndex((item) => item.seq === seqsInView.top);
   const [jumpSeq, setJumpSeq] = useState<number>();
+  // A drag past messages that are not loaded would start a page read at
+  // each item, and each read would replace the last before it lands. So
+  // while a jump waits for its page, the drag keeps only its latest item,
+  // and goes there when the page lands or the press ends.
+  const scrubSeqRef = useRef<number>(undefined);
   const select = (seq: number) => {
+    scrubSeqRef.current = undefined;
     props.onSelect(seq);
     setJumpSeq(seq);
   };
+  const scrub = (seq: number) => {
+    if (jumpSeq === undefined) select(seq);
+    else scrubSeqRef.current = seq;
+  };
+  const endScrub = () => {
+    const seq = scrubSeqRef.current;
+    if (seq !== undefined) select(seq);
+  };
+  const selectScrubbed = useEffectEvent((landedSeq: number) => {
+    const seq = scrubSeqRef.current;
+    scrubSeqRef.current = undefined;
+    if (seq !== undefined && seq !== landedSeq) select(seq);
+  });
   const navRef = useRef<HTMLElement>(null);
   const replacesScrollbar = useDisplayed(
     navRef,
@@ -105,17 +131,38 @@ export function ConversationOutline(props: {
 
   // A message outside the loaded rows renders after its page loads, so the
   // jump waits for new events.
+  const jumpedSeqRef = useRef<number>(undefined);
   useEffect(() => {
     if (jumpSeq === undefined) return;
     const scroll = scrollRef.current;
-    const row = scroll?.querySelector(`[data-transcript-seq="${jumpSeq}"]`);
-    if (!scroll || !row) return;
+    const rowAt = () =>
+      scroll?.querySelector(`[data-transcript-seq="${jumpSeq}"]`);
+    if (!scroll || !rowAt()) return;
     setJumpSeq(undefined);
-    scroll.scrollTop +=
-      row.getBoundingClientRect().top -
-      scroll.getBoundingClientRect().top -
-      JUMP_MARGIN_PX;
+    jumpedSeqRef.current = jumpSeq;
+    const align = () => {
+      const row = rowAt();
+      if (!row || jumpedSeqRef.current !== jumpSeq) return;
+      scroll.scrollTop +=
+        row.getBoundingClientRect().top -
+        scroll.getBoundingClientRect().top -
+        JUMP_MARGIN_PX;
+    };
+    align();
+    // In the next frame, the rows of a page that rendered with the jump
+    // measure, and the transcript moves back to the place it held. So the
+    // jump aligns again after that frame, unless a newer jump started.
+    requestAnimationFrame(() => requestAnimationFrame(align));
+    selectScrubbed(jumpSeq);
   }, [events, jumpSeq, scrollRef]);
+
+  // The page of a previewed message loads before a click, so the click
+  // jumps at once.
+  const queryClient = useQueryClient();
+  const prefetch = (seq: number) => {
+    const start = unheldLinkStart(props.events, { event: seq });
+    if (start) prefetchHistoryAround(queryClient, props.conversationId, start);
+  };
 
   if (items.length < 2) return null;
   // In place of the scrollbar, the rail sits where the scrollbar would.
@@ -140,10 +187,12 @@ export function ConversationOutline(props: {
         replacesScrollbar
           ? (index) => {
               const item = items[index];
-              if (item) select(item.seq);
+              if (item) scrub(item.seq);
             }
           : undefined
       }
+      // A release bubbles up from the list.
+      onPointerUp={endScrub}
       ref={navRef}
       side={side}
     >
@@ -165,6 +214,8 @@ export function ConversationOutline(props: {
       <ConversationOutlinePreview
         conversation={props.conversation}
         items={items}
+        // A drag reads its own pages, one at a time.
+        prefetch={jumpSeq === undefined ? prefetch : undefined}
       />
     </MessageOutline>
   );
@@ -198,10 +249,20 @@ function useConversationOutline(conversationId: string) {
 function ConversationOutlinePreview(props: {
   conversation: ConversationTranscript | undefined;
   items: readonly ConversationOutlineItem[];
+  prefetch: ((seq: number) => void) | undefined;
 }) {
   const { previewIndex } = useMessageOutline();
   const item =
     previewIndex === undefined ? undefined : props.items[previewIndex];
+  // A pointer that sweeps past items reads no pages.
+  const prefetch = useEffectEvent((seq: number) => props.prefetch?.(seq));
+  const seq = item?.seq;
+  const prefetches = props.prefetch !== undefined;
+  useEffect(() => {
+    if (seq === undefined || !prefetches) return;
+    const timer = setTimeout(() => prefetch(seq), PREFETCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [prefetches, seq]);
   if (!item) return null;
   const meta = [
     props.conversation &&

@@ -6,10 +6,17 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Link, useHref, useNavigate } from "react-router";
 import type {
   OwnedObjectAnnotation,
+  ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -41,19 +48,17 @@ import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
-import { cn } from "../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import { FoldedNotice } from "./FoldedNotice";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { useHoverExpandAllowed } from "./hoverExpand";
-import { useInboxRowFocused } from "./inboxFocus";
 import { useAnimatedHeight } from "./rowMotion";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -74,10 +79,16 @@ import {
 import { isImageMedia } from "./useConversationImages";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+import {
+  itemNeedsViewer,
+  reviewItemText,
+  type InboxBundle,
+} from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
+const NO_NOTICES: readonly ReviewItemPayload[] = [];
 
 /** The second line: the Brief, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
@@ -104,9 +115,12 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  /** Notices about the item's subject (`foldNotices`). */
+  notices: readonly ReviewItemPayload[];
+  onAction?: InboxRowProps["onItemAction"];
   take?: string;
 }) {
-  const { item } = props;
+  const { item, onAction } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
   return (
@@ -129,7 +143,13 @@ function RowItem(props: {
         {/* An item row's head already names the ask. A Conversation row's
             head names the Conversation, so each ask keeps its title. */}
         {props.headTitled ? null : (
-          <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
+          <h4
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {item.title}
           </h4>
         )}
@@ -142,22 +162,29 @@ function RowItem(props: {
             className="max-w-[80ch] leading-6"
             label={item.title}
             lines={4}
-            text={item.body}
+            text={reviewItemText(item)}
           />
         ) : null}
         {item.subject ? (
           <ReviewItemSubjectPreview
-            body={showBody ? item.body : undefined}
             conversationId={props.conversationId}
             subject={item.subject}
           />
         ) : null}
       </ReviewItemObjects>
+      {props.notices.map((notice) => (
+        <FoldedNotice
+          key={notice.id}
+          notice={notice}
+          onAction={onAction ? (body) => onAction(notice, body) : undefined}
+        />
+      ))}
       {/* The row's bar holds Dismiss. A card on its own, as in a
           Conversation, keeps its own. */}
       <ReviewItemActions
         dismiss={!props.done}
         item={item}
+        onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
     </section>
@@ -229,18 +256,24 @@ type InboxRowProps = {
   bundle?: InboxBundle;
   conversation?: Conversation;
   conversationId: string;
-  donePending?: boolean;
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
+  /** The notices that fold into each ask, by the ask's id. */
+  foldedNotices?: ReadonlyMap<string, readonly ReviewItemPayload[]>;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
   onDone?(): void;
+  /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
+  onItemAction?(
+    item: ReviewItemPayload,
+    body: ReviewItemActionBody,
+  ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -260,44 +293,33 @@ type InboxRowProps = {
 
 /**
  * One Inbox row: a Conversation, with what it asks of the viewer. A click
- * or Enter on the row expands it in place, where each ask has its answer
- * controls, then Open, Done, pin, and snooze. Only Open, or a Ctrl/⌘-click
- * for a new tab, leaves the list. A row of a loaded Conversation also has
+ * or Enter on the row opens the Conversation. Its ask pills expand it in
+ * place, where each ask has its answer controls, then Open, Done, pin, and
+ * snooze. A row for one item names the item, not the Conversation, so a
+ * click on it expands it instead. A row of a loaded Conversation also has
  * the Conversation's context menu, Open, pin and archive on hover, and its
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
-  const motion = useRowMotion(props);
+  // The rows below move with the row as it opens and closes.
+  const cardRef = useRef<HTMLLIElement>(null);
+  useAnimatedHeight(cardRef, String(props.expanded));
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
+      cardRef={cardRef}
       conversation={props.conversation}
-      motion={motion}
     />
   ) : (
     <li
       className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
-      data-grown={motion.grown || undefined}
       data-inbox-row={props.rowKey}
-      ref={motion.ref}
+      ref={cardRef}
     >
-      <InboxRowBody {...props} preview={motion.grown} />
+      <InboxRowBody {...props} />
     </li>
   );
-}
-
-/**
- * How a row moves with the pointer. In focus, a row that may expand on
- * hover shows its comfortable layout, whole summary and every preview in
- * place, and the rows below move down with it.
- */
-function useRowMotion(props: InboxRowProps) {
-  const focused = useInboxRowFocused(props.rowKey);
-  const grown = useHoverExpandAllowed() && focused && !props.expanded;
-  const ref = useRef<HTMLLIElement>(null);
-  useAnimatedHeight(ref, `${props.expanded}:${grown}`);
-  return { grown, ref };
 }
 
 /** The id of what a row's head opens. */
@@ -307,8 +329,8 @@ function rowRegionId(rowKey: string): string {
 
 function ConversationInboxRow(
   props: InboxRowProps & {
+    cardRef: RefObject<HTMLLIElement | null>;
     conversation: Conversation;
-    motion: ReturnType<typeof useRowMotion>;
   },
 ) {
   const { conversation, drag } = props;
@@ -374,15 +396,14 @@ function ConversationInboxRow(
         drag?.dragging && "opacity-40",
       )}
       data-expanded={props.expanded || undefined}
-      data-grown={props.motion.grown || undefined}
       data-inbox-row={props.rowKey}
-      ref={props.motion.ref}
+      ref={props.cardRef}
     >
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
           {...prefetch}
           {...drag?.listeners}
-          className="group relative min-w-0 rounded-xl"
+          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
           onKeyDown={drag?.onKeyDown}
           ref={drag?.setNodeRef}
         >
@@ -390,7 +411,6 @@ function ConversationInboxRow(
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
-            preview={props.motion.grown}
             threadsShown={hasThreads}
             linkProps={{
               "aria-keyshortcuts": drag
@@ -449,18 +469,15 @@ function RowSummary(props: {
   summary: NonNullable<ReturnType<typeof rowSummary>>;
 }) {
   return (
-    <span
+    <div
       className="flex min-w-0 text-sm leading-snug text-dashboard-text-muted"
       data-summary-lines={
         props.expanded ? "all" : props.comfortable ? "2" : "1"
       }
     >
-      <span
+      <div
         className={cn(
           "min-w-0",
-          // Links read as the summary's own words, and underline on hover,
-          // so a line of links does not shout over the title.
-          "[&_a]:font-normal [&_a]:text-dashboard-text [&_a]:no-underline [&_a:hover]:underline",
           props.expanded
             ? "line-clamp-none"
             : props.comfortable
@@ -469,7 +486,8 @@ function RowSummary(props: {
         )}
       >
         {/* As messages show it: links show as chips, so the clamp ends on
-            a word or a chip, not inside a URL. */}
+            a word or a chip, not inside a URL. One line runs the
+            paragraphs together; more lines keep them. */}
         <ReviewItemObjects
           cards={props.objects}
           conversationId={props.conversationId}
@@ -478,11 +496,12 @@ function RowSummary(props: {
             chips
             inline
             mentions={props.summary.mentions}
+            paragraphs={props.expanded || props.comfortable}
             text={props.summary.text}
           />
         </ReviewItemObjects>
-      </span>
-    </span>
+      </div>
+    </div>
   );
 }
 
@@ -491,15 +510,26 @@ function InboxRowBody(
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
-    /** In focus on hover: comfortable, unclamped, every preview. */
-    preview?: boolean;
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
   },
 ) {
-  const { bundle, conversation, preview } = props;
+  const { bundle, conversation } = props;
+  const navigate = useNavigate();
+  // A row that names its Conversation opens it. A row for one item names
+  // the item, and expands to show its answer controls.
+  const opens = !props.itemTitle;
+  const path = rowConversationPath(props);
+  const href = useHref(path);
+  // As a click on the head link does: a Ctrl/⌘ or Shift click, or a middle
+  // click, opens a new tab.
+  const openConversation = (event: MouseEvent) => {
+    if (event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey)
+      window.open(href, "_blank", "noopener");
+    else void navigate(path);
+  };
   const [density] = useConversationDensity();
-  const comfortable = Boolean(preview) || density === "comfortable";
+  const comfortable = density === "comfortable";
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
   const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
@@ -534,8 +564,7 @@ function InboxRowBody(
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
-  const open = props.expanded || Boolean(preview);
-  const limit = open ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
+  const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
   const files = media.filter((file) => !isImageMedia(file));
   // Message links fill what the linked work leaves of its lines.
@@ -563,24 +592,18 @@ function InboxRowBody(
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
   const cast =
     comfortable && conversation ? (
-      // A compact row that grows under the pointer keeps the name it reads
-      // under. The Threads list below counts the Threads, so the cast
-      // doesn't.
-      <span
-        aria-hidden={density === "compact" || undefined}
-        className="contents"
-      >
-        <ConversationCast
-          agents={!props.threadsShown}
-          conversation={conversation}
-        />
-      </span>
+      // The Threads list below counts the Threads, so the cast doesn't.
+      <ConversationCast
+        agents={!props.threadsShown}
+        conversation={conversation}
+      />
     ) : null;
   return (
     <>
       <div
         className={cn(
-          "relative rounded-xl",
+          "relative",
+          dashboardSurfaceRadiusClass,
           props.selected && "bg-dashboard-fill-soft",
           props.expanded && "rounded-b-none",
         )}
@@ -592,17 +615,26 @@ function InboxRowBody(
           />
         ) : null}
         {/* The head link is the row's keyboard target. A click anywhere else
-            on the head expands the row too, except on the links and buttons
-            in it, such as pills and summary chips. */}
+            on the head does what the link does, except on the links and
+            buttons in it, such as pills and summary chips, or at the end of
+            a text selection. */}
         <div
           className={cn(inboxHeadGridClass(), "cursor-pointer", "pb-3")}
+          onAuxClick={(event) => {
+            if (event.button !== 1 || !opens || onControl(event)) return;
+            openConversation(event.nativeEvent);
+          }}
+          // A middle press would start the browser's autoscroll, not the
+          // new tab that its click opens.
+          onMouseDown={(event) => {
+            if (event.button === 1 && opens && !onControl(event))
+              event.preventDefault();
+          }}
           onClick={(event) => {
-            if (
-              event.target instanceof Element &&
-              event.target.closest("a, button")
-            )
-              return;
-            props.onToggle();
+            if (event.button !== 0 || onControl(event)) return;
+            if (!opens) return props.onToggle();
+            if (window.getSelection()?.isCollapsed === false) return;
+            openConversation(event.nativeEvent);
           }}
         >
           <span
@@ -614,10 +646,9 @@ function InboxRowBody(
                   : undefined
             }
             className={cn(
-              "col-start-1 row-start-1 mt-[0.45rem] size-2 justify-self-center rounded-full",
-              comfortable && "mt-[0.55rem]",
+              "col-start-1 row-start-1 mt-[0.55rem] size-2 justify-self-center rounded-full",
               waiting
-                ? "bg-dashboard-accent"
+                ? "bg-dashboard-text"
                 : openItems.length > 0
                   ? "border border-dashboard-text-faint"
                   : "",
@@ -637,19 +668,22 @@ function InboxRowBody(
               ) : null}
               <Link
                 {...props.linkProps}
-                aria-controls={controls}
+                aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
-                aria-expanded={props.expanded}
+                aria-expanded={opens ? undefined : props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
                   // A long press opens the row menu or drags a pin, not the iOS
                   // link callout.
                   "[-webkit-touch-callout:none]",
                 )}
-                // A plain click or Enter expands the row in place. A modified
-                // click keeps the link, so Ctrl/⌘-click opens a new tab.
+                data-inbox-head=""
+                // On a row for one item, a plain click or Enter expands it in
+                // place. A modified click keeps the link, so Ctrl/⌘-click
+                // opens a new tab.
                 onClick={(event) => {
                   if (
+                    opens ||
                     event.button !== 0 ||
                     event.metaKey ||
                     event.ctrlKey ||
@@ -660,25 +694,26 @@ function InboxRowBody(
                   event.preventDefault();
                   props.onToggle();
                 }}
-                to={rowConversationPath(props)}
+                to={path}
               >
-                <span
-                  className={cn(
-                    "flex min-w-0 items-center gap-1.5 font-medium leading-snug text-dashboard-text",
-                    comfortable ? "text-base" : "text-sm",
-                  )}
-                >
+                <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
                   {/* An item row's title names its kind; the icon marks it
                     the way the pills do. */}
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className="min-w-0 truncate">
+                  <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                     {props.itemTitle ?? props.title}
                   </span>
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
-                  <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                  <span
+                    className={cn(
+                      fadeOverflowClass,
+                      "text-xs text-dashboard-text-muted",
+                    )}
+                    ref={fadeWhenOverflowing}
+                  >
                     {props.itemSubtitle}
                   </span>
                 ) : null}
@@ -702,7 +737,9 @@ function InboxRowBody(
                           aria-controls={controls}
                           aria-expanded={props.expanded}
                           aria-label={pill.name}
-                          className="shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                          // A pill alone on its line shrinks and truncates
+                          // its label, so a narrow row never cuts it off.
+                          className="flex min-w-0 max-w-full cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                           key={pill.key}
                           onClick={props.onToggle}
                           title={pill.name}
@@ -713,7 +750,7 @@ function InboxRowBody(
                       ))}
                       overflow={(count) => (
                         <span
-                          className="shrink-0 text-2xs text-dashboard-text-faint"
+                          className="shrink-0 text-xs text-dashboard-text-faint"
                           data-pill-overflow=""
                         >
                           +{count}
@@ -727,18 +764,18 @@ function InboxRowBody(
             ) : null}
           </span>
           {summary ? (
-            <span
+            <div
               className="col-span-2 col-start-2 row-start-2 min-w-0"
               data-inbox-slot="summary"
             >
               <RowSummary
                 comfortable={comfortable}
                 conversationId={props.conversationId}
-                expanded={props.expanded || Boolean(preview)}
+                expanded={props.expanded}
                 objects={objects}
                 summary={summary}
               />
-            </span>
+            </div>
           ) : null}
           <span className={INBOX_ROW_META_CLASS} data-inbox-slot="meta">
             {/* The row's actions sit beside its state and never hide it.
@@ -765,7 +802,7 @@ function InboxRowBody(
               {pinned ? (
                 <Pin
                   aria-label="Pinned"
-                  className="size-3 text-dashboard-accent-text"
+                  className="size-3 text-dashboard-text-muted"
                   role="img"
                 />
               ) : null}
@@ -783,6 +820,11 @@ function InboxRowBody(
           <div className="grid min-w-0 gap-3 pr-4 pb-3 pl-8">
             {images ? (
               <InboxImageStrip
+                askToggle={{
+                  controls,
+                  expanded: props.expanded,
+                  onToggle: props.onToggle,
+                }}
                 asks={imageAsks}
                 conversationId={props.conversationId}
                 main={main}
@@ -816,6 +858,8 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
+              onAction={props.onItemAction}
               take={props.take}
             />
           ))}
@@ -823,6 +867,19 @@ function InboxRowBody(
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Whether a click on the row head belongs to something else: a control in
+ * the head, or a popover that React bubbles through the head from a portal.
+ */
+function onControl(event: { currentTarget: Element; target: EventTarget }) {
+  const { target } = event;
+  return (
+    !(target instanceof Element) ||
+    !event.currentTarget.contains(target) ||
+    Boolean(target.closest("a, button"))
   );
 }
 
@@ -838,7 +895,6 @@ function rowActions(props: InboxRowProps) {
     <ExpandedActions
       canDone={rowCanDone(props)}
       conversation={props.conversation}
-      donePending={props.donePending}
       onDone={props.onDone}
       onSnooze={props.onSnooze}
       onSnoozeMenu={props.onSnoozeMenu}
@@ -853,9 +909,8 @@ function ExpandedActions(props: {
   canDone: boolean;
   conversation?: Conversation;
   openPath: string;
-  donePending?: boolean;
   onDone?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
@@ -887,7 +942,7 @@ function ExpandedActions(props: {
       ) : null}
       {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
-        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
+        <RowDismissButton onClick={props.onDone} />
       ) : null}
     </div>
   );
@@ -895,7 +950,16 @@ function ExpandedActions(props: {
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
 function ExpandedPin(props: { conversation: Conversation }) {
-  const pin = usePinConversation(props.conversation.id);
+  const { clearActionError, showActionError } = useConversationActionToasts();
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinning) =>
+      showActionError(
+        props.conversation,
+        pinning ? "Could not pin" : "Could not unpin",
+        () => pin.mutate(pinning),
+      ),
+    onSuccess: () => clearActionError(props.conversation),
+  });
   const pinned = Boolean(props.conversation.pinnedAt);
   return (
     <Button

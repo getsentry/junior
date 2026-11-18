@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { attentionCount, automationReport } from "./automation-fixture";
-import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -45,7 +45,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   async function closeCheckoutAsks(page: Page) {
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Dismiss", exact: true }).click();
   }
 

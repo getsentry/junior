@@ -1,5 +1,5 @@
 import type { SkillReport } from "@sentry/junior/api/schema";
-import { quickOpenMatch } from "../../components/quickOpenMatch";
+import { quickOpenMatch } from "./quickOpenMatch";
 
 export type SkillSearchRow = {
   skill: SkillReport;

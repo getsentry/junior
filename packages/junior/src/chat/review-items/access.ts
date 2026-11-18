@@ -1,5 +1,3 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -365,15 +363,11 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const participants = await Promise.all(
-    [...new Set(args.conversationIds)].map((conversationId) =>
-      limit(() =>
-        conversationParticipantUserIds(getDb(), conversationId, others),
-      ),
-    ),
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    args.conversationIds,
+    others,
   );
-  const inConversation = new Set(participants.flatMap((ids) => [...ids]));
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

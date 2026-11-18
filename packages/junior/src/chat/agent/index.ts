@@ -183,6 +183,7 @@ import {
   recordToolBatch,
   toolBatchSpanAttributes,
 } from "@/chat/agent/tool-batch";
+import { mapBounded } from "@/chat/fan-out";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 // Past a turn limit, a gated Turn gets this many failed answer calls before
@@ -487,9 +488,9 @@ async function executeAgentRunInPrivacyContext(
     if (!mcpToolManager) {
       return;
     }
-    for (const provider of mcpToolManager.getActiveProviders()) {
-      await recordConnectedMcpProvider(provider);
-    }
+    await mapBounded(mcpToolManager.getActiveProviders(), (provider) =>
+      recordConnectedMcpProvider(provider),
+    );
   };
   try {
     shouldTrace = shouldEmitDevAgentTrace();
@@ -1576,6 +1577,7 @@ async function executeAgentRunInPrivacyContext(
             signal?.throwIfAborted();
           };
           try {
+            /* oxlint-disable no-await-in-loop -- The agent runs one step at a time, and each retry follows the step before. */
             for (;;) {
               await runAgentStep(run);
               if (assistantMessageDeliveryError) {
@@ -1716,6 +1718,7 @@ async function executeAgentRunInPrivacyContext(
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
+            /* oxlint-enable no-await-in-loop */
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
               // A durable auth pause is a successful span outcome. Persistence

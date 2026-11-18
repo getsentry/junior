@@ -1,8 +1,11 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
-import type { AutomationListItem } from "@sentry/junior/api/schema";
+import type {
+  AutomationListItem,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
@@ -47,13 +50,10 @@ import {
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
 import { PageEnd, RetryRow } from "./PageEnd";
+import { useInboxRowActs } from "./inboxRowActs";
 import { useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
-import {
-  useReviewItemAction,
-  useReviewItemData,
-  useReviewItemsData,
-} from "./queries";
+import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
@@ -120,7 +120,6 @@ export function InboxList(props: {
   const state = useInboxListState(ready);
   const { view } = state;
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
-  const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
   const done = useReviewItemsData({
     closed: true,
@@ -157,6 +156,12 @@ export function InboxList(props: {
     state.expandedKey,
     state.setExpandedKey,
   );
+  const act = useInboxRowActs({
+    holdLeaving: data.holdLeaving,
+    leave,
+    scroller: state.scroller,
+    setExpandedKey: state.setExpandedKey,
+  });
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
   const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
@@ -169,7 +174,7 @@ export function InboxList(props: {
   const [held, setHeld] = useState<RowPlaces>();
   const latestStreamRows =
     view === "inbox"
-      ? data.conversationRows.filter(
+      ? data.inboxStreamRows.filter(
           (row) =>
             !todoIds.has(row.conversationId) &&
             !grabIds.has(row.conversationId),
@@ -206,11 +211,16 @@ export function InboxList(props: {
       return doneItems.some((item) => item.id === linkedId)
         ? linkedId
         : undefined;
-    const item = data.awake.find((open) => open.id === linkedId);
+    // A notice folded into an ask's row opens that row.
+    const hostId = [...data.foldedNotices].find(([, notices]) =>
+      notices.some((notice) => notice.id === linkedId),
+    )?.[0];
+    const item = data.awake.find((open) => open.id === (hostId ?? linkedId));
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
     const conversationId = item.addedByConversationId;
     if (view !== "inbox") return `conversation:${conversationId}`;
+    if (item.kind === "notice") return `fyi:${item.id}`;
     if (itemUpForGrabs(item) && grabIds.has(conversationId))
       return `grabs:${conversationId}`;
     return todoIds.has(conversationId)
@@ -240,9 +250,18 @@ export function InboxList(props: {
     const current = new URLSearchParams(window.location.search).get("item");
     if (current !== linkedId) return;
     if (linkedRowKey) {
-      // A collapsed To do has no rows, so a link into it opens it first.
+      // A collapsed To do or FYI has no rows, so a link into it opens it
+      // first.
       if (linkedRowKey.startsWith("todo:") && todoCollapsed) {
         setTodoCollapsed(false);
+        return;
+      }
+      if (linkedRowKey.startsWith("fyi:") && collapsed.has("fyi")) {
+        setCollapsed((current) => {
+          const next = new Set(current);
+          next.delete("fyi");
+          return next;
+        });
         return;
       }
       if (expandedKey !== linkedRowKey) {
@@ -291,6 +310,7 @@ export function InboxList(props: {
       });
     }
   }, [
+    collapsed,
     expandedKey,
     includeItem,
     includedId,
@@ -320,20 +340,9 @@ export function InboxList(props: {
       scope={scope}
     />
   );
-  const markDone = async (bundle: InboxBundle) => {
-    for (const item of bundle.items) {
-      if (item.status !== "open" || !item.canAct) continue;
-      // oxlint-disable-next-line no-await-in-loop -- Stop at the first dismiss that fails.
-      const closed = await action
-        .mutateAsync({ body: { action: "dismiss" }, id: item.id })
-        .then(
-          () => true,
-          () => false,
-        );
-      if (!closed) return;
-    }
-  };
 
+  // The items of each row that this render shows, by row key.
+  const rowItems = new Map<string, readonly ReviewItemPayload[]>();
   const bundleRow = (
     row: InboxBundle,
     options: {
@@ -350,6 +359,9 @@ export function InboxList(props: {
     } = {},
   ) => {
     const key = options.key ?? row.key;
+    rowItems.set(key, row.items);
+    const title = titleOf(row.conversationId) ?? row.newest.title;
+    const acted = { items: row.items, key, title };
     return (
       <InboxRow
         bundle={row}
@@ -357,9 +369,9 @@ export function InboxList(props: {
           options.conversation ?? data.conversationById.get(row.conversationId)
         }
         conversationId={row.conversationId}
-        donePending={action.isPending}
         drag={options.drag}
         expanded={state.expandedKey === key}
+        foldedNotices={data.foldedNotices}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
           options.itemRow
@@ -372,16 +384,27 @@ export function InboxList(props: {
             : undefined
         }
         key={key}
-        onDone={() => leave(key, () => markDone(row))}
+        onDone={() =>
+          void act(
+            acted,
+            row.items.filter((item) => item.status === "open" && item.canAct),
+            { action: "dismiss" },
+          ).catch(() => {})
+        }
+        onItemAction={(item, body) => act(acted, [item], body)}
         onSnooze={
           options.snoozed
             ? undefined
-            : (choice) => {
+            : (untilMs) => {
                 setSnoozeKey(undefined);
-                leave(key, () => snoozes.snooze(row, choice));
+                leave(key, () => snoozes.snooze(row, untilMs));
               }
         }
-        onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
+        onWake={
+          options.snoozed
+            ? () => leave(key, () => snoozes.wake(row))
+            : undefined
+        }
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
         onToggle={() => toggle(key)}
         rowKey={key}
@@ -390,7 +413,7 @@ export function InboxList(props: {
         snoozeMenuOpen={snoozeKey === key}
         take={options.take}
         time={options.time ?? row.waitingSince}
-        title={titleOf(row.conversationId) ?? row.newest.title}
+        title={title}
       />
     );
   };
@@ -440,9 +463,9 @@ export function InboxList(props: {
                 onDismiss: () =>
                   leave(key, () => data.alerts.dismiss(automation)),
                 onMenu: (open) => setSnoozeKey(open ? key : undefined),
-                onSnooze: (choice) => {
+                onSnooze: (untilMs) => {
                   setSnoozeKey(undefined);
-                  leave(key, () => data.alerts.snooze(automation, choice));
+                  leave(key, () => data.alerts.snooze(automation, untilMs));
                 },
               }
             : undefined
@@ -595,7 +618,7 @@ export function InboxList(props: {
             action={sweepControl(data.todoRows, "To do")}
             badge={
               data.todoCount > 0 ? (
-                <span className="mb-0.5 rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+                <span className="text-xs font-medium tabular-nums text-dashboard-text-muted">
                   {data.todoCount}
                 </span>
               ) : null
@@ -628,6 +651,18 @@ export function InboxList(props: {
         >
           {data.grabRows.map((row) =>
             bundleRow(row, { key: `grabs:${row.key}`, take: "I'll take it" }),
+          )}
+        </InboxSection>
+        {/* Notices wait on no one: one quiet row each, after the asks. */}
+        <InboxSection
+          action={sweepControl(data.fyiRows, "FYI")}
+          collapsed={collapsed.has("fyi")}
+          count={data.fyiRows.length}
+          label="FYI"
+          onToggle={() => toggleSection("fyi")}
+        >
+          {data.fyiRows.map((row) =>
+            bundleRow(row, { itemRow: true, key: `fyi:${row.key}` }),
           )}
         </InboxSection>
         {automationsError}
@@ -737,6 +772,29 @@ export function InboxList(props: {
       );
   }
 
+  // An open row whose items close elsewhere, as when an agent or a Watch
+  // closes them, leaves as it does on Dismiss, and the next row opens. The
+  // data holds its items until then. Other rows leave with the read.
+  const openItems = rowItems.get(expandedKey) ?? [];
+  const { closedElsewhere, holdOpenRow } = data;
+  useEffect(() => holdOpenRow(openItems));
+  useEffect(() => () => holdOpenRow([]), [holdOpenRow]);
+  const closedKey =
+    openItems.length > 0 &&
+    openItems.every((item) => closedElsewhere.includes(item))
+      ? expandedKey
+      : undefined;
+  // The next row opens at once, so the open row's hold moves to the
+  // leaving hold, which keeps the row until its motion ends.
+  const { holdLeaving } = data;
+  const leaveClosed = useEffectEvent((key: string) => {
+    holdLeaving(openItems, true);
+    leave(key, () => holdLeaving(openItems, false));
+  });
+  useEffect(() => {
+    if (closedKey) leaveClosed(closedKey);
+  }, [closedKey]);
+
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];
   return (
@@ -774,11 +832,6 @@ export function InboxList(props: {
           // the scroll area's edge.
           style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
-          {action.isError ? (
-            <InlineError className="py-2">
-              Could not close every item. Try again.
-            </InlineError>
-          ) : null}
           <InboxFocusProvider focus={focus.focus}>
             <InboxPreviewGate>{body}</InboxPreviewGate>
           </InboxFocusProvider>

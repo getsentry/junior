@@ -17,9 +17,9 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
+import { fadeTextClass } from "../textFade";
 
 const LAST_RUN_LABELS = {
   blocked: "blocked",
@@ -70,7 +70,7 @@ export function InboxAutomationRow(props: {
     menuOpen: boolean;
     onDismiss(): void;
     onMenu(open: boolean): void;
-    onSnooze(choice: SnoozeChoice): void;
+    onSnooze(untilMs: number): void;
   };
 }) {
   const { putAway } = props;
@@ -105,10 +105,7 @@ export function InboxAutomationRow(props: {
       >
         <TriangleAlert
           aria-hidden="true"
-          className={cn(
-            "col-start-1 row-start-1 mt-[0.15rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700",
-            comfortable && "mt-[0.25rem]",
-          )}
+          className="col-start-1 row-start-1 mt-[0.25rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700"
           data-inbox-slot="dot"
         />
         <span
@@ -117,8 +114,8 @@ export function InboxAutomationRow(props: {
         >
           <span
             className={cn(
-              "truncate font-medium leading-snug text-dashboard-text",
-              comfortable ? "text-base" : "text-sm",
+              fadeTextClass,
+              "font-display text-base font-medium leading-snug text-dashboard-text",
             )}
           >
             {automation.title}

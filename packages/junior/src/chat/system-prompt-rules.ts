@@ -6,7 +6,7 @@
  * in the block that owns it, or change the policy first. `prompt.ts` adds the
  * identity block before these blocks and the consumer blocks after them.
  */
-import type { Platform } from "@sentry/junior-plugin-api";
+import { renderTag, type Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -52,7 +52,7 @@ const MODE_RULE_SETS: Record<PromptMode, SenderRules[]> = {
   ],
 };
 
-type SectionAttributes = Record<string, string>;
+type SectionAttributes = { for?: string; format?: string };
 
 function senderAttributes({ sender }: SenderRules): SectionAttributes {
   return sender ? { for: sender } : {};
@@ -333,10 +333,11 @@ function renderRuleSection(
   lines: string[],
   attributes: SectionAttributes = {},
 ): string {
-  const attributeText = Object.entries(attributes)
-    .map(([name, value]) => ` ${name}="${value}"`)
-    .join("");
-  return [`<${tag}${attributeText}>`, ...lines, `</${tag}>`].join("\n");
+  return renderTag(
+    tag,
+    { for: attributes.for, format: attributes.format },
+    lines,
+  );
 }
 
 function buildJobSection(
@@ -457,7 +458,7 @@ function buildCommunicationSection(
 
 /** Block 6 `<output>` lines for Slack formatting. */
 const SLACK_MARKDOWN_RULES = [
-  "- Use Slack-flavored Markdown: **bold**, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables.",
+  "- Use Slack-flavored Markdown: **bold**, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings. Use a Markdown table only for a small comparison with few columns and short cells, and start and end every row with `|`.",
   "- Write a Slack channel as `<#C…>` when you already know its ID, so Slack renders a channel link. Do not look up an ID only for formatting. When the ID is unknown, write plain `#name` and never invent an ID.",
 ];
 

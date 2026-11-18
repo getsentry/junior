@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {
+  escapeClosingTag,
+  readTag,
+  renderTag,
+  unescapeClosingTag,
+} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   SANDBOX_REPOS_ROOT,
@@ -12,6 +18,9 @@ import {
 import type { SandboxCommandRunner } from "@/chat/tools/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
+// Codex's model-visible wrapper of repository instructions.
+const AGENTS_HEADER = "# AGENTS.md instructions";
+const AGENTS_TAG = "INSTRUCTIONS";
 const MAX_REPOSITORY_INSTRUCTIONS_BYTES = 32 * 1024;
 /** Repository skill directories, in priority order, relative to the Git root. */
 const REPOSITORY_SKILL_ROOTS = [".agents/skills", ".claude/skills"];
@@ -608,7 +617,9 @@ export function renderAgentsInstructions(args: {
   text: string;
 }): string {
   const directory = args.directory ? ` for ${args.directory}` : "";
-  return `# AGENTS.md instructions${directory}\n\n<INSTRUCTIONS>\n${args.text}\n</INSTRUCTIONS>`;
+  return `${AGENTS_HEADER}${directory}\n\n${renderTag(AGENTS_TAG, {}, [
+    escapeClosingTag(args.text, AGENTS_TAG),
+  ])}`;
 }
 
 /** Build one user-role repository-instructions context message. */
@@ -652,17 +663,21 @@ export function findVisibleAgentsInstructions(
       if (
         part.type !== "text" ||
         typeof part.text !== "string" ||
-        !part.text.startsWith("# AGENTS.md instructions")
+        !part.text.startsWith(AGENTS_HEADER)
       ) {
         continue;
       }
-      const match = part.text.match(
-        /^# AGENTS\.md instructions(?: for ([^\n]+))?\n\n<INSTRUCTIONS>\n([\s\S]*)\n<\/INSTRUCTIONS>$/,
-      );
-      if (!match) {
+      const headerEnd = part.text.indexOf("\n\n");
+      const header = part.text.slice(AGENTS_HEADER.length, headerEnd);
+      const body =
+        headerEnd < 0
+          ? undefined
+          : readTag(part.text.slice(headerEnd + 2), AGENTS_TAG);
+      if (body === undefined || (header && !header.startsWith(" for "))) {
         continue;
       }
-      let text = match[2]!;
+      const directory = header.slice(" for ".length);
+      let text = unescapeClosingTag(body, AGENTS_TAG);
       if (text === AGENTS_REMOVAL_NOTICE) {
         return { active: false };
       }
@@ -671,7 +686,7 @@ export function findVisibleAgentsInstructions(
       }
       return {
         active: true,
-        ...(match[1] ? { directory: match[1] } : undefined),
+        ...(directory ? { directory } : undefined),
         text,
       };
     }
@@ -711,9 +726,4 @@ export function renderAgentsInstructionsForPrompt(
         ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
         : instructions.text,
   });
-}
-
-/** Whether one message is a generated AGENTS.md context update. */
-export function isAgentsInstructionsMessage(message: PiMessage): boolean {
-  return Boolean(findVisibleAgentsInstructions([message]));
 }

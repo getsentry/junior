@@ -43,6 +43,7 @@ async function loadConversationChain(
   const chain: Conversation[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined = conversationId;
+  /* oxlint-disable no-await-in-loop -- Each step reads the parent of the Conversation before. */
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
     const conversation = await conversationStore.get({
@@ -54,6 +55,7 @@ async function loadConversationChain(
     chain.push(conversation);
     cursor = conversation.parentConversationId;
   }
+  /* oxlint-enable no-await-in-loop */
   return chain;
 }
 

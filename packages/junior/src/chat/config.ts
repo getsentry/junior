@@ -664,10 +664,6 @@ export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
 }
 
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
-}
-
 // ---------------------------------------------------------------------------
 // Runtime metadata
 // ---------------------------------------------------------------------------

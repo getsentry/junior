@@ -10,7 +10,6 @@ import {
   notExists,
   or,
 } from "drizzle-orm";
-import pLimit from "p-limit";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAttachments,
@@ -22,7 +21,7 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import {
   AttachmentSourceUnavailableError,
   type AttachmentSource,
@@ -803,23 +802,18 @@ export async function storeAttachments(args: {
   nowMs?: number;
   storage: AttachmentStorage;
 }): Promise<StoredAttachment[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  return await Promise.all(
-    args.files.map((file) =>
-      limit(() =>
-        storeAttachment({
-          conversationId: args.conversationId,
-          db: args.db,
-          file: {
-            data: file.data,
-            filename: file.filename,
-            mimeType: file.mimeType,
-          },
-          ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
-          storage: args.storage,
-        }),
-      ),
-    ),
+  return await mapBounded(args.files, (file) =>
+    storeAttachment({
+      conversationId: args.conversationId,
+      db: args.db,
+      file: {
+        data: file.data,
+        filename: file.filename,
+        mimeType: file.mimeType,
+      },
+      ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
+      storage: args.storage,
+    }),
   );
 }
 
