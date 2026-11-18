@@ -69,15 +69,36 @@ describe("people list API", () => {
         nowMs: Date.parse("2026-06-12T12:30:00.000Z"),
         source: "slack",
       });
+      // Dana's last Turn is older than every range.
+      const danaActor = {
+        email: "dana@example.com",
+        fullName: "Dana Example",
+        platform: "slack",
+        slackUserId: "UDANA",
+        teamId: "T1",
+      } as const;
+      await store.recordActivity({
+        actor: danaActor,
+        conversationId: "slack:C3:dormant",
+        destination: {
+          channelId: "C3",
+          platform: "slack",
+          teamId: "T1",
+        },
+        nowMs: Date.parse("2026-01-05T09:00:00.000Z"),
+        source: "slack",
+      });
       for (const [conversationId, actor, at] of [
         ["slack:C1:duplicate-day", aliceActor, "2026-06-12T12:00:00.000Z"],
         ["slack:C2:shared-day", bobActor, "2026-06-12T12:30:00.000Z"],
+        ["slack:C3:dormant", danaActor, "2026-01-05T09:00:00.000Z"],
+        ["slack:C3:dormant", danaActor, "2026-02-20T09:00:00.000Z"],
       ] as const) {
         await recordTurn(fixture, {
           actor,
           atMs: Date.parse(at),
           conversationId,
-          runId: `turn-${conversationId}`,
+          runId: `turn-${conversationId}-${at}`,
         });
       }
 
@@ -91,17 +112,12 @@ describe("people list API", () => {
         "bob@example.com",
         "alice@example.com",
         "later@example.com",
+        "dana@example.com",
       ]);
       const alice = report.people.find(
         (person) => person.actor.email === "alice@example.com",
       );
       expect(alice).toMatchObject({
-        active: 1,
-        activeDays: 2,
-        conversations: 3,
-        durationMs: 1_500,
-        failed: 1,
-        tokens: 150,
         actor: {
           email: "alice@example.com",
           fullName: "Alice Example",
@@ -123,6 +139,27 @@ describe("people list API", () => {
         costUsd: 0,
         durationMs: 0,
         priorCostUsd: 0,
+      });
+      // The list keeps a person with no Turn in any range, with their
+      // all-time Turn range.
+      expect(
+        report.people.find(
+          (person) => person.actor.email === "dana@example.com",
+        ),
+      ).toEqual({
+        actor: {
+          email: "dana@example.com",
+          fullName: "Dana Example",
+          slackUserId: "UDANA",
+        },
+        firstSeenAt: "2026-01-05T09:00:00.000Z",
+        lastSeenAt: "2026-02-20T09:00:00.000Z",
+        windows: Object.fromEntries(
+          [1, 7, 30, 90].map((range) => [
+            range,
+            { conversations: 0, costUsd: 0, durationMs: 0, priorCostUsd: 0 },
+          ]),
+        ),
       });
       expect(
         report.people.some(
@@ -198,17 +235,13 @@ describe("people list API", () => {
       const person = (email: string) =>
         report.people.find((entry) => entry.actor.email === email);
       expect(person("ana@example.com")).toMatchObject({
-        conversations: 1,
-        durationMs: 1_000,
-        windows: { 7: { conversations: 1, costUsd: 0.1 } },
+        windows: { 7: { conversations: 1, costUsd: 0.1, durationMs: 1_000 } },
       });
       // Ben did not start the Conversation, but his Turn counts it for him.
       expect(person("ben@example.com")).toMatchObject({
         actor: { fullName: "Ben Example" },
-        conversations: 1,
-        durationMs: 1_000,
         lastSeenAt: "2026-06-14T11:00:00.000Z",
-        windows: { 7: { conversations: 1, costUsd: 0.3 } },
+        windows: { 7: { conversations: 1, costUsd: 0.3, durationMs: 1_000 } },
       });
       // Ana ran two Turns on two days in her own Conversation. It failed.
       for (const [turnId, at, status] of [
