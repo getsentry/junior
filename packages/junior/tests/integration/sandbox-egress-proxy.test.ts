@@ -2212,9 +2212,18 @@ describe("sandbox egress proxy integration", () => {
   it("sandbox-credentials#browser-none: adds no credential to a browser request", async () => {
     await registerManagedEgressPlugin({ toolsSendNoCredential: true });
 
+    // Node's built-in fetch sends `Sec-Fetch-Mode` but is not a browser.
+    const nodeFetch = await sendFromSandbox({
+      headers: { "sec-fetch-mode": "cors" },
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(nodeFetch.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
     // A page script can send the placeholder too.
     const placeholder = await sendFromSandbox({
-      headers: { "sec-fetch-mode": "cors" },
+      headers: { "sec-fetch-mode": "cors", "sec-fetch-site": "cross-site" },
       upstreamHost: PROVIDER_HOST,
     });
     expect(placeholder.response.status).toBe(200);
@@ -2224,7 +2233,7 @@ describe("sandbox egress proxy integration", () => {
 
     const bare = await sendFromSandbox({
       credential: null,
-      headers: { "sec-fetch-mode": "navigate" },
+      headers: { "sec-fetch-mode": "navigate", "sec-fetch-site": "none" },
       upstreamHost: MANAGED_PROVIDER_HOST,
     });
     expect(bare.response.status).toBe(200);
