@@ -214,6 +214,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const long = `${CHECKOUT}${", then the p99 regression in the EU region".repeat(4)}`;
     let grown = false;
+    let baseline = false;
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
@@ -227,17 +228,20 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fulfill({ json: feed, response });
       },
     );
-    // The versions poll refreshes the feed once its token moves.
+    // The versions poll refreshes the feed once its token moves. Its first
+    // answer is only the baseline, so that one must be the short token.
     await page.route("**/api/versions*", async (route) => {
       const response = await route.fetch();
       const versions = (await response.json()) as { conversations: string };
+      const moved = grown;
       await route.fulfill({
         json: {
           ...versions,
-          conversations: `${versions.conversations}${grown ? " title:grown" : ""}`,
+          conversations: `${versions.conversations}${moved ? " title:grown" : ""}`,
         },
         response,
       });
+      if (!moved) baseline = true;
     });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
@@ -245,6 +249,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title(CHECKOUT)).toBeVisible();
     await expect(title(CHECKOUT)).not.toHaveAttribute("data-overflow");
     // A refetch makes the title longer. Its box keeps the column's width.
+    await expect.poll(() => baseline).toBe(true);
     grown = true;
     await expect(title(long)).toHaveAttribute("data-overflow", "", {
       timeout: 15_000,
