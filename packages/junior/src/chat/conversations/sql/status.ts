@@ -146,9 +146,8 @@ function conversationWaitsOnStarterSql(
 
 /**
  * SQL for the status of one Conversation's own work, shared by everyone.
- * This is the only place that derives it; readers, counts, feed tokens, and
- * auto-archive select it. When more than one applies: `needs_input` >
- * `working` > `done`.
+ * This is the only place that derives it; readers, counts, and feed tokens
+ * select it. When more than one applies: `needs_input` > `working` > `done`.
  *
  * - `needs_input`: an open action Review item that this Conversation added
  *   waits on its assignees or Everyone, a Turn waits on a person to sign in
