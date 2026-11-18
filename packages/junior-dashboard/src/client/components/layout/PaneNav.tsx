@@ -35,6 +35,7 @@ import {
   COMMAND_PALETTE_SHORTCUT,
 } from "../../inbox/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { useConversationOrigin } from "./conversationOrigin";
 import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
 import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
@@ -149,7 +150,8 @@ export function PaneNavProvider(props: {
   // Remember where each row was, so going back reopens its selection, its
   // search, and (through `scroll`) its list position.
   const [lastRow, setLastRow] = useState<PaneRow>("inbox");
-  const row = paneRowForPath(location, props.navItems, lastRow);
+  const origin = useConversationOrigin(location, lastRow);
+  const row = paneRowForPath(location, props.navItems, origin);
   const here = `${location.pathname}${location.search}`;
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},

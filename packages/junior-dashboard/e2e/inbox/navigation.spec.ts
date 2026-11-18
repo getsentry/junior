@@ -1,7 +1,7 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { mockReviewItems } from "./inbox-fixture";
+import { mockReviewItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -329,6 +329,64 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("dialog", { name: "Go to conversation" }),
     ).toBeVisible();
+  });
+
+  test("marks the view that opened a Conversation, across reload and Back", async ({
+    page,
+    dashboard,
+  }) => {
+    await mockReviewItems(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const conversationUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`;
+    const primary = page.getByRole("navigation", { name: "Primary" });
+    const inbox = primary.getByRole("link", { name: /^Inbox/ });
+    const conversations = primary.getByRole("link", {
+      exact: true,
+      name: "Conversations",
+    });
+    const title = page.getByRole("heading", {
+      name: "Checkout latency triage",
+    });
+
+    // A direct link has no origin, so Conversations owns the page.
+    await page.goto(conversationUrl);
+    await expect(title).toBeVisible();
+    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(inbox).not.toHaveAttribute("aria-current");
+
+    // Opened from Conversations, it stays there after a reload, Back, and
+    // Forward.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await openRow(
+      page
+        .getByRole("region", { exact: true, name: "Conversations" })
+        .getByRole("link", { name: /Checkout latency triage/ }),
+    );
+    await expect(page).toHaveURL(conversationUrl);
+    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await page.reload();
+    await expect(title).toBeVisible();
+    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(inbox).not.toHaveAttribute("aria-current");
+    await page.goBack();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await page.goForward();
+    await expect(title).toBeVisible();
+    await expect(conversations).toHaveAttribute("aria-current", "page");
+
+    // Opened from the Inbox, it stays in the Inbox after a reload.
+    await page.goto(dashboard.baseURL);
+    await openRow(
+      page
+        .getByRole("region", { name: "Today" })
+        .getByRole("link", { name: /^Checkout latency triage/ }),
+    );
+    await expect(page).toHaveURL(/\/conversations\//);
+    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await page.reload();
+    await expect(title).toBeVisible();
+    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await expect(conversations).not.toHaveAttribute("aria-current");
   });
 
   test("keeps the density choice", async ({ page, dashboard }) => {

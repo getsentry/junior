@@ -44,21 +44,20 @@ export function paneDestinationForPath(
 }
 
 /**
- * Name the row that owns a path. A Conversation belongs to the Inbox view
- * that opened it, so that view reopens it; one opened from elsewhere
- * belongs to Conversations.
+ * Name the row that owns a path. A Conversation belongs to `origin`, the
+ * Inbox view that opened it, so that view reopens it; one with no origin,
+ * such as a direct link, belongs to Conversations.
  */
 export function paneRowForPath(
   location: { pathname: string; search: string },
   navItems: readonly DashboardHeaderNavItem[],
-  previous: PaneRow | undefined,
+  origin: InboxView | undefined,
 ): PaneRow | undefined {
   const { pathname } = location;
   if (isOldAutomationsPath(location)) return "automations";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
-  if (under(pathname, "/conversations"))
-    return isInboxView(previous) ? previous : "conversations";
+  if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";
   return navItems.find(
     (item) => item.to.startsWith("/plugins/") && under(pathname, item.to),
