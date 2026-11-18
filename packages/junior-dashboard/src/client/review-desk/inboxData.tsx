@@ -275,10 +275,13 @@ function useBuildInboxData(input: {
   const onPage = closedElsewhere.length
     ? awake.filter((item) => !closedElsewhere.includes(item))
     : awake;
+  const known = closedElsewhere.length
+    ? list.filter((item) => !closedElsewhere.includes(item))
+    : list;
   const pageCounts = inboxCounts({
     automationCards: automationCards(),
     hasMore: itemsQuery.hasNextPage,
-    known: list,
+    known,
     loaded: itemsQuery.data ? loaded : undefined,
     rows: {
       decisions: viewRows(onPage, "decisions").length,
