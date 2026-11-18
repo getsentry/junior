@@ -110,7 +110,8 @@ function conversationWaitsOnStarterSql(
     sql`${juniorConversationBriefs.throughSeq}`,
   );
   // Transcript order, the order of read positions, is `seq`, not time.
-  // Reads `junior_conversation_events_type_idx` backward.
+  // Reads `junior_conversation_events_message_role_idx` and sorts the
+  // Conversation's assistant Messages by `seq`.
   const replySeq = sql`(select ${juniorConversationEvents.seq} from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, id),
     eq(juniorConversationEvents.type, "message"),

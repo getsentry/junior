@@ -16,6 +16,7 @@ import { useInboxData } from "./inboxData";
 import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { conversationTurnIsActive } from "../conversations/turnActivity";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -38,7 +39,7 @@ function InFlightRow(props: {
         draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       >
-        {conversation.status === "working" ? (
+        {conversationTurnIsActive(conversation) ? (
           <Spinner
             aria-label="Running"
             className="size-3 justify-self-center text-emerald-500 dark:text-emerald-300"

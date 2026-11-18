@@ -2,7 +2,8 @@
   "conversation": {
     "conversationId": "slack:CQA123:1770003600.000200",
     "title": "Investigate checkout latency",
-    "status": "active",
+    "status": "working",
+    "turnActive": true,
     "surface": "slack",
     "channelName": "proj-checkout",
     "locationUrl": "https://sentry.slack.com/archives/CQA123/p1770003600000200?thread_ts=1770003600.000200&cid=CQA123",

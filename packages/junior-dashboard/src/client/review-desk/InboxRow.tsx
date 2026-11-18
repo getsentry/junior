@@ -85,6 +85,7 @@ import {
 } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { conversationTurnIsActive } from "../conversations/turnActivity";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly ReviewItemPayload[] = [];
@@ -581,7 +582,7 @@ function InboxRowBody(
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
   const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversation?.status === "working";
+  const running = conversationTurnIsActive(conversation);
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =

@@ -51,6 +51,7 @@ import {
 import { Spinner } from "../components/ui/spinner";
 import type { WaitingConversation } from "../review-desk/queries";
 import { formatCompactAge } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 type ConversationSidebarEntry =
   | {
@@ -496,9 +497,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
 });
 
 /**
- * Show the row's secondary text: a lock when private, then the status when
- * the conversation runs, needs input, failed, or stopped, or else the age of its last
- * Message.
+ * Show the row's secondary text: a lock when private, then the status, then
+ * a spinner while a Turn runs, or else the age of its last Message unless the
+ * Conversation needs input.
  */
 function ConversationRowState(props: {
   conversation: Conversation;
@@ -508,7 +509,7 @@ function ConversationRowState(props: {
   return (
     <span className="flex items-center gap-1">
       <ConversationStatusText isPrivate={isPrivate} status={props.status} />
-      {props.status === "working" ? (
+      {conversationTurnIsActive(props.conversation) ? (
         <Spinner
           aria-label="Running"
           className="size-3.5 text-dashboard-text-muted"

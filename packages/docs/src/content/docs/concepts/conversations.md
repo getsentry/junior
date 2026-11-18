@@ -31,7 +31,7 @@ Each conversation has one status. It comes from what Junior runs, never from the
 
 It waits on its starter, the person who started it, when its latest turn failed, its Brief outcome is `partial` or `blocked`, or the starter has not read its latest answer. An answer counts as read once Junior posts it in Slack, once the starter sends a later message, or once the starter reads it in the dashboard. A running turn is `working`, not waiting on its starter.
 
-When more than one applies, the first in the table wins. Archive does not change the status.
+When more than one applies, the first in the table wins, so a conversation with an open action Review item reads `needs_input` while a turn runs. Archive does not change the status.
 
 ## Slack Behavior
 

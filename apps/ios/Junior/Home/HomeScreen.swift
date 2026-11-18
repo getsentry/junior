@@ -183,7 +183,7 @@ struct ConversationCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
             trailing
           }
-          if row.status == .active {
+          if row.turnActive {
             Text("Working…").type(.sm).foregroundStyle(Tokens.textMuted).frame(minHeight: 20)
           }
           tags
@@ -212,17 +212,18 @@ struct ConversationCard: View {
   private var accessibilityText: String {
     var parts = [row.title]
     if row.pinnedAt != nil { parts.append("Pinned") }
-    switch row.status {
-    case .active: parts.append("Working")
-    case .failed: parts.append("Failed")
-    case .stopped: parts.append("Stopped")
-    default: if let date = row.lastSeenAt.date { parts.append(app.clock.activityDay(date)) }
+    if row.turnActive {
+      parts.append("Working")
+    } else if row.status == .needsInput {
+      parts.append("Needs input")
+    } else if let date = row.lastSeenAt.date {
+      parts.append(app.clock.activityDay(date))
     }
     if let location = row.locationLabel { parts.append(location) }
     return parts.joined(separator: ", ")
   }
 
-  private var hasBody: Bool { row.status == .active || row.locationLabel != nil }
+  private var hasBody: Bool { row.turnActive || row.locationLabel != nil }
 
   private var tile: some View {
     Icon(row.surface == "scheduler" ? "clock" : "message-square", size: 15)
@@ -234,7 +235,7 @@ struct ConversationCard: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    if row.status == .active {
+    if row.turnActive {
       Spinner()
         .foregroundStyle(Tokens.textMuted)
         .frame(minWidth: 56, alignment: .trailing)
@@ -242,10 +243,8 @@ struct ConversationCard: View {
         .accessibilityLabel("Working")
     } else {
       HStack(spacing: 12) {
-        if row.status == .failed {
-          Text("Failed").type(.xs).foregroundStyle(Color.palette(.rose, 400))
-        } else if row.status == .stopped {
-          Text("Stopped").type(.xs).foregroundStyle(Tokens.textMuted)
+        if row.status == .needsInput {
+          Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
         }
         if let date = row.lastSeenAt.date {
           Text(app.clock.activityDay(date))

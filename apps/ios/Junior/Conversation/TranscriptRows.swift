@@ -85,33 +85,6 @@ struct WorkingRow: View {
   }
 }
 
-/// The last Turn failed or was stopped (`TranscriptFailureView.tsx`). The
-/// public API has the status, not the failure's details.
-struct EndedRow: View {
-  @Environment(AppModel.self) private var app
-  let status: ConversationStatus
-
-  var body: some View {
-    let failed = status == .failed
-    HStack(alignment: .top, spacing: 8) {
-      Icon(failed ? "circle-alert" : "circle-stop", size: 16)
-        .foregroundStyle(failed ? Color.palette(.rose, 400) : Tokens.textMuted)
-        .frame(width: 24, height: 24)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(failed ? "Turn failed" : "Stopped").type(.sm, .semibold).foregroundStyle(Tokens.text)
-        Text(
-          failed
-            ? "\(app.agentName) could not finish this turn. Send a message to try again."
-            : "Send a message to continue."
-        )
-        .type(.xs).foregroundStyle(Tokens.textMuted)
-      }
-    }
-    .padding(.vertical, 8)
-    .accessibilityElement(children: .combine)
-  }
-}
-
 /// Wrap items onto as many lines as they need.
 struct FlowRow<Item: Hashable, Content: View>: View {
   let items: [Item]
