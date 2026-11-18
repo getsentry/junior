@@ -16,7 +16,7 @@ function conversation(id: string, lastSeenAt: string): Conversation {
     lastProgressAt: lastSeenAt,
     lastSeenAt,
     startedAt: lastSeenAt,
-    status: "idle",
+    status: "done",
     surface: "internal",
   };
 }

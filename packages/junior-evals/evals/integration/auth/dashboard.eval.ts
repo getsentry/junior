@@ -20,13 +20,14 @@ describe("Dashboard Authorization", () => {
     const paused = await run(webMessage("/eval-auth Look up the budget."));
     expect(turnStates(paused)).toEqual(["started"]);
     expect(paused.authorizationPrompt).toEqual(expect.any(String));
-    // A sign-in wait runs no work, so the Conversation is idle.
-    expect(paused.status).toBe("idle");
+    // A sign-in wait waits on the person.
+    expect(paused.status).toBe("needs_input");
 
     const resumed = await paused.continue(completeAuth("eval-auth"));
     expect(turnStates(resumed)).toEqual(["succeeded"]);
     expect(resumed.authorizationPrompt).toBeUndefined();
-    expect(resumed.status).toBe("idle");
+    // The starter has not read the answer yet.
+    expect(resumed.status).toBe("needs_input");
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
   });
 

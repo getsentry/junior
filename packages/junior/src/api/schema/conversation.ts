@@ -34,11 +34,9 @@ export {
  * `conversationStatusSql`, the only place that derives it.
  */
 export const conversationReportStatusSchema = z.enum([
-  "active",
   "needs_input",
-  "failed",
-  "stopped",
-  "idle",
+  "working",
+  "done",
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
@@ -272,6 +270,11 @@ export const conversationSummaryReportSchema = z
     status: conversationReportStatusSchema,
     /** Feed rows and the detail only. */
     treeState: conversationTreeStateSchema.optional(),
+    /**
+     * A Conversation in the tree has an active Watch or a pending Timer.
+     * Feed rows and the detail only.
+     */
+    watching: z.boolean().optional(),
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),

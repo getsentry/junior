@@ -220,6 +220,52 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("note")).toContainText("Private conversation");
   });
 
+  test("the header toggles auto archive, and details no longer show it", async ({
+    dashboard,
+    page,
+  }) => {
+    const conversationId = "slack:CQA123:1770003600.000200";
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    await expect(details).toBeVisible();
+    await expect(details.getByText("Auto archive")).toHaveCount(0);
+
+    const toggle = page.getByRole("button", { name: "Auto archive" });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    // Tooltips open on keyboard focus, not on focus after a mouse click.
+    await page.keyboard.press("Shift");
+    await toggle.focus();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Auto archive is off",
+    );
+
+    const save = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/auto-archive"),
+    );
+    await toggle.press("Enter");
+    expect((await save).postDataJSON()).toEqual({ autoArchive: true });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("tooltip")).toContainText("Auto archive is on");
+    await screenshot(page, "conversation-header-auto-archive", {
+      lightTheme: true,
+    });
+
+    // A phone shows the toggle in the app header, beside the menu.
+    await page.setViewportSize({ height: 844, width: 390 });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // Touch opens no tooltip, so the help is the accessible description.
+    await expect(toggle).toHaveAccessibleDescription(/linked work is merged/);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  });
+
   test("shows a Watch on linked work in its linked work row", async ({
     page,
     dashboard,

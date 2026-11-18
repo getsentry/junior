@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -12,11 +12,16 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getDb } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -25,13 +30,20 @@ import {
   createTimerWatch,
   createWatch,
 } from "@/chat/events/store";
-import { juniorReviewItems } from "@/db/schema";
+import {
+  juniorConversationBriefs,
+  juniorConversationEvents,
+  juniorConversations,
+  juniorReviewItems,
+} from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import type { BriefOutcomeStatus } from "@/chat/briefs/schema";
 import {
   closeConversationFixture,
   webTestActor,
@@ -81,6 +93,59 @@ const failingAgentRunner: AgentRunner = {
   },
 };
 
+/** The newest Event seq of the Conversation. */
+async function lastSeq(conversationId: string): Promise<number> {
+  const [row] = await getDb()
+    .select({ seq: max(juniorConversationEvents.seq) })
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId));
+  return row?.seq ?? -1;
+}
+
+/** Store a Brief that covers every Event so far. */
+async function recordBrief(
+  conversationId: string,
+  version: number,
+  status: BriefOutcomeStatus,
+): Promise<void> {
+  await getDb()
+    .insert(juniorConversationBriefs)
+    .values({
+      conversationId,
+      version,
+      turnId: `brief-turn-${version}`,
+      throughSeq: await lastSeq(conversationId),
+      content: conversationBriefFixture({ status }),
+      searchText: "stored brief",
+      modelId: "test-model",
+    });
+}
+
+/** Store a Message by the root's actor that starts no Turn. */
+async function recordStarterMessage(conversationId: string): Promise<void> {
+  const [root] = await getDb()
+    .select({ actorIdentityId: juniorConversations.actorIdentityId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
+  const seq = (await lastSeq(conversationId)) + 1;
+  await getDb()
+    .insert(juniorConversationEvents)
+    .values({
+      actorIdentityId: root!.actorIdentityId,
+      conversationId,
+      createdAt: new Date(),
+      historyVersion: 1,
+      payload: {
+        type: "message",
+        messageId: `${conversationId}:later`,
+        role: "user",
+        text: "Thanks.",
+      },
+      seq,
+      type: "message",
+    });
+}
+
 function detailPath(conversationId: string): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}`;
 }
@@ -128,19 +193,22 @@ async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json()).status;
     },
-    treeState: async (conversationId: string) => {
+    tree: async (conversationId: string) => {
       const response = await request(detailPath(conversationId));
       expect(response.status).toBe(200);
-      return conversationDetailReportSchema.parse(await response.json())
-        .treeState;
+      const { treeState, watching } = conversationDetailReportSchema.parse(
+        await response.json(),
+      );
+      return { treeState, watching };
     },
-    feedTreeState: async (conversationId: string) => {
+    feedTree: async (conversationId: string) => {
       const response = await request("/api/conversations");
-      return conversationFeedSchema
+      const row = conversationFeedSchema
         .parse(await response.json())
         .conversations.find(
           (conversation) => conversation.conversationId === conversationId,
-        )?.treeState;
+        );
+      return row && { treeState: row.treeState, watching: row.watching };
     },
     feedStatus: async (conversationId: string) => {
       const response = await request("/api/conversations");
@@ -176,6 +244,42 @@ async function recordSlackRoot(
   return conversationId;
 }
 
+/** Record a dashboard root, which has no Location, started by the viewer. */
+async function recordDashboardRoot(
+  conversationStore: ConversationStore,
+  conversationId: string,
+  starter: {
+    email: string;
+    slackUserId: string;
+    teamId: string;
+  } = SLACK_VIEWER,
+): Promise<string> {
+  await conversationStore.recordActivity({
+    actor: { platform: "slack", ...starter },
+    conversationId,
+    destination: { platform: "local", conversationId },
+    nowMs: Date.now(),
+    source: "local",
+    visibility: "public",
+  });
+  return conversationId;
+}
+
+/** Record one assistant reply. */
+async function recordAnswer(conversationId: string, n: number): Promise<void> {
+  await getConversationEventStore().append(conversationId, [
+    {
+      data: {
+        type: "message",
+        messageId: `${conversationId}:answer-${n}`,
+        role: "assistant",
+        text: "It shipped.",
+      },
+      createdAtMs: Date.now(),
+    },
+  ]);
+}
+
 /** Add one Review item as the agent of `conversationId` does. */
 async function addItem(
   conversationId: string,
@@ -201,21 +305,23 @@ describe("conversation status", () => {
     await closeConversationFixture();
   });
 
-  it("is active while input waits, failed after its Turn fails, and active again for new input", async () => {
+  it("works while input waits, needs input after its Turn fails, and works again for new input", async () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const conversationId = await fixture.start("status-failed");
-    await expect(fixture.status(conversationId)).resolves.toBe("active");
+    await expect(fixture.status(conversationId)).resolves.toBe("working");
 
     await fixture.drain();
-    await expect(fixture.status(conversationId)).resolves.toBe("failed");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     // The feed reads the same status as the detail.
-    await expect(fixture.feedStatus(conversationId)).resolves.toBe("failed");
+    await expect(fixture.feedStatus(conversationId)).resolves.toBe(
+      "needs_input",
+    );
 
     // A failure does not hold input.
     await expect(
       fixture.send(conversationId, "status-failed-retry"),
     ).resolves.toMatchObject({ status: "accepted" });
-    await expect(fixture.status(conversationId)).resolves.toBe("active");
+    await expect(fixture.status(conversationId)).resolves.toBe("working");
   });
 
   it("needs input while an open action item that it added is open", async () => {
@@ -230,7 +336,7 @@ describe("conversation status", () => {
       body: "No action needed.",
       assignees: [webTestActor.email],
     });
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
     const before = await fixture.request(detailPath(conversationId));
     const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
     expect(version).toBeTruthy();
@@ -264,7 +370,7 @@ describe("conversation status", () => {
       nowMs: Date.now(),
       status: "dismissed",
     });
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
 
     const everyone = await addItem(conversationId, {
       ...ACTION_ITEM,
@@ -276,7 +382,7 @@ describe("conversation status", () => {
       nowMs: Date.now(),
       status: "dismissed",
     });
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
 
     const assigned = await addItem(conversationId, ACTION_ITEM);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
@@ -293,17 +399,41 @@ describe("conversation status", () => {
       },
     );
     expect(answered.status).toBe(200);
-    await expect(fixture.status(conversationId)).resolves.toBe("active");
+    await expect(fixture.status(conversationId)).resolves.toBe("working");
   });
 
-  it("orders statuses active, stopped, failed, needs_input", async () => {
+  it("needs input while a Turn waits on a person to sign in", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000150",
+    );
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAuthorizationRequested({
+      actorId: SLACK_VIEWER.slackUserId,
+      authorizationId: "status-sign-in",
+      conversationId,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+  });
+
+  it("orders needs_input over working over done, and a stop ends the wait", async () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const conversationId = await fixture.start("status-precedence");
-    await addItem(conversationId, ACTION_ITEM);
-    await expect(fixture.status(conversationId)).resolves.toBe("active");
+    const item = await addItem(conversationId, ACTION_ITEM);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await closeReviewItem(getDb(), {
+      id: item,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("working");
 
     await fixture.drain();
-    await expect(fixture.status(conversationId)).resolves.toBe("failed");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
 
     const stopped = await fixture.request(
       `${detailPath(conversationId)}/stop`,
@@ -312,7 +442,67 @@ describe("conversation status", () => {
       },
     );
     expect(stopped.status).toBe(200);
-    await expect(fixture.status(conversationId)).resolves.toBe("stopped");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("waits on the starter until they read an answer", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-answer",
+    );
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordAnswer(conversationId, 1);
+    // A dashboard answer waits until the starter reads it.
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    const read = await fixture.request(
+      `${detailPath(conversationId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(conversationId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+
+    // A later Message from the starter also reads it.
+    await recordAnswer(conversationId, 2);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await recordStarterMessage(conversationId);
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("counts an answer delivered to Slack as read", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000250",
+    );
+    await recordAnswer(conversationId, 1);
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("reads the Brief outcome", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-brief",
+    );
+    await recordAnswer(conversationId, 1);
+    // A `done` Brief that covers the answer needs no read.
+    await recordBrief(conversationId, 1, "done");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await recordBrief(conversationId, 2, "answered");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await recordBrief(conversationId, 3, "abandoned");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // `partial` and `blocked` wait on the starter even after a read.
+    await recordStarterMessage(conversationId);
+    await recordBrief(conversationId, 4, "partial");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await recordBrief(conversationId, 5, "blocked");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
   it("covers only the Conversation's own work, not its child agents", async () => {
@@ -339,10 +529,29 @@ describe("conversation status", () => {
     fixture.queue.takeMessageFor(asking.childConversationId);
     await addItem(asking.childConversationId, ACTION_ITEM);
 
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(
       fixture.status(running.invocation.childConversationId),
-    ).resolves.toBe("active");
+    ).resolves.toBe("working");
+    await expect(fixture.status(asking.childConversationId)).resolves.toBe(
+      "needs_input",
+    );
+    // A Task returns its answer to its parent, so nobody reads it.
+    const answered = await spawnChildAgent({
+      ...args,
+      idempotencyKey: "status-answered-child",
+    });
+    fixture.queue.takeMessageFor(answered.childConversationId);
+    await getDb()
+      .update(juniorConversations)
+      .set({ executionStatus: "idle" })
+      .where(
+        eq(juniorConversations.conversationId, answered.childConversationId),
+      );
+    await recordAnswer(answered.childConversationId, 1);
+    await expect(fixture.status(answered.childConversationId)).resolves.toBe(
+      "done",
+    );
   });
 
   it("keeps the status of an archived Conversation", async () => {
@@ -388,21 +597,26 @@ async function watchDeployment(conversationId: string) {
   });
 }
 
+const DONE = { treeState: "done", watching: false };
+
 describe("conversation tree state", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("orders needs_you, working, and waiting across the whole tree", async () => {
+  it("orders needs_you over working over watching across the whole tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000400",
     );
-    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
 
     await watchDeployment(conversationId);
-    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
+    await expect(fixture.tree(conversationId)).resolves.toEqual({
+      treeState: "done",
+      watching: true,
+    });
 
     const args = {
       conversationStore: fixture.conversationStore,
@@ -415,51 +629,156 @@ describe("conversation tree state", () => {
       ...args,
       idempotencyKey: "tree-running-child",
     });
-    // The parent's own status stays idle; its tree works.
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
-    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
+    // The parent's own status stays done; its tree works.
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    await expect(fixture.tree(conversationId)).resolves.toEqual({
+      treeState: "working",
+      watching: true,
+    });
     await expect(
-      fixture.treeState(running.invocation.childConversationId),
-    ).resolves.toBe("working");
+      fixture.tree(running.invocation.childConversationId),
+    ).resolves.toEqual({ treeState: "working", watching: false });
 
     const asking = await spawnChildAgent({
       ...args,
       idempotencyKey: "tree-asking-child",
     });
     fixture.queue.takeMessageFor(asking.childConversationId);
-    // An item for Everyone needs no one in particular.
+    // An item for another person is not shown to the viewer.
+    const other = await resolveViewerUser("bob@example.com");
+    const forOther = await insertReviewItem(getDb(), {
+      addedByConversationId: asking.childConversationId,
+      assignedToEveryone: false,
+      assigneeUserIds: [other!.id],
+      body: "Bob decides.",
+      conversationIds: [asking.childConversationId],
+      dedupeKey: "for-other",
+      kind: "action",
+      nowMs: Date.now(),
+      request: REQUEST,
+      title: "Bob's call",
+      visibility: "public",
+    });
+    await expect(fixture.status(asking.childConversationId)).resolves.toBe(
+      "needs_input",
+    );
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "working",
+    });
+    await closeReviewItem(getDb(), {
+      id: forOther!.id,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+
+    // An item for Everyone needs the viewer too.
     const everyone = await addItem(asking.childConversationId, {
       ...ACTION_ITEM,
       assignees: ["everyone"],
     });
-    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
     await closeReviewItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),
       status: "dismissed",
     });
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "working",
+    });
 
     const item = await addItem(asking.childConversationId, ACTION_ITEM);
-    await expect(fixture.treeState(conversationId)).resolves.toBe("needs_you");
-    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
-      "needs_you",
-    );
-    await expect(fixture.treeState(asking.childConversationId)).resolves.toBe(
-      "needs_you",
-    );
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await expect(fixture.tree(asking.childConversationId)).resolves.toEqual({
+      treeState: "needs_you",
+      watching: false,
+    });
 
     await closeReviewItem(getDb(), {
       id: item,
       nowMs: Date.now(),
       status: "dismissed",
     });
-    await expect(fixture.treeState(conversationId)).resolves.toBe("working");
-    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
-      "working",
-    );
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual({
+      treeState: "working",
+      watching: true,
+    });
   });
 
-  it("waits on a child's Timer and stops waiting when the Watch ends", async () => {
+  it("needs the viewer for their own sign-in waits anywhere in the tree", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000450",
+    );
+    const childConversationId = "agent:tree-sign-in-child";
+    await fixture.conversationStore.createChild({
+      childConversationId,
+      kind: "task",
+      parentConversationId: conversationId,
+    });
+    const signIn = (actorId: string, authorizationId: string) =>
+      recordAuthorizationRequested({
+        actorId,
+        authorizationId,
+        conversationId: childConversationId,
+        delivery: "private_link_sent",
+        kind: "mcp",
+        provider: "notion",
+      });
+    await signIn("UBOB", "tree-sign-in-bob");
+    await expect(fixture.status(childConversationId)).resolves.toBe(
+      "needs_input",
+    );
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
+    // The request names the viewer by their Slack user id.
+    await signIn(SLACK_VIEWER.slackUserId, "tree-sign-in-viewer");
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+  });
+
+  it("needs the starter only for the Conversation's own wait on them", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:tree-answer",
+    );
+    const threadId = "agent:tree-answer-thread";
+    await fixture.conversationStore.createChild({
+      childConversationId: threadId,
+      kind: "thread",
+      parentConversationId: conversationId,
+    });
+    // A Thread's unread answer waits on the starter in the Thread only.
+    await recordAnswer(threadId, 1);
+    await expect(fixture.tree(threadId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
+    await recordAnswer(conversationId, 1);
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+
+    // An answer that another person has not read is not shown.
+    const other = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:tree-answer-bob",
+      { email: "bob@example.com", slackUserId: "UBOB", teamId: "TSTATUS" },
+    );
+    await recordAnswer(other, 1);
+    await expect(fixture.status(other)).resolves.toBe("needs_input");
+    await expect(fixture.tree(other)).resolves.toEqual(DONE);
+  });
+
+  it("watches while a pending Timer alone waits, until it ends", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
@@ -478,16 +797,15 @@ describe("conversation tree state", () => {
       intent: "Check the deployment.",
       toolCallId: "tree-timer",
     });
-    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
-    await expect(fixture.feedTreeState(conversationId)).resolves.toBe(
-      "waiting",
-    );
-    await expect(fixture.treeState(childConversationId)).resolves.toBe(
-      "waiting",
-    );
+    const watching = { treeState: "done", watching: true };
+    // A Timer is not work, so the shared status stays done.
+    await expect(fixture.status(childConversationId)).resolves.toBe("done");
+    await expect(fixture.tree(conversationId)).resolves.toEqual(watching);
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(watching);
+    await expect(fixture.tree(childConversationId)).resolves.toEqual(watching);
 
     await cancelWatch({ conversationId: childConversationId, id: timer.id });
-    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
 
     // A stop in the tree ends its Watches, so the feed token moves.
     await createTimerWatch({
@@ -501,26 +819,24 @@ describe("conversation tree state", () => {
       return ((await response.json()) as { conversations: string })
         .conversations;
     };
-    const watching = await feedToken();
+    const beforeStop = await feedToken();
     const childStopped = await fixture.request(
       `${detailPath(childConversationId)}/stop`,
       { method: "POST" },
     );
     expect(childStopped.status).toBe(200);
-    await expect(
-      fixture.feedTreeState(conversationId),
-    ).resolves.toBeUndefined();
-    expect(await feedToken()).not.toBe(watching);
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
+    expect(await feedToken()).not.toBe(beforeStop);
 
     // A stopped Conversation starts no Turn for its Watches.
     await watchDeployment(conversationId);
-    await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");
+    await expect(fixture.tree(conversationId)).resolves.toEqual(watching);
     const stopped = await fixture.request(
       `${detailPath(conversationId)}/stop`,
       { method: "POST" },
     );
     expect(stopped.status).toBe(200);
-    await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
   });
 
   it("reads the tree state of a feed page and a detail in one statement", async () => {
@@ -540,35 +856,40 @@ describe("conversation tree state", () => {
       }
     };
     // The feed and the detail keep one budget however big the tree grows.
-    const expectBudget = async (treeState: string) => {
+    const expectBudget = async (tree: {
+      treeState: string;
+      watching: boolean;
+    }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
         { statements: 20, serialRounds: 5 },
       );
-      expect(
-        conversationFeedSchema
-          .parse(await feed.json())
-          .conversations.find((row) => row.conversationId === conversationId)
-          ?.treeState,
-      ).toBe(treeState);
+      const row = conversationFeedSchema
+        .parse(await feed.json())
+        .conversations.find((row) => row.conversationId === conversationId);
+      expect({ treeState: row?.treeState, watching: row?.watching }).toEqual(
+        tree,
+      );
       const detail = await expectSqlBudget(
         () => fixture.request(detailPath(conversationId)),
         { statements: 20, serialRounds: 5 },
       );
-      expect(
-        conversationDetailReportSchema.parse(await detail.json()).treeState,
-      ).toBe(treeState);
+      const report = conversationDetailReportSchema.parse(await detail.json());
+      expect({
+        treeState: report.treeState,
+        watching: report.watching,
+      }).toEqual(tree);
     };
 
     await addChildren(["agent:tree-budget-a"]);
     await watchDeployment("agent:tree-budget-a");
-    await expectBudget("waiting");
+    await expectBudget({ treeState: "done", watching: true });
     await addChildren([
       "agent:tree-budget-b",
       "agent:tree-budget-c",
       "agent:tree-budget-d",
     ]);
     await addItem("agent:tree-budget-d", ACTION_ITEM);
-    await expectBudget("needs_you");
+    await expectBudget({ treeState: "needs_you", watching: true });
   });
 });

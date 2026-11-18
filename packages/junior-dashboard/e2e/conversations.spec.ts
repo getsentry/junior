@@ -411,7 +411,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     isParticipant: true,
-    status: "idle",
+    status: "done",
     surface: "internal",
   }));
 

@@ -248,7 +248,7 @@ function ConversationCard(props: ConversationCardProps) {
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   // Only a wait on the viewer gets a badge. A running card shows its spinner
   // in place of the time, and failed and stopped are text beside the time.
-  const showStatus = props.waitingOnViewer && status !== "active";
+  const showStatus = props.waitingOnViewer && status !== "working";
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <article
@@ -306,7 +306,7 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
-          {status === "active" ? (
+          {status === "working" ? (
             // Like the sidebar row: a running row shows that it runs, not
             // when its last Event came, so the feed token can skip it.
             <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
@@ -355,7 +355,7 @@ function ConversationCard(props: ConversationCardProps) {
             )}
           </button>
         </div>
-        {conversation.activityPreview || status === "active" ? (
+        {conversation.activityPreview || status === "working" ? (
           <p
             className={cn(
               fadeTextClass,

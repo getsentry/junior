@@ -235,7 +235,7 @@ function useBuildInboxData(input: {
   );
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or waits for an Event. Busy rows come first, a busy
+  // the viewer, works, or watches for an Event or Timer. Busy rows come first, a busy
   // pin with them, then the other pins in the viewer's order. Collapsed,
   // every pin shows, each one click away, and busy Conversations fill the
   // rows left, up to IN_FLIGHT_LIMIT.

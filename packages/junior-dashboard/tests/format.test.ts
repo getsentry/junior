@@ -61,7 +61,7 @@ function transcript(
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
-    status: "idle",
+    status: "done",
     surface: "internal",
     ...overrides,
   };
@@ -139,7 +139,7 @@ describe("dashboard conversation formatting", () => {
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
-        status: "idle",
+        status: "done",
         surface: "slack",
       },
     ]);
@@ -158,7 +158,7 @@ describe("dashboard conversation formatting", () => {
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
-        status: "idle",
+        status: "done",
         surface: "slack",
       },
     ]);
@@ -330,7 +330,7 @@ describe("dashboard conversation formatting", () => {
       kind: "root" as const,
       lastProgressAt: "2026-06-01T10:05:00.000Z",
       startedAt: "2026-06-01T10:00:00.000Z",
-      status: "idle" as const,
+      status: "done" as const,
       surface: "slack" as const,
     };
     const [conversation] = buildConversations([
@@ -362,7 +362,7 @@ describe("dashboard conversation formatting", () => {
         lastProgressAt: "x",
         lastSeenAt: "x",
         startedAt: "x",
-        status: "idle",
+        status: "done",
         surface: "slack",
         actorIdentity: { email: "alice@example.com" },
       }),

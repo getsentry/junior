@@ -857,7 +857,7 @@ test("keeps the message in view while earlier history and late content load", as
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "idle",
+    status: "done",
     surface: "internal",
   };
   const events = (from: number, to: number) =>

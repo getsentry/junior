@@ -2,6 +2,7 @@ import type {
   AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import { cn, dashboardCountClass } from "../../styles";
 import {
   CalendarClock,
   CircleCheck,
@@ -60,7 +61,6 @@ import {
 import { Kbd } from "../../components/ui/kbd";
 import { formatCompactAge } from "../../time";
 import { fadeTextClass } from "../../textFade";
-import { cn } from "../../styles";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -309,7 +309,7 @@ function CommandPaletteBody(props: {
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
                   {item.meta ? (
-                    <span className="text-xs tabular-nums text-dashboard-text-faint">
+                    <span className={cn("text-xs", dashboardCountClass)}>
                       {item.meta}
                     </span>
                   ) : null}

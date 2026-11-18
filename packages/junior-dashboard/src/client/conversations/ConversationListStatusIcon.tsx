@@ -6,14 +6,14 @@ import type { ConversationStatus } from "../types";
 
 /**
  * Render the row marker: a spinner for a running Turn, else a dot when the
- * row waits on the viewer. Private, needs input, failed, and stopped go in
+ * row waits on the viewer. Private and needs input go in
  * `ConversationStatusText`.
  */
 export function ConversationListStatusIcon(props: {
   status: ConversationStatus;
   waitingOnViewer: boolean;
 }) {
-  if (props.status === "active") {
+  if (props.status === "working") {
     return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
   if (props.waitingOnViewer) {
@@ -28,19 +28,13 @@ export function ConversationListStatusIcon(props: {
   return null;
 }
 
-/** Secondary row text for a private, needs input, failed, or stopped conversation. */
+/** Secondary row text for a private or needs input conversation. */
 export function ConversationStatusText(props: {
   className?: string;
   isPrivate: boolean;
   status: ConversationStatus;
 }) {
-  if (
-    !props.isPrivate &&
-    props.status !== "needs_input" &&
-    props.status !== "failed" &&
-    props.status !== "stopped"
-  )
-    return null;
+  if (!props.isPrivate && props.status !== "needs_input") return null;
   return (
     <span
       className={cn(
@@ -57,10 +51,6 @@ export function ConversationStatusText(props: {
       ) : null}
       {props.status === "needs_input" ? (
         <span className="text-amber-400">Needs input</span>
-      ) : props.status === "failed" ? (
-        <span className="text-rose-400">Failed</span>
-      ) : props.status === "stopped" ? (
-        <span className="text-dashboard-text-muted">Stopped</span>
       ) : null}
     </span>
   );

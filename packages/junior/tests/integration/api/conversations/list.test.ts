@@ -140,7 +140,7 @@ describe("conversation list API", () => {
       ).toEqual([
         expect.objectContaining({
           conversationId: privateId,
-          status: "stopped",
+          status: "done",
         }),
       ]);
       const archivedResponse = await app.request(

@@ -120,7 +120,7 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {props.conversation.status === "active" ? null : (
+          {props.conversation.status === "working" ? null : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",

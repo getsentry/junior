@@ -313,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         conversationId: `slack:CNEWER:${1770000000 + index}.000100`,
         displayTitle: `Newer conversation ${index + 1}`,
         pinnedAt: null,
-        status: "idle",
+        status: "done",
       }));
       return route.fulfill({
         response,
@@ -372,18 +372,18 @@ test.describe("new UI", { tag: "@new" }, () => {
             ...Array.from({ length: 6 }, (_, index) =>
               conversation(index, `Running conversation ${index + 1}`, {
                 pinnedAt: null,
-                status: "active",
+                status: "working",
               }),
             ),
             conversation(6, "Running pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 0,
-              status: "active",
+              status: "working",
             }),
             conversation(7, "Idle pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 1,
-              status: "idle",
+              status: "done",
             }),
           ],
           nextCursor: undefined,
@@ -473,7 +473,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           lastSeenAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
           pinnedAt: undefined,
           startedAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
-          status: "idle",
+          status: "done",
         });
         return route.fulfill({
           json:
@@ -801,7 +801,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           : "2026-08-07T10:00:00.000Z",
         pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: "idle",
+        status: "done",
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       return route.fulfill({

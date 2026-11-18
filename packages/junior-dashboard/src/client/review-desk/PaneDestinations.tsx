@@ -13,7 +13,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
 import type { PaneRow } from "../components/layout/paneRows";
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 import { useInboxData } from "./inboxData";
 import {
   INBOX_VIEW_LABELS,
@@ -98,7 +98,7 @@ function Entry(props: {
               {props.count > 99 ? "99+" : props.count}
             </span>
           ) : (
-            <span className="text-xs tabular-nums text-dashboard-text-faint">
+            <span className={cn("text-xs", dashboardCountClass)}>
               {props.count}
             </span>
           )

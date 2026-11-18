@@ -2,13 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { cn } from "../../styles";
-import { useInboxUi } from "../../uiShell";
 import { DirectoryRowsSkeleton } from "./DirectoryRowsSkeleton";
-
-/** Tint the toolbar and header rows in the classic UI only; the new UI has no tinted rows. */
-function useBarTint(): string | undefined {
-  return useInboxUi() ? undefined : "bg-dashboard-overlay-soft";
-}
 
 const directoryGridClass =
   "grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)]";
@@ -18,12 +12,10 @@ export function DirectoryToolbar(props: {
   children: ReactNode;
   columnsClassName: string;
 }) {
-  const tint = useBarTint();
   return (
     <div
       className={cn(
         "grid min-w-0 gap-2 border-b border-dashboard-border-subtle p-3",
-        tint,
         props.columnsClassName,
       )}
     >
@@ -40,7 +32,6 @@ export function DirectoryTable(props: {
   headers: readonly string[];
   loading?: boolean | undefined;
 }) {
-  const tint = useBarTint();
   if (props.loading) {
     return <DirectoryRowsSkeleton wideRuntime />;
   }
@@ -53,7 +44,6 @@ export function DirectoryTable(props: {
         aria-hidden="true"
         className={cn(
           "grid items-center gap-4 border-b border-dashboard-border-subtle px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted max-md:hidden",
-          tint,
           directoryGridClass,
         )}
       >

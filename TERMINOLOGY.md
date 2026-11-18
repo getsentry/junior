@@ -42,20 +42,24 @@ Canonical words for Junior code and docs. One concept, one word.
   Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
-- **Conversation status**: what one Conversation's own work does, derived
-  from runtime state only. `active`: execution is pending, running, or paused.
-  `stopped`: `stopped_at` is set. `failed`: its latest Turn or its work
-  failed. `needs_input`: it added an open action Review item, whoever the
-  item is assigned to. `idle`: anything else; it waits for input. The first
-  that applies wins, in that order. `completed` is a Turn, Agent invocation,
-  or run outcome, never a Conversation status.
+- **Conversation status**: what one Conversation's own work needs, shared
+  by everyone and derived from runtime state only. `needs_input`: it waits on
+  a person: an open action Review item it added, a sign-in, or its starter
+  (a failed latest Turn, a `partial` or `blocked` Brief, or an answer the
+  starter has not read). `working`: a Turn is queued or running. `done`:
+  anything else, also a stop. The first that applies wins, in that order.
+  `completed` is a Turn, Agent invocation, or run outcome, never a
+  Conversation status.
+- **Starter**: the User of a root's actor, the person whose message started
+  it or the creator of an Automation run. Its child Conversations share it.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
-- **Tree state**: what a Conversation and its child Conversations wait on,
-  for one viewer. `needs_you`: an open action Review item in the tree waits
-  on the viewer. `working`: a Conversation in the tree is `active`.
-  `waiting`: a Conversation in the tree that is not stopped has an active
-  Watch or Timer. The first that applies wins. It is not a status.
+- **Tree state**: what a Conversation and its child Conversations need from
+  one viewer. `needs_you`: the tree's `needs_input` includes the viewer or
+  Everyone. `working`: a Turn is queued or running in the tree. `done`:
+  anything else. The first that applies wins. A separate `watching` flag
+  says that a Conversation in the tree has an active Watch or a pending
+  Timer. It is not a status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.

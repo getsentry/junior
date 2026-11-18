@@ -202,6 +202,8 @@ export type Conversation = {
   status: ConversationStatus;
   /** What the Conversation and its child Conversations wait on. */
   treeState?: ConversationSummaryReport["treeState"] | undefined;
+  /** A Conversation in the tree watches for an Event or a Timer. */
+  watching?: boolean | undefined;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;

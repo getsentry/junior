@@ -207,9 +207,8 @@ describe("versions API", () => {
       title: "Approve",
       visibility: "private",
     });
-    // An open item is a status input, so the detail moves too. The queued
-    // input keeps the feed row `active`, but an item that waits on the
-    // viewer moves its tree state.
+    // An open item is a status input, so the detail moves too. The feed row
+    // moves from `working` to `needs_input`, which outranks it.
     const withItem = await read();
     expect(changed(withPin, withItem)).toEqual([
       "conversation",

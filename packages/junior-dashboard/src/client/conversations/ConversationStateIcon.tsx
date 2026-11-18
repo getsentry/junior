@@ -6,26 +6,36 @@ import type { Conversation } from "../types";
 
 /** What a row shows for a Conversation: its tree state, else its pin. */
 export type ConversationDisplayState =
-  | NonNullable<Conversation["treeState"]>
+  | "needs_you"
+  | "working"
+  | "watching"
   | "pinned";
 
 /**
  * Pick one state for a Conversation row. When more than one applies:
- * `needs_you` > `working` > `waiting` > `pinned`. A row without a tree
- * state, such as a Thread row, works while its own status is `active`.
+ * `needs_you` > `working` > `watching` > `pinned`. A `done` tree shows
+ * nothing. A row without a tree state, such as a Thread row, works while
+ * its own status is `working`.
  */
 export function conversationDisplayState(
-  conversation: Pick<Conversation, "pinnedAt" | "status" | "treeState">,
+  conversation: Pick<
+    Conversation,
+    "pinnedAt" | "status" | "treeState" | "watching"
+  >,
 ): ConversationDisplayState | undefined {
-  if (conversation.treeState) return conversation.treeState;
-  if (conversation.status === "active") return "working";
+  const tree = conversation.treeState;
+  if (tree === "needs_you") return "needs_you";
+  if (tree === "working") return "working";
+  if (!tree && conversation.status === "working") return "working";
+  if (conversation.watching) return "watching";
   return conversation.pinnedAt ? "pinned" : undefined;
 }
 
 /**
  * Render the one state icon of a Conversation row: a question mark when it
- * waits on the viewer, a spinner while it works, an eye while it waits for
- * an Event or Timer, and a pin when it is pinned. Nothing otherwise.
+ * waits on the viewer, a spinner while it works, an eye that blinks now and
+ * then while it watches for an Event or Timer, and a pin when it is pinned.
+ * Nothing otherwise.
  */
 export function ConversationStateIcon(props: {
   className?: string;
@@ -49,11 +59,14 @@ export function ConversationStateIcon(props: {
           className={cn(className, "text-emerald-500 dark:text-emerald-300")}
         />
       );
-    case "waiting":
+    case "watching":
       return (
         <Eye
-          aria-label="Waiting for an event"
-          className={cn(className, "text-dashboard-text-faint")}
+          aria-label="Watching for an event"
+          className={cn(
+            className,
+            "animate-[junior-watch-blink_30s_ease-in-out_infinite] text-dashboard-text-faint motion-reduce:animate-none",
+          )}
           role="img"
         />
       );

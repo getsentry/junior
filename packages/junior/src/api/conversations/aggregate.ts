@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
-  conversationStatusSql,
+  conversationIsActiveSql,
+  conversationTurnFailedSql,
   type ConversationStatusColumns,
 } from "@/chat/conversations/sql/status";
 import { juniorConversations } from "@/db/schema";
@@ -77,10 +78,9 @@ export function conversationAggregateColumns(sources?: {
   const conversationCount = sources
     ? sql`COUNT(DISTINCT ${roots.conversationId})`
     : sql`COUNT(*)`;
-  const status = conversationStatusSql(roots);
   return {
     active: sql<number>`${conversationCount} FILTER (
-      WHERE ${status} = 'active'
+      WHERE ${conversationIsActiveSql(roots)}
     )::integer`,
     conversations: sql<number>`${conversationCount}::integer`,
     cachedInputTokens: sql<
@@ -92,7 +92,7 @@ export function conversationAggregateColumns(sources?: {
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
     failed: sql<number>`${conversationCount} FILTER (
-      WHERE ${status} = 'failed'
+      WHERE ${conversationTurnFailedSql(roots)} AND ${roots.stoppedAt} IS NULL
     )::integer`,
     inputTokens: sql<
       number | null

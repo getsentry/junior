@@ -277,7 +277,8 @@ export function ConversationUsageBreakdown(props: {
   const formatMaybeCost = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCost(value);
   const activeModelId = liveModelId(props.detail);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live =
+    (props.detail?.status ?? props.conversation.status) === "working";
   const aggregateTokenTypes = tokenTypeParts(
     modelTokens ? undefined : savedTokens,
     modelCost ? undefined : savedCost,

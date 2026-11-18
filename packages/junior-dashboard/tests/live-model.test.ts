@@ -13,7 +13,7 @@ function detail(
     startedAt: "2026-01-01T00:00:00.000Z",
     lastSeenAt: "2026-01-01T00:01:00.000Z",
     lastProgressAt: "2026-01-01T00:01:00.000Z",
-    status: "active",
+    status: "working",
     surface: "slack",
     isParticipant: false,
     cumulativeDurationMs: 0,

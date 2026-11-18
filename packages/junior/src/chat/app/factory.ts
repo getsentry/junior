@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   createSlackTurnRuntime,
@@ -68,23 +69,21 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       if (destination.platform !== "slack") {
         throw new Error("Slack turn backfill requires a Slack destination");
       }
-      await Promise.all(
-        messages
-          .filter((message) => {
-            const actor = getMessageActorIdentity(message);
-            return (
-              !message.author.isMe &&
-              Boolean(actor?.userId) &&
-              !actor?.fullName &&
-              !actor?.userName
-            );
-          })
-          .map((message) =>
-            ensureSlackMessageActorIdentity(
-              message,
-              destination.teamId,
-              lookupSlackUser,
-            ),
+      await mapBounded(
+        messages.filter((message) => {
+          const actor = getMessageActorIdentity(message);
+          return (
+            !message.author.isMe &&
+            Boolean(actor?.userId) &&
+            !actor?.fullName &&
+            !actor?.userName
+          );
+        }),
+        (message) =>
+          ensureSlackMessageActorIdentity(
+            message,
+            destination.teamId,
+            lookupSlackUser,
           ),
       );
     },

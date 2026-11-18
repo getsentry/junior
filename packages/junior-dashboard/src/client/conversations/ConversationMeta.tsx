@@ -674,7 +674,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "active";
+  const live = (detail?.status ?? conversation.status) === "working";
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -703,7 +703,8 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live =
+    (props.detail?.status ?? props.conversation.status) === "working";
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

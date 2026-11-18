@@ -365,11 +365,10 @@ async function readConversationDetailFromSql(
     { name: "Project conversation detail", op: "function" },
     () => projectConversationDetail(detail),
   );
-  const treeState = treeStateByConversation.get(conversationId);
   return {
     ...report,
     ...state.forks,
-    ...(treeState ? { treeState } : undefined),
+    ...treeStateByConversation.get(conversationId),
     ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }

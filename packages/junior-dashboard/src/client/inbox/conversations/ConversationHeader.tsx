@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { displayPlainText } from "../../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
 import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
+import { TooltipTitle } from "../../components/ui/tooltip";
 import { cn } from "../../styles";
 import {
   MobileHeaderActionsPortal,
@@ -23,6 +24,7 @@ import {
   type ConversationBriefReport,
 } from "../../conversations/ConversationBrief";
 import { ConversationOverflowMenu } from "../../conversations/ConversationOverflowMenu";
+import { useSetConversationAutoArchive } from "../../conversations/autoArchiveQueries";
 import { TranscriptSearchBar } from "../../conversations/TranscriptSearchBar";
 import type { TranscriptViewMode } from "../../conversations/transcriptRenderModel";
 import {
@@ -45,6 +47,8 @@ const NO_ANCHOR = { current: null };
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The viewer's auto-archive setting. Unset for non-participants. */
+  autoArchive?: boolean | undefined;
   /** The current Brief. Its outcome and intent show under the title. */
   brief?: ConversationBriefReport | undefined;
   contextTags?: ReactNode;
@@ -89,6 +93,19 @@ export function ConversationHeader(props: {
   const openMobileNavigation = useOpenMobileNavigation();
   const zen = useZenMode();
   const { onDetailsClick } = props;
+  const autoArchive = useSetConversationAutoArchive(props.menu.conversationId);
+  const errors = autoArchive.isError
+    ? [...props.errors, "Could not save auto-archive."]
+    : props.errors;
+  const autoArchiveButton =
+    props.autoArchive === undefined ? null : (
+      <AutoArchiveButton
+        on={props.autoArchive}
+        onToggle={() => {
+          if (!autoArchive.isPending) autoArchive.mutate(!props.autoArchive);
+        }}
+      />
+    );
   // In Zen mode, showing details leaves it first.
   const openDetails = () => {
     if (zen.active) zen.toggle();
@@ -218,7 +235,7 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.errors.length > 0 ||
+    errors.length > 0 ||
     Boolean(props.forks) ||
     Boolean(props.agentTree) ||
     Boolean(props.brief);
@@ -236,6 +253,7 @@ export function ConversationHeader(props: {
   return (
     <>
       <MobileHeaderActionsPortal>
+        {autoArchiveButton}
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
           {menuActions("mobile")}
           {openMobileNavigation ? (
@@ -311,6 +329,7 @@ export function ConversationHeader(props: {
                 {props.cost}
               </span>
             ) : null}
+            {autoArchiveButton}
             <ConversationOverflowMenu>
               {menuActions("desktop")}
             </ConversationOverflowMenu>
@@ -358,7 +377,7 @@ export function ConversationHeader(props: {
             value={props.search}
           />
         ) : null}
-        {props.errors.map((error) => (
+        {errors.map((error) => (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7" key={error}>
             {error}
           </div>
@@ -392,5 +411,65 @@ function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
         {intent}
       </span>
     </button>
+  );
+}
+
+const AUTO_ARCHIVE_HELP =
+  "Archive this conversation for everyone when its linked work is merged or closed and nobody replies during your wait time.";
+
+/** Turn the viewer's auto-archive on or off for this Conversation. */
+function AutoArchiveButton(props: { on: boolean; onToggle(): void }) {
+  const helpId = useId();
+  return (
+    <>
+      {/* Tooltips do not open on touch screens, so the help stays in the
+          accessible description. */}
+      <span className="sr-only" id={helpId}>
+        {AUTO_ARCHIVE_HELP}
+      </span>
+      <HeaderIconButton
+        aria-describedby={helpId}
+        // Blue marks it on, so the pressed fill would repeat it.
+        aria-pressed={props.on}
+        label="Auto archive"
+        onClick={props.onToggle}
+        tooltip={
+          <>
+            <TooltipTitle>
+              Auto archive is {props.on ? "on" : "off"}
+            </TooltipTitle>
+            {AUTO_ARCHIVE_HELP}
+          </>
+        }
+      >
+        <AutoArchiveIcon
+          className={props.on ? "text-dashboard-accent-text" : undefined}
+        />
+      </HeaderIconButton>
+    </>
+  );
+}
+
+/** An archive box inside a circular arrow: archiving that runs on its own. */
+function AutoArchiveIcon(props: { className?: string | undefined }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={props.className}
+      fill="none"
+      height={17}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.9}
+      viewBox="0 0 24 24"
+      width={17}
+    >
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <rect height="2.5" rx="0.5" width="8" x="8" y="8.5" />
+      <path d="M9 11v3.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V11" />
+      <path d="M11 13h2" />
+    </svg>
   );
 }

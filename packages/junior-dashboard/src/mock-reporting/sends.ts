@@ -220,7 +220,7 @@ function withSends<T extends ConversationDetailReport>(
     events,
     lastProgressAt: lastAt,
     lastSeenAt: lastAt,
-    status: pending ? "active" : "idle",
+    status: pending ? "working" : "done",
   };
 }
 
@@ -240,7 +240,7 @@ function createdConversation(
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
-    status: "idle" as const,
+    status: "done" as const,
     surface: "api" as const,
     ...(created.visibility ? { visibility: created.visibility } : undefined),
   };

@@ -586,7 +586,7 @@ export function unavailableTranscriptLabel(
   if (conversation.eventHistory.status === "expired") {
     return "Transcript expired for this conversation.";
   }
-  if (conversation.status === "active") {
+  if (conversation.status === "working") {
     return "Transcript pending while this conversation is active.";
   }
   return "Transcript unavailable for this conversation.";
@@ -709,6 +709,7 @@ export function buildConversations(
       startedAt: summary.startedAt,
       status: summary.status,
       treeState: summary.treeState,
+      watching: summary.watching,
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,

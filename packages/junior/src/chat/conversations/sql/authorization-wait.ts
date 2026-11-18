@@ -1,6 +1,10 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 
 /**
  * How long a person can finish an authorization. The MCP auth session and the
@@ -31,10 +35,38 @@ const AUTHORIZATION_WAIT_EVENT_TYPES = [
  * events and has not expired.
  */
 export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
+  return authorizationWait(conversationId, sql`true`);
+}
+
+/**
+ * SQL: the Conversation waits on this User to finish an authorization. The
+ * request names the person by their User id, or by the Slack user id of
+ * one of their Identities.
+ */
+export function awaitsAuthorizationFrom(
+  conversationId: AnyPgColumn,
+  userId: string,
+): SQL<boolean> {
+  const actorId = sql`${juniorConversationEvents.payload}->>'actorId'`;
+  return authorizationWait(
+    conversationId,
+    sql`(${actorId} = ${userId} or ${actorId} in (select ${juniorIdentities.providerSubjectId} from ${juniorIdentities} where ${and(
+      eq(juniorIdentities.userId, userId),
+      eq(juniorIdentities.provider, "slack"),
+    )}))`,
+  );
+}
+
+/** SQL: the newest wait event is a live request that `requester` matches. */
+function authorizationWait(
+  conversationId: AnyPgColumn,
+  requester: SQL,
+): SQL<boolean> {
   const events = juniorConversationEvents;
   return sql<boolean>`coalesce((
     select ${events.type} = 'authorization_requested'
       and ${events.createdAt} > now() - ${AUTHORIZATION_WAIT}
+      and ${requester}
     from ${events}
     where ${events.conversationId} = ${conversationId}
       and ${events.type} in (${sql.join(

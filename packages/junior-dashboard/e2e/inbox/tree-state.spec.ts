@@ -10,10 +10,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The API derives each state from the whole tree for the viewer.
     const release = "slack:CQA456:1770021600.000600";
-    const treeStates: Record<string, string> = {
-      [release]: "working",
-      "slack:CQA456:1770025200.000700": "needs_you",
-      "internal:dashboard-qa": "waiting",
+    const treeStates: Record<string, object> = {
+      [release]: { treeState: "working", watching: true },
+      "slack:CQA456:1770025200.000700": { treeState: "needs_you" },
+      "internal:dashboard-qa": { treeState: "done", watching: true },
     };
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
       const response = await route.fetch();
@@ -24,8 +24,8 @@ test.describe("new UI", { tag: "@new" }, () => {
           ...feed,
           conversations: feed.conversations.map(
             (conversation: { conversationId: string }) => {
-              const treeState = treeStates[conversation.conversationId];
-              return treeState ? { ...conversation, treeState } : conversation;
+              const state = treeStates[conversation.conversationId];
+              return state ? { ...conversation, ...state } : conversation;
             },
           ),
         },
@@ -60,11 +60,11 @@ test.describe("new UI", { tag: "@new" }, () => {
         name: "Waiting on you",
       }),
     ).toBeVisible();
-    await expect(
-      flightRow(/Dashboard QA edge cases/).getByRole("img", {
-        name: "Waiting for an event",
-      }),
-    ).toBeVisible();
+    // A done tree that watches for an Event or a Timer shows an eye.
+    const watching = flightRow(/Dashboard QA edge cases/).getByRole("img", {
+      name: "Watching for an event",
+    });
+    await expect(watching).toBeVisible();
     // A pin shows its pin only while its tree waits on nothing.
     const today = page.getByRole("region", { name: "Today" });
     await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
@@ -74,6 +74,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       flightRow(/Roll out payments-v42/).getByRole("img", { name: "Pinned" }),
     ).toBeVisible();
+    // A done tree that is not pinned is not in flight.
     await expect(inFlight.getByRole("listitem")).toHaveCount(5);
     await screenshot(page, "inbox-tree-state", { lightTheme: true });
 

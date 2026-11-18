@@ -760,7 +760,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
-      status: "idle",
+      status: "done",
       surface: "internal",
     };
     const events = (from: number, to: number) =>

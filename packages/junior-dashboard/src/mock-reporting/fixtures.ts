@@ -350,7 +350,7 @@ function detail(
     kind: options.kind ?? "root",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
-    status: options.status ?? "idle",
+    status: options.status ?? "done",
     surface: options.surface ?? "internal",
   };
 }
@@ -469,7 +469,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastProgressAt: iso(nowMs, -20_000),
     lastSeenAt: iso(nowMs, -10_000),
-    status: "active",
+    status: "working",
     surface: "slack",
     channel: "CQA123",
     channelName: "proj-checkout",
@@ -1814,7 +1814,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastSeenAt: iso(nowMs, -35 * 60_000),
     lastProgressAt: iso(nowMs, -35 * 60_000),
-    status: "failed",
+    status: "needs_input",
     surface: "slack",
     channel: "CQA777",
     channelName: "proj-incidents",
@@ -2622,10 +2622,9 @@ function addSummary(
   item: ConversationStatsItem,
   summary: ConversationSummaryReport,
 ) {
-  item.active += summary.status === "active" ? 1 : 0;
+  item.active += summary.status === "working" ? 1 : 0;
   item.conversations += 1;
   item.durationMs += summary.cumulativeDurationMs;
-  item.failed += summary.status === "failed" ? 1 : 0;
   const tokens = summaryTokenTotal(summary);
   if (tokens) item.tokens = (item.tokens ?? 0) + tokens;
   const cost = summary.cumulativeUsage?.cost?.total;
@@ -2668,7 +2667,7 @@ function addMockOutcome(
   bucket: ConversationStatsReport["metricDays"][number],
   summary: ConversationSummaryReport,
 ) {
-  if (summary.status !== "idle") return;
+  if (summary.status !== "done") return;
   bucket.outcomes = (bucket.outcomes ?? 0) + 1;
   bucket.outcomeCostUsd =
     (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
@@ -3592,40 +3591,9 @@ export function readMockConversationStats(): ConversationStatsReport {
     const lastSeenAtMs = Date.parse(summary.lastSeenAt);
     return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
   });
-  const total = statsItem("All conversations");
-  const actorItems = new Map<string, ConversationStatsItem>();
-  const locationItems = new Map<string, ConversationStatsItem>();
-  for (const summary of summaries) {
-    addSummary(total, summary);
-    const actorName = actorLabel(summary.actorIdentity);
-    const actorItem = actorItems.get(actorName) ?? statsItem(actorName);
-    addSummary(actorItem, summary);
-    actorItems.set(actorName, actorItem);
-    const place = locationLabel(summary);
-    const locationItem = locationItems.get(place) ?? statsItem(place);
-    addSummary(locationItem, summary);
-    locationItems.set(place, locationItem);
-  }
-  const inputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.inputTokens ?? 0),
-    0,
-  );
-  const cachedInputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.cachedInputTokens ?? 0),
-    0,
-  );
   return {
-    active: total.active,
-    actors: [...actorItems.values()],
-    ...(cachedInputTokens ? { cachedInputTokens } : undefined),
-    conversations: total.conversations,
-    costUsd: total.costUsd,
-    durationMs: total.durationMs,
-    failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
-    ...(inputTokens ? { inputTokens } : undefined),
-    locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     ...(() => {
       const metricHours = conversationMetricHours(nowMs, summaries);
@@ -3639,7 +3607,6 @@ export function readMockConversationStats(): ConversationStatsReport {
       };
     })(),
     source: "conversation_index",
-    tokens: total.tokens,
     ...windowBounds(nowMs),
   };
 }
@@ -3952,10 +3919,9 @@ export function readMockPeopleProfile(
   const locations = new Map<string, ConversationStatsItem>();
   const surfaces = new Map<string, ConversationStatsItem>();
   for (const summary of summaries) {
-    totals.active += summary.status === "active" ? 1 : 0;
+    totals.active += summary.status === "working" ? 1 : 0;
     totals.conversations += 1;
     totals.durationMs += summary.cumulativeDurationMs;
-    totals.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) totals.tokens = (totals.tokens ?? 0) + tokens;
 
@@ -3968,10 +3934,9 @@ export function readMockPeopleProfile(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    day.active += summary.status === "working" ? 1 : 0;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
@@ -4368,10 +4333,9 @@ export function readMockLocationDetail(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    day.active += summary.status === "working" ? 1 : 0;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     sparseDays.set(date, day);

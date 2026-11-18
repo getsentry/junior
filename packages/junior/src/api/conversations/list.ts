@@ -29,7 +29,11 @@ import {
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import { reviewItemNeedsUser } from "@/chat/review-items/access";
+import {
+  reviewItemForUser,
+  reviewItemNeedsInput,
+} from "@/chat/review-items/access";
+import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -307,7 +311,7 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * one, and the end of that Turn moves the status or the tree's work, so a
  * read after it sees the Watch. A stop anywhere in the tree moves it too,
  * since a stopped Conversation's Watches start no Turn. A Watch that
- * expires on its own moves nothing, so its row shows `waiting` until the
+ * expires on its own moves nothing, so its row shows `watching` until the
  * feed reads again. Every Event of a live Turn moves `last_activity_at`, but
  * a running row shows its running state in place of the age, so the token
  * holds no activity for it. Other rows show an age in whole minutes, so the
@@ -324,8 +328,8 @@ export function conversationFeedVersionQuery(
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
   // The fields of each nested Thread row, and the tree state inputs that
-  // SQL holds. The root's own work is in its status. An archive anywhere in
-  // the tree can hide Threads under it.
+  // SQL holds, over the root and its tree. An archive anywhere in the tree
+  // can hide Threads under it.
   const tree = db
     .select({
       version: sql<string>`concat_ws(':',
@@ -334,8 +338,9 @@ export function conversationFeedVersionQuery(
         coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
         bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
           eq(juniorReviewItems.addedByConversationId, feedTree.conversationId),
-          reviewItemNeedsUser(userId),
-        )})),
+          reviewItemNeedsInput(),
+          reviewItemForUser(userId),
+        )}) or ${awaitsAuthorizationFrom(feedTree.conversationId, userId)}),
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
           ${conversationStatusSql(feedTree)},
@@ -346,7 +351,12 @@ export function conversationFeedVersionQuery(
       )`,
     })
     .from(feedTree)
-    .where(eq(feedTree.rootConversationId, conversationId));
+    .where(
+      or(
+        eq(feedTree.conversationId, conversationId),
+        eq(feedTree.rootConversationId, conversationId),
+      ),
+    );
   const annotations = db
     .select({
       version: sql<string>`concat_ws(':', count(*), max(${juniorConversationAnnotations.updatedAt}))`,
@@ -697,13 +707,11 @@ export async function readConversationFeedFromSql(
             )
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
-      const treeState = treeStateByConversation.get(
-        conversation.conversationId,
-      );
+      const treeRead = treeStateByConversation.get(conversation.conversationId);
       return {
         ...summary,
         ...work,
-        ...(treeState ? { treeState } : undefined),
+        ...treeRead,
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
           : undefined),

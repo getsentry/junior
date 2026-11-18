@@ -9,8 +9,8 @@
  * - no plugin reported unfinished work on it or a child conversation
  * - any reported work finished at least the grace period ago, and no human
  *   message arrived after it finished
- * - the root and every child conversation are `idle` or `stopped` and do
- *   not wait on a person to finish an authorization
+ * - the root and every child conversation are idle and do not wait on a
+ *   person to finish an authorization
  * - no open Review item on it waits on a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
@@ -36,6 +36,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   sql,
   type SQL,
@@ -48,7 +49,6 @@ import {
   listConversationWork,
 } from "@/chat/plugins/unfinished-work";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { awaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
@@ -93,10 +93,10 @@ function runCutoff(run: ArchiveRun): Date {
 }
 
 /**
- * True when the participant row's root and every child conversation are
- * `idle` or `stopped`, do not wait on a person to finish an authorization,
- * and had no activity after the cutoff. Child activity does not move the
- * root's `lastActivityAt`, so the whole tree is checked.
+ * True when the participant row's root and every child conversation are idle,
+ * do not wait on a person to finish an authorization, and had no activity
+ * after the cutoff. Child activity does not move the root's
+ * `lastActivityAt`, so the whole tree is checked.
  */
 function treeIsQuiet(run: ArchiveRun) {
   const active = getDb()
@@ -115,7 +115,7 @@ function treeIsQuiet(run: ArchiveRun) {
           ),
         ),
         or(
-          sql`${conversationStatusSql(juniorConversations)} not in ('idle', 'stopped')`,
+          ne(juniorConversations.executionStatus, "idle"),
           gt(juniorConversations.lastActivityAt, runCutoff(run)),
           // A Turn parked for authorization leaves the conversation idle.
           awaitsAuthorization(juniorConversations.conversationId),
