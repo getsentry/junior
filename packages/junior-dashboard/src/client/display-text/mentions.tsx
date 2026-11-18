@@ -6,7 +6,7 @@ import { HighlightText } from "../conversations/transcriptSearch";
 import { peoplePath } from "../format";
 import { cn } from "../styles";
 import { replaceSlackEmoji } from "./emoji";
-import { ANCHOR_CLASS } from "./links";
+import { useAnchorClass } from "./links";
 import { PersonMention } from "./people";
 
 type Mention = {
@@ -128,12 +128,13 @@ function MentionView(props: { mention: Mention }) {
   const { links, people } = useContext(MentionPeople);
   const { id, sigil } = props.mention;
   const person = sigil === "@" ? people.get(id) : undefined;
+  const anchorClass = useAnchorClass("person");
   const text = <HighlightText text={mentionLabel(props.mention, people)} />;
   const name =
     links && person?.email ? (
       <Link
         // Previews sit in cards that disable pointer events on their text.
-        className={cn("pointer-events-auto", ANCHOR_CLASS)}
+        className={cn("pointer-events-auto", anchorClass)}
         title={id}
         to={peoplePath(person.email)}
       >

@@ -16,6 +16,7 @@ import {
 import { Link, useHref, useNavigate } from "react-router";
 import type {
   OwnedObjectAnnotation,
+  ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -116,9 +117,10 @@ function RowItem(props: {
   item: ReviewItemPayload;
   /** Notices about the item's subject (`foldNotices`). */
   notices: readonly ReviewItemPayload[];
+  onAction?: InboxRowProps["onItemAction"];
   take?: string;
 }) {
-  const { item } = props;
+  const { item, onAction } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
   return (
@@ -171,13 +173,18 @@ function RowItem(props: {
         ) : null}
       </ReviewItemObjects>
       {props.notices.map((notice) => (
-        <FoldedNotice key={notice.id} notice={notice} />
+        <FoldedNotice
+          key={notice.id}
+          notice={notice}
+          onAction={onAction ? (body) => onAction(notice, body) : undefined}
+        />
       ))}
       {/* The row's bar holds Dismiss. A card on its own, as in a
           Conversation, keeps its own. */}
       <ReviewItemActions
         dismiss={!props.done}
         item={item}
+        onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
     </section>
@@ -249,7 +256,6 @@ type InboxRowProps = {
   bundle?: InboxBundle;
   conversation?: Conversation;
   conversationId: string;
-  donePending?: boolean;
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
@@ -260,6 +266,11 @@ type InboxRowProps = {
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
   onDone?(): void;
+  /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
+  onItemAction?(
+    item: ReviewItemPayload,
+    body: ReviewItemActionBody,
+  ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(untilMs: number): void;
@@ -458,18 +469,15 @@ function RowSummary(props: {
   summary: NonNullable<ReturnType<typeof rowSummary>>;
 }) {
   return (
-    <span
+    <div
       className="flex min-w-0 text-sm leading-snug text-dashboard-text-muted"
       data-summary-lines={
         props.expanded ? "all" : props.comfortable ? "2" : "1"
       }
     >
-      <span
+      <div
         className={cn(
           "min-w-0",
-          // Links read as the summary's own words, and underline on hover,
-          // so a line of links does not shout over the title.
-          "[&_a]:font-normal [&_a]:text-dashboard-text [&_a]:no-underline [&_a:hover]:underline",
           props.expanded
             ? "line-clamp-none"
             : props.comfortable
@@ -478,7 +486,8 @@ function RowSummary(props: {
         )}
       >
         {/* As messages show it: links show as chips, so the clamp ends on
-            a word or a chip, not inside a URL. */}
+            a word or a chip, not inside a URL. One line runs the
+            paragraphs together; more lines keep them. */}
         <ReviewItemObjects
           cards={props.objects}
           conversationId={props.conversationId}
@@ -487,11 +496,12 @@ function RowSummary(props: {
             chips
             inline
             mentions={props.summary.mentions}
+            paragraphs={props.expanded || props.comfortable}
             text={props.summary.text}
           />
         </ReviewItemObjects>
-      </span>
-    </span>
+      </div>
+    </div>
   );
 }
 
@@ -754,7 +764,7 @@ function InboxRowBody(
             ) : null}
           </span>
           {summary ? (
-            <span
+            <div
               className="col-span-2 col-start-2 row-start-2 min-w-0"
               data-inbox-slot="summary"
             >
@@ -765,7 +775,7 @@ function InboxRowBody(
                 objects={objects}
                 summary={summary}
               />
-            </span>
+            </div>
           ) : null}
           <span className={INBOX_ROW_META_CLASS} data-inbox-slot="meta">
             {/* The row's actions sit beside its state and never hide it.
@@ -849,6 +859,7 @@ function InboxRowBody(
               item={item}
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
+              onAction={props.onItemAction}
               take={props.take}
             />
           ))}
@@ -884,7 +895,6 @@ function rowActions(props: InboxRowProps) {
     <ExpandedActions
       canDone={rowCanDone(props)}
       conversation={props.conversation}
-      donePending={props.donePending}
       onDone={props.onDone}
       onSnooze={props.onSnooze}
       onSnoozeMenu={props.onSnoozeMenu}
@@ -899,7 +909,6 @@ function ExpandedActions(props: {
   canDone: boolean;
   conversation?: Conversation;
   openPath: string;
-  donePending?: boolean;
   onDone?(): void;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -933,7 +942,7 @@ function ExpandedActions(props: {
       ) : null}
       {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
-        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
+        <RowDismissButton onClick={props.onDone} />
       ) : null}
     </div>
   );
@@ -941,7 +950,16 @@ function ExpandedActions(props: {
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
 function ExpandedPin(props: { conversation: Conversation }) {
-  const pin = usePinConversation(props.conversation.id);
+  const { clearActionError, showActionError } = useConversationActionToasts();
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinning) =>
+      showActionError(
+        props.conversation,
+        pinning ? "Could not pin" : "Could not unpin",
+        () => pin.mutate(pinning),
+      ),
+    onSuccess: () => clearActionError(props.conversation),
+  });
   const pinned = Boolean(props.conversation.pinnedAt);
   return (
     <Button
