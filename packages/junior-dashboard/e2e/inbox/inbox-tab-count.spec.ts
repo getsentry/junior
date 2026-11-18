@@ -340,6 +340,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const squash = {
       ...license,
       addedByConversationId: conversationId,
+      rootConversationId: conversationId,
       id: "item-pr-squash",
       subject: prMerge.subject,
       title: "Squash #42 before the merge?",

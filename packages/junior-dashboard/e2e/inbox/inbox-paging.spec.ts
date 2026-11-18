@@ -173,6 +173,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
       addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-todo-${index}`,
@@ -196,6 +197,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const notices = Array.from({ length: 30 }, (_, index) => ({
       ...prReady,
       addedByConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
+      rootConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - (60 - index) * 3_600_000).toISOString(),
       id: `item-notice-${index}`,
@@ -205,6 +207,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const ask = {
       ...license,
       addedByConversationId: "slack:CASK:1770000000.000100",
+      rootConversationId: "slack:CASK:1770000000.000100",
       conversationIds: [],
       createdAt: new Date(NOW_MS - 60_000).toISOString(),
     };
@@ -274,6 +277,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
       addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-todo-${index}`,
@@ -325,6 +329,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const decisions = Array.from({ length: 12 }, (_, index) => ({
       ...license,
       addedByConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+      rootConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-decision-${index}`,
@@ -337,17 +342,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const asleep = decisions.at(-1)!;
     // A row on a later page sleeps until tomorrow.
     await page.addInitScript(
-      ({ conversationId, id }) =>
+      (id) =>
         window.localStorage.setItem(
           "junior:inbox:snoozed",
-          JSON.stringify({
-            [conversationId]: {
-              newestItemId: id,
-              untilMs: Date.now() + 86_400_000,
-            },
-          }),
+          JSON.stringify({ [id]: { untilMs: Date.now() + 86_400_000 } }),
         ),
-      { conversationId: asleep.addedByConversationId, id: asleep.id },
+      asleep.id,
     );
     await mockReviewItems(page, { open: [...decisions, ...prs], pageSize: 2 });
     await holdLaterReviewItemPages(page);
@@ -527,6 +527,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     return Array.from({ length: 12 }, (_, index) => ({
       ...license,
       addedByConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+      rootConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-question-${index}`,

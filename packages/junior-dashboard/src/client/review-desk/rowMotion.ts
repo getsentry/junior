@@ -104,8 +104,9 @@ function listRows(scroller: HTMLElement): HTMLElement[] {
  * the list, so the reader keeps going. In a stack, a row of the same stack
  * opens first, also past its fold. The row leaves with its height, then
  * `release` lets it go. A row that stays after `release`, as a Conversation
- * row without its asks, shows its card again. Returns the key of the row
- * that opened, if one did.
+ * row without its asks, shows its card again. A stack's key puts the whole
+ * stack away the same way, and the next row after it opens. Returns the key
+ * of the row that opened, if one did.
  */
 export function useLeaveRow(
   scroller: RefObject<HTMLElement | null>,
@@ -124,18 +125,27 @@ export function useLeaveRow(
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
     const at = rows.findIndex((row) => row.dataset["inboxRow"] === key);
-    const card = rows[at];
+    // A stack's key puts the whole stack away, with every row in it.
+    const whole = area?.querySelector<HTMLElement>(
+      `li[data-inbox-stack="${CSS.escape(key)}"]`,
+    );
+    const card = rows[at] ?? whole;
     if (!card) {
       release();
       return undefined;
     }
+    const inside = rows.filter((row) => whole?.contains(row));
+    const first = whole ? rows.indexOf(inside[0]!) : at;
+    const last = whole ? rows.indexOf(inside.at(-1)!) : at;
+    const leaving = (row: HTMLElement) =>
+      row.dataset["inboxRow"] === key || inside.includes(row);
     const stays = (row: HTMLElement) =>
-      !passing.has(row.dataset["inboxRow"] ?? "");
+      !leaving(row) && !passing.has(row.dataset["inboxRow"] ?? "");
     // A row of a stack goes to a row of its own stack first.
-    const stack = card.closest("[data-inbox-stack]");
+    const stack = whole ? undefined : card.closest("[data-inbox-stack]");
     const near = (row: HTMLElement) => stays(row) && !!stack?.contains(row);
-    const after = rows.slice(at + 1);
-    const before = rows.slice(0, at).reverse();
+    const after = rows.slice(last + 1);
+    const before = rows.slice(0, Math.max(first, 0)).reverse();
     const next =
       (
         after.find(near) ??
@@ -143,7 +153,10 @@ export function useLeaveRow(
         after.find(stays) ??
         before.find(stays)
       )?.dataset["inboxRow"] ?? "";
-    const opened = expanded.current === key ? next : undefined;
+    const wasOpen = rows.find(
+      (row) => row.dataset["inboxRow"] === expanded.current,
+    );
+    const opened = wasOpen && leaving(wasOpen) ? next : undefined;
     if (opened !== undefined) setExpandedKey(opened);
     void leaveCard(card).then(() => {
       // The row goes now, before its shut card shows again.
@@ -211,7 +224,9 @@ export function showReturnedRow(
   key: string,
   frames = 10,
 ) {
-  const row = scroller.querySelector(`li[data-inbox-row="${CSS.escape(key)}"]`);
+  const row = scroller.querySelector(
+    `li[data-inbox-row="${CSS.escape(key)}"], li[data-inbox-stack="${CSS.escape(key)}"]`,
+  );
   if (!row) {
     if (frames > 0) {
       requestAnimationFrame(() => showReturnedRow(scroller, key, frames - 1));

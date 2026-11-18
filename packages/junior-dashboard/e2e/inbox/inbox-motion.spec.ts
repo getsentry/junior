@@ -208,11 +208,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       {
         ...license,
         addedByConversationId: "slack:CLICENSE:1770003600.000400",
+        rootConversationId: "slack:CLICENSE:1770003600.000400",
         createdAt: "2026-08-07T08:10:00.000Z",
       },
       {
         ...audit,
         addedByConversationId: "slack:CAUDIT:1770003600.000500",
+        rootConversationId: "slack:CAUDIT:1770003600.000500",
         createdAt: "2026-08-07T08:20:00.000Z",
       },
     ];
@@ -243,9 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await refocus();
       },
       row: (index: number) =>
-        page.locator(
-          `li[data-inbox-row="todo:${asks[index]!.addedByConversationId}"]`,
-        ),
+        page.locator(`li[data-inbox-row="todo:${asks[index]!.id}"]`),
     };
   }
 
@@ -314,12 +314,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const newer = {
       ...license,
       addedByConversationId: "slack:CNEWER:1770003600.000600",
+      rootConversationId: "slack:CNEWER:1770003600.000600",
       createdAt: "2026-08-07T08:30:00.000Z",
       id: "item-newer",
     };
     await asks.addAndRefocus(newer);
     await expect(
-      page.locator(`li[data-inbox-row="todo:${newer.addedByConversationId}"]`),
+      page.locator(`li[data-inbox-row="todo:${newer.id}"]`),
     ).toBeVisible();
     await page.evaluate(
       () =>

@@ -23,17 +23,10 @@ export const reviewItemSchema = z
   .object({
     addedByConversationId: z.string().min(1),
     /**
-     * Set when a child agent's Conversation added the item and the viewer
-     * can see its root. The Inbox shows the item in the root's stack, with
-     * `label`, such as the Thread title, to name the child.
+     * Names the Conversation that added the item when it is not
+     * `rootConversationId`, such as a child agent's Thread title.
      */
-    addedByChild: z
-      .object({
-        label: z.string().min(1),
-        rootConversationId: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    addedByLabel: z.string().min(1).optional(),
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
@@ -74,6 +67,12 @@ export const reviewItemSchema = z
       .strict()
       .optional(),
     request: reviewItemRequestSchema.optional(),
+    /**
+     * The top of the item's Conversation tree that the viewer can see, at
+     * any depth: the Conversation that added the item when it is a root, or
+     * when the viewer cannot see its root. The Inbox stacks items by it.
+     */
+    rootConversationId: z.string().min(1),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
       .object({

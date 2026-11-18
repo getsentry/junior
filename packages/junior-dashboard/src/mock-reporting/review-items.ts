@@ -569,20 +569,14 @@ function payload(
   return {
     ...item,
     addedByConversationId: conversationId,
-    ...(childLabel
-      ? {
-          addedByChild: {
-            label: childLabel,
-            rootConversationId: SENTAUR_CONVERSATION_ID,
-          },
-        }
-      : undefined),
+    ...(childLabel ? { addedByLabel: childLabel } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
     conversationIds: [conversationId, ...linkedConversationIds],
     kind: seed.kind ?? "action",
+    rootConversationId: childLabel ? SENTAUR_CONVERSATION_ID : conversationId,
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
@@ -691,8 +685,7 @@ export function readMockWaitingConversations(nowMs: number) {
   const byConversation = new Map<string, ReviewItemPayload[]>();
   // Like the API, a child's items wait in its root.
   for (const item of open) {
-    const id =
-      item.addedByChild?.rootConversationId ?? item.addedByConversationId;
+    const id = item.rootConversationId;
     byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {

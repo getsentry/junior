@@ -111,35 +111,38 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("a row's summary shows its links as titled links", async ({
+  test("a Conversations row's summary shows its links as chips and titles", async ({
     dashboard,
     page,
   }) => {
     await comfortable(page);
-    // One ask, so the Inbox shows the Conversation's normal row.
+    // Inbox rows name one item each, so a Conversations row shows the
+    // summary.
     await mockReviewItems(page, {
-      open: [{ ...license, addedByConversationId: RELEASE_CONVERSATION_ID }],
+      open: [
+        {
+          ...license,
+          addedByConversationId: RELEASE_CONVERSATION_ID,
+          rootConversationId: RELEASE_CONVERSATION_ID,
+        },
+      ],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" })
       .locator('[data-inbox-slot="summary"]');
-    // A person shows a chip. A Conversation and a pull request show their
-    // titles as plain links, also past the closed row's clamp.
+    // A person shows a chip. A pull request shows its title as a plain
+    // link, also past the closed row's clamp.
     await expect(
       summary.getByRole("link", { name: /Morgan Lee/ }).first(),
-    ).toBeVisible();
-    await expect(
-      summary.getByRole("link", { name: "Investigate checkout latency" }),
     ).toBeVisible();
     await expect(
       summary
         .getByRole("link", { name: /^Pin the release train to payments 4\.2/ })
         .first(),
     ).toBeVisible();
-    await expect(summary).not.toContainText("https://");
   });
 
   test("a row's summary keeps its paragraphs and line breaks", async ({

@@ -283,8 +283,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The linked item is past the first page, so its row loads on its own.
     await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
-    const asks = page.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    const linkedRow = page.locator(`li[data-inbox-row="todo:${rollout.id}"]`);
+    await expect(linkedRow).toHaveAttribute("data-expanded", "true");
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     await primary.getByRole("link", { name: /^Automations/ }).click();
@@ -292,7 +292,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await primary.getByRole("link", { name: /^Inbox/ }).click();
     // `/` and `/?view=inbox` are one list with one place.
     await expect(page).toHaveURL(/\/(\?view=inbox)?$/);
-    await expect(asks).toContainText(rollout.title);
+    await expect(linkedRow).toHaveAttribute("data-expanded", "true");
   });
 
   test("an item link past the shown rows opens its row in view", async ({
@@ -654,11 +654,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    // One ask, so the Conversation shows its normal row, not a stack.
+    // A Conversations row names its Conversation; an Inbox row names its
+    // item.
     await mockReviewItems(page, { open: [rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
-    const head = rowHead(todo, checkout);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = page.getByRole("region", { name: "Conversations" });
+    const head = rowHead(list, checkout);
     const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
 
@@ -690,12 +691,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     await expect(middle).toHaveURL(/\/conversations\//);
     await middle.close();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
 
     // An ask pill expands the row in place.
     await expandRow(head);
     await expect(asks).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
     await asks.getByRole("link", { name: "Open conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.goBack();

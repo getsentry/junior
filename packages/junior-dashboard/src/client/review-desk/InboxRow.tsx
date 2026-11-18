@@ -179,13 +179,13 @@ function RowItem(props: {
       </div>
       {/* A child agent's item names its child, quietly, under the root's
           head. */}
-      {item.addedByChild ? (
+      {item.addedByLabel ? (
         <Link
           className="flex min-w-0 items-center gap-1 justify-self-start rounded-sm text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
           to={conversationPath(item.addedByConversationId)}
         >
           <CornerDownRight aria-hidden="true" className="shrink-0" size={12} />
-          <span className={fadeTextClass}>{item.addedByChild.label}</span>
+          <span className={fadeTextClass}>{item.addedByLabel}</span>
         </Link>
       ) : null}
       {/* What Junior said comes first, then its question and the form. */}

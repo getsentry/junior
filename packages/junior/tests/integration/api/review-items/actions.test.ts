@@ -550,33 +550,42 @@ describe("review item actions API", () => {
     const byId = new Map<string, Record<string, unknown>>(
       list.items.map((item: { id: string }) => [item.id, item]),
     );
-    expect(byId.get(rootItem)?.["addedByChild"]).toBeUndefined();
-    expect(byId.get(threadItem)?.["addedByChild"]).toEqual({
-      label: "Check the release notes",
+    const root = (id: string) => ({
+      addedByLabel: byId.get(id)?.["addedByLabel"],
+      rootConversationId: byId.get(id)?.["rootConversationId"],
+    });
+    // Every item names its root, a root item its own Conversation.
+    expect(root(rootItem)).toEqual({
+      addedByLabel: undefined,
+      rootConversationId: "slack:CPUB:1.000005",
+    });
+    expect(root(threadItem)).toEqual({
+      addedByLabel: "Check the release notes",
       rootConversationId: "slack:CPUB:1.000005",
     });
     // A child at any depth rolls up to its root.
-    expect(byId.get(taskItem)?.["addedByChild"]).toEqual({
-      label: "Read the canary logs",
+    expect(root(taskItem)).toEqual({
+      addedByLabel: "Read the canary logs",
       rootConversationId: "slack:CPUB:1.000005",
     });
-    expect(byId.get(hiddenItem)).toMatchObject({
-      addedByConversationId: "agent:thread-of-6",
+    // Ana cannot see that root, so the item's own Conversation stands in.
+    expect(root(hiddenItem)).toEqual({
+      addedByLabel: undefined,
+      rootConversationId: "agent:thread-of-6",
     });
-    expect(byId.get(hiddenItem)?.["addedByChild"]).toBeUndefined();
     // One item's own read names its root too, as does an action's result.
     expect(
       (await (await api(fixture, ana).get(`/${taskItem}`)).json())[
-        "addedByChild"
+        "rootConversationId"
       ],
-    ).toMatchObject({ rootConversationId: "slack:CPUB:1.000005" });
+    ).toBe("slack:CPUB:1.000005");
     expect(
       (
         await (
           await api(fixture, ana).act(threadItem, { action: "dismiss" })
         ).json()
-      )["addedByChild"],
-    ).toMatchObject({ rootConversationId: "slack:CPUB:1.000005" });
+      )["rootConversationId"],
+    ).toBe("slack:CPUB:1.000005");
   });
 
   it("pages what waits on the viewer first with the waiting sort", async () => {

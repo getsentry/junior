@@ -52,7 +52,7 @@ export function InboxStack(props: {
       data-dock-key={`stack:${props.stackKey}`}
       // An open row keeps the dock still, as an open row does.
       data-expanded={openIndex >= 0 || undefined}
-      data-inbox-stack=""
+      data-inbox-stack={props.stackKey}
     >
       <div className="flex min-h-7 min-w-0 items-center gap-2 pr-1 pl-2.5">
         <Link
@@ -132,33 +132,28 @@ export function stackRows(
 /** The row key of an item or a Conversation in each section with stacks. */
 export const STACK_ROW_KEYS = {
   conversation: (id: string) => `conversation:${id}`,
+  fyi: (id: string) => `fyi:${id}`,
   grabs: (id: string) => `grabs:${id}`,
   snoozed: (id: string) => id,
   todo: (id: string) => `todo:${id}`,
 };
 
 /**
- * A stack that shrinks to one ask shows the normal row of its
- * Conversation, under the Conversation's key. While the open row is that
- * ask's own, this returns the normal row's key and opens that row, so the
- * ask stays open.
+ * In a Conversation section, a stack that shrinks to one item shows the
+ * normal row of its Conversation, under the Conversation's key. While the
+ * open row is that item's own, this returns the normal row's key and opens
+ * that row, so the item stays open. To do, Up for grabs, and Snoozed keep
+ * the item's own row, so their keys do not change.
  */
 export function useLoneRowKey(
-  sections: Record<keyof typeof STACK_ROW_KEYS, readonly InboxBundle[]>,
+  conversationRows: readonly InboxBundle[],
   expandedKey: string,
   setExpandedKey: (key: string) => void,
 ): string | undefined {
-  const lone = [
-    [STACK_ROW_KEYS.conversation, sections.conversation] as const,
-    [STACK_ROW_KEYS.grabs, sections.grabs] as const,
-    [STACK_ROW_KEYS.snoozed, sections.snoozed] as const,
-    [STACK_ROW_KEYS.todo, sections.todo] as const,
-  ]
-    .flatMap(([keyOf, rows]) =>
-      rows
-        .filter((row) => row.items.length === 1)
-        .map((row) => [keyOf(row.newest.id), keyOf(row.key)] as const),
-    )
+  const keyOf = STACK_ROW_KEYS.conversation;
+  const lone = conversationRows
+    .filter((row) => row.items.length === 1)
+    .map((row) => [keyOf(row.newest.id), keyOf(row.key)] as const)
     .find(([itemKey]) => itemKey === expandedKey)?.[1];
   useEffect(() => {
     if (lone) setExpandedKey(lone);

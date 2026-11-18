@@ -1,7 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import type { ReviewItemPayload } from "@/api/schema/review-item";
 import type { ReviewItem } from "@/chat/review-items/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -10,7 +9,8 @@ import {
   juniorConversations,
 } from "@/db/schema";
 
-type AddedByChild = NonNullable<ReviewItemPayload["addedByChild"]>;
+/** Where an item sits in its Conversation tree, for the Inbox's stacks. */
+type ItemRoot = { label: string; rootConversationId: string };
 
 /** Name a child with no title by its kind: "Thread" or "Task". */
 function kindLabel(kind: string | null): string {
@@ -18,26 +18,31 @@ function kindLabel(kind: string | null): string {
 }
 
 /**
- * Read where each child Conversation that added an item sits: its root and
- * its label, such as the Thread title. The Inbox shows those items in the
- * stack of the root. A child is left out when the viewer cannot see its
- * root's content, so the viewer learns no root, title, or name of a tree
- * they cannot see (`policies/conversation-access.md`, rule for people).
+ * Read the root of each Conversation that added an item, at any depth, from
+ * the root that each Conversation stores, with a label for a child, such as
+ * its Thread title. A root needs no read. A child is left out when the
+ * viewer cannot see its root's content, so the viewer learns no root,
+ * title, or name of a tree they cannot see
+ * (`policies/conversation-access.md`, rule for people). The payload then
+ * names the Conversation that added the item as its root.
  */
-export async function readAddedByChildren(
+export async function readItemRoots(
   db: JuniorDatabase,
   items: readonly Pick<
     ReviewItem,
-    "addedByConversationId" | "fromChildAgent"
+    "addedByConversationId" | "addedByRootConversationId"
   >[],
   viewer: User,
-): Promise<Map<string, AddedByChild>> {
-  // A search already says which items a child added. Most come from roots,
-  // and then no read follows.
+): Promise<Map<string, ItemRoot>> {
+  // A search already read each adder's stored root. Most items come from
+  // roots, and then no read follows.
   const ids = [
     ...new Set(
       items.flatMap((item) =>
-        item.fromChildAgent === false ? [] : [item.addedByConversationId],
+        item.addedByRootConversationId === null ||
+        item.addedByRootConversationId === item.addedByConversationId
+          ? []
+          : [item.addedByConversationId],
       ),
     ),
   ];

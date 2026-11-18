@@ -153,13 +153,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // The license and audit asks share a Conversation, so each has its own
-    // row in its stack. When the stack shrinks to one ask, that ask shows
-    // in the Conversation's normal row.
-    const row = (item: { addedByConversationId: string; id: string }) =>
-      todo.locator(
-        `li[data-inbox-row="todo:${item.id}"], li[data-inbox-row="todo:${item.addedByConversationId}"]`,
-      );
+    // Each ask has its own row, in its stack or alone.
+    const row = (item: { id: string }) =>
+      todo.locator(`li[data-inbox-row="todo:${item.id}"]`);
     // A row click expands the row. The list stays where it is.
     await row(audit).locator("[data-inbox-head]").first().click();
     const asks = page.getByRole("region", { name: /: asks$/ });
@@ -190,7 +186,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
     const licenseRow = row(license);
     const licenseItem = licenseRow.locator("[data-inbox-card]");
-    // Next opens it: alone in its Conversation now, in its normal row.
+    // Next opens it: alone in its Conversation now, still in its own row.
     await expect(licenseRow).toHaveAttribute("data-expanded", "true");
     await expect(licenseItem).toBeVisible();
     await expect(
@@ -238,6 +234,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const teamAsk = {
       ...audit,
       addedByConversationId: "slack:C789:1770021600.000900",
+      rootConversationId: "slack:C789:1770021600.000900",
       assignedToEveryone: true,
       assignees: [],
       // Recent, so it shows in Today above the older Conversations.
@@ -552,7 +549,9 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
     const asks = todo.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${rollout.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is on screen.
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
@@ -679,6 +678,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: [
         "GitHub asks you to review this pull request.",
         "https://github.com/getsentry/payments/pull/91",
@@ -723,6 +723,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: "GitHub asks you to review this pull request.\n\nhttps://github.com/getsentry/payments/pull/91",
       id: "item-pr-card",
       kind: "notice" as const,

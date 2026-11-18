@@ -31,7 +31,6 @@ import {
 } from "./inboxQueries";
 import {
   inboxBundles,
-  itemStackId,
   itemUpForGrabs,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -210,7 +209,9 @@ function useBuildInboxData(input: {
   const missingIds = useMemo(
     () => [
       ...new Set(
-        list.map(itemStackId).filter((id) => !conversationById.has(id)),
+        list
+          .map((item) => item.rootConversationId)
+          .filter((id) => !conversationById.has(id)),
       ),
     ],
     [conversationById, list],
@@ -225,21 +226,7 @@ function useBuildInboxData(input: {
   const { folded: foldedNotices, shown } = foldNotices(
     list.filter((item) => !sweeper.isSwept(item.id)),
   );
-  // A Conversation sleeps when the row snoozed for it, in To do (its asks)
-  // or in Conversations (its items), still has the same newest item.
-  const sleepingConversations = new Set(
-    [
-      ...inboxBundles(shown),
-      ...inboxBundles(shown.filter((item) => item.kind === "action")),
-    ]
-      .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
-      .map((bundle) => bundle.conversationId),
-  );
-  const asleepInStacks = snoozes.asleepInStacks(shown);
-  const asleep = (item: ReviewItemPayload) =>
-    sleepingConversations.has(itemStackId(item)) ||
-    asleepInStacks.has(item.id) ||
-    snoozes.sleeps(item.id, item.id);
+  const asleep = snoozes.sleeps;
   const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>

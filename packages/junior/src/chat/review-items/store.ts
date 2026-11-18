@@ -79,10 +79,10 @@ export interface ReviewItem {
   createdAt: Date;
   dedupeKey: string;
   /**
-   * Whether a child agent's Conversation added the item. Only a search sets
-   * it; unset means unknown.
+   * The stored root of the Conversation that added the item. Only a search
+   * sets it; unset means unknown.
    */
-  fromChildAgent?: boolean;
+  addedByRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
   request?: ReviewItemRequest;
@@ -734,7 +734,7 @@ export async function searchReviewItems(
   const rows = await db
     .select({
       item: juniorReviewItems,
-      fromChildAgent: sql<boolean>`${juniorConversations.parentConversationId} is not null`,
+      addedByRootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorReviewItems)
     .leftJoin(
@@ -766,7 +766,7 @@ export async function searchReviewItems(
   );
   return items.map((item, index) => ({
     ...item,
-    fromChildAgent: rows[index]!.fromChildAgent,
+    addedByRootConversationId: rows[index]!.addedByRootConversationId,
   }));
 }
 

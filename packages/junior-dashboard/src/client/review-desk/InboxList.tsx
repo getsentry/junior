@@ -68,7 +68,7 @@ import {
 } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import { itemStackId, type InboxBundle } from "./reviewItemFormat";
+import type { InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -187,12 +187,7 @@ export function InboxList(props: {
     row.bundle ? [row.bundle] : [],
   );
   const loneKey = useLoneRowKey(
-    {
-      conversation: streamBundles,
-      grabs: data.grabRows,
-      snoozed: data.snoozedRows,
-      todo: data.todoRows,
-    },
+    streamBundles,
     state.expandedKey,
     state.setExpandedKey,
   );
@@ -234,7 +229,7 @@ export function InboxList(props: {
   const linkedStreamIndex =
     linkedOpen && linkedRowKey?.startsWith("conversation:")
       ? streamRows.findIndex(
-          (row) => row.conversationId === itemStackId(linkedOpen),
+          (row) => row.conversationId === linkedOpen.rootConversationId,
         )
       : -1;
   const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
@@ -399,7 +394,7 @@ export function InboxList(props: {
                   : row.newest,
                 // In a stack, a child's item names its sub-thread.
                 options.stacked
-                  ? row.newest.addedByChild?.label
+                  ? row.newest.addedByLabel
                   : titleOf(row.conversationId),
               )
             : undefined
@@ -436,8 +431,8 @@ export function InboxList(props: {
       />
     );
   };
-  // A Conversation with one ask shows its normal row. More asks show as a
-  // stack: a row each, under the root's title.
+  // Each item shows its own row. A root Conversation with more than one
+  // item shows them as a stack, under the root's title.
   const stackRow = (
     row: InboxBundle,
     keyOf: (id: string) => string,
@@ -450,10 +445,19 @@ export function InboxList(props: {
     } = {},
   ) => {
     const stackKey = keyOf(row.key);
-    if (row.items.length === 1)
-      return bundleRow(row, { ...options, key: stackKey });
     // Built here, so the list knows each row's items as it renders.
     const rows = stackRows(row, keyOf, options.todo);
+    // A Conversation section shows a Conversation's row. Elsewhere, a lone
+    // item shows its own row: an item row is always one actionable item.
+    if (row.items.length === 1 && keyOf === STACK_ROW_KEYS.conversation)
+      return bundleRow(row, { ...options, key: stackKey });
+    if (rows.length === 1)
+      return bundleRow(row, {
+        ...options,
+        itemRow: true,
+        key: rows[0]!.key,
+        passing: rows[0]!.passing,
+      });
     const title = titleOf(row.conversationId) ?? row.newest.title;
     return (
       <InboxStack
@@ -467,10 +471,11 @@ export function InboxList(props: {
           expandedKey: state.expandedKey,
           items: row.items,
           keys: rows.map((stacked) => stacked.key),
+          stackKey,
           title,
           snooze: (untilMs) => {
             setSnoozeKey(undefined);
-            snoozes.snooze(row, untilMs);
+            leave(stackKey, () => snoozes.snooze(row, untilMs));
           },
           snoozed: options.snoozed,
         })}
@@ -749,17 +754,15 @@ export function InboxList(props: {
             stackRow(row, STACK_ROW_KEYS.grabs, { take: "I'll take it" }),
           )}
         </InboxSection>
-        {/* Notices wait on no one: one quiet row each, after the asks. */}
+        {/* Notices wait on no one: quiet rows, stacked, after the asks. */}
         <InboxSection
           action={sweepControl(data.fyiRows, "FYI")}
           collapsed={collapsed.has("fyi")}
-          count={data.fyiRows.length}
+          count={data.fyiRows.reduce((sum, row) => sum + row.items.length, 0)}
           label="FYI"
           onToggle={() => toggleSection("fyi")}
         >
-          {data.fyiRows.map((row) =>
-            bundleRow(row, { itemRow: true, key: `fyi:${row.key}` }),
-          )}
+          {data.fyiRows.map((row) => stackRow(row, STACK_ROW_KEYS.fyi, {}))}
         </InboxSection>
         {automationsError}
         {stream()}

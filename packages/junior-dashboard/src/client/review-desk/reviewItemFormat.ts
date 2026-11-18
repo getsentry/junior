@@ -180,7 +180,7 @@ export type InboxBundle = {
    * item id for a row that shows one item.
    */
   key: string;
-  /** The root Conversation whose stack shows the items (`itemStackId`). */
+  /** The root Conversation whose stack shows the items (`rootConversationId`). */
   conversationId: string;
   /** Items in inbox order: questions first, then the oldest. */
   items: ReviewItemPayload[];
@@ -227,14 +227,6 @@ export function itemUpForGrabs(item: ReviewItemPayload): boolean {
 }
 
 /**
- * The Conversation whose stack shows an item: the root, when a child agent
- * added it and the viewer can see that root, else the one that added it.
- */
-export function itemStackId(item: ReviewItemPayload): string {
-  return item.addedByChild?.rootConversationId ?? item.addedByConversationId;
-}
-
-/**
  * Group items into one stack per root Conversation. Stacks that need the
  * viewer come first, the one that waited longest at the top, so the order
  * does not change while the reader works. FYI stacks follow, oldest first.
@@ -244,7 +236,7 @@ export function inboxBundles(
 ): InboxBundle[] {
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of items) {
-    const key = itemStackId(item);
+    const key = item.rootConversationId;
     byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
   }
   const bundles = [...byConversation].map(([conversationId, group]) => {

@@ -1,10 +1,9 @@
 # Inbox
 
-The Inbox is the dashboard view of the Review desk. It shows the open Review
-items for the viewer as rows. The rows of one root Conversation sit together
-in a stack: a light border under the root's title. The viewer answers,
-dismisses, or snoozes each row on its own. `./review-desk.md` owns who sees
-an item and who can act on it.
+The Inbox shows the open Review items for the viewer, one item row each.
+The rows of one root Conversation sit together in a stack: a light border
+under the root's title. The viewer answers, dismisses, or snoozes each row
+on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 ## Intent
 
@@ -12,8 +11,10 @@ an item and who can act on it.
   Conversations. They usually do not know which Threads and Tasks run under
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
-- Each Review item is its own row, with its own actions. An action never
-  applies to a group of items. A pull request review and a question are
+- Each Review item is its own row, with its own actions. An item row is
+  always one actionable item, such as a question or a pull request. A
+  Conversation row is a different row, for the Conversation sections. A
+  row action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
   next row in the same stack first, so the context that the reader just
@@ -24,8 +25,8 @@ an item and who can act on it.
 
 ## Entry points
 
-- Dashboard: Inbox, with To do, Up for grabs, the Conversation sections,
-  and Snoozed.
+- Dashboard: Inbox, with To do, Up for grabs, FYI, the Conversation
+  sections, and Snoozed.
 - The stack title, which opens the root Conversation.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
@@ -39,20 +40,21 @@ an item and who can act on it.
 
 Grouping:
 
-- A child Conversation, at any depth, rolls up to its root. The row shows a
-  quiet label that names the child, such as its Thread title, so the reader
-  knows which sub-thread asked.
+- A child Conversation, at any depth, rolls up to its root. Every item has
+  the same root field, read from the root that each Conversation stores, so
+  depth costs nothing. The row shows a quiet label that names the child,
+  such as its Thread title, so the reader knows which sub-thread asked.
 - An item rolls up only when the viewer can see its root, as
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
   root that they cannot see.
-- A Conversation with one item shows its normal row, with no border. A click
-  on that row opens the Conversation.
+- A Conversation with one item shows that item's row, with no border. A
+  click on it opens the row, as in a stack.
 - A stack of more than four rows shows the first four and "+N more in this
   Conversation". That control shows the rest in place. A stack also shows
   the rest when its open row is past the first four.
-- The Conversations view keeps one row per Conversation, with Pin and
-  Archive. Stacks are for the Inbox and Snoozed.
+- The Conversation sections keep one Conversation row each, with Pin and
+  Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
 Actions:
 
@@ -65,12 +67,15 @@ Actions:
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.
-- When a stack shrinks to one row, that row becomes the normal row of its
-  Conversation. An open row stays open.
+- When a stack shrinks to one row, the border goes and the row stays. An
+  open row stays open.
+- Snooze all and Dismiss all put the whole stack away with the same leave
+  motion as a row. When a row of the stack was open, the next row after the
+  stack opens.
 - In To do, a stack leaves with its last row that waits on the viewer, and
   the next row of the list opens.
-- Notices do not stack. A notice about the subject of an ask folds into the
-  ask's row. Other notices show in FYI, one row each.
+- A notice about the subject of an ask folds into the ask's row. Other
+  notices show in FYI, stacked by root as asks are, one row each.
 
 Order and counts:
 
@@ -86,15 +91,15 @@ Order and counts:
 Snooze:
 
 - Snooze on a row puts away only that item. It wakes at its time.
-- Snooze all on a stack puts away every row in it. It wakes at its time, or
-  when the stack gets a newer item, also from a child.
+- Snooze all on a stack snoozes each of its items until the same time. An
+  item that arrives later is not snoozed: it shows in the Inbox by itself,
+  and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row
-  wakes only that item. The other rows of a Snooze all stay snoozed.
+  wakes only that item.
 
 ## Gaps
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- Snooze all and Dismiss all have no leave motion. The stack goes at once.
 - A snooze lives in one browser. Another browser of the same viewer shows
-  the item.
+  the item. Server snoozes (getsentry/junior#3567, #3392) close this gap.

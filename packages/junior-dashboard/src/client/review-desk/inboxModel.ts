@@ -4,8 +4,8 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import {
+  inboxBundles,
   itemNeedsViewer,
-  itemStackId,
   itemUpForGrabs,
   reviewItemStatusLabel,
   type InboxBundle,
@@ -87,7 +87,7 @@ export function itemsInView(
 /** A row for one item, as a stack or an item view shows it. */
 export function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
-    conversationId: itemStackId(item),
+    conversationId: item.rootConversationId,
     items: [item],
     key: item.id,
     needsYou: itemNeedsViewer(item),
@@ -151,18 +151,18 @@ export function foldNotices(items: readonly ReviewItemPayload[]): {
 }
 
 /**
- * The FYI list: one row per open notice, newest first. Notices wait on no
- * one, so they are not in To do.
+ * The FYI list: the open notices, stacked by root Conversation, and the
+ * stack with the newest notice first. Notices wait on no one, so they are
+ * not in To do.
  */
 export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
-  return items
-    .filter((item) => item.status === "open" && item.kind === "notice")
-    .map(singleRow)
-    .sort(
-      (a, b) =>
-        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
-        a.key.localeCompare(b.key),
-    );
+  return inboxBundles(
+    items.filter((item) => item.status === "open" && item.kind === "notice"),
+  ).sort(
+    (a, b) =>
+      Date.parse(b.newest.createdAt) - Date.parse(a.newest.createdAt) ||
+      a.key.localeCompare(b.key),
+  );
 }
 
 /**
@@ -382,10 +382,12 @@ export function itemRowSubtitle(
 }
 
 /**
- * The key of the row that shows an item of `bundle`: in a stack of more
- * than one ask, the item's own row; else the Conversation's row.
+ * The key of the row that shows an item of `bundle` in a Conversation
+ * section: in a stack of more than one item, the item's own row; else the
+ * Conversation's row. To do, Up for grabs, and Snoozed show an item's own
+ * row always.
  */
-function stackRowKey(bundle: InboxBundle, itemId: string): string {
+function streamRowKey(bundle: InboxBundle, itemId: string): string {
   return bundle.items.length > 1 ? itemId : bundle.key;
 }
 
@@ -401,12 +403,13 @@ function linkedInboxRowKey(
     todo: readonly InboxBundle[];
   },
 ): string {
-  const conversationId = itemStackId(item);
+  const conversationId = item.rootConversationId;
   const rowIn = (prefix: string, bundles: readonly InboxBundle[]) => {
     const row = bundles.find(
       (bundle) => bundle.conversationId === conversationId,
     );
-    return row ? `${prefix}:${stackRowKey(row, item.id)}` : undefined;
+    if (!row) return undefined;
+    return `${prefix}:${prefix === "conversation" ? streamRowKey(row, item.id) : item.id}`;
   };
   const grab = rowIn("grabs", rows.grabs);
   return (
@@ -440,7 +443,7 @@ export function linkedRowOf(
   const snoozedRow = rows.snoozed.find((row) =>
     row.items.some((item) => item.id === linkedId),
   );
-  const snoozedKey = snoozedRow ? stackRowKey(snoozedRow, linkedId) : undefined;
+  const snoozedKey = snoozedRow ? linkedId : undefined;
   const hostId = [...rows.foldedNotices].find(([, notices]) =>
     notices.some((notice) => notice.id === linkedId),
   )?.[0];
@@ -453,7 +456,7 @@ export function linkedRowOf(
         : undefined;
     if (!open) return undefined;
     if (view === "prs" || view === "decisions") return open.id;
-    if (view !== "inbox") return `conversation:${itemStackId(open)}`;
+    if (view !== "inbox") return `conversation:${open.rootConversationId}`;
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);
   })();

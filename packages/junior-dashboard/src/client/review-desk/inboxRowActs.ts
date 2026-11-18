@@ -20,6 +20,8 @@ type ActedRow = {
   key: string;
   /** Rows that leave with this one, as its stack in To do. */
   passing?: ReadonlySet<string>;
+  /** The row that opens again when the action fails, when not this one. */
+  reopen?: string;
   title: string;
 };
 
@@ -105,7 +107,7 @@ export function useInboxRowActs(options: {
     const area = scroller.current;
     if (area) {
       if (opened !== undefined && openRowKey(area) === opened && !typing())
-        setExpandedKey(row.key);
+        setExpandedKey(row.reopen ?? row.key);
       showReturnedRow(area, row.key);
     }
     const title = FAILED_TITLES[body.action];
@@ -175,9 +177,8 @@ export function inboxCardActions(input: {
 /**
  * A stack's own actions: Snooze all, and Dismiss all, which closes every
  * open ask of the stack that the viewer can act on. A snoozed stack has
- * neither. Dismiss all puts the stack's open row away, or its first row,
- * and every other row of the stack goes with it, so the next row of the
- * list opens.
+ * neither. Dismiss all puts the whole stack away (`useLeaveRow`), so the
+ * next row after it opens.
  */
 export function inboxStackActions(input: {
   act: ReturnType<typeof useInboxRowActs>;
@@ -187,19 +188,19 @@ export function inboxStackActions(input: {
   keys: readonly string[];
   snooze(untilMs: number): void;
   snoozed?: boolean;
+  stackKey: string;
   title: string;
 }): { onDismiss?(): void; onSnooze?(untilMs: number): void } {
   if (input.snoozed) return {};
   const open = input.items.filter(
     (item) => item.status === "open" && item.canAct,
   );
-  const key = input.keys.includes(input.expandedKey)
-    ? input.expandedKey
-    : (input.keys[0] ?? "");
   const row: ActedRow = {
     items: input.items,
-    key,
-    passing: new Set(input.keys),
+    key: input.stackKey,
+    ...(input.keys.includes(input.expandedKey)
+      ? { reopen: input.expandedKey }
+      : undefined),
     title: input.title,
   };
   return {
