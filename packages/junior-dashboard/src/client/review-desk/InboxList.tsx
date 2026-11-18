@@ -55,7 +55,11 @@ import { useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
+import {
+  conversationAnswerLine,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -419,7 +423,7 @@ export function InboxList(props: {
   const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
     const key = `conversation:${row.conversationId}`;
     const answered = row.conversation
-      ? data.answerOf(row.conversation)
+      ? conversationAnswerLine(row.conversation)
       : undefined;
     if (row.bundle)
       return bundleRow(row.bundle, {

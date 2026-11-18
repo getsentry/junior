@@ -4,10 +4,13 @@
  * rows, and the review desk can be checked without a database. GitHub
  * plugin asks and FYI notices fill the rest of the inbox.
  */
-import type {
-  ConversationReportEvent,
-  ReviewItemActionBody,
-  ReviewItemPayload,
+import {
+  answeredChoices,
+  type ConversationFeed,
+  type ConversationFeedViewerAnswer,
+  type ConversationReportEvent,
+  type ReviewItemActionBody,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -525,6 +528,39 @@ export function actOnMockReviewItem(
       : undefined),
   });
   return readMockReviewItem(nowMs, id);
+}
+
+/**
+ * Put the viewer's newest answer on each feed row of the Conversation that
+ * added it, like the API.
+ */
+export function withMockViewerAnswers(
+  feed: ConversationFeed,
+  nowMs: number,
+): ConversationFeed {
+  const answers = new Map<string, ConversationFeedViewerAnswer>();
+  // Closed items come newest closed first, so the first one wins.
+  for (const item of readMockReviewItems(nowMs, { closed: true })) {
+    if (
+      !item.answer ||
+      !item.request ||
+      !item.closedAt ||
+      item.closedBy?.userId !== viewer.userId ||
+      answers.has(item.addedByConversationId)
+    )
+      continue;
+    answers.set(item.addedByConversationId, {
+      choices: answeredChoices(item.request, item.answer),
+      closedAt: item.closedAt,
+    });
+  }
+  return {
+    ...feed,
+    conversations: feed.conversations.map((conversation) => {
+      const viewerAnswer = answers.get(conversation.conversationId);
+      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
+    }),
+  };
 }
 
 /**

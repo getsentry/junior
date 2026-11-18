@@ -42,8 +42,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // The row says the answer in place of the ask, after a reload too.
+    // Conversations lists the row. It says the answer in place of the ask,
+    // after a reload too.
+    const answered = page.waitForResponse(
+      /\/api\/review-items\/[^/]+\/actions$/,
+    );
     release();
+    await answered;
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = rollout(page).locator('[data-inbox-slot="summary"]');
     await expect(summary).toHaveText("You answered Hold");
     await expect(page.getByText(ask)).toHaveCount(0);
