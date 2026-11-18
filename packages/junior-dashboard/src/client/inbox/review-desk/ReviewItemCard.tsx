@@ -17,7 +17,6 @@ import {
   reviewItemStatusLabel,
 } from "../../review-desk/reviewItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
-import { cn } from "../../styles";
 
 /**
  * Show one Review item as a card: its title, status, description, and the
