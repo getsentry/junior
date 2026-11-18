@@ -3,14 +3,19 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQueries,
   useQuery,
   useQueryClient,
+  type InfiniteData,
+  type Mutation,
   type QueryClient,
+  type QueryKey,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
   conversationDetailReportSchema,
+  reviewItemActionSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemSchema,
@@ -18,14 +23,20 @@ import {
   type ReviewItemActionBody,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import * as z from "zod";
 
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "../conversations/queries";
+import { clearAnswerDraft } from "../components/answerDrafts";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
+import { itemNeedsViewer } from "./reviewItemFormat";
+
+type ReviewItemCount = z.output<typeof reviewItemCountSchema>;
+type ReviewItemList = z.output<typeof reviewItemListSchema>;
 
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
@@ -290,27 +301,224 @@ export function useBlockedAutomationsData(enabled: boolean) {
   });
 }
 
-/** Take, submit, or dismiss one Review item. */
-export function useReviewItemAction() {
+const REVIEW_ITEM_ACTION_KEY = [...REVIEW_ITEMS_QUERY_KEY, "action"];
+
+const reviewItemActionVariablesSchema = z.object({
+  body: reviewItemActionSchema,
+  id: z.string(),
+});
+
+/** One action on one Review item, as `useReviewItemAction` sends it. */
+type ReviewItemAction = z.output<typeof reviewItemActionVariablesSchema>;
+
+/** The action that a mutation of `useReviewItemAction` sends. */
+function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
+  const parsed = reviewItemActionVariablesSchema.safeParse(
+    mutation.state.variables,
+  );
+  return parsed.success ? parsed.data : undefined;
+}
+
+function closesItem(body: ReviewItemActionBody): boolean {
+  return body.action !== "take";
+}
+
+type ReviewItemListCache = InfiniteData<ReviewItemList, string | undefined>;
+
+/** Where one item showed in each open list, so it can go back there. */
+type ItemPlaces = {
+  item: ReviewItemPayload;
+  places: { index: number; page: number; queryKey: QueryKey }[];
+};
+
+// Lists of closed items, and searches, which also show closed items, keep
+// an item that closes.
+function listsOpenItems(queryKey: QueryKey): boolean {
+  const search = new URLSearchParams(String(queryKey.at(-1) ?? ""));
+  return !search.has("status") && !search.has("q");
+}
+
+function changeCounts(
+  queryClient: QueryClient,
+  item: ReviewItemPayload,
+  by: number,
+) {
+  if (!itemNeedsViewer(item)) return;
+  queryClient.setQueriesData<ReviewItemCount>(
+    { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"] },
+    (count) =>
+      count && {
+        ...count,
+        codeChanges: Math.max(
+          0,
+          count.codeChanges +
+            (item.subject?.objectType === "code_change" ? by : 0),
+        ),
+        decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
+        needsViewer: Math.max(0, count.needsViewer + by),
+      },
+  );
+}
+
+/**
+ * Take an item that closes out of every open list and the counts at once.
+ * Return where it was, to put it back if the action fails.
+ */
+async function takeOutClosedItem(
+  queryClient: QueryClient,
+  id: string,
+): Promise<ItemPlaces | undefined> {
+  const lists = { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list"] };
+  const counts = { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"] };
+  // A read in flight would write the item back.
+  await Promise.all([
+    queryClient.cancelQueries(lists),
+    queryClient.cancelQueries(counts),
+  ]);
+  let item: ReviewItemPayload | undefined;
+  const places: ItemPlaces["places"] = [];
+  for (const [
+    queryKey,
+    list,
+  ] of queryClient.getQueriesData<ReviewItemListCache>(lists)) {
+    if (!list || !listsOpenItems(queryKey)) continue;
+    const found = places.length;
+    for (const [page, { items }] of list.pages.entries()) {
+      const index = items.findIndex((open) => open.id === id);
+      if (index < 0) continue;
+      item = items[index];
+      places.push({ index, page, queryKey });
+    }
+    if (places.length === found) continue;
+    queryClient.setQueryData<ReviewItemListCache>(queryKey, {
+      ...list,
+      pages: list.pages.map((page) => ({
+        ...page,
+        items: page.items.filter((open) => open.id !== id),
+      })),
+    });
+  }
+  if (!item) return undefined;
+  changeCounts(queryClient, item, -1);
+  return { item, places };
+}
+
+/**
+ * Put a failed action's item back where it was. Only this item changes,
+ * so the other actions in flight keep their own changes.
+ */
+function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
+  // A read that already shows the item again also counted it.
+  let restored = false;
+  for (const place of places) {
+    queryClient.setQueryData<ReviewItemListCache>(place.queryKey, (list) => {
+      if (
+        !list ||
+        list.pages.some((page) =>
+          page.items.some((open) => open.id === item.id),
+        )
+      )
+        return list;
+      restored = true;
+      return {
+        ...list,
+        pages: list.pages.map((page, index) =>
+          index === place.page
+            ? {
+                ...page,
+                items: [
+                  ...page.items.slice(0, place.index),
+                  item,
+                  ...page.items.slice(place.index),
+                ],
+              }
+            : page,
+        ),
+      };
+    });
+  }
+  if (restored) changeCounts(queryClient, item, 1);
+}
+
+/** How many Review item actions are in flight. */
+export function reviewItemActionsInFlight(queryClient: QueryClient): number {
+  return queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY });
+}
+
+/**
+ * Take, submit, or dismiss one Review item. `optimistic` takes an item that
+ * closes out of the lists and counts before the server answers, and puts it
+ * back in its place if the action fails. Each action settles by itself, and
+ * the lists read again after the last one in flight.
+ */
+export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
   const queryClient = useQueryClient();
+  const { optimistic = false } = options;
   return useMutation({
-    mutationFn: (args: { body: ReviewItemActionBody; id: string }) =>
+    mutationKey: REVIEW_ITEM_ACTION_KEY,
+    mutationFn: (args: ReviewItemAction) =>
       post(
         reviewItemSchema,
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
       ),
-    onError: (_error, args) =>
-      queryClient.invalidateQueries({
+    onMutate: (args) =>
+      optimistic && closesItem(args.body)
+        ? takeOutClosedItem(queryClient, args.id)
+        : undefined,
+    onError: (_error, args, places) => {
+      if (places) putBackItem(queryClient, places);
+      return queryClient.invalidateQueries({
         exact: true,
         queryKey: reviewItemQueryKey(args.id),
-      }),
+      });
+    },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: (item) =>
-      queryClient.setQueryData(reviewItemQueryKey(item.id), item),
-    onSettled: () => invalidateReviewItemCollections(queryClient),
+    onSuccess: (item) => {
+      if (item.status !== "open") clearAnswerDraft(item.id);
+      queryClient.setQueryData(reviewItemQueryKey(item.id), item);
+    },
+    // A read while another action is in flight would show its item again.
+    onSettled: () =>
+      reviewItemActionsInFlight(queryClient) === 1
+        ? invalidateReviewItemCollections(queryClient)
+        : undefined,
   });
+}
+
+/** The ids of the items that an action in flight closes. */
+export function useClosingReviewItemIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY, status: "pending" },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      return action && closesItem(action.body) ? action.id : "";
+    },
+  });
+  const key = ids.filter(Boolean).sort().join("\n");
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
+ * The answer of the viewer's last action on an item, when that action was
+ * an answer that failed, so the form shows it again.
+ */
+export function useFailedReviewItemAnswer(id: string) {
+  const actions = useMutationState({
+    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      return action?.id === id
+        ? { body: action.body, failed: mutation.state.status === "error" }
+        : undefined;
+    },
+  });
+  // The mutation cache keeps insertion order, so the last one is newest.
+  const last = actions.filter(Boolean).at(-1);
+  return last?.failed && last.body.action === "submit"
+    ? last.body.answer
+    : undefined;
 }
 
 /**

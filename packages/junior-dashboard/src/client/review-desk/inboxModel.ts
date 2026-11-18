@@ -65,12 +65,12 @@ export function inboxViewPath(
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: ReviewItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: ReviewItemPayload): boolean {
   return Boolean(item.request);
 }
 
@@ -313,7 +313,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -328,6 +328,11 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   prMerge,
   prReady,
   prReview,
+  rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 
@@ -367,6 +368,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a linked ask from a later page counts once", async ({
+    dashboard,
+    page,
+  }) => {
+    const decisions = questionsByPage();
+    await mockReviewItems(page, {
+      automations: () => 0,
+      open: decisions,
+      pageSize: 2,
+    });
+    await holdLaterReviewItemPages(page);
+    const linked = decisions[5]!;
+    await page.goto(`${dashboard.baseURL}/?item=${linked.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(rowHead(todo, linked.title)).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+      /^Decisions\s*12$/,
+    );
+    await expect(
+      nav.getByRole("link", { name: /^Inbox/ }),
+    ).toHaveAccessibleName("Inbox, 12 waiting");
+  });
+
   test("the Automations entry counts from the server while its list fails", async ({
     dashboard,
     page,
@@ -382,6 +407,57 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Automations\s*3$/,
     );
   });
+
+  test("an Inbox with only done Conversations lists none of them, and reads no older page", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { automations: () => 0, open: [] });
+    let olderReads = 0;
+    await page.route(/\/api\/conversations(\?|$)/, async (route) => {
+      if (new URL(route.request().url()).searchParams.has("cursor")) {
+        olderReads += 1;
+      }
+      const body = await (await route.fetch()).json();
+      const done = body.conversations.filter(
+        (conversation: { pinnedAt?: string; status?: string }) =>
+          !conversation.pinnedAt && conversation.status !== "active",
+      );
+      await route.fulfill({
+        json: { ...body, conversations: done, nextCursor: "older" },
+      });
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
+    await expect(inbox.getByText("Nothing left here")).toBeVisible();
+    await inbox
+      .locator("[data-inbox-scroll]")
+      .evaluate((node) => (node.scrollTop = node.scrollHeight));
+    await expect(inbox.locator("[data-inbox-row]")).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "In flight" })).toHaveCount(0);
+    expect(olderReads).toBe(0);
+
+    // Conversations still lists them.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await expect(
+      page
+        .getByRole("region", { exact: true, name: "Conversations" })
+        .locator("[data-inbox-row]")
+        .first(),
+    ).toBeVisible();
+  });
+
+  /** Twelve questions, each in its own Conversation, two to a page. */
+  function questionsByPage() {
+    return Array.from({ length: 12 }, (_, index) => ({
+      ...license,
+      addedByConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+      conversationIds: [],
+      createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
+      id: `item-question-${index}`,
+      title: `Approve rollout step ${index}`,
+    }));
+  }
 
   /**
    * Bring the end of To do into view: the status line after its rows, which
