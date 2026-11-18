@@ -18,7 +18,7 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { escapeClosingTags, renderTag } from "@/chat/input-tags";
+import { renderParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   AgentRunError,
@@ -252,9 +252,9 @@ export function agentInvocationInputText(
     invocation.fork ? FORK_INSTRUCTIONS : undefined,
     agentTypeInstructions(invocation.agentType),
   ].filter((text) => text !== undefined);
-  return renderTag("parent-agent-task", {}, [
-    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
-    escapeClosingTags(invocation.input),
+  return renderParentAgentTask([
+    ...instructions.flatMap((text) => [text, ""]),
+    invocation.input,
   ]);
 }
 

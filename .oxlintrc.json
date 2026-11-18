@@ -144,6 +144,44 @@
       }
     },
     {
+      "files": ["packages/junior/src/**/*.ts", "packages/junior-*/src/**/*.ts"],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "error",
+        "junior/no-prompt-tag-matching": "error",
+        "junior/no-prompt-text-escapes": "error",
+        "junior/prompt-tag-attributes": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-dashboard/**",
+        "packages/junior-evals/**",
+        "packages/junior-plugin-api/src/prompt-tags.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-tag-matching": "off",
+        "junior/no-prompt-text-escapes": "off",
+        "junior/prompt-tag-attributes": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/api/html.ts",
+        "packages/junior/src/api/acp/authorization-page.ts",
+        "packages/junior/src/api/mcp/oauth/consent-page.ts",
+        "packages/junior/src/api/mcp/oauth/page.ts",
+        "packages/junior/src/handlers/oauth-html.ts",
+        "packages/junior/src/chat/slack/tool-support/canvas/html.ts",
+        "packages/junior/src/chat/slack/mrkdwn.ts",
+        "packages/junior-google/src/setup-routes.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-text-escapes": "off"
+      }
+    },
+    {
       "files": ["packages/*/src/**"],
       "rules": {
         "no-restricted-imports": [

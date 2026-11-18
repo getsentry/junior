@@ -40,7 +40,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getConversationPendingAuth } from "@/chat/services/pending-auth";
-import { escapeXml } from "@/chat/xml";
+import { escapeHtml } from "@/api/html";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -74,7 +74,7 @@ function htmlErrorResponse(
   message: string,
   status: number,
 ): Response {
-  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
+  return htmlCallbackResponse(escapeHtml(title), escapeHtml(message), status);
 }
 
 function oauthTokenErrorAttributes(
@@ -546,9 +546,9 @@ export async function GET(
       ? `You can close this tab and return to ${botName}.`
       : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(
-    escapeXml(`${providerLabel} account connected`),
-    escapeXml(statusMessage),
+    escapeHtml(`${providerLabel} account connected`),
+    escapeHtml(statusMessage),
     200,
-    { footerMessage: escapeXml(footerMessage) },
+    { footerMessage: escapeHtml(footerMessage) },
   );
 }

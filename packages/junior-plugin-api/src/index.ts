@@ -22,6 +22,7 @@ export {
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
+export * from "./prompt-tags";
 export * from "./dispatch";
 export * from "./events";
 export * from "./event-triggers";
