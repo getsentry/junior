@@ -11,11 +11,12 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import type { InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
+  useClosingReviewItemIds,
   useLinkedConversationTitles,
   useReviewItemData,
   useReviewItemStates,
@@ -120,20 +121,46 @@ function useBuildInboxData(input: {
       ),
     [],
   );
-  const read = useMemo(
-    () =>
-      linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
-        ? [...loaded, linked]
-        : loaded,
-    [linked, loaded],
+  // The items of rows that leave, held until their motion ends, by id.
+  const [leaving, setLeaving] = useState<
+    ReadonlyMap<string, ReviewItemPayload>
+  >(() => new Map());
+  const holdLeaving = useCallback(
+    (items: readonly ReviewItemPayload[], held: boolean) =>
+      setLeaving((current) => {
+        const next = new Map(current);
+        for (const item of items) {
+          if (held) next.set(item.id, item);
+          else next.delete(item.id);
+        }
+        return next;
+      }),
+    [],
   );
-  // Before the first read, no item has left it.
+  // The viewer's actions in flight already took their items out. A read
+  // that the server answered before an action lands has them still open.
+  const closing = useClosingReviewItemIds();
+  const read = useMemo(() => {
+    const open = loaded.filter((item) => !closing.has(item.id));
+    return linked?.status === "open" &&
+      !closing.has(linked.id) &&
+      !open.some((item) => item.id === linked.id)
+      ? [...open, linked]
+      : open;
+  }, [closing, linked, loaded]);
+  // Before the first read, no item has left it. The viewer's own actions
+  // did not close an item elsewhere.
   const missing = useMemo(
     () =>
       itemsQuery.data
-        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        ? openRow.filter(
+            (item) =>
+              !read.some((open) => open.id === item.id) &&
+              !closing.has(item.id) &&
+              !leaving.has(item.id),
+          )
         : [],
-    [itemsQuery.data, openRow, read],
+    [closing, itemsQuery.data, leaving, openRow, read],
   );
   // An item can leave the loaded pages and still be open, so each one's
   // own read says whether it closed. Until then, it stays.
@@ -154,8 +181,12 @@ function useBuildInboxData(input: {
       if (state !== "closed") return [state];
       return closedElsewhere.length > 0 ? [item] : [];
     });
-    return held.length > 0 ? [...read, ...held] : read;
-  }, [closedElsewhere, missing, read, states]);
+    const shown = new Set([...read, ...held].map((item) => item.id));
+    const left = [...leaving.values()].filter((item) => !shown.has(item.id));
+    return held.length > 0 || left.length > 0
+      ? [...read, ...held, ...left]
+      : read;
+  }, [closedElsewhere, leaving, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -189,49 +220,64 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
-  const live = list.filter((item) => !sweeper.isSwept(item.id));
+  // A notice about the subject of an ask shows on that ask's row instead,
+  // and sleeps and wakes with it.
+  const { folded: foldedNotices, shown } = foldNotices(
+    list.filter((item) => !sweeper.isSwept(item.id)),
+  );
+  // A Conversation sleeps when the row snoozed for it, in To do (its asks)
+  // or in Conversations (its items), still has the same newest item.
   const sleepingConversations = new Set(
-    inboxBundles(live)
+    [
+      ...inboxBundles(shown),
+      ...inboxBundles(shown.filter((item) => item.kind === "action")),
+    ]
       .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
       .map((bundle) => bundle.conversationId),
   );
   const asleep = (item: ReviewItemPayload) =>
     sleepingConversations.has(item.addedByConversationId) ||
     snoozes.sleeps(item.id, item.id);
-  const awake = live.filter((item) => !asleep(item));
+  const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
 
-  const bundles = inboxBundles(awake);
-  const bundleByConversation = new Map(
-    bundles.map((bundle) => [bundle.conversationId, bundle]),
-  );
-  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  // To do holds the asks that name the viewer. Asks for Everyone are up for
+  // grabs, and notices are FYI.
+  const asks = awake.filter((item) => item.kind === "action");
   const todoRows = inboxBundles(
-    awake.filter((item) => !itemUpForGrabs(item)),
+    asks.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
-  const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
-  const snoozedRows = inboxBundles(live.filter(asleep));
+  const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
+  const snoozedRows = inboxBundles(shown.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
-  // activity. A Conversation outside the loaded feed joins when it has
-  // open items.
-  const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map((conversation): ConversationRow => ({
-      bundle: bundleByConversation.get(conversation.id),
-      conversation,
-      conversationId: conversation.id,
-      time: activityAt(conversation),
-    })),
-    bundles
-      .filter((bundle) => !conversationById.has(bundle.conversationId))
-      .map((bundle): ConversationRow => ({
-        bundle,
-        conversationId: bundle.conversationId,
-        time: bundle.newest.createdAt,
+  // activity, with its items. A Conversation outside the loaded feed joins
+  // when it has open items.
+  const rowsByTime = (bundles: InboxBundle[]) => {
+    const bundleByConversation = new Map(
+      bundles.map((bundle) => [bundle.conversationId, bundle]),
+    );
+    return withRowsByTime(
+      pinnedFirst(conversations).map((conversation): ConversationRow => ({
+        bundle: bundleByConversation.get(conversation.id),
+        conversation,
+        conversationId: conversation.id,
+        time: activityAt(conversation),
       })),
-  );
+      bundles
+        .filter((bundle) => !conversationById.has(bundle.conversationId))
+        .map((bundle): ConversationRow => ({
+          bundle,
+          conversationId: bundle.conversationId,
+          time: bundle.newest.createdAt,
+        })),
+    );
+  };
+  const conversationRows = rowsByTime(inboxBundles(awake));
+  // The Inbox's own stream leaves notices to its FYI list.
+  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every running Conversation. Running rows come
   // first, a running pin with them, then the other pins in the viewer's
@@ -271,9 +317,15 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
+    /** The notices that fold into each ask's row, by the ask's id. */
+    foldedNotices,
+    fyiRows: fyiRows(awake),
+    /** Keep a row's items while it leaves, after a read drops them. */
+    holdLeaving,
     holdOpenRow,
     includedId: linkedId,
     includeItem,
+    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(running),
     /** Collapsed In flight: every pin, and running rows up to the limit. */

@@ -16,6 +16,9 @@ const WORK_LOG = "work log";
 const CONVERSATION = "conversation";
 const REASON = "why the change is needed";
 
+const TEST_TOOL_BODY =
+  "Add a `--strict-isolation` pytest flag that fails a test when it leaves rows in the database or patches a module global without undoing it. Leaked state makes later tests pass or fail based on run order, which shows up as flaky CI.\n\nCI turns the flag on for every pull request. Locally it stays off unless you pass it.";
+
 describeEval(
   "Pull Request Description Checks",
   pullRequestDescriptionCheckEvals,
@@ -84,6 +87,21 @@ describeEval(
       await run({
         body: "Rename `retryLimit` to `maxRetries` in the webhook config.",
         reject: [REASON],
+      });
+    });
+
+    it("when the change is a test tool and the body says what it checks, it accepts it", async ({
+      run,
+    }) => {
+      await run({ body: TEST_TOOL_BODY, reject: false });
+    });
+
+    it("when a test tool body also reports the author's own runs, it rejects the checks", async ({
+      run,
+    }) => {
+      await run({
+        body: `${TEST_TOOL_BODY}\n\nI ran the full suite with the flag on: 14 tests in \`tests/sentry/api\` fail and are fixed here, and \`pytest tests/ --strict-isolation\` now passes.`,
+        reject: [CHECKS],
       });
     });
 
