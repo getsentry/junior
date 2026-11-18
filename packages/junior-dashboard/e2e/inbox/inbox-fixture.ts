@@ -10,6 +10,7 @@ export const viewer = {
 
 const base = {
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
@@ -29,6 +30,7 @@ export const conversationId = "slack:CQA123:1770003600.000200";
 export const rollout = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
@@ -117,6 +119,7 @@ const dismissedNotice = {
 export const migration = {
   ...license,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T10:20:00.000Z",
@@ -129,6 +132,7 @@ export const migration = {
 export const prMerge = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T11:00:00.000Z",
@@ -147,6 +151,7 @@ export const prMerge = {
 export const prReview = {
   ...prMerge,
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   body: "GitHub asks you to review **Pin the release train**.",
   conversationIds: [],
   createdAt: "2026-08-07T09:00:00.000Z",
@@ -174,6 +179,7 @@ const pinPullRequest = {
 export const pinReview = {
   ...base,
   addedByConversationId: releaseConversationId,
+  rootConversationId: releaseConversationId,
   body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
   conversationIds: [releaseConversationId],
   createdAt: "2026-08-07T09:20:00.000Z",
@@ -197,6 +203,7 @@ export const pinConflict = {
 export const releaseNotes = {
   ...base,
   addedByConversationId: releaseConversationId,
+  rootConversationId: releaseConversationId,
   body: "Release notes for 0.288.0 are drafted in the release PR.",
   conversationIds: [releaseConversationId],
   createdAt: "2026-08-07T09:30:00.000Z",
@@ -209,6 +216,7 @@ export const releaseNotes = {
 export const digest = {
   ...base,
   addedByConversationId: "scheduler:daily-ops-digest",
+  rootConversationId: "scheduler:daily-ops-digest",
   assignedToEveryone: true,
   assignees: [],
   body: "The digest skipped two noisy alerts.",
@@ -223,6 +231,7 @@ export const digest = {
 export const grab = {
   ...base,
   addedByConversationId: "slack:CGRAB:1770003600.000300",
+  rootConversationId: "slack:CGRAB:1770003600.000300",
   assignedToEveryone: true,
   assignees: [],
   body: "The usual on-call is out on Friday.",
@@ -449,12 +458,11 @@ export async function openRow(head: Locator) {
     .click();
 }
 
-/** Expand the Inbox row whose head is `head` in place, with an ask pill. */
+/**
+ * Expand the Inbox row whose head is `head` in place: an item row with its
+ * head, a Conversation row with an ask pill.
+ */
 export async function expandRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
-  await row
-    .getByRole("button")
-    .and(row.locator('[aria-controls^="inbox-row-"]'))
-    .first()
-    .click();
+  await row.locator('[aria-controls^="inbox-row-"]').first().click();
 }
