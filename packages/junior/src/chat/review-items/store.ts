@@ -25,10 +25,7 @@ import {
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -39,7 +36,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
-import type { ReviewItemEvidence } from "./evidence";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -81,10 +78,9 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
-  evidence?: ReviewItemEvidence[];
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -101,9 +97,8 @@ export interface ReviewItemContent {
   assigneeUserIds: string[];
   body: string;
   conversationIds: string[];
-  evidence?: ReviewItemEvidence[] | undefined;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
@@ -186,7 +181,6 @@ async function hydrate(
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
-      ...(row.evidence?.length ? { evidence: row.evidence } : undefined),
       ...(row.request ? { request: row.request } : undefined),
       ...(row.provider && row.providerTenantId
         ? {
@@ -213,7 +207,6 @@ function contentColumns(content: ReviewItemContent) {
   return {
     assignedToEveryone: content.assignedToEveryone,
     body: content.body,
-    evidence: content.evidence?.length ? content.evidence : null,
     kind: content.kind,
     request: content.request ?? null,
     subjectId: content.subject?.id ?? null,

@@ -1,10 +1,12 @@
 import * as z from "zod";
+import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 /**
  * One source that an agent cites for a Review item: a link or a
  * Conversation, with a short label and an optional one-line note. A link
  * points outside Junior; a Conversation reference points to work in Junior.
- * The item stores the list, and the dashboard shows it beside the question.
+ * The question stores the list, and the dashboard shows it beside the
+ * answer choices.
  */
 export const reviewItemEvidenceSchema = z
   .object({
@@ -21,3 +23,13 @@ export const reviewItemEvidenceSchema = z
   );
 
 export type ReviewItemEvidence = z.output<typeof reviewItemEvidenceSchema>;
+
+/**
+ * The question of a Review item with the evidence for its answer. Evidence
+ * is part of the question, so it is stored in the `request` column.
+ */
+export const reviewItemRequestSchema = userInputRequestSchema.safeExtend({
+  evidence: z.array(reviewItemEvidenceSchema).optional(),
+});
+
+export type ReviewItemRequest = z.output<typeof reviewItemRequestSchema>;

@@ -183,7 +183,6 @@ function reviewItemPayload(
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
-    ...(item.evidence ? { evidence: item.evidence } : undefined),
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }

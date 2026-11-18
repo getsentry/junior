@@ -9,11 +9,8 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { ReviewItemEvidence } from "@/chat/review-items/evidence";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { ReviewItemRequest } from "@/chat/review-items/evidence";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorAutomations } from "./automations";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
@@ -38,10 +35,8 @@ export const juniorReviewItems = pgTable(
     visibility: text("visibility").$type<"public" | "private">().notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
-    request: jsonb("request").$type<UserInputRequest>(),
+    request: jsonb("request").$type<ReviewItemRequest>(),
     answer: jsonb("answer").$type<UserInputAnswer>(),
-    /** Sources that the agent cites for the item, in its order. */
-    evidence: jsonb("evidence").$type<ReviewItemEvidence[]>(),
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
       .default(false),

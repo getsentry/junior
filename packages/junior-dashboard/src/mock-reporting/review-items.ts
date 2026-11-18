@@ -36,14 +36,7 @@ const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
   ReviewItemPayload,
-  | "answer"
-  | "body"
-  | "evidence"
-  | "id"
-  | "request"
-  | "status"
-  | "subject"
-  | "title"
+  "answer" | "body" | "id" | "request" | "status" | "subject" | "title"
 > &
   Partial<
     Pick<
@@ -92,24 +85,24 @@ function seeds(nowMs: number): MockItemSeed[] {
       body: "The canary error rate is flat for 30 minutes.",
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(26),
-      // The cited evidence supports the suggested answer. The related items
-      // on the same release disagree with it.
-      evidence: [
-        {
-          label: "Canary error rate",
-          note: "Flat for 30 minutes.",
-          url: "https://sentry.example.com/organizations/acme/insights/backend/?release=payments-v42",
-        },
-        {
-          label: "Canary p95 latency",
-          note: "Did not move in us-east-1.",
-          url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
-        },
-      ],
       id: "qa-rollout",
       linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
         question: "Roll out payments-v42 to every region?",
+        // The cited evidence supports the suggested answer. The related
+        // items on the same release disagree with it.
+        evidence: [
+          {
+            label: "Canary error rate",
+            note: "Flat for 30 minutes.",
+            url: "https://sentry.example.com/organizations/acme/insights/backend/?release=payments-v42",
+          },
+          {
+            label: "Canary p95 latency",
+            note: "Did not move in us-east-1.",
+            url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
+          },
+        ],
         fields: [
           {
             id: "go",

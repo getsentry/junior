@@ -88,7 +88,7 @@ function Note(props: { text: string | undefined }) {
 export function ReviewItemEvidence(props: { item: ReviewItemPayload }) {
   const { item } = props;
   const inbox = useInboxUi();
-  const evidence = item.evidence ?? [];
+  const evidence = item.request?.evidence ?? [];
   const relatedConversationIds = item.related?.conversationIds ?? [];
   const titles = useLinkedConversationTitles(relatedConversationIds);
   const evidenceEntries: Entry[] = evidence.map((entry, index) => {

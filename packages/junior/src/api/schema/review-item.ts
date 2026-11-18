@@ -1,7 +1,6 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { reviewItemEvidenceSchema } from "@/chat/review-items/evidence";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import { reviewItemRequestSchema } from "@/chat/review-items/evidence";
 
 const answerSchema = z
   .object({
@@ -40,8 +39,6 @@ export const reviewItemSchema = z
     closedBy: personSchema.optional(),
     conversationIds: z.array(z.string().min(1)),
     createdAt: z.string().datetime(),
-    /** Sources that the agent cites for the item, in its order. */
-    evidence: z.array(reviewItemEvidenceSchema).optional(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
     /**
@@ -64,7 +61,7 @@ export const reviewItemSchema = z
       })
       .strict()
       .optional(),
-    request: userInputRequestSchema.optional(),
+    request: reviewItemRequestSchema.optional(),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
       .object({

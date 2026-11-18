@@ -25,7 +25,10 @@ import {
   type ResolvedAssignees,
   type FindMentionedUserId,
 } from "@/chat/review-items/assignees";
-import type { ReviewItemEvidence } from "@/chat/review-items/evidence";
+import type {
+  ReviewItemEvidence,
+  ReviewItemRequest,
+} from "@/chat/review-items/evidence";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
@@ -41,7 +44,10 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import {
+  userInputRequestSchema,
+  type UserInputRequest,
+} from "@/chat/tools/runtime/user-input-request";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
@@ -219,17 +225,7 @@ function itemResult(item: ReviewItem) {
     updated_at: item.updatedAt.toISOString(),
     ...(item.subject ? { subject: item.subject } : undefined),
     ...(item.automationId ? { automation_id: item.automationId } : undefined),
-    ...(item.request ? { request: item.request } : undefined),
-    ...(item.evidence
-      ? {
-          evidence: item.evidence.map(({ conversationId, ...entry }) => ({
-            ...entry,
-            ...(conversationId
-              ? { conversation_id: conversationId }
-              : undefined),
-          })),
-        }
-      : undefined),
+    ...(item.request ? { request: requestResult(item.request) } : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.closedAt
       ? {
@@ -286,6 +282,14 @@ export const addReviewItemToolDefinition = zodToolDefinition({
           "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
         ),
       request: userInputRequestSchema
+        .safeExtend({
+          evidence: evidenceSchema
+            .nullable()
+            .optional()
+            .describe(
+              "Sources for the facts in the question. With a suggested answer, cite what supports it and what argues against it, such as a Conversation or chart that disagrees. Each entry has a `url` or a `conversation_id`.",
+            ),
+        })
         .nullable()
         .optional()
         .describe(
@@ -297,12 +301,6 @@ export const addReviewItemToolDefinition = zodToolDefinition({
         .optional()
         .describe(
           "Other Conversations to link. The current Conversation is always linked.",
-        ),
-      evidence: evidenceSchema
-        .nullable()
-        .optional()
-        .describe(
-          "Sources for the facts in the item. With a suggested answer, cite what supports it and what argues against it, such as a Conversation or chart that disagrees. Each entry has a `url` or a `conversation_id`.",
         ),
     })
     .strict(),
@@ -333,6 +331,31 @@ function evidenceInput(
   });
 }
 
+/** Store the question with its normalized evidence, if it cites any. */
+function requestInput(
+  { evidence: _input, ...question }: UserInputRequest & { evidence?: unknown },
+  evidence: ReviewItemEvidence[],
+): ReviewItemRequest {
+  return { ...question, ...(evidence.length > 0 ? { evidence } : undefined) };
+}
+
+/** Show the stored question with the tool's snake_case evidence keys. */
+function requestResult({ evidence, ...question }: ReviewItemRequest) {
+  return {
+    ...question,
+    ...(evidence
+      ? {
+          evidence: evidence.map(({ conversationId, ...entry }) => ({
+            ...entry,
+            ...(conversationId
+              ? { conversation_id: conversationId }
+              : undefined),
+          })),
+        }
+      : undefined),
+  };
+}
+
 /** Create the tool that adds a Review item or updates the open one. */
 export function createAddReviewItemTool(
   context: ReviewItemToolContext,
@@ -342,7 +365,7 @@ export function createAddReviewItemTool(
     ...addReviewItemToolDefinition,
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
-      const evidence = evidenceInput(input.evidence);
+      const evidence = evidenceInput(input.request?.evidence);
       if (input.dedupe_key?.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
           `A \`dedupe_key\` that starts with \`${PLUGIN_REVIEW_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
@@ -442,8 +465,9 @@ export function createAddReviewItemTool(
         kind: input.kind,
         title: input.title,
         visibility,
-        ...(evidence.length > 0 ? { evidence } : undefined),
-        ...(input.request ? { request: input.request } : undefined),
+        ...(input.request
+          ? { request: requestInput(input.request, evidence) }
+          : undefined),
         ...(input.subject
           ? { subject: subjectInput(input.subject) }
           : undefined),
@@ -640,7 +664,6 @@ export function createUpdateReviewItemTool(
           nowMs: Date.now(),
           title: input.title ?? item.title,
           visibility,
-          ...(item.evidence ? { evidence: item.evidence } : undefined),
           ...(item.request ? { request: item.request } : undefined),
           ...(item.subject ? { subject: item.subject } : undefined),
         });

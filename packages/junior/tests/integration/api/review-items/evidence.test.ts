@@ -129,9 +129,8 @@ describe("review item evidence", () => {
       body: "The canary is clean.",
       conversation_ids: [ROLLBACK_ID],
       dedupe_key: "rollout:payments-v42",
-      evidence,
       kind: "action",
-      request: REQUEST,
+      request: { ...REQUEST, evidence },
       subject,
       title: "Approve the payments-v42 rollout",
     };
@@ -141,26 +140,39 @@ describe("review item evidence", () => {
     await expect(
       add(ROLLOUT_ID, {
         ...ask,
-        evidence: [
-          { label: "Both", url: evidence[0]!.url, conversation_id: LATENCY_ID },
-        ],
+        request: {
+          ...REQUEST,
+          evidence: [
+            {
+              label: "Both",
+              url: evidence[0]!.url,
+              conversation_id: LATENCY_ID,
+            },
+          ],
+        },
       }),
     ).rejects.toThrow("needs a `url` or a `conversation_id`");
     await expect(
       add(ROLLOUT_ID, {
         ...ask,
-        evidence: [{ label: "DM", conversation_id: PRIVATE_ID }],
+        request: {
+          ...REQUEST,
+          evidence: [{ label: "DM", conversation_id: PRIVATE_ID }],
+        },
       }),
     ).rejects.toThrow(`Conversation ${PRIVATE_ID} is not found.`);
     await expect(
       add(ROLLOUT_ID, {
         ...ask,
-        evidence: [{ label: "Script", url: "javascript:alert(1)" }],
+        request: {
+          ...REQUEST,
+          evidence: [{ label: "Script", url: "javascript:alert(1)" }],
+        },
       }),
     ).rejects.toThrow("Use an http(s) URL.");
 
     const added = await add(ROLLOUT_ID, ask);
-    expect(added.item.evidence).toEqual(evidence);
+    expect(added.item.request.evidence).toEqual(evidence);
     // Other work on the same release, and in the linked Conversation.
     const rose = await add(LATENCY_ID, {
       assignees: ["ana@example.com"],
@@ -203,7 +215,7 @@ describe("review item evidence", () => {
     const rollout = list.items.find(
       (item: { id: string }) => item.id === added.item.id,
     );
-    expect(rollout.evidence).toEqual([
+    expect(rollout.request.evidence).toEqual([
       evidence[0],
       {
         conversationId: LATENCY_ID,
@@ -231,6 +243,6 @@ describe("review item evidence", () => {
       }),
       {},
     );
-    expect(changed.item.evidence).toEqual(evidence);
+    expect(changed.item.request.evidence).toEqual(evidence);
   });
 });
