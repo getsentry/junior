@@ -1387,7 +1387,7 @@ export function registerLogRecordSink(
   };
 }
 
-export function createLogContextFromRequest(
+function createLogContextFromRequest(
   request: Request,
   context: Partial<LogContext> = {},
 ): LogContext {
@@ -1404,7 +1404,7 @@ export function createLogContextFromRequest(
 }
 
 /** Attach filterable non-user context tags to Sentry. */
-export function setSentryTagsFromContext(context: LogContext): void {
+function setSentryTagsFromContext(context: LogContext): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
     if (!SENTRY_TAG_ATTRIBUTE_KEYS.has(key)) {
@@ -1717,20 +1717,6 @@ export function setSpanStatus(status: "ok" | "error"): void {
   span.setStatus(
     status === "ok" ? { code: 1 } : { code: 2, message: "internal_error" },
   );
-}
-
-/** Capture an exception within an isolated Sentry scope. */
-export function captureExceptionInScope(
-  error: unknown,
-  context: LogContext = {},
-): void {
-  const normalizedError =
-    error instanceof Error ? error : new Error(String(error));
-
-  withScope((scope) => {
-    setSentryScopeContext(scope, context);
-    captureSentryException(normalizedError);
-  });
 }
 
 /** Return the trace ID from the active Sentry span, if any. */

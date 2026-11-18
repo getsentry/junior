@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import pLimit from "p-limit";
 import {
   SANDBOX_DATA_ROOT,
   SANDBOX_SKILLS_ROOT,
@@ -10,6 +11,7 @@ import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import type { SetSpanAttributes } from "@/chat/logging";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 interface SkillSyncFile {
   path: string;
@@ -32,6 +34,7 @@ async function listFilesRecursive(root: string): Promise<string[]> {
 
   while (queue.length > 0) {
     const dir = queue.shift() as string;
+    // oxlint-disable-next-line no-await-in-loop -- Walk directories in sorted order, so the file list is stable.
     const entries = await fs.readdir(dir, { withFileTypes: true });
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -52,51 +55,57 @@ async function buildSkillSyncFiles(
   availableSkills: SkillMetadata[],
   referenceFiles?: string[],
 ): Promise<SkillSyncFile[]> {
-  const filesToWrite: SkillSyncFile[] = [];
-  const index = {
-    skills: [] as Array<{
-      name: string;
-      description: string;
-      root: string;
-    }>,
-  };
-
-  for (const skill of availableSkills) {
-    const skillFiles = await listFilesRecursive(skill.skillPath);
-    for (const absoluteFile of skillFiles) {
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const listed = await Promise.all(
+    availableSkills.map((skill) =>
+      limit(async () => ({
+        files: await listFilesRecursive(skill.skillPath),
+        skill,
+      })),
+    ),
+  );
+  const skillSources = listed.flatMap(({ files, skill }) =>
+    files.flatMap((absoluteFile) => {
       const relative = toPosixRelative(skill.skillPath, absoluteFile);
-      if (!relative || relative.startsWith("..")) {
-        continue;
-      }
-      filesToWrite.push({
-        path: `${sandboxSkillDir(skill.name)}/${relative}`,
-        content: await fs.readFile(absoluteFile),
-      });
-    }
-
-    index.skills.push({
+      return !relative || relative.startsWith("..")
+        ? []
+        : [
+            {
+              absoluteFile,
+              path: `${sandboxSkillDir(skill.name)}/${relative}`,
+            },
+          ];
+    }),
+  );
+  const referenceSources = (referenceFiles ?? []).map((absoluteFile) => ({
+    absoluteFile,
+    path: `${SANDBOX_DATA_ROOT}/${path.basename(absoluteFile)}`,
+  }));
+  const read = (source: { absoluteFile: string; path: string }) =>
+    limit(async (): Promise<SkillSyncFile> => ({
+      path: source.path,
+      content: await fs.readFile(source.absoluteFile),
+    }));
+  const [skillFiles, referenceContents] = await Promise.all([
+    Promise.all(skillSources.map(read)),
+    Promise.all(referenceSources.map(read)),
+  ]);
+  const index = {
+    skills: availableSkills.map((skill) => ({
       name: skill.name,
       description: skill.description,
       root: sandboxSkillDir(skill.name),
-    });
-  }
+    })),
+  };
 
-  filesToWrite.push({
-    path: `${SANDBOX_SKILLS_ROOT}/index.json`,
-    content: Buffer.from(JSON.stringify(index), "utf8"),
-  });
-
-  if (referenceFiles && referenceFiles.length > 0) {
-    for (const absoluteFile of referenceFiles) {
-      const fileName = path.basename(absoluteFile);
-      filesToWrite.push({
-        path: `${SANDBOX_DATA_ROOT}/${fileName}`,
-        content: await fs.readFile(absoluteFile),
-      });
-    }
-  }
-
-  return filesToWrite;
+  return [
+    ...skillFiles,
+    {
+      path: `${SANDBOX_SKILLS_ROOT}/index.json`,
+      content: Buffer.from(JSON.stringify(index), "utf8"),
+    },
+    ...referenceContents,
+  ];
 }
 
 /** Resolve a virtual sandbox skill path back to the host filesystem when no sandbox exists yet. */

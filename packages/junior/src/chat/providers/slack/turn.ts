@@ -837,6 +837,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             const outcomes = options.execution?.dispatch?.outcomes;
             if (outcomes) {
               for (const outcome of outcomes) {
+                // oxlint-disable-next-line no-await-in-loop -- Post to one destination at a time, so a failed post stops the rest.
                 const messageIds = await sendSlackReply({
                   cards,
                   channelId: outcome.destination.channelId,

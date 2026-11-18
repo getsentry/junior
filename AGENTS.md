@@ -29,8 +29,8 @@ Read the reference files at the end when your work touches their area.
 - This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
   a code comment next to the code that it governs.
 - Change this file or a `README.md` only when intent, an invariant, or a
-  boundary changes. Delete completed plans. Plans in `openspec/changes/`
-  cannot override policy.
+  boundary changes. Do not commit implementation plans. Track planned work
+  in GitHub issues.
 
 ## Enforcement
 

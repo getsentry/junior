@@ -1,3 +1,4 @@
+import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
@@ -10,6 +11,7 @@ import {
   isVisionImageMediaType,
 } from "@/chat/attachments/media";
 import {
+  attachmentFactLines,
   buildStoredAttachmentPromptText,
   MAX_MODEL_ATTACHMENT_BYTES,
   MAX_MODEL_ATTACHMENTS,
@@ -156,21 +158,18 @@ function buildImageAttachmentPromptText(args: {
   mediaType: string;
   summary: string;
 }): string {
-  return [
-    "<image-attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
+  return renderTag("image-attachment", {}, [
+    ...attachmentFactLines(args),
     ...(args.attachmentId
       ? [
           `attachment_id: ${args.attachmentId}`,
           "Use loadAttachment with this id when the task needs the original file.",
         ]
       : []),
-    "<summary>",
-    args.summary,
-    "</summary>",
-    "</image-attachment>",
-  ].join("\n");
+    // A vision model wrote the summary from the image, which can hold text
+    // that imitates our tags.
+    renderTag("summary", {}, [escapeTagText(args.summary)]),
+  ]);
 }
 
 function buildImageAttachmentFailurePromptText(args: {
@@ -179,21 +178,16 @@ function buildImageAttachmentFailurePromptText(args: {
   mediaType: string;
   message: string;
 }): string {
-  return [
-    "<image-attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
+  return renderTag("image-attachment", {}, [
+    ...attachmentFactLines(args),
     ...(args.attachmentId
       ? [
           `attachment_id: ${args.attachmentId}`,
           "Use loadAttachment with this id to access the original file.",
         ]
       : []),
-    "<analysis-error>",
-    args.message,
-    "</analysis-error>",
-    "</image-attachment>",
-  ].join("\n");
+    renderTag("analysis-error", {}, [escapeTagText(args.message)]),
+  ]);
 }
 
 function buildAttachmentResolutionFailurePromptText(args: {
@@ -201,16 +195,15 @@ function buildAttachmentResolutionFailurePromptText(args: {
   mediaType: string;
   problem: string;
 }): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
-    "<resolution-error>",
-    `The user attached this file, but ${args.problem}. Tell the user the ` +
-      "attachment could not be read; do not say no attachment was sent.",
-    "</resolution-error>",
-    "</attachment>",
-  ].join("\n");
+  return renderTag("attachment", {}, [
+    ...attachmentFactLines(args),
+    renderTag("resolution-error", {}, [
+      escapeTagText(
+        `The user attached this file, but ${args.problem}. Tell the user the ` +
+          "attachment could not be read; do not say no attachment was sent.",
+      ),
+    ]),
+  ]);
 }
 
 /** Point the model at a stored file, or say that the file could not be stored. */

@@ -1,3 +1,4 @@
+import { renderEmptyTag } from "@sentry/junior-plugin-api";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   estimateTextTokens,
@@ -205,7 +206,9 @@ function truncateEvidenceText(text: string, maxTokens: number): string {
   }
   const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
-  const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
+  const marker = renderEmptyTag("truncated", {
+    omitted_approx_tokens: omittedTokens,
+  });
   if (maxChars <= marker.length) {
     return marker;
   }

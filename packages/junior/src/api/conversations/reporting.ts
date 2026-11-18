@@ -31,20 +31,6 @@ export type ReportingConversationRow = {
   usage: (typeof juniorConversations.$inferSelect)["usage"];
 };
 
-/** Parse report timestamps without throwing on malformed legacy values. */
-export function reportTime(value: string): number | undefined {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : undefined;
-}
-
-/** Convert a report timestamp into the UTC day used by activity projections. */
-export function reportDate(value: string): string | undefined {
-  const time = reportTime(value);
-  return time === undefined
-    ? undefined
-    : new Date(time).toISOString().slice(0, 10);
-}
-
 /** Return the dashboard label for a conversation surface. */
 export function surfaceLabel(surface: ConversationSurface): string {
   if (surface === "scheduler") return "Scheduler";
@@ -139,30 +125,4 @@ export function summaryFromRow(
       : undefined),
     usage: options.metrics?.usage ?? row.usage ?? undefined,
   });
-}
-
-/** Collapse persisted conversation usage into the dashboard token total. */
-export function usageTokens(
-  row: Pick<ReportingConversationRow, "usage">,
-): number | undefined {
-  const usage = row.usage;
-  if (!usage) return undefined;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  const values = [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].filter((value): value is number => value !== undefined);
-  return values.length
-    ? values.reduce((sum, value) => sum + value, 0)
-    : undefined;
-}
-
-/** Collapse a conversation summary status into aggregate counters. */
-export function conversationSignals(summary: ConversationSummaryReport) {
-  return {
-    active: summary.status === "active",
-    failed: summary.status === "failed",
-  };
 }
