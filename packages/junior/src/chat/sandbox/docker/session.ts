@@ -224,6 +224,8 @@ export function adaptSession(
   return {
     sandboxId: container.name,
     sessionId: id,
+    // A restarted container keeps its id, so a new id is a new container.
+    keepsFilesAcrossSessions: false,
     fs: wrapped,
     extendTimeout: (duration) => run(() => extendDeadline(id, duration)),
     mkDir: (dirPath) =>

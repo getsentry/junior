@@ -343,6 +343,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
 
 interface MockSandbox {
   name: string;
+  persistent: boolean;
   session: {
     sessionId: string;
     fs: MockSandbox["fs"];
@@ -375,6 +376,7 @@ interface MockSandbox {
 function makeSandbox(
   name: string,
   options: {
+    persistent?: boolean;
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
@@ -415,6 +417,7 @@ function makeSandbox(
 
   return {
     name,
+    persistent: options.persistent ?? false,
     session,
     currentSession: vi.fn(() => session),
     fs,
@@ -2393,6 +2396,10 @@ describe("createTestSandbox", () => {
     expect(secondResult).toMatchObject({
       details: { auth_required: { provider: "github" } },
     });
+    // The switch result already says that files do not carry over.
+    expect(
+      (secondResult as StructuredSandboxResult).details,
+    ).not.toHaveProperty("sandbox_notice");
     const ranOn = (target: MockSandbox) =>
       target.runCommand.mock.calls.some(([input]) =>
         String(input.args?.[1]).includes("echo second"),
@@ -3183,6 +3190,94 @@ describe("createTestSandbox", () => {
       resume: true,
       fetch: expect.any(Function),
     });
+  });
+
+  it.each([
+    {
+      persistent: false,
+      notice: expect.stringContaining("check the checkout"),
+    },
+    { persistent: true, notice: undefined },
+  ])(
+    "fails a command killed by its session stop and flags a new sandbox without the old files (persistent: $persistent)",
+    async ({ persistent, notice }) => {
+      const stoppedSandboxError = createApiError(
+        410,
+        "Gone",
+        "sandbox_stopped",
+        "Sandbox has stopped execution and is no longer available",
+      );
+      const firstSandbox = makeSandbox("sbx_session_stop", { persistent });
+      let sessionStopped = false;
+      firstSandbox.mkDir.mockImplementation(async () => {
+        if (sessionStopped) throw stoppedSandboxError;
+      });
+      firstSandbox.runCommand
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        })
+        .mockImplementationOnce(async () => {
+          // The provider kills the command and reports a normal exit.
+          sessionStopped = true;
+          return {
+            exitCode: 143,
+            stdout: async () => "",
+            stderr: async () => "",
+          };
+        });
+      const nextSandbox = makeSandbox("sbx_session_stop", { persistent });
+      nextSandbox.session.sessionId = "sbx_session_stop_next_session";
+      sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
+      sandboxGetMock.mockResolvedValueOnce(nextSandbox);
+
+      const executor = createTestSandbox();
+      executor.configureSkills([]);
+      const bash = (command: string) =>
+        executor.execute<StructuredSandboxResult>({
+          toolName: "bash",
+          input: { command },
+        });
+
+      await bash("git commit -m local");
+      await expect(bash("git fetch origin")).rejects.toMatchObject({
+        message: expect.stringContaining(
+          "The temporary sandbox became unavailable during bash",
+        ),
+        cause: stoppedSandboxError,
+      });
+
+      const replaced = await bash("git rev-parse HEAD");
+      const again = await bash("git status");
+
+      expect(nextSandbox.runCommand).toHaveBeenCalledTimes(2);
+      expect(replaced.result.details["sandbox_notice"]).toEqual(notice);
+      expect(again.result.details).not.toHaveProperty("sandbox_notice");
+    },
+  );
+
+  it("keeps a signal exit as the command result while its session is live", async () => {
+    const sandbox = makeSandbox("sbx_signal_exit");
+    sandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 143,
+      stdout: async () => "",
+      stderr: async () => "Terminated\n",
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const response = await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "kill $$" },
+    });
+
+    expect(response.result.details).toMatchObject({
+      exit_code: 143,
+      stderr: "Terminated\n",
+    });
+    expect(sandbox.mkDir).toHaveBeenCalledWith(SANDBOX_WORKSPACE_ROOT);
   });
 
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {
