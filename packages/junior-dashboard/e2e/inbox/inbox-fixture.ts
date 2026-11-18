@@ -380,8 +380,8 @@ export async function mockViewerCodeChanges(
 }
 
 /**
- * The head of the Inbox row titled `title`. A click or Enter expands the
- * row in place; only Open leaves the list.
+ * The head of the Inbox row titled `title`. A click or Enter opens the
+ * row's Conversation. On a row for one item, it expands the row in place.
  */
 export function rowHead(scope: Page | Locator, title: string) {
   return scope
@@ -393,13 +393,23 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action. A click on the head only expands the row.
+ * row's Open action.
  */
 export async function openRow(head: Locator) {
   await head.hover();
   await head
     .locator("xpath=ancestor::*[@data-inbox-row][1]")
     .getByRole("link", { name: "Open conversation" })
+    .first()
+    .click();
+}
+
+/** Expand the Inbox row whose head is `head` in place, with an ask pill. */
+export async function expandRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  await row
+    .getByRole("button")
+    .and(row.locator('[aria-controls^="inbox-row-"]'))
     .first()
     .click();
 }

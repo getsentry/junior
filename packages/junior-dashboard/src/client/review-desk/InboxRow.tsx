@@ -6,8 +6,14 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Link, useHref, useNavigate } from "react-router";
 import type {
   OwnedObjectAnnotation,
   ReviewItemPayload,
@@ -50,8 +56,6 @@ import {
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { useHoverExpandAllowed } from "./hoverExpand";
-import { useInboxRowFocused } from "./inboxFocus";
 import { useAnimatedHeight } from "./rowMotion";
 import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
@@ -260,44 +264,33 @@ type InboxRowProps = {
 
 /**
  * One Inbox row: a Conversation, with what it asks of the viewer. A click
- * or Enter on the row expands it in place, where each ask has its answer
- * controls, then Open, Done, pin, and snooze. Only Open, or a Ctrl/⌘-click
- * for a new tab, leaves the list. A row of a loaded Conversation also has
+ * or Enter on the row opens the Conversation. Its ask pills expand it in
+ * place, where each ask has its answer controls, then Open, Done, pin, and
+ * snooze. A row for one item names the item, not the Conversation, so a
+ * click on it expands it instead. A row of a loaded Conversation also has
  * the Conversation's context menu, Open, pin and archive on hover, and its
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
-  const motion = useRowMotion(props);
+  // The rows below move with the row as it opens and closes.
+  const cardRef = useRef<HTMLLIElement>(null);
+  useAnimatedHeight(cardRef, String(props.expanded));
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
+      cardRef={cardRef}
       conversation={props.conversation}
-      motion={motion}
     />
   ) : (
     <li
       className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
-      data-grown={motion.grown || undefined}
       data-inbox-row={props.rowKey}
-      ref={motion.ref}
+      ref={cardRef}
     >
-      <InboxRowBody {...props} preview={motion.grown} />
+      <InboxRowBody {...props} />
     </li>
   );
-}
-
-/**
- * How a row moves with the pointer. In focus, a row that may expand on
- * hover shows its comfortable layout, whole summary and every preview in
- * place, and the rows below move down with it.
- */
-function useRowMotion(props: InboxRowProps) {
-  const focused = useInboxRowFocused(props.rowKey);
-  const grown = useHoverExpandAllowed() && focused && !props.expanded;
-  const ref = useRef<HTMLLIElement>(null);
-  useAnimatedHeight(ref, `${props.expanded}:${grown}`);
-  return { grown, ref };
 }
 
 /** The id of what a row's head opens. */
@@ -307,8 +300,8 @@ function rowRegionId(rowKey: string): string {
 
 function ConversationInboxRow(
   props: InboxRowProps & {
+    cardRef: RefObject<HTMLLIElement | null>;
     conversation: Conversation;
-    motion: ReturnType<typeof useRowMotion>;
   },
 ) {
   const { conversation, drag } = props;
@@ -374,9 +367,8 @@ function ConversationInboxRow(
         drag?.dragging && "opacity-40",
       )}
       data-expanded={props.expanded || undefined}
-      data-grown={props.motion.grown || undefined}
       data-inbox-row={props.rowKey}
-      ref={props.motion.ref}
+      ref={props.cardRef}
     >
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
@@ -390,7 +382,6 @@ function ConversationInboxRow(
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
-            preview={props.motion.grown}
             threadsShown={hasThreads}
             linkProps={{
               "aria-keyshortcuts": drag
@@ -491,15 +482,26 @@ function InboxRowBody(
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
-    /** In focus on hover: comfortable, unclamped, every preview. */
-    preview?: boolean;
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
   },
 ) {
-  const { bundle, conversation, preview } = props;
+  const { bundle, conversation } = props;
+  const navigate = useNavigate();
+  // A row that names its Conversation opens it. A row for one item names
+  // the item, and expands to show its answer controls.
+  const opens = !props.itemTitle;
+  const path = rowConversationPath(props);
+  const href = useHref(path);
+  // As a click on the head link does: a Ctrl/⌘ or Shift click, or a middle
+  // click, opens a new tab.
+  const openConversation = (event: MouseEvent) => {
+    if (event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey)
+      window.open(href, "_blank", "noopener");
+    else void navigate(path);
+  };
   const [density] = useConversationDensity();
-  const comfortable = Boolean(preview) || density === "comfortable";
+  const comfortable = density === "comfortable";
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
   const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
@@ -534,8 +536,7 @@ function InboxRowBody(
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
-  const open = props.expanded || Boolean(preview);
-  const limit = open ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
+  const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
   const files = media.filter((file) => !isImageMedia(file));
   // Message links fill what the linked work leaves of its lines.
@@ -563,18 +564,11 @@ function InboxRowBody(
   const hasChips = pills.length > 0 || (!cards && work.length > 0);
   const cast =
     comfortable && conversation ? (
-      // A compact row that grows under the pointer keeps the name it reads
-      // under. The Threads list below counts the Threads, so the cast
-      // doesn't.
-      <span
-        aria-hidden={density === "compact" || undefined}
-        className="contents"
-      >
-        <ConversationCast
-          agents={!props.threadsShown}
-          conversation={conversation}
-        />
-      </span>
+      // The Threads list below counts the Threads, so the cast doesn't.
+      <ConversationCast
+        agents={!props.threadsShown}
+        conversation={conversation}
+      />
     ) : null;
   return (
     <>
@@ -593,17 +587,20 @@ function InboxRowBody(
           />
         ) : null}
         {/* The head link is the row's keyboard target. A click anywhere else
-            on the head expands the row too, except on the links and buttons
-            in it, such as pills and summary chips. */}
+            on the head does what the link does, except on the links and
+            buttons in it, such as pills and summary chips, or at the end of
+            a text selection. */}
         <div
           className={cn(inboxHeadGridClass(), "cursor-pointer", "pb-3")}
+          onAuxClick={(event) => {
+            if (event.button !== 1 || !opens || onControl(event)) return;
+            openConversation(event.nativeEvent);
+          }}
           onClick={(event) => {
-            if (
-              event.target instanceof Element &&
-              event.target.closest("a, button")
-            )
-              return;
-            props.onToggle();
+            if (event.button !== 0 || onControl(event)) return;
+            if (!opens) return props.onToggle();
+            if (window.getSelection()?.isCollapsed === false) return;
+            openConversation(event.nativeEvent);
           }}
         >
           <span
@@ -637,19 +634,22 @@ function InboxRowBody(
               ) : null}
               <Link
                 {...props.linkProps}
-                aria-controls={controls}
+                aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
-                aria-expanded={props.expanded}
+                aria-expanded={opens ? undefined : props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
                   // A long press opens the row menu or drags a pin, not the iOS
                   // link callout.
                   "[-webkit-touch-callout:none]",
                 )}
-                // A plain click or Enter expands the row in place. A modified
-                // click keeps the link, so Ctrl/⌘-click opens a new tab.
+                data-inbox-head=""
+                // On a row for one item, a plain click or Enter expands it in
+                // place. A modified click keeps the link, so Ctrl/⌘-click
+                // opens a new tab.
                 onClick={(event) => {
                   if (
+                    opens ||
                     event.button !== 0 ||
                     event.metaKey ||
                     event.ctrlKey ||
@@ -660,7 +660,7 @@ function InboxRowBody(
                   event.preventDefault();
                   props.onToggle();
                 }}
-                to={rowConversationPath(props)}
+                to={path}
               >
                 <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
                   {/* An item row's title names its kind; the icon marks it
@@ -731,7 +731,7 @@ function InboxRowBody(
               <RowSummary
                 comfortable={comfortable}
                 conversationId={props.conversationId}
-                expanded={props.expanded || Boolean(preview)}
+                expanded={props.expanded}
                 objects={objects}
                 summary={summary}
               />
@@ -820,6 +820,19 @@ function InboxRowBody(
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Whether a click on the row head belongs to something else: a control in
+ * the head, or a popover that React bubbles through the head from a portal.
+ */
+function onControl(event: { currentTarget: Element; target: EventTarget }) {
+  const { target } = event;
+  return (
+    !(target instanceof Element) ||
+    !event.currentTarget.contains(target) ||
+    Boolean(target.closest("a, button"))
   );
 }
 
