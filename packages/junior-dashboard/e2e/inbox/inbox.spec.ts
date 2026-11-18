@@ -90,7 +90,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Pull requests\s*2$/,
       /^Decisions\s*4$/,
       new RegExp(checkout),
-      "Show all",
     ]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 

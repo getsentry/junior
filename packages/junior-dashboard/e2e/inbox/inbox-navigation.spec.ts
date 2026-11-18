@@ -175,8 +175,6 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
-    await page.getByRole("link", { name: "Show all" }).click();
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
   });
 
   test("the list loads older Conversations as it scrolls", async ({
@@ -345,7 +343,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=conversations$/);
   });
 
-  test("In flight shows every pin past five running Conversations", async ({
+  test("In flight shows every pin past five running Conversations, and Show all lists the rest", async ({
     dashboard,
     page,
   }) => {
@@ -403,7 +401,48 @@ test.describe("new UI", { tag: "@new" }, () => {
       inFlight.getByRole("link", { name: /Idle pin/ }),
     ).toBeVisible();
     await expect(inFlight.getByRole("listitem")).toHaveCount(5);
-    await expect(page.getByRole("link", { name: "Show all" })).toBeVisible();
+
+    // Show all lists every in-flight row in place, in the same order.
+    const showAll = page.getByRole("button", { name: "Show all" });
+    await expect(showAll).toHaveAttribute("aria-expanded", "false");
+    await showAll.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(inFlight.getByRole("listitem")).toHaveText([
+      ...Array.from(
+        { length: 6 },
+        (_, index) => new RegExp(`Running conversation ${index + 1}`),
+      ),
+      /Running pin/,
+      /Idle pin/,
+    ]);
+    const showFewer = page.getByRole("button", { name: "Show fewer" });
+    await expect(showFewer).toHaveAttribute("aria-expanded", "true");
+    await screenshot(page, "inbox-in-flight-expanded", { lightTheme: true });
+
+    // A pin still drags while the list is expanded.
+    const save = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        request.url().includes("/api/conversations/pin-order"),
+    );
+    await inFlight.getByRole("link", { name: /Idle pin/ }).focus();
+    await page.keyboard.press("Alt+ArrowUp");
+    expect((await save).postDataJSON()).toEqual({
+      conversationIds: [7, 6].map(
+        (index) => `slack:CFLIGHT:${1770000000 + index}.000100`,
+      ),
+    });
+
+    // The list stays expanded when a row opens its Conversation.
+    await inFlight
+      .getByRole("link", { name: /Running conversation 6/ })
+      .click();
+    await expect(page).toHaveURL(/\/conversations\/slack%3ACFLIGHT/);
+    await expect(inFlight.getByRole("listitem")).toHaveCount(8);
+
+    await showFewer.click();
+    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
+    await expect(showAll).toHaveAttribute("aria-expanded", "false");
   });
 
   test("a failed page still lets another list show its loaded rows", async ({
@@ -724,6 +763,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       /Alpha pin/,
       /Bravo pin/,
     ]);
+    // Every row shows, so there is nothing to expand.
+    await expect(page.getByRole("button", { name: "Show all" })).toHaveCount(0);
     const save = page.waitForRequest(
       (request) =>
         request.method() === "PUT" &&
