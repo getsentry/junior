@@ -206,6 +206,7 @@ export async function changePlan(
       )
       .map((update) => update.id);
     const changedIds: number[] = [];
+    /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
     for (const update of change.update) {
       const status = endsInProgress.includes(update.id)
         ? "pending"
@@ -229,6 +230,7 @@ export async function changePlan(
         );
       changedIds.push(update.id);
     }
+    /* oxlint-enable no-await-in-loop */
     if (endsInProgress.length > 0) {
       await db
         .update(juniorPlanItems)
@@ -241,6 +243,7 @@ export async function changePlan(
         );
     }
     // Insert one at a time, so ids follow the order of `add`.
+    /* oxlint-disable no-await-in-loop -- Insert one at a time so ids follow the order of add. */
     for (const item of change.add) {
       const [inserted] = await db
         .insert(juniorPlanItems)
@@ -258,6 +261,7 @@ export async function changePlan(
         .returning({ id: juniorPlanItems.id });
       changedIds.push(inserted!.id);
     }
+    /* oxlint-enable no-await-in-loop */
     // Open detail views of the Conversation reload the plan on this bump.
     await touchConversationDetail(db, [conversationId]);
     const items = await listPlanItems(executor, conversationId);

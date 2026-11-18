@@ -18,7 +18,7 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { escapeClosingTags, renderTag } from "@/chat/input-tags";
+import { renderParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   AgentRunError,
@@ -252,9 +252,9 @@ export function agentInvocationInputText(
     invocation.fork ? FORK_INSTRUCTIONS : undefined,
     agentTypeInstructions(invocation.agentType),
   ].filter((text) => text !== undefined);
-  return renderTag("parent-agent-task", {}, [
-    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
-    escapeClosingTags(invocation.input),
+  return renderParentAgentTask([
+    ...instructions.flatMap((text) => [text, ""]),
+    invocation.input,
   ]);
 }
 
@@ -332,6 +332,7 @@ function createAgentMessageSteeringDrain(
           if (!metadata.success) {
             continue;
           }
+          // oxlint-disable-next-line no-await-in-loop -- Stop at the first message that cannot join, so steering keeps message order.
           const candidate = await getAgentInvocation(
             metadata.data.agentInvocationId,
           );
@@ -387,10 +388,12 @@ function createAgentMessageSteeringDrain(
           accepted.push(...messages);
         }
         for (const candidate of joining) {
+          // oxlint-disable-next-line no-await-in-loop -- Mark and record joined invocations in message order.
           const terminal = await markAgentInvocationSteered(
             candidate.invocationId,
           );
           if (terminal && isTerminalAgentInvocation(terminal)) {
+            // oxlint-disable-next-line no-await-in-loop -- Mark and record joined invocations in message order.
             await recordSubagentEnded(terminal);
           }
         }
@@ -501,6 +504,7 @@ export async function endActiveAgentInvocations(
     exceptInvocationId?: string;
   },
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Report failed invocations to the parent in start order. */
   for (const active of await listAgentInvocationsForConversation(
     conversationId,
     ACTIVE_AGENT_INVOCATION_STATUSES,
@@ -522,6 +526,7 @@ export async function endActiveAgentInvocations(
       await options.enqueueResult?.(terminal);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -534,6 +539,7 @@ export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
   inboundMessageIds: readonly string[],
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Fail invocations in start order, so their terminal events stay in order. */
   for (const invocation of await listAgentInvocationsForConversation(
     conversationId,
     NON_TERMINAL_AGENT_INVOCATION_STATUSES,
@@ -558,6 +564,7 @@ export async function endAgentInvocationsOfStoppedWork(
       await persistTerminalLifecycle(terminal);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Classify authorization failures that terminally block background work. */

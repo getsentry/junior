@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
+import { mentionsTag, renderTag } from "@sentry/junior-plugin-api";
 import {
   briefOutcomeStatusSchema,
   conversationBriefSchema,
@@ -130,11 +131,30 @@ function uniqueStrings(values: string[], limit: number): string[] {
   return [...unique];
 }
 
-const RUNTIME_MARKER_PATTERN =
-  /\[\[NO_REPLY\]\]|<\/?(?:active-asks|analysis-error|available-skills|brief-input|compaction|current-instruction|image-attachment|omitted-image-attachments|pi-history|plugin-contribution|resolved-or-replaced-asks|runtime-turn-context|thread-compactions|thread-context|turn-context)\b/i;
+// Runtime tags that must not leak into a Brief. Older history holds some
+// that the runtime no longer writes.
+const RUNTIME_MARKER_TAGS = [
+  "active-asks",
+  "analysis-error",
+  "available-skills",
+  "brief-input",
+  "compaction",
+  "current-instruction",
+  "image-attachment",
+  "omitted-image-attachments",
+  "pi-history",
+  "plugin-contribution",
+  "resolved-or-replaced-asks",
+  "runtime-turn-context",
+  "thread-compactions",
+  "thread-context",
+  "turn-context",
+];
 
 function hasRuntimeMarker(value: string): boolean {
-  return RUNTIME_MARKER_PATTERN.test(value);
+  return (
+    value.includes("[[NO_REPLY]]") || mentionsTag(value, RUNTIME_MARKER_TAGS)
+  );
 }
 
 // The prompt asks for this key, not the configured name, so the prompt stays
@@ -349,9 +369,7 @@ function promptInput(args: {
   }
 
   return [
-    "<brief-input>",
-    text,
-    "</brief-input>",
+    renderTag("brief-input", {}, [text]),
     "Return the next Brief as structured data.",
   ].join("\n");
 }

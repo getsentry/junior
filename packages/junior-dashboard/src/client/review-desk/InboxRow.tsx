@@ -611,10 +611,9 @@ function InboxRowBody(
                   : undefined
             }
             className={cn(
-              "col-start-1 row-start-1 mt-[0.45rem] size-2 justify-self-center rounded-full",
-              comfortable && "mt-[0.55rem]",
+              "col-start-1 row-start-1 mt-[0.55rem] size-2 justify-self-center rounded-full",
               waiting
-                ? "bg-dashboard-accent"
+                ? "bg-dashboard-text"
                 : openItems.length > 0
                   ? "border border-dashboard-text-faint"
                   : "",
@@ -662,12 +661,7 @@ function InboxRowBody(
                 }}
                 to={path}
               >
-                <span
-                  className={cn(
-                    "flex min-w-0 items-center gap-1.5 font-medium leading-snug text-dashboard-text",
-                    comfortable ? "text-base" : "text-sm",
-                  )}
-                >
+                <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
                   {/* An item row's title names its kind; the icon marks it
                     the way the pills do. */}
                   {props.itemTitle && bundle ? (
@@ -713,7 +707,7 @@ function InboxRowBody(
                       ))}
                       overflow={(count) => (
                         <span
-                          className="shrink-0 text-2xs text-dashboard-text-faint"
+                          className="shrink-0 text-xs text-dashboard-text-faint"
                           data-pill-overflow=""
                         >
                           +{count}
@@ -765,7 +759,7 @@ function InboxRowBody(
               {pinned ? (
                 <Pin
                   aria-label="Pinned"
-                  className="size-3 text-dashboard-accent-text"
+                  className="size-3 text-dashboard-text-muted"
                   role="img"
                 />
               ) : null}

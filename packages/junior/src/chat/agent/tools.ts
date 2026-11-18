@@ -626,7 +626,9 @@ export async function wireAgentTools(
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Stop at the first provider that needs sign-in.
         if (await mcpToolManager.activateProvider(provider)) {
+          // oxlint-disable-next-line no-await-in-loop -- Stop at the first provider that needs sign-in.
           await args.recordConnectedMcpProvider(provider);
         }
       } catch (error) {

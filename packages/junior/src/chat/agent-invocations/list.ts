@@ -1,6 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
 import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -32,6 +31,7 @@ import {
   getConversationWorkStates,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { getAgentInvocationIdForResult } from "./ids";
 import { hasAgentInvocationReply, type ChildMessage } from "./child-message";
 import {
@@ -412,6 +412,7 @@ async function runsOnConversationLoop(
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
+      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
       (await routeChildInput(message, latest, stoppedAtMs)) ===
         "Conversation loop"
     ) {

@@ -882,6 +882,7 @@ async function runNextPausedTurnInContext(
     summaries = await listTurnSummaries(conversationId);
   }
 
+  /* oxlint-disable no-await-in-loop -- Run the first paused Turn that can resume, and stop there. */
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
@@ -925,6 +926,7 @@ async function runNextPausedTurnInContext(
       errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   return false;
 }
