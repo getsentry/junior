@@ -10,6 +10,7 @@ import { noReadOnlyObjectAnnotationsRule } from "./rules/no-read-only-object-ann
 import { noRegexUrlParsingRule } from "./rules/no-regex-url-parsing.ts";
 import { noServiceFallbackRule } from "./rules/no-service-fallback.ts";
 import { noValueSwitchRule } from "./rules/no-value-switch.ts";
+import { preferMapBoundedRule } from "./rules/prefer-map-bounded.ts";
 import { promptTagAttributesRule } from "./rules/prompt-tag-attributes.ts";
 import { touchConversationDetailRule } from "./rules/touch-conversation-detail.ts";
 import { useGitHubApiRule } from "./rules/use-github-api.ts";
@@ -29,6 +30,7 @@ const juniorPlugin = definePlugin({
     "no-regex-url-parsing": noRegexUrlParsingRule,
     "no-service-fallback": noServiceFallbackRule,
     "no-value-switch": noValueSwitchRule,
+    "prefer-map-bounded": preferMapBoundedRule,
     "prompt-tag-attributes": promptTagAttributesRule,
     "touch-conversation-detail": touchConversationDetailRule,
     "use-github-api": useGitHubApiRule,

@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
 import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
@@ -208,16 +207,11 @@ export async function syncReviewItemSlackCards(args: {
               : [];
           // A detached thread gets no new card. A card that it already has
           // still changes in place, so it does not show a stale state.
-          const limit = pLimit(FAN_OUT_CONCURRENCY);
           const missing = (
-            await Promise.all(
-              uncarded.map((thread) =>
-                limit(async () =>
-                  (await isConversationDeliveryPaused(thread.conversationId))
-                    ? []
-                    : [thread],
-                ),
-              ),
+            await mapBounded(uncarded, async (thread) =>
+              (await isConversationDeliveryPaused(thread.conversationId))
+                ? []
+                : [thread],
             )
           ).flat();
           const results = await Promise.allSettled([
