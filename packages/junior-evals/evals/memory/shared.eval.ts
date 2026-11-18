@@ -173,6 +173,24 @@ describe("Shared Memory", () => {
     expect(await readMemories()).toEqual([]);
   });
 
+  test("when asked to remember a business metric definition with reference values, store the definition without the values", async ({
+    run,
+  }) => {
+    await run(
+      slackMention(
+        "Please remember: widget retention rate is active widgets at the end of a period divided by active widgets at its start, excluding trial widgets. Last month it was 91.3% on a base of 48,210 widgets.",
+      ),
+    );
+
+    const memories = await readMemories();
+    expect(memories).toContainEqual(conversationMemory(/widget retention/i));
+    expect(memories).not.toContainEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(/91\.3|48,210/),
+      }),
+    );
+  });
+
   test("when asked to remember another person's personal preference, store nothing", async ({
     run,
   }) => {
