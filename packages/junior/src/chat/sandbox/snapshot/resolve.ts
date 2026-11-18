@@ -208,6 +208,7 @@ async function withBuildLock(
       await onWaitingForLock?.();
       const waitUntil =
         Date.now() + lockTtlMs + SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS;
+      /* oxlint-disable no-await-in-loop -- Poll the cache and the lock until one of them is ready. */
       while (Date.now() < waitUntil) {
         signal?.throwIfAborted();
         const cached = await getCachedSnapshot(profileHash);
@@ -240,6 +241,7 @@ async function withBuildLock(
 
         await sleep(500, signal);
       }
+      /* oxlint-enable no-await-in-loop */
 
       signal?.throwIfAborted();
       const cached = await getCachedSnapshot(profileHash);

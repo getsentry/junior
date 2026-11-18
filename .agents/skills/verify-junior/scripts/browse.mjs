@@ -12,6 +12,9 @@
 //   --click SELECTOR       Click a Playwright selector, such as 'role=button[name="Hold"]'.
 //   --fill SELECTOR=TEXT   Type TEXT into the element.
 //   --press KEY            Press a key on the focused element, such as Enter.
+//   --upload SELECTOR=PATH Set the file of a file input, such as 'role=button[name="Choose files"]'.
+//                          Repeat PATH with commas for several files.
+//   --select SELECTOR      Select all the text of the element, as a mouse drag does.
 //   --expect SELECTOR      Wait until the element is visible. Fails the run if it is not.
 //   --absent SELECTOR      Wait until no such element is visible. Fails the run if one stays.
 //   --title TEXT           Wait until the tab title starts with TEXT.
@@ -85,7 +88,28 @@ try {
           .first()
           .fill(value.slice(at + 1));
       } else if (step === "press") await page.keyboard.press(value);
-      else if (step === "expect")
+      else if (step === "upload") {
+        const at = value.lastIndexOf("=");
+        await page
+          .locator(value.slice(0, at))
+          .first()
+          .setInputFiles(value.slice(at + 1).split(","));
+      } else if (step === "select") {
+        const target = page.locator(value).first();
+        await target.scrollIntoViewIfNeeded();
+        await target.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          // The dashboard reads the selection after the pointer comes up.
+          element.dispatchEvent(
+            new PointerEvent("pointerup", { bubbles: true }),
+          );
+          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+      } else if (step === "expect")
         await page.locator(value).first().waitFor({ state: "visible" });
       else if (step === "absent")
         await page.locator(value).first().waitFor({ state: "hidden" });
@@ -132,7 +156,8 @@ try {
       log(`ok    --${step} ${value}`);
     } catch (error) {
       log(`FAIL  --${step} ${value}: ${error.message.split("\n")[0]}`);
-      await page.screenshot({ path: join(out, "failure.png") });
+      // The browser can be gone when a signal ended the run. Keep the log line.
+      await page.screenshot({ path: join(out, "failure.png") }).catch(() => {});
       failed = true;
       break;
     }
