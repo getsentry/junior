@@ -70,3 +70,49 @@ export type OutputChunk = {
 export type ExecResult = {
   exitCode: number;
 };
+
+/**
+ * Starts environments and finds them again. Vercel Sandbox, Docker, and the
+ * local machine each implement it. An environment lives longer than one step,
+ * so a step keeps only the environment id and calls `resume` to get it back.
+ *
+ * An environment from a manager never starts again on its own: when it stops,
+ * every call throws `ToolExecutionEnvironmentUnavailableError`, and the
+ * caller calls `resume` to get a new one.
+ */
+export type ToolExecutionEnvironmentManager = {
+  create(
+    input: CreateToolExecutionEnvironmentInput,
+    signal: AbortSignal,
+  ): Promise<ToolExecutionEnvironment>;
+  /**
+   * Returns the environment with this id, and starts it again when it
+   * stopped. Returns `undefined` when it no longer exists, so the caller
+   * creates a new one.
+   */
+  resume(
+    id: string,
+    signal: AbortSignal,
+  ): Promise<ToolExecutionEnvironment | undefined>;
+};
+
+/** Input for one new environment. */
+export type CreateToolExecutionEnvironmentInput = {
+  /**
+   * Chosen by the caller, so it can save the id before the environment exists
+   * and retry the same create.
+   */
+  id: string;
+  /** Time after which the manager stops the environment. */
+  timeoutMs: number;
+  /** Start from this snapshot instead of an empty image. */
+  snapshotId?: string;
+};
+
+/** The environment stopped. Call `resume`. */
+export class ToolExecutionEnvironmentUnavailableError extends Error {
+  constructor(environmentId: string, options?: ErrorOptions) {
+    super(`Tool execution environment ${environmentId} stopped`, options);
+    this.name = "ToolExecutionEnvironmentUnavailableError";
+  }
+}
