@@ -33,6 +33,7 @@ async function createWebApp() {
     createConversationRoutes({
       attachmentStorage: storage,
       queue: fixture.queue,
+      waitUntil: () => undefined,
     }),
   );
   const json = (email: string) => ({

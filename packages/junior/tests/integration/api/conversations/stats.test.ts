@@ -12,6 +12,8 @@ import {
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { measureSql, expectSqlBudget } from "../../../fixtures/sql-budget";
+import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -291,21 +293,16 @@ describe("conversation stats API", () => {
         });
       }
 
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations/stats",
+      // One round of hour-grained reads when the report is not cached.
+      const response = await expectSqlBudget(
+        () =>
+          createJuniorApi().request("http://localhost/api/conversations/stats"),
+        { statements: 5, serialRounds: 1 },
       );
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
-        active: 1,
-        cachedInputTokens: 300,
-        cacheCreationTokens: 7,
-        conversations: 7,
-        costUsd: 0.0075,
-        durationMs: 2_304,
-        failed: 1,
-        inputTokens: 100,
         guardian: {
           allow: 4,
           ask: 1,
@@ -313,39 +310,8 @@ describe("conversation stats API", () => {
           deny: 1,
           requests: 6,
         },
-        tokens: 494,
         source: "conversation_index",
       });
-      expect(report.actors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            conversations: 1,
-            costUsd: 0.003,
-            durationMs: 1_504,
-            label: "alice@example.com",
-            tokens: 434,
-          }),
-          expect.objectContaining({
-            conversations: 1,
-            costUsd: 0.0015,
-            durationMs: 500,
-            failed: 1,
-            label: "bob@example.com",
-            tokens: 30,
-          }),
-          expect.objectContaining({
-            conversations: 1,
-            label: "Scheduler",
-          }),
-        ]),
-      );
-      expect(report.locations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ label: "#proj-alpha" }),
-          expect.objectContaining({ label: "Direct Message" }),
-          expect.objectContaining({ label: "Scheduler" }),
-        ]),
-      );
       expect(report.guardian.metricDays.at(-1)).toEqual({
         allow: 2,
         ask: 1,
@@ -523,11 +489,70 @@ describe("conversation stats API", () => {
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());
 
-      expect(report).toMatchObject({
-        conversations: 5_001,
-        durationMs: 10_002,
-        tokens: 15_003,
+      expect(report.metricDays.at(-1)?.conversations).toBe(5_001);
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+  test("serves a cached report and refreshes it once when stale", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const fixture = createConfiguredJuniorSqlFixture();
+    const background = createWaitUntilCollector();
+    const api = createJuniorApi({ waitUntil: background.fn });
+    const readStats = async () =>
+      conversationStatsReportSchema.parse(
+        await (
+          await api.request("http://localhost/api/conversations/stats")
+        ).json(),
+      );
+    const addConversation = async (index: number) => {
+      const at = new Date();
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values(
+          buildJuniorSqlConversation({
+            conversationId: `internal:stats-cache:${index}`,
+            source: "internal",
+            destination: null,
+            actor: null,
+            createdAt: at,
+            lastActivityAt: at,
+            updatedAt: at,
+          }),
+        );
+    };
+
+    try {
+      await migrateSchema(fixture.sql);
+      await addConversation(1);
+      const first = await readStats();
+      expect(first.metricDays.at(-1)?.conversations).toBe(1);
+
+      await addConversation(2);
+      vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
+      const fresh = await measureSql(readStats);
+      expect(fresh.sql.statements).toBe(0);
+      expect(fresh.result).toEqual(first);
+      expect(background.pendingCount()).toBe(0);
+
+      // A stale report is served at once. Concurrent requests start one
+      // refresh between them.
+      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      const stale = await measureSql(async () => {
+        const reports = await Promise.all([readStats(), readStats()]);
+        expect(background.pendingCount()).toBe(2);
+        await background.flush();
+        return reports;
       });
+      expect(stale.result).toEqual([first, first]);
+      expect(stale.sql.statements).toBe(5);
+
+      const refreshed = await readStats();
+      expect(refreshed.generatedAt).toBe("2026-06-15T12:06:00.000Z");
+      expect(refreshed.metricDays.at(-1)?.conversations).toBe(2);
     } finally {
       vi.useRealTimers();
       await fixture.close();

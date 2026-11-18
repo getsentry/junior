@@ -176,7 +176,6 @@
     "packages/junior/src/api/conversations/projection.ts": 4,
     "packages/junior/src/api/conversations/record.ts": 1,
     "packages/junior/src/api/conversations/reporting.ts": 1,
-    "packages/junior/src/api/conversations/stats.query.ts": 1,
     "packages/junior/src/api/conversations/stop.ts": 1,
     "packages/junior/src/api/conversations/threads.ts": 1,
     "packages/junior/src/chat/agent-invocations/child-input.ts": 1,
