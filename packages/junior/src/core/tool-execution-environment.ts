@@ -29,7 +29,7 @@ export type ToolExecutionEnvironment = {
   /** Creates or replaces a file, and creates its missing parent directories. */
   writeFile(
     path: string,
-    content: string | Uint8Array,
+    content: Uint8Array,
     signal: AbortSignal,
   ): Promise<void>;
 };
