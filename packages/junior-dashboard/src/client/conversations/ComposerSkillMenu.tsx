@@ -7,25 +7,31 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { Info } from "lucide-react";
 
 import type { SkillReport } from "@sentry/junior/api/schema";
 import { useSkillsData } from "../api";
 import { MatchedLabel } from "../components/MatchedLabel";
 import { searchSkills, type SkillSearchRow } from "../components/skillSearch";
+import { SkillDrawer, skillLabel, skillSource } from "../components/SkillLink";
 import { Badge } from "../components/ui/badge";
+import { Kbd } from "../components/ui/kbd";
+import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import { cn } from "../styles";
 import { skillTokenAt, type SkillToken } from "./composerSkillToken";
 
 /**
  * Suggest skills while the reader types `$` in the composer. Focus stays in
- * the textarea: arrows move, Enter or Tab inserts `$skill-name`, Escape
- * closes. `onInsert` gets the new draft text.
+ * the textarea: arrows move, Enter or Tab inserts `$skill-name`, Ctrl or
+ * Cmd I opens its SKILL.md, Escape closes. `onInsert` gets the new draft text.
  */
 export function useComposerSkillMenu(
   textareaRef: RefObject<HTMLTextAreaElement | null>,
   onInsert: (text: string) => void,
 ) {
   const listboxId = useId();
+  const detailsId = useId();
+  const menuRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<SkillToken>();
   const [placement, setPlacement] = useState<MenuPlacement>();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -34,6 +40,8 @@ export function useComposerSkillMenu(
   // Fetch the skill list on the first `$`, not on every composer mount.
   const [wanted, setWanted] = useState(false);
   const skills = useSkillsData({ enabled: wanted }).data;
+  // The skill whose SKILL.md drawer is open. The menu stays open under it.
+  const [viewing, setViewing] = useState<string>();
   const rows = token && skills ? skillRows(skills, token.query) : [];
   const open = rows.length > 0;
   const active = Math.min(activeIndex, rows.length - 1);
@@ -67,18 +75,33 @@ export function useComposerSkillMenu(
   useEffect(() => {
     if (!open) return;
     const endPress = (event: PointerEvent) => {
-      const menu = document.getElementById(listboxId);
+      const menu = menuRef.current;
       if (!(event.target instanceof Node) || !menu?.contains(event.target)) {
         pressingMenu.current = false;
       }
     };
     document.addEventListener("pointerdown", endPress, true);
     return () => document.removeEventListener("pointerdown", endPress, true);
-  }, [open, listboxId]);
+  }, [open]);
 
-  /** Close on blur, unless the blur comes from a press in the menu. */
+  /**
+   * Close on blur, unless the blur comes from a press in the menu or from
+   * the SKILL.md drawer taking focus.
+   */
   const blur = () => {
-    if (!pressingMenu.current) close();
+    if (!pressingMenu.current && !viewing) close();
+  };
+
+  /** Open a SKILL.md from a press on a row's info button. */
+  const view = (name: string) => {
+    pressingMenu.current = false;
+    setViewing(name);
+  };
+
+  /** Return to the textarea, which kept its caret while the drawer was open. */
+  const closeDrawer = () => {
+    setViewing(undefined);
+    textareaRef.current?.focus({ preventScroll: true });
   };
 
   /** Read the reference at the caret after an edit or caret move. */
@@ -145,7 +168,9 @@ export function useComposerSkillMenu(
         close();
         break;
       default:
-        return false;
+        // Not ArrowRight, because it moves the caret.
+        if (!isPlatformShortcut(event.nativeEvent, "i")) return false;
+        setViewing(rows[active]!.skill.name);
     }
     event.preventDefault();
     event.stopPropagation();
@@ -160,43 +185,59 @@ export function useComposerSkillMenu(
   };
 
   // A portal, because docks around the composer clip their overflow.
-  const menu =
-    open && placement
-      ? createPortal(
-          <div
-            className="thin-scrollbar fixed z-50 overflow-y-auto overscroll-contain rounded-lg border border-input bg-secondary p-1.5 shadow-lg"
-            id={listboxId}
-            style={placement}
-            role="listbox"
-            aria-label="Skills"
-            // Keep focus and the caret in the textarea on desktop.
-            onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={() => {
-              pressingMenu.current = true;
-            }}
-            onPointerCancel={() => {
-              pressingMenu.current = false;
-            }}
-            // A tap moved focus out of the textarea. Put it back.
-            onClick={() => {
-              pressingMenu.current = false;
-              textareaRef.current?.focus({ preventScroll: true });
-            }}
-          >
-            {rows.map((row, index) => (
-              <SkillOption
-                active={index === active}
-                id={optionId(index)}
-                key={row.skill.name}
-                onHover={() => setActiveIndex(index)}
-                onSelect={() => insert(row.skill.name)}
-                row={row}
-              />
-            ))}
-          </div>,
-          document.body,
-        )
-      : null;
+  const menu = (
+    <>
+      {open && placement
+        ? createPortal(
+            <div
+              className="fixed z-50 flex overflow-hidden rounded-lg border border-input bg-secondary shadow-lg"
+              ref={menuRef}
+              style={placement}
+              // Keep focus and the caret in the textarea on desktop.
+              onMouseDown={(event) => event.preventDefault()}
+              onPointerDown={() => {
+                pressingMenu.current = true;
+              }}
+              onPointerCancel={() => {
+                pressingMenu.current = false;
+              }}
+              // A tap moved focus out of the textarea. Put it back.
+              onClick={() => {
+                pressingMenu.current = false;
+                textareaRef.current?.focus({ preventScroll: true });
+              }}
+            >
+              <div
+                aria-label="Skills"
+                className="thin-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5 md:w-[45%] md:flex-none"
+                id={listboxId}
+                role="listbox"
+              >
+                {rows.map((row, index) => (
+                  <SkillOption
+                    active={index === active}
+                    describedBy={
+                      index === active
+                        ? `${detailsId}-source ${detailsId}-keys`
+                        : undefined
+                    }
+                    id={optionId(index)}
+                    key={row.skill.name}
+                    onHover={() => setActiveIndex(index)}
+                    onSelect={() => insert(row.skill.name)}
+                    onView={() => view(row.skill.name)}
+                    row={row}
+                  />
+                ))}
+              </div>
+              <SkillDetails id={detailsId} skill={rows[active]!.skill} />
+            </div>,
+            document.body,
+          )
+        : null}
+      {viewing ? <SkillDrawer name={viewing} onClose={closeDrawer} /> : null}
+    </>
+  );
 
   return { blur, textboxProps, handleKeyDown, menu, sync };
 }
@@ -250,17 +291,20 @@ function skillRows(
 
 function SkillOption(props: {
   active: boolean;
+  describedBy?: string;
   id: string;
   row: SkillSearchRow;
   onHover(): void;
   onSelect(): void;
+  onView(): void;
 }) {
   const { skill } = props.row;
   return (
     <div
+      aria-describedby={props.describedBy}
       aria-selected={props.active}
       className={cn(
-        "flex cursor-pointer items-baseline gap-3 rounded-md px-2.5 py-1.5 font-sans text-sm text-foreground select-none",
+        "flex cursor-pointer items-center gap-1 rounded-md pr-0.5 pl-2.5 font-sans text-sm text-foreground select-none",
         props.active && "bg-dashboard-fill-hover",
       )}
       id={props.id}
@@ -268,21 +312,75 @@ function SkillOption(props: {
       onMouseMove={props.active ? undefined : props.onHover}
       role="option"
     >
-      <span className="shrink-0 font-mono">
-        $
-        <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
-      </span>
-      {skill.disableModelInvocation ? (
-        <Badge
-          className="shrink-0 py-0.5 leading-none font-medium"
-          variant="accent"
-        >
-          Manual only
-        </Badge>
-      ) : null}
-      <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
-        {skill.description}
+      {/* One line beside the details pane. Below it, the description gets two. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5 md:flex-nowrap">
+        <span className="shrink-0 font-mono">
+          $
+          <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
+        </span>
+        {skill.disableModelInvocation ? <ManualOnlyBadge /> : null}
+        <span className="min-w-0 text-xs text-dashboard-text-muted max-md:line-clamp-2 max-md:basis-full md:flex-1 md:truncate">
+          {skill.description}
+        </span>
+      </div>
+      {/* Pointer only: an option cannot hold a button. Keys use Ctrl or Cmd I. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-md text-dashboard-text-muted hover:text-foreground md:size-6",
+          !props.active && "md:invisible",
+        )}
+        onClick={(event) => {
+          // A tap here opens the SKILL.md. It must not insert the skill.
+          event.stopPropagation();
+          props.onView();
+        }}
+        title="View SKILL.md"
+      >
+        <Info className="size-4" />
       </span>
     </div>
+  );
+}
+
+/** Describe the active skill beside the list. Narrow screens have no room. */
+function SkillDetails(props: { id: string; skill: SkillReport }) {
+  const { skill } = props;
+  return (
+    <div className="thin-scrollbar hidden min-w-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain border-l border-input p-3 font-sans md:flex">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-sm font-semibold [overflow-wrap:anywhere] text-foreground">
+          {skillLabel(skill.name)}
+        </span>
+        {skill.disableModelInvocation ? <ManualOnlyBadge /> : null}
+      </div>
+      <div
+        className="text-xs text-dashboard-text-muted"
+        id={`${props.id}-source`}
+      >
+        {skillSource(skill)}
+      </div>
+      <p className="m-0 mt-1 text-sm [overflow-wrap:anywhere] text-foreground">
+        {skill.description}
+      </p>
+      <div
+        className="mt-auto flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-3 text-xs text-dashboard-text-muted"
+        id={`${props.id}-keys`}
+      >
+        <Kbd>Enter</Kbd> insert · <Kbd>{platformShortcut("i")}</Kbd> view
+        SKILL.md · <Kbd>Esc</Kbd> close
+      </div>
+    </div>
+  );
+}
+
+function ManualOnlyBadge() {
+  return (
+    <Badge
+      className="shrink-0 py-0.5 leading-none font-medium"
+      variant="accent"
+    >
+      Manual only
+    </Badge>
   );
 }
