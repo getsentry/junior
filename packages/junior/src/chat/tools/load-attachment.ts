@@ -80,6 +80,7 @@ async function writeParts(args: {
   const reader = args.body.getReader();
   try {
     for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
@@ -89,6 +90,7 @@ async function writeParts(args: {
         const take = PART_BYTES - pendingBytes;
         pending.push(chunk.subarray(0, take));
         pendingBytes += take;
+        // oxlint-disable-next-line no-await-in-loop -- Write the parts in order.
         await flush();
         chunk = chunk.subarray(take);
       }

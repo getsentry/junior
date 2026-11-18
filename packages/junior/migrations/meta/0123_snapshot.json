@@ -1,6 +1,6 @@
 {
-  "id": "a9d5cd0a-231a-4d79-8d06-3b3dc4247789",
-  "prevId": "76f97370-d360-4168-81c8-d495ed8ff2a7",
+  "id": "a457e1a2-6d5b-40c9-8684-ee068367aceb",
+  "prevId": "39c7ac4a-8089-4cc8-b92b-3469819fbdff",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1438,56 +1438,6 @@
           ],
           "isUnique": false,
           "where": "\"junior_automations\".\"status\" <> 'deleted' AND \"junior_automations\".\"skill\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_wake_subject_idx": {
-          "name": "junior_automations_wake_subject_idx",
-          "columns": [
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automations_one_wake_idx": {
-          "name": "junior_automations_one_wake_idx",
-          "columns": [
-            {
-              "expression": "creator_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "coalesce(\"subject_review_item_id\", '')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"action\" = 'wake'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2955,6 +2905,46 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_conversation_metrics_turn_metric_occurred_at_idx": {
+          "name": "junior_conversation_metrics_turn_metric_occurred_at_idx",
+          "columns": [
+            {
+              "expression": "metric",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "actor_identity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_metrics\".\"metric\" IN ('duration_ms', 'total_tokens', 'cost_micro_usd')",
           "concurrently": false,
           "method": "btree",
           "with": {}

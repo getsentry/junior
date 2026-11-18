@@ -296,38 +296,37 @@ export function findProviderError(error: unknown): ProviderError | undefined {
   return undefined;
 }
 
+const TEMPORARY_PROVIDER_ERROR =
+  "The model provider had a temporary connection problem. Please try again.";
+
+const PROVIDER_ERROR_MESSAGES = {
+  capacity:
+    "The selected model is temporarily unavailable because it is at capacity. Please try again shortly.",
+  rate_limit: "The model is rate-limited. Please try again shortly.",
+  timeout: TEMPORARY_PROVIDER_ERROR,
+  network: TEMPORARY_PROVIDER_ERROR,
+  server: TEMPORARY_PROVIDER_ERROR,
+  auth: "The model provider rejected the configured credentials. This needs an administrator or configuration fix.",
+  permission:
+    "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.",
+  quota:
+    "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.",
+  content_policy:
+    "The model provider blocked this request under its content policy. Please revise the request and try again.",
+  invalid_request:
+    "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.",
+  invalid_response:
+    "The model provider returned an invalid response. Please try again.",
+  unknown: "The model provider returned an error. Please try again.",
+} satisfies Record<ProviderErrorKind, string>;
+
 /** Return stable, sanitized copy suitable for a terminal user response. */
 export function getProviderErrorUserMessage(error: ProviderError): string {
-  switch (error.kind) {
-    case "capacity":
-      return "The selected model is temporarily unavailable because it is at capacity. Please try again shortly.";
-    case "rate_limit": {
-      const seconds = error.retryAfterMs
-        ? Math.max(1, Math.ceil(error.retryAfterMs / 1_000))
-        : undefined;
-      return seconds
-        ? `The model is rate-limited. Please try again in about ${seconds} seconds.`
-        : "The model is rate-limited. Please try again shortly.";
-    }
-    case "timeout":
-    case "network":
-    case "server":
-      return "The model provider had a temporary connection problem. Please try again.";
-    case "auth":
-      return "The model provider rejected the configured credentials. This needs an administrator or configuration fix.";
-    case "permission":
-      return "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.";
-    case "quota":
-      return "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.";
-    case "content_policy":
-      return "The model provider blocked this request under its content policy. Please revise the request and try again.";
-    case "invalid_request":
-      return "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.";
-    case "invalid_response":
-      return "The model provider returned an invalid response. Please try again.";
-    default:
-      return "The model provider returned an error. Please try again.";
+  if (error.kind === "rate_limit" && error.retryAfterMs) {
+    const seconds = Math.max(1, Math.ceil(error.retryAfterMs / 1_000));
+    return `The model is rate-limited. Please try again in about ${seconds} seconds.`;
   }
+  return PROVIDER_ERROR_MESSAGES[error.kind];
 }
 
 /** Return safe structured fields for terminal failure telemetry. */

@@ -26,8 +26,6 @@ export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySubjectType = (typeof MEMORY_SUBJECT_TYPES)[number];
 export type MemorySourcePlatform = (typeof MEMORY_SOURCE_PLATFORMS)[number];
 export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
-export type MemoryEmbeddingDimensions =
-  (typeof MEMORY_EMBEDDING_DIMENSIONS)[number];
 export type MemorySignal = (typeof MEMORY_SIGNALS)[number];
 
 const nonEmptyStringSchema = z.string().min(1);

@@ -50,6 +50,7 @@ Doctor cannot see a wedged page or a stuck Turn on a healthy process. Then open 
 `node $S/browse.mjs --out DIR [--timeout MS] STEP...` drives the dashboard with Playwright. Steps run in order:
 
 - `--goto PATH_OR_URL`, `--back NAME` (the URL that an earlier `--snap NAME` saved), `--click SELECTOR`, `--fill SELECTOR=TEXT`, `--press KEY`.
+- `--upload SELECTOR=PATH[,PATH]` sets the files of a file input, such as `role=button[name="Choose files"]`. `--select SELECTOR` selects the text of the element, as a mouse drag does.
 - `--expect SELECTOR` waits until it is visible. `--absent SELECTOR` waits until none is visible, and it also passes when the element never showed.
 - `--title PREFIX` waits for the tab title. `--order A|B|C` waits for the texts in that order.
 - `--idle` waits until the open Conversation has no running Turn for 3 seconds.
@@ -77,7 +78,7 @@ Put all evidence in `$RUN_DIR/evidence/<feature>/`. `$RUN_DIR` defaults to `${TM
 node $S/instance.mjs stop $RUN_DIR
 ```
 
-It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It drops the run database and flushes the run Redis database. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. Run it after a failed launch or drive too, so that no process keeps port 3000. Then check that `$RUN_DIR/evidence` still has the artifacts.
+It stops the `pnpm dev` process tree that `launch` recorded, never processes found by name. It drops the run database and flushes the run Redis database. It stops only the compose services that were not running before launch. It keeps `$RUN_DIR` and its evidence. A failed launch runs it by itself. Run it after a failed drive too, so that no process keeps port 3000. Then check that `$RUN_DIR/evidence` still has the artifacts.
 
 ## Map
 

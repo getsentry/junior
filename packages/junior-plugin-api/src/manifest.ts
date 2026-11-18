@@ -150,4 +150,10 @@ export interface PluginManifest {
     configKey: string;
     type: string;
   };
+  /**
+   * Set when the plugin's own Sandbox tools, such as git, send no credential.
+   * A Sandbox request to its domains with no credential then gets one.
+   * Otherwise only a request that sends the plugin's placeholder gets one.
+   */
+  toolsSendNoCredential?: boolean;
 }

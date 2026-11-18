@@ -68,7 +68,7 @@ async function runWithTimeout<T>(
 }
 
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
-export async function runPluginHeartbeats(args: {
+async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
   dispatchForIdentity: IdentityDispatcher;
   events: AppEventPublisher;

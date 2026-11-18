@@ -542,8 +542,13 @@ export async function wireAgentTools(
       modelId: botConfig.guardianModelId,
     }),
   });
+  const skills = loadableSkills(
+    args.availableSkills,
+    args.invokedSkill?.name,
+    args.activeSkills,
+  );
   const tools = createTools(
-    loadableSkills(args.availableSkills, args.invokedSkill?.name),
+    skills,
     {
       writeGeneratedFiles: async (files) => {
         const refs = await agentSandbox.writeGeneratedFiles(files);
@@ -557,6 +562,17 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
+        // `loadSkill` reads `skills` on each call, so the manual-only skills
+        // that this skill references become loadable for the rest of the Turn.
+        skills.splice(
+          0,
+          skills.length,
+          ...loadableSkills(
+            args.availableSkills,
+            args.invokedSkill?.name,
+            args.activeSkills,
+          ),
+        );
         await tryRecordSkillLoadStat(effective);
       },
     },
