@@ -39,7 +39,12 @@ export type ExecOptions = {
   signal: AbortSignal;
   /** Directory to start in. Defaults to `cwd`. */
   cwd?: string;
-  /** Variables to add to the command's environment. */
+  /**
+   * Variables to add to the command's environment. Never put credentials or
+   * other secrets here: every process in the environment, including code the
+   * model writes, can read them, and they can end up in output and traces.
+   * Credentialed requests go through the host egress proxy instead.
+   */
   env?: Record<string, string>;
   timeoutMs?: number;
   /**
