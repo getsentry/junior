@@ -272,7 +272,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             events: [],
             isParticipant: true,
             previousCursor: undefined,
-            status: "active",
+            status: "working",
           }),
         });
       },
@@ -853,7 +853,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             events: [],
             isParticipant: true,
             previousCursor: undefined,
-            status: "active",
+            status: "working",
           }),
         });
       },

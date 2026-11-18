@@ -200,7 +200,7 @@ test("edits a queued message back into the composer", async ({
       response,
       json: withRequestedMailbox(
         route,
-        { ...detail, isParticipant: true, status: "active" },
+        { ...detail, isParticipant: true, status: "working" },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),
     });

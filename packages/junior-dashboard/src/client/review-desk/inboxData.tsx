@@ -242,12 +242,12 @@ function useBuildInboxData(input: {
   );
   const running = conversations.filter(
     (conversation) =>
-      conversation.status === "active" && !conversation.pinnedAt,
+      conversation.status === "working" && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedRunning: Conversation[]) => [
     ...unpinnedRunning,
-    ...pinned.filter((conversation) => conversation.status === "active"),
-    ...pinned.filter((conversation) => conversation.status !== "active"),
+    ...pinned.filter((conversation) => conversation.status === "working"),
+    ...pinned.filter((conversation) => conversation.status !== "working"),
   ];
 
   // The server counts each entry, so items past the loaded pages count

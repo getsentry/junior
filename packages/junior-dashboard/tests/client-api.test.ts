@@ -157,7 +157,7 @@ describe("dashboard client API", () => {
       lastSeenAt: generatedAt,
       mailbox: { conversationId, generatedAt, messages: [] },
       startedAt: generatedAt,
-      status: "active" as const,
+      status: "working" as const,
       surface: "slack" as const,
     };
     const fetchMock = vi.fn(async () =>
@@ -349,7 +349,7 @@ describe("dashboard client API", () => {
           lastProgressAt: generatedAt,
           lastSeenAt: generatedAt,
           startedAt: generatedAt,
-          status: "active",
+          status: "working",
           surface: "slack",
         },
         error: new Error("temporary failure"),

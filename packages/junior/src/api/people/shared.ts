@@ -8,7 +8,11 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import {
+  conversationIsActiveSql,
+  conversationStatusSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
 import type { ConversationMetric } from "@/db/schema/conversation-metrics";
 import { microUsdSql } from "@/db/micro-usd";
 import type {
@@ -134,12 +138,11 @@ export function personRootJoin(roots: PersonRoots) {
  * status.
  */
 export function rootAggregateColumns(roots: PersonRoots) {
-  const status = conversationStatusSql(turnRoot);
   return {
-    active: sql<number>`(count(*) FILTER (WHERE ${status} = 'active'))::integer`,
+    active: sql<number>`(count(*) FILTER (WHERE ${conversationIsActiveSql(turnRoot)}))::integer`,
     conversations: sql<number>`count(*)::integer`,
     durationMs: sql<number>`COALESCE(sum(${roots.durationMs}), 0)::double precision`,
-    failed: sql<number>`(count(*) FILTER (WHERE ${status} = 'failed'))::integer`,
+    failed: sql<number>`(count(*) FILTER (WHERE ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL))::integer`,
     tokens: sql<number | null>`sum(${roots.tokens})::double precision`,
   };
 }

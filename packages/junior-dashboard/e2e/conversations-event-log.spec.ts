@@ -423,7 +423,7 @@ test("forks from the transcript and the event log with retry-safe requests", asy
           forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
-          status: "idle",
+          status: "done",
           forks: [],
         }),
       }),

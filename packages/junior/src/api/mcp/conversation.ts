@@ -20,7 +20,7 @@ export const mcpConversationSchema = z
     conversationId: z.string(),
     title: z.string(),
     status: conversationReportStatusSchema.describe(
-      "`active` while work runs or waits to start. `needs_input` while a Review item it added waits on a person. `failed` when its latest Turn failed. `stopped` after a person or a parent agent stopped it, until a person sends it input or its parent gives it new work. `idle` when it waits for a message.",
+      "`needs_input` while it waits on a person: a Review item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
     ),
     surface: conversationSurfaceSchema.describe(
       "Where it started: `slack`, `api` (the dashboard or MCP), `scheduler` (an automation), or `internal`.",

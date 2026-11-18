@@ -101,8 +101,8 @@ export function useConversationMenuItems(
     conversation && (detail?.isParticipant ?? conversation.isParticipant),
   );
   const live = detail
-    ? detail.status === "active"
-    : conversation && conversation.status === "active";
+    ? detail.status === "working"
+    : conversation && conversation.status === "working";
 
   const conversationItems: ConversationMenuItem[] = [
     {

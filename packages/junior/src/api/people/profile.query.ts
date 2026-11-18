@@ -1,7 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import {
+  conversationIsActiveSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
 import { getDb } from "@/chat/db";
 import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
@@ -210,18 +213,17 @@ function rootBucketRows(args: {
     })
     .from(rootBuckets)
     .as("person_buckets");
-  const status = conversationStatusSql(turnRoot);
   return getDb()
     .select({
       active: sql<number>`(count(*) FILTER (
-        WHERE ${buckets.isLastTurn} AND ${status} = 'active'
+        WHERE ${buckets.isLastTurn} AND ${conversationIsActiveSql(turnRoot)}
       ))::integer`,
       conversations: sql<number>`count(*)::integer`,
       costMicroUsd: microUsdSql(sql`sum(${buckets.costMicroUsd})`),
       date: sql<string>`TO_CHAR(${buckets.bucket}, ${sql.raw(`'${format}'`)})`,
       durationMs: sql<number>`COALESCE(sum(${buckets.durationMs}), 0)::double precision`,
       failed: sql<number>`(count(*) FILTER (
-        WHERE ${buckets.isLastTurn} AND ${status} = 'failed'
+        WHERE ${buckets.isLastTurn} AND ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL
       ))::integer`,
       tokens: sql<number | null>`sum(${buckets.tokens})::double precision`,
     })

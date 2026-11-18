@@ -508,14 +508,12 @@ function ConversationRowState(props: {
   return (
     <span className="flex items-center gap-1">
       <ConversationStatusText isPrivate={isPrivate} status={props.status} />
-      {props.status === "active" ? (
+      {props.status === "working" ? (
         <Spinner
           aria-label="Running"
           className="size-3.5 text-dashboard-text-muted"
         />
-      ) : props.status === "needs_input" ||
-        props.status === "failed" ||
-        props.status === "stopped" ? null : (
+      ) : props.status === "needs_input" ? null : (
         <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
           {formatCompactAge(
             props.conversation.lastMessageAt ?? props.conversation.lastSeenAt,

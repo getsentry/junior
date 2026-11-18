@@ -341,7 +341,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       `/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
-    await expect(threadCard).toContainText("Idle");
+    await expect(threadCard).toContainText("Done");
     // The feed leaves out an archived Thread, so its card has no status.
     const archivedCard = transcript.getByRole("link", {
       name: /Compare sidebar badges/,
@@ -350,7 +350,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
     );
-    await expect(archivedCard).not.toContainText(/Idle|Running|Needs input/);
+    await expect(archivedCard).not.toContainText(/Done|Working|Needs input/);
 
     // Each Task is a chip under the reply. A chip opens the drawer.
     await screenshot(page, "conversation-task-line");
@@ -395,7 +395,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The pill shows the status that the API derives from runtime state.
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Idle").filter({ visible: true }),
+      header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
 
     // The parent agent started the first Turn; a person started the next.
@@ -441,7 +441,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Idle").filter({ visible: true }),
+      header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
   });

@@ -269,7 +269,7 @@ test("starts and continues conversations from the dashboard", async ({
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
         }),
       });
     },
@@ -834,7 +834,7 @@ test("keeps details closed on a home send after the reader closed them", async (
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
         }),
       });
     },

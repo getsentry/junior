@@ -586,7 +586,7 @@ export function unavailableTranscriptLabel(
   if (conversation.eventHistory.status === "expired") {
     return "Transcript expired for this conversation.";
   }
-  if (conversation.status === "active") {
+  if (conversation.status === "working") {
     return "Transcript pending while this conversation is active.";
   }
   return "Transcript unavailable for this conversation.";

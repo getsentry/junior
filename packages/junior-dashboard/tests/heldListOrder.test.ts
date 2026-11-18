@@ -17,7 +17,7 @@ function conversation(id: string, title = id): Conversation {
     lastProgressAt: "2026-08-03T12:00:00Z",
     lastSeenAt: "2026-08-03T12:00:00Z",
     startedAt: "2026-08-03T12:00:00Z",
-    status: "idle",
+    status: "done",
     surface: "internal",
   };
 }

@@ -439,7 +439,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             forkedFromTitle: report.displayTitle,
             events: [],
             isParticipant: true,
-            status: "idle",
+            status: "done",
             forks: [],
           }),
         }),

@@ -458,7 +458,7 @@ export function QuickQuestionPanel(props: {
   // answer, and the person can then ask again.
   const thinking =
     unsaved.length > 0 ||
-    (fork?.status === "active" && messages.at(-1)?.role === "user");
+    (fork?.status === "working" && messages.at(-1)?.role === "user");
   const busy = props.pending || thinking;
 
   useEffect(() => {

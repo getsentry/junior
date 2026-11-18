@@ -26,7 +26,7 @@ function detail(
     lastProgressAt: new Date(0).toISOString(),
     lastSeenAt: new Date(0).toISOString(),
     startedAt: new Date(0).toISOString(),
-    status: "active",
+    status: "working",
     surface: "api",
     visibility: "public",
   };

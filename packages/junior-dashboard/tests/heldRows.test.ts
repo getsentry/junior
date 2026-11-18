@@ -21,7 +21,7 @@ function row(
           lastSeenAt: time,
           pinnedAt,
           startedAt: time,
-          status: "idle",
+          status: "done",
           surface: "internal",
         } satisfies Conversation,
         conversationId,

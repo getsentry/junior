@@ -364,7 +364,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
       isParticipant: true,
-      status: "idle",
+      status: "done",
       surface: "internal",
     }));
 

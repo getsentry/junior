@@ -131,7 +131,7 @@ export function conversationDetailIsLive(
   snapshot: ConversationSnapshot | undefined,
 ): boolean {
   return (
-    snapshot?.status === "active" ||
+    snapshot?.status === "working" ||
     Boolean(snapshot?.mailbox?.messages.length) ||
     Boolean(snapshot?.mailbox?.authorization)
   );

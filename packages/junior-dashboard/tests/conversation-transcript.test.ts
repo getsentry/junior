@@ -50,7 +50,7 @@ function detail(): ConversationDetailReport {
     previousCursor: "before-3",
     sentryConversationUrl: "https://sentry.example/conversation-1",
     startedAt: generatedAt,
-    status: "active",
+    status: "working",
     surface: "internal",
   };
 }

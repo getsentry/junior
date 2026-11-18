@@ -33,11 +33,9 @@ export {
  * `conversationStatusSql`, the only place that derives it.
  */
 export const conversationReportStatusSchema = z.enum([
-  "active",
   "needs_input",
-  "failed",
-  "stopped",
-  "idle",
+  "working",
+  "done",
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */

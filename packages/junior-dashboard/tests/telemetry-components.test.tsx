@@ -99,7 +99,7 @@ function conversation(
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "idle",
+    status: "done",
     surface: "internal",
     ...overrides,
   };
@@ -423,7 +423,7 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("shows responding state independently from live transcript following", () => {
-    const active = conversation([], { status: "active" });
+    const active = conversation([], { status: "working" });
     const liveHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <Transcript live transcript={active} />
@@ -436,7 +436,7 @@ describe("dashboard canonical-event components", () => {
     );
     const completedHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <Transcript transcript={{ ...active, status: "idle" }} />
+        <Transcript transcript={{ ...active, status: "done" }} />
       </QueryClientProvider>,
     );
 
@@ -475,7 +475,7 @@ describe("dashboard canonical-event components", () => {
           },
         }),
       ],
-      { status: "active" },
+      { status: "working" },
     );
     const workingHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
@@ -505,7 +505,7 @@ describe("dashboard canonical-event components", () => {
           status: "running",
         }),
       ],
-      { status: "active" },
+      { status: "working" },
     );
     const waitingHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
@@ -762,13 +762,13 @@ describe("dashboard canonical-event components", () => {
             state: "started",
           }),
         ],
-        { status: "active" },
+        { status: "working" },
       ),
     );
     const failedClient = conversationQueryClient();
     failedClient.setQueryData(
       conversationDetailQueryKey("conversation-1"),
-      conversation([], { status: "failed" }),
+      conversation([], { status: "needs_input" }),
     );
 
     const activeHtml = renderConversationPageWithClient(activeClient);
@@ -860,7 +860,7 @@ describe("dashboard canonical-event components", () => {
           text: "cached canonical answer",
         }),
       ],
-      { status: "active" },
+      { status: "working" },
     );
     staleClient.setQueryData(
       conversationDetailQueryKey("conversation-1"),
@@ -1261,7 +1261,7 @@ describe("dashboard canonical-event components", () => {
     const child = conversation([], {
       conversationId: "child-1",
       displayTitle: "Advisor review",
-      status: "idle",
+      status: "done",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: ConversationDrawerTarget = {
@@ -1309,7 +1309,7 @@ describe("dashboard canonical-event components", () => {
     const child = conversation([], {
       conversationId: "child-1",
       displayTitle: "Advisor review",
-      status: "idle",
+      status: "done",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const drawerHtml = renderToStaticMarkup(
@@ -1326,7 +1326,7 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain(">idle</span>");
+    expect(drawerHtml).toContain(">done</span>");
     expect(drawerHtml).not.toContain(">running</span>");
     expect(drawerHtml).toContain("Open conversation");
   });
@@ -1383,7 +1383,7 @@ describe("dashboard canonical-event components", () => {
           text: "cached child answer",
         }),
       ],
-      { conversationId: "child-stale", status: "active" },
+      { conversationId: "child-stale", status: "working" },
     );
     staleClient.setQueryData(
       conversationDetailQueryKey("child-stale"),
@@ -1467,7 +1467,7 @@ describe("dashboard canonical-event components", () => {
             fullName: "Avery Example",
           },
           startedAt: "2026-01-02T00:00:00.000Z",
-          status: "idle",
+          status: "done",
           surface: "slack",
         },
       ],
@@ -1636,7 +1636,7 @@ describe("dashboard canonical-event components", () => {
           lastProgressAt: "2026-01-05T00:00:00.000Z",
           lastSeenAt: "2026-01-05T00:00:00.000Z",
           startedAt: "2026-01-05T00:00:00.000Z",
-          status: "idle",
+          status: "done",
           surface: "slack",
         },
       ],
@@ -2091,7 +2091,7 @@ describe("dashboard canonical-event components", () => {
       lastProgressAt: "2026-01-01T00:00:01.000Z",
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
-      status: "idle",
+      status: "done",
       surface: "slack",
     };
     const detail = conversation(

@@ -38,7 +38,7 @@ function InFlightRow(props: {
         draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       >
-        {conversation.status === "active" ? (
+        {conversation.status === "working" ? (
           <Spinner
             aria-label="Running"
             className="size-3 justify-self-center text-emerald-500 dark:text-emerald-300"
