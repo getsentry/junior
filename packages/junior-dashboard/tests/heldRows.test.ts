@@ -22,6 +22,7 @@ function row(
           pinnedAt,
           startedAt: time,
           status: "done",
+          turnActive: false,
           surface: "internal",
         } satisfies Conversation,
         conversationId,

@@ -321,8 +321,11 @@ type DetailOptions = Omit<
   | "startedAt"
   | "status"
   | "surface"
+  | "turnActive"
 > & {
   cumulativeDurationMs?: number;
+  /** Defaults to a running Turn on `working`. */
+  turnActive?: boolean;
   displayTitle: string;
   eventHistory?: ConversationDetailReport["eventHistory"];
   events: ConversationReportEvent[];
@@ -352,6 +355,7 @@ function detail(
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
     status: options.status ?? "done",
     surface: options.surface ?? "internal",
+    turnActive: options.turnActive ?? options.status === "working",
   };
 }
 

@@ -62,6 +62,7 @@ function transcript(
     lastSeenAt: startedAt,
     startedAt,
     status: "done",
+    turnActive: false,
     surface: "internal",
     ...overrides,
   };
@@ -140,6 +141,7 @@ describe("dashboard conversation formatting", () => {
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "done",
+        turnActive: false,
         surface: "slack",
       },
     ]);
@@ -159,6 +161,7 @@ describe("dashboard conversation formatting", () => {
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
         status: "done",
+        turnActive: false,
         surface: "slack",
       },
     ]);
@@ -335,11 +338,13 @@ describe("dashboard conversation formatting", () => {
     };
     const [conversation] = buildConversations([
       {
+        turnActive: false,
         ...base,
         displayTitle: "Older",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
       },
       {
+        turnActive: false,
         ...base,
         displayTitle: "Newer",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
@@ -363,6 +368,7 @@ describe("dashboard conversation formatting", () => {
         lastSeenAt: "x",
         startedAt: "x",
         status: "done",
+        turnActive: false,
         surface: "slack",
         actorIdentity: { email: "alice@example.com" },
       }),

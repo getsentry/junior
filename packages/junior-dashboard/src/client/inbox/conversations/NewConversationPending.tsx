@@ -103,6 +103,7 @@ export function NewConversationPending(props: {
       lastSeenAt: pending.createdAt,
       startedAt: pending.createdAt,
       status: "working",
+      turnActive: true,
       surface: "internal",
       visibility: pending.visibility,
     }),

@@ -22,6 +22,7 @@ function detail(
     lastSeenAt: startedAt,
     startedAt,
     status: "done",
+    turnActive: false,
     surface: "internal",
     ...overrides,
   };

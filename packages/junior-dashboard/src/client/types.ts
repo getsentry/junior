@@ -200,6 +200,8 @@ export type Conversation = {
   sentryTraceUrl?: string | undefined;
   startedAt: string;
   status: ConversationStatus;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;

@@ -14,6 +14,7 @@ function detail(
     lastSeenAt: "2026-01-01T00:01:00.000Z",
     lastProgressAt: "2026-01-01T00:01:00.000Z",
     status: "working",
+    turnActive: true,
     surface: "slack",
     isParticipant: false,
     cumulativeDurationMs: 0,

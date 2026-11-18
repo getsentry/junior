@@ -159,6 +159,7 @@ describe("dashboard client API", () => {
       startedAt: generatedAt,
       status: "working" as const,
       surface: "slack" as const,
+      turnActive: true,
     };
     const fetchMock = vi.fn(async () =>
       Response.json({
@@ -328,7 +329,7 @@ describe("dashboard client API", () => {
     }
   });
 
-  it("keeps polling active detail after a failed refresh", () => {
+  it("keeps polling a running Turn after a failed refresh, even when it needs input", () => {
     const options = conversationDetailQueryOptions("slack:C1:123");
     const interval = options.refetchInterval;
     if (typeof interval !== "function") {
@@ -349,8 +350,10 @@ describe("dashboard client API", () => {
           lastProgressAt: generatedAt,
           lastSeenAt: generatedAt,
           startedAt: generatedAt,
-          status: "working",
+          // An open action item outranks the running Turn in `status`.
+          status: "needs_input",
           surface: "slack",
+          turnActive: true,
         },
         error: new Error("temporary failure"),
       },

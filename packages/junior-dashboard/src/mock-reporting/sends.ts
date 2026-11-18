@@ -221,6 +221,7 @@ function withSends<T extends ConversationDetailReport>(
     lastProgressAt: lastAt,
     lastSeenAt: lastAt,
     status: pending ? "working" : "done",
+    turnActive: pending,
   };
 }
 
@@ -242,6 +243,7 @@ function createdConversation(
     startedAt,
     status: "done" as const,
     surface: "api" as const,
+    turnActive: false,
     ...(created.visibility ? { visibility: created.visibility } : undefined),
   };
   if (!created.fork) {

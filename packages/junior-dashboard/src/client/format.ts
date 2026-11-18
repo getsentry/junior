@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./conversations/turnActivity";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
@@ -586,7 +587,7 @@ export function unavailableTranscriptLabel(
   if (conversation.eventHistory.status === "expired") {
     return "Transcript expired for this conversation.";
   }
-  if (conversation.status === "working") {
+  if (conversationTurnIsActive(conversation)) {
     return "Transcript pending while this conversation is active.";
   }
   return "Transcript unavailable for this conversation.";
@@ -708,6 +709,7 @@ export function buildConversations(
       sentryTraceUrl: summary.sentryTraceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
+      turnActive: summary.turnActive,
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,

@@ -267,6 +267,11 @@ export const conversationSummaryReportSchema = z
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
+    /**
+     * A Turn is queued or running. Live views poll and show thinking on it,
+     * since `status` can read `needs_input` while a Turn runs.
+     */
+    turnActive: z.boolean(),
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),

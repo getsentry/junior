@@ -73,6 +73,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             lastSeenAt: NOW,
             startedAt: NOW,
             status: "done",
+            turnActive: false,
             surface: "internal",
           }),
         });

@@ -160,6 +160,11 @@ async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
   const services = { conversationStore, queue: work.queue, state: work.state };
   const request = async (path: string, init?: RequestInit) =>
     await app.request(`http://localhost${path}`, init);
+  const detail = async (conversationId: string) => {
+    const response = await request(detailPath(conversationId));
+    expect(response.status).toBe(200);
+    return conversationDetailReportSchema.parse(await response.json());
+  };
   return {
     ...work,
     conversationStore,
@@ -182,10 +187,16 @@ async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
         { actor, conversationId, idempotencyKey, message: "Try again." },
         services,
       ),
-    status: async (conversationId: string) => {
-      const response = await request(detailPath(conversationId));
-      expect(response.status).toBe(200);
-      return conversationDetailReportSchema.parse(await response.json()).status;
+    detail,
+    status: async (conversationId: string) =>
+      (await detail(conversationId)).status,
+    feedTurnActive: async (conversationId: string) => {
+      const response = await request("/api/conversations");
+      return conversationFeedSchema
+        .parse(await response.json())
+        .conversations.find(
+          (conversation) => conversation.conversationId === conversationId,
+        )?.turnActive;
     },
     feedStatus: async (conversationId: string) => {
       const response = await request("/api/conversations");
@@ -396,7 +407,12 @@ describe("conversation status", () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const conversationId = await fixture.start("status-precedence");
     const item = await addItem(conversationId, ACTION_ITEM);
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    // The queued Turn still reads as active, so live views keep polling.
+    await expect(fixture.detail(conversationId)).resolves.toMatchObject({
+      status: "needs_input",
+      turnActive: true,
+    });
+    await expect(fixture.feedTurnActive(conversationId)).resolves.toBe(true);
     await closeReviewItem(getDb(), {
       id: item,
       nowMs: Date.now(),
@@ -405,7 +421,10 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("working");
 
     await fixture.drain();
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await expect(fixture.detail(conversationId)).resolves.toMatchObject({
+      status: "needs_input",
+      turnActive: false,
+    });
 
     const stopped = await fixture.request(
       `${detailPath(conversationId)}/stop`,

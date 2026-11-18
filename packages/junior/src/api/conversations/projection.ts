@@ -6,6 +6,7 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { executionIsActive } from "@/chat/conversations/sql/status";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -37,7 +38,9 @@ type ConversationProjectionSource = Pick<
   | "source"
   | "title"
   | "updatedAtMs"
-> & { execution: Pick<StoredConversation["execution"], "updatedAtMs"> };
+> & {
+  execution: Pick<StoredConversation["execution"], "status" | "updatedAtMs">;
+};
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -283,6 +286,7 @@ export function conversationSummaryFromStoredConversation(args: {
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status,
+    turnActive: executionIsActive(conversation.execution.status),
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }
