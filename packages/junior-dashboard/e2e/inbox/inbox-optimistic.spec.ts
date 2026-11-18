@@ -4,6 +4,7 @@ import { expect, test } from "../test";
 import {
   audit,
   conversationId,
+  digest,
   license,
   mockReviewItems,
   prReview,
@@ -43,7 +44,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
-  const rowBar = (page: Page, ask: (typeof asks)[number]) =>
+  // A row's Done: the Dismiss in its action bar, which closes every item.
+  const rowDone = (page: Page, ask: (typeof asks)[number]) =>
     row(page, ask).getByRole("button", { exact: true, name: "Dismiss" }).last();
 
   /** Hold every action request until `release`, then answer it as the mock. */
@@ -59,7 +61,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     return { release, sent };
   }
 
-  test("Dismiss and each kind of answer apply before the server answers", async ({
+  test("Done and each kind of answer apply before the server answers", async ({
     dashboard,
     page,
   }) => {
@@ -84,7 +86,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row(page, form!)).toHaveCount(0);
 
     // Dismiss on the row bar.
-    await rowBar(page, other!).click();
+    await rowDone(page, other!).click();
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, other!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 1 waiting");
@@ -100,7 +102,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
-  test("a failed Dismiss brings the row back in its place, and Retry sends it again", async ({
+  test("a failed Done brings the row back in its place, and Retry sends it again", async ({
     dashboard,
     page,
   }) => {
@@ -115,7 +117,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator(":scope > ul > li[data-inbox-row]");
     await expect(rows).toHaveCount(4);
     await open(page, plain!);
-    await rowBar(page, plain!).click();
+    await rowDone(page, plain!).click();
 
     const toast = page
       .locator('[data-slot="toast"]')
@@ -279,5 +281,47 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       row(page, buttons!).getByRole("button", { exact: true, name: "Unpin" }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("Clear marks notices done at once, and Retry clears the ones that failed", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, digest] });
+    let fails = true;
+    const sent: string[] = [];
+    await page.route(
+      `**/api/review-items/${digest.id}/actions`,
+      async (route) => {
+        sent.push(digest.id);
+        await (fails
+          ? route.fulfill({ json: { error: "Failed" }, status: 500 })
+          : route.fallback());
+      },
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const digestFyi = page
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /Daily operations digest/ }),
+      })
+      .getByRole("button", { name: "FYI" });
+    await expect(digestFyi).toBeVisible();
+    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await expect(digestFyi).toHaveCount(0);
+    const toast = page
+      .locator('[data-slot="toast"]')
+      .filter({ hasText: "Could not clear 1 item" });
+    // The Clear goes out when its Undo toast closes.
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await expect(digestFyi).toBeVisible();
+    expect(sent).toHaveLength(1);
+
+    fails = false;
+    await toast.getByRole("button", { name: "Retry" }).click();
+    await expect(digestFyi).toHaveCount(0);
+    await expect.poll(() => sent.length).toBe(2);
+    await expect(toast).toHaveCount(0);
+    await expect(digestFyi).toHaveCount(0);
   });
 });

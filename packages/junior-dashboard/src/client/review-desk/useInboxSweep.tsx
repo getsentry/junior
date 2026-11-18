@@ -122,19 +122,33 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
       const ids = items.map((item) => item.id);
       setSwept((current) => new Set([...current, ...ids]));
       pending.current.set(id, items);
-      const commit = () => {
-        // Undo or leaving the page already settled this Clear.
-        if (!pending.current.delete(id)) return;
-        // Items that did not close come back, so the inbox shows what is
-        // still open on the server.
-        void commitSweep(queryClient, items).then((failed) => {
+      // Items that did not close come back in their places, so the inbox
+      // shows what is still open on the server. Retry hides them again and
+      // closes them at once: the viewer already chose to clear them.
+      const settle = (closing: ReviewItemPayload[]) =>
+        void commitSweep(queryClient, closing).then((kept) => {
+          const failed = closing.filter((item) => kept.includes(item.id));
           if (failed.length === 0) return;
-          unsweep(setSwept, failed);
+          unsweep(setSwept, kept);
+          const errorId = `${id}-error`;
           add({
+            actionProps: {
+              children: "Retry",
+              onClick: () => {
+                close(errorId);
+                setSwept((current) => new Set([...current, ...kept]));
+                settle(failed);
+              },
+            },
+            id: errorId,
             title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
             type: "error",
           });
         });
+      const commit = () => {
+        // Undo or leaving the page already settled this Clear.
+        if (!pending.current.delete(id)) return;
+        settle(items);
       };
       const undo = () => {
         pending.current.delete(id);
