@@ -11,7 +11,7 @@ import type { PluginManifest } from "@/chat/plugins/types";
 // get the Actor's credential only because of where it goes. A tool asks for a
 // credential by sending its plugin's placeholder. A request that carries its
 // own credential, such as a test login, keeps it. A browser never gets one,
-// because page scripts are untrusted and can send the placeholder too.
+// because the placeholder is public and a page script can send it too.
 
 /** How one Sandbox request relates to its plugin's credential. */
 export type SandboxCredentialRequest =
@@ -28,11 +28,15 @@ export type SandboxCredentialRequest =
 // a browser session that a person signed in keeps its own identity.
 const CREDENTIAL_HEADERS = ["authorization", "cookie"];
 
-// Browsers, such as the Chromium that Playwright drives, send Fetch Metadata
-// headers on every request. CLIs and git do not. Sandbox code can omit these
-// headers, so this is not a security boundary; it keeps page traffic, which
-// the code did not write, from acting as the Actor.
-const BROWSER_HEADER = "sec-fetch-mode";
+// Browsers, such as the Chromium that Playwright drives, send
+// `Sec-Fetch-Site` on every HTTPS request, and Sandbox egress forwards only
+// HTTPS. The browser sets this header itself: a page script cannot remove or
+// change it. So it holds against page scripts, the code that this check is
+// for. Other Sandbox code can omit it, but that gets nothing that sending the
+// placeholder does not. Node's built-in fetch, which CLIs such as `sentry`
+// use, sends `Sec-Fetch-Mode` but not `Sec-Fetch-Site`, so do not detect a
+// browser by `Sec-Fetch-Mode`.
+const BROWSER_HEADER = "sec-fetch-site";
 
 function placeholders(manifest: PluginManifest): string[] {
   return [

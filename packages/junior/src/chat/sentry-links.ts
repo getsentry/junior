@@ -72,10 +72,3 @@ export function buildSentryEventUrl(eventId: string): string | undefined {
     query: { query: eventId },
   });
 }
-
-/** Build a Sentry trace URL only when the runtime has enough Sentry config. */
-export function buildSentryTraceUrl(traceId: string): string | undefined {
-  return buildSentryOrgPath({
-    path: `performance/trace/${encodeURIComponent(traceId)}/`,
-  });
-}

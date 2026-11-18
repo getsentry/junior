@@ -19,7 +19,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 export const SLACK_EVENT_NAMESPACE = "slack";
 
 /** The trigger identifier that names the channel of the automation. */
-export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
+const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";

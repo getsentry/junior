@@ -188,8 +188,18 @@ export function verifyReleaseArtifacts(root, directory, commit) {
   return manifest;
 }
 
+/** Read one pnpm setting as the workspace at root resolves it. */
+function readPnpmConfig(root, key) {
+  return JSON.parse(
+    execFileSync("pnpm", ["config", "get", key, "--json"], {
+      cwd: root,
+      encoding: "utf8",
+    }),
+  );
+}
+
 /** Write a consumer project that depends on every packed release tarball. */
-function writeReleaseConsumer(consumer, directory, manifest) {
+function writeReleaseConsumer(root, consumer, directory, manifest) {
   const dependencies = Object.fromEntries(
     manifest.packages.map((pkg) => [
       pkg.name,
@@ -202,15 +212,24 @@ function writeReleaseConsumer(consumer, directory, manifest) {
   );
   writeFileSync(
     join(consumer, "pnpm-workspace.yaml"),
-    `overrides: ${JSON.stringify(dependencies)}\nautoInstallPeers: false\n`,
+    // Use Junior's cooldown and allowlist, and fail on any other new version. Without the
+    // allowlist, pnpm adds exclude entries, and the offline install then needs uncached metadata.
+    [
+      `overrides: ${JSON.stringify(dependencies)}`,
+      "autoInstallPeers: false",
+      `minimumReleaseAge: ${readPnpmConfig(root, "minimumReleaseAge")}`,
+      "minimumReleaseAgeStrict: true",
+      `minimumReleaseAgeExclude: ${JSON.stringify(readPnpmConfig(root, "minimumReleaseAgeExclude"))}`,
+      "",
+    ].join("\n"),
   );
 }
 
 /** Install the complete package set outside the workspace with no Junior registry fallback. */
-export function verifyReleaseInstall(directory, manifest) {
+export function verifyReleaseInstall(root, directory, manifest) {
   const consumer = mkdtempSync(join(tmpdir(), "junior-release-install-"));
   try {
-    writeReleaseConsumer(consumer, directory, manifest);
+    writeReleaseConsumer(root, consumer, directory, manifest);
     // A separate store proves this install does not depend on workspace links or cached Junior packages.
     execFileSync(
       "pnpm",
@@ -261,7 +280,7 @@ export function verifyReleaseInstall(directory, manifest) {
 export function verifyReleaseTypes(root, directory, manifest) {
   const consumer = mkdtempSync(join(tmpdir(), "junior-release-types-"));
   try {
-    writeReleaseConsumer(consumer, directory, manifest);
+    writeReleaseConsumer(root, consumer, directory, manifest);
     execFileSync("pnpm", ["install", "--ignore-scripts"], {
       cwd: consumer,
       stdio: "inherit",
