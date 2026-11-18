@@ -10,8 +10,12 @@ const HOUR_MS = 60 * 60 * 1000;
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/** One snoozed item, by its id: until when. */
-type Snooze = { untilMs: number };
+/**
+ * One snoozed item, by its id: until when. A snooze from before items
+ * snoozed one by one also has `newestItemId`: it put away a whole row, under
+ * the row's Conversation or item id, until its newest item changed.
+ */
+type Snooze = { newestItemId?: string; untilMs: number };
 
 /** A snooze choice, such as "Tomorrow morning". */
 export type SnoozeChoice = { label: string; untilMs(nowMs: number): number };
@@ -68,6 +72,40 @@ function useStoredSnoozes() {
   return useLocalStorage<Record<string, Snooze>>(STORAGE_KEY, {});
 }
 
+/**
+ * Each legacy row snooze, as snoozes of the items it put away: the items of
+ * its row that are not newer than its newest item. A later item stays
+ * awake, so it shows by itself. A legacy snooze whose newest item is not
+ * loaded yet stays until it is, or until it ends. Returns undefined when
+ * there is nothing to convert.
+ */
+function itemSnoozes(
+  snoozes: Record<string, Snooze>,
+  items: readonly ReviewItemPayload[],
+  nowMs: number,
+): Record<string, Snooze> | undefined {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const next = { ...snoozes };
+  let changed = false;
+  for (const [key, snooze] of Object.entries(snoozes)) {
+    if (!snooze.newestItemId) continue;
+    const newest = byId.get(snooze.newestItemId);
+    if (snooze.untilMs > nowMs && !newest) continue;
+    changed = true;
+    delete next[key];
+    if (!newest || snooze.untilMs <= nowMs) continue;
+    for (const item of items) {
+      const inRow =
+        key === item.id ||
+        ((key === item.addedByConversationId ||
+          key === item.rootConversationId) &&
+          item.createdAt <= newest.createdAt);
+      if (inRow && !next[item.id]) next[item.id] = { untilMs: snooze.untilMs };
+    }
+  }
+  return changed ? next : undefined;
+}
+
 /** Render again when the next snooze ends, so its row wakes on time. */
 function useWakeAtNextEnd(snoozes: Record<string, Snooze>, nowMs: number) {
   const [, wakeUp] = useReducer((count: number) => count + 1, 0);
@@ -94,22 +132,32 @@ export function useSnoozedItemIds(): string[] {
   const [snoozes] = useStoredSnoozes();
   const nowMs = Date.now();
   useWakeAtNextEnd(snoozes, nowMs);
+  // A legacy row snooze names its newest item until it converts.
   return Object.entries(snoozes)
     .filter(([, snooze]) => snooze.untilMs > nowMs)
-    .map(([id]) => id)
+    .map(([id, snooze]) => snooze.newestItemId ?? id)
     .sort();
 }
 
 /**
  * Snooze Inbox items in this browser, each by its id. A row snoozes its
- * item, and a stack's Snooze all snoozes each of its items until the same
+ * item, and a stack's Snooze snoozes each of its items until the same
  * time. Each item wakes at its time. An item that arrives later is not
  * snoozed, so it shows by itself while the rest stay in Snoozed. The
  * server has no snooze, so other browsers do not see it; the nav count
  * names the snoozed items to the server (`useSnoozedItemIds`).
  */
-export function useInboxSnoozes(nowMs: number) {
-  const [snoozes, setSnoozes] = useStoredSnoozes();
+export function useInboxSnoozes(
+  nowMs: number,
+  items: readonly ReviewItemPayload[],
+) {
+  const [stored, setSnoozes] = useStoredSnoozes();
+  const converted = itemSnoozes(stored, items, nowMs);
+  // Keep the converted snoozes, so a Wake or a Snooze writes item snoozes.
+  useEffect(() => {
+    if (converted) setSnoozes(converted);
+  });
+  const snoozes = converted ?? stored;
   useWakeAtNextEnd(snoozes, nowMs);
   /** True while the item sleeps. */
   const sleeps = (item: ReviewItemPayload) =>
