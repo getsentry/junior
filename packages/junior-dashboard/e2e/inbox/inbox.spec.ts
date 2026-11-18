@@ -38,7 +38,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       todo.getByRole("link", { name: new RegExp(audit.title) }),
     ).toBeVisible();
-    // The badge and To do read the same server count.
+    // The badge and To do count the same cards.
     const tab = page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
@@ -48,12 +48,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The Inbox has no heading of its own, and closed items show only in Done.
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
-    // A To do Conversation does not show again under the time sections.
-    await expect(
-      page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: new RegExp(checkout) }),
-    ).toHaveCount(0);
     await screenshot(page, "inbox", { lightTheme: true });
 
     // A collapsed To do stays collapsed after a reload.
@@ -158,7 +152,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).not.toBeChecked();
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
-    // A phone view would remount the row and drop the picks.
     await screenshot(page, "inbox-row-answer", {
       lightTheme: true,
       view: "desktop",
@@ -182,7 +175,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .toEqual([audit.id, license.id].sort());
   });
 
-  test("a sweep clears only FYI items, with an Undo", async ({
+  test("a sweep dismisses only FYI items, with an Undo", async ({
     dashboard,
     page,
   }) => {
@@ -204,9 +197,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // FYI clears its notices; the questions stay.
-    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
-    await expect(page.getByText("Cleared 2 items")).toBeVisible();
+    // FYI dismisses its notices and says so; the questions stay.
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
+    await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -217,26 +210,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Clear 2 in FYI" }),
+      page.getByRole("button", { name: "Dismiss 2 in FYI" }),
     ).toBeVisible();
-    // Only section headers clear. No label says "need you".
-    await expect(page.getByRole("button", { name: /^Clear/ })).toHaveText(
-      Array(await page.getByRole("button", { name: /^Clear/ }).count()).fill(
-        /^Clear \d+$/,
-      ),
+    // Only section headers sweep. No label says "need you".
+    const sweeps = page.getByRole("button", { name: /^Dismiss \d+ in / });
+    await expect(sweeps).toHaveText(
+      Array(await sweeps.count()).fill(/^Dismiss \d+$/),
     );
     await expect(page.getByText(/\bneeds? you\b/i)).toHaveCount(0);
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
     expect(actions.map((action) => action.id)).not.toContain(teamAsk.id);
   });
 
-  test("Undo after a Clear works from an open Conversation and other tabs", async ({
+  test("Undo after a sweep works from an open Conversation and other tabs", async ({
     dashboard,
     page,
   }) => {
@@ -245,19 +237,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const clearFyi = page.getByRole("button", { name: /^Clear \d+ in FYI$/ });
+    const clearFyi = page.getByRole("button", {
+      name: /^Dismiss \d+ in FYI$/,
+    });
     await clearFyi.click();
-    await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
+    await expect(page.getByText(/^Dismissed \d+ FYIs?$/)).toBeVisible();
     await expect(clearFyi).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
-    const row = page
-      .locator("[data-inbox-row]")
-      .filter({ hasText: checkout })
-      .first();
-    await row.hover();
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link", { name: new RegExp(checkout) })
+      .click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -286,9 +278,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
-    await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
+    await expect(page.getByText(/^Could not dismiss \d+ FYIs?$/)).toBeVisible({
       timeout: 10_000,
     });
     await expect(digestFyi).toBeVisible();
@@ -348,7 +340,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const details = page.getByRole("region", {
       name: "Weekly project summary: attention",
     });
-    await expect(details).toContainText("Blocked: GitHub access expired.");
+    // The header says why it is blocked, so the card does not say it again.
+    await expect(
+      todo.getByRole("button", { name: /Weekly project summary/ }),
+    ).toContainText("Blocked · GitHub access expired.");
+    await expect(details).not.toContainText("GitHub access expired.");
+    await expect(details.getByText("Why", { exact: true })).toHaveCount(0);
     const waiting = Number(
       (await badge.getAttribute("aria-label"))!.replace(/\D/g, ""),
     );
@@ -490,8 +487,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("Could not load your Automations."),
     ).toBeVisible();
-    // With nothing to do, To do hides, and closed items stay in Done.
+    // With nothing to do, To do hides, and closed items stay in Done. To do
+    // may still hold Automations, so the Inbox does not say it is empty.
     await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
+    await expect(page.getByText("Nothing left here")).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
   });
 

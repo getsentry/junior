@@ -356,10 +356,7 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
-    await wakeInboxSnoozesForNewItem(tx, {
-      itemId: inserted[0].id,
-      nowMs: input.nowMs,
-    });
+    await wakeInboxSnoozesForNewItem(tx, inserted[0].id);
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -442,8 +439,8 @@ export async function closeReviewItem(
 }
 
 /**
- * Dismiss the open Review items that an Automation or a set of
- * Conversations added, when no agent can act on them any more. No person
+ * Dismiss open Review items by id, or the ones that an Automation or a set
+ * of Conversations added, when no agent can act on them any more. No person
  * closes them. It sends no message and does not change the Slack cards. A
  * close by Conversations skips the items of an Automation, because a later
  * run of the Automation can still change them. An Automation delete closes
@@ -454,8 +451,10 @@ export async function dismissOpenReviewItems(
   input: { nowMs: number; reason: string } & (
     | { addedByConversationIds: readonly string[] }
     | { automationId: string }
+    | { ids: readonly string[] }
   ),
 ): Promise<void> {
+  if ("ids" in input && input.ids.length === 0) return;
   const now = new Date(input.nowMs);
   await db
     .update(juniorReviewItems)
@@ -468,14 +467,16 @@ export async function dismissOpenReviewItems(
     .where(
       and(
         eq(juniorReviewItems.status, "open"),
-        "automationId" in input
-          ? eq(juniorReviewItems.automationId, input.automationId)
-          : and(
-              inArray(juniorReviewItems.addedByConversationId, [
-                ...input.addedByConversationIds,
-              ]),
-              isNull(juniorReviewItems.automationId),
-            ),
+        "ids" in input
+          ? inArray(juniorReviewItems.id, [...input.ids])
+          : "automationId" in input
+            ? eq(juniorReviewItems.automationId, input.automationId)
+            : and(
+                inArray(juniorReviewItems.addedByConversationId, [
+                  ...input.addedByConversationIds,
+                ]),
+                isNull(juniorReviewItems.automationId),
+              ),
       ),
     );
 }
@@ -648,12 +649,10 @@ function searchConditions(
     conditions.push(reviewItemForUser(filters.forUserId));
   }
   if (filters.awakeForUserId) {
-    conditions.push(
-      not(reviewItemSnoozedBy(filters.awakeForUserId, Date.now())),
-    );
+    conditions.push(not(reviewItemSnoozedBy(filters.awakeForUserId)));
   }
   if (filters.snoozedForUserId) {
-    conditions.push(reviewItemSnoozedBy(filters.snoozedForUserId, Date.now()));
+    conditions.push(reviewItemSnoozedBy(filters.snoozedForUserId));
   }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
@@ -669,25 +668,21 @@ function searchConditions(
 
 /**
  * SQL: the Review item needs the User now: `reviewItemNeedsUser`, and the
- * User has not snoozed its Inbox row.
+ * User has not snoozed it.
  */
-function reviewItemNeedsUserNow(userId: string, nowMs: number): SQL {
-  return and(
-    reviewItemNeedsUser(userId),
-    not(reviewItemSnoozedBy(userId, nowMs)),
-  )!;
+function reviewItemNeedsUserNow(userId: string): SQL {
+  return and(reviewItemNeedsUser(userId), not(reviewItemSnoozedBy(userId)))!;
 }
 
 /**
  * Count the open Review items that need a User (`reviewItemNeedsUser`), one
  * row per subject URL, with the ones that ask with a form as `decisions`.
  * The nav count and the Inbox bundle counts all read this one query. A
- * snoozed row does not count until it wakes.
+ * snoozed item does not count until it wakes.
  */
 export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
   userId: string,
-  nowMs = Date.now(),
 ): Promise<
   Array<{ decisions: number; subjectUrl: string | null; total: number }>
 > {
@@ -698,7 +693,7 @@ export async function countReviewItemsNeedingUserBySubject(
       total: count(),
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUserNow(userId, nowMs))
+    .where(reviewItemNeedsUserNow(userId))
     .groupBy(juniorReviewItems.subjectUrl);
 }
 
@@ -706,19 +701,18 @@ export async function countReviewItemsNeedingUserBySubject(
  * Return a query for a token that changes when the open Review items that
  * need a User change. An item that is added or changed moves the newest
  * `updated_at`, and an item that closes, leaves the User, or is snoozed
- * changes the count. A new or undone snooze also changes the token.
+ * changes the count. A new or ended snooze also changes the token.
  */
 export function reviewItemsNeedingUserVersionQuery(
   db: JuniorDatabase,
   userId: string,
 ) {
-  const nowMs = Date.now();
   return db
     .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${inboxSnoozesVersion(userId, nowMs)})`,
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${inboxSnoozesVersion(userId)})`,
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUserNow(userId, nowMs));
+    .where(reviewItemNeedsUserNow(userId));
 }
 
 /**
@@ -805,7 +799,7 @@ export async function listWaitingConversations(
         juniorReviewItemConversations.conversationId,
       ),
     )
-    .where(reviewItemNeedsUserNow(userId, Date.now()))
+    .where(reviewItemNeedsUserNow(userId))
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {

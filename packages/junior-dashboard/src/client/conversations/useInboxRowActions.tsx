@@ -46,6 +46,7 @@ export function useInboxRowActions(
       showActionError(
         conversation,
         pinning ? "Could not pin" : "Could not unpin",
+        () => pin.mutate(pinning),
       ),
     onSuccess: () => clearActionError(conversation),
   });

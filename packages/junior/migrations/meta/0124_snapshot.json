@@ -1,5 +1,5 @@
 {
-  "id": "7c381e97-83fe-4f99-9e13-60d5204fafca",
+  "id": "e3d3eca6-a7f1-49e3-ad2e-8e185670c8e9",
   "prevId": "32dd3537-b73d-47f5-adf2-d4a355ec6f28",
   "version": "7",
   "dialect": "postgresql",
@@ -4027,7 +4027,7 @@
           "name": "identifier",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "event_type": {
           "name": "event_type",
@@ -4128,35 +4128,17 @@
           "primaryKey": false,
           "notNull": true
         },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "review_item_id": {
           "name": "review_item_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "wake_at_ms": {
-          "name": "wake_at_ms",
-          "type": "bigint",
-          "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
+        "state": {
+          "name": "state",
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -4166,8 +4148,8 @@
         }
       },
       "indexes": {
-        "junior_inbox_snoozes_active_row_uidx": {
-          "name": "junior_inbox_snoozes_active_row_uidx",
+        "junior_inbox_snoozes_snoozed_uidx": {
+          "name": "junior_inbox_snoozes_snoozed_uidx",
           "columns": [
             {
               "expression": "user_id",
@@ -4176,36 +4158,14 @@
               "nulls": "last"
             },
             {
-              "expression": "conversation_id",
+              "expression": "review_item_id",
               "isExpression": false,
               "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "coalesce(\"review_item_id\", '')",
-              "asc": true,
-              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "where": "\"junior_inbox_snoozes\".\"status\" = 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_inbox_snoozes_due_idx": {
-          "name": "junior_inbox_snoozes_due_idx",
-          "columns": [
-            {
-              "expression": "wake_at_ms",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_inbox_snoozes\".\"status\" = 'active'",
+          "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4221,22 +4181,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_inbox_snoozes\".\"status\" <> 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_inbox_snoozes_conversation_idx": {
-          "name": "junior_inbox_snoozes_conversation_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
+          "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4252,7 +4197,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_inbox_snoozes\".\"review_item_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4268,19 +4212,6 @@
           ],
           "columnsTo": [
             "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "junior_inbox_snoozes_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_inbox_snoozes_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -4303,9 +4234,9 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "junior_inbox_snoozes_status_check": {
-          "name": "junior_inbox_snoozes_status_check",
-          "value": "\"junior_inbox_snoozes\".\"status\" in ('active', 'woken', 'resolved', 'cancelled')"
+        "junior_inbox_snoozes_state_check": {
+          "name": "junior_inbox_snoozes_state_check",
+          "value": "\"junior_inbox_snoozes\".\"state\" in ('snoozed', 'woken', 'cancelled')"
         }
       },
       "isRLSEnabled": false

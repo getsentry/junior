@@ -9,20 +9,16 @@ export const inboxSnoozeSubjectSchema = z
   .strict();
 
 /**
- * `POST /api/inbox/snoozes` body: hide the row from the viewer until
- * `wakeAt`, or until a new item in its Conversation.
+ * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
+ * until `wakeAt`, or until a new item in the row.
  */
 export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
   .extend({ wakeAt: z.string().datetime() })
   .strict();
 
-/** One snooze of the viewer. */
-export const inboxSnoozeSchema = inboxSnoozeSubjectSchema
-  .extend({
-    createdAt: z.string().datetime(),
-    id: z.string().min(1),
-    wakeAt: z.string().datetime(),
-  })
+/** The items that a snooze hid from the viewer, one snooze each. */
+export const inboxSnoozeSchema = z
+  .object({ reviewItemIds: z.array(z.string().min(1)).min(1) })
   .strict();
 
 export type InboxSnoozeCreateBody = z.input<typeof inboxSnoozeCreateSchema>;

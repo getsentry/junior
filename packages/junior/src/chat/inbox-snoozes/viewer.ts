@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, countDistinct, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -14,11 +15,16 @@ import { juniorReviewItems } from "@/db/schema/review-items";
 import {
   reviewItemInRow,
   reviewItemSnoozedBy,
-  snoozeInboxRow,
+  snoozeInboxItems,
   unsnoozeInboxRow,
-  type InboxSnooze,
-  type InboxSnoozeSubject,
 } from "./store";
+import { scheduleInboxSnoozeTimer } from "./triggers";
+
+/** The Inbox row of a snooze: a root Conversation, or one item in it. */
+export interface InboxSnoozeSubject {
+  conversationId: string;
+  reviewItemId?: string;
+}
 
 /** A snooze request that the viewer may not make, such as a past time. */
 export class InboxSnoozeInputError extends Error {}
@@ -56,29 +62,29 @@ async function rootConversationIds(
 }
 
 /**
- * Return the root Conversation of the row when the viewer can see an open
- * Review item in it. A missing row and a hidden row look the same.
+ * Return the open Review items of the row that the viewer can see: the one
+ * item, or every item in the root Conversation's row. A missing row and a
+ * hidden row look the same.
  */
-async function visibleRowRoot(
+async function visibleRowItems(
   user: User,
-  subject: InboxSnoozeSubject,
-): Promise<string> {
-  const root = await rootConversationId(subject.conversationId);
-  if (!root) throw new InboxRowNotFoundError("Inbox row was not found.");
-  if (subject.reviewItemId) {
-    const item = await getReviewItem(getDb(), subject.reviewItemId);
+  root: string,
+  reviewItemId: string | undefined,
+): Promise<string[]> {
+  if (reviewItemId) {
+    const item = await getReviewItem(getDb(), reviewItemId);
     const roots = item ? await rootConversationIds(item.conversationIds) : [];
     if (
       item?.status === "open" &&
       roots.includes(root) &&
       (await canUserReadReviewItem(item, user))
     ) {
-      return root;
+      return [item.id];
     }
-    throw new InboxRowNotFoundError("Inbox row was not found.");
+    return [];
   }
   const reader = await reviewItemReaderForUserInConversation(user, root);
-  const [visible] = await getDb()
+  const rows = await getDb()
     .select({ id: juniorReviewItems.id })
     .from(juniorReviewItems)
     .where(
@@ -87,41 +93,45 @@ async function visibleRowRoot(
         reviewItemVisibleTo(reader),
         reviewItemInRow(root),
       ),
-    )
-    .limit(1);
-  if (!visible) throw new InboxRowNotFoundError("Inbox row was not found.");
-  return root;
+    );
+  return rows.map((row) => row.id);
 }
 
 /**
- * Snooze one Inbox row for the viewer until `wakeAtMs`, or until a new item
- * in its Conversation. It replaces the viewer's earlier snooze on the row.
+ * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
+ * or until a new item in the row. Each item gets its own snooze, which
+ * replaces the viewer's earlier one. Returns the snoozed items.
  */
 export async function createViewerSnooze(
   user: User,
   input: { subject: InboxSnoozeSubject; wakeAtMs: number },
   nowMs = Date.now(),
-): Promise<InboxSnooze> {
+): Promise<string[]> {
   if (input.wakeAtMs <= nowMs) {
     throw new InboxSnoozeInputError("The wake time must be in the future.");
   }
-  const root = await visibleRowRoot(user, input.subject);
-  return snoozeInboxRow(getDb(), {
+  const root = await rootConversationId(input.subject.conversationId);
+  const reviewItemIds = root
+    ? await visibleRowItems(user, root, input.subject.reviewItemId)
+    : [];
+  if (!root || reviewItemIds.length === 0) {
+    throw new InboxRowNotFoundError("Inbox row was not found.");
+  }
+  const timerId = `inbox-snooze:${randomUUID()}`;
+  await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
+  await snoozeInboxItems(getDb(), {
     nowMs,
-    subject: {
-      conversationId: root,
-      ...(input.subject.reviewItemId
-        ? { reviewItemId: input.subject.reviewItemId }
-        : undefined),
-    },
+    reviewItemIds,
+    rootConversationId: root,
+    timerId,
     userId: user.id,
-    wakeAtMs: input.wakeAtMs,
   });
+  return reviewItemIds;
 }
 
 /**
- * Undo the viewer's snoozes on one Inbox row, so it comes back now. A row
- * with no snooze of theirs does not change.
+ * Wake the viewer's snoozes on one Inbox row now. A row with no snooze of
+ * theirs does not change.
  */
 export async function unsnoozeViewerRow(
   user: User,
@@ -130,12 +140,10 @@ export async function unsnoozeViewerRow(
   const root = await rootConversationId(subject.conversationId);
   if (!root) return;
   await unsnoozeInboxRow(getDb(), {
-    subject: {
-      conversationId: root,
-      ...(subject.reviewItemId
-        ? { reviewItemId: subject.reviewItemId }
-        : undefined),
-    },
+    rootConversationId: root,
+    ...(subject.reviewItemId
+      ? { reviewItemId: subject.reviewItemId }
+      : undefined),
     userId: user.id,
   });
 }
@@ -145,10 +153,7 @@ export async function unsnoozeViewerRow(
  * per Conversation that added an open item that a snooze hides. One snooze
  * on a root Conversation can hide the rows of several.
  */
-export async function countViewerSnoozes(
-  user: User,
-  nowMs = Date.now(),
-): Promise<number> {
+export async function countViewerSnoozes(user: User): Promise<number> {
   const [row] = await getDb()
     .select({ count: countDistinct(juniorReviewItems.addedByConversationId) })
     .from(juniorReviewItems)
@@ -157,7 +162,7 @@ export async function countViewerSnoozes(
         eq(juniorReviewItems.status, "open"),
         reviewItemVisibleTo(reviewItemReaderForUser(user)),
         reviewItemForUser(user.id),
-        reviewItemSnoozedBy(user.id, nowMs),
+        reviewItemSnoozedBy(user.id),
       ),
     );
   return row?.count ?? 0;

@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint,
   check,
   index,
   jsonb,
@@ -9,16 +8,14 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { EventMatch } from "@sentry/junior-plugin-api";
-import { juniorConversations } from "./conversations";
 import { juniorReviewItems } from "./review-items";
 import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
 
 /**
- * One User's snooze of one Inbox row: the root Conversation, or one Review
- * item in it. An `active` snooze hides the row from that User until
- * `wake_at_ms`, or until one of its triggers fires. Each later status is
- * final, and `reason` says why it changed.
+ * One person's snooze of one Review item. A `snoozed` row hides the item
+ * from that person's Inbox until one of its triggers fires. `woken` and
+ * `cancelled` are final. The item's own status says whether it resolved.
  */
 export const juniorInboxSnoozes = pgTable(
   "junior_inbox_snoozes",
@@ -27,52 +24,33 @@ export const juniorInboxSnoozes = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => juniorUsers.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id")
+    reviewItemId: text("review_item_id")
       .notNull()
-      .references(() => juniorConversations.conversationId, {
-        onDelete: "cascade",
-      }),
-    reviewItemId: text("review_item_id").references(
-      () => juniorReviewItems.id,
-      { onDelete: "cascade" },
-    ),
-    wakeAtMs: bigint("wake_at_ms", { mode: "number" }).notNull(),
-    status: text("status")
-      .$type<"active" | "woken" | "resolved" | "cancelled">()
-      .notNull(),
-    reason: text("reason"),
+      .references(() => juniorReviewItems.id, { onDelete: "cascade" }),
+    state: text("state").$type<"snoozed" | "woken" | "cancelled">().notNull(),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
     check(
-      "junior_inbox_snoozes_status_check",
-      sql`${table.status} in ('active', 'woken', 'resolved', 'cancelled')`,
+      "junior_inbox_snoozes_state_check",
+      sql`${table.state} in ('snoozed', 'woken', 'cancelled')`,
     ),
-    // One active snooze per User and row. It also serves the User's reads.
-    uniqueIndex("junior_inbox_snoozes_active_row_uidx")
-      .on(
-        table.userId,
-        table.conversationId,
-        sql`coalesce(${table.reviewItemId}, '')`,
-      )
-      .where(sql`${table.status} = 'active'`),
-    index("junior_inbox_snoozes_due_idx")
-      .on(table.wakeAtMs)
-      .where(sql`${table.status} = 'active'`),
+    // One snooze per person and item. It also serves the person's reads.
+    uniqueIndex("junior_inbox_snoozes_snoozed_uidx")
+      .on(table.userId, table.reviewItemId)
+      .where(sql`${table.state} = 'snoozed'`),
     index("junior_inbox_snoozes_settled_idx")
       .on(table.createdAt)
-      .where(sql`${table.status} <> 'active'`),
-    index("junior_inbox_snoozes_conversation_idx").on(table.conversationId),
-    index("junior_inbox_snoozes_review_item_idx")
-      .on(table.reviewItemId)
-      .where(sql`${table.reviewItemId} is not null`),
+      .where(sql`${table.state} <> 'snoozed'`),
+    index("junior_inbox_snoozes_review_item_idx").on(table.reviewItemId),
   ],
 );
 
 /**
- * An Event that ends a snooze early. `wake` brings the row back; `resolve`
- * dismisses the item and cancels the snooze. The first trigger to fire
- * wins, and a snooze that is no longer active ignores the rest.
+ * An Event that ends a snooze. `wake` brings the item back; `resolve`
+ * dismisses the item and cancels the snooze. A snooze's triggers join with
+ * OR: the first to fire wins, and the snooze ignores the rest. Time is a
+ * `timer.fired` Event like any other.
  */
 export const juniorInboxSnoozeTriggers = pgTable(
   "junior_inbox_snooze_triggers",
@@ -82,7 +60,7 @@ export const juniorInboxSnoozeTriggers = pgTable(
       .references(() => juniorInboxSnoozes.id, { onDelete: "cascade" }),
     outcome: text("outcome").$type<"wake" | "resolve">().notNull(),
     namespace: text("namespace").notNull(),
-    identifier: text("identifier"),
+    identifier: text("identifier").notNull(),
     eventType: text("event_type").notNull(),
     match: jsonb("match").$type<EventMatch>(),
   },

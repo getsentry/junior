@@ -326,14 +326,15 @@ export async function mockReviewItems(
         Date.parse(body.wakeAt),
       );
       snoozeChanges++;
-      return route.fulfill({
-        json: {
-          ...body,
-          createdAt: new Date().toISOString(),
-          id: `snooze-${snoozes.size}-${Date.now()}`,
-        },
-        status: 201,
-      });
+      // One snooze per open item that it hides.
+      const reviewItemIds = open
+        .filter((i) =>
+          body.reviewItemId
+            ? i.id === body.reviewItemId
+            : asleep(new Set([body.conversationId]), i),
+        )
+        .map((i) => i.id);
+      return route.fulfill({ json: { reviewItemIds }, status: 201 });
     }
     if (request.method() === "DELETE") {
       // Without an item, every snooze in the Conversation wakes.

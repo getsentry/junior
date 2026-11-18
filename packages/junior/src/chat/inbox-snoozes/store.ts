@@ -1,17 +1,7 @@
 import { randomUUID } from "node:crypto";
-import {
-  and,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  lte,
-  ne,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
 import { alias, QueryBuilder } from "drizzle-orm/pg-core";
+import type { EventMatch } from "@sentry/junior-plugin-api";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema/conversations";
@@ -24,36 +14,25 @@ import {
   juniorReviewItems,
 } from "@/db/schema/review-items";
 
-/** The Inbox row that a snooze hides: one Conversation, or one item in it. */
-export interface InboxSnoozeSubject {
-  /** The root Conversation of the row. */
-  conversationId: string;
-  reviewItemId?: string;
+/** A trigger as Event matching reads it. */
+export interface InboxSnoozeTriggerMatch {
+  eventType: string;
+  identifier: string;
+  match: EventMatch | null;
+  outcome: "wake" | "resolve";
+  snoozeId: string;
 }
 
-/** A stored snooze. */
-export type InboxSnooze = typeof juniorInboxSnoozes.$inferSelect;
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A snooze that is no longer active is deleted this long after it was made. */
+/** A snooze that woke or was cancelled is deleted this long after it was made. */
 const SNOOZE_RETENTION_MS = 30 * DAY_MS;
-// Bound one heartbeat or retention pass. The rest waits for the next one;
-// reads already treat a due snooze as woken.
-const SNOOZE_BATCH_LIMIT = 1000;
+// Bound one retention pass. The rest waits for the next one.
+const SNOOZE_RETENTION_LIMIT = 1000;
 
-/** Why a snooze left `active`. */
-const SNOOZE_REASON = {
-  newItem: "new_item",
-  replaced: "replaced",
-  time: "time",
-  unsnoozed: "unsnoozed",
-} as const;
-
-/**
- * The trigger Event of a new Review item in the row's Conversation. Its
- * identifier is the row's root Conversation. Every snooze has it.
- */
+/** The Event of a new Review item in a row. Its identifier is the row's root. */
 const NEW_ITEM_EVENT_TYPE = "review_item.created";
+/** The Event of a snooze timer. Its identifier is the timer id. */
+export const SNOOZE_TIMER_EVENT_TYPE = "timer.fired";
 
 const linkRoot = alias(juniorConversations, "snooze_link_root");
 const itemLink = alias(juniorReviewItemConversations, "snooze_item_link");
@@ -71,135 +50,193 @@ function rowRootsOfItem(itemId: SQL | string) {
     .where(eq(itemLink.itemId, itemId));
 }
 
-/** SQL: the snooze has not woken, so its row stays hidden. */
-function asleepAt(nowMs: number): SQL {
-  // A wake time at or before now has passed, even before the heartbeat
-  // settles it.
-  return and(
-    eq(juniorInboxSnoozes.status, "active"),
-    gt(juniorInboxSnoozes.wakeAtMs, nowMs),
-  )!;
+/**
+ * SQL: the Review item is in the Inbox row of this root Conversation: the
+ * item links that Conversation or one of its threads.
+ */
+export function reviewItemInRow(rootConversationId: string): SQL {
+  return inArray(
+    sql`${rootConversationId}`,
+    rowRootsOfItem(sql`${juniorReviewItems.id}`),
+  );
+}
+
+/** SQL: this User snoozed the Review item, and it has not woken. */
+export function reviewItemSnoozedBy(userId: string): SQL {
+  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} and ${juniorInboxSnoozes.state} = 'snoozed')`;
 }
 
 /**
- * SQL: this User snoozed the Inbox row of the Review item, and the snooze has
- * not woken. The row is the item itself, or the root Conversation of a
- * Conversation that the item links.
+ * SQL for the Inbox versions token: it changes when this User snoozes an
+ * item, and when one of their snoozes wakes or is cancelled.
  */
-export function reviewItemSnoozedBy(userId: string, nowMs: number): SQL {
-  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${asleepAt(nowMs)} and (${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${inArray(juniorInboxSnoozes.conversationId, rowRootsOfItem(sql`${juniorReviewItems.id}`))})))`;
+export function inboxSnoozesVersion(userId: string): SQL<string> {
+  return sql<string>`(select concat_ws(':', count(*), max(${juniorInboxSnoozes.createdAt})) from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.state} = 'snoozed')`;
 }
 
 /**
- * SQL for the Inbox versions token: it changes when this User snoozes a row,
- * or when one of their snoozes wakes or is undone. A due snooze counts as
- * woken, as Inbox reads treat it, before the heartbeat settles it.
+ * Snooze Review items for one User. Each item gets its own snooze with two
+ * wake triggers: the timer, and a new item in the row. The User's earlier
+ * snooze on an item is cancelled. `rootConversationId` is the row's root,
+ * and the caller must check that the User can see each item. Returns the
+ * new snoozes.
  */
-export function inboxSnoozesVersion(
-  userId: string,
-  nowMs: number,
-): SQL<string> {
-  return sql<string>`(select concat_ws(':', count(*) filter (where ${juniorInboxSnoozes.wakeAtMs} > ${nowMs}), max(${juniorInboxSnoozes.createdAt})) from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.status} = 'active')`;
-}
-
-/** SQL: this User's active snoozes on this Inbox row. */
-function activeSnoozesOnRow(userId: string, subject: InboxSnoozeSubject): SQL {
-  return and(
-    eq(juniorInboxSnoozes.userId, userId),
-    eq(juniorInboxSnoozes.status, "active"),
-    eq(juniorInboxSnoozes.conversationId, subject.conversationId),
-    subject.reviewItemId
-      ? eq(juniorInboxSnoozes.reviewItemId, subject.reviewItemId)
-      : isNull(juniorInboxSnoozes.reviewItemId),
-  )!;
-}
-
-/**
- * Snooze one Inbox row for one User until `wakeAtMs`, or until a new Review
- * item in the row's Conversation. The User's earlier snooze on the row is
- * cancelled as replaced. `subject.conversationId` must be a root
- * Conversation, and the caller must check that the User can see the row.
- */
-export async function snoozeInboxRow(
+export async function snoozeInboxItems(
   db: JuniorDatabase,
   input: {
-    userId: string;
     nowMs: number;
-    subject: InboxSnoozeSubject;
-    wakeAtMs: number;
+    reviewItemIds: readonly string[];
+    rootConversationId: string;
+    timerId: string;
+    userId: string;
   },
-): Promise<InboxSnooze> {
-  // Serialize snoozes of one User on one row, so overlapping requests
+): Promise<string[]> {
+  // Serialize one User's snoozes in one row, so overlapping requests
   // replace in turn instead of failing on the unique index.
-  const lockKey = [
-    "junior:inbox-snooze",
-    input.userId,
-    input.subject.conversationId,
-    input.subject.reviewItemId ?? "",
-  ].join(":");
+  const lockKey = `junior:inbox-snooze:${input.userId}:${input.rootConversationId}`;
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
     await tx
       .update(juniorInboxSnoozes)
-      .set({ status: "cancelled", reason: SNOOZE_REASON.replaced })
-      .where(activeSnoozesOnRow(input.userId, input.subject));
-    const [snooze] = await tx
-      .insert(juniorInboxSnoozes)
-      .values({
-        conversationId: input.subject.conversationId,
-        createdAt: new Date(input.nowMs),
-        id: randomUUID(),
-        reviewItemId: input.subject.reviewItemId ?? null,
-        status: "active",
-        userId: input.userId,
-        wakeAtMs: input.wakeAtMs,
-      })
-      .returning();
-    await tx.insert(juniorInboxSnoozeTriggers).values({
-      eventType: NEW_ITEM_EVENT_TYPE,
-      identifier: input.subject.conversationId,
-      namespace: CORE_EVENT_NAMESPACE,
-      outcome: "wake",
-      snoozeId: snooze!.id,
-    });
-    return snooze!;
+      .set({ state: "cancelled" })
+      .where(
+        and(
+          eq(juniorInboxSnoozes.userId, input.userId),
+          inArray(juniorInboxSnoozes.reviewItemId, [...input.reviewItemIds]),
+          eq(juniorInboxSnoozes.state, "snoozed"),
+        ),
+      );
+    const snoozes = input.reviewItemIds.map((reviewItemId) => ({
+      createdAt: new Date(input.nowMs),
+      id: randomUUID(),
+      reviewItemId,
+      state: "snoozed" as const,
+      userId: input.userId,
+    }));
+    await tx.insert(juniorInboxSnoozes).values(snoozes);
+    await tx.insert(juniorInboxSnoozeTriggers).values(
+      snoozes.flatMap((snooze) => [
+        {
+          eventType: SNOOZE_TIMER_EVENT_TYPE,
+          identifier: input.timerId,
+          namespace: CORE_EVENT_NAMESPACE,
+          outcome: "wake" as const,
+          snoozeId: snooze.id,
+        },
+        {
+          eventType: NEW_ITEM_EVENT_TYPE,
+          identifier: input.rootConversationId,
+          namespace: CORE_EVENT_NAMESPACE,
+          outcome: "wake" as const,
+          snoozeId: snooze.id,
+        },
+      ]),
+    );
+    return snoozes.map((snooze) => snooze.id);
   });
 }
 
 /**
- * Undo this User's active snoozes on an Inbox row: with `reviewItemId`, the
- * snooze of that item; without it, every snooze in the root Conversation.
- * Return the number undone.
+ * Wake this User's snoozes on the open items of an Inbox row now: one item,
+ * or every item in the root Conversation's row.
  */
 export async function unsnoozeInboxRow(
   db: JuniorDatabase,
-  input: { userId: string; subject: InboxSnoozeSubject },
-): Promise<number> {
-  const rows = await db
+  input: {
+    rootConversationId: string;
+    reviewItemId?: string;
+    userId: string;
+  },
+): Promise<void> {
+  const items = queries
+    .select({ id: juniorReviewItems.id })
+    .from(juniorReviewItems)
+    .where(
+      input.reviewItemId
+        ? eq(juniorReviewItems.id, input.reviewItemId)
+        : reviewItemInRow(input.rootConversationId),
+    );
+  await db
     .update(juniorInboxSnoozes)
-    .set({ status: "cancelled", reason: SNOOZE_REASON.unsnoozed })
+    .set({ state: "woken" })
     .where(
       and(
         eq(juniorInboxSnoozes.userId, input.userId),
-        eq(juniorInboxSnoozes.status, "active"),
-        eq(juniorInboxSnoozes.conversationId, input.subject.conversationId),
-        input.subject.reviewItemId
-          ? eq(juniorInboxSnoozes.reviewItemId, input.subject.reviewItemId)
-          : undefined,
+        inArray(juniorInboxSnoozes.reviewItemId, items),
+        eq(juniorInboxSnoozes.state, "snoozed"),
       ),
-    )
-    .returning({ id: juniorInboxSnoozes.id });
-  return rows.length;
+    );
 }
 
 /**
- * Wake every snooze on the Inbox rows of a new Review item: any new item in
- * the row's Conversation wakes it, whoever it is for. Run it in the
- * transaction that adds the item.
+ * Return the triggers of snoozed items that Events of these types and
+ * resources can fire. The caller checks each trigger's `match` against the
+ * Event data.
+ */
+export async function listFiringInboxSnoozeTriggers(
+  db: JuniorDatabase,
+  input: {
+    eventTypes: readonly string[];
+    identifiers: readonly string[];
+    namespace: string;
+  },
+): Promise<InboxSnoozeTriggerMatch[]> {
+  if (input.identifiers.length === 0 || input.eventTypes.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      eventType: juniorInboxSnoozeTriggers.eventType,
+      identifier: juniorInboxSnoozeTriggers.identifier,
+      match: juniorInboxSnoozeTriggers.match,
+      outcome: juniorInboxSnoozeTriggers.outcome,
+      snoozeId: juniorInboxSnoozeTriggers.snoozeId,
+    })
+    .from(juniorInboxSnoozeTriggers)
+    .innerJoin(
+      juniorInboxSnoozes,
+      eq(juniorInboxSnoozes.id, juniorInboxSnoozeTriggers.snoozeId),
+    )
+    .where(
+      and(
+        eq(juniorInboxSnoozeTriggers.namespace, input.namespace),
+        inArray(juniorInboxSnoozeTriggers.identifier, [...input.identifiers]),
+        inArray(juniorInboxSnoozeTriggers.eventType, [...input.eventTypes]),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
+    );
+}
+
+/**
+ * End snoozes that a trigger fired. Only a `snoozed` row changes, so the
+ * first trigger to fire wins. Return the items of the snoozes that changed.
+ */
+export async function settleInboxSnoozes(
+  db: JuniorDatabase,
+  input: { snoozeIds: readonly string[]; state: "woken" | "cancelled" },
+): Promise<string[]> {
+  if (input.snoozeIds.length === 0) return [];
+  const rows = await db
+    .update(juniorInboxSnoozes)
+    .set({ state: input.state })
+    .where(
+      and(
+        inArray(juniorInboxSnoozes.id, [...input.snoozeIds]),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
+    )
+    .returning({ reviewItemId: juniorInboxSnoozes.reviewItemId });
+  return rows.map((row) => row.reviewItemId);
+}
+
+/**
+ * Wake every snooze in the Inbox rows of a new Review item: any new item in
+ * a row wakes it, whoever the item is for. Run it in the transaction that
+ * adds the item.
  */
 export async function wakeInboxSnoozesForNewItem(
   db: JuniorDatabase,
-  input: { itemId: string; nowMs: number },
+  itemId: string,
 ): Promise<void> {
   const triggered = queries
     .select({ id: juniorInboxSnoozeTriggers.snoozeId })
@@ -207,57 +244,25 @@ export async function wakeInboxSnoozesForNewItem(
     .where(
       and(
         eq(juniorInboxSnoozeTriggers.namespace, CORE_EVENT_NAMESPACE),
-        inArray(
-          juniorInboxSnoozeTriggers.identifier,
-          rowRootsOfItem(input.itemId),
-        ),
+        inArray(juniorInboxSnoozeTriggers.identifier, rowRootsOfItem(itemId)),
         eq(juniorInboxSnoozeTriggers.eventType, NEW_ITEM_EVENT_TYPE),
         eq(juniorInboxSnoozeTriggers.outcome, "wake"),
       ),
     );
-  // Only an active snooze changes, so the first trigger to fire wins.
   await db
     .update(juniorInboxSnoozes)
-    .set({ status: "woken", reason: SNOOZE_REASON.newItem })
+    .set({ state: "woken" })
     .where(
-      and(inArray(juniorInboxSnoozes.id, triggered), asleepAt(input.nowMs)),
+      and(
+        inArray(juniorInboxSnoozes.id, triggered),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
     );
 }
 
 /**
- * Settle the snoozes whose wake time has passed. Reads already treat them as
- * woken; this only records it. Returns the number settled.
- */
-export async function settleDueInboxSnoozes(
-  db: JuniorDatabase,
-  nowMs: number,
-): Promise<number> {
-  const due = db
-    .select({ id: juniorInboxSnoozes.id })
-    .from(juniorInboxSnoozes)
-    .where(
-      and(
-        eq(juniorInboxSnoozes.status, "active"),
-        lte(juniorInboxSnoozes.wakeAtMs, nowMs),
-      ),
-    )
-    .limit(SNOOZE_BATCH_LIMIT);
-  const rows = await db
-    .update(juniorInboxSnoozes)
-    .set({ status: "woken", reason: SNOOZE_REASON.time })
-    .where(
-      and(
-        inArray(juniorInboxSnoozes.id, due),
-        eq(juniorInboxSnoozes.status, "active"),
-      ),
-    )
-    .returning({ id: juniorInboxSnoozes.id });
-  return rows.length;
-}
-
-/**
- * Delete snoozes that left `active`, with their triggers, after retention.
- * Returns the number deleted.
+ * Delete snoozes that woke or were cancelled, with their triggers, after
+ * retention. Returns the number deleted.
  */
 export async function deleteExpiredInboxSnoozes(
   db: JuniorDatabase,
@@ -268,25 +273,14 @@ export async function deleteExpiredInboxSnoozes(
     .from(juniorInboxSnoozes)
     .where(
       and(
-        ne(juniorInboxSnoozes.status, "active"),
+        ne(juniorInboxSnoozes.state, "snoozed"),
         lt(juniorInboxSnoozes.createdAt, new Date(nowMs - SNOOZE_RETENTION_MS)),
       ),
     )
-    .limit(SNOOZE_BATCH_LIMIT);
+    .limit(SNOOZE_RETENTION_LIMIT);
   const rows = await db
     .delete(juniorInboxSnoozes)
     .where(inArray(juniorInboxSnoozes.id, expired))
     .returning({ id: juniorInboxSnoozes.id });
   return rows.length;
-}
-
-/**
- * SQL: the Review item is in the Inbox row of this root Conversation. Use it
- * to check that a viewer can see a row before they snooze it.
- */
-export function reviewItemInRow(rootConversationId: string): SQL {
-  return inArray(
-    sql`${rootConversationId}`,
-    rowRootsOfItem(sql`${juniorReviewItems.id}`),
-  );
 }

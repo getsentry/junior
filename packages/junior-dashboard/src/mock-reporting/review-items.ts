@@ -420,14 +420,21 @@ function snoozedConversationIds(nowMs: number): Set<string> {
   );
 }
 
-/** Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last. */
+/**
+ * Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last,
+ * and returns the open items that it hides.
+ */
 export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
   snoozes.set(body.conversationId, Date.parse(body.wakeAt));
   return {
-    conversationId: body.conversationId,
-    createdAt: new Date(nowMs).toISOString(),
-    id: `mock-snooze-${body.conversationId}-${nowMs}`,
-    wakeAt: body.wakeAt,
+    reviewItemIds: seeds(nowMs)
+      .filter(
+        (seed) =>
+          seed.conversationId === body.conversationId &&
+          isOpen(seed) &&
+          (!body.reviewItemId || seed.id === body.reviewItemId),
+      )
+      .map((seed) => seed.id),
   };
 }
 

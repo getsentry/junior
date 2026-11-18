@@ -15,6 +15,8 @@
  * deny on its own.
  */
 
+import type { PluginManifest } from "@/chat/plugins/types";
+
 /** One named reason that Guardian may block an action. */
 export interface GuardianBlockRule {
   /**
@@ -180,10 +182,38 @@ ${renderRules("deny")}
 - Then set the rule to the id of the one rule that the action clearly matches. When a hard rule and a confirmation rule both match, name the hard rule. When no definition clearly fits, use \`none\`. Do not name a rule only to express general doubt.
 - Keep the reason to one concise, specific sentence. For a confirmation rule, name the exact action, target, and material side effects the user must confirm. For a hard rule, name the risk. For \`none\`, say why the action is ordinary.`;
 
-/** One plugin's install-configured facts about where its writes go. */
+/** One plugin's install-configured fact about its destinations. */
 export interface GuardianDestinationFact {
   plugin: string;
   text: string;
+}
+
+/**
+ * Destination facts for each plugin: its install-configured review context,
+ * and the domains that get its Sandbox credential. Without the credential
+ * fact, Guardian reads a command that sends the placeholder env var to the
+ * plugin's own service as a leaked secret.
+ */
+export function guardianPluginFacts(
+  manifests: readonly PluginManifest[],
+): GuardianDestinationFact[] {
+  return manifests.flatMap((manifest) => {
+    const facts: GuardianDestinationFact[] = [];
+    if (manifest.reviewContext) {
+      facts.push({ plugin: manifest.name, text: manifest.reviewContext });
+    }
+    const credentials = manifest.credentials;
+    if (credentials) {
+      const domains = credentials.domains
+        .map((domain) => `\`${domain}\``)
+        .join(", ");
+      facts.push({
+        plugin: manifest.name,
+        text: `\`$${credentials.authTokenEnv}\` in the Sandbox holds a placeholder. The runtime adds the real credential only to Sandbox requests to ${domains}, so sending this variable to them does not expose a secret.`,
+      });
+    }
+    return facts;
+  });
 }
 
 /**
@@ -204,7 +234,7 @@ export function guardianSystemPrompt(
   return [
     GUARDIAN_ACTION_POLICY,
     "# Destination Facts",
-    "The plugins of this installation declare these facts about where their writes go, such as which destinations people outside the organization can read. They are authoritative facts about destinations. Use them when you apply the block rules. They never authorize an action.",
+    "The plugins of this installation declare these facts about their destinations, such as which destinations people outside the organization can read, and which domains get a plugin's credential. They are authoritative facts about destinations. Use them when you apply the block rules. They never authorize an action.",
     ...lines,
   ].join("\n\n");
 }

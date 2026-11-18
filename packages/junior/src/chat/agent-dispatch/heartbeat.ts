@@ -5,7 +5,7 @@ import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
-import { settleDueInboxSnoozes } from "@/chat/inbox-snoozes/store";
+import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import {
   createPluginEventPublisher,
   getPlugins,
@@ -293,10 +293,9 @@ export async function runHeartbeat(args: {
     logException(error, "scheduled_automations.heartbeat.failed");
   }
   try {
-    // Reads already treat a due snooze as woken; this only settles status.
-    const woke = await settleDueInboxSnoozes(getDb(), args.nowMs);
+    const woke = await runInboxSnoozeTimers(getDb(), args.nowMs);
     if (woke > 0) {
-      logInfo("inbox_snoozes.heartbeat.settled", {
+      logInfo("inbox_snoozes.heartbeat.woken", {
         "app.inbox_snooze.count": woke,
       });
     }

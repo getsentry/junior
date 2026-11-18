@@ -12,7 +12,6 @@ import pLimit from "p-limit";
 
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
-import { useAutomationAlerts } from "./automationAlerts";
 import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
@@ -22,31 +21,11 @@ const REVIEW_ITEM_COUNT_QUERY_KEY = [...REVIEW_ITEMS_QUERY_KEY, "count"];
 const ATTENTION_PAGE_READS = 8;
 
 /**
- * Count To do: the asks and the Automations that wait on the viewer, as the
- * server counts them. The Inbox tab badge, the browser tab and To do read
- * this one hook, so they always match.
- */
-export function useInboxTodoCount(enabled: boolean): number | undefined {
-  const count = useInboxCountData(enabled).data;
-  const attention = useAutomationAttentionData(enabled);
-  const alerts = useAutomationAlerts(Date.now());
-  if (!count) return undefined;
-  // The count read always sends `include=automations,snoozed`.
-  const automations = count.automations ?? 0;
-  // Alerts put away in this browser leave To do, so they leave its count.
-  // Only the attention list says which Automations they are. Until it
-  // loads, show no count: a count that drops after load marks a false
-  // update on a pinned tab. A failed list cannot say, so all count.
-  if (automations > 0 && alerts.anyPutAway && !attention.data)
-    return attention.error ? count.needsViewer + automations : undefined;
-  const putAway = attention.data?.automations.filter(alerts.hidden).length ?? 0;
-  return count.needsViewer + Math.max(0, automations - putAway);
-}
-
-/**
- * Count what the Inbox entries and the badge show, as the server counts it:
- * the open action items assigned to the viewer, by bundle, and the snoozed
- * rows. The versions poll refreshes it when it changes.
+ * Count, on the server, the open action items assigned to the viewer, by
+ * bundle, and the open snoozed rows. Snoozed and Automations show it as it
+ * is. To do, Decisions, and Pull requests use it only for the items past
+ * the loaded pages (`inboxCounts`). The versions poll refreshes it when it
+ * changes.
  */
 export function useInboxCountData(enabled: boolean) {
   return useQuery({

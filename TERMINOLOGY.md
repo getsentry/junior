@@ -152,11 +152,15 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Dismiss**: close a Review item without an answer. The one UI word for
+  removing an item, on a row, a card, or many FYIs at once. Not Clear or
+  Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Review items. Not
   Conversation archive.
-- **Snooze**: one User hides one Inbox row (a root Conversation, or one
-  Review item in it) until a time, or until a trigger wakes it. Not an
-  Automation. **Snoozed** (Inbox): the view of the User's snoozed rows.
+- **Snooze**: one User hides one Review item in their Inbox until a
+  trigger, such as a timer or a new item in its row, wakes or resolves it.
+  Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
+  items.
 - **Plan**: the durable list of work that outlives a Turn in one
   Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
   entry, with a status and one Assignee: the Conversation's own agent, one of
