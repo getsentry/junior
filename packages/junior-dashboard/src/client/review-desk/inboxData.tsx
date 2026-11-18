@@ -353,6 +353,18 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
+    /**
+     * The oldest activity in the loaded feed pages. The feed reads newest
+     * activity first, so each later page is older.
+     */
+    feedOldestSeenAt: conversations.reduce<string | undefined>(
+      (oldest, conversation) =>
+        oldest === undefined ||
+        Date.parse(conversation.lastSeenAt) < Date.parse(oldest)
+          ? conversation.lastSeenAt
+          : oldest,
+      undefined,
+    ),
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),

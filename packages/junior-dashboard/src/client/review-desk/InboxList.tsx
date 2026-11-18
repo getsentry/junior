@@ -46,6 +46,7 @@ import {
   itemRowSubtitle,
   sweepOf,
   timeGroups,
+  timeSectionAt,
   viewRows,
   viewSections,
 } from "./inboxModel";
@@ -486,10 +487,17 @@ export function InboxList(props: {
   // into view. When every loaded row shows, the next page of what the list
   // reads loads: the feed, the open asks, or Done.
   const hidden = Math.max(0, streamRows.length - state.loaded);
-  // Once Earlier is full, older feed pages hold only rows that it leaves out.
+  // Older feed pages hold only rows that Earlier leaves out once it is full
+  // and the feed has read past This week. The feed reads by activity and a
+  // row shows its last message, so a newer row can still be on a later page
+  // until then.
+  const feedDone =
+    Boolean(inboxStream?.full) &&
+    data.feedOldestSeenAt !== undefined &&
+    timeSectionAt(data.feedOldestSeenAt, nowMs) === "earlier";
   const pages: InboxFeedPages[] =
     view === "inbox"
-      ? inboxStream?.full
+      ? feedDone
         ? [data.itemPages]
         : [data.feed, data.itemPages]
       : view === "conversations"
@@ -520,7 +528,7 @@ export function InboxList(props: {
   const older =
     ready &&
     !more &&
-    Boolean(inboxStream?.cut || (inboxStream?.full && data.feed.hasMore));
+    Boolean(inboxStream?.cut || (feedDone && data.feed.hasMore));
   // The trigger asks again whenever rows arrive or show.
   const progress = [
     view,
