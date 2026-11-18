@@ -1,18 +1,17 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
 import {
   audit,
   conversationId,
-  expandRow,
   license,
   mockReviewItems,
   prReview,
   rollout,
 } from "./inbox-fixture";
 
-// Two child agents of the rollout Conversation each add an ask. They roll up
+// Child agents of the rollout Conversation each add an ask. They roll up
 // under the root's stack, after the root's own ask.
 const childOf = (thread: string, label: string) => ({
   addedByChild: { label, rootConversationId: conversationId },
@@ -30,48 +29,69 @@ const childLicense = {
   createdAt: "2026-08-07T11:56:00.000Z",
   id: "item-child-license",
 };
-// Another Conversation's newer ask: the stack after the root's.
+// More asks from one child, so the stack folds past its fourth row.
+const childAsks = [1, 2, 3].map((n) => ({
+  ...license,
+  ...childOf("000203", "Sweep the license entries"),
+  createdAt: `2026-08-07T11:5${6 + n}:00.000Z`,
+  id: `item-child-ask-${n}`,
+  title: `Check license entry ${n}`,
+}));
+// Another Conversation's newer ask: a row of its own, after the stack.
 const other = { ...audit, createdAt: "2026-08-07T12:00:00.000Z" };
+
+const stackOf = (page: Page) =>
+  page.locator(`li[data-inbox-stack][data-dock-key="stack:${conversationId}"]`);
+const rowOf = (page: Page, item: { id: string }) =>
+  page.locator(`li[data-inbox-row="todo:${item.id}"]`);
+const dismissIn = (row: ReturnType<typeof rowOf>) =>
+  row
+    .locator("[data-inbox-card]")
+    .getByRole("button", { exact: true, name: "Dismiss" });
+
+// How opaque an element shows: its own opacity times its ancestors'.
+const shownOpacity = (locator: Locator) =>
+  locator.evaluate((element) => {
+    let opacity = 1;
+    for (let at: Element | null = element; at; at = at.parentElement)
+      opacity *= Number(getComputedStyle(at).opacity);
+    return opacity;
+  });
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  async function openStack(page: Page) {
-    const stack = page.locator(`li[data-inbox-row="todo:${conversationId}"]`);
-    await expandRow(stack.locator("a[data-inbox-head]").first());
-    await expect(stack).toHaveAttribute("data-expanded", "true");
-    const asks = stack.getByRole("region", { name: /: asks$/ });
-    return {
-      card: (item: { title: string }) =>
-        asks.getByRole("region", { name: item.title }),
-      cards: asks.locator("[data-inbox-card]"),
-      stack,
-    };
-  }
-
-  test("a child agent's ask rolls up under its root and names its child", async ({
+  test("a child agent's ask rolls up under its root's stack and names its sub-thread", async ({
     dashboard,
     page,
   }) => {
     await mockReviewItems(page, { open: [rollout, childReview, other] });
     await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    await expect(stack.locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(
       page.locator(
         `li[data-inbox-row="todo:${childReview.addedByConversationId}"]`,
       ),
     ).toHaveCount(0);
-    const { card, cards } = await openStack(page);
-    await expect(cards).toHaveCount(2);
-    await expect(
-      card(childReview).getByRole("link", { name: "Check the pipeline runs" }),
-    ).toHaveAttribute(
-      "href",
-      `/conversations/${encodeURIComponent(childReview.addedByConversationId)}`,
+    await expect(rowOf(page, childReview)).toContainText(
+      "Check the pipeline runs",
     );
-    await expect(card(rollout).getByRole("link")).toHaveCount(0);
+    await expect(stack.locator("a").first()).toHaveAttribute(
+      "href",
+      `/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    // A Conversation with one ask keeps its normal row, with no stack.
+    const lone = page.locator(
+      `li[data-inbox-row="todo:${other.addedByConversationId}"]`,
+    );
+    await expect(lone).toHaveCount(1);
+    await expect(
+      lone.locator("xpath=ancestor::li[@data-inbox-stack]"),
+    ).toHaveCount(0);
   });
 
   for (const motion of ["no-preference", "reduce"] as const) {
-    test(`each card dismisses by itself, and next stays in its stack (${motion} motion)`, async ({
+    test(`a row click opens the row, each row dismisses by itself, and next stays in the stack (${motion} motion)`, async ({
       dashboard,
       page,
     }) => {
@@ -80,22 +100,30 @@ test.describe("new UI", { tag: "@new" }, () => {
         open: [rollout, childReview, childLicense, other],
       });
       await page.goto(`${dashboard.baseURL}/`);
-      const { card, cards, stack } = await openStack(page);
-      await expect(cards).toHaveCount(3);
-      const dismiss = (item: { title: string }) =>
-        card(item).getByRole("button", { exact: true, name: "Dismiss" });
+      const stack = stackOf(page);
+      await rowOf(page, rollout).locator("[data-inbox-head]").click();
+      await expect(rowOf(page, rollout)).toHaveAttribute(
+        "data-expanded",
+        "true",
+      );
 
-      await dismiss(rollout).click();
-      await expect(card(rollout)).toHaveCount(0);
+      await dismissIn(rowOf(page, rollout)).click();
+      await expect(rowOf(page, rollout)).toHaveCount(0);
       await expect.poll(() => actions.map((a) => a.id)).toEqual([rollout.id]);
-      await expect(stack).toHaveAttribute("data-expanded", "true");
-      await expect(card(childReview)).toBeFocused();
-
-      // The last card of a stack goes with it, and the next stack opens.
-      await dismiss(childReview).click();
-      await expect(card(childLicense)).toBeFocused();
-      await dismiss(childLicense).click();
+      await expect(rowOf(page, childReview)).toHaveAttribute(
+        "data-expanded",
+        "true",
+      );
+      // A stack of one is the Conversation's normal row, still open.
+      await dismissIn(rowOf(page, childReview)).click();
       await expect(stack).toHaveCount(0);
+      const lone = page.locator(`li[data-inbox-row="todo:${conversationId}"]`);
+      await expect(lone).toHaveAttribute("data-expanded", "true");
+      await expect(lone).toContainText(childLicense.title);
+
+      // Its last ask takes the row, and the next row opens.
+      await dismissIn(lone).click();
+      await expect(lone).toHaveCount(0);
       await expect(
         page.locator(
           `li[data-inbox-row="todo:${other.addedByConversationId}"]`,
@@ -109,7 +137,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   }
 
-  test("a card snoozes by itself, and Snooze all snoozes the stack", async ({
+  test("the last row of a stack opens a row of its own stack next", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [rollout, childReview, childLicense, other],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    await rowOf(page, childLicense).locator("[data-inbox-head]").click();
+    await dismissIn(rowOf(page, childLicense)).click();
+    await expect(rowOf(page, childReview)).toHaveAttribute(
+      "data-expanded",
+      "true",
+    );
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${other.addedByConversationId}"]`),
+    ).not.toHaveAttribute("data-expanded");
+  });
+
+  test("a row's quick actions show on hover and act on that row only", async ({
     dashboard,
     page,
   }) => {
@@ -117,39 +164,126 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, childReview, childLicense],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const { card, cards, stack } = await openStack(page);
-    const snoozeTomorrow = async (button: string, item?: { title: string }) => {
-      const scope = item ? card(item) : stack;
-      await scope.getByRole("button", { exact: true, name: button }).click();
-      await page.getByRole("button", { name: "Tomorrow" }).click();
-    };
+    const row = rowOf(page, childReview);
+    const quick = (name: string) =>
+      row.getByRole("button", { exact: true, name });
+    await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(0);
+    await row.hover();
+    await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(1);
+    await expect(
+      row.getByRole("link", { name: "Open conversation" }),
+    ).toBeVisible();
+    await quick("Dismiss").click();
+    await expect(row).toHaveCount(0);
+    await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);
+    expect(actions.map((a) => a.id)).toEqual([childReview.id]);
 
-    await snoozeTomorrow("Snooze", childReview);
-    await expect(cards).toHaveCount(2);
-    await expect(stack).toHaveAttribute("data-expanded", "true");
-    await expect(card(childLicense)).toBeFocused();
+    const license = rowOf(page, childLicense);
+    await license.hover();
+    await license.getByRole("button", { exact: true, name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(license).toHaveCount(0);
+    // The root's own ask is left, in the Conversation's normal row.
+    await expect(stackOf(page)).toHaveCount(0);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${conversationId}"]`),
+    ).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
       "1",
     );
+  });
 
-    await snoozeTomorrow("Snooze all");
-    await expect(stack).toHaveCount(0);
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "3",
+  test.describe("on a touch screen", () => {
+    test.use({ hasTouch: true });
+
+    test("a row's quick actions always show", async ({ dashboard, page }) => {
+      await mockReviewItems(page, { open: [rollout, childReview] });
+      await page.goto(`${dashboard.baseURL}/`);
+      const dismiss = rowOf(page, childReview).getByRole("button", {
+        exact: true,
+        name: "Dismiss",
+      });
+      await expect.poll(() => shownOpacity(dismiss)).toBe(1);
+    });
+  });
+
+  test("a stack past four rows folds, and next walks past the fold", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [rollout, childReview, childLicense, ...childAsks],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    const more = stack.getByRole("button", {
+      name: "+2 more in this Conversation",
+    });
+    await expect(more).toBeVisible();
+    await expect(rowOf(page, childAsks[0]!)).toBeVisible();
+    await expect(rowOf(page, childAsks[1]!)).toBeHidden();
+
+    // Next opens the row past the fold, and the fold opens with it.
+    await rowOf(page, childAsks[0]!).locator("[data-inbox-head]").click();
+    await dismissIn(rowOf(page, childAsks[0]!)).click();
+    await expect(rowOf(page, childAsks[1]!)).toHaveAttribute(
+      "data-expanded",
+      "true",
     );
+    await expect(rowOf(page, childAsks[1]!)).toBeVisible();
+
+    // The control shows the rest in place.
+    await rowOf(page, childAsks[1]!).locator("[data-inbox-head]").click();
+    await expect(
+      stack.getByRole("button", { name: "+1 more in this Conversation" }),
+    ).toBeVisible();
+    await stack
+      .getByRole("button", { name: "+1 more in this Conversation" })
+      .click();
+    await expect(rowOf(page, childAsks[2]!)).toBeVisible();
+    await expect(
+      stack.getByRole("button", { name: /more in this/ }),
+    ).toHaveCount(0);
+  });
+
+  test("Snooze all snoozes the stack, and Wake wakes one row", async ({
+    dashboard,
+    page,
+  }) => {
+    const actions = await mockReviewItems(page, {
+      open: [rollout, childReview, childLicense],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    await stackOf(page)
+      .getByRole("button", { exact: true, name: "Snooze all" })
+      .click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(stackOf(page)).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    const snoozed = nav.getByRole("link", { name: /^Snoozed/ });
+    await expect(snoozed).toContainText("3");
+
+    await snoozed.click();
+    // Snoozed rows have no section prefix.
+    const row = page.locator(`li[data-inbox-row="${childReview.id}"]`);
+    await row.locator("[data-inbox-head]").click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
+    await row.getByRole("button", { exact: true, name: "Wake" }).click();
+    await expect(row).toHaveCount(0);
+    await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);
+    await expect(snoozed).toContainText("2");
     expect(actions).toEqual([]);
   });
 
-  test("a card that closes elsewhere leaves, and its stack stays open", async ({
+  test("a row that closes elsewhere leaves, and the open row stays open", async ({
     dashboard,
     page,
   }) => {
     const open = [rollout, childReview, childLicense];
     const actions = await mockReviewItems(page, { open });
     await page.goto(`${dashboard.baseURL}/`);
-    const { card, cards, stack } = await openStack(page);
-    await expect(cards).toHaveCount(3);
+    await rowOf(page, rollout).locator("[data-inbox-head]").click();
 
     // An agent closes the child's review. The viewer comes back to the tab
     // after the reads went stale.
@@ -164,9 +298,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       window.dispatchEvent(new Event("visibilitychange")),
     );
     await read;
-    await expect(card(childReview)).toHaveCount(0);
-    await expect(cards).toHaveCount(2);
-    await expect(stack).toHaveAttribute("data-expanded", "true");
+    await expect(rowOf(page, childReview)).toHaveCount(0);
+    await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);
+    await expect(rowOf(page, rollout)).toHaveAttribute("data-expanded", "true");
     expect(actions).toEqual([]);
   });
 });

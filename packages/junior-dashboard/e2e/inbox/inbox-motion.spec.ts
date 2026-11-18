@@ -163,13 +163,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     }) => {
       await page.emulateMedia({ reducedMotion: motion });
       await page.goto(`${dashboard.baseURL}/`);
-      const rows = todoRows(page);
-      const first = rows.first();
+      // To do opens with a stack whose one ask comes before its FYI. The
+      // ask's Dismiss takes the stack, and the next stack's first row opens.
+      const entries = page
+        .getByRole("region", { name: "To do" })
+        .locator(":scope > ul > li");
+      const first = entries.first().locator("li[data-inbox-row]").first();
       const firstKey = await first.getAttribute("data-inbox-row");
-      const nextKey = await rows.nth(1).getAttribute("data-inbox-row");
-      await expandRow(first.locator("a[data-inbox-head]").first());
-      // Each card has its own Dismiss. The row leaves with its last ask
-      // for the viewer.
+      const nextKey = await entries
+        .nth(1)
+        .locator("li[data-inbox-row]")
+        .first()
+        .getAttribute("data-inbox-row");
+      await first.locator("[data-inbox-head]").click();
       const open = page.locator(
         `li[data-inbox-row="${firstKey}"][data-expanded]`,
       );

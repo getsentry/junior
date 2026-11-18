@@ -278,8 +278,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await match.click();
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
+      // In its stack, the item's own row opens, under its question.
       page.getByRole("region", { name: /: asks$/ }).filter({
-        hasText: rollout.title,
+        hasText: rollout.request.question,
       }),
     ).toBeVisible();
   });

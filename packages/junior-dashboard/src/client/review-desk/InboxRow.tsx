@@ -23,11 +23,6 @@ import type {
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import { Spinner } from "../components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import { visualStatusForConversation } from "../format";
@@ -78,6 +73,12 @@ import {
 } from "./InboxLinkedWork";
 import { isImageMedia } from "./useConversationImages";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
+import {
+  RowActionButton,
+  RowOpenLink,
+  RowQuickActions,
+  type InboxCardActions,
+} from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
@@ -106,15 +107,6 @@ function rowSummary(conversation: Conversation | undefined) {
     text: preview.text,
   };
 }
-
-/** What one card of a stack does by itself: its Dismiss and Snooze. */
-export type InboxCardActions = {
-  onDismiss?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
-  onSnoozeMenu(open: boolean): void;
-  pending: boolean;
-  snoozeMenuOpen: boolean;
-};
 
 function RowItem(props: {
   actions?: InboxCardActions;
@@ -209,7 +201,7 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
-      {/* In a stack, the card's own Snooze and Dismiss replace the plain
+      {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
       <ReviewItemActions
@@ -219,60 +211,6 @@ function RowItem(props: {
         take={props.take ?? false}
       />
     </section>
-  );
-}
-
-const ROW_ACTION_BUTTON_CLASS =
-  "grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-raised text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
-
-function RowActionButton(props: {
-  disabled: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            aria-label={props.label}
-            aria-pressed={props.pressed}
-            className={ROW_ACTION_BUTTON_CLASS}
-            disabled={props.disabled}
-            onClick={props.onClick}
-            type="button"
-          >
-            {props.icon}
-          </button>
-        }
-      />
-      <TooltipContent size="compact">{props.tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/** The hover action that opens the row's Conversation in the main area. */
-function RowOpenLink(props: { to: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          // The row names the Conversation; a search for its title finds
-          // the row's head only.
-          <Link
-            aria-label="Open conversation"
-            className={ROW_ACTION_BUTTON_CLASS}
-            to={props.to}
-          >
-            <ArrowUpRight aria-hidden="true" size={14} />
-          </Link>
-        }
-      />
-      <TooltipContent size="compact">Open conversation</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -329,20 +267,30 @@ export function InboxRow(props: InboxRowProps) {
   // The rows below move with the row as it opens and closes.
   const cardRef = useRef<HTMLLIElement>(null);
   useAnimatedHeight(cardRef, String(props.expanded));
+  const open = props.bundle?.items.filter((item) => item.status === "open");
+  const quickActions =
+    open?.length === 1 && props.cardActions ? (
+      <RowQuickActions
+        actions={props.cardActions(open[0]!)}
+        expanded={props.expanded}
+        to={rowConversationPath(props)}
+      />
+    ) : undefined;
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
       cardRef={cardRef}
       conversation={props.conversation}
+      quickActions={quickActions}
     />
   ) : (
     <li
-      className={inboxCardClass(props.expanded)}
+      className={cn(inboxCardClass(props.expanded), "group")}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
       ref={cardRef}
     >
-      <InboxRowBody {...props} />
+      <InboxRowBody {...props} hoverActions={quickActions} />
     </li>
   );
 }
@@ -356,6 +304,8 @@ function ConversationInboxRow(
   props: InboxRowProps & {
     cardRef: RefObject<HTMLLIElement | null>;
     conversation: Conversation;
+    /** A row with one ask acts on it instead of pinning or archiving. */
+    quickActions?: ReactNode;
   },
 ) {
   const { conversation, drag } = props;
@@ -378,7 +328,7 @@ function ConversationInboxRow(
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   // The row's own actions take the meta's place on hover or focus, in the
   // meta's cell, so they never cover the title or summary.
-  const hoverActions = (
+  const hoverActions = props.quickActions ?? (
     <>
       <RowOpenLink to={rowConversationPath(props)} />
       {participant && !actions.archived ? (
@@ -810,8 +760,9 @@ function InboxRowBody(
               <span
                 className={cn(
                   "-my-1 flex gap-0.5 transition",
+                  // A touch screen has no hover, so they always show there.
                   !props.expanded &&
-                    "sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100",
+                    "sm:pointer-fine:pointer-events-none sm:pointer-fine:opacity-0 sm:pointer-fine:group-focus-within:pointer-events-auto sm:pointer-fine:group-focus-within:opacity-100 sm:pointer-fine:group-hover:pointer-events-auto sm:pointer-fine:group-hover:opacity-100",
                 )}
               >
                 {props.hoverActions}

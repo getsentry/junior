@@ -1,5 +1,4 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { CheckCheck } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -18,7 +17,6 @@ import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
 import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
-import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import {
@@ -50,50 +48,34 @@ import {
   INBOX_VIEW_LABELS,
   inboxViewPath,
   itemRowSubtitle,
+  linkedInboxRowKey,
+  singleRow,
+  stackRowKey,
   sweepOf,
   timeGroups,
   viewRows,
   viewSections,
 } from "./inboxModel";
-import { InboxRow, type InboxCardActions } from "./InboxRow";
+import { InboxRow } from "./InboxRow";
+import type { InboxCardActions } from "./RowHoverActions";
 import { PageEnd, RetryRow } from "./PageEnd";
 import { useLeaveCard, useLeaveRow } from "./rowMotion";
-import { InboxEmptyState, InboxSection } from "./InboxSection";
+import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
+import {
+  InboxStack,
+  STACK_ROW_KEYS,
+  stackRows,
+  useLoneRowKey,
+} from "./InboxStack";
 import {
   useReviewItemAction,
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import {
-  itemNeedsViewer,
-  itemStackId,
-  itemUpForGrabs,
-  type InboxBundle,
-} from "./reviewItemFormat";
+import { itemStackId, type InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
-
-/** Clear the notices and FYI items in some rows. Asks stay. */
-function SweepControl(props: {
-  clear: number;
-  onSweep(): void;
-  scope: string;
-}) {
-  if (props.clear === 0) return null;
-  return (
-    <Button
-      aria-label={`Clear ${props.clear} in ${props.scope}`}
-      className="h-6 gap-1 px-1.5 text-xs"
-      onClick={props.onSweep}
-      title="Mark notices and FYI items done. Questions and approvals stay."
-      variant="ghost"
-    >
-      <CheckCheck aria-hidden="true" className="size-3.5" />
-      Clear {props.clear}
-    </Button>
-  );
-}
 
 function RowsLoading() {
   return (
@@ -194,6 +176,19 @@ export function InboxList(props: {
         ? data.conversationRows
         : [];
   const streamRows = heldRows(latestStreamRows, held);
+  const streamBundles = streamRows.flatMap((row) =>
+    row.bundle ? [row.bundle] : [],
+  );
+  const loneKey = useLoneRowKey(
+    {
+      conversation: streamBundles,
+      grabs: data.grabRows,
+      snoozed: data.snoozedRows,
+      todo: data.todoRows,
+    },
+    state.expandedKey,
+    state.setExpandedKey,
+  );
 
   // `?item=` names one item, as old Inbox links and notifications do. Its
   // row expands, the list shows rows until it renders, and it scrolls into
@@ -210,11 +205,14 @@ export function InboxList(props: {
       ? [linkedClosed, ...done.items]
       : done.items;
   // A snoozed item is still open. Its link opens Snoozed, with its row.
-  const snoozedKey = linkedId
+  const snoozedRow = linkedId
     ? data.snoozedRows.find((row) =>
         row.items.some((item) => item.id === linkedId),
-      )?.key
+      )
     : undefined;
+  const snoozedKey =
+    snoozedRow && linkedId ? stackRowKey(snoozedRow, linkedId) : undefined;
+  const linkedOpen = data.awake.find((open) => open.id === linkedId);
   const linkedRowKey = (() => {
     if (!linkedId) return undefined;
     if (view === "snoozed") return snoozedKey;
@@ -222,18 +220,14 @@ export function InboxList(props: {
       return doneItems.some((item) => item.id === linkedId)
         ? linkedId
         : undefined;
-    const item = data.awake.find((open) => open.id === linkedId);
-    if (!item) return undefined;
-    if (view === "prs" || view === "decisions") return item.id;
-    const conversationId = itemStackId(item);
-    if (view !== "inbox") return `conversation:${conversationId}`;
-    if (itemUpForGrabs(item) && grabIds.has(conversationId))
-      return `grabs:${conversationId}`;
-    return todoIds.has(conversationId)
-      ? `todo:${conversationId}`
-      : grabIds.has(conversationId)
-        ? `grabs:${conversationId}`
-        : `conversation:${conversationId}`;
+    if (!linkedOpen) return undefined;
+    if (view === "prs" || view === "decisions") return linkedOpen.id;
+    if (view !== "inbox") return `conversation:${itemStackId(linkedOpen)}`;
+    return linkedInboxRowKey(linkedOpen, {
+      grabs: data.grabRows,
+      stream: streamBundles,
+      todo: data.todoRows,
+    });
   })();
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
@@ -242,11 +236,12 @@ export function InboxList(props: {
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
   // Stream rows show a page at a time, so a linked row can be past them.
-  const linkedStreamIndex = linkedRowKey
-    ? streamRows.findIndex(
-        (row) => `conversation:${row.conversationId}` === linkedRowKey,
-      )
-    : -1;
+  const linkedStreamIndex =
+    linkedOpen && linkedRowKey?.startsWith("conversation:")
+      ? streamRows.findIndex(
+          (row) => row.conversationId === itemStackId(linkedOpen),
+        )
+      : -1;
   const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
   const { includedId, includeItem } = data;
   useEffect(() => {
@@ -341,19 +336,19 @@ export function InboxList(props: {
   const leaving = useRef(new Set<string>());
   const { releaseHeld } = data;
   // A card leaves, then the list stops holding it, at once, so its shut card
-  // never shows again. `withRow` takes the whole row away with it.
+  // never shows again. With `passing`, the row leaves with those rows.
   const putAway = (
     key: string,
     id: string,
     work: () => Promise<boolean>,
-    withRow = false,
+    passing?: ReadonlySet<string>,
   ) => {
     leaving.current.add(id);
     const done = async () => {
       if (await work()) flushSync(() => releaseHeld(id));
       leaving.current.delete(id);
     };
-    if (withRow) leave(key, done);
+    if (passing) leave(key, done, passing);
     else leaveCard(key, id, done);
   };
   const dismiss = (item: ReviewItemPayload) =>
@@ -364,24 +359,16 @@ export function InboxList(props: {
   // Each card of a stack answers, dismisses, and snoozes by itself.
   const cardActions =
     (
-      row: InboxBundle,
       key: string,
-      options: { snoozed?: boolean; todo?: boolean },
+      options: { passing?: ReadonlySet<string>; snoozed?: boolean },
     ) =>
     (item: ReviewItemPayload): InboxCardActions => {
       const menuKey = `${key}:${item.id}`;
-      // A To do stack whose last ask for the viewer goes leaves To do, so
-      // it leaves as a whole, and the next stack opens. Its FYI cards stay
-      // in the stack, in its other section.
-      const withRow =
-        options.todo === true &&
-        !row.items.some(
-          (other) => other.id !== item.id && itemNeedsViewer(other),
-        );
+      const { passing } = options;
       return {
         onDismiss:
           item.status === "open" && item.canAct
-            ? () => putAway(key, item.id, () => dismiss(item), withRow)
+            ? () => putAway(key, item.id, () => dismiss(item), passing)
             : undefined,
         onSnooze: options.snoozed
           ? undefined
@@ -394,7 +381,7 @@ export function InboxList(props: {
                   flushSync(() => snoozes.snoozeItem(item, choice));
                   return true;
                 },
-                withRow,
+                passing,
               );
             },
         onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
@@ -412,6 +399,10 @@ export function InboxList(props: {
       drag?: PinnedRowDrag;
       itemRow?: boolean;
       key?: string;
+      /** Rows that leave with this one, as its stack in To do. */
+      passing?: ReadonlySet<string>;
+      /** The row is one item of a stack, under its title. */
+      stacked?: boolean;
       /** The row sits under a card that already names its subject. */
       subjectShown?: boolean;
       /** A snoozed row wakes instead of snoozing. */
@@ -427,13 +418,17 @@ export function InboxList(props: {
     return (
       <InboxRow
         bundle={row}
-        cardActions={cardActions(row, key, options)}
+        cardActions={cardActions(key, options)}
         conversation={
-          options.conversation ?? data.conversationById.get(row.conversationId)
+          // The stack's title names its Conversation.
+          options.stacked
+            ? undefined
+            : (options.conversation ??
+              data.conversationById.get(row.conversationId))
         }
         conversationId={row.conversationId}
         drag={options.drag}
-        expanded={state.expandedKey === key}
+        expanded={state.expandedKey === key || loneKey === key}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
           options.itemRow
@@ -441,7 +436,10 @@ export function InboxList(props: {
                 options.subjectShown
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
-                titleOf(row.conversationId),
+                // In a stack, a child's item names its sub-thread.
+                options.stacked
+                  ? row.newest.addedByChild?.label
+                  : titleOf(row.conversationId),
               )
             : undefined
         }
@@ -454,7 +452,14 @@ export function InboxList(props: {
                 leave(key, () => snoozes.snooze(row, choice));
               }
         }
-        onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
+        onWake={
+          options.snoozed
+            ? () =>
+                options.stacked
+                  ? snoozes.wakeItem(row.newest)
+                  : snoozes.wake(row)
+            : undefined
+        }
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
         onToggle={() => toggle(key)}
         rowKey={key}
@@ -467,8 +472,62 @@ export function InboxList(props: {
       />
     );
   };
+  // A Conversation with one ask shows its normal row. More asks show as a
+  // stack: a row each, under the root's title.
+  const stackRow = (
+    row: InboxBundle,
+    keyOf: (id: string) => string,
+    options: {
+      conversation?: Conversation;
+      snoozed?: boolean;
+      take?: string;
+      time?: string;
+      todo?: boolean;
+    } = {},
+  ) => {
+    const stackKey = keyOf(row.key);
+    if (row.items.length === 1)
+      return bundleRow(row, { ...options, key: stackKey });
+    // Built here, so the list knows each row's items as it renders.
+    const rows = stackRows(row, keyOf, options.todo);
+    return (
+      <InboxStack
+        conversationId={row.conversationId}
+        expandedKey={state.expandedKey}
+        key={stackKey}
+        keys={rows.map((stacked) => stacked.key)}
+        onSnooze={
+          options.snoozed
+            ? undefined
+            : (choice) => {
+                setSnoozeKey(undefined);
+                snoozes.snooze(row, choice);
+              }
+        }
+        onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
+        snoozeMenuOpen={snoozeKey === stackKey}
+        title={titleOf(row.conversationId) ?? row.newest.title}
+      >
+        {rows.map(({ item, key, passing }) =>
+          bundleRow(singleRow(item), {
+            ...options,
+            itemRow: true,
+            key,
+            passing,
+            stacked: true,
+            time: item.createdAt,
+          }),
+        )}
+      </InboxStack>
+    );
+  };
   const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
     const key = `conversation:${row.conversationId}`;
+    if (row.bundle && view === "inbox")
+      return stackRow(row.bundle, STACK_ROW_KEYS.conversation, {
+        conversation: row.conversation,
+        time: row.time,
+      });
     if (row.bundle)
       return bundleRow(row.bundle, {
         conversation: row.conversation,
@@ -687,9 +746,7 @@ export function InboxList(props: {
             {[
               ...pinnedTodo,
               ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
-            ].map((row) =>
-              bundleRow(row, { key: `todo:${row.key}`, todo: true }),
-            )}
+            ].map((row) => stackRow(row, STACK_ROW_KEYS.todo, { todo: true }))}
             {data.todoAutomations.map((automation) =>
               automationRow(automation, { todo: true }),
             )}
@@ -702,7 +759,7 @@ export function InboxList(props: {
           onToggle={() => toggleSection("grabs")}
         >
           {data.grabRows.map((row) =>
-            bundleRow(row, { key: `grabs:${row.key}`, take: "I'll take it" }),
+            stackRow(row, STACK_ROW_KEYS.grabs, { take: "I'll take it" }),
           )}
         </InboxSection>
         {automationsError}
@@ -748,7 +805,9 @@ export function InboxList(props: {
       ) : (
         // Snoozed rows expand in place like the others, and wake there.
         <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
-          {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
+          {data.snoozedRows.map((row) =>
+            stackRow(row, STACK_ROW_KEYS.snoozed, { snoozed: true }),
+          )}
         </ul>
       );
   } else if (view === "prs") {

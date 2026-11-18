@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -20,6 +22,10 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
+// The open row. Every row has its own quick Snooze, so scope to this one.
+const openRowOf = (page: Page) =>
+  page.locator("li[data-inbox-row][data-expanded]");
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
@@ -31,13 +37,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // One row per Conversation.
+    // One row, or one stack of rows, per Conversation.
     await expect(
       todo.getByRole("link", { name: new RegExp(checkout) }),
     ).toBeVisible();
     // A Conversation with no title is named after its newest item.
     await expect(
-      todo.getByRole("link", { name: new RegExp(audit.title) }),
+      todo
+        .locator("li[data-inbox-stack]")
+        .getByRole("link", { name: new RegExp(audit.title) })
+        .first(),
     ).toBeVisible();
     // The badge and To do read the same server count.
     const tab = page
@@ -67,7 +76,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todo.getByRole("list")).toHaveCount(0);
     await screenshot(page, "inbox-todo-collapsed", { view: "desktop" });
     await page.getByRole("button", { name: /^To do/ }).click();
-    await expect(todo.getByRole("list")).toBeVisible();
+    await expect(todo.getByRole("list").first()).toBeVisible();
   });
 
   test("each entry lists its own rows under its name", async ({
@@ -138,25 +147,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-automations", { lightTheme: true });
   });
 
-  test("a row answers its asks in place", async ({ dashboard, page }) => {
-    const actions = await mockReviewItems(page);
+  test("a row answers its ask in place", async ({ dashboard, page }) => {
+    const actions = await mockReviewItems(page, {
+      open: [rollout, license, audit],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // A pill expands the row. The list stays where it is.
-    await todo.getByRole("button", { name: "2 Questions" }).first().click();
+    // The license and audit asks share a Conversation, so each has its own
+    // row in its stack. When the stack shrinks to one ask, that ask shows
+    // in the Conversation's normal row.
+    const row = (item: { addedByConversationId: string; id: string }) =>
+      todo.locator(
+        `li[data-inbox-row="todo:${item.id}"], li[data-inbox-row="todo:${item.addedByConversationId}"]`,
+      );
+    // A row click expands the row. The list stays where it is.
+    await row(audit).locator("[data-inbox-head]").first().click();
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks).toHaveCount(1);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 
-    // Each item gets its own answer form, so a choice does not carry over.
-    // The row is named after its newest open item, which changes as they close.
-    const bundle = page.getByRole("region", { name: /: asks$/ });
-    const licenseItem = bundle.getByRole("region", { name: license.title });
-    const auditItem = bundle.getByRole("region", { name: audit.title });
-    await licenseItem.getByRole("radio", { name: "Approve" }).click();
-    await expect(
-      auditItem.getByRole("radio", { name: "Approve" }),
-    ).not.toBeChecked();
+    const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
     // A phone view would remount the row and drop the picks.
@@ -173,10 +183,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
       id: audit.id,
     });
-    // The row stays open while it has items.
-    await expect(licenseItem).toBeVisible();
 
-    // A card's Dismiss closes only its own item.
+    // The license ask has its own form, so the audit's choice does not
+    // carry over, and its Dismiss closes only its own item.
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${audit.id}"]`),
+    ).toHaveCount(0);
+    const licenseRow = row(license);
+    const licenseItem = licenseRow.locator("[data-inbox-card]");
+    // Next opens it: alone in its Conversation now, in its normal row.
+    await expect(licenseRow).toHaveAttribute("data-expanded", "true");
+    await expect(licenseItem).toBeVisible();
+    await expect(
+      licenseItem.getByRole("radio", { name: "Reject" }),
+    ).not.toBeChecked();
     await licenseItem
       .getByRole("button", { name: "Dismiss", exact: true })
       .click();
@@ -189,7 +209,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(page, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
@@ -597,8 +617,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(card.getByRole("heading")).toHaveCount(0);
 
     // A Conversation row's head names the Conversation, so the ask keeps its
-    // title.
-    await page.goto(`${dashboard.baseURL}/?item=${prReady.id}`);
+    // title. In the Inbox, these asks stack as rows; Conversations keeps the
+    // Conversation row.
+    await page.goto(
+      `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
+    );
     await expect(
       page
         .getByRole("region", { name: /: asks$/ })
@@ -629,7 +652,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "3 hours" }).click();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
     await page.clock.fastForward("03:00:01");

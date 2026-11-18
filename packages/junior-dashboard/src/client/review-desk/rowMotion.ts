@@ -101,20 +101,38 @@ function listRows(scroller: HTMLElement): HTMLElement[] {
  * Put a row away, as Dismiss or Snooze does: it leaves with its height,
  * then `work` takes it out. When the row was open, the next row opens in
  * its place, or the row before it at the end of the list, so the reader
- * keeps going. A row that `work` keeps, as when it fails, opens again.
+ * keeps going. In a stack, a row of the same stack opens first, also past
+ * its fold. A row that `work` keeps, as when it fails, opens again.
  */
 export function useLeaveRow(
   scroller: RefObject<HTMLElement | null>,
   expandedKey: string,
   setExpandedKey: (key: string) => void,
 ) {
-  return (key: string, work: () => Promise<void> | void) => {
+  /** `passing` names rows that go with this one, so none of them opens. */
+  return (
+    key: string,
+    work: () => Promise<void> | void,
+    passing: ReadonlySet<string> = new Set(),
+  ) => {
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
     const at = rows.findIndex((row) => row.dataset["inboxRow"] === key);
     const card = rows[at];
     if (!card) return void work();
-    const next = (rows[at + 1] ?? rows[at - 1])?.dataset["inboxRow"];
+    const stays = (row: HTMLElement) =>
+      !passing.has(row.dataset["inboxRow"] ?? "");
+    // A row of a stack goes to a row of its own stack first.
+    const stack = card.closest("[data-inbox-stack]");
+    const near = (row: HTMLElement) => stays(row) && !!stack?.contains(row);
+    const after = rows.slice(at + 1);
+    const before = rows.slice(0, at).reverse();
+    const next = (
+      after.find(near) ??
+      before.find(near) ??
+      after.find(stays) ??
+      before.find(stays)
+    )?.dataset["inboxRow"];
     const wasOpen = expandedKey === key;
     void (async () => {
       await leaveCard(card);
@@ -134,7 +152,11 @@ export function useLeaveRow(
  */
 export function useLeaveCard(
   scroller: RefObject<HTMLElement | null>,
-  leaveRow: (key: string, work: () => Promise<void> | void) => void,
+  leaveRow: (
+    key: string,
+    work: () => Promise<void> | void,
+    passing?: ReadonlySet<string>,
+  ) => void,
 ) {
   return (key: string, itemId: string, work: () => Promise<void> | void) => {
     const area = scroller.current;

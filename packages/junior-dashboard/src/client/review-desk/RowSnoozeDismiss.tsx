@@ -1,4 +1,5 @@
 import { Check, Clock3 } from "lucide-react";
+import type { ReactElement } from "react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -22,19 +23,23 @@ export function RowSnoozeButton(props: {
   onOpenChange(open: boolean): void;
   onSnooze(choice: SnoozeChoice): void;
   open: boolean;
+  /** Another trigger, such as a row's quick action. */
+  trigger?: ReactElement;
 }) {
   return (
     <Popover onOpenChange={props.onOpenChange} open={props.open}>
       <PopoverTrigger
         render={
-          <Button variant="ghost">
-            <Clock3
-              aria-hidden="true"
-              className={ATTENTION_TONE_CLASS}
-              size={15}
-            />
-            {props.label ?? "Snooze"}
-          </Button>
+          props.trigger ?? (
+            <Button variant="ghost">
+              <Clock3
+                aria-hidden="true"
+                className={ATTENTION_TONE_CLASS}
+                size={15}
+              />
+              {props.label ?? "Snooze"}
+            </Button>
+          )
         }
       />
       <PopoverContent

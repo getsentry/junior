@@ -281,6 +281,37 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Two agents lost their lease",
     },
+    // Two more, so the stack folds past its fourth row.
+    {
+      body: "The canary stage fails on a lost agent three runs out of ten.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(32),
+      id: "qa-sentaur-pause",
+      request: {
+        question: "Pause canary rollouts until #418 lands?",
+        fields: [
+          {
+            id: "pause",
+            kind: "choice",
+            label: "Rollouts",
+            options: [{ label: "Pause" }, { label: "Keep going" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Pause canary rollouts",
+    },
+    {
+      body: "Agent 9 restarted by itself and holds no lease now.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(31),
+      id: "qa-sentaur-agent-9",
+      kind: "notice",
+      status: "open",
+      title: "Agent 9 is back",
+    },
     // Older items, so the inbox has Today, This week, and Earlier.
     {
       assignedToEveryone: true,

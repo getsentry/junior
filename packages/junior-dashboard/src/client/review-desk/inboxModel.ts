@@ -6,6 +6,7 @@ import type {
 import {
   itemNeedsViewer,
   itemStackId,
+  itemUpForGrabs,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -83,7 +84,8 @@ export function itemsInView(
   return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
-function singleRow(item: ReviewItemPayload): InboxBundle {
+/** A row for one item, as a stack or an item view shows it. */
+export function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
     conversationId: itemStackId(item),
     items: [item],
@@ -283,4 +285,41 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The key of the row that shows an item of `bundle`: in a stack of more
+ * than one ask, the item's own row; else the Conversation's row.
+ */
+export function stackRowKey(bundle: InboxBundle, itemId: string): string {
+  return bundle.items.length > 1 ? itemId : bundle.key;
+}
+
+/**
+ * The key of the Inbox row that shows a linked open item: in Up for grabs,
+ * To do, or the stream, and in its stack, the item's own row.
+ */
+export function linkedInboxRowKey(
+  item: ReviewItemPayload,
+  rows: {
+    grabs: readonly InboxBundle[];
+    stream: readonly InboxBundle[];
+    todo: readonly InboxBundle[];
+  },
+): string {
+  const conversationId = itemStackId(item);
+  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) => {
+    const row = bundles.find(
+      (bundle) => bundle.conversationId === conversationId,
+    );
+    return row ? `${prefix}:${stackRowKey(row, item.id)}` : undefined;
+  };
+  const grab = rowIn("grabs", rows.grabs);
+  return (
+    (itemUpForGrabs(item) ? grab : undefined) ??
+    rowIn("todo", rows.todo) ??
+    grab ??
+    rowIn("conversation", rows.stream) ??
+    `conversation:${conversationId}`
+  );
 }

@@ -2,8 +2,11 @@ import type { Locator, Page } from "@playwright/test";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
-import { expandRow } from "./inbox-fixture";
+import { expandRow, license, mockReviewItems } from "./inbox-fixture";
 import { expect, test } from "../test";
+
+// The mock Conversation whose asks include a release review and notes.
+const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -29,9 +32,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" });
     const title = row.locator('[data-inbox-slot="title"]');
@@ -57,9 +62,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" });
     // Each pull request ask names its change by title and number, so the
@@ -104,6 +111,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
+    // One ask, so the Inbox shows the Conversation's normal row.
+    await mockReviewItems(page, {
+      open: [{ ...license, addedByConversationId: RELEASE_CONVERSATION_ID }],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const summary = page
       .getByRole("region", { name: "To do" })
@@ -236,15 +247,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();
     await row.locator('[data-image-tile="work"] button[data-ask-pill]').click();
     await expect(row).toHaveAttribute("data-expanded", "true");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
@@ -327,9 +340,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();

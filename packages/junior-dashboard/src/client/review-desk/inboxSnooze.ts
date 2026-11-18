@@ -3,7 +3,7 @@ import { useEffect, useReducer } from "react";
 
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import type { InboxBundle } from "./reviewItemFormat";
+import { itemStackId, type InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
 const HOUR_MS = 60 * 60 * 1000;
@@ -127,7 +127,24 @@ export function useInboxSnoozes(nowMs: number) {
       ),
     );
   };
+  /**
+   * Wake one card. A card that its stack's Snooze all put away wakes alone:
+   * the stack's other cards stay snoozed until the same time.
+   */
+  const wakeItem = (item: ReviewItemPayload) => {
+    const { [item.id]: _card, [itemStackId(item)]: stack, ...rest } = snoozes;
+    const others = (stack?.itemIds ?? []).filter((id) => id !== item.id);
+    setSnoozes({
+      ...rest,
+      ...Object.fromEntries(
+        others.map((id) => [
+          id,
+          { newestItemId: id, untilMs: stack?.untilMs ?? 0 },
+        ]),
+      ),
+    });
+  };
   const until = (bundle: InboxBundle) =>
     Math.max(...[...rowKeys(bundle)].map((key) => snoozes[key]?.untilMs ?? 0));
-  return { sleeps, snooze, snoozeItem, until, wake };
+  return { sleeps, snooze, snoozeItem, until, wake, wakeItem };
 }

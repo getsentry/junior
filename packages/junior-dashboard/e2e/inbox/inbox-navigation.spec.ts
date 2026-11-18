@@ -255,7 +255,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    await expect(asks).toContainText(rollout.request.question);
     const scroller = page
       .getByRole("region", { name: "Inbox" })
       .locator(".overflow-y-auto")
@@ -270,7 +270,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link", { name: /^Inbox/ })
       .click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(asks).toContainText(rollout.title);
+    await expect(asks).toContainText(rollout.request.question);
     await expect
       .poll(() => scroller.evaluate((node) => node.scrollTop))
       .toBe(top);
@@ -553,7 +553,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(page).toHaveURL(/\/\?view=inbox$/);
       await expect(
         page.getByRole("region", { name: `${checkout}: asks` }),
-      ).toContainText(rollout.title);
+      ).toContainText(rollout.request.question);
     });
 
     test("entries, then a list, then a Conversation, each with Back", async ({
@@ -574,9 +574,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       await screenshot(page, "inbox-phone-list", { lightTheme: true });
 
-      await expandRow(rowHead(todo, checkout));
+      await rowHead(todo, rollout.title).click();
       const asks = page.getByRole("region", { name: `${checkout}: asks` });
-      await expect(asks).toContainText(rollout.title);
+      await expect(asks).toContainText(rollout.request.question);
       await asks.getByRole("link", { name: "Open conversation" }).click();
       await expect(page).toHaveURL(/\/conversations\//);
       await page.getByRole("link", { name: "Back to Inbox" }).click();
@@ -653,7 +653,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    // One ask, so the Conversation shows its normal row, not a stack.
+    await mockReviewItems(page, { open: [rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, checkout);
