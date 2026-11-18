@@ -1,5 +1,6 @@
 import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "./request-budget";
 import { screenshot } from "./screenshot";
 
 /** Vary outcomes so the running cost lines move. */
@@ -135,6 +136,23 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
   await screenshot(page, "system-plugin-github", { view: "desktop" });
+});
+
+test("loads the System overview within its request budget", async ({
+  page,
+  dashboard,
+}) => {
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/system`);
+      await expect(page.getByText("Conversation activity")).toBeVisible();
+      await expect(
+        page.getByText("Net savings", { exact: true }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 2 },
+  );
 });
 
 test("lists Workspaces with the baseline snapshot", async ({
