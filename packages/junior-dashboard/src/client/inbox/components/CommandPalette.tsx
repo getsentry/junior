@@ -2,6 +2,7 @@ import type {
   AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import { cn, dashboardCountClass } from "../../styles";
 import {
   CalendarClock,
   CircleCheck,
@@ -309,7 +310,7 @@ function CommandPaletteBody(props: {
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
                   {item.meta ? (
-                    <span className="text-xs tabular-nums text-dashboard-text-faint">
+                    <span className={cn("text-xs", dashboardCountClass)}>
                       {item.meta}
                     </span>
                   ) : null}

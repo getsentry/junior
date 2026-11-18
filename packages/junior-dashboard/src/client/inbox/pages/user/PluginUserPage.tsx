@@ -19,7 +19,11 @@ import { Card } from "../../../components/layout/Card";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
 import { pathWithSearch } from "../../../searchParams";
-import { cn, dashboardContainerClass } from "../../../styles";
+import {
+  cn,
+  dashboardContainerClass,
+  dashboardIconTileClass,
+} from "../../../styles";
 import {
   usePluginUserPageData,
   type PluginUserPageRecord,
@@ -130,7 +134,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
         ) : records.length === 0 ? (
           <Card padding="md">
             <div className="flex items-center gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+              <div className={cn(dashboardIconTileClass, "size-10")}>
                 <Boxes aria-hidden="true" size={17} />
               </div>
               <p className="m-0 text-sm text-dashboard-text-muted">

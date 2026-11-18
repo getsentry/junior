@@ -4,7 +4,11 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../components/StatusChip";
 import { DisplayText } from "../display-text/DisplayText";
-import { cn } from "../styles";
+import {
+  cn,
+  dashboardIconTileClass,
+  dashboardMessageCardClass,
+} from "../styles";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
@@ -25,17 +29,20 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
   return (
     <section
       aria-label={`Review item: ${item.title}`}
-      className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel font-sans text-sm text-dashboard-text"
+      className={cn(
+        "my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden font-sans text-sm text-dashboard-text",
+        dashboardMessageCardClass,
+      )}
     >
       <header className="flex items-start gap-3 px-4 pb-3 pt-4 md:px-5">
         {/* The accent tile marks an item that still needs a person. */}
         <span
           aria-hidden="true"
           className={cn(
-            "grid size-9 shrink-0 place-items-center rounded-lg border",
+            "size-9",
             open
-              ? "border-dashboard-accent/30 bg-dashboard-accent/10 text-dashboard-accent"
-              : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
+              ? "grid shrink-0 place-items-center rounded-md border border-dashboard-accent/30 bg-dashboard-accent/10 text-dashboard-accent"
+              : dashboardIconTileClass,
           )}
         >
           <Inbox size={18} />

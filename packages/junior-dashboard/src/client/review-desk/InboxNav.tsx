@@ -10,7 +10,7 @@ import {
   usePinnedRowDrag,
 } from "../conversations/PinnedConversationOrder";
 import { useReorderPinnedConversations } from "../conversations/useReorderPinnedConversations";
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
 import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
@@ -102,9 +102,7 @@ export function InboxNav(props: {
         <>
           <h2 className="m-0 flex items-baseline justify-between px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
             In flight
-            <span className="tabular-nums text-dashboard-text-faint">
-              {data.inFlight.length}
-            </span>
+            <span className={dashboardCountClass}>{data.inFlight.length}</span>
           </h2>
           {/* Every pin shows, so a drop can place them all. Running pins
               show first, so a drop moves the pin within the stored order,

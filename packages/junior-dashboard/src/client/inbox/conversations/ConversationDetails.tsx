@@ -157,7 +157,7 @@ export function ConversationDetails(props: {
         {/* The Brief leads: what the work is and where it stands. */}
         {props.brief ? <BriefCard brief={props.brief} /> : null}
         {parent ? (
-          <DetailsCard flat title="Parent">
+          <DetailsCard title="Parent">
             <DetailsRow
               icon={<CornerLeftUp aria-hidden="true" size={14} />}
               title={parent.label}
@@ -175,7 +175,6 @@ export function ConversationDetails(props: {
           // work and what Junior waits on read as one list.
           <DetailsCard
             count={props.links.length || watches.length}
-            flat
             title={props.links.length > 0 ? "Linked work" : "Waiting on"}
           >
             {props.links.length > 0 ? (
@@ -209,13 +208,11 @@ export function ConversationDetails(props: {
           />
         ) : null}
         {props.overview != null ? (
-          <DetailsCard flat>{props.overview}</DetailsCard>
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {props.usage}
         {props.identity != null ? (
-          <DetailsCard flat title="Participants">
-            {props.identity}
-          </DetailsCard>
+          <DetailsCard title="Participants">{props.identity}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard
