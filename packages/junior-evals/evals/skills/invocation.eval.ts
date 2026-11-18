@@ -131,7 +131,7 @@ describe("Skills", () => {
     ).not.toContain("ORCHID-42");
   });
 
-  test("when an automation runs a manual-only skill, follow that skill with its context", async ({
+  test("when an automation runs a manual-only skill, load it and follow it with its context", async ({
     run,
   }) => {
     await insertScheduledAutomation({
@@ -158,11 +158,7 @@ describe("Skills", () => {
         ],
       }),
     );
-    // The Automation put the skill in the run, so the agent does not load it.
-    expect(
-      toolCallsOf("loadSkill", delivery).map(
-        (call) => (call.input as { skill_name?: unknown }).skill_name,
-      ),
-    ).not.toContain("weather-lookup");
+    // The Automation names the skill, and the agent loads it.
+    expect(loadedSkillNames(delivery)).toContain("weather-lookup");
   });
 });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   loadableSkills,
-  loadRunSkill,
+  restoreTurnSkills,
   skillInvocationText,
 } from "@/chat/agent/skills";
 import type { AgentRun } from "@/chat/agent/types";
@@ -121,7 +121,7 @@ describe("skillInvocationText", () => {
   });
 });
 
-describe("loadRunSkill", () => {
+describe("restoreTurnSkills", () => {
   it("restores the skills loaded earlier in a resumed Turn", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-resume-"));
     const bodies: Record<string, string> = {
@@ -152,14 +152,10 @@ describe("loadRunSkill", () => {
       content: [{ type: "text", text: "loaded" }],
       timestamp: 1,
     });
-    const restore = async (
-      resumed: boolean,
-      automationSkill?: SkillMetadata,
-    ) => {
+    const restore = async (resumed: boolean) => {
       const activeSkills: Skill[] = [];
-      const injected = await loadRunSkill({
+      await restoreTurnSkills({
         activeSkills,
-        automationSkill,
         currentTurnMessages: [
           loadSkillResult("release"),
           loadSkillResult("signoff", true),
@@ -167,32 +163,21 @@ describe("loadRunSkill", () => {
         resumed,
         skillSandbox: new SkillSandbox(available, activeSkills),
       });
-      return { activeSkills, injected };
+      return activeSkills;
     };
 
     try {
-      // A skill that a person names is never injected; only `loadSkill`
-      // results from this Turn come back.
+      // Only successful `loadSkill` results from this Turn come back.
       const resumed = await restore(true);
-      expect(resumed.injected).toBeNull();
-      expect(resumed.activeSkills.map((skill) => skill.name)).toEqual([
-        "release",
-      ]);
+      expect(resumed.map((skill) => skill.name)).toEqual(["release"]);
       // `release` names `$signoff`, so it stays loadable after the resume.
       expect(
-        loadableSkills(available, ["triage"], resumed.activeSkills).map(
+        loadableSkills(available, ["triage"], resumed).map(
           (skill) => skill.name,
         ),
       ).toContain("signoff");
 
-      expect((await restore(false)).activeSkills).toEqual([]);
-
-      // An Automation in skill mode injects its skill.
-      const automation = await restore(false, available[0]);
-      expect(automation.injected?.name).toBe("triage");
-      expect(automation.activeSkills.map((skill) => skill.name)).toEqual([
-        "triage",
-      ]);
+      expect(await restore(false)).toEqual([]);
     } finally {
       await fs.rm(root, { force: true, recursive: true });
     }

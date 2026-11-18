@@ -15,11 +15,6 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
-  sandboxSkillDir,
-  sandboxSkillFile,
-  sandboxSkillPathResolution,
-} from "@/chat/sandbox/paths";
-import {
   buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
@@ -49,13 +44,12 @@ import {
   toCanonicalInputMessage,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
@@ -202,19 +196,6 @@ function renderInputParts(instruction: AgentInstruction): string[] {
       ? buildUserTurnText(input.text, instruction.actor)
       : input.text.trim(),
   );
-}
-
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
-  return [
-    "<skill>",
-    `<name>${escapeXml(skill.name)}</name>`,
-    `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
-    `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
-    `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
-    skill.body,
-    "</skill>",
-  ].join("\n");
 }
 
 /** Redact image data from prompt content parts for observability. */
@@ -633,9 +614,7 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  /** The skill that an Automation in skill mode names; the prompt injects it. */
-  automationSkill: Skill | null;
-  /** Skills that the person named this Turn; the model loads them itself. */
+  /** Skills that the person or the Automation named; the model loads them. */
   invokedSkillNames: readonly string[];
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
@@ -763,14 +742,6 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.automationSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.automationSkill),
-          },
-        ]
-      : []),
     ...(agentsInstructions
       ? [{ type: "text" as const, text: agentsInstructions }]
       : []),

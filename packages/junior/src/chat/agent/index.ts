@@ -147,7 +147,7 @@ import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   discoverRunSkills,
-  loadRunSkill,
+  restoreTurnSkills,
   skillInvocationText,
 } from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
@@ -658,11 +658,9 @@ async function executeAgentRunInPrivacyContext(
 
     // A new turn starts with no active skill. A resumed turn recovers the
     // skills loaded earlier in this Turn, never skill state from older turns.
-    // Only an Automation in skill mode injects its skill; skills that a person
-    // names wait for the model to call `loadSkill`.
-    const automationSkill = await loadRunSkill({
+    // Invoked skills wait for the model to call `loadSkill`.
+    await restoreTurnSkills({
       activeSkills,
-      automationSkill: dispatchSkill ? invokedSkills[0] : undefined,
       currentTurnMessages,
       resumed: resumedFromSessionRecord,
       skillSandbox,
@@ -835,8 +833,7 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      automationSkill,
-      invokedSkillNames: dispatchSkill ? [] : invokedSkillNames,
+      invokedSkillNames,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,

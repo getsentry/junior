@@ -137,25 +137,20 @@ function loadedSkillNames(messages: readonly PiMessage[]): string[] {
 }
 
 /**
- * Load the skill that an Automation in skill mode names. A resumed slice
- * also restores every skill that loaded earlier in this Turn, so the skills
- * those reference stay loadable. Skills from earlier Turns are never
- * restored. Returns the Automation's skill, which the prompt injects.
+ * Restore, in a resumed slice, every skill that `loadSkill` loaded earlier in
+ * this Turn, so the skills those reference stay loadable. Skills from earlier
+ * Turns are never restored.
  */
-export async function loadRunSkill(args: {
+export async function restoreTurnSkills(args: {
   activeSkills: Skill[];
-  automationSkill: SkillMetadata | undefined;
   currentTurnMessages: readonly PiMessage[];
   resumed: boolean;
   skillSandbox: SkillSandbox;
-}): Promise<Skill | null> {
-  const automationName = args.automationSkill?.name;
-  const names = [
-    ...new Set([
-      ...(automationName ? [automationName] : []),
-      ...(args.resumed ? loadedSkillNames(args.currentTurnMessages) : []),
-    ]),
-  ];
+}): Promise<void> {
+  if (!args.resumed) {
+    return;
+  }
+  const names = [...new Set(loadedSkillNames(args.currentTurnMessages))];
   const loaded = await Promise.all(
     names.map((name) => args.skillSandbox.loadSkill(name)),
   );
@@ -164,5 +159,4 @@ export async function loadRunSkill(args: {
       upsertActiveSkill(args.activeSkills, skill);
     }
   }
-  return automationName ? (loaded[0] ?? null) : null;
 }
