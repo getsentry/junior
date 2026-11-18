@@ -862,6 +862,20 @@
       "when": 1794995536190,
       "tag": "0122_automation_rollout_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1794996140907,
+      "tag": "0123_wake_automations",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1794996142572,
+      "tag": "0124_wake_automation_indexes",
+      "breakpoints": true
     }
   ]
 }
