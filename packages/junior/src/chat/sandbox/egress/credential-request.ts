@@ -28,11 +28,13 @@ export type SandboxCredentialRequest =
 // a browser session that a person signed in keeps its own identity.
 const CREDENTIAL_HEADERS = ["authorization", "cookie"];
 
-// Browsers, such as the Chromium that Playwright drives, send Fetch Metadata
-// headers on every request. CLIs and git do not. Sandbox code can omit these
-// headers, so this is not a security boundary; it keeps page traffic, which
+// Browsers, such as the Chromium that Playwright drives, send
+// `Sec-Fetch-Site` on every HTTPS request. Node's built-in fetch, which CLIs
+// such as `sentry` use, sends `Sec-Fetch-Mode` but not `Sec-Fetch-Site`, so
+// only `Sec-Fetch-Site` tells a browser apart. Sandbox code can omit this
+// header, so this is not a security boundary; it keeps page traffic, which
 // the code did not write, from acting as the Actor.
-const BROWSER_HEADER = "sec-fetch-mode";
+const BROWSER_HEADER = "sec-fetch-site";
 
 function placeholders(manifest: PluginManifest): string[] {
   return [
