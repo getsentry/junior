@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 // oxlint-disable-next-line no-restricted-imports -- The agent loop stream. Its Turn records the cost.
 import { streamSimple } from "@earendil-works/pi-ai/compat";
+import pLimit from "p-limit";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
@@ -30,6 +31,7 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   decideWarmup,
   gapSegment,
@@ -234,12 +236,17 @@ async function recordGap(
   if (!claimed) {
     return;
   }
-  for (const segment of recordedSegments(warm)) {
-    await state.appendToList(segmentGapsKey(segment), gapMs, {
-      maxLength: GLOBAL_GAPS_MAX,
-      ttlMs: GLOBAL_GAPS_TTL_MS,
-    });
-  }
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    recordedSegments(warm).map((segment) =>
+      limit(() =>
+        state.appendToList(segmentGapsKey(segment), gapMs, {
+          maxLength: GLOBAL_GAPS_MAX,
+          ttlMs: GLOBAL_GAPS_TTL_MS,
+        }),
+      ),
+    ),
+  );
   await state.appendToList(
     conversationGapsKey(conversationId, decisionSegment(warm)),
     gapMs,
@@ -772,6 +779,7 @@ export async function runCacheWarmup(
         if (!segmentNeedsParent((priorGapsMs.at(-1) ?? globalGapsMs).length)) {
           break;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Read a parent list only when the list before it is thin.
         priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
       }
       const decision = decideWarmup({

@@ -755,6 +755,7 @@ export async function executeCredentialedEgressRequest(input: {
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 
+  /* oxlint-disable no-await-in-loop -- The loop sends the request again only after a 403, and each step waits on the step before. */
   while (true) {
     const headers = requestHeaders(
       request,
@@ -940,4 +941,5 @@ export async function executeCredentialedEgressRequest(input: {
       }),
     };
   }
+  /* oxlint-enable no-await-in-loop */
 }

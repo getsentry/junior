@@ -1,10 +1,12 @@
 import { inArray } from "drizzle-orm";
+import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { logWarn } from "@/chat/logging";
 import { juniorConversations } from "@/db/schema";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 export type ConversationWork = {
   assignedIds: string[];
@@ -92,50 +94,56 @@ export async function listConversationWork(
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
   let failed = false;
-  for (const plugin of getPlugins()) {
-    const hook = plugin.hooks?.unfinishedWork;
-    if (!hook) continue;
-    try {
-      const result = await hook({
-        conversationIds: queriedIds,
-        db: getDb(),
-        log: createPluginLogger(plugin.manifest.name),
-        plugin: { name: plugin.manifest.name },
-        cache: createPluginCache(plugin.manifest.name),
-      });
-      for (const workId of result.conversationIds) {
-        const conversationId = owners.get(workId);
-        if (!conversationId) continue;
-        unfinished.add(conversationId);
-        assigned.add(conversationId);
-      }
-      for (const workId of result.assignedConversationIds ?? []) {
-        const conversationId = owners.get(workId);
-        if (conversationId) assigned.add(conversationId);
-      }
-      for (const [workId, finishedAt] of Object.entries(
-        result.finishedWorkAtByConversationId ?? {},
-      )) {
-        const conversationId = owners.get(workId);
-        if (!conversationId) continue;
-        const time = Date.parse(finishedAt);
-        if (!Number.isFinite(time)) continue;
-        const current = finishedAtById.get(conversationId);
-        if (!current || time > Date.parse(current)) {
-          finishedAtById.set(conversationId, finishedAt);
+  // Merging is order-free: sets, and the latest finish time.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    getPlugins().map((plugin) =>
+      limit(async () => {
+        const hook = plugin.hooks?.unfinishedWork;
+        if (!hook) return;
+        try {
+          const result = await hook({
+            conversationIds: queriedIds,
+            db: getDb(),
+            log: createPluginLogger(plugin.manifest.name),
+            plugin: { name: plugin.manifest.name },
+            cache: createPluginCache(plugin.manifest.name),
+          });
+          for (const workId of result.conversationIds) {
+            const conversationId = owners.get(workId);
+            if (!conversationId) continue;
+            unfinished.add(conversationId);
+            assigned.add(conversationId);
+          }
+          for (const workId of result.assignedConversationIds ?? []) {
+            const conversationId = owners.get(workId);
+            if (conversationId) assigned.add(conversationId);
+          }
+          for (const [workId, finishedAt] of Object.entries(
+            result.finishedWorkAtByConversationId ?? {},
+          )) {
+            const conversationId = owners.get(workId);
+            if (!conversationId) continue;
+            const time = Date.parse(finishedAt);
+            if (!Number.isFinite(time)) continue;
+            const current = finishedAtById.get(conversationId);
+            if (!current || time > Date.parse(current)) {
+              finishedAtById.set(conversationId, finishedAt);
+            }
+          }
+        } catch (error) {
+          failed = true;
+          // Fail open: a broken plugin must not invent assigned or unfinished
+          // work and demote recent conversations out of Priority.
+          logWarn("plugin.unfinished_work.hook.failed", {
+            "app.plugin.name": plugin.manifest.name,
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
         }
-      }
-    } catch (error) {
-      failed = true;
-      // Fail open: a broken plugin must not invent assigned or unfinished work
-      // and demote recent conversations out of Priority.
-      logWarn("plugin.unfinished_work.hook.failed", {
-        "app.plugin.name": plugin.manifest.name,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+      }),
+    ),
+  );
   return {
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),

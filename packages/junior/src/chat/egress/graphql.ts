@@ -76,6 +76,7 @@ export async function readGraphqlRequest(
   }
   const operations: PluginGraphqlOperation[] = [];
   for (const entry of parsed) {
+    // oxlint-disable-next-line no-await-in-loop -- Stop at the first entry that cannot be read.
     const operation = await readOperation(entry);
     if (typeof operation === "string") {
       return unreadable(operation);

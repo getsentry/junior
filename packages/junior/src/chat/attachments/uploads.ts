@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, lte } from "drizzle-orm";
+import pLimit from "p-limit";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachmentUploads, juniorAttachments } from "@/db/schema";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { InputFile, MessageAttachment } from "./input";
 import { detectImageMediaType, isVisionImageMediaType } from "./media";
 import { readLiveAttachment, recordUploadedAttachment } from "./store";
@@ -177,10 +179,12 @@ async function inspectObject(
   let bytes = 0;
   const reader = body.getReader();
   for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
     const { done, value } = await reader.read();
     if (done) break;
     bytes += value.byteLength;
     if (bytes > maxBytes) {
+      // oxlint-disable-next-line no-await-in-loop -- This runs once, and then the loop stops.
       await reader.cancel();
       return undefined;
     }
@@ -287,20 +291,26 @@ export async function recordAttachmentUploads(args: {
   storage: AttachmentStorage;
   uploads: readonly VerifiedAttachmentUpload[];
 }): Promise<MessageAttachment[]> {
-  for (const upload of args.uploads) {
-    if (upload.recorded) continue;
-    await recordUploadedAttachment({
-      attachment: {
-        ...upload.attachment,
-        conversationId: args.conversationId,
-        sha256: upload.sha256,
-        storageKey: upload.storageKey,
-      },
-      db: args.db,
-      nowMs: args.nowMs ?? Date.now(),
-      storage: args.storage,
-    });
-  }
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    args.uploads
+      .filter((upload) => !upload.recorded)
+      .map((upload) =>
+        limit(() =>
+          recordUploadedAttachment({
+            attachment: {
+              ...upload.attachment,
+              conversationId: args.conversationId,
+              sha256: upload.sha256,
+              storageKey: upload.storageKey,
+            },
+            db: args.db,
+            nowMs: args.nowMs ?? Date.now(),
+            storage: args.storage,
+          }),
+        ),
+      ),
+  );
   return args.uploads.map((upload) => upload.attachment);
 }
 

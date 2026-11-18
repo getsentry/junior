@@ -364,6 +364,7 @@ export async function readResponseBytes(
 
   try {
     while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
       const { value, done } = await reader.read();
       if (timedOut) {
         throw new Error("read timed out");
@@ -375,6 +376,7 @@ export async function readResponseBytes(
       const room = maxBytes - total;
       if (value.byteLength > room) {
         chunks.push(value.subarray(0, room));
+        // oxlint-disable-next-line no-await-in-loop -- This runs once, and then the loop stops.
         await reader.cancel();
         return { bytes: Buffer.concat(chunks), truncated: true };
       }
