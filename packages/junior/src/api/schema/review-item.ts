@@ -22,6 +22,18 @@ const personSchema = z
 export const reviewItemSchema = z
   .object({
     addedByConversationId: z.string().min(1),
+    /**
+     * Set when a child agent's Conversation added the item and the viewer
+     * can see its root. The Inbox shows the item in the root's stack, with
+     * `label`, such as the Thread title, to name the child.
+     */
+    addedByChild: z
+      .object({
+        label: z.string().min(1),
+        rootConversationId: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),

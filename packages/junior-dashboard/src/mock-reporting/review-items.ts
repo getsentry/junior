@@ -27,6 +27,11 @@ const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const DIGEST_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const RELIABILITY_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+// A root and two of its Threads, so the Inbox stacks a child's items under
+// the root.
+const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
+const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
+const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
@@ -39,6 +44,8 @@ type MockItemSeed = Pick<
       "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
     >
   > & {
+    /** The Thread title, for an item that a child agent added. */
+    childLabel?: string;
     conversationId: string;
     createdAt: string;
     /** The plugin that added the item. Plugin items have no Turn. */
@@ -224,6 +231,56 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Digest skipped two noisy alerts",
     },
+    // A question on the root, and a review request and a notice from two of
+    // its Threads, so one stack holds three kinds of item.
+    {
+      body: "Two GoCD agents hold their lease after the canary stage failed.",
+      conversationId: SENTAUR_CONVERSATION_ID,
+      createdAt: at(36),
+      id: "qa-sentaur-restart",
+      request: {
+        question: "Restart the two stuck canary agents?",
+        fields: [
+          {
+            id: "restart",
+            kind: "choice",
+            label: "Agents",
+            options: [
+              { label: "Restart both", recommended: true },
+              { label: "Leave them" },
+            ],
+          },
+        ],
+      },
+      status: "open",
+      title: "Restart the stuck canary agents",
+    },
+    {
+      body: "GitHub asks you to review #418.\n\nhttps://github.com/getsentry/sentaur/pull/418",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(34),
+      id: "qa-sentaur-review-418",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/sentaur/pull/418",
+        objectType: "code_change",
+        title: "Retry a canary stage once on a lost agent",
+        url: "https://github.com/getsentry/sentaur/pull/418",
+      },
+      title: "Review requested · #418",
+    },
+    {
+      body: "Agents 7 and 9 lost their lease during the last three canary stages.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(33),
+      id: "qa-sentaur-lost-agents",
+      kind: "notice",
+      status: "open",
+      title: "Two agents lost their lease",
+    },
     // Older items, so the inbox has Today, This week, and Earlier.
     {
       assignedToEveryone: true,
@@ -345,13 +402,21 @@ export function resetMockReviewItems(): void {
 }
 
 function payload(seed: MockItemSeed): ReviewItemPayload {
-  const { conversationId, plugin: _plugin, ...rest } = seed;
+  const { childLabel, conversationId, plugin: _plugin, ...rest } = seed;
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   return {
     ...item,
     addedByConversationId: conversationId,
+    ...(childLabel
+      ? {
+          addedByChild: {
+            label: childLabel,
+            rootConversationId: SENTAUR_CONVERSATION_ID,
+          },
+        }
+      : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
@@ -461,8 +526,10 @@ export function readMockWaitingConversations(nowMs: number) {
   );
   const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
+  // Like the API, a child's items wait in its root.
   for (const item of open) {
-    const id = item.addedByConversationId;
+    const id =
+      item.addedByChild?.rootConversationId ?? item.addedByConversationId;
     byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {

@@ -43,6 +43,7 @@ import {
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import { readAddedByChildren } from "./added-by-child";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -151,9 +152,15 @@ function subjectPayload(
 }
 
 /** Build the API payload of one Review item for its viewer. */
-function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
+function reviewItemPayload(
+  item: ReviewItem,
+  viewer: User,
+  children: ReadonlyMap<string, NonNullable<ReviewItemPayload["addedByChild"]>>,
+): ReviewItemPayload {
+  const addedByChild = children.get(item.addedByConversationId);
   return {
     addedByConversationId: item.addedByConversationId,
+    ...(addedByChild ? { addedByChild } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
     body: item.body,
@@ -177,6 +184,15 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
+}
+
+/** Build the payloads of some items, with the child that added each one. */
+async function reviewItemPayloads(
+  items: readonly ReviewItem[],
+  viewer: User,
+): Promise<ReviewItemPayload[]> {
+  const children = await readAddedByChildren(getDb(), items, viewer);
+  return items.map((item) => reviewItemPayload(item, viewer, children));
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -243,7 +259,7 @@ export function createReviewItemRoutes(services: {
         const page = closed.slice(0, query.limit);
         const last = page.at(-1);
         return jsonResponse(reviewItemListSchema, {
-          items: page.map((item) => reviewItemPayload(item, viewer)),
+          items: await reviewItemPayloads(page, viewer),
           ...(closed.length > query.limit && last
             ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
@@ -282,8 +298,9 @@ export function createReviewItemRoutes(services: {
       const page = open.slice(0, query.limit);
       const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
-        items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
-          reviewItemPayload(item, viewer),
+        items: await reviewItemPayloads(
+          [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
+          viewer,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -360,7 +377,10 @@ export function createReviewItemRoutes(services: {
           viewer,
           context.req.valid("param").id,
         );
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        return jsonResponse(
+          reviewItemSchema,
+          (await reviewItemPayloads([item], viewer))[0]!,
+        );
       } catch (error) {
         return actionErrorResponse(error);
       }
@@ -385,7 +405,10 @@ export function createReviewItemRoutes(services: {
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
         });
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        return jsonResponse(
+          reviewItemSchema,
+          (await reviewItemPayloads([item], viewer))[0]!,
+        );
       } catch (error) {
         return actionErrorResponse(error);
       }

@@ -80,6 +80,11 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  /**
+   * Whether a child agent's Conversation added the item. Only a search sets
+   * it; unset means unknown.
+   */
+  fromChildAgent?: boolean;
   id: string;
   kind: ReviewItemKind;
   request?: UserInputRequest;
@@ -729,8 +734,18 @@ export async function searchReviewItems(
   filters: ReviewItemFilters,
 ): Promise<ReviewItem[]> {
   const rows = await db
-    .select()
+    .select({
+      item: juniorReviewItems,
+      fromChildAgent: sql<boolean>`${juniorConversations.parentConversationId} is not null`,
+    })
     .from(juniorReviewItems)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItems.addedByConversationId,
+      ),
+    )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
@@ -747,7 +762,14 @@ export async function searchReviewItems(
             : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
-  return await hydrate(db, rows);
+  const items = await hydrate(
+    db,
+    rows.map((row) => row.item),
+  );
+  return items.map((item, index) => ({
+    ...item,
+    fromChildAgent: rows[index]!.fromChildAgent,
+  }));
 }
 
 /** One open Review item that a Conversation waits on a User for. */
