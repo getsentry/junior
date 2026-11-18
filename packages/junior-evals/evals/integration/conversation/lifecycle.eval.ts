@@ -408,8 +408,8 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
-    // A Turn that succeeds after a failure clears it, and the answer
-    // delivered to Slack counts as read.
+    // A Turn that succeeds after a failure clears it, and Slack delivery
+    // reads the answer.
     expect(next.status).toBe("done");
     expect(next.replies).toHaveLength(1);
     expect(next.replies[0]!.text).toMatch(/maple/i);
