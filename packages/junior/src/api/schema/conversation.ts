@@ -7,6 +7,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationTitleSchema } from "./conversation-title";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -42,20 +43,6 @@ export const conversationReportStatusSchema = z.enum([
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
 const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
-
-/**
- * What a Conversation and its child Conversations wait on, for one viewer.
- * See "Tree state" in `TERMINOLOGY.md`. Unset when nothing applies.
- */
-export const conversationTreeStateSchema = z.enum([
-  "needs_you",
-  "working",
-  "waiting",
-]);
-
-export type ConversationTreeState = z.output<
-  typeof conversationTreeStateSchema
->;
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -126,7 +113,8 @@ const conversationEventsLimitSchema = z.coerce
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
  * both ways from one event with `around`. A link target asks for the page
- * around one event by its `event` seq, or around the start of a `turn`.
+ * around one event by its `event` seq, around one `message` by its id, or
+ * around the start of a `turn`.
  */
 export const conversationEventsQuerySchema = z.union([
   z
@@ -146,6 +134,12 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
   z
     .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      message: z.string().min(1),
+      limit: conversationEventsLimitSchema,
+    })
     .strict(),
 ]);
 

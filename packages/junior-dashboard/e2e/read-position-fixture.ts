@@ -157,6 +157,7 @@ export async function mockReadPositionConversation(
       const around =
         query.get("around") ??
         query.get("event") ??
+        query.get("message")?.replace(/^message-/, "") ??
         (turn ? String(state.turnStartSeq) : null);
       const newer = after ?? around;
       if (newer && Number(newer) >= state.newerGateAfter) {

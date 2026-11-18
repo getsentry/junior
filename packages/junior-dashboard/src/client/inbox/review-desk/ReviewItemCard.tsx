@@ -11,6 +11,8 @@ import {
   inboxItemPath,
   reviewItemStatusLabel,
 } from "../../review-desk/reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { cn } from "../../styles";
 
 /**
  * Show one Review item as a card: its title, status, description, and the
@@ -65,7 +67,10 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
           Open in the Inbox
           <ArrowRight aria-hidden="true" size={14} />
         </Link>
-        <span className="min-w-0 truncate text-dashboard-text-muted">
+        <span
+          className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+          ref={fadeWhenOverflowing}
+        >
           {assigned ? `Assigned to ${assigneeLabel(item)}` : "Unassigned"}
         </span>
       </footer>

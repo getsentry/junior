@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import type { ConversationTreeState } from "@/api/schema/conversation";
+import type { ConversationTreeState } from "@/api/schema/conversation-tree-state";
 import { conversationIsActiveSql } from "@/chat/conversations/sql/status";
 import {
   conversationSubtree,

@@ -40,6 +40,11 @@ import { MemoryTimeline } from "../../../pages/memory/MemoryTimeline";
 import { MemoryCostChart } from "../../../pages/memory/MemoryCostChart";
 import { useMemoryRecord } from "../../../pages/memory/memoryRecord";
 import { getDashboardAgentName } from "../../../agentName";
+import {
+  fadeOverflowClass,
+  fadeTextClass,
+  fadeWhenOverflowing,
+} from "../../../textFade";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
@@ -491,11 +496,22 @@ function MemoryRow(props: {
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+            <h3
+              className={cn(
+                fadeOverflowClass,
+                "m-0 font-display text-base font-medium leading-snug text-dashboard-text",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {props.record.title}
             </h3>
           </div>
-          <div className="mt-1.5 truncate font-sans text-xs leading-relaxed text-dashboard-text-muted">
+          <div
+            className={cn(
+              fadeTextClass,
+              "mt-1.5 font-sans text-xs leading-relaxed text-dashboard-text-muted",
+            )}
+          >
             Source: {source}
             <span className="sm:hidden">
               {" "}
@@ -503,10 +519,20 @@ function MemoryRow(props: {
             </span>
           </div>
         </div>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text-muted sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text-muted sm:block",
+          )}
+        >
           {kind}
         </span>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text sm:block",
+          )}
+        >
           {shortDate(remembered)}
         </span>
       </button>

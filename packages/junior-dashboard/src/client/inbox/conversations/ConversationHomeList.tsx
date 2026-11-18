@@ -38,6 +38,7 @@ import {
 } from "../../conversations/PinnedConversationOrder";
 import type { ReorderPins } from "../../conversations/useReorderPinnedConversations";
 import { formatActivityDay, formatTime } from "../../time";
+import { fadeTextClass } from "../../textFade";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
@@ -292,7 +293,12 @@ function ConversationCard(props: ConversationCardProps) {
       </span>
       <div className="grid min-w-0">
         <div className="flex min-w-0 items-center gap-3">
-          <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
+          <h4
+            className={cn(
+              fadeTextClass,
+              "pointer-events-none relative z-[1] m-0 flex-1 font-display text-sm font-medium leading-6 text-dashboard-text",
+            )}
+          >
             {title}
           </h4>
           {participants.length > 0 ? (
@@ -352,7 +358,8 @@ function ConversationCard(props: ConversationCardProps) {
         {conversation.activityPreview || status === "active" ? (
           <p
             className={cn(
-              "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",
+              fadeTextClass,
+              "pointer-events-none relative z-[1] m-0 font-sans text-sm leading-5",
               conversation.activityPreview
                 ? "text-dashboard-text-subtle"
                 : "text-dashboard-text-muted",
