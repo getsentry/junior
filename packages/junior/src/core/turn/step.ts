@@ -51,7 +51,7 @@ export type StepResult =
 /** Runs one step of a Turn: the pending tool calls if there are any, else one model request. */
 export async function runStep(input: StepInput): Promise<StepResult> {
   const pending = pendingToolCalls(input.messages);
-  if (pending.length > 0) {
+  if (pending.calls.length > 0) {
     return runToolCalls(pending, input);
   }
   if (input.messages.at(-1)?.role === "assistant") {
@@ -91,11 +91,20 @@ async function requestModel(input: StepInput): Promise<StepResult> {
   };
 }
 
+type PendingToolCalls = {
+  calls: ToolCall[];
+  /**
+   * The reply hit the output token limit, so any call in it may have cut-off
+   * arguments that still parse.
+   */
+  truncated: boolean;
+};
+
 /**
  * The tool calls of the last reply that have no result yet. Only tool results
  * may follow the reply. Any other message means the reply has no open calls.
  */
-function pendingToolCalls(messages: Message[]): ToolCall[] {
+function pendingToolCalls(messages: Message[]): PendingToolCalls {
   const answered = new Set<string>();
   for (const message of [...messages].reverse()) {
     if (message.role === "toolResult") {
@@ -103,22 +112,25 @@ function pendingToolCalls(messages: Message[]): ToolCall[] {
       continue;
     }
     if (message.role !== "assistant") {
-      return [];
+      return { calls: [], truncated: false };
     }
-    return message.content.filter(
-      (block): block is ToolCall =>
-        block.type === "toolCall" && !answered.has(block.id),
-    );
+    return {
+      calls: message.content.filter(
+        (block): block is ToolCall =>
+          block.type === "toolCall" && !answered.has(block.id),
+      ),
+      truncated: message.stopReason === "length",
+    };
   }
-  return [];
+  return { calls: [], truncated: false };
 }
 
 async function runToolCalls(
-  calls: ToolCall[],
+  pending: PendingToolCalls,
   input: StepInput,
 ): Promise<StepResult> {
   const results = await Promise.all(
-    calls.map((call) => runToolCall(call, input)),
+    pending.calls.map((call) => runToolCall(call, pending.truncated, input)),
   );
   return {
     outcome: results.every(({ result }) => result.endsTurn === true)
@@ -132,8 +144,16 @@ type ToolCallOutcome = { call: ToolCall; result: ToolResult };
 
 async function runToolCall(
   call: ToolCall,
+  truncated: boolean,
   input: StepInput,
 ): Promise<ToolCallOutcome> {
+  // Same rule and text as pi-agent-core.
+  if (truncated) {
+    return errorOutcome(
+      call,
+      `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
+    );
+  }
   const tool = input.tools.find((candidate) => candidate.name === call.name);
   if (!tool) {
     return errorOutcome(call, `Tool ${call.name} not found`);
