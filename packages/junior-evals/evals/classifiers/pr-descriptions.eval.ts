@@ -87,6 +87,15 @@ describeEval(
       });
     });
 
+    it("when the change is a test tool and the body says what it checks, it accepts it", async ({
+      run,
+    }) => {
+      await run({
+        body: "Add a `--strict-isolation` pytest flag that fails a test when it leaves rows in the database or patches a module global without undoing it. Leaked state makes later tests pass or fail based on run order, which shows up as flaky CI.\n\nCI turns the flag on for every pull request. Locally it stays off unless you pass it.",
+        reject: false,
+      });
+    });
+
     it("when a body says what changed, why, and what breaks, it accepts it", async ({
       run,
     }) => {

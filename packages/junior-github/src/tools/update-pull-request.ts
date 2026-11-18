@@ -34,7 +34,10 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
-import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
+import {
+  checkPullRequestDescription,
+  PULL_REQUEST_BODY_RULES,
+} from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -49,9 +52,7 @@ const inputSchema = z
     body: z
       .string()
       .optional()
-      .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
-      ),
+      .describe(`Replacement pull request body: ${PULL_REQUEST_BODY_RULES}`),
     base: z
       .string()
       .trim()

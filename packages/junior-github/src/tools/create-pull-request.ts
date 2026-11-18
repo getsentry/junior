@@ -42,7 +42,10 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
-import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
+import {
+  checkPullRequestDescription,
+  PULL_REQUEST_BODY_RULES,
+} from "../tool-support/pull-request-description.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -109,9 +112,7 @@ const createPullRequestToolInputSchema = z
     base: z.string().describe("Base branch."),
     body: z
       .string()
-      .describe(
-        "Pull request body. The runtime appends the conversation footer.",
-      )
+      .describe(`Pull request body: ${PULL_REQUEST_BODY_RULES}`)
       .optional(),
     draft: z
       .boolean()
