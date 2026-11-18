@@ -53,3 +53,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Automations](./automations.md) covers Scheduled, Event, and channel-message Automations from Slack, and the Automations pages.
 - [GitHub](./github.md) covers pull requests, issues, Watches, attribution, and GitHub cards.
 - [Sandbox credentials](./sandbox-credentials.md) covers which Sandbox requests get the Actor's credential, credentials that a request brings, browser requests, the connect prompt, and Sentry write denials.
+- [Skills](./skills.md) covers `$name` invocation, several skills in one message, manual-only skills that stay hidden until named, chained skills, the older `/name` form, and the "Manual only" label.
