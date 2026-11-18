@@ -40,6 +40,10 @@ each rule, so new code cannot drift from it.
 - Keep the API requests of the main dashboard pages inside a budget. Dashboard
   e2e specs measure a first page load with `expectRequestBudget` from
   `packages/junior-dashboard/e2e/request-budget.ts`.
+- Keep the first load of each dashboard UI shell inside a gzip budget. Check:
+  `pnpm dashboard-bundle-size:check` fails when a shell grows more than 2%
+  over `scripts/dashboard-bundle-size-baseline.json`. Update the baseline only
+  in the change that must grow the first load.
 - Set a new budget to the measured value. When a change uses less, lower the
   budget in the same change. Do not raise a budget to pass. Fix the code.
 
