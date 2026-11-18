@@ -58,6 +58,56 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
+  test("a snooze that fails to save brings the row back", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, rollout] });
+    await page.route("**/api/automations", (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({ json: { error: "Failed" }, status: 500 })
+        : route.fallback(),
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await rowHead(todo, checkout).click();
+    await page.getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(page.getByText("The row could not be snoozed")).toBeVisible();
+    await expect(rowHead(todo, checkout)).toBeVisible();
+  });
+
+  test("a link to an item opens no row while the snoozes cannot load", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, {
+      open: [license, rollout],
+      snoozes: [
+        {
+          conversationId: rollout.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
+    await page.route("**/api/automations/snoozes", (route) =>
+      route.fulfill({ json: { error: "Failed" }, status: 500 }),
+    );
+    // Hold the Snoozed rows, so only the snoozes list could tell.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/review-items?**snoozed=true**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]item=/);
+    await expect(rowHead(todo, checkout)).toHaveCount(0);
+    release();
+  });
+
   test("a pull request row leaves the list as soon as it is snoozed", async ({
     dashboard,
     page,

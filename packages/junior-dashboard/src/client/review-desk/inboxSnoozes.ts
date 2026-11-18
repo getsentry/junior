@@ -12,6 +12,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { useEffect, useRef, useState } from "react";
 
+import { useToastManager } from "../components/ui/toast";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import {
   invalidateReviewItemCollections,
@@ -130,6 +131,7 @@ function snoozesHiding(
  */
 export function useInboxSnoozes(enabled: boolean) {
   const queryClient = useQueryClient();
+  const toast = useToastManager();
   const snoozesData = useSnoozesData(enabled);
   const snoozes = snoozesData.data?.snoozes ?? [];
   useRefreshAtNextWake(snoozes, snoozesData.dataUpdatedAt);
@@ -173,6 +175,9 @@ export function useInboxSnoozes(enabled: boolean) {
       };
       await post(wakeAutomationSchema, "/api/automations", body);
       await refreshInbox(queryClient);
+    } catch {
+      // The row leaves while the snooze saves, so a failure brings it back.
+      toast.add({ title: "The row could not be snoozed", type: "error" });
     } finally {
       mark(setHidden, bundle.conversationId, false);
     }
@@ -193,13 +198,15 @@ export function useInboxSnoozes(enabled: boolean) {
      */
     hides: (conversationId: string) => hidden.has(conversationId),
     /**
-     * A snooze hides this item from the viewer. Undefined until the snoozes
-     * load; false when they fail, so the item still shows.
+     * A snooze hides this item from the viewer. Undefined while that is
+     * unknown: before the snoozes load, or after their first read fails.
      */
     hidesItem: (itemId: string): boolean | undefined =>
-      enabled && snoozesData.isPending
+      enabled && !snoozesData.data
         ? undefined
         : snoozesHiding(snoozes, [itemId]).length > 0,
+    /** The snoozes could not be read, so `hidesItem` stays unknown. */
+    failed: enabled && snoozesData.isError && !snoozesData.data,
     snooze,
     wake,
     /** The row was just woken, and the lists have not refreshed yet. */

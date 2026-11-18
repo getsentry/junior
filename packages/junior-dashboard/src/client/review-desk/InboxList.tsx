@@ -285,8 +285,12 @@ export function InboxList(props: {
     }
     if (!linked.data) return;
     if (linked.data.status === "open") {
-      // Until the snoozes load, an open item may still be snoozed.
-      if (linkedSnoozed === undefined) return;
+      // Until the snoozes load, an open item may still be snoozed. If they
+      // cannot load, the link cannot tell, so it opens no row.
+      if (linkedSnoozed === undefined) {
+        if (data.snoozes.failed) void navigate(listPath, { replace: true });
+        return;
+      }
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
       if (includedId !== linkedId) includeItem(linkedId);
@@ -309,6 +313,7 @@ export function InboxList(props: {
     linkedLoaded,
     linkedRowKey,
     linkedSnoozed,
+    data.snoozes.failed,
     data.snoozedRead.settled,
     linkedStreamIndex,
     listPath,
