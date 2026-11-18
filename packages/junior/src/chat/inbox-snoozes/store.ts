@@ -92,7 +92,7 @@ export function snoozeOfUserAsleep(userId: string, nowMs: number): SQL {
  * the item links.
  */
 export function reviewItemInSnoozeRow(): SQL {
-  return sql`(${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${juniorInboxSnoozes.conversationId} in ${rowRootsOfItem(sql`${juniorReviewItems.id}`)}))`;
+  return sql`(${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${inArray(juniorInboxSnoozes.conversationId, rowRootsOfItem(sql`${juniorReviewItems.id}`))}))`;
 }
 
 /**
@@ -298,5 +298,8 @@ export async function deleteExpiredInboxSnoozes(
  * to check that a viewer can see a row before they snooze it.
  */
 export function reviewItemInRow(rootConversationId: string): SQL {
-  return sql`${rootConversationId} in ${rowRootsOfItem(sql`${juniorReviewItems.id}`)}`;
+  return inArray(
+    sql`${rootConversationId}`,
+    rowRootsOfItem(sql`${juniorReviewItems.id}`),
+  );
 }
