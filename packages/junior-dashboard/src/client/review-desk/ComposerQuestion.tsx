@@ -26,6 +26,7 @@ import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 
 /** Lets the message box send the picks of the docked questions. */
@@ -394,6 +395,7 @@ function DockedQuestion(props: {
           <div className="font-medium [&_p]:my-0">
             <DisplayText text={item.request.question} />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             docked
             ref={props.formRef}
