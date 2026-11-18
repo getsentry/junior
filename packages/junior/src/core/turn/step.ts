@@ -148,7 +148,6 @@ async function runToolCall(
   truncated: boolean,
   input: StepInput,
 ): Promise<ToolCallOutcome> {
-  // Same rule and text as pi-agent-core.
   if (truncated) {
     return errorOutcome(
       call,
