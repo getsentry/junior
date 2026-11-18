@@ -15,6 +15,7 @@ import { juniorReviewItems } from "@/db/schema/review-items";
 import {
   reviewItemInRow,
   reviewItemSnoozedBy,
+  settleInboxSnoozes,
   snoozeInboxItems,
   unsnoozeInboxRow,
 } from "./store";
@@ -118,14 +119,22 @@ export async function createViewerSnooze(
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
   const timerId = `inbox-snooze:${randomUUID()}`;
-  await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
-  await snoozeInboxItems(getDb(), {
+  const snoozeIds = await snoozeInboxItems(getDb(), {
     nowMs,
     reviewItemIds,
     rootConversationId: root,
     timerId,
     userId: user.id,
   });
+  // Add the timer only after the snoozes commit: a heartbeat that claims a
+  // timer with no snooze yet removes it. If the add fails, cancel the
+  // snoozes, so no item stays hidden with no timer to wake it.
+  try {
+    await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
+  } catch (error) {
+    await settleInboxSnoozes(getDb(), { snoozeIds, state: "cancelled" });
+    throw error;
+  }
   return reviewItemIds;
 }
 
