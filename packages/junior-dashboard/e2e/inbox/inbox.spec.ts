@@ -854,6 +854,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await page.evaluate(() => {
       localStorage.setItem("junior:density", "comfortable");
+      // The magnifier is off until the viewer turns it on.
+      localStorage.setItem("junior:inbox:magnify", "true");
     });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.reload();
@@ -892,9 +894,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       { idleDays: 1, number: 91, title: "Pin the release train" },
       { idleDays: 0, number: 42, title: "Tune the retry backoff" },
     ]);
-    await page.addInitScript(() =>
-      localStorage.setItem("junior:density", "comfortable"),
-    );
+    await page.addInitScript(() => {
+      localStorage.setItem("junior:density", "comfortable");
+      localStorage.setItem("junior:inbox:magnify", "true");
+    });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     const change = page.getByRole("listitem", {
       name: "Pin the release train",

@@ -1,6 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
+import { audit, license, mockReviewItems, prReview } from "./inbox-fixture";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -13,6 +15,13 @@ test.describe("new UI", { tag: "@new" }, () => {
   async function comfortable(page: Page) {
     await page.addInitScript(() =>
       localStorage.setItem("junior:density", "comfortable"),
+    );
+  }
+
+  // The magnifier is off until the viewer turns it on.
+  async function magnify(page: Page) {
+    await page.addInitScript(() =>
+      localStorage.setItem("junior:inbox:magnify", "true"),
     );
   }
 
@@ -69,6 +78,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
@@ -86,6 +96,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.clock.install();
     await page.goto(`${dashboard.baseURL}/`);
@@ -95,7 +106,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => transform(row)).toMatch(/^scale\(/);
   });
 
-  test("the magnifier grows rows in both densities, and its setting turns it off", async ({
+  test("the magnifier is off until its setting turns it on, and grows rows in both densities", async ({
     dashboard,
     page,
   }) => {
@@ -104,6 +115,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect.poll(() => transform(row)).toMatch(/^scale\(/);
       return Number(/^scale\(([\d.]+)/.exec(await transform(row))![1]);
     };
+    for (const density of ["comfortable", "compact"]) {
+      await page.goto(`${dashboard.baseURL}/`);
+      await page.evaluate(
+        (value) => localStorage.setItem("junior:density", value),
+        density,
+      );
+      await page.reload();
+      const row = await restOnFirstRow(page);
+      await page.clock.runFor(PAST_REST_MS);
+      expect(await transform(row)).toBe("");
+    }
+
+    await page.goto(`${dashboard.baseURL}/settings`);
+    const setting = page.getByRole("checkbox", {
+      name: "Magnify the row under the pointer",
+    });
+    await expect(setting).not.toBeChecked();
+    await setting.check();
     // Compact rows grow too, less than comfortable ones.
     await page.goto(`${dashboard.baseURL}/`);
     const compact = await scale(await restOnFirstRow(page));
@@ -114,21 +143,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await page.reload();
     expect(await scale(await restOnFirstRow(page))).toBeGreaterThan(compact);
-
-    await page.goto(`${dashboard.baseURL}/settings`);
-    await page
-      .getByRole("checkbox", { name: "Magnify the row under the pointer" })
-      .uncheck();
-    for (const density of ["comfortable", "compact"]) {
-      await page.evaluate(
-        (value) => localStorage.setItem("junior:density", value),
-        density,
-      );
-      await page.goto(`${dashboard.baseURL}/`);
-      const row = await restOnFirstRow(page);
-      await page.clock.runFor(PAST_REST_MS);
-      expect(await transform(row)).toBe("");
-    }
   });
 
   test("rows never grow or expand under reduced motion", async ({
@@ -136,6 +150,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
@@ -332,6 +347,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
@@ -436,4 +452,143 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toHaveAttribute("data-expanded", "true");
     });
   }
+
+  // Three asks in To do, each in its own Conversation, oldest first. The
+  // test closes them on the server, as an agent or a Watch does, and the
+  // viewer comes back to the tab after the reads went stale, so the Inbox
+  // reads its asks again.
+  async function closableAsks(page: Page, options: { pageSize?: number } = {}) {
+    const asks = [
+      { ...prReview, createdAt: "2026-08-07T08:00:00.000Z" },
+      {
+        ...license,
+        addedByConversationId: "slack:CLICENSE:1770003600.000400",
+        createdAt: "2026-08-07T08:10:00.000Z",
+      },
+      {
+        ...audit,
+        addedByConversationId: "slack:CAUDIT:1770003600.000500",
+        createdAt: "2026-08-07T08:20:00.000Z",
+      },
+    ];
+    const open = [...asks];
+    const actions = await mockReviewItems(page, { ...options, open });
+    let nowMs = NOW_MS;
+    const refocus = async () => {
+      nowMs += 60_000;
+      await page.clock.setFixedTime(nowMs);
+      const read = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/review-items",
+      );
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("visibilitychange")),
+      );
+      await read;
+    };
+    return {
+      actions,
+      async addAndRefocus(item: (typeof asks)[number]) {
+        open.push(item);
+        await refocus();
+      },
+      async closeAndRefocus(index: number) {
+        open.splice(open.indexOf(asks[index]!), 1);
+        await refocus();
+      },
+      row: (index: number) =>
+        page.locator(
+          `li[data-inbox-row="todo:${asks[index]!.addedByConversationId}"]`,
+        ),
+    };
+  }
+
+  for (const motion of ["no-preference", "reduce"] as const) {
+    test(`an open row that closes elsewhere leaves as on Dismiss (${motion} motion)`, async ({
+      dashboard,
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: motion });
+      const asks = await closableAsks(page);
+      await page.goto(`${dashboard.baseURL}/`);
+      await asks
+        .row(0)
+        .locator('a[aria-controls^="inbox-row-"]')
+        .first()
+        .click();
+      await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+      await asks.closeAndRefocus(0);
+      await expect(asks.row(1)).toHaveAttribute("data-expanded", "true");
+      await expect(asks.row(0)).toHaveCount(0);
+      // The item is already closed, so the Inbox sends nothing.
+      expect(asks.actions).toEqual([]);
+    });
+  }
+
+  test("a row that closes elsewhere while shut leaves without moving the open row", async ({
+    dashboard,
+    page,
+  }) => {
+    const asks = await closableAsks(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    await asks.row(0).locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+    await asks.closeAndRefocus(1);
+    await expect(asks.row(1)).toHaveCount(0);
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+    // The row that left is out of the order too: the open row's next is
+    // the one after it.
+    await asks.closeAndRefocus(0);
+    await expect(asks.row(2)).toHaveAttribute("data-expanded", "true");
+    expect(asks.actions).toEqual([]);
+  });
+
+  test("an open row that only leaves the loaded page stays open", async ({
+    dashboard,
+    page,
+  }) => {
+    // Reduced motion leaves a row with no animation, so a wrong leave has
+    // already opened the next row by the next frames.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const asks = await closableAsks(page, { pageSize: 3 });
+    await page.goto(`${dashboard.baseURL}/`);
+    await asks.row(0).locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+    const openRows = page.locator("li[data-inbox-row][data-expanded]");
+    const stillOpen = async () => {
+      await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+      await expect(openRows).toHaveCount(1);
+    };
+
+    // A newer ask fills the first page, so the open row's ask is on the
+    // next one. Its own read says that it is still open.
+    const reread = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/review-items/${prReview.id}`,
+    );
+    const newer = {
+      ...license,
+      addedByConversationId: "slack:CNEWER:1770003600.000600",
+      createdAt: "2026-08-07T08:30:00.000Z",
+      id: "item-newer",
+    };
+    await asks.addAndRefocus(newer);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${newer.addedByConversationId}"]`),
+    ).toBeVisible();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await stillOpen();
+    await reread;
+    await stillOpen();
+    expect(asks.actions).toEqual([]);
+  });
 });
