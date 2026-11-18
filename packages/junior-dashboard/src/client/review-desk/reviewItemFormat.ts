@@ -181,6 +181,38 @@ export function viewerAnswerLine(
     : "You replied";
 }
 
+/**
+ * Say what the viewer last answered in a Conversation, from its closed
+ * items newest closed first, until a later Message moves it on. The answer's
+ * own Message has the close time, so it does not count as later.
+ */
+export function conversationAnswerLine(
+  closed: readonly Pick<
+    ReviewItemPayload,
+    "addedByConversationId" | "answer" | "closedAt" | "closedBy" | "request"
+  >[],
+  conversation: { id: string; lastMessageAt?: string | undefined },
+  viewerEmail: string | undefined,
+): string | undefined {
+  if (!viewerEmail) return undefined;
+  const since = conversation.lastMessageAt
+    ? Date.parse(conversation.lastMessageAt)
+    : undefined;
+  for (const item of closed) {
+    if (
+      item.addedByConversationId !== conversation.id ||
+      !item.closedAt ||
+      item.closedBy?.email !== viewerEmail
+    )
+      continue;
+    if (since !== undefined && since > Date.parse(item.closedAt))
+      return undefined;
+    const line = viewerAnswerLine(item);
+    if (line) return line;
+  }
+  return undefined;
+}
+
 /** The open Review items of the inbox, in the groups and order it shows. */
 export type InboxGroups = {
   fyi: ReviewItemPayload[];

@@ -31,7 +31,7 @@ import {
 import {
   inboxBundles,
   itemUpForGrabs,
-  viewerAnswerLine,
+  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -166,19 +166,8 @@ function useBuildInboxData(input: {
     enabled: signedIn,
     forViewer: true,
   });
-  const answerOf = (conversation: Conversation): string | undefined => {
-    const item = closed.find(
-      (candidate) => candidate.addedByConversationId === conversation.id,
-    );
-    const since = conversation.lastMessageAt;
-    if (
-      !item?.closedAt ||
-      item.closedBy?.email !== viewerEmail ||
-      (since && Date.parse(item.closedAt) <= Date.parse(since))
-    )
-      return undefined;
-    return viewerAnswerLine(item);
-  };
+  const answerOf = (conversation: Conversation): string | undefined =>
+    conversationAnswerLine(closed, conversation, viewerEmail);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
