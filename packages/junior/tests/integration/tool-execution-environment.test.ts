@@ -8,7 +8,10 @@ import {
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
 import { instrumentToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/instrument";
-import { vercelToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/vercel";
+import {
+  createVercelToolExecutionEnvironmentManager,
+  type VercelCredentials,
+} from "@/core/tool-execution-environment/vercel";
 
 const TEST_TIMEOUT_MS = 3 * 60 * 1000;
 const ENVIRONMENT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -256,26 +259,39 @@ async function isRunning(
   return result.exitCode === 0;
 }
 
+// CI has a token, not OIDC. Without one, the SDK uses its own OIDC auth.
+function vercelCredentialsFromEnv(): VercelCredentials | undefined {
+  const token = process.env["VERCEL_TOKEN"];
+  const teamId = process.env["VERCEL_TEAM_ID"];
+  const projectId = process.env["VERCEL_PROJECT_ID"];
+  if (!token || !teamId || !projectId) return undefined;
+  return { token, teamId, projectId };
+}
+
 /**
- * Needs Vercel Sandbox credentials that the SDK finds on its own, and creates
- * real sandboxes. Set `JUNIOR_VERCEL_SANDBOX_TEST=1` to run it.
+ * Creates real sandboxes, so it runs only when `JUNIOR_VERCEL_SANDBOX_TEST=1`.
+ * It uses `VERCEL_TOKEN`, `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID` when all
+ * three are set, and the SDK's OIDC auth otherwise.
  */
 describeManagerContract(
   "Vercel",
   Boolean(process.env["JUNIOR_VERCEL_SANDBOX_TEST"]),
-  () => ({
-    // Instrumented, as production uses it, so the spans pass every result
-    // and error through unchanged.
-    manager: instrumentToolExecutionEnvironmentManager(
-      vercelToolExecutionEnvironmentManager,
-    ),
-    async stop(id) {
-      const sandbox = await Sandbox.get({ name: id });
-      await sandbox.stop();
-    },
-    async remove(id) {
-      const sandbox = await Sandbox.get({ name: id });
-      await sandbox.delete();
-    },
-  }),
+  () => {
+    const credentials = vercelCredentialsFromEnv();
+    return {
+      // Instrumented, as production uses it, so the spans pass every result
+      // and error through unchanged.
+      manager: instrumentToolExecutionEnvironmentManager(
+        createVercelToolExecutionEnvironmentManager(credentials),
+      ),
+      async stop(id) {
+        const sandbox = await Sandbox.get({ ...credentials, name: id });
+        await sandbox.stop();
+      },
+      async remove(id) {
+        const sandbox = await Sandbox.get({ ...credentials, name: id });
+        await sandbox.delete();
+      },
+    };
+  },
 );
