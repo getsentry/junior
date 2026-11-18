@@ -41,7 +41,6 @@ import {
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
-  fyiCount,
   INBOX_VIEW_LABELS,
   inboxViewPath,
   itemRowSubtitle,
@@ -71,7 +70,8 @@ function SweepControl(props: {
   scope: string;
 }) {
   if (props.clear === 0) return null;
-  const label = `Dismiss ${fyiCount(props.clear)}`;
+  // Bulk actions read `<verb> <number>`; the section names what it dismisses.
+  const label = `Dismiss ${props.clear}`;
   return (
     <Button
       aria-label={`${label} in ${props.scope}`}
