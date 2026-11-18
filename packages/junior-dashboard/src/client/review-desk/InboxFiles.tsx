@@ -1,6 +1,7 @@
 import { FileText } from "lucide-react";
 import { conversationAttachmentUrl } from "../conversations/TranscriptAttachment";
 import type { ConversationMedia } from "./useConversationImages";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /**
  * The newest files of a Conversation that are not images, by name, on a
@@ -26,7 +27,9 @@ export function InboxFiles(props: {
           target="_blank"
         >
           <FileText aria-hidden="true" className="size-3.5 shrink-0" />
-          <span className="truncate">{file.filename}</span>
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+            {file.filename}
+          </span>
         </a>
       ))}
     </div>

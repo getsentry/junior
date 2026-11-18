@@ -80,6 +80,7 @@ import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 
@@ -133,7 +134,13 @@ function RowItem(props: {
         {/* An item row's head already names the ask. A Conversation row's
             head names the Conversation, so each ask keeps its title. */}
         {props.headTitled ? null : (
-          <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
+          <h4
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {item.title}
           </h4>
         )}
@@ -673,12 +680,18 @@ function InboxRowBody(
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className="min-w-0 truncate">
+                  <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                     {props.itemTitle ?? props.title}
                   </span>
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
-                  <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                  <span
+                    className={cn(
+                      fadeOverflowClass,
+                      "text-xs text-dashboard-text-muted",
+                    )}
+                    ref={fadeWhenOverflowing}
+                  >
                     {props.itemSubtitle}
                   </span>
                 ) : null}

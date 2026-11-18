@@ -10,6 +10,7 @@ import {
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 type CardAnnotation = Annotation & {
@@ -174,7 +175,13 @@ export function WorkLine(props: {
           after the title is gone. Its padding is the gap after the title. */}
       <span className="flex min-w-0 items-center">
         {name ? (
-          <span className="min-w-0 truncate text-dashboard-text group-hover/card:underline">
+          <span
+            className={cn(
+              fadeOverflowClass,
+              "text-dashboard-text group-hover/card:underline",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {name}
           </span>
         ) : null}
@@ -187,15 +194,20 @@ export function WorkLine(props: {
             )}
           >
             {ref.repo ? (
-              <span className="min-w-0 max-w-24 truncate" data-work-repo="">
+              <span
+                className={cn(fadeOverflowClass, "max-w-24")}
+                data-work-repo=""
+                ref={fadeWhenOverflowing}
+              >
                 {ref.repo}
               </span>
             ) : null}
             <span
               className={cn(
-                "min-w-0 truncate",
+                fadeOverflowClass,
                 !name && "text-dashboard-text-muted",
               )}
+              ref={fadeWhenOverflowing}
             >
               {ref.number}
             </span>
@@ -307,21 +319,29 @@ function WorkChip(props: { work: Annotation }) {
   const toneClass = tone ? objectToneClass[tone] : "text-dashboard-text-muted";
   const content = repeatsTitle(ref, name) ? (
     <span
-      className={cn("truncate tabular-nums", toneClass)}
+      className={cn(fadeOverflowClass, "tabular-nums", toneClass)}
       data-status-tone={tone}
+      ref={fadeWhenOverflowing}
     >
       {name}
     </span>
   ) : (
     <>
-      <span className="truncate text-dashboard-text-muted">{name}</span>
+      <span
+        className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+        ref={fadeWhenOverflowing}
+      >
+        {name}
+      </span>
       {/* Like a line's short name, it gives way after the title. */}
       <span
         className={cn(
-          "max-w-full shrink-0 truncate pl-1 tabular-nums",
+          fadeOverflowClass,
+          "max-w-full shrink-0 pl-1 tabular-nums",
           toneClass,
         )}
         data-status-tone={tone}
+        ref={fadeWhenOverflowing}
       >
         {ref}
       </span>
