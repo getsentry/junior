@@ -48,10 +48,13 @@ type BottomPinResult = {
   /**
    * Show a mounted row. A row that the reader asks for moves to the middle
    * of the viewport. A row that `arrived` by itself moves only into view,
-   * and only while the reader follows the latest. Returns false when the
-   * row does not show.
+   * and only while the reader follows the latest. An `instant` move skips
+   * smooth scrolling. Returns false when the row does not show.
    */
-  showRow: (row: Element, options: { arrived: boolean }) => boolean;
+  showRow: (
+    row: Element,
+    options: { arrived: boolean; instant?: boolean },
+  ) => boolean;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -543,7 +546,10 @@ export function usePinnedTranscriptBottom(input: {
   );
 
   const showRow = useCallback(
-    (row: Element, options: { arrived: boolean }): boolean => {
+    (
+      row: Element,
+      options: { arrived: boolean; instant?: boolean },
+    ): boolean => {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return false;
       // A reader who scrolled away reads something else. Do not move it.
@@ -558,7 +564,9 @@ export function usePinnedTranscriptBottom(input: {
       if (Math.abs(offset) < 1) return true;
       // The reader goes to the row, so the latest must not pull them back.
       if (offset < 0) leaveBottom();
-      const behavior = preferredExplicitScrollBehavior();
+      const behavior = options.instant
+        ? "auto"
+        : preferredExplicitScrollBehavior();
       setScrollTop(
         root,
         Math.max(0, scrollSnapshot(root).scrollTop + offset),
