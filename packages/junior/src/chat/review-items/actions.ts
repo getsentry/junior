@@ -284,6 +284,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
   const toDeliver = answered.filter(
     (candidate) => candidate.status !== "open" || matched.has(candidate.id),
   );
+  /* oxlint-disable no-await-in-loop -- Close and deliver answered items in order, one at a time. */
   for (const item of toDeliver) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
@@ -311,4 +312,5 @@ export async function closeReviewItemsAnsweredByReply(args: {
       nowMs,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }

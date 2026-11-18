@@ -411,6 +411,7 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
+      /* oxlint-disable no-await-in-loop -- Claims share one transaction and run in binding order. */
       for (const reference of args.providerConversationBindings ?? []) {
         const binding = { conversationId: args.conversationId, ...reference };
         // A Conversation claims its thread when it starts. A reply into a
@@ -419,6 +420,7 @@ export async function commitAcceptedReply(args: {
           await startLocationThread(executor, binding);
         }
       }
+      /* oxlint-enable no-await-in-loop */
     }),
   );
 }

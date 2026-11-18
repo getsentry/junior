@@ -11,6 +11,12 @@ export async function resolveTaskOutcomes(
   if (outcomes === undefined) {
     return [];
   }
+  // Every direct-message outcome goes to the same creator, so open the DM once.
+  const directMessageChannelId = outcomes.some(
+    (outcome) => outcome.destination !== "current_conversation",
+  )
+    ? await openSlackDirectMessage(creatorSlackUserId)
+    : undefined;
   const resolved: TaskOutcome[] = [];
   for (const outcome of outcomes) {
     if (outcome.destination === "current_conversation") {
@@ -20,13 +26,13 @@ export async function resolveTaskOutcomes(
       });
       continue;
     }
-    const channelId = await openSlackDirectMessage(creatorSlackUserId);
+    if (!directMessageChannelId) continue;
     resolved.push({
       action: "send_message",
       destination: {
         platform: "slack",
         teamId: currentDestination.teamId,
-        channelId,
+        channelId: directMessageChannelId,
       },
     });
   }

@@ -483,6 +483,7 @@ export async function withSlackRetries<T>(
 
   const action = context.action ?? "unknown";
 
+  /* oxlint-disable no-await-in-loop -- Retry only after the attempt before fails. */
   while (attempt < maxAttempts) {
     attempt += 1;
     const attemptNumber = attempt;
@@ -599,6 +600,7 @@ export async function withSlackRetries<T>(
       await sleep(delayMs);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   throw new SlackActionError(
     "Slack action exhausted retries",

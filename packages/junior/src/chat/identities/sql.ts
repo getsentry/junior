@@ -187,9 +187,11 @@ async function upsertIdentityRecord(
     }
     throw new Error("Identity upsert returned no row");
   }
-  for (const changedUserId of new Set([existing?.userId, row.userId])) {
-    if (changedUserId) await clearCachedUser(changedUserId);
-  }
+  await Promise.all(
+    [...new Set([existing?.userId, row.userId])]
+      .filter((changedUserId) => typeof changedUserId === "string")
+      .map((changedUserId) => clearCachedUser(changedUserId)),
+  );
   // Check every write that may have set the User, not only a known existing
   // row: a concurrent first write can create the Identity and its roots
   // between the read above and this upsert.

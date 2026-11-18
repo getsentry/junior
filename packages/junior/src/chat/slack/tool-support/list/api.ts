@@ -170,6 +170,7 @@ export async function addListItems(input: {
 
   const createdItemIds: string[] = [];
 
+  /* oxlint-disable no-await-in-loop -- Create list items in the order given. */
   for (const title of input.titles) {
     const initialFields: NonNullable<
       SlackListsItemsCreateArguments["initial_fields"]
@@ -203,6 +204,7 @@ export async function addListItems(input: {
       createdItemIds.push(response.item.id);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     createdItemIds,
@@ -220,6 +222,7 @@ export async function listItems(
   let cursor: string | undefined;
   const cappedLimit = Math.max(1, Math.min(limit, 200));
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   do {
     const response: SlackListsItemsListResponse = await withSlackRetries(
       () =>
@@ -242,6 +245,7 @@ export async function listItems(
     }
     cursor = response.response_metadata?.next_cursor || undefined;
   } while (cursor);
+  /* oxlint-enable no-await-in-loop */
 
   return items;
 }
