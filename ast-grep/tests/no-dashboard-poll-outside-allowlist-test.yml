@@ -1,0 +1,6 @@
+id: no-dashboard-poll-outside-allowlist
+valid:
+  - "useQuery({ queryKey, queryFn, staleTime: 0 });"
+invalid:
+  - "useQuery({ queryKey, queryFn, refetchInterval: 5_000 });"
+  - "useQuery({ queryKey, queryFn, refetchInterval });"
