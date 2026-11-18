@@ -4,20 +4,14 @@ import type {
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-import { useDashboardCoreData } from "../api";
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useInboxUi } from "../uiShell";
-import {
-  useFailedReviewItemAnswer,
-  useReviewItemAction,
-  useSavedReviewItem,
-} from "./queries";
+import { useFailedReviewItemAnswer, useReviewItemAction } from "./queries";
 import { ReviewItemEvidence } from "./ReviewItemEvidence";
-import { answerRows, viewerAnswerLine } from "./reviewItemFormat";
+import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 
@@ -90,7 +84,6 @@ export function ReviewItemActions(props: {
   take?: string | false;
 }) {
   const { item } = props;
-  const inbox = useInboxUi();
   const action = useReviewItemAction();
   const draft = useFailedReviewItemAnswer(item.id);
   const [error, setError] = useState<string>();
@@ -98,26 +91,8 @@ export function ReviewItemActions(props: {
   // `onAction` sends without `action`, so it keeps its own pending state.
   const [sending, setSending] = useState(false);
   useReportUnsentAnswer(item, unsent);
-  // An Inbox row shows its items as the list read them until it leaves, so
-  // the viewer's saved answer shows here, where it was given.
-  const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  const saved = useSavedReviewItem(item.id);
-  const answered =
-    inbox &&
-    saved &&
-    saved.status !== "open" &&
-    saved.closedBy?.email === viewerEmail
-      ? viewerAnswerLine(saved)
-      : undefined;
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
-  if (answered) {
-    return (
-      <p className="m-0 text-sm text-dashboard-text-muted" role="status">
-        {answered}
-      </p>
-    );
-  }
   if (!item.canAct) {
     return (
       <p className="m-0 text-sm text-dashboard-text-muted">
