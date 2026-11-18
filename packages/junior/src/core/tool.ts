@@ -33,7 +33,7 @@ export type ToolExecutionContext = {
   /** The model's id for this call. */
   callId: string;
   signal: AbortSignal;
-  /** Present only for tools that run commands or read and write files. */
+  /** Present only for tools that run commands or interact with the filesystem. */
   environment?: ToolExecutionEnvironment;
 };
 
