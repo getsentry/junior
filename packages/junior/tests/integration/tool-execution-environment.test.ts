@@ -7,6 +7,7 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
+import { instrumentToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/instrument";
 import { createVercelToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/vercel";
 
 const TEST_TIMEOUT_MS = 3 * 60 * 1000;
@@ -223,7 +224,11 @@ describeManagerContract(
   "Vercel",
   Boolean(process.env["JUNIOR_VERCEL_SANDBOX_TEST"]),
   () => ({
-    manager: createVercelToolExecutionEnvironmentManager(),
+    // Instrumented, as production uses it, so the spans pass every result
+    // and error through unchanged.
+    manager: instrumentToolExecutionEnvironmentManager(
+      createVercelToolExecutionEnvironmentManager(),
+    ),
     async stop(id) {
       const sandbox = await Sandbox.get({ name: id });
       await sandbox.stop();

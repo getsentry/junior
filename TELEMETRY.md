@@ -62,6 +62,7 @@ attributes. Nested logs and spans inherit them.
 | Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
 | Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
+| Core sandbox slow, stopped, or failed | spans `sandbox.create`, `sandbox.get`, `sandbox.exec`, `sandbox.read_file`, `sandbox.write_file`; `app.sandbox.outcome` | `core/tool-execution-environment/instrument.ts` |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |

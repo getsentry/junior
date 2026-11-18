@@ -9,6 +9,7 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
+import { setActiveSpanAttributes } from "@/core/telemetry";
 
 // Vercel enforces this after our own timer, so a command still stops when
 // this process dies, but our timer fires first and the call throws.
@@ -58,6 +59,8 @@ export function createVercelToolExecutionEnvironmentManager(): ToolExecutionEnvi
 // stopped session again by itself, and a restart must be visible to the
 // caller because it loses running processes.
 function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
+  // Lets a trace be matched to the Vercel session that ran it.
+  setActiveSpanAttributes({ "app.sandbox.session_id": session.sessionId });
   return {
     cwd: session.cwd,
     exec: (argv, options) =>
