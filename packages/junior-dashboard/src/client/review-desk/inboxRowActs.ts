@@ -175,25 +175,37 @@ export function inboxCardActions(input: {
 /**
  * A stack's own actions: Snooze all, and Dismiss all, which closes every
  * open ask of the stack that the viewer can act on. A snoozed stack has
- * neither.
+ * neither. Dismiss all puts the stack's open row away, or its first row,
+ * and every other row of the stack goes with it, so the next row of the
+ * list opens.
  */
 export function inboxStackActions(input: {
   act: ReturnType<typeof useInboxRowActs>;
-  row: ActedRow;
+  expandedKey: string;
+  items: readonly ReviewItemPayload[];
+  /** The stack's row keys, in order. */
+  keys: readonly string[];
   snooze(untilMs: number): void;
   snoozed?: boolean;
+  title: string;
 }): { onDismiss?(): void; onSnooze?(untilMs: number): void } {
   if (input.snoozed) return {};
-  const open = input.row.items.filter(
+  const open = input.items.filter(
     (item) => item.status === "open" && item.canAct,
   );
+  const key = input.keys.includes(input.expandedKey)
+    ? input.expandedKey
+    : (input.keys[0] ?? "");
+  const row: ActedRow = {
+    items: input.items,
+    key,
+    passing: new Set(input.keys),
+    title: input.title,
+  };
   return {
     onDismiss:
       open.length > 0
-        ? () =>
-            void input
-              .act(input.row, open, { action: "dismiss" })
-              .catch(() => {})
+        ? () => void input.act(row, open, { action: "dismiss" }).catch(() => {})
         : undefined,
     onSnooze: input.snooze,
   };

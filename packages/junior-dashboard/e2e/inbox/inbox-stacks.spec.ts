@@ -41,7 +41,8 @@ const childAsks = [1, 2, 3].map((n) => ({
 const other = { ...audit, createdAt: "2026-08-07T12:00:00.000Z" };
 
 const stackOf = (page: Page) =>
-  page.locator(`li[data-inbox-stack][data-dock-key="stack:${conversationId}"]`);
+  // A stack's key has its section, as `todo:`, before the Conversation.
+  page.locator(`li[data-inbox-stack][data-dock-key$=":${conversationId}"]`);
 const rowOf = (page: Page, item: { id: string }) =>
   page.locator(`li[data-inbox-row="todo:${item.id}"]`);
 const dismissIn = (row: ReturnType<typeof rowOf>) =>
@@ -279,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
   });
 
-  test("Dismiss all closes every ask of the stack, and the stack leaves", async ({
+  test("Dismiss all closes every ask of the stack, and the next row opens", async ({
     dashboard,
     page,
   }) => {
@@ -287,13 +288,18 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, childReview, childLicense, other],
     });
     await page.goto(`${dashboard.baseURL}/`);
+    await rowOf(page, childReview).locator("[data-inbox-head]").click();
+    await expect(rowOf(page, childReview)).toHaveAttribute(
+      "data-expanded",
+      "true",
+    );
     await stackOf(page)
       .getByRole("button", { exact: true, name: "Dismiss all" })
       .click();
     await expect(stackOf(page)).toHaveCount(0);
     await expect(
       page.locator(`li[data-inbox-row="todo:${other.addedByConversationId}"]`),
-    ).toHaveCount(1);
+    ).toHaveAttribute("data-expanded", "true");
     await expect
       .poll(() => actions.map((action) => action.id).sort())
       .toEqual([childLicense.id, childReview.id, rollout.id].sort());

@@ -182,6 +182,8 @@ export function useLeaveCard(
       : [];
     const at = cards.findIndex((card) => card.dataset["inboxCard"] === itemId);
     const card = cards[at];
+    // A shut row shows no cards, so the row itself leaves.
+    if (row && cards.length === 0) return leaveRow(key, release);
     // A card that does not show, as a folded notice, has no motion.
     if (!card) {
       release();

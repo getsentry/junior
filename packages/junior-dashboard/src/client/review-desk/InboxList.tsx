@@ -461,9 +461,13 @@ export function InboxList(props: {
         expandedKey={state.expandedKey}
         key={stackKey}
         keys={rows.map((stacked) => stacked.key)}
+        stackKey={stackKey}
         {...inboxStackActions({
           act,
-          row: { items: row.items, key: stackKey, title },
+          expandedKey: state.expandedKey,
+          items: row.items,
+          keys: rows.map((stacked) => stacked.key),
+          title,
           snooze: (untilMs) => {
             setSnoozeKey(undefined);
             snoozes.snooze(row, untilMs);

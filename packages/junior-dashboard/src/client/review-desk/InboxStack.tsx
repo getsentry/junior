@@ -33,6 +33,8 @@ export function InboxStack(props: {
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   snoozeMenuOpen: boolean;
+  /** The stack's key in its section, as `todo:` and its Conversation. */
+  stackKey: string;
   title: string;
 }) {
   const openIndex = props.keys.indexOf(props.expandedKey);
@@ -47,7 +49,7 @@ export function InboxStack(props: {
         dashboardSurfaceRadiusClass,
         "grid min-w-0 list-none gap-1.5 border border-dashboard-border p-1.5",
       )}
-      data-dock-key={`stack:${props.conversationId}`}
+      data-dock-key={`stack:${props.stackKey}`}
       // An open row keeps the dock still, as an open row does.
       data-expanded={openIndex >= 0 || undefined}
       data-inbox-stack=""
