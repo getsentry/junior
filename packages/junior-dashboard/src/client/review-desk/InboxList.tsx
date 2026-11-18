@@ -379,9 +379,9 @@ export function InboxList(props: {
         onSnooze={
           options.snoozed
             ? undefined
-            : (choice) => {
+            : (untilMs) => {
                 setSnoozeKey(undefined);
-                leave(key, () => snoozes.snooze(row, choice));
+                leave(key, () => snoozes.snooze(row, untilMs));
               }
         }
         onWake={
@@ -447,9 +447,9 @@ export function InboxList(props: {
                 onDismiss: () =>
                   leave(key, () => data.alerts.dismiss(automation)),
                 onMenu: (open) => setSnoozeKey(open ? key : undefined),
-                onSnooze: (choice) => {
+                onSnooze: (untilMs) => {
                   setSnoozeKey(undefined);
-                  leave(key, () => data.alerts.snooze(automation, choice));
+                  leave(key, () => data.alerts.snooze(automation, untilMs));
                 },
               }
             : undefined

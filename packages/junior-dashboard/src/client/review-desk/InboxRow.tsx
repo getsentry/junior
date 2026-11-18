@@ -58,7 +58,6 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { useAnimatedHeight } from "./rowMotion";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -258,7 +257,7 @@ type InboxRowProps = {
   ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -895,7 +894,7 @@ function ExpandedActions(props: {
   conversation?: Conversation;
   openPath: string;
   onDone?(): void;
-  onSnooze?(choice: SnoozeChoice): void;
+  onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
