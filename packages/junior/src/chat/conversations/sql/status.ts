@@ -109,12 +109,13 @@ function conversationWaitsOnStarterSql(
   const briefThroughSeq = latestBrief(
     sql`${juniorConversationBriefs.throughSeq}`,
   );
-  // Reads `junior_conversation_events_message_role_idx`.
+  // Transcript order, the order of read positions, is `seq`, not time.
+  // Reads `junior_conversation_events_type_idx` backward.
   const replySeq = sql`(select ${juniorConversationEvents.seq} from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, id),
     eq(juniorConversationEvents.type, "message"),
     sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-  )} order by ${desc(juniorConversationEvents.createdAt)}, ${desc(juniorConversationEvents.seq)} limit 1)`;
+  )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const starterUserId = sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
     starterIdentity.id,
     starterRoot.actorIdentityId,
@@ -155,9 +156,8 @@ function conversationWaitsOnStarterSql(
 
 /**
  * SQL for the status of one Conversation's own work, shared by everyone.
- * This is the only place that derives it; readers, counts, feed tokens, and
- * auto-archive select it. When more than one applies: `needs_input` >
- * `working` > `done`.
+ * This is the only place that derives it; readers, counts, and feed tokens
+ * select it. When more than one applies: `needs_input` > `working` > `done`.
  *
  * - `needs_input`: an open action Review item that this Conversation added
  *   waits on its assignees or Everyone, a Turn waits on a person to sign in

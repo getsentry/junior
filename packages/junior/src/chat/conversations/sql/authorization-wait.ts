@@ -7,7 +7,7 @@ import { juniorConversationEvents, juniorConversations } from "@/db/schema";
  * dashboard connect prompt expire after this time, so the parked Turn cannot
  * resume after it.
  */
-const AUTHORIZATION_WAIT = sql.raw(`interval '24 hours'`);
+const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The request and the events that end its wait: the person connected, or a
@@ -24,17 +24,23 @@ const AUTHORIZATION_WAIT_EVENT_TYPES = [
   "turn_failed",
 ];
 
+/** The oldest request that still waits, on the app clock. */
+function authorizationWaitStart(): string {
+  return new Date(Date.now() - AUTHORIZATION_WAIT_MS).toISOString();
+}
+
 /**
  * SQL: the Conversation waits on a person to finish an authorization. A Turn
  * that needs a connection parks with execution `idle`, so only the durable
  * `authorization_requested` event shows the wait: it is the newest of these
- * events and has not expired.
+ * events and has not expired. Build it for each query: it binds the app
+ * clock, which also dated the request.
  */
 export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
   const events = juniorConversationEvents;
   return sql<boolean>`coalesce((
     select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > now() - ${AUTHORIZATION_WAIT}
+      and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz
     from ${events}
     where ${events.conversationId} = ${conversationId}
       and ${events.type} in (${sql.join(

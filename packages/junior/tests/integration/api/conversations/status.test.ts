@@ -1,6 +1,6 @@
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -249,7 +249,11 @@ async function recordDashboardRoot(
 }
 
 /** Record one assistant reply. */
-async function recordAnswer(conversationId: string, n: number): Promise<void> {
+async function recordAnswer(
+  conversationId: string,
+  n: number,
+  createdAtMs = Date.now(),
+): Promise<void> {
   await getConversationEventStore().append(conversationId, [
     {
       data: {
@@ -258,7 +262,7 @@ async function recordAnswer(conversationId: string, n: number): Promise<void> {
         role: "assistant",
         text: "It shipped.",
       },
-      createdAtMs: Date.now(),
+      createdAtMs,
     },
   ]);
 }
@@ -403,6 +407,33 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
+  it("dates a sign-in wait with the app clock, not the database clock", async () => {
+    // The app clock dates the request, so a clock behind the database's
+    // must still see the wait.
+    vi.useFakeTimers({
+      now: Date.now() - 30 * 24 * 60 * 60 * 1000,
+      toFake: ["Date"],
+    });
+    try {
+      const fixture = await createStatusFixture();
+      const conversationId = await recordSlackRoot(
+        fixture.conversationStore,
+        "1700000000.000155",
+      );
+      await recordAuthorizationRequested({
+        actorId: SLACK_VIEWER.slackUserId,
+        authorizationId: "status-sign-in-clock",
+        conversationId,
+        delivery: "private_link_sent",
+        kind: "mcp",
+        provider: "notion",
+      });
+      await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("orders needs_input over working over done, and a stop ends the wait", async () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const conversationId = await fixture.start("status-precedence");
@@ -462,6 +493,28 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await recordStarterMessage(conversationId);
     await expect(fixture.status(conversationId)).resolves.toBe("done");
+  });
+
+  it("finds the latest answer by transcript order, not by time", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-answer-order",
+    );
+    await recordAnswer(conversationId, 1);
+    const firstSeq = await lastSeq(conversationId);
+    // A later answer can carry an earlier time.
+    await recordAnswer(conversationId, 2, Date.now() - 60_000);
+    const read = await fixture.request(
+      `${detailPath(conversationId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: firstSeq }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
   it("counts an answer delivered to Slack as read", async () => {
