@@ -281,7 +281,8 @@
         "packages/junior-github/src/webhooks/**/*.ts",
         "packages/junior-github/src/credential-support.ts",
         "packages/junior-github/src/default-branch.ts",
-        "packages/junior-github/src/github-status.ts"
+        "packages/junior-github/src/github-status.ts",
+        "packages/junior-github/src/open-pull-request-heads.ts"
       ],
       "rules": {
         "no-restricted-imports": [

@@ -85,6 +85,10 @@ export function readGitPush(body: ArrayBuffer | undefined): PluginGitPush {
     ) {
       return unreadable("malformed");
     }
-    updates.push({ deletes: ZERO_OBJECT_ID.test(newId), ref });
+    updates.push({
+      deletes: ZERO_OBJECT_ID.test(newId),
+      newObjectId: newId,
+      ref,
+    });
   }
 }

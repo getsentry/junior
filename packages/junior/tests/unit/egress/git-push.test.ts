@@ -42,8 +42,8 @@ describe("readGitPush", () => {
     ).toEqual({
       kind: "commands",
       updates: [
-        { deletes: false, ref: "refs/heads/feat/x" },
-        { deletes: false, ref: "refs/heads/main" },
+        { deletes: false, newObjectId: NEW_ID, ref: "refs/heads/feat/x" },
+        { deletes: false, newObjectId: NEW_ID, ref: "refs/heads/main" },
       ],
     });
   });

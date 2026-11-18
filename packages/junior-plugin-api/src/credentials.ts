@@ -172,6 +172,8 @@ export type PluginGrant = z.output<typeof pluginGrantSchema>;
 export interface PluginGitRefUpdate {
   /** True when the push deletes the ref: its new object id is all zeros. */
   deletes: boolean;
+  /** Object id that the push sets the ref to. All zeros for a delete. */
+  newObjectId: string;
   /** Full ref name, such as `refs/heads/main`. */
   ref: string;
 }

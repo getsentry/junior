@@ -11,9 +11,10 @@ import { mswServer } from "./msw";
 
 const PUSH_URL = "https://github.com/getsentry/junior.git/git-receive-pack";
 const ORIGINAL_ENV = process.env;
+const NEW_ID = "2".repeat(40);
 
 function update(ref: string, deletes = false): PluginGitRefUpdate {
-  return { deletes, ref };
+  return { deletes, newObjectId: deletes ? "0".repeat(40) : NEW_ID, ref };
 }
 
 function commands(...updates: PluginGitRefUpdate[]): PluginGitPush {
@@ -46,6 +47,9 @@ function mockRepository(input?: { status?: number }) {
           expires_at: new Date(Date.now() + 60_000).toISOString(),
         }),
     ),
+    http.get("https://api.github.com/repos/:owner/:name/pulls", () =>
+      HttpResponse.json([]),
+    ),
     http.get("https://api.github.com/repos/:owner/:name", ({ request }) => {
       lookups.push(request.url);
       return input?.status
@@ -54,6 +58,50 @@ function mockRepository(input?: { status?: number }) {
     }),
   );
   return lookups;
+}
+
+/** One open pull request from feat/x into fix/base, and its comparison. */
+function mockOpenPullRequest(compare: { aheadBy?: number; status?: number }) {
+  const tokenRequests: unknown[] = [];
+  const lookups: string[] = [];
+  mswServer.use(
+    http.post(
+      "https://api.github.com/app/installations/:installationId/access_tokens",
+      async ({ request }) => {
+        tokenRequests.push(await request.json());
+        return HttpResponse.json({
+          token: "read-token",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/:owner/:name/pulls",
+      ({ request }) => {
+        lookups.push(request.url);
+        return HttpResponse.json([
+          {
+            base: { ref: "fix/base", repo: { full_name: "getsentry/junior" } },
+            head: { repo: { full_name: "getsentry/junior" } },
+            number: 3047,
+          },
+        ]);
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/:owner/:name/compare/*",
+      ({ request }) => {
+        lookups.push(request.url);
+        return compare.status
+          ? HttpResponse.json(
+              { message: "Not Found" },
+              { status: compare.status },
+            )
+          : HttpResponse.json({ ahead_by: compare.aheadBy });
+      },
+    ),
+  );
+  return { lookups, tokenRequests };
 }
 
 async function grantForPush(
@@ -204,6 +252,49 @@ describe("GitHub Git push policy", () => {
 
     expect(error.message).toContain(
       "The runtime could not read the default branch of getsentry/junior",
+    );
+  });
+
+  it("refuses a push that would leave an open pull request with no commits ahead of its base", async () => {
+    mockRepository();
+    const { lookups, tokenRequests } = mockOpenPullRequest({ aheadBy: 0 });
+    const error = await denial(commands(update("refs/heads/feat/x")));
+
+    expect(error.name).toBe("EgressPolicyDenied");
+    expect(error.message).toContain(
+      "GitHub would close getsentry/junior#3047 (branch feat/x, base fix/base): the branch would have no commits ahead of its base.",
+    );
+    expect(error.auditAttributes).toEqual({
+      "app.github.default_branch": "main",
+      "app.github.default_branch_targeted": false,
+      "app.github.emptied_pull_requests": ["3047"],
+      "app.github.refs": ["refs/heads/feat/x"],
+    });
+    expect(lookups).toEqual([
+      "https://api.github.com/repos/getsentry/junior/pulls?head=getsentry%3Afeat%2Fx&state=open",
+      `https://api.github.com/repos/getsentry/junior/compare/fix/base...${NEW_ID}?per_page=1`,
+    ]);
+    expect(tokenRequests).toContainEqual({
+      permissions: { contents: "read", pull_requests: "read" },
+      repositories: ["junior"],
+    });
+  });
+
+  it("allows a push of a commit that GitHub does not have yet to a pull request branch", async () => {
+    mockRepository();
+    mockOpenPullRequest({ status: 404 });
+    const grant = await grantForPush(commands(update("refs/heads/feat/x")));
+
+    expect(grant?.name).toBe("installation-write");
+  });
+
+  it("refuses the push when the open pull request lookup fails", async () => {
+    mockRepository();
+    mockOpenPullRequest({ status: 500 });
+    const error = await denial(commands(update("refs/heads/feat/x")));
+
+    expect(error.message).toContain(
+      "The runtime could not read the open pull requests of getsentry/junior for the pushed branches, so it refused the push.",
     );
   });
 

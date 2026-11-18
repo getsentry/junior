@@ -35,7 +35,8 @@ Open this when making repository edits, not for read-only inspection.
 2. Commit with repo conventions, else `<type>(<scope>): <Subject>` imperative present, no agent branding.
 3. Push with `git push -u origin BRANCH`.
    If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks. A watched PR gets `pull_request.merge_conflict` minutes later at the earliest, so do not wait for it.
-   - Run `gh pr view NUMBER --repo owner/repo --json mergeable,baseRefName`.
+   - Run `gh pr view NUMBER --repo owner/repo --json state,mergeable,baseRefName`.
+   - `state` is `CLOSED` and nobody asked you to close it: your push closed it. Say so first in your report, and do not report the task as done.
    - `UNKNOWN`: GitHub is still calculating it. Wait about 5 seconds and check again, up to 3 times. If it stays `UNKNOWN`, report that and continue.
    - `CONFLICTING`: resolve it now. Do not ask first. First check if the PR is in a stack: `gh api 'repos/owner/repo/stacks?pull_request=NUMBER'`.
      - In a stack: a stack merges only with a linear history, so do not merge the base. Run `gh stack checkout NUMBER` and `gh stack rebase`, resolve each conflict, run `gh stack rebase --continue`, run the checks, and `gh stack push`.
