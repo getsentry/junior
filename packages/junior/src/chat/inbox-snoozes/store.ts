@@ -81,26 +81,13 @@ function asleepAt(nowMs: number): SQL {
   )!;
 }
 
-/** SQL: a snooze of this User that has not woken. */
-export function snoozeOfUserAsleep(userId: string, nowMs: number): SQL {
-  return and(eq(juniorInboxSnoozes.userId, userId), asleepAt(nowMs))!;
-}
-
-/**
- * SQL: the Review item is in the Inbox row of the outer query's snooze. The
- * row is the item itself, or the root Conversation of a Conversation that
- * the item links.
- */
-export function reviewItemInSnoozeRow(): SQL {
-  return sql`(${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${inArray(juniorInboxSnoozes.conversationId, rowRootsOfItem(sql`${juniorReviewItems.id}`))}))`;
-}
-
 /**
  * SQL: this User snoozed the Inbox row of the Review item, and the snooze has
- * not woken.
+ * not woken. The row is the item itself, or the root Conversation of a
+ * Conversation that the item links.
  */
 export function reviewItemSnoozedBy(userId: string, nowMs: number): SQL {
-  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${snoozeOfUserAsleep(userId, nowMs)} and ${reviewItemInSnoozeRow()})`;
+  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${asleepAt(nowMs)} and (${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${inArray(juniorInboxSnoozes.conversationId, rowRootsOfItem(sql`${juniorReviewItems.id}`))})))`;
 }
 
 /**

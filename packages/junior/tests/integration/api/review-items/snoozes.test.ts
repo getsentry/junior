@@ -96,6 +96,24 @@ describe("snoozes", () => {
     ]);
   });
 
+  it("counts each Snoozed row that one snooze on their root hides", async () => {
+    const ana = await user("ana@example.com");
+    const other = "slack:CSNOOZE:1.000002";
+    await conversation(other, "public");
+    await addItem(ROOT, [ana], "Review acme entry");
+    // Another Conversation adds an item linked to the root: its own row.
+    await addItem(ROOT, [ana], "Review beta entry", "public", other);
+    const asAna = api(fixture, ana);
+    await asAna.snooze({ conversationId: ROOT }, NOW_MS + 3 * HOUR_MS);
+
+    const snoozed = await asAna.snoozed();
+    expect(snoozed.count).toBe(2);
+    expect(snoozed.items.toSorted()).toEqual([
+      "Review acme entry",
+      "Review beta entry",
+    ]);
+  });
+
   it("wakes at its time or on a new item, whichever comes first", async () => {
     const ana = await user("ana@example.com");
     await addItem(ROOT, [ana], "Review acme entry");

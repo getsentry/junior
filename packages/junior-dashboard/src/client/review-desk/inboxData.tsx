@@ -126,6 +126,7 @@ function useBuildInboxData(input: {
   const snoozes = useInboxSnoozes({
     failed: snoozedFailed,
     itemIds: snoozedItemIds,
+    listUpdatedAtMs: itemsQuery.dataUpdatedAt,
   });
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.

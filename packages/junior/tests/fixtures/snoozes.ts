@@ -38,15 +38,19 @@ export async function conversation(
   });
 }
 
-/** Add an open action item for these assignees. */
+/**
+ * Add an open action item for these assignees, linked to `conversationId`.
+ * Another Conversation can add it, so it gets a row of its own.
+ */
 export async function addItem(
   conversationId: string,
   assignees: User[],
   title: string,
   visibility: "private" | "public" = "public",
+  addedByConversationId = conversationId,
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    addedByConversationId,
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,

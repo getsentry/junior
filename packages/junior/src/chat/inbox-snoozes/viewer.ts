@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, count, eq, exists } from "drizzle-orm";
+import { and, countDistinct, eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   canUserReadReviewItem,
@@ -10,13 +10,11 @@ import {
 } from "@/chat/review-items/access";
 import { getReviewItem } from "@/chat/review-items/store";
 import { juniorConversations } from "@/db/schema/conversations";
-import { juniorInboxSnoozes } from "@/db/schema/inbox-snoozes";
 import { juniorReviewItems } from "@/db/schema/review-items";
 import {
   reviewItemInRow,
-  reviewItemInSnoozeRow,
+  reviewItemSnoozedBy,
   snoozeInboxRow,
-  snoozeOfUserAsleep,
   unsnoozeInboxRow,
   type InboxSnooze,
   type InboxSnoozeSubject,
@@ -130,33 +128,23 @@ export async function unsnoozeViewerRow(
 }
 
 /**
- * Count the Inbox rows that the viewer snoozed, as Snoozed lists them: a
- * snooze counts while it hides an open item that the viewer's Inbox lists.
+ * Count the Inbox rows that the viewer snoozed, as Snoozed lists them: one
+ * per Conversation that added an open item that a snooze hides. One snooze
+ * on a root Conversation can hide the rows of several.
  */
 export async function countViewerSnoozes(
   user: User,
   nowMs = Date.now(),
 ): Promise<number> {
-  const db = getDb();
-  const [row] = await db
-    .select({ count: count() })
-    .from(juniorInboxSnoozes)
+  const [row] = await getDb()
+    .select({ count: countDistinct(juniorReviewItems.addedByConversationId) })
+    .from(juniorReviewItems)
     .where(
       and(
-        snoozeOfUserAsleep(user.id, nowMs),
-        exists(
-          db
-            .select({ id: juniorReviewItems.id })
-            .from(juniorReviewItems)
-            .where(
-              and(
-                eq(juniorReviewItems.status, "open"),
-                reviewItemVisibleTo(reviewItemReaderForUser(user)),
-                reviewItemForUser(user.id),
-                reviewItemInSnoozeRow(),
-              ),
-            ),
-        ),
+        eq(juniorReviewItems.status, "open"),
+        reviewItemVisibleTo(reviewItemReaderForUser(user)),
+        reviewItemForUser(user.id),
+        reviewItemSnoozedBy(user.id, nowMs),
       ),
     );
   return row?.count ?? 0;
