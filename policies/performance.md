@@ -19,7 +19,7 @@ each rule, so new code cannot drift from it.
   at once. Plugins use `pLimit(N).map(list, work)`. Share one `pLimit`
   limiter only when several lists must use one cap. Use a lower cap only for
   a provider rate limit, and name its reason. Check: oxlint
-  `junior/bounded-fan-out`.
+  `junior/bounded-fan-out` and `junior/prefer-map-bounded`.
 - Use `for…of`, not `forEach`. A `forEach` callback hides `await`, `return`,
   and `break` from the loop. Check: oxlint `unicorn/no-array-for-each`.
 - In the dashboard, refresh only the queries that a change touched. Build query

@@ -228,24 +228,18 @@ async function listChildAgentsFromInvocations(
     getConversationWorkStates(activeIds),
     listActiveMailboxTurnSources(activeIds),
   ]);
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const onConversationLoop = new Set(
     (
-      await Promise.all(
-        active.map((row) =>
-          limit(async () =>
-            (await runsOnConversationLoop(
-              conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0],
-              row.stoppedAt?.getTime(),
-              workStates.get(row.conversationId)?.execution.pendingMessages ??
-                [],
-              mailboxTurnSources.get(row.conversationId) ?? [],
-            ))
-              ? row.conversationId
-              : undefined,
-          ),
-        ),
+      await mapBounded(active, async (row) =>
+        (await runsOnConversationLoop(
+          conversationKindFromRow(row),
+          byChild.get(row.conversationId)![0],
+          row.stoppedAt?.getTime(),
+          workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+          mailboxTurnSources.get(row.conversationId) ?? [],
+        ))
+          ? row.conversationId
+          : undefined,
       )
     ).filter((id) => id !== undefined),
   );

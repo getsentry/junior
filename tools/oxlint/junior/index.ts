@@ -7,6 +7,7 @@ import { noReadOnlyObjectAnnotationsRule } from "./rules/no-read-only-object-ann
 import { noRegexUrlParsingRule } from "./rules/no-regex-url-parsing.ts";
 import { noServiceFallbackRule } from "./rules/no-service-fallback.ts";
 import { noValueSwitchRule } from "./rules/no-value-switch.ts";
+import { preferMapBoundedRule } from "./rules/prefer-map-bounded.ts";
 import { touchConversationDetailRule } from "./rules/touch-conversation-detail.ts";
 import { useGitHubApiRule } from "./rules/use-github-api.ts";
 import { zodNamespaceImportRule } from "./rules/zod-namespace-import.ts";
@@ -22,6 +23,7 @@ const juniorPlugin = definePlugin({
     "no-regex-url-parsing": noRegexUrlParsingRule,
     "no-service-fallback": noServiceFallbackRule,
     "no-value-switch": noValueSwitchRule,
+    "prefer-map-bounded": preferMapBoundedRule,
     "touch-conversation-detail": touchConversationDetailRule,
     "use-github-api": useGitHubApiRule,
     "zod-namespace-import": zodNamespaceImportRule,
