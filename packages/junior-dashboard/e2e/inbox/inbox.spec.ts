@@ -159,7 +159,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).not.toBeChecked();
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
-    // A phone view would remount the row and drop the picks.
     await screenshot(page, "inbox-row-answer", {
       lightTheme: true,
       view: "desktop",

@@ -251,6 +251,30 @@ test("each review item gets a fresh answer form", async ({
   });
 });
 
+test("an item keeps unsent answers after another item or a reload", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  const list = page.getByRole("navigation", { name: "Review items" });
+  await detail.getByRole("radio", { name: "Approve" }).click();
+  await detail.getByLabel("Reason").fill("MIT license, no");
+
+  await list.getByRole("link", { name: new RegExp(audit.title) }).click();
+  await expect(
+    detail.getByRole("heading", { name: audit.title }),
+  ).toBeVisible();
+  await list.getByRole("link", { name: new RegExp(license.title) }).click();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
+
+  await page.reload();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
+});
+
 test("the inbox shows an item in its conversation", async ({
   dashboard,
   page,
