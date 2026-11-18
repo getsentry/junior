@@ -53,7 +53,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => slots(row)).toEqual(SLOTS);
   });
 
-  test("a row's pills mark each kind by icon, and name a change once", async ({
+  test("a row's pills name each kind in words, and name a change once", async ({
     dashboard,
     page,
   }) => {
@@ -62,15 +62,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "To do" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" });
-    // Each pull request ask names its change by title and number, so the
-    // icon carries the kind and the name keeps it for screen readers.
+    // Each pull request ask says its kind in short words, then names its
+    // change by title and number.
     const review = row.getByRole("button", {
       name: "Review requested #91: Pin the release train to payments 4.2",
     });
     const ready = row.getByRole("button", {
       name: "Ready to merge #2201: Update the package to 0.288.0",
     });
-    await expect(review).toHaveText("Pin the release train to payments 4.2#91");
+    await expect(review).toHaveText(
+      "ReviewPin the release train to payments 4.2#91",
+    );
+    await expect(ready).toHaveText(
+      "Ready to mergeUpdate the package to 0.288.0#2201",
+    );
     await expect(review.locator("[data-ask-kind]")).toHaveAttribute(
       "data-ask-kind",
       "Review requested",
@@ -84,14 +89,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Return 429 before parsing oversized envelopes#44",
     ]);
 
-    // An FYI is its icon alone. To do leaves it out, so Conversations shows it.
+    // An FYI says so in words too. To do leaves it out, so Conversations
+    // shows it.
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const fyi = page
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" })
       .getByRole("button", { name: "FYI", exact: true });
     await expect(fyi).toHaveAttribute("title", "FYI");
-    await expect(fyi).toHaveText("");
+    await expect(fyi).toHaveText("FYI");
 
     // Pull requests mark their asks the same way.
     await page.goto(`${dashboard.baseURL}/?view=prs`);
@@ -547,5 +553,53 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(head).toHaveCount(0);
     await page.clock.runFor(3 * 60 * 60 * 1000 + 1000);
     await expect(head).toBeVisible();
+  });
+
+  test("an Automations card gives a failed run's error as its reason", async ({
+    dashboard,
+    page,
+  }) => {
+    const report = structuredClone(automationReport);
+    Object.assign(
+      report.automations.find((automation) => automation.id === "scheduled-1")!,
+      { lastRunStatus: "failed" },
+    );
+    await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: mockAutomationCollection(
+          report,
+          new URL(route.request().url()).searchParams,
+        ),
+      }),
+    );
+    const error = "Slack rejected the result message: channel_not_found.";
+    await page.route("**/api/automations/scheduled-1/executions", (route) =>
+      route.fulfill({
+        json: {
+          executionDays: [],
+          executions: [
+            {
+              error,
+              executedAt: "2026-08-06T16:00:00.000Z",
+              executionId: "scheduled-1-run-1",
+              status: "failed",
+            },
+          ],
+          truncated: false,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/automations`);
+    await page
+      .getByRole("region", { exact: true, name: "To do" })
+      .getByRole("button", { name: /Weekly project summary/ })
+      .click();
+    const details = page.getByRole("region", {
+      name: "Weekly project summary: attention",
+    });
+    // The header and Last run say that it failed; Why says what failed.
+    const why = details.getByRole("definition").first();
+    await expect(details.getByRole("term").first()).toHaveText("Why");
+    await expect(why).toHaveText(error);
   });
 });

@@ -346,7 +346,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -361,6 +361,11 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
 }
 
 /**
