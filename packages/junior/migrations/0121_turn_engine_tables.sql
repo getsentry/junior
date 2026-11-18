@@ -5,6 +5,7 @@ CREATE TABLE "junior_turn_inbox" (
 	"actor_identity_id" text NOT NULL,
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
+	"trace_context" jsonb,
 	"turn_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "junior_turn_inbox_kind_check" CHECK ("junior_turn_inbox"."kind" in ('message', 'account_connected')),

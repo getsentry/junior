@@ -5224,6 +5224,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "trace_context": {
+          "name": "trace_context",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "turn_id": {
           "name": "turn_id",
           "type": "uuid",
