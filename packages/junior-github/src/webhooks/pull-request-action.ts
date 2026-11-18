@@ -5,10 +5,14 @@
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, approved, auto-merge is off, and GitHub's merge state
  * is `clean`. Otherwise it is "review" when GitHub still asks the requester
- * for a review. The requester takes one of them, not both, so one item per
- * pull request shows the action. Each webhook that can change one of these
- * facts reads them again from GitHub. Junior saves the derived action and
- * changes the item only when the action changes.
+ * for a review, or when the requester's latest review requests changes and
+ * the pull request has new commits since then. GitHub stops asking a
+ * reviewer once they review, so without the second case a fixed pull
+ * request never asks the requester again. The requester takes one of them,
+ * not both, so one item per pull request shows the action. Each webhook
+ * that can change one of these facts reads them again from GitHub. Junior
+ * saves the derived action and changes the item only when the action
+ * changes.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. It is assigned to that person only when they are in that
@@ -76,7 +80,7 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
 const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-ready:",
   "pull-request-review-requested:",
-];
+] as const;
 
 async function closeLegacyItems(
   items: PluginReviewItems,
@@ -126,7 +130,7 @@ function nextAction(
   state: GitHubPullRequestMergeState,
   requesterLogin: string | undefined,
   saved: GitHubPullRequestAction | undefined,
-): { action?: GitHubPullRequestAction } | undefined {
+): { action?: GitHubPullRequestAction; rereview?: true } | undefined {
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to.
   const canMerge = !state.draft && !state.autoMerge;
@@ -144,6 +148,12 @@ function nextAction(
     )
   ) {
     return { action: "review" };
+  }
+  if (
+    state.changesRequestedCommit &&
+    state.changesRequestedCommit !== state.headSha
+  ) {
+    return { action: "review", rereview: true };
   }
   if (canMerge && !state.mergeableState) return undefined;
   return {};
@@ -193,6 +203,7 @@ async function showAction(
     identityId: string;
     number: number;
     previous: GitHubPullRequestAction | undefined;
+    rereview: boolean;
     state: GitHubPullRequestMergeState;
   },
 ): Promise<void> {
@@ -205,7 +216,9 @@ async function showAction(
       body:
         action === "merge"
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
-          : `GitHub asks you to review #${number}.\n\n${state.url}`,
+          : args.rereview
+            ? `#${number} has new commits since you requested changes.\n\n${state.url}`
+            : `GitHub asks you to review #${number}.\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {
@@ -269,7 +282,11 @@ async function syncOne(
   const check = async (
     previous: GitHubPullRequestAction | undefined,
   ): Promise<GitHubPullRequestAction | undefined> => {
-    const state = await loadPullRequestMergeState(args.env, target);
+    const state = await loadPullRequestMergeState(
+      args.env,
+      target,
+      requesterLogin,
+    );
     const next = nextAction(state, requesterLogin, previous);
     // Act only on a change. So repeat events add no second item, and an
     // item that a person closed does not come back until the action
@@ -282,6 +299,7 @@ async function syncOne(
         identityId: opener.identityId,
         number: target.number,
         previous,
+        rereview: next.rereview === true,
         state,
       });
     }

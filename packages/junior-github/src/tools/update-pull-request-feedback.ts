@@ -1,5 +1,7 @@
+import pLimit from "p-limit";
 import {
   type PluginEgress,
+  type PluginLogger,
   type PluginToolOutput,
   definePluginTool,
   PluginToolInputError,
@@ -291,7 +293,10 @@ async function commentReactions(
   };
 }
 
-/** Return the GraphQL reactions of a review on `pullRequest`. */
+/**
+ * Return the GraphQL reactions of a review on `pullRequest`, and the login of
+ * its author when the review requests changes.
+ */
 async function reviewBodyReactions(
   egress: PluginEgress,
   input: {
@@ -301,7 +306,7 @@ async function reviewBodyReactions(
     pullRequest: number;
     reviewId: number;
   },
-): Promise<FeedbackReactions> {
+): Promise<FeedbackReactions & { changesRequestedBy?: string }> {
   // The path names the pull request, so GitHub returns 404 for a review on
   // another pull request.
   const reviewResponse = await githubApi(egress, {
@@ -313,9 +318,17 @@ async function reviewBodyReactions(
     if (reviewResponse.status === 404) throw new PluginToolInputError(message);
     throw new Error(message);
   }
-  const subjectId = z
-    .object({ node_id: z.string().min(1) })
-    .parse(reviewResponse.body).node_id;
+  const review = z
+    .object({
+      node_id: z.string().min(1),
+      state: z.string().optional(),
+      user: z
+        .object({ login: z.string().min(1) })
+        .nullable()
+        .optional(),
+    })
+    .parse(reviewResponse.body);
+  const subjectId = review.node_id;
   const graphql = (
     operation: string,
     document: GitHubGraphqlOperation,
@@ -330,6 +343,9 @@ async function reviewBodyReactions(
   const update =
     `github.pull.review-reaction.update:${input.owner}/${input.name}`.toLowerCase();
   return {
+    ...(review.state === "CHANGES_REQUESTED" && review.user
+      ? { changesRequestedBy: review.user.login }
+      : undefined),
     list: () =>
       graphql("github.pull.review-reaction.list", REVIEW_REACTIONS, {
         subjectId,
@@ -358,6 +374,44 @@ async function reviewBodyReactions(
   };
 }
 
+/**
+ * Ask the reviewer who requested changes to review again. GitHub stops asking
+ * a reviewer once they review, so the fixed pull request would not wait on
+ * them. The request is optional, so a failure is logged and does not fail the
+ * tool.
+ */
+async function requestReviewAgain(
+  ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
+  input: { name: string; owner: string; pullRequest: number; reviewer: string },
+): Promise<void> {
+  const fields = {
+    number: input.pullRequest,
+    repo: `${input.owner}/${input.name}`,
+  };
+  try {
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.request_reviewers",
+      method: "POST",
+      path: `${repoPath(input)}/pulls/${input.pullRequest}/requested_reviewers`,
+      body: { reviewers: [input.reviewer] },
+    });
+    if (!response.ok) {
+      ctx.log.warn(
+        "github.pull_request.request_reviewers_after_feedback.rejected",
+        { ...fields, status: response.status },
+      );
+    }
+  } catch (error) {
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_feedback.failed",
+      {
+        ...fields,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+    );
+  }
+}
+
 // GraphQL reports errors with HTTP 200, so a failed reply can be `ok`.
 function failed(response: GitHubApiResponse): boolean {
   const errors = (response.body as { errors?: unknown } | null | undefined)
@@ -368,6 +422,7 @@ function failed(response: GitHubApiResponse): boolean {
 /**
  * Set Junior's feedback reaction on a pull request comment or review body.
  * Replace only state reactions Junior previously added to the same comment.
+ * Addressed change requests ask their reviewer to review again.
  */
 export function createGitHubUpdatePullRequestFeedbackTool(
   botEmail: string | undefined,
@@ -383,14 +438,14 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Addressed on a review that requested changes also asks its reviewer to review again. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
     async execute(
       input,
       _options,
-      ctx: { egress: PluginEgress },
+      ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
     ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
@@ -416,7 +471,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         number: pullRequest,
         botUserId,
       });
-      const reactions =
+      const reactions: FeedbackReactions & { changesRequestedBy?: string } =
         commentKind === "review_body"
           ? await reviewBodyReactions(ctx.egress, {
               owner: repo.owner,
@@ -447,10 +502,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         .filter((reaction) => FEEDBACK_REACTION_CONTENTS.has(reaction.content));
 
       // Feedback reactions are a small fixed set, so remove them at once.
-      const deleteResponses = await Promise.all(
-        botReactions
-          .filter((stale) => stale.content !== targetContent)
-          .map((stale) => reactions.remove(stale)),
+      const deleteResponses = await pLimit(FEEDBACK_REACTION_CONTENTS.size).map(
+        botReactions.filter((stale) => stale.content !== targetContent),
+        (stale) => reactions.remove(stale),
       );
       for (const deleteResponse of deleteResponses) {
         if (failed(deleteResponse) && deleteResponse.status !== 404) {
@@ -470,6 +524,14 @@ export function createGitHubUpdatePullRequestFeedbackTool(
             `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`,
           );
         }
+      }
+      if (status === "addressed" && reactions.changesRequestedBy) {
+        await requestReviewAgain(ctx, {
+          owner: repo.owner,
+          name: repo.name,
+          pullRequest,
+          reviewer: reactions.changesRequestedBy,
+        });
       }
       return {
         target: "updatePullRequestFeedback",

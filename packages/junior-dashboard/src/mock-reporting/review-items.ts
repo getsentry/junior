@@ -207,6 +207,24 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Review requested · #91",
     },
     {
+      // The merge conflict notice about the same pull request folds into
+      // its review ask.
+      body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(60),
+      id: "qa-conflict-91",
+      kind: "notice",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/payments/pull/91",
+        objectType: "code_change",
+        title: "Pin the release train to payments 4.2",
+        url: "https://github.com/getsentry/payments/pull/91",
+      },
+      title: "Merge conflict · #91",
+    },
+    {
       assignedToEveryone: true,
       body: "The canary deploy paused after the error budget alert. Nothing to do unless it stays paused.",
       conversationId: DEPLOY_CONVERSATION_ID,

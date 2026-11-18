@@ -2,8 +2,6 @@ import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
-import type { SnoozeChoice } from "./snoozeChoices";
-
 // Item snoozes live on the server. An Automation alert is not a Review
 // item, so a server snooze cannot hide it; it is put away in this browser,
 // and the server count never sees these keys.
@@ -75,7 +73,7 @@ export function useAutomationAlerts(nowMs: number) {
     ),
     dismiss: (automation: AutomationListItem) => putAway(automation),
     hidden,
-    snooze: (automation: AutomationListItem, choice: SnoozeChoice) =>
-      putAway(automation, choice.untilMs(nowMs)),
+    snooze: (automation: AutomationListItem, untilMs: number) =>
+      putAway(automation, untilMs),
   };
 }

@@ -12,7 +12,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import type { InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnoozes";
@@ -222,47 +222,62 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
-  // The server leaves snoozed rows out of `list`. A row snoozed a moment
-  // ago stays out until the list refreshes.
-  const awake = list.filter(
-    (item) =>
-      !sweeper.isSwept(item.id) && !snoozes.hides(item.addedByConversationId),
+  // The server leaves snoozed rows out of `list` and lists them in Snoozed.
+  // A notice about the subject of an ask shows on that ask's row instead,
+  // and sleeps and wakes with it, so both lists fold together.
+  const snoozedIds = new Set(snoozedItems.map((item) => item.id));
+  const { folded: foldedNotices, shown } = foldNotices(
+    [
+      ...new Map(
+        [...list, ...snoozedItems].map((item) => [item.id, item]),
+      ).values(),
+    ].filter((item) => !sweeper.isSwept(item.id)),
+  );
+  // A row snoozed a moment ago stays out until the list refreshes.
+  const awake = shown.filter(
+    (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
   );
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
 
-  const bundles = inboxBundles(awake);
-  const bundleByConversation = new Map(
-    bundles.map((bundle) => [bundle.conversationId, bundle]),
-  );
-  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  // To do holds the asks that name the viewer. Asks for Everyone are up for
+  // grabs, and notices are FYI.
+  const asks = awake.filter((item) => item.kind === "action");
   const todoRows = inboxBundles(
-    awake.filter((item) => !itemUpForGrabs(item)),
+    asks.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
-  const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
+  const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(
-    snoozedItems.filter((item) => !sweeper.isSwept(item.id)),
+    shown.filter((item) => snoozedIds.has(item.id)),
   ).filter((bundle) => !snoozes.waking(bundle.key));
 
   // Every Conversation, pinned first in the viewer's order, then newest
-  // activity. A Conversation outside the loaded feed joins when it has
-  // open items.
-  const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map((conversation): ConversationRow => ({
-      bundle: bundleByConversation.get(conversation.id),
-      conversation,
-      conversationId: conversation.id,
-      time: activityAt(conversation),
-    })),
-    bundles
-      .filter((bundle) => !conversationById.has(bundle.conversationId))
-      .map((bundle): ConversationRow => ({
-        bundle,
-        conversationId: bundle.conversationId,
-        time: bundle.newest.createdAt,
+  // activity, with its items. A Conversation outside the loaded feed joins
+  // when it has open items.
+  const rowsByTime = (bundles: InboxBundle[]) => {
+    const bundleByConversation = new Map(
+      bundles.map((bundle) => [bundle.conversationId, bundle]),
+    );
+    return withRowsByTime(
+      pinnedFirst(conversations).map((conversation): ConversationRow => ({
+        bundle: bundleByConversation.get(conversation.id),
+        conversation,
+        conversationId: conversation.id,
+        time: activityAt(conversation),
       })),
-  );
+      bundles
+        .filter((bundle) => !conversationById.has(bundle.conversationId))
+        .map((bundle): ConversationRow => ({
+          bundle,
+          conversationId: bundle.conversationId,
+          time: bundle.newest.createdAt,
+        })),
+    );
+  };
+  const conversationRows = rowsByTime(inboxBundles(awake));
+  // The Inbox's own stream leaves notices to its FYI list.
+  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every running Conversation. Running rows come
   // first, a running pin with them, then the other pins in the viewer's
@@ -302,9 +317,13 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
+    /** The notices that fold into each ask's row, by the ask's id. */
+    foldedNotices,
+    fyiRows: fyiRows(awake),
     holdOpenRow,
     includedId: linkedId,
     includeItem,
+    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(running),
     /** Collapsed In flight: every pin, and running rows up to the limit. */

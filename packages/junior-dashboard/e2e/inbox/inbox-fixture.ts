@@ -161,6 +161,51 @@ export const prReview = {
   title: "Review requested · #91",
 };
 
+// The release Conversation saved the card of this pull request, with its
+// description.
+const releaseConversationId = "slack:CQA456:1770021600.000600";
+const pinPullRequest = {
+  id: "https://github.com/getsentry/payments/pull/91",
+  objectType: "code_change" as const,
+  title: "Pin the release train to payments 4.2 (#91)",
+  url: "https://github.com/getsentry/payments/pull/91",
+};
+
+// The GitHub plugin's review ask, as it writes it: the URL alone on a line.
+export const pinReview = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:20:00.000Z",
+  id: "item-pin-review",
+  subject: pinPullRequest,
+  title: "Review requested · #91",
+};
+
+// The GitHub plugin's merge conflict notice about the same pull request, with
+// the URL inside its sentence.
+export const pinConflict = {
+  ...pinReview,
+  body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+  createdAt: "2026-08-07T09:40:00.000Z",
+  id: "item-pin-conflict",
+  kind: "notice" as const,
+  title: "Merge conflict · #91",
+};
+
+// A notice in the same Conversation about nothing that an ask names.
+export const releaseNotes = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  body: "Release notes for 0.288.0 are drafted in the release PR.",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:30:00.000Z",
+  id: "item-release-notes",
+  kind: "notice" as const,
+  title: "Release notes drafted",
+};
+
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,
@@ -235,7 +280,10 @@ export async function mockReviewItems(
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
-  /** When each snoozed Conversation's row wakes. */
+  /**
+   * When each snooze wakes, by what it snoozes: a Conversation's row, or
+   * one item (`reviewItemId`).
+   */
   const snoozes = new Map(
     (options.snoozes ?? []).map((snooze) => [
       snooze.conversationId,
@@ -244,24 +292,31 @@ export async function mockReviewItems(
   );
   /** Snoozes made or undone, which move the versions token as on the server. */
   let snoozeChanges = 0;
-  /** The Conversations with an open row that a snooze hides now. */
+  /** The snoozes that hide an open item now, by what they snooze. */
   const snoozedRows = async () => {
     const nowMs = await (options.now ?? (() => NOW_MS))();
     return new Set(
-      [...snoozes].flatMap(([conversationId, untilMs]) =>
+      [...snoozes].flatMap(([key, untilMs]) =>
         untilMs > nowMs &&
-        open.some((i) => i.addedByConversationId === conversationId)
-          ? [conversationId]
+        open.some((i) => i.id === key || i.addedByConversationId === key)
+          ? [key]
           : [],
       ),
     );
   };
+  const asleep = (
+    sleeping: Set<string>,
+    item: { addedByConversationId: string; id: string },
+  ) => sleeping.has(item.id) || sleeping.has(item.addedByConversationId);
   await page.route("**/api/inbox/snoozes", async (route) => {
     const request = route.request();
     const body = request.postDataJSON();
     if (request.method() === "POST") {
       // A new snooze on a row replaces the viewer's last one.
-      snoozes.set(body.conversationId, Date.parse(body.wakeAt));
+      snoozes.set(
+        body.reviewItemId ?? body.conversationId,
+        Date.parse(body.wakeAt),
+      );
       snoozeChanges++;
       return route.fulfill({
         json: {
@@ -273,7 +328,16 @@ export async function mockReviewItems(
       });
     }
     if (request.method() === "DELETE") {
-      snoozes.delete(body.conversationId);
+      // Without an item, every snooze in the Conversation wakes.
+      if (body.reviewItemId) snoozes.delete(body.reviewItemId);
+      else
+        for (const key of [
+          body.conversationId,
+          ...open
+            .filter((i) => i.addedByConversationId === body.conversationId)
+            .map((i) => i.id),
+        ])
+          snoozes.delete(key);
       snoozeChanges++;
       return route.fulfill({ status: 204 });
     }
@@ -312,7 +376,7 @@ export async function mockReviewItems(
           i.kind === "action" &&
           i.canAct &&
           !i.assignedToEveryone &&
-          !sleeping.has(i.addedByConversationId),
+          !asleep(sleeping, i),
       );
       return route.fulfill({
         json: {
@@ -323,7 +387,12 @@ export async function mockReviewItems(
           codeChanges: needsViewer.filter(
             (i) => i.subject?.objectType === "code_change",
           ).length,
-          snoozed: (await snoozedRows()).size,
+          // One per Conversation row, as Snoozed lists them.
+          snoozed: new Set(
+            open
+              .filter((i) => asleep(sleeping, i))
+              .map((i) => i.addedByConversationId),
+          ).size,
         },
       });
     }
@@ -349,10 +418,8 @@ export async function mockReviewItems(
           (!linked || i.conversationIds.includes(linked)) &&
           `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
           (snoozedOnly
-            ? sleeping.has(i.addedByConversationId)
-            : !forViewer ||
-              Boolean(q || linked) ||
-              !sleeping.has(i.addedByConversationId)),
+            ? asleep(sleeping, i)
+            : !forViewer || Boolean(q || linked) || !asleep(sleeping, i)),
       );
       // The waiting sort lists what waits on the viewer first, then the
       // rest, newest first, as the server does. Otherwise items keep their

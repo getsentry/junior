@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   inboxSnoozeSchema,
   type InboxSnoozeCreateBody,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
 
@@ -9,7 +10,6 @@ import { useToastManager } from "../components/ui/toast";
 import { deleteDashboardResource, post } from "../http";
 import { invalidateReviewItemCollections } from "./queries";
 import type { InboxBundle } from "./reviewItemFormat";
-import type { SnoozeChoice } from "./snoozeChoices";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
 
@@ -34,32 +34,41 @@ interface SnoozedRead {
 export function useInboxSnoozes(read: SnoozedRead) {
   const queryClient = useQueryClient();
   const toast = useToastManager();
-  // When each just-snoozed Conversation's snooze saved; Infinity while it
-  // saves. A list read after that time already leaves the row out.
+  // When each just-snoozed row's snooze saved, by row key; Infinity while
+  // it saves. A list read after that time already leaves the row out.
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
-  const hide = (conversationId: string, savedAtMs: number | undefined) =>
+  const hide = (key: string, savedAtMs: number | undefined) =>
     setHidden((current) => {
       const next = new Map(current);
-      if (savedAtMs === undefined) next.delete(conversationId);
-      else next.set(conversationId, savedAtMs);
+      if (savedAtMs === undefined) next.delete(key);
+      else next.set(key, savedAtMs);
       return next;
     });
-  const snooze = async (bundle: InboxBundle, choice: SnoozeChoice) => {
-    hide(bundle.conversationId, Infinity);
+  const hiddenNow = (key: string) =>
+    (hidden.get(key) ?? -Infinity) >= read.listUpdatedAtMs;
+  /**
+   * Snooze a row until `untilMs`. A Conversation row snoozes its
+   * Conversation; a row of one item, such as an FYI notice, only that item.
+   */
+  const snooze = async (bundle: InboxBundle, untilMs: number) => {
+    hide(bundle.key, Infinity);
     try {
       const body: InboxSnoozeCreateBody = {
         conversationId: bundle.conversationId,
-        wakeAt: new Date(choice.untilMs(Date.now())).toISOString(),
+        ...(bundle.key === bundle.conversationId
+          ? undefined
+          : { reviewItemId: bundle.key }),
+        wakeAt: new Date(untilMs).toISOString(),
       };
       await post(inboxSnoozeSchema, SNOOZES_PATH, body);
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.
-      hide(bundle.conversationId, undefined);
+      hide(bundle.key, undefined);
       toast.add({ title: "The row could not be snoozed", type: "error" });
       return;
     }
-    hide(bundle.conversationId, Date.now());
+    hide(bundle.key, Date.now());
     await invalidateReviewItemCollections(queryClient);
   };
   /** Wake a snoozed row now: undo the viewer's snoozes on its Conversation. */
@@ -80,11 +89,11 @@ export function useInboxSnoozes(read: SnoozedRead) {
   };
   return {
     /**
-     * The Conversation was just snoozed, and the lists have not refreshed
-     * yet. A snooze hides every row of its Conversation.
+     * The item's row was just snoozed, and the lists have not refreshed
+     * yet: its Conversation, or the item alone.
      */
-    hides: (conversationId: string) =>
-      (hidden.get(conversationId) ?? -Infinity) >= read.listUpdatedAtMs,
+    hides: (item: ReviewItemPayload) =>
+      hiddenNow(item.addedByConversationId) || hiddenNow(item.id),
     /**
      * A snooze hides this item from the viewer. Undefined while that is
      * unknown: until Snoozed reads every page, or when a read fails.

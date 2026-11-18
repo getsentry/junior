@@ -108,7 +108,7 @@ describe("snoozes", () => {
 
     const snoozed = await asAna.snoozed();
     expect(snoozed.count).toBe(2);
-    expect(snoozed.items.toSorted()).toEqual([
+    expect([...snoozed.items].sort()).toEqual([
       "Review acme entry",
       "Review beta entry",
     ]);
