@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mentionsTag } from "@sentry/junior-plugin-api";
 import { pathToFileURL } from "node:url";
 import pLimit from "p-limit";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
@@ -287,9 +288,10 @@ async function validateSkillDirectory(
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
   if (
-    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b/.test(
       parsed.skill.body,
-    )
+    ) ||
+    mentionsTag(parsed.skill.body, ["active-mcp-tools", "active-mcp-catalogs"])
   ) {
     errors.push(
       `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,

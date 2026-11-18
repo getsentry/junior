@@ -13,12 +13,3 @@ export const piMessageSchema = z
 
 /** Durable Pi transcript message stored across turns. */
 export type PiMessage = z.output<typeof piMessageSchema>;
-
-/** Reporting transcript entries only render messages with structured content parts. */
-export const piContentMessageSchema = z
-  .object({
-    content: z.array(z.unknown()),
-    role: z.string().min(1),
-  })
-  .passthrough()
-  .transform((value): PiMessage => value as typeof value & PiMessage);

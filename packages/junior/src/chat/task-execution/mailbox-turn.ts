@@ -131,7 +131,7 @@ function hasEventActor(actors: readonly Actor[] | undefined): boolean {
 }
 
 /** Return the active web Turn for one Conversation, if it has one. */
-export async function getActiveConversationTurnId(
+async function getActiveConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
   const summaries = await listTurnSummaries(conversationId);
@@ -268,7 +268,7 @@ export async function getAuthPausedConversationTurnId(
 }
 
 /** Read one web input batch as Turn input. A batch with no web input gives []. */
-export function parseWebMessages(
+function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {

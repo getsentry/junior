@@ -21,7 +21,6 @@ import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
   agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
-  authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
@@ -642,7 +641,7 @@ export async function recordAuthorizationCompleted(args: {
   });
 }
 
-type AuthenticationAccountChangeArgs = {
+type AuthenticationLinkedArgs = {
   accountLabel?: string;
   actorId: string;
   authorizationId?: string;
@@ -652,30 +651,25 @@ type AuthenticationAccountChangeArgs = {
   turnId?: string;
 };
 
-function authenticationEventIdempotencyKey(args: {
-  action: "linked" | "unlinked";
+function authenticationLinkedIdempotencyKey(args: {
   actorId: string;
   authorizationId?: string | undefined;
   provider: string;
 }): string {
   if (args.authorizationId) {
-    return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:authorization:${args.authorizationId}`;
+    return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_linked:authorization:${args.authorizationId}`;
   }
   return (
-    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:` +
+    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_linked:` +
     `${args.provider}:actor:${args.actorId}`
   );
 }
 
-async function recordAuthenticationAccountChange(
-  action: "linked" | "unlinked",
-  args: AuthenticationAccountChangeArgs,
+/** Record a successful conversation-bound account link as host transcript metadata. */
+export async function recordAuthenticationLinked(
+  args: AuthenticationLinkedArgs,
 ): Promise<void> {
-  const definition =
-    action === "linked"
-      ? authenticationLinkedEvent
-      : authenticationUnlinkedEvent;
-  const content = definition.parse({
+  const content = authenticationLinkedEvent.parse({
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
@@ -687,36 +681,17 @@ async function recordAuthenticationAccountChange(
   await getConversationEventStore().append(args.conversationId, [
     {
       createdAtMs: Date.now(),
-      idempotencyKey: authenticationEventIdempotencyKey({
-        action,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-        provider: args.provider,
-      }),
+      idempotencyKey: authenticationLinkedIdempotencyKey(args),
       data: {
         type: "structured_event",
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-        name: definition.eventName,
-        version: definition.version,
+        name: authenticationLinkedEvent.eventName,
+        version: authenticationLinkedEvent.version,
         ...(args.turnId ? { turnId: args.turnId } : undefined),
         content,
       },
     },
   ]);
-}
-
-/** Record a successful conversation-bound account link as host transcript metadata. */
-export async function recordAuthenticationLinked(
-  args: AuthenticationAccountChangeArgs,
-): Promise<void> {
-  await recordAuthenticationAccountChange("linked", args);
-}
-
-/** Record a successful conversation-bound account unlink as host transcript metadata. */
-export async function recordAuthenticationUnlinked(
-  args: AuthenticationAccountChangeArgs,
-): Promise<void> {
-  await recordAuthenticationAccountChange("unlinked", args);
 }
 
 type AgentsInstructionsTransitionArgs = {

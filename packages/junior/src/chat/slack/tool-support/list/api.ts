@@ -140,7 +140,7 @@ export async function createTodoList(name: string): Promise<{
 }
 
 /** Read a Slack list schema and map its standard columns. */
-export async function getListColumnMap(listId: string): Promise<ListColumnMap> {
+async function getListColumnMap(listId: string): Promise<ListColumnMap> {
   const client = getSlackClient();
   const response = await withSlackRetries(
     () => client.files.info({ file: listId }),
