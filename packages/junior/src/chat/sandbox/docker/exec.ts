@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { dockerJson } from "@/chat/sandbox/docker/api";
-import { dockerOkStream } from "@/core/tool-execution-environment/docker/api";
+import { dockerJson, dockerOkStream } from "@/chat/sandbox/docker/api";
 import { sleep } from "@/chat/sleep";
 import type {
   SandboxCommandInput,

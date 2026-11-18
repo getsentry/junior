@@ -1,18 +1,8 @@
 import { randomUUID } from "node:crypto";
+import http from "node:http";
 import path from "node:path";
-import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import * as z from "zod";
-import {
-  DockerApiError,
-  dockerOkStream,
-  dockerRequest,
-  type DockerRequest,
-} from "@/core/tool-execution-environment/docker/api";
-import {
-  packTar,
-  streamFirstFile,
-} from "@/core/tool-execution-environment/docker/tar";
 import {
   ToolExecutionEnvironmentUnavailableError,
   type CreateToolExecutionEnvironmentInput,
@@ -237,7 +227,7 @@ async function exec(
   );
 
   try {
-    const stream = await dockerOkStream({
+    const stream = await openStream({
       method: "POST",
       path: `/exec/${created.Id}/start`,
       body: { Detach: false, Tty: false },
@@ -263,16 +253,13 @@ async function exec(
 // Docker sends both streams on one connection, each frame behind an 8-byte
 // header: the stream (1 or 2), three zero bytes, and the frame length.
 async function forwardOutput(
-  stream: Readable,
+  stream: AsyncIterable<unknown>,
   onOutputChunk: (chunk: OutputChunk) => void,
 ): Promise<void> {
   const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
   let pending = Buffer.alloc(0);
   for await (const chunk of stream) {
-    pending = Buffer.concat([
-      pending,
-      Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)),
-    ]);
+    pending = Buffer.concat([pending, toBuffer(chunk)]);
     while (pending.length >= 8) {
       const size = pending.readUInt32BE(4);
       if (pending.length < 8 + size) break;
@@ -313,7 +300,7 @@ async function readFile(
   signal: AbortSignal,
 ): Promise<ReadableStream<Uint8Array> | undefined> {
   try {
-    const archive = await dockerOkStream({
+    const archive = await openStream({
       path: `/containers/${id}/archive`,
       query: { path: filePath },
       signal,
@@ -337,9 +324,7 @@ async function writeFile(
     method: "PUT",
     path: `/containers/${id}/archive`,
     query: { path: "/", copyUIDGID: true },
-    body: packTar([
-      { path: filePath.slice(1), content, mode: 0o644, uid: 0, gid: 0 },
-    ]),
+    body: tarFile(filePath.slice(1), content),
     signal,
   });
 }
@@ -369,4 +354,258 @@ async function requestJson<T>(
 
 function isStatus(error: unknown, statusCode: number): boolean {
   return error instanceof DockerApiError && error.statusCode === statusCode;
+}
+
+// The Docker Engine API over the local unix socket. It uses `node:http`, so
+// Docker needs no SDK.
+
+const API_VERSION = "v1.43";
+
+class DockerApiError extends Error {
+  readonly statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(`Docker API error status=${statusCode}: ${message}`);
+    this.name = "DockerApiError";
+    this.statusCode = statusCode;
+  }
+}
+
+type DockerRequest = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+  query?: Record<string, string | number | boolean>;
+  /** JSON body, or a tar archive. */
+  body?: unknown;
+  signal?: AbortSignal;
+};
+
+const errorBodySchema = z.object({ message: z.string() });
+
+// Returns the response stream. An error status throws DockerApiError.
+async function openStream(input: DockerRequest): Promise<http.IncomingMessage> {
+  input.signal?.throwIfAborted();
+  const raw =
+    input.body instanceof Uint8Array ? Buffer.from(input.body) : undefined;
+  const json =
+    input.body !== undefined && !raw ? JSON.stringify(input.body) : undefined;
+  const response = await new Promise<http.IncomingMessage>(
+    (resolve, reject) => {
+      const request = http.request({
+        socketPath: socketPath(),
+        // The daemon closes idle connections. A reused keep-alive socket then
+        // fails with EPIPE, so each request opens its own connection.
+        agent: false,
+        path: requestPath(input),
+        method: input.method ?? "GET",
+        headers: {
+          ...(json ? { "content-type": "application/json" } : undefined),
+          ...(raw ? { "content-type": "application/x-tar" } : undefined),
+        },
+        signal: input.signal,
+      });
+      request.on("response", resolve);
+      request.on("error", reject);
+      request.end(raw ?? json);
+    },
+  );
+  const statusCode = response.statusCode ?? 0;
+  if (statusCode < 400) return response;
+
+  const body = (await readAll(response)).toString("utf8");
+  let message = body.trim() || response.statusMessage || "request failed";
+  try {
+    const parsed = errorBodySchema.safeParse(JSON.parse(body));
+    if (parsed.success) message = parsed.data.message;
+  } catch {
+    // Keep the raw body as the message.
+  }
+  throw new DockerApiError(statusCode, message);
+}
+
+async function dockerRequest(input: DockerRequest): Promise<Buffer> {
+  return await readAll(await openStream(input));
+}
+
+function socketPath(): string {
+  const host = process.env["DOCKER_HOST"]?.trim();
+  if (!host) return "/var/run/docker.sock";
+  if (!host.startsWith("unix://")) {
+    throw new Error(
+      `The Docker manager supports only unix sockets. DOCKER_HOST is ${host}`,
+    );
+  }
+  return host.slice("unix://".length);
+}
+
+function requestPath(input: DockerRequest): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input.query ?? {})) {
+    params.set(key, String(value));
+  }
+  const query = params.toString();
+  return `/${API_VERSION}${input.path}${query ? `?${query}` : ""}`;
+}
+
+async function readAll(stream: AsyncIterable<unknown>): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(toBuffer(chunk));
+  return Buffer.concat(chunks);
+}
+
+// Node types stream chunks as `any`. Docker streams yield Buffers.
+function toBuffer(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  return Buffer.from(String(chunk));
+}
+
+// The small part of the tar format that Docker's archive API needs.
+
+const TAR_BLOCK = 512;
+
+// One regular file as an uncompressed archive. Its owner is set by
+// copyUIDGID, so the header says root. A path longer than the 100-byte name
+// field goes in a PAX header.
+function tarFile(filePath: string, content: Uint8Array): Buffer {
+  const parts: Buffer[] = [];
+  let name = filePath;
+  if (Buffer.byteLength(name) > 99) {
+    const pax = paxRecord("path", name);
+    parts.push(
+      tarHeader("PaxHeader", pax.length, "x"),
+      pax,
+      tarPadding(pax.length),
+    );
+    name = name.slice(-99);
+  }
+  parts.push(
+    tarHeader(name, content.length, "0"),
+    Buffer.from(content),
+    tarPadding(content.length),
+    Buffer.alloc(TAR_BLOCK * 2),
+  );
+  return Buffer.concat(parts);
+}
+
+function tarHeader(name: string, size: number, type: string): Buffer {
+  const block = Buffer.alloc(TAR_BLOCK);
+  writeString(block, name, 0, 100);
+  writeOctal(block, 0o644, 100, 8);
+  writeOctal(block, 0, 108, 8);
+  writeOctal(block, 0, 116, 8);
+  writeOctal(block, size, 124, 12);
+  writeOctal(block, Math.floor(Date.now() / 1000), 136, 12);
+  block.fill(" ", 148, 156);
+  writeString(block, type, 156, 1);
+  writeString(block, "ustar\0", 257, 6);
+  writeString(block, "00", 263, 2);
+  let checksum = 0;
+  for (const byte of block) checksum += byte;
+  writeString(block, `${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8);
+  return block;
+}
+
+function writeString(
+  block: Buffer,
+  value: string,
+  offset: number,
+  length: number,
+): void {
+  block.write(value, offset, Math.min(Buffer.byteLength(value), length));
+}
+
+function writeOctal(
+  block: Buffer,
+  value: number,
+  offset: number,
+  length: number,
+): void {
+  writeString(
+    block,
+    `${value.toString(8).padStart(length - 1, "0")}\0`,
+    offset,
+    length,
+  );
+}
+
+function readOctal(block: Buffer, offset: number, length: number): number {
+  const text = block
+    .subarray(offset, offset + length)
+    .toString("ascii")
+    .replace(/\0.*$/s, "")
+    .trim();
+  return text ? Number.parseInt(text, 8) : 0;
+}
+
+function tarPadding(size: number): Buffer {
+  const remainder = size % TAR_BLOCK;
+  return Buffer.alloc(remainder === 0 ? 0 : TAR_BLOCK - remainder);
+}
+
+/** A PAX record such as `30 path=some/long/name\n`. */
+function paxRecord(key: string, value: string): Buffer {
+  const body = ` ${key}=${value}\n`;
+  let length = Buffer.byteLength(body);
+  length += String(length).length;
+  if (String(length).length !== String(length - 1).length) length += 1;
+  return Buffer.from(`${length}${body}`);
+}
+
+/**
+ * Yields the content of the first entry in a tar stream as it arrives, so a
+ * large file is never held in memory. Throws when that entry is not a regular
+ * file. Ending the iteration early closes the archive stream.
+ */
+async function* streamFirstFile(
+  archive: AsyncIterable<unknown>,
+): AsyncGenerator<Uint8Array> {
+  const chunks = archive[Symbol.asyncIterator]();
+  let buffered = Buffer.alloc(0);
+
+  async function fill(length: number): Promise<void> {
+    while (buffered.length < length) {
+      // oxlint-disable-next-line no-await-in-loop -- Each chunk depends on the stream position.
+      const next = await chunks.next();
+      if (next.done) throw new Error("The tar archive ended early");
+      buffered = Buffer.concat([buffered, toBuffer(next.value)]);
+    }
+  }
+
+  try {
+    for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- Headers are read in order.
+      await fill(TAR_BLOCK);
+      const block = buffered.subarray(0, TAR_BLOCK);
+      buffered = buffered.subarray(TAR_BLOCK);
+      if (block.every((byte) => byte === 0)) {
+        throw new Error("The tar archive has no entries");
+      }
+      const size = readOctal(block, 124, 12);
+      const type = String.fromCharCode(block[156] ?? 0);
+      // Extended headers describe the next entry. Skip them.
+      if (type === "x" || type === "g" || type === "L") {
+        const skipped = size + tarPadding(size).length;
+        // oxlint-disable-next-line no-await-in-loop -- Headers are read in order.
+        await fill(skipped);
+        buffered = buffered.subarray(skipped);
+        continue;
+      }
+      if (type !== "0" && type !== "\0") {
+        throw new Error(`The path is not a regular file (tar type ${type})`);
+      }
+      let remaining = size;
+      while (remaining > 0) {
+        // oxlint-disable-next-line no-await-in-loop -- Content is read in order.
+        if (buffered.length === 0) await fill(1);
+        const part = buffered.subarray(0, remaining);
+        buffered = buffered.subarray(part.length);
+        remaining -= part.length;
+        yield part;
+      }
+      return;
+    }
+  } finally {
+    await chunks.return?.();
+  }
 }

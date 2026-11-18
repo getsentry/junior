@@ -1,8 +1,8 @@
-import { dockerJson } from "@/chat/sandbox/docker/api";
 import {
   DockerApiError,
+  dockerJson,
   dockerRequest,
-} from "@/core/tool-execution-environment/docker/api";
+} from "@/chat/sandbox/docker/api";
 import {
   createLeafKey,
   issueLeafCertificate,
@@ -14,7 +14,7 @@ import {
 } from "@/chat/sandbox/docker/container";
 import { ensureRuntimeImage } from "@/chat/sandbox/docker/runtime-image";
 import { DOCKER_SANDBOX_LABEL } from "@/chat/sandbox/docker/settings";
-import { packTar } from "@/core/tool-execution-environment/docker/tar";
+import { packTar } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 
 // Module overview: the egress relay for Docker daemons in a VM.

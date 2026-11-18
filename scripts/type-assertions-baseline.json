@@ -156,7 +156,7 @@
   "packages/junior/src/chat/repository-instructions.ts": 2,
   "packages/junior/src/chat/runtime/report-progress.ts": 3,
   "packages/junior/src/chat/runtime/thread-context.ts": 1,
-  "packages/junior/src/chat/sandbox/docker/api.ts": 1,
+  "packages/junior/src/chat/sandbox/docker/api.ts": 2,
   "packages/junior/src/chat/sandbox/docker/certificates.ts": 2,
   "packages/junior/src/chat/sandbox/docker/egress.ts": 4,
   "packages/junior/src/chat/sandbox/docker/errors.ts": 1,

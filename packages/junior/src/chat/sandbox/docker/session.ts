@@ -1,10 +1,10 @@
 import path from "node:path";
-import { dockerJson } from "@/chat/sandbox/docker/api";
 import {
   DockerApiError,
+  dockerJson,
   dockerRequest,
   dockerStream,
-} from "@/core/tool-execution-environment/docker/api";
+} from "@/chat/sandbox/docker/api";
 import {
   extendDeadline,
   SANDBOX_FILE_OWNER,
@@ -15,10 +15,7 @@ import { applyEgressPolicy } from "@/chat/sandbox/docker/egress";
 import { dockerSandboxErrors } from "@/chat/sandbox/docker/errors";
 import { runRawExec, runSandboxCommand } from "@/chat/sandbox/docker/exec";
 import { DOCKER_SANDBOX_LABEL } from "@/chat/sandbox/docker/settings";
-import {
-  packTar,
-  unpackFirstFile,
-} from "@/core/tool-execution-environment/docker/tar";
+import { packTar, unpackFirstFile } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type {
   SandboxFileSystem,
