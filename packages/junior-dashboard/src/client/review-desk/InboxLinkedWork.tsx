@@ -102,11 +102,13 @@ export function mainRepo(
 }
 
 // Whether a label names nothing more than its title. A web page's label is
-// its title, or its title cut short.
+// its title, maybe with a suffix such as the site name, or its title cut
+// short. A title that is only part of a label, such as "123" in ENG-123,
+// leaves the label to name the work.
 function repeatsTitle(label: string, title: string | undefined): boolean {
   return Boolean(
     title &&
-    (label.includes(title) || title.startsWith(label.replace(/…$/u, ""))),
+    (label.startsWith(title) || title.startsWith(label.replace(/…$/u, ""))),
   );
 }
 
