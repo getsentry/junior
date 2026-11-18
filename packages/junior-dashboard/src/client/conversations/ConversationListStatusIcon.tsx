@@ -7,13 +7,15 @@ import type { ConversationStatus } from "../types";
 /**
  * Render the row marker: a spinner for a running Turn, else a dot when the
  * row waits on the viewer. Private and needs input go in
- * `ConversationStatusText`.
+ * `ConversationStatusText`, so a `needs_input` row with a running Turn
+ * shows both.
  */
 export function ConversationListStatusIcon(props: {
-  status: ConversationStatus;
+  /** `conversationTurnIsActive` of the row, not its `status`. */
+  turnActive: boolean;
   waitingOnViewer: boolean;
 }) {
-  if (props.status === "working") {
+  if (props.turnActive) {
     return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
   if (props.waitingOnViewer) {

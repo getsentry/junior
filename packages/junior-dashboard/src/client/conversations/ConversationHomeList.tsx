@@ -297,7 +297,7 @@ function ConversationCard(props: ConversationCardProps) {
           // within the tile.
           <span className="absolute bottom-px right-px grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
-              status={status}
+              turnActive={running}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>
