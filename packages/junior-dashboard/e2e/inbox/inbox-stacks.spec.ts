@@ -170,6 +170,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(0);
     await row.hover();
     await expect.poll(() => shownOpacity(quick("Dismiss"))).toBe(1);
+    await expect(quick("Dismiss")).toHaveAttribute("title", "Dismiss");
     // They use the action bar's words.
     await expect(quick("Snooze")).toHaveText("Snooze");
     await expect(quick("Dismiss")).toHaveText("Dismiss");
@@ -220,14 +221,22 @@ test.describe("new UI", { tag: "@new" }, () => {
   test.describe("on a touch screen", () => {
     test.use({ hasTouch: true });
 
-    test("a row's quick actions always show", async ({ dashboard, page }) => {
+    test("a row shows its actions only once it is open", async ({
+      dashboard,
+      page,
+    }) => {
       await mockReviewItems(page, { open: [rollout, childReview] });
       await page.goto(`${dashboard.baseURL}/`);
-      const dismiss = rowOf(page, childReview).getByRole("button", {
-        exact: true,
-        name: "Dismiss",
-      });
-      await expect.poll(() => shownOpacity(dismiss)).toBe(1);
+      const row = rowOf(page, childReview);
+      const open = row.getByRole("link", { name: "Open conversation" });
+      await expect(open).toBeHidden();
+      await expect(
+        row.getByRole("button", { exact: true, name: "Dismiss" }),
+      ).toBeHidden();
+      await row.locator("[data-inbox-head]").tap();
+      await expect(row).toHaveAttribute("data-expanded", "true");
+      await expect(open.first()).toBeVisible();
+      await expect(dismissIn(row)).toBeVisible();
     });
   });
 

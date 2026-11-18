@@ -52,8 +52,8 @@ function localInputValue(ms: number): string {
  * pick the menu rows.
  */
 export function RowSnoozeButton(props: {
-  /** A row's quick action: smaller, and only its icon on a narrow screen. */
-  compact?: boolean;
+  /** The action bar's look by default (`ButtonLook`). */
+  look?: ButtonLook;
   /** "Snooze" by default. */
   label?: string;
   onOpenChange(open: boolean): void;
@@ -94,7 +94,10 @@ export function RowSnoozeButton(props: {
         render={
           props.trigger ?? (
             <Button
-              className={props.compact ? COMPACT_BUTTON_CLASS : undefined}
+              className={props.look && LOOK_CLASSES[props.look]}
+              title={
+                props.look === "icon" ? (props.label ?? "Snooze") : undefined
+              }
               variant="ghost"
             >
               <Clock3
@@ -102,7 +105,7 @@ export function RowSnoozeButton(props: {
                 className={ATTENTION_TONE_CLASS}
                 size={15}
               />
-              <ButtonLabel compact={props.compact}>
+              <ButtonLabel look={props.look}>
                 {props.label ?? "Snooze"}
               </ButtonLabel>
             </Button>
@@ -216,34 +219,44 @@ function CustomSnooze(props: {
  * right-most.
  */
 export function RowDismissButton(props: {
-  /** A row's quick action: smaller, and only its icon on a narrow screen. */
-  compact?: boolean;
+  /** The action bar's look by default (`ButtonLook`). */
+  look?: ButtonLook;
   /** "Dismiss" by default. */
   label?: string;
   onClick(): void;
 }) {
+  const label = props.label ?? "Dismiss";
   return (
     <Button
-      className={props.compact ? COMPACT_BUTTON_CLASS : undefined}
+      className={props.look && LOOK_CLASSES[props.look]}
       onClick={props.onClick}
-      variant="outline"
+      title={props.look === "icon" ? label : undefined}
+      // A stack header stays quiet, so its main action is not loud either.
+      variant={props.look === "quiet" ? "ghost" : "outline"}
     >
       <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-      <ButtonLabel compact={props.compact}>
-        {props.label ?? "Dismiss"}
-      </ButtonLabel>
+      <ButtonLabel look={props.look}>{label}</ButtonLabel>
     </Button>
   );
 }
 
-// A row's quick actions fit beside its time. A narrow screen shows only
-// their icons; the hidden label still names them.
-const COMPACT_BUTTON_CLASS = "h-7 gap-1.5 px-2 max-sm:w-7 max-sm:px-0";
+/**
+ * How Snooze and Dismiss look outside the action bar. `quiet`, in a stack
+ * header: smaller, and only the icon on a narrow screen. `icon`, as a row's
+ * quick action: only the icon, with its label as the name and the tooltip.
+ */
+type ButtonLook = "icon" | "quiet";
 
-function ButtonLabel(props: { children: ReactNode; compact?: boolean }) {
-  return props.compact ? (
-    <span className="max-sm:sr-only">{props.children}</span>
-  ) : (
-    props.children
+const LOOK_CLASSES: Record<ButtonLook, string> = {
+  icon: "size-7 p-0",
+  quiet: "h-7 gap-1.5 px-2 max-sm:w-7 max-sm:px-0",
+};
+
+function ButtonLabel(props: { children: ReactNode; look?: ButtonLook }) {
+  if (!props.look) return props.children;
+  return (
+    <span className={props.look === "icon" ? "sr-only" : "max-sm:sr-only"}>
+      {props.children}
+    </span>
   );
 }

@@ -65,7 +65,7 @@ export function InboxStack(props: {
             goes right-most. */}
         {props.onSnooze ? (
           <RowSnoozeButton
-            compact
+            look="quiet"
             label="Snooze all"
             onOpenChange={props.onSnoozeMenu}
             onSnooze={props.onSnooze}
@@ -74,7 +74,7 @@ export function InboxStack(props: {
         ) : null}
         {props.onDismiss ? (
           <RowDismissButton
-            compact
+            look="quiet"
             label="Dismiss all"
             onClick={props.onDismiss}
           />

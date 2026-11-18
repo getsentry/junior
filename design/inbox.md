@@ -28,9 +28,11 @@ an item and who can act on it.
   and Snoozed.
 - The stack title, which opens the root Conversation.
 - A row click, which opens the row and its answer form.
-- On each row, on hover and always on touch: Open, Snooze, and Dismiss.
-- On a stack: Snooze all and Dismiss all, with the row bar's buttons.
-  Dismiss all is the main action, so it goes right-most.
+- On each row, on hover: Open, Snooze, and Dismiss, as icons with their
+  names as tooltips. A touch screen has no hover, so there a row shows its
+  actions only once it is open. Rows do not repeat them.
+- On a stack: Snooze all and Dismiss all, as quiet buttons. Dismiss all is
+  the main action, so it goes right-most.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules

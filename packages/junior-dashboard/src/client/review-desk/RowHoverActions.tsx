@@ -65,7 +65,7 @@ export function RowQuickActions(props: {
       <RowOpenLink to={props.to} />
       {!props.expanded && actions.onSnooze ? (
         <RowSnoozeButton
-          compact
+          look="icon"
           onOpenChange={actions.onSnoozeMenu}
           onSnooze={actions.onSnooze}
           open={actions.snoozeMenuOpen}
@@ -73,7 +73,7 @@ export function RowQuickActions(props: {
       ) : null}
       {/* Dismiss is the main action, so it goes right-most. */}
       {!props.expanded && actions.onDismiss ? (
-        <RowDismissButton compact onClick={actions.onDismiss} />
+        <RowDismissButton look="icon" onClick={actions.onDismiss} />
       ) : null}
     </>
   );
