@@ -129,12 +129,6 @@ function systemData(): SystemData {
     },
     me: { user: { email: "viewer@example.com", isAdmin: false } },
     conversationStats: {
-      active: 0,
-      actors: [],
-      conversations: 2,
-      costUsd: 1.25,
-      durationMs: 2_000,
-      failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
       guardian: {
         allow: 3,
@@ -164,9 +158,7 @@ function systemData(): SystemData {
           tokens: 12_345,
         },
       ],
-      locations: [],
       source: "conversation_index",
-      tokens: 1_200,
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-10-03T00:00:00.000Z",
     },

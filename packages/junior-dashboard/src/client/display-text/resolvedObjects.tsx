@@ -4,6 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import pLimit from "p-limit";
 import {
   createContext,
   useCallback,
@@ -33,17 +34,18 @@ const NO_OBJECTS: MessageObjects = {
 
 const MessageObjectsContext = createContext<MessageObjects>(NO_OBJECTS);
 
+// Object reads that one message sends at once.
+const OBJECT_READS = 4;
+
 async function fetchObjects(urls: readonly string[]) {
   const chunks: string[][] = [];
   for (let start = 0; start < urls.length; start += MAX_OBJECT_LINKS) {
     chunks.push(urls.slice(start, start + MAX_OBJECT_LINKS));
   }
-  const reports = await Promise.all(
-    chunks.map((chunk) =>
-      fetchDashboardJson(
-        objectLinksReportSchema,
-        `/api/objects?${new URLSearchParams(chunk.map((url) => ["url", url]))}`,
-      ),
+  const reports = await pLimit(OBJECT_READS).map(chunks, (chunk) =>
+    fetchDashboardJson(
+      objectLinksReportSchema,
+      `/api/objects?${new URLSearchParams(chunk.map((url) => ["url", url]))}`,
     ),
   );
   // Every asked link has an entry, so a link without a card is answered too.

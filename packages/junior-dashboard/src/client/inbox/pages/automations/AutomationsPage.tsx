@@ -267,8 +267,8 @@ const AutomationGroups = memo(function AutomationGroups(props: {
               menuOpen: snoozeId === automation.id,
               onDismiss: () => props.alerts.dismiss(automation),
               onMenu: (open) => setSnoozeId(open ? automation.id : undefined),
-              onSnooze: (choice) => {
-                props.alerts.snooze(automation, choice);
+              onSnooze: (untilMs) => {
+                props.alerts.snooze(automation, untilMs);
                 setSnoozeId(undefined);
               },
             }}

@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, inArray, isNull } from "drizzle-orm";
 import {
@@ -264,9 +266,10 @@ export async function sendReviewItemMessages(args: {
     await openConversationIds(args.item.conversationIds)
   ).filter((id) => id !== args.exceptConversationId);
   const text = renderReviewItemMessage(args.item, args.change);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const results = await Promise.allSettled(
     conversationIds.map((conversationId) =>
-      sendOne({ ...args, conversationId, text }),
+      limit(() => sendOne({ ...args, conversationId, text })),
     ),
   );
   // Try every Conversation first, so one failure does not hide the change

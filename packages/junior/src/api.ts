@@ -1,3 +1,4 @@
+import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
@@ -40,6 +41,7 @@ import { logException } from "./chat/logging";
 import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
+import type { WaitUntilFn } from "./handlers/types";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -69,6 +71,8 @@ export { jsonResponse };
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
+  /** Keeps background work alive after a response. Defaults to Vercel's. */
+  waitUntil?: WaitUntilFn | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
@@ -122,6 +126,9 @@ export function createJuniorApi(
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
       queue,
+      waitUntil:
+        options.waitUntil ??
+        ((task) => vercelWaitUntil(typeof task === "function" ? task() : task)),
     }),
   );
   app.route(

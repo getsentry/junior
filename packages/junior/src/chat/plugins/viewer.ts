@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   identitySchema,
   userSchema,
@@ -210,7 +210,31 @@ export async function listAdminUsersFromSql(
     .from(juniorUsers)
     .where(eq(juniorUsers.isAdmin, true))
     .orderBy(asc(juniorUsers.primaryEmailNormalized));
-  return await Promise.all(rows.map((row) => readUserById(db, row)));
+  if (rows.length === 0) return [];
+  // One identity read for every admin, in the order of `readUserById`.
+  const identityRows = await db
+    .select()
+    .from(juniorIdentities)
+    .where(
+      and(
+        inArray(
+          juniorIdentities.userId,
+          rows.map((row) => row.id),
+        ),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .orderBy(
+      asc(juniorIdentities.provider),
+      asc(juniorIdentities.providerTenantId),
+      asc(juniorIdentities.providerSubjectId),
+    );
+  return rows.map((row) =>
+    userFromRows(
+      row,
+      identityRows.filter((identity) => identity.userId === row.id),
+    ),
+  );
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */
