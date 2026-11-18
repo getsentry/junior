@@ -3182,7 +3182,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
       // An update adds a requester. The opener does not change.
       await tools["updatePullRequest"].execute(
-        { body: "Updated", number: 946, repo: "getsentry/junior" },
+        { body: "Updated", pull_request: 946, repo: "getsentry/junior" },
         { toolCallId: "call-update" },
       );
       await route.handler(signedRequest(opened));

@@ -20,18 +20,18 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Operation           | Command                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                              |
-| Update issue fields | `github_updateIssue({ repo: "owner/repo", number: NUMBER, title?: "...", body?: "...", state?: "open" \| "closed" })` |
-| Close issue         | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "closed" })`                                         |
-| Reopen issue        | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "open" })`                                           |
+| Update issue fields | `github_updateIssue({ repo: "owner/repo", issue: NUMBER, title?: "...", body?: "...", state?: "open" \| "closed" })` |
+| Close issue         | `github_updateIssue({ repo: "owner/repo", issue: NUMBER, state: "closed" })`                                         |
+| Reopen issue        | `github_updateIssue({ repo: "owner/repo", issue: NUMBER, state: "open" })`                                           |
 | Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                                      |
 | Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                                  |
 | Add assignees       | `gh api repos/owner/repo/issues/NUMBER/assignees --method POST --input assignees.json`                                |
 | Remove assignees    | `gh api repos/owner/repo/issues/NUMBER/assignees --method DELETE --input assignees.json`                              |
-| Add comment         | `github_commentOnIssue({ repo: "owner/repo", number: NUMBER, body: "..." })`                                          |
+| Add comment         | `github_commentOnIssue({ repo: "owner/repo", issue: NUMBER, body: "..." })`                                          |
 | Edit own comment    | `github_updateIssueComment({ repo: "owner/repo", comment_id: ID, body: "..." })`                                      |
-| React to issue      | `github_reactToIssue({ repo: "owner/repo", number: NUMBER, content: "eyes" })`                                        |
+| React to issue      | `github_reactToIssue({ repo: "owner/repo", issue: NUMBER, content: "eyes" })`                                        |
 | List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                            |
-| Read issue          | `github_getIssue({ repo: "owner/repo", number: NUMBER })`                                                             |
+| Read issue          | `github_getIssue({ repo: "owner/repo", issue: NUMBER })`                                                             |
 | Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"`         |
 
 ## Config helpers

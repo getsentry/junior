@@ -39,7 +39,7 @@ import { checkPullRequestDescription } from "../tool-support/pull-request-descri
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
     title: z
       .string()
       .trim()
@@ -192,7 +192,7 @@ export function createGitHubUpdatePullRequestTool(
         update.body !== undefined
           ? await readGitHubBody(ctx.egress, {
               operation: "github.pull.get",
-              path: `${repoPath(repo)}/pulls/${update.number}`,
+              path: `${repoPath(repo)}/pulls/${update.pull_request}`,
             })
           : undefined;
       const payload = {
@@ -216,7 +216,7 @@ export function createGitHubUpdatePullRequestTool(
       const hasRestUpdate = Object.keys(payload).length > 0;
       const response = await githubApi(ctx.egress, {
         operation: hasRestUpdate ? "github.pull.update" : "github.pull.get",
-        path: `${repoPath(repo)}/pulls/${update.number}`,
+        path: `${repoPath(repo)}/pulls/${update.pull_request}`,
         ...(hasRestUpdate ? { method: "PATCH", body: payload } : undefined),
       });
       const parsed = response.body;
