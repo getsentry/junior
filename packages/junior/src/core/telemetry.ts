@@ -58,8 +58,3 @@ export function withSpan<T>(
     },
   );
 }
-
-/** Sets attributes on the active span. Does nothing when there is none. */
-export function setActiveSpanAttributes(attributes: SpanAttributes): void {
-  Sentry.getActiveSpan()?.setAttributes(attributes);
-}

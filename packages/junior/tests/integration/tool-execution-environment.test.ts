@@ -8,7 +8,7 @@ import {
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
 import { instrumentToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/instrument";
-import { createVercelToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/vercel";
+import { vercelToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/vercel";
 
 const TEST_TIMEOUT_MS = 3 * 60 * 1000;
 const ENVIRONMENT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -32,12 +32,7 @@ function describeManagerContract(
 ): void {
   describe.skipIf(!enabled)(`${name} tool execution environment`, () => {
     const created: string[] = [];
-    let underTest: ManagerUnderTest | undefined;
-
-    function target(): ManagerUnderTest {
-      underTest ??= setup();
-      return underTest;
-    }
+    const underTest = setup();
 
     async function createEnvironment(): Promise<{
       id: string;
@@ -45,7 +40,7 @@ function describeManagerContract(
     }> {
       const id = `junior-contract-${randomUUID()}`;
       created.push(id);
-      const environment = await target().manager.create(
+      const environment = await underTest.manager.create(
         { id, timeoutMs: ENVIRONMENT_TIMEOUT_MS },
         AbortSignal.timeout(TEST_TIMEOUT_MS),
       );
@@ -53,7 +48,7 @@ function describeManagerContract(
     }
 
     afterAll(async () => {
-      await Promise.all(created.map((id) => target().remove(id)));
+      await Promise.all(created.map((id) => underTest.remove(id)));
     }, TEST_TIMEOUT_MS);
 
     it(
@@ -140,7 +135,7 @@ function describeManagerContract(
         const content = new TextEncoder().encode("kept");
         await environment.writeFile("kept.txt", content, signal);
 
-        const again = await target().manager.create(
+        const again = await underTest.manager.create(
           { id, timeoutMs: ENVIRONMENT_TIMEOUT_MS },
           signal,
         );
@@ -154,7 +149,7 @@ function describeManagerContract(
       "returns undefined when resuming an id that never existed",
       async () => {
         expect(
-          await target().manager.resume(
+          await underTest.manager.resume(
             `junior-contract-missing-${randomUUID()}`,
             AbortSignal.timeout(TEST_TIMEOUT_MS),
           ),
@@ -173,12 +168,12 @@ function describeManagerContract(
 
         // Injected fault: the provider stops the environment, as its own
         // timeout or a deploy does.
-        await target().stop(id);
+        await underTest.stop(id);
 
         await expect(
           environment.exec(["true"], { signal, onOutputChunk: () => {} }),
         ).rejects.toBeInstanceOf(ToolExecutionEnvironmentUnavailableError);
-        const resumed = await target().manager.resume(id, signal);
+        const resumed = await underTest.manager.resume(id, signal);
         expect(resumed).toBeDefined();
         if (!resumed) return;
         expect(await read(resumed, "survives.txt", signal)).toEqual(content);
@@ -227,7 +222,7 @@ describeManagerContract(
     // Instrumented, as production uses it, so the spans pass every result
     // and error through unchanged.
     manager: instrumentToolExecutionEnvironmentManager(
-      createVercelToolExecutionEnvironmentManager(),
+      vercelToolExecutionEnvironmentManager,
     ),
     async stop(id) {
       const sandbox = await Sandbox.get({ name: id });
