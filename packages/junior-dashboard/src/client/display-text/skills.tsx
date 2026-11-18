@@ -9,9 +9,20 @@ const InstalledSkills = createContext<ReadonlySet<string> | undefined>(
   undefined,
 );
 
-/** Link each `$skill-name` of an installed skill in the text below. */
-export function SkillReferencesProvider(props: { children: ReactNode }) {
-  const skills = useSkillsData().data;
+/**
+ * Link each `$skill-name` of an installed skill in the text below. It loads
+ * the skill list only when `text` has a reference, so most messages cost no
+ * request.
+ */
+export function SkillReferencesProvider(props: {
+  children: ReactNode;
+  text: string;
+}) {
+  const referenced = useMemo(
+    () => findSkillReferences(props.text).length > 0,
+    [props.text],
+  );
+  const skills = useSkillsData({ enabled: referenced }).data;
   const names = useMemo(
     () => (skills ? new Set(skills.map((skill) => skill.name)) : undefined),
     [skills],

@@ -97,7 +97,9 @@ export const DisplayText = memo(function DisplayText(props: {
     </MessageObjectsProvider>
   );
   return props.skills ? (
-    <SkillReferencesProvider>{content}</SkillReferencesProvider>
+    <SkillReferencesProvider text={props.text}>
+      {content}
+    </SkillReferencesProvider>
   ) : (
     content
   );
