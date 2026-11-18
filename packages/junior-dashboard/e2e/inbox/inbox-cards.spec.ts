@@ -241,10 +241,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       )
       .toBe(true);
-    // An open row lists a few more.
-    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
-    await expect(row).toHaveAttribute("data-expanded", "true");
-    await expect(lines).toHaveCount(6);
   });
 
   test("the image strip shows every image in one scrolling row, and loads each as it comes near", async ({

@@ -6,6 +6,7 @@ import {
   answered,
   audit,
   digest,
+  expandRow,
   license,
   migration,
   mockReviewItems,
@@ -126,7 +127,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("region", { name: "Today" })
-        .locator('a[aria-controls^="inbox-row-"]')
+        .locator("a[data-inbox-head]")
         .getByText(checkout, { exact: true }),
     ).toBeVisible();
     await screenshot(page, "inbox-conversations", { lightTheme: true });
@@ -186,7 +187,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Snooze" }).click();
     await expect(
       page.getByRole("dialog", { name: "Snooze until" }),
@@ -201,7 +202,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
@@ -624,7 +625,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    await rowHead(todo, checkout).click();
+    await expandRow(rowHead(todo, checkout));
     await page.getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "3 hours" }).click();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
