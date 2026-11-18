@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   ArrowUpRight,
+  CornerDownRight,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -97,23 +98,52 @@ function rowSummary(conversation: Conversation | undefined) {
   };
 }
 
+/** What one card of a stack does by itself: its Dismiss and Snooze. */
+export type InboxCardActions = {
+  onDismiss?(): void;
+  onSnooze?(choice: SnoozeChoice): void;
+  onSnoozeMenu(open: boolean): void;
+  pending: boolean;
+  snoozeMenuOpen: boolean;
+};
+
 function RowItem(props: {
+  actions?: InboxCardActions;
   conversationId: string;
-  /** The row's own Done shows. */
-  done: boolean;
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
   take?: string;
 }) {
-  const { item } = props;
+  const { actions, item } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
+  // The card's own Snooze and Dismiss: they act on this item only.
+  const cardActions = actions ? (
+    <>
+      {actions.onSnooze ? (
+        <RowSnoozeButton
+          onOpenChange={actions.onSnoozeMenu}
+          onSnooze={actions.onSnooze}
+          open={actions.snoozeMenuOpen}
+        />
+      ) : null}
+      {actions.onDismiss ? (
+        <RowDismissButton
+          disabled={actions.pending}
+          onClick={actions.onDismiss}
+        />
+      ) : null}
+    </>
+  ) : undefined;
   return (
     <section
       aria-label={item.title}
-      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 font-sans text-sm"
+      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 font-sans text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      data-inbox-card={item.id}
       data-inbox-item
+      // Next moves focus here when the card before it leaves.
+      tabIndex={-1}
     >
       <div className="flex min-w-0 items-baseline gap-2">
         <Pill
@@ -134,6 +164,17 @@ function RowItem(props: {
           </h4>
         )}
       </div>
+      {/* A child agent's item names its child, quietly, under the root's
+          head. */}
+      {item.addedByChild ? (
+        <Link
+          className="flex min-w-0 items-center gap-1 justify-self-start rounded-sm text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          to={conversationPath(item.addedByConversationId)}
+        >
+          <CornerDownRight aria-hidden="true" className="shrink-0" size={12} />
+          <span className="min-w-0 truncate">{item.addedByChild.label}</span>
+        </Link>
+      ) : null}
       {/* What Junior said comes first, then its question and the form. */}
       {item.request ? <ReviewItemTurnMessage item={item} /> : null}
       <ReviewItemObjects conversationId={item.addedByConversationId}>
@@ -153,10 +194,12 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
-      {/* The row's bar holds Dismiss. A card on its own, as in a
-          Conversation, keeps its own. */}
+      {/* In a stack, the card's own Snooze and Dismiss replace the plain
+          Dismiss, so they leave with motion. A card on its own, as in a
+          Conversation, keeps the plain one. */}
       <ReviewItemActions
-        dismiss={!props.done}
+        dismiss={!cardActions}
+        extra={cardActions}
         item={item}
         take={props.take ?? false}
       />
@@ -227,9 +270,10 @@ function rowConversationPath(props: InboxRowProps): string {
 
 type InboxRowProps = {
   bundle?: InboxBundle;
+  /** Each card's own actions, in a stack whose cards act by themselves. */
+  cardActions?(item: ReviewItemPayload): InboxCardActions;
   conversation?: Conversation;
   conversationId: string;
-  donePending?: boolean;
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
@@ -237,7 +281,6 @@ type InboxRowProps = {
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
-  onDone?(): void;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(choice: SnoozeChoice): void;
@@ -544,7 +587,6 @@ function InboxRowBody(
     Math.max(0, limit - work.length),
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
-  const canDone = rowCanDone(props);
   const regionId = rowRegionId(props.rowKey);
   const asksShown =
     props.expanded && (openItems.length > 0 || !props.actionsBelow);
@@ -806,7 +848,7 @@ function InboxRowBody(
           {openItems.map((item) => (
             <RowItem
               conversationId={props.conversationId}
-              done={canDone && Boolean(props.onDone)}
+              actions={props.cardActions?.(item)}
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
@@ -820,21 +862,14 @@ function InboxRowBody(
   );
 }
 
-function rowCanDone(props: InboxRowProps): boolean {
-  return (
-    props.bundle?.items.some((item) => item.status === "open" && item.canAct) ??
-    false
-  );
-}
-
 function rowActions(props: InboxRowProps) {
   return (
     <ExpandedActions
-      canDone={rowCanDone(props)}
       conversation={props.conversation}
-      donePending={props.donePending}
-      onDone={props.onDone}
-      onSnooze={props.onSnooze}
+      // A stack of one card snoozes on the card.
+      onSnooze={
+        (props.bundle?.items.length ?? 0) > 1 ? props.onSnooze : undefined
+      }
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
       openPath={rowConversationPath(props)}
@@ -844,11 +879,8 @@ function rowActions(props: InboxRowProps) {
 }
 
 function ExpandedActions(props: {
-  canDone: boolean;
   conversation?: Conversation;
   openPath: string;
-  donePending?: boolean;
-  onDone?(): void;
   onSnooze?(choice: SnoozeChoice): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
@@ -874,14 +906,11 @@ function ExpandedActions(props: {
       ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
+          label="Snooze all"
           onOpenChange={props.onSnoozeMenu}
           onSnooze={props.onSnooze}
           open={props.snoozeMenuOpen}
         />
-      ) : null}
-      {/* The main action is the right-most one. */}
-      {props.canDone && props.onDone ? (
-        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
       ) : null}
     </div>
   );

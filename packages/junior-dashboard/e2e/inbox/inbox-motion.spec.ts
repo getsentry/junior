@@ -177,14 +177,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       pointerY = y;
       return page.mouse.move(800, y);
     };
-    const rowUnderPointer = () =>
+    const rowAt = (y: number) =>
       page.evaluate(
-        (y) =>
+        (at) =>
           document
-            .elementFromPoint(800, y)
+            .elementFromPoint(800, at)
             ?.closest<HTMLElement>("li[data-inbox-row]")?.dataset["inboxRow"],
-        pointerY,
+        y,
       );
+    const rowUnderPointer = () => rowAt(pointerY);
     // Rows animate their height on the document timeline, which the page
     // clock does not drive.
     const heightsSettled = () =>
@@ -246,12 +247,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       expect(await scrollTop()).toBe(start);
 
       // Step the pointer down, as a moving pointer does, until it is on a
-      // row other than `from`, then a little into it, off its edge.
+      // row other than `from`, then a little into it, off its edges.
       const moveOntoRow = async (y: number, from?: string) => {
         await moveTo(y);
         for (
           let under = await rowUnderPointer();
-          under === from || under === undefined;
+          under === from ||
+          under === undefined ||
+          (await rowAt(y + 12)) !== under;
           under = await rowUnderPointer()
         ) {
           y += 8;
@@ -432,7 +435,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   for (const motion of ["no-preference", "reduce"] as const) {
-    test(`Dismiss opens the next row (${motion} motion)`, async ({
+    test(`Dismiss of a row's last ask opens the next row (${motion} motion)`, async ({
       dashboard,
       page,
     }) => {
@@ -440,13 +443,28 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.goto(`${dashboard.baseURL}/`);
       const rows = todoRows(page);
       const first = rows.first();
+      const firstKey = await first.getAttribute("data-inbox-row");
       const nextKey = await rows.nth(1).getAttribute("data-inbox-row");
       await first.locator('a[aria-controls^="inbox-row-"]').first().click();
-      // The row bar's Dismiss is the last one in the open row.
-      await first
-        .getByRole("button", { exact: true, name: "Dismiss" })
-        .last()
-        .click();
+      // Each card has its own Dismiss. The row leaves with its last ask
+      // for the viewer.
+      const open = page.locator(
+        `li[data-inbox-row="${firstKey}"][data-expanded]`,
+      );
+      const cards = open.locator("[data-inbox-card]");
+      while ((await open.count()) > 0) {
+        const left = await cards.count();
+        await cards
+          .first()
+          .getByRole("button", { exact: true, name: "Dismiss" })
+          .click();
+        await expect
+          .poll(
+            async () =>
+              (await open.count()) === 0 || (await cards.count()) < left,
+          )
+          .toBe(true);
+      }
       await expect(
         page.locator(`li[data-inbox-row="${nextKey}"]`),
       ).toHaveAttribute("data-expanded", "true");

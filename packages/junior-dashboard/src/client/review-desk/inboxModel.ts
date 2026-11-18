@@ -5,6 +5,7 @@ import type {
 
 import {
   itemNeedsViewer,
+  itemStackId,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -84,7 +85,7 @@ export function itemsInView(
 
 function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
-    conversationId: item.addedByConversationId,
+    conversationId: itemStackId(item),
     items: [item],
     key: item.id,
     needsYou: itemNeedsViewer(item),

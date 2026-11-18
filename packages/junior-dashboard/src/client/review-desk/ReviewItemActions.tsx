@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   ReviewItemActionBody,
   ReviewItemPayload,
@@ -75,6 +75,8 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
  */
 export function ReviewItemActions(props: {
   dismiss?: boolean;
+  /** More actions after Take and Dismiss, such as an Inbox card's Snooze. */
+  extra?: ReactNode;
   item: ReviewItemPayload;
   /** The take button's label, or false to leave it out. */
   take?: string | false;
@@ -88,9 +90,14 @@ export function ReviewItemActions(props: {
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct) {
     return (
-      <p className="m-0 text-sm text-dashboard-text-muted">
-        Only an assignee can act on this item.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="m-0 text-sm text-dashboard-text-muted">
+          Only an assignee can act on this item.
+        </p>
+        {props.extra ? (
+          <div className="flex flex-wrap gap-1 sm:ml-auto">{props.extra}</div>
+        ) : null}
+      </div>
     );
   }
 
@@ -127,6 +134,7 @@ export function ReviewItemActions(props: {
           Dismiss
         </Button>
       ) : null}
+      {props.extra}
     </>
   );
 
@@ -153,7 +161,7 @@ export function ReviewItemActions(props: {
             secondaryActions={secondaryActions}
           />
         </div>
-      ) : take || dismiss ? (
+      ) : take || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}

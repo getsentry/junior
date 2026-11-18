@@ -26,7 +26,7 @@ stack is a card that the viewer answers, dismisses, or snoozes on its own.
   and Snoozed.
 - The stack header, and its "Open conversation" action.
 - On each card: the answer form, Dismiss, and Snooze.
-- On the stack: Snooze, for every card in it.
+- On a stack of more than one card: Snooze all.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its stack at
   its card.
 
@@ -50,8 +50,11 @@ Actions:
   the item as done. None of them act on the other cards of the stack.
 - A card that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other cards stay.
-- When a card leaves, the next card in its stack opens. When the last card
-  of a stack leaves, the stack leaves and the next stack opens.
+- When a card leaves, the next card in its stack takes focus. When the last
+  card of a stack leaves, the stack leaves and the next stack opens.
+- In To do, a stack leaves with its last card that waits on the viewer, and
+  the next stack opens. Its notices stay in the stack, in the section of
+  its Conversation.
 
 Order and counts:
 
@@ -61,29 +64,22 @@ Order and counts:
   the reader works.
 - A stack waits on the viewer when any of its cards does, including a card
   from a child.
-- The header shows the number of open cards when there is more than one.
+- The header's pills count the open cards by kind.
 - Counts count Review items, not stacks. The To do count and the tab count
   stay the same when items roll up.
 
 Snooze:
 
 - Snooze on a card puts away only that item. It wakes at its time.
-- Snooze on a stack puts away every card in it. It wakes at its time, or
-  when the stack gets a newer item, also from a child.
+- Snooze all on a stack puts away every card in it. It wakes at its time,
+  or when the stack gets a newer item, also from a child. A stack of one
+  card has only the card's Snooze.
 - Snoozed shows each snoozed card under the stack of its root, and the card
   wakes there.
 
 ## Gaps
 
-- Each child Conversation with items shows as its own row, apart from its
-  root. This breaks "one stack for each root Conversation".
-- A row with more than one item has one Dismiss and one Snooze that act on
-  all of its items. This breaks "each Review item is its own card".
-- After Dismiss, the next row opens, not the next item of the same
-  Conversation. This breaks "next goes to the next card in the same stack
-  first".
-- An item that closes while its row stays open disappears without the leave
-  motion. Only a row whose items all close leaves with it. This breaks "a
-  card that closes leaves with one motion".
-- A card names no child, so the reader cannot tell which sub-thread asked.
-  This breaks the child label rule.
+- Wake in Snoozed wakes the whole stack. A card that was snoozed alone
+  cannot wake alone. This breaks "the card wakes there".
+- A snooze lives in one browser. Another browser of the same viewer shows
+  the item.

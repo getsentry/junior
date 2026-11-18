@@ -1,6 +1,8 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+
 import type { InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
@@ -8,8 +10,11 @@ const HOUR_MS = 60 * 60 * 1000;
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/** One snoozed row: until when, and its newest item at the snooze. */
-type Snooze = { newestItemId: string; untilMs: number };
+/**
+ * One snoozed stack or card: until when, its newest item at the snooze, and
+ * every item it put away, so the count counts items, not stacks.
+ */
+type Snooze = { itemIds?: string[]; newestItemId: string; untilMs: number };
 
 /**
  * Every key that can snooze a row: the row itself, its Conversation, and
@@ -63,8 +68,8 @@ function useWakeAtNextEnd(snoozes: Record<string, Snooze>, nowMs: number) {
 }
 
 /**
- * The newest item of each row that sleeps now, sorted, so the server can
- * count the snoozed rows that are still open.
+ * The items of each stack or card that sleeps now, sorted, so the server can
+ * count the snoozed items that are still open.
  */
 export function useSnoozedItemIds(): string[] {
   const [snoozes] = useStoredSnoozes();
@@ -74,17 +79,17 @@ export function useSnoozedItemIds(): string[] {
     ...new Set(
       Object.values(snoozes)
         .filter((snooze) => snooze.untilMs > nowMs)
-        .map((snooze) => snooze.newestItemId),
+        .flatMap((snooze) => snooze.itemIds ?? [snooze.newestItemId]),
     ),
   ].sort();
 }
 
 /**
- * Snooze inbox rows in this browser. A row is a Conversation bundle or one
- * item; its `key` names it. A Conversation bundle wakes at its time, or as
- * soon as its Conversation adds a newer item. The server has no snooze, so
- * other browsers do not see it; the nav count names the snoozed items to
- * the server (`useSnoozedItemIds`).
+ * Snooze Inbox stacks and cards in this browser. A stack's `key` names it,
+ * and an item's id names its card. A stack wakes at its time, or as soon as
+ * it gets a newer item, also from a child agent. A card wakes at its time.
+ * The server has no snooze, so other browsers do not see it; the nav count
+ * names the snoozed items to the server (`useSnoozedItemIds`).
  */
 export function useInboxSnoozes(nowMs: number) {
   const [snoozes, setSnoozes] = useStoredSnoozes();
@@ -102,9 +107,16 @@ export function useInboxSnoozes(nowMs: number) {
     setSnoozes({
       ...snoozes,
       [bundle.key]: {
+        itemIds: bundle.items.map((item) => item.id),
         newestItemId: bundle.newest.id,
         untilMs: choice.untilMs(nowMs),
       },
+    });
+  /** Snooze one card. The rest of its stack stays. */
+  const snoozeItem = (item: ReviewItemPayload, choice: SnoozeChoice) =>
+    setSnoozes({
+      ...snoozes,
+      [item.id]: { newestItemId: item.id, untilMs: choice.untilMs(nowMs) },
     });
   /** Wake the row and every key in it: its Conversation and its items. */
   const wake = (bundle: InboxBundle) => {
@@ -117,5 +129,5 @@ export function useInboxSnoozes(nowMs: number) {
   };
   const until = (bundle: InboxBundle) =>
     Math.max(...[...rowKeys(bundle)].map((key) => snoozes[key]?.untilMs ?? 0));
-  return { sleeps, snooze, until, wake };
+  return { sleeps, snooze, snoozeItem, until, wake };
 }

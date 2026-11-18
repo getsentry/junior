@@ -1,6 +1,12 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { flushSync } from "react-dom";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type {
@@ -49,9 +55,9 @@ import {
   viewRows,
   viewSections,
 } from "./inboxModel";
-import { InboxRow } from "./InboxRow";
+import { InboxRow, type InboxCardActions } from "./InboxRow";
 import { PageEnd, RetryRow } from "./PageEnd";
-import { useLeaveRow } from "./rowMotion";
+import { useLeaveCard, useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
 import {
   useReviewItemAction,
@@ -59,7 +65,12 @@ import {
   useReviewItemsData,
 } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
+import {
+  itemNeedsViewer,
+  itemStackId,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -161,6 +172,7 @@ export function InboxList(props: {
     state.expandedKey,
     state.setExpandedKey,
   );
+  const leaveCard = useLeaveCard(state.scroller, leave);
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
   const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
@@ -213,7 +225,7 @@ export function InboxList(props: {
     const item = data.awake.find((open) => open.id === linkedId);
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
-    const conversationId = item.addedByConversationId;
+    const conversationId = itemStackId(item);
     if (view !== "inbox") return `conversation:${conversationId}`;
     if (itemUpForGrabs(item) && grabIds.has(conversationId))
       return `grabs:${conversationId}`;
@@ -324,19 +336,72 @@ export function InboxList(props: {
       scope={scope}
     />
   );
-  const markDone = async (bundle: InboxBundle) => {
-    for (const item of bundle.items) {
-      if (item.status !== "open" || !item.canAct) continue;
-      // oxlint-disable-next-line no-await-in-loop -- Stop at the first dismiss that fails.
-      const closed = await action
-        .mutateAsync({ body: { action: "dismiss" }, id: item.id })
-        .then(
-          () => true,
-          () => false,
-        );
-      if (!closed) return;
-    }
+  // Cards that are leaving, so a read that shows one closed meanwhile does
+  // not start its leave again.
+  const leaving = useRef(new Set<string>());
+  const { releaseHeld } = data;
+  // A card leaves, then the list stops holding it, at once, so its shut card
+  // never shows again. `withRow` takes the whole row away with it.
+  const putAway = (
+    key: string,
+    id: string,
+    work: () => Promise<boolean>,
+    withRow = false,
+  ) => {
+    leaving.current.add(id);
+    const done = async () => {
+      if (await work()) flushSync(() => releaseHeld(id));
+      leaving.current.delete(id);
+    };
+    if (withRow) leave(key, done);
+    else leaveCard(key, id, done);
   };
+  const dismiss = (item: ReviewItemPayload) =>
+    action.mutateAsync({ body: { action: "dismiss" }, id: item.id }).then(
+      () => true,
+      () => false,
+    );
+  // Each card of a stack answers, dismisses, and snoozes by itself.
+  const cardActions =
+    (
+      row: InboxBundle,
+      key: string,
+      options: { snoozed?: boolean; todo?: boolean },
+    ) =>
+    (item: ReviewItemPayload): InboxCardActions => {
+      const menuKey = `${key}:${item.id}`;
+      // A To do stack whose last ask for the viewer goes leaves To do, so
+      // it leaves as a whole, and the next stack opens. Its FYI cards stay
+      // in the stack, in its other section.
+      const withRow =
+        options.todo === true &&
+        !row.items.some(
+          (other) => other.id !== item.id && itemNeedsViewer(other),
+        );
+      return {
+        onDismiss:
+          item.status === "open" && item.canAct
+            ? () => putAway(key, item.id, () => dismiss(item), withRow)
+            : undefined,
+        onSnooze: options.snoozed
+          ? undefined
+          : (choice) => {
+              setSnoozeKey(undefined);
+              putAway(
+                key,
+                item.id,
+                async () => {
+                  flushSync(() => snoozes.snoozeItem(item, choice));
+                  return true;
+                },
+                withRow,
+              );
+            },
+        onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
+        pending: action.isPending,
+        snoozeMenuOpen: snoozeKey === menuKey,
+      };
+    };
 
   // The items of each row that this render shows, by row key.
   const rowItems = new Map<string, readonly ReviewItemPayload[]>();
@@ -352,6 +417,8 @@ export function InboxList(props: {
       /** A snoozed row wakes instead of snoozing. */
       snoozed?: boolean;
       take?: string;
+      /** The row is in To do. */
+      todo?: boolean;
       time?: string;
     } = {},
   ) => {
@@ -360,11 +427,11 @@ export function InboxList(props: {
     return (
       <InboxRow
         bundle={row}
+        cardActions={cardActions(row, key, options)}
         conversation={
           options.conversation ?? data.conversationById.get(row.conversationId)
         }
         conversationId={row.conversationId}
-        donePending={action.isPending}
         drag={options.drag}
         expanded={state.expandedKey === key}
         itemTitle={options.itemRow ? row.newest.title : undefined}
@@ -379,7 +446,6 @@ export function InboxList(props: {
             : undefined
         }
         key={key}
-        onDone={() => leave(key, () => markDone(row))}
         onSnooze={
           options.snoozed
             ? undefined
@@ -621,7 +687,9 @@ export function InboxList(props: {
             {[
               ...pinnedTodo,
               ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
-            ].map((row) => bundleRow(row, { key: `todo:${row.key}` }))}
+            ].map((row) =>
+              bundleRow(row, { key: `todo:${row.key}`, todo: true }),
+            )}
             {data.todoAutomations.map((automation) =>
               automationRow(automation, { todo: true }),
             )}
@@ -744,9 +812,11 @@ export function InboxList(props: {
       );
   }
 
-  // An open row whose items close elsewhere, as when an agent or a Watch
-  // closes them, leaves as it does on Dismiss, and the next row opens. The
-  // data holds its items until then. Other rows leave with the read.
+  // A card of the open stack that closes elsewhere, as when an agent or a
+  // Watch closes it, leaves as it does on Dismiss, and the next card of the
+  // stack takes focus. When every card closes, the row leaves and the next
+  // row opens. The data holds the items until then. Other rows leave with
+  // the read.
   const openItems = rowItems.get(expandedKey) ?? [];
   const { closedElsewhere, holdOpenRow } = data;
   useEffect(() => holdOpenRow(openItems));
@@ -756,13 +826,29 @@ export function InboxList(props: {
     openItems.every((item) => closedElsewhere.includes(item))
       ? expandedKey
       : undefined;
+  const closedCards = closedKey
+    ? []
+    : openItems
+        .filter(
+          (item) =>
+            closedElsewhere.includes(item) && !leaving.current.has(item.id),
+        )
+        .map((item) => item.id);
   // The row goes at once, before `leave` restores its shut card.
   const leaveClosed = useEffectEvent((key: string) =>
     leave(key, () => flushSync(() => holdOpenRow([]))),
   );
+  const leaveClosedCards = useEffectEvent(() => {
+    for (const id of closedCards)
+      putAway(expandedKey, id, () => Promise.resolve(true));
+  });
   useEffect(() => {
     if (closedKey) leaveClosed(closedKey);
   }, [closedKey]);
+  const closedCardsKey = closedCards.join(" ");
+  useEffect(() => {
+    if (closedCardsKey) leaveClosedCards();
+  }, [closedCardsKey]);
 
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];

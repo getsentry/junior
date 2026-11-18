@@ -12,8 +12,13 @@ import {
 } from "../conversations/ConversationMeta";
 import { type SnoozeChoice, snoozeChoices } from "./inboxSnooze";
 
-/** Snooze an Inbox row from its action bar: a menu of the snooze times. */
+/**
+ * Snooze an Inbox card, or every card of a stack, from its action bar: a
+ * menu of the snooze times.
+ */
 export function RowSnoozeButton(props: {
+  /** "Snooze" by default. */
+  label?: string;
   onOpenChange(open: boolean): void;
   onSnooze(choice: SnoozeChoice): void;
   open: boolean;
@@ -28,7 +33,7 @@ export function RowSnoozeButton(props: {
               className={ATTENTION_TONE_CLASS}
               size={15}
             />
-            Snooze
+            {props.label ?? "Snooze"}
           </Button>
         }
       />
@@ -53,7 +58,7 @@ export function RowSnoozeButton(props: {
 }
 
 /**
- * Dismiss an Inbox row: the main action of its action bar, so it goes
+ * Dismiss an Inbox card: the main action of its action bar, so it goes
  * right-most.
  */
 export function RowDismissButton(props: {

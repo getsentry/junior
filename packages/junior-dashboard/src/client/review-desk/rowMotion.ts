@@ -124,3 +124,38 @@ export function useLeaveRow(
     })();
   };
 }
+
+/**
+ * Put one card of an open stack away, as its Dismiss or Snooze does: it
+ * leaves with its height, then `work` takes it out, and the next card of the
+ * same stack takes focus, or the card before it at the end. The last card
+ * leaves with its row (`leaveRow`), so the next stack opens. A card that
+ * `work` keeps, as when it fails, comes back.
+ */
+export function useLeaveCard(
+  scroller: RefObject<HTMLElement | null>,
+  leaveRow: (key: string, work: () => Promise<void> | void) => void,
+) {
+  return (key: string, itemId: string, work: () => Promise<void> | void) => {
+    const area = scroller.current;
+    const row = area
+      ? listRows(area).find(
+          (candidate) => candidate.dataset["inboxRow"] === key,
+        )
+      : undefined;
+    const cards = row
+      ? [...row.querySelectorAll<HTMLElement>("[data-inbox-card]")]
+      : [];
+    const at = cards.findIndex((card) => card.dataset["inboxCard"] === itemId);
+    const card = cards[at];
+    if (!card || cards.length === 1) return leaveRow(key, work);
+    const next = cards[at + 1] ?? cards[at - 1];
+    void (async () => {
+      await leaveCard(card);
+      await work();
+      if (card.isConnected) return restoreCard(card);
+      next?.focus({ preventScroll: true });
+      next?.scrollIntoView({ block: "nearest" });
+    })();
+  };
+}

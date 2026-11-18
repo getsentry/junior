@@ -176,11 +176,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row stays open while it has items.
     await expect(licenseItem).toBeVisible();
 
-    // The row's Dismiss closes every item of the row.
-    await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
+    // A card's Dismiss closes only its own item.
+    await licenseItem
+      .getByRole("button", { name: "Dismiss", exact: true })
+      .click();
     await expect
-      .poll(() => actions.map((action) => action.id).sort())
-      .toEqual([audit.id, license.id, prReady.id].sort());
+      .poll(() => actions.map((action) => action.id))
+      .toEqual([audit.id, license.id]);
   });
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
@@ -579,7 +581,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(105);
   });
 
-  test("an open row's notice and questions leave Dismiss and its title to the row", async ({
+  test("each card of an open row keeps its own Dismiss, and an item row's head names it", async ({
     dashboard,
     page,
   }) => {
@@ -588,9 +590,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
     await expect(card).toContainText("FYI");
-    // The row's Dismiss closes it, and the item row's head names it.
-    await expect(asks.getByRole("button", { name: "Dismiss" })).toBeVisible();
-    await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    // The card's Dismiss closes it, and the item row's head names it.
+    await expect(
+      card.getByRole("button", { exact: true, name: "Dismiss" }),
+    ).toBeVisible();
     await expect(card.getByRole("heading")).toHaveCount(0);
 
     // A Conversation row's head names the Conversation, so the ask keeps its
@@ -602,18 +605,19 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("heading", { name: prReady.title }),
     ).toBeVisible();
 
-    // Its questions leave Dismiss to the row's bar too, beside their Send.
+    // Each question keeps its own Dismiss beside its Send, and the row's
+    // bar has none.
     const row = page.getByRole("region", { name: /: asks$/ });
     for (const question of [license, audit]) {
       const card = row.getByRole("region", { name: question.title });
       await expect(card.getByRole("button", { name: "Send" })).toBeVisible();
-      await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(
-        0,
-      );
+      await expect(
+        card.getByRole("button", { exact: true, name: "Dismiss" }),
+      ).toHaveCount(1);
     }
     await expect(
       row.getByRole("button", { name: "Dismiss", exact: true }),
-    ).toHaveCount(1);
+    ).toHaveCount(3);
   });
 
   test("a snoozed row wakes at its time without a reload", async ({

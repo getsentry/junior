@@ -29,6 +29,7 @@ import {
 } from "./inboxQueries";
 import {
   inboxBundles,
+  itemStackId,
   itemUpForGrabs,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -107,8 +108,9 @@ function useBuildInboxData(input: {
     [setLinkedItems],
   );
   // The items of the open Inbox row, as the list last showed them. When a
-  // read shows them closed, as when an agent or a Watch closes them, they
-  // stay until the row leaves as it does on Dismiss.
+  // read shows one closed, as when an agent or a Watch closes it, it stays
+  // until its card leaves as it does on Dismiss: the list then stops
+  // holding it.
   const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
   const holdOpenRow = useCallback(
     (items: readonly ReviewItemPayload[]) =>
@@ -118,6 +120,12 @@ function useBuildInboxData(input: {
           ? current
           : items,
       ),
+    [],
+  );
+  // A card that left stops being held, so the list drops it.
+  const releaseHeld = useCallback(
+    (id: string) =>
+      setOpenRow((current) => current.filter((item) => item.id !== id)),
     [],
   );
   const read = useMemo(
@@ -139,23 +147,16 @@ function useBuildInboxData(input: {
   // own read says whether it closed. Until then, it stays.
   const states = useReviewItemStates(missing.map((item) => item.id));
   const closedElsewhere = useMemo(
-    () =>
-      // A row with an item still open stays, without the closed ones.
-      missing.length === openRow.length &&
-      states.every((state) => state === "closed")
-        ? missing
-        : [],
-    [missing, openRow, states],
+    () => missing.filter((_item, index) => states[index] === "closed"),
+    [missing, states],
   );
   const list = useMemo(() => {
     const held = missing.flatMap((item, index) => {
       const state = states[index] ?? "pending";
-      if (state === "pending") return [item];
-      if (state !== "closed") return [state];
-      return closedElsewhere.length > 0 ? [item] : [];
+      return state === "pending" || state === "closed" ? [item] : [state];
     });
     return held.length > 0 ? [...read, ...held] : read;
-  }, [closedElsewhere, missing, read, states]);
+  }, [missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -177,9 +178,7 @@ function useBuildInboxData(input: {
   const missingIds = useMemo(
     () => [
       ...new Set(
-        list
-          .map((item) => item.addedByConversationId)
-          .filter((id) => !conversationById.has(id)),
+        list.map(itemStackId).filter((id) => !conversationById.has(id)),
       ),
     ],
     [conversationById, list],
@@ -196,7 +195,7 @@ function useBuildInboxData(input: {
       .map((bundle) => bundle.conversationId),
   );
   const asleep = (item: ReviewItemPayload) =>
-    sleepingConversations.has(item.addedByConversationId) ||
+    sleepingConversations.has(itemStackId(item)) ||
     snoozes.sleeps(item.id, item.id);
   const awake = live.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
@@ -264,7 +263,7 @@ function useBuildInboxData(input: {
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     awake,
-    /** The open row's items, held after a read shows them all closed. */
+    /** The open row's items, held after a read shows them closed. */
     closedElsewhere,
     conversationById,
     conversationRows,
@@ -284,6 +283,7 @@ function useBuildInboxData(input: {
     nowMs,
     /** Every pin, in the viewer's stored order. */
     pinned,
+    releaseHeld,
     signedIn,
     snoozedRows,
     /** Automation alerts for To do: those the viewer has not put away. */
