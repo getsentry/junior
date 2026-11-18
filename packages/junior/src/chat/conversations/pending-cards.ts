@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -6,6 +7,7 @@ import {
   listChildMessages,
 } from "@/chat/agent-invocations/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   readMessageCardRefs,
   removedCardSchema,
@@ -32,6 +34,7 @@ async function selectTurnCards(
 ): Promise<string[]> {
   // Tools are committed before Delivery. A visible assistant Message consumes
   // the cards; a new Turn must not inherit cards from an earlier silent Turn.
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   while (true) {
     const page = await getConversationEventStore().query(conversationId, {
       beforeSeq,
@@ -67,6 +70,7 @@ async function selectTurnCards(
     if (!page.hasOlder || page.events.length === 0) return [];
     beforeSeq = page.events[0]!.seq;
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -86,17 +90,30 @@ async function selectChildResultCards(
     inputMessageIds,
     execution?.messageSenders ?? {},
   );
-  for (const message of messages.reverse()) {
-    const { conversationId: childConversationId, turnId } = message.sender;
-    // The child records its terminal Turn event before it reports the result.
-    const terminal = await events.loadByIdempotencyKey(
-      childConversationId,
-      `turn:${turnId}:terminal`,
-    );
+  messages.reverse();
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  // The child records its terminal Turn event before it reports the result.
+  const terminals = await Promise.all(
+    messages.map(({ sender }) =>
+      limit(() =>
+        events.loadByIdempotencyKey(
+          sender.conversationId,
+          `turn:${sender.turnId}:terminal`,
+        ),
+      ),
+    ),
+  );
+  for (const [index, message] of messages.entries()) {
+    const terminal = terminals[index];
     // A `reply` ends the child's Turn, but it can reach the parent before the
     // child records that end. Then its cards are the newest ones.
     if (!terminal && isAgentInvocationResult(message)) continue;
-    await selectTurnCards(childConversationId, selection, terminal?.seq);
+    // oxlint-disable-next-line no-await-in-loop -- Newer child results select cards first.
+    await selectTurnCards(
+      message.sender.conversationId,
+      selection,
+      terminal?.seq,
+    );
   }
 }
 

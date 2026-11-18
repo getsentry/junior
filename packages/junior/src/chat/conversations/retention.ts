@@ -64,6 +64,7 @@ export async function runRetentionPurge(
   let purged = 0;
   let failed = 0;
   let conversations = 0;
+  /* oxlint-disable no-await-in-loop -- Purge one tree at a time to bound database load. */
   for (const root of roots) {
     await withLogContext({ conversationId: root.conversationId }, async () => {
       try {
@@ -85,6 +86,7 @@ export async function runRetentionPurge(
       }
     });
   }
+  /* oxlint-enable no-await-in-loop */
   const attachmentResult = args.attachmentStorage
     ? await collectAttachmentGarbage({
         db: executor,

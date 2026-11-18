@@ -43,6 +43,7 @@ import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings
 import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
+import { SettingFrame } from "../../../pages/settings/SettingFrame";
 import { TranscriptScrollerSetting } from "../../../pages/settings/TranscriptScrollerSetting";
 import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
 import { getDashboardAgentName } from "../../../agentName";
@@ -163,12 +164,18 @@ function InterfaceSettings({ identity }: SettingsPageProps) {
       description="The new dashboard applies to your account. The other choices apply to this browser."
       title="Interface"
     >
-      <ExperimentalUiSetting identity={identity} />
-      <ConversationStartSetting />
-      <TranscriptScrollerSetting />
-      <ComposerAutocorrectSetting />
-      <InboxTabCountSetting />
-      <InboxMagnifySetting />
+      <Card
+        className="mb-0 divide-y divide-dashboard-border"
+        padding="md"
+        variant="raised"
+      >
+        <ExperimentalUiSetting frame="row" identity={identity} />
+        <ConversationStartSetting />
+        <TranscriptScrollerSetting frame="row" />
+        <ComposerAutocorrectSetting />
+        <InboxTabCountSetting />
+        <InboxMagnifySetting />
+      </Card>
     </SettingsSection>
   );
 }
@@ -194,12 +201,11 @@ const startPositionOptions: {
 function ConversationStartSetting() {
   const [startPosition, setStartPosition] = useConversationStartPosition();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="open-conversations-at"
-        className="m-0 text-lg font-bold"
-        title="Open conversations at"
-      />
+    <SettingFrame
+      anchor="open-conversations-at"
+      frame="row"
+      title="Open conversations at"
+    >
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
         {getDashboardAgentName()} keeps your place in each conversation on all
         your devices.
@@ -228,7 +234,7 @@ function ConversationStartSetting() {
           </Field>
         ))}
       </RadioGroup>
-    </Card>
+    </SettingFrame>
   );
 }
 
@@ -236,12 +242,7 @@ function ConversationStartSetting() {
 function ComposerAutocorrectSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="message-box"
-        className="m-0 text-lg font-bold"
-        title="Message box"
-      />
+    <SettingFrame anchor="message-box" frame="row" title="Message box">
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
           aria-describedby="composer-autocorrect-help"
@@ -257,7 +258,7 @@ function ComposerAutocorrectSetting() {
           </FieldDescription>
         </FieldContent>
       </Field>
-    </Card>
+    </SettingFrame>
   );
 }
 
@@ -265,12 +266,7 @@ function ComposerAutocorrectSetting() {
 function InboxTabCountSetting() {
   const [showCount, setShowCount] = useInboxTabCountSetting();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="browser-tab"
-        className="m-0 text-lg font-bold"
-        title="Browser tab"
-      />
+    <SettingFrame anchor="browser-tab" frame="row" title="Browser tab">
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
           aria-describedby="inbox-tab-count-help"
@@ -287,7 +283,7 @@ function InboxTabCountSetting() {
           </FieldDescription>
         </FieldContent>
       </Field>
-    </Card>
+    </SettingFrame>
   );
 }
 
@@ -295,12 +291,7 @@ function InboxTabCountSetting() {
 function InboxMagnifySetting() {
   const [magnify, setMagnify] = useInboxMagnify();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="inbox-motion"
-        className="m-0 text-lg font-bold"
-        title="Inbox motion"
-      />
+    <SettingFrame anchor="inbox-motion" frame="row" title="Inbox motion">
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
           aria-describedby="inbox-magnify-help"
@@ -318,7 +309,7 @@ function InboxMagnifySetting() {
           </FieldDescription>
         </FieldContent>
       </Field>
-    </Card>
+    </SettingFrame>
   );
 }
 

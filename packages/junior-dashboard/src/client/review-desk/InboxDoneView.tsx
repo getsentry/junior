@@ -56,10 +56,10 @@ function DoneRow(props: {
       >
         <Icon
           aria-hidden="true"
-          className="mt-[0.2rem] size-3.5 text-dashboard-text-faint"
+          className="mt-[0.25rem] size-3.5 text-dashboard-text-faint"
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
+          <span className="min-w-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {item.title}
           </span>
           <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-dashboard-text-muted">
@@ -76,7 +76,7 @@ function DoneRow(props: {
         </span>
         <span className="flex items-center gap-1.5 pt-0.5 text-xs tabular-nums text-dashboard-text-faint">
           {dismissed ? (
-            <span className="rounded-full border border-dashboard-border px-1.5 font-medium text-dashboard-text-muted">
+            <span className="font-medium text-dashboard-text-muted">
               Dismissed
             </span>
           ) : null}

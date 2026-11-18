@@ -229,7 +229,7 @@ function BriefCard(props: { brief: Brief }) {
   return (
     <section
       aria-label="Brief"
-      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border px-3 py-2.5"
+      className="grid min-w-0 gap-2 px-1 pb-1"
       id="conversation-brief"
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
