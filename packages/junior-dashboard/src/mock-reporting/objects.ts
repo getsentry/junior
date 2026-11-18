@@ -411,6 +411,19 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
     title: "What's new in Release 4.2",
     url: "https://blog.example.com/posts/release-4-2",
   },
+  // A page title as long as a GitHub pull request page's, so its Inbox
+  // line must truncate inside its column.
+  "https://code.example.com/acme/checkout/pull/5378": {
+    siteName: "Example Code",
+    title:
+      "feat(checkout): cache tax rates per checkout session by Riley Park · Pull Request #5378 · acme/checkout",
+    url: "https://code.example.com/acme/checkout/pull/5378",
+  },
+  "https://news.example.com/checkout-4-2-session-tax-cache": {
+    siteName: "Example News",
+    title: "Checkout 4.2 brings back per-session tax caching",
+    url: "https://news.example.com/checkout-4-2-session-tax-cache",
+  },
 };
 
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {

@@ -103,9 +103,11 @@ async function settleCalls(pending: Set<Promise<void>>): Promise<void> {
     timer = setTimeout(done, CALL_SETTLE_GRACE_MS);
   });
   const settled = (async () => {
+    /* oxlint-disable no-await-in-loop -- New calls can start while earlier ones settle. */
     while (pending.size > 0) {
       await Promise.allSettled(pending);
     }
+    /* oxlint-enable no-await-in-loop */
   })();
   try {
     await Promise.race([settled, grace]);

@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { Hono } from "hono";
 import {
   disconnectServiceAccount,
@@ -9,7 +10,7 @@ import {
 import { logInfo } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import { escapeXml } from "@/chat/xml";
+import { escapeHtml } from "@/api/html";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -46,7 +47,7 @@ function requirePlugin(provider: string): PluginDefinition {
 }
 
 function callbackPage(title: string, message: string, status: number) {
-  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status, {
+  return htmlCallbackResponse(escapeHtml(title), escapeHtml(message), status, {
     footerMessage: "You can close this tab and return to the dashboard.",
   });
 }
@@ -64,10 +65,9 @@ export function createServiceAccountRoutes(): Hono<JuniorApiEnv> {
 
   app.get("/", requireAdmin, async () =>
     jsonResponse(serviceAccountListSchema, {
-      serviceAccounts: await Promise.all(
-        serviceAccountPlugins(pluginCatalogRuntime.getProviders()).map(
-          getServiceAccountStatus,
-        ),
+      serviceAccounts: await mapBounded(
+        serviceAccountPlugins(pluginCatalogRuntime.getProviders()),
+        getServiceAccountStatus,
       ),
     }),
   );

@@ -1,6 +1,5 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
-import { AutoArchiveToggle } from "../../conversations/AutoArchiveToggle";
 import { ConversationDetails } from "./ConversationDetails";
 import type { ConversationLink } from "../../conversations/ConversationLinkedWork";
 import {
@@ -46,14 +45,6 @@ export function ConversationDetailsPanel(props: {
     <ConversationMemoryContext value={props.memoryState}>
       <ConversationDetails
         agentTree={detail?.agentTree}
-        autoArchive={
-          detail?.autoArchive === undefined ? null : (
-            <AutoArchiveToggle
-              autoArchive={detail.autoArchive}
-              conversationId={props.conversationId}
-            />
-          )
-        }
         brief={detail?.brief}
         conversationId={props.conversationId}
         highlightReview={props.highlightReview}

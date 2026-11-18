@@ -30,10 +30,10 @@ const MAGNIFY_STORAGE_KEY = "junior:inbox:magnify";
 
 /**
  * Edit the browser-only choice to magnify the Inbox card under the pointer.
- * On by default, so people opt out.
+ * Off by default, so people opt in.
  */
 export function useInboxMagnify() {
-  return useLocalStorage<boolean>(MAGNIFY_STORAGE_KEY, true);
+  return useLocalStorage<boolean>(MAGNIFY_STORAGE_KEY, false);
 }
 
 /**
@@ -53,16 +53,9 @@ export const DOCK_MEDIA =
  */
 const FOCUS_INTENT_MS = 90;
 /**
- * How long the pointer holds still before the card under it expands in
- * place, pushing the rows below. A pointer that moves down the list, even
- * slowly, expands nothing, so no row changes height under it.
- */
-const REST_MS = 300;
-/** As long as the card transitions in `inboxCardClass`, plus a frame. */
-const SETTLE_MS = 260;
-/**
  * How long the pointer holds still before a link preview may open. Cards
- * move for `SETTLE_MS` after a focus change, so this is longer.
+ * move for as long as the card transitions in `inboxCardClass` after a
+ * focus change, so this is longer.
  */
 const STILL_MS = 300;
 
@@ -96,49 +89,9 @@ function outermostCard(card: HTMLElement): HTMLElement {
   return outer;
 }
 
-/**
- * Where a card's box shows in the scroll area's viewport, without its
- * scale: a transform does not move layout.
- */
-function shownTop(card: HTMLElement, scroller: HTMLElement): number {
-  const transform = getComputedStyle(card).transform;
-  const scale = transform === "none" ? 1 : new DOMMatrix(transform).d;
-  const shift = (card.offsetHeight * (scale - 1)) / 2;
-  return (
-    card.getBoundingClientRect().top +
-    shift -
-    scroller.getBoundingClientRect().top
-  );
-}
-
-/**
- * Turn the browser's scroll anchoring on or off for the scroll area. The
- * hold turns it off, so a scroll it did not make is the reader's.
- */
-function anchorScroll(scroller: HTMLElement, on: boolean) {
-  scroller.style.overflowAnchor = on ? "" : "none";
-}
-
-/**
- * True while a card in the scroll area still animates its height, as
- * `useAnimatedHeight` does. Spinners and transforms move no row.
- */
-function cardsMoving(scroller: HTMLElement): boolean {
-  return scroller
-    .getAnimations({ subtree: true })
-    .some(
-      (animation) =>
-        animation.playState === "running" &&
-        animation.effect instanceof KeyframeEffect &&
-        animation.effect.getKeyframes().some((frame) => "height" in frame),
-    );
-}
-
 type FocusState = {
   /** The card that grows under the pointer. */
   key?: string;
-  /** The card that the pointer last rested on: it expands in place. */
-  restKey?: string;
   /** The pointer has not moved for `STILL_MS`, and no card is moving. */
   still: boolean;
 };
@@ -154,11 +107,7 @@ function createFocusStore() {
     },
     update(next: Partial<FocusState>) {
       const merged = { ...state, ...next };
-      if (
-        merged.key === state.key &&
-        merged.restKey === state.restKey &&
-        merged.still === state.still
-      )
+      if (merged.key === state.key && merged.still === state.still)
         return false;
       state = merged;
       for (const listener of listeners) listener();
@@ -202,18 +151,11 @@ export function InboxPreviewGate(props: { children: ReactNode }) {
   return <HoverPreviewGate open={still}>{props.children}</HoverPreviewGate>;
 }
 
-/** True while the Inbox card with this key has the pointer's rest. */
-export function useInboxRowFocused(key: string): boolean {
-  return useFocusStore((state) => state.restKey === key, false);
-}
-
 /**
  * One driver for an Inbox list's pointer motion. The card the pointer
- * rests on takes focus; it and its neighbors grow on one transition, like
- * a dock, and a row in focus can expand in place (`useInboxRowFocused`).
- * While cards above it change height, the scroll area moves with them, so
- * the card under the pointer holds still. Spread `handlers` on the scroll
- * area, and wrap the list in `InboxFocusProvider`.
+ * stays on takes focus; it and its neighbors grow on one transition, like
+ * a dock. Spread `handlers` on the scroll area, and wrap the list in
+ * `InboxFocusProvider`.
  */
 export function useInboxFocus(
   scroller: RefObject<HTMLElement | null>,
@@ -226,9 +168,7 @@ export function useInboxFocus(
   const pending = useRef<string>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const stillTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const restTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastPoint = useRef("");
-  const frame = useRef(0);
   const scaled = useRef(new Set<HTMLElement>());
 
   const unscale = useCallback((card: HTMLElement) => {
@@ -284,48 +224,6 @@ export function useInboxFocus(
     [applyScale, store],
   );
 
-  const setRest = useCallback(
-    (key: string | undefined, card?: HTMLElement) => {
-      if (!store.update({ restKey: key })) return;
-      const area = scroller.current;
-      cancelAnimationFrame(frame.current);
-      if (area) anchorScroll(area, true);
-      if (!card || !area) return;
-      // Hold the card under the pointer where it shows while the card that
-      // lost focus collapses above it. Scroll anchoring is off while the hold
-      // runs, so only the hold and the reader move the scroll. A scroll that
-      // the hold did not make is the reader's, such as a wheel or a scroll to
-      // a card, so the hold lets go instead of scrolling back.
-      anchorScroll(area, false);
-      const top = shownTop(card, area);
-      const until = performance.now() + SETTLE_MS;
-      let scrolled = area.scrollTop;
-      const hold = () => {
-        const max = area.scrollHeight - area.clientHeight;
-        // A list that got shorter clamps the scroll at its new end.
-        const clamped =
-          area.scrollTop < scrolled && area.scrollTop >= max - 0.5;
-        if (
-          !card.isConnected ||
-          (Math.abs(area.scrollTop - scrolled) >= 0.5 && !clamped)
-        ) {
-          anchorScroll(area, true);
-          return;
-        }
-        const drift = shownTop(card, area) - top;
-        if (Math.abs(drift) >= 0.5) area.scrollTop += drift;
-        scrolled = area.scrollTop;
-        if (performance.now() < until || cardsMoving(area)) {
-          frame.current = requestAnimationFrame(hold);
-        } else {
-          anchorScroll(area, true);
-        }
-      };
-      frame.current = requestAnimationFrame(hold);
-    },
-    [scroller, store],
-  );
-
   const setStill = useCallback(
     (still: boolean) => {
       store.update({ still });
@@ -336,19 +234,15 @@ export function useInboxFocus(
   const clear = useCallback(() => {
     clearTimeout(timer.current);
     clearTimeout(stillTimer.current);
-    clearTimeout(restTimer.current);
     lastPoint.current = "";
     setStill(true);
     pending.current = undefined;
     setFocus(undefined);
-    setRest(undefined);
-  }, [setFocus, setRest, setStill]);
+  }, [setFocus, setStill]);
   useEffect(
     () => () => {
       clearTimeout(timer.current);
       clearTimeout(stillTimer.current);
-      clearTimeout(restTimer.current);
-      cancelAnimationFrame(frame.current);
     },
     [],
   );
@@ -365,18 +259,6 @@ export function useInboxFocus(
       setStill(false);
       clearTimeout(stillTimer.current);
       stillTimer.current = setTimeout(() => setStill(true), STILL_MS);
-      // Rows may have moved under a resting pointer, so read what is under
-      // it when the rest begins.
-      const { clientX, clientY } = event;
-      clearTimeout(restTimer.current);
-      restTimer.current = setTimeout(() => {
-        const rested = dockCardOf(document.elementFromPoint(clientX, clientY));
-        const restKey = rested ? cardKey(rested) : undefined;
-        if (!rested || !restKey) return;
-        pending.current = restKey;
-        setFocus(restKey);
-        setRest(restKey, rested);
-      }, REST_MS);
       const card = dockCardOf(event.target);
       const key = card ? cardKey(card) : undefined;
       if (key === pending.current) return;
@@ -384,7 +266,7 @@ export function useInboxFocus(
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setFocus(key), FOCUS_INTENT_MS);
     },
-    [clear, setFocus, setRest, setStill],
+    [clear, setFocus, setStill],
   );
 
   return {

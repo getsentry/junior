@@ -107,7 +107,8 @@ const conversationEventsLimitSchema = z.coerce
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
  * both ways from one event with `around`. A link target asks for the page
- * around one event by its `event` seq, or around the start of a `turn`.
+ * around one event by its `event` seq, around one `message` by its id, or
+ * around the start of a `turn`.
  */
 export const conversationEventsQuerySchema = z.union([
   z
@@ -127,6 +128,12 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
   z
     .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      message: z.string().min(1),
+      limit: conversationEventsLimitSchema,
+    })
     .strict(),
 ]);
 

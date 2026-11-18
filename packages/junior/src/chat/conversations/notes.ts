@@ -84,6 +84,7 @@ export async function loadTurnConversationNotes(input: {
   const newestFirst: string[] = [];
   let foundTurn = false;
   let beforeSeq: number | undefined;
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   scan: while (true) {
     const page = await getConversationEventStore().query(input.conversationId, {
       beforeSeq,
@@ -115,5 +116,6 @@ export async function loadTurnConversationNotes(input: {
     if (!page.hasOlder || page.events.length === 0) break;
     beforeSeq = page.events[0]!.seq;
   }
+  /* oxlint-enable no-await-in-loop */
   return newestFirst.reverse();
 }

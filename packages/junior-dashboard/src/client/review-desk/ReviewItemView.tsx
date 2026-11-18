@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronLeft, PanelRight } from "lucide-react";
+import { cn, dashboardMessageCardClass } from "../styles";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -148,7 +149,10 @@ export function ReviewItemView(props: {
           <section
             aria-label={open ? "Answer" : "Outcome"}
             ref={cardRef}
-            className="grid min-w-0 gap-4 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel p-4 font-sans text-sm md:p-5"
+            className={cn(
+              "grid min-w-0 gap-4 p-4 font-sans text-sm md:p-5",
+              dashboardMessageCardClass,
+            )}
           >
             {bodyInCard ? body : null}
             <ReviewItemActions item={item} />

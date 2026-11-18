@@ -91,8 +91,8 @@ runtime, not the markers, enforces approval.
 - Bodies of person and untrusted text: escape `&`, `<`, and `>`. This also turns
   imitations of our tags into plain text. Do not escape quotes.
 - JSON bodies: write `<`, `>`, and `&` as `\u003c`, `\u003e`, and `\u0026`.
-- System prompt, skill, and `AGENTS.md` text goes in raw. Escape only a copy
-  of the closing tag of its own wrapper.
+- Raw text (system prompt, skills, `AGENTS.md`): escape only its closing tag.
+- `prompt-tags.ts` writes, escapes, and reads every tag. Oxlint enforces it.
 
 ### Example
 

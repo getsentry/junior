@@ -1,6 +1,7 @@
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { reviewItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import pLimit from "p-limit";
 import {
   createContext,
   useCallback,
@@ -15,21 +16,31 @@ import {
 
 import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
-import { invalidateReviewItemCollections, reviewItemQueryKey } from "./queries";
+import { fyiCount } from "./inboxModel";
+import {
+  invalidateReviewItemCollections,
+  reviewItemActionsInFlight,
+  reviewItemQueryKey,
+} from "./queries";
 
 const UNDO_MS = 6_000;
+// Dismiss requests that one sweep sends at once.
+const SWEEP_REQUESTS = 8;
 
 /** Close swept items, refresh the inbox, and return the ids that stay open. */
 async function commitSweep(
   queryClient: QueryClient,
   items: ReviewItemPayload[],
 ): Promise<string[]> {
+  const limit = pLimit(SWEEP_REQUESTS);
   const results = await Promise.allSettled(
     items.map((item) =>
-      post(
-        reviewItemSchema,
-        `/api/review-items/${encodeURIComponent(item.id)}/actions`,
-        { action: "dismiss" },
+      limit(() =>
+        post(
+          reviewItemSchema,
+          `/api/review-items/${encodeURIComponent(item.id)}/actions`,
+          { action: "dismiss" },
+        ),
       ),
     ),
   );
@@ -46,7 +57,10 @@ async function commitSweep(
       queryKey: reviewItemQueryKey(id),
     });
   }
-  await invalidateReviewItemCollections(queryClient);
+  // A read while an action is in flight would show its item again. The
+  // last action to settle reads the lists.
+  if (reviewItemActionsInFlight(queryClient) === 0)
+    await invalidateReviewItemCollections(queryClient);
   return kept;
 }
 
@@ -84,8 +98,8 @@ function ToastsBridge(props: { onToasts: (toasts: Toasts) => void }) {
 }
 
 /**
- * Own the Inbox's Clears for the whole dashboard, next to the toasts. The
- * cleared items hide at once and close when their toast closes, by timeout
+ * Own the Inbox's sweeps for the whole dashboard, next to the toasts. The
+ * swept items hide at once and close when their toast closes, by timeout
  * or by its close button. So Undo works from any page while the toast
  * shows, and needs no reopen on the server. Leaving the page closes the
  * items that are still pending.
@@ -97,8 +111,8 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
     toasts.current = next;
   }, []);
   const [swept, setSwept] = useState<ReadonlySet<string>>(() => new Set());
-  // The items of each Clear whose toast still shows, by toast id. Each
-  // Clear gets its own toast, so Undo takes back only its own items.
+  // The items of each sweep whose toast still shows, by toast id. Each
+  // sweep gets its own toast, so Undo takes back only its own items.
   const pending = useRef(new Map<string, ReviewItemPayload[]>());
   const sweeps = useRef(0);
 
@@ -122,19 +136,33 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
       const ids = items.map((item) => item.id);
       setSwept((current) => new Set([...current, ...ids]));
       pending.current.set(id, items);
-      const commit = () => {
-        // Undo or leaving the page already settled this Clear.
-        if (!pending.current.delete(id)) return;
-        // Items that did not close come back, so the inbox shows what is
-        // still open on the server.
-        void commitSweep(queryClient, items).then((failed) => {
+      // Items that did not close come back in their places, so the inbox
+      // shows what is still open on the server. Retry hides them again and
+      // closes them at once: the viewer already chose to dismiss them.
+      const settle = (closing: ReviewItemPayload[]) =>
+        void commitSweep(queryClient, closing).then((kept) => {
+          const failed = closing.filter((item) => kept.includes(item.id));
           if (failed.length === 0) return;
-          unsweep(setSwept, failed);
+          unsweep(setSwept, kept);
+          const errorId = `${id}-error`;
           add({
-            title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
+            actionProps: {
+              children: "Retry",
+              onClick: () => {
+                close(errorId);
+                setSwept((current) => new Set([...current, ...kept]));
+                settle(failed);
+              },
+            },
+            id: errorId,
+            title: `Could not dismiss ${fyiCount(failed.length)}`,
             type: "error",
           });
         });
+      const commit = () => {
+        // Undo or leaving the page already settled this sweep.
+        if (!pending.current.delete(id)) return;
+        settle(items);
       };
       const undo = () => {
         pending.current.delete(id);
@@ -147,7 +175,7 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
         id,
         onClose: commit,
         timeout: UNDO_MS,
-        title: `Cleared ${items.length} item${items.length === 1 ? "" : "s"}`,
+        title: `Dismissed ${fyiCount(items.length)}`,
         type: "success",
       });
     },
@@ -166,7 +194,7 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
   );
 }
 
-/** Clear Inbox items with an Undo, through `InboxSweepProvider`. */
+/** Dismiss Inbox FYIs with an Undo, through `InboxSweepProvider`. */
 export function useInboxSweep(): InboxSweeper {
   const sweeper = useContext(InboxSweepContext);
   if (!sweeper) throw new Error("useInboxSweep needs an InboxSweepProvider");

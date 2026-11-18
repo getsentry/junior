@@ -5,9 +5,10 @@ import type { DashboardShell } from "./src/public-assets";
 
 const chrome = {
   ...devices["Desktop Chrome"],
-  // Blacksmith's Ubuntu runner includes Chrome. Use it in CI so the e2e
-  // job does not depend on apt package mirrors during Playwright setup.
-  ...(process.env["CI"] ? { channel: "chrome" } : undefined),
+  // Blacksmith's Ubuntu runner includes Chrome. Use it in GitHub Actions so
+  // the e2e job does not depend on apt package mirrors during Playwright
+  // setup. Not on `CI`: other machines, such as Junior's sandbox, set it too.
+  ...(process.env["GITHUB_ACTIONS"] ? { channel: "chrome" } : undefined),
 };
 
 // A spec under e2e/inbox/ tests the new UI, so its namesake in e2e/ is

@@ -2,6 +2,7 @@ import { ArrowUpRight, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 import type { AutomationListItem } from "@sentry/junior/api/schema";
 
+import { useAutomationExecutionsData } from "../api";
 import { FormNotice } from "../components/FormNotice";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { Button } from "../components/ui/button";
@@ -17,9 +18,9 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
-import type { SnoozeChoice } from "./inboxSnooze";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
+import { fadeTextClass } from "../textFade";
 
 const LAST_RUN_LABELS = {
   blocked: "blocked",
@@ -54,10 +55,11 @@ function attentionStatus(automation: AutomationListItem): string {
  * An Automation that needs attention, as an inbox row, on the same columns
  * as a Conversation row: its icon in the dot's place, then its title, its
  * status where the summary goes, and "Automation" with the ages. A click
- * expands it in place with why it is here, its last run, and the actions
- * that the Automation API supports. Only the labelled buttons leave the inbox. A
- * sweep never clears it; it leaves when the Automation is fixed or resumed,
- * or, in To do, when the viewer dismisses or snoozes this alert.
+ * expands it in place with its last run, the run's error when the status
+ * gives no reason, and the actions that the Automation API supports. Only
+ * the labelled buttons leave the inbox. A sweep never clears it; it leaves
+ * when the Automation is fixed or resumed, or, in To do, when the viewer
+ * dismisses or snoozes this alert.
  */
 export function InboxAutomationRow(props: {
   automation: AutomationListItem;
@@ -70,7 +72,7 @@ export function InboxAutomationRow(props: {
     menuOpen: boolean;
     onDismiss(): void;
     onMenu(open: boolean): void;
-    onSnooze(choice: SnoozeChoice): void;
+    onSnooze(untilMs: number): void;
   };
 }) {
   const { putAway } = props;
@@ -82,6 +84,9 @@ export function InboxAutomationRow(props: {
     automation.kind === "event" ? automation.trigger.problems : [];
   const detail = automation.statusReason ?? problems[0];
   const lastRun = lastRunLine(automation);
+  // The header says why the card is here. With no reason of its own, a
+  // failed or blocked run's error says it.
+  const why = useLastRunError(automation, props.expanded && !detail);
   const resume = useAutomationLifecycle(automation, "resume");
   const regionId = `inbox-automation-${automation.id}`;
   return (
@@ -105,10 +110,7 @@ export function InboxAutomationRow(props: {
       >
         <TriangleAlert
           aria-hidden="true"
-          className={cn(
-            "col-start-1 row-start-1 mt-[0.15rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700",
-            comfortable && "mt-[0.25rem]",
-          )}
+          className="col-start-1 row-start-1 mt-[0.25rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700"
           data-inbox-slot="dot"
         />
         <span
@@ -117,8 +119,8 @@ export function InboxAutomationRow(props: {
         >
           <span
             className={cn(
-              "truncate font-medium leading-snug text-dashboard-text",
-              comfortable ? "text-base" : "text-sm",
+              fadeTextClass,
+              "font-display text-base font-medium leading-snug text-dashboard-text",
             )}
           >
             {automation.title}
@@ -147,12 +149,12 @@ export function InboxAutomationRow(props: {
           role="region"
         >
           <dl className="m-0 grid gap-1.5">
-            <div className="flex min-w-0 gap-2">
-              <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
-              <dd className="m-0 min-w-0 text-dashboard-text">
-                {detail ? `${status}: ${detail}` : status}
-              </dd>
-            </div>
+            {why ? (
+              <div className="flex min-w-0 gap-2">
+                <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
+                <dd className="m-0 min-w-0 text-dashboard-text">{why}</dd>
+              </div>
+            ) : null}
             {problems.slice(automation.statusReason ? 0 : 1).map((problem) => (
               <div className="flex min-w-0 gap-2" key={problem}>
                 <dt className="w-20 shrink-0 text-dashboard-text-muted">
@@ -220,6 +222,21 @@ export function InboxAutomationRow(props: {
       ) : null}
     </li>
   );
+}
+
+/** The error of the newest run when it failed or was blocked. */
+function useLastRunError(
+  automation: AutomationListItem,
+  enabled: boolean,
+): string | undefined {
+  const failed =
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked";
+  const latest = useAutomationExecutionsData(enabled && failed, automation.id)
+    .data?.executions[0];
+  return enabled && latest && latest.status !== "completed"
+    ? latest.error
+    : undefined;
 }
 
 function AttentionStatus(props: { detail?: string; status: string }) {

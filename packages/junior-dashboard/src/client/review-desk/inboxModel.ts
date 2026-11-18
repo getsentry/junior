@@ -65,12 +65,12 @@ export function inboxViewPath(
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: ReviewItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: ReviewItemPayload): boolean {
   return Boolean(item.request);
 }
 
@@ -108,6 +108,67 @@ export function viewRows(
   view: "decisions" | "prs",
 ): InboxBundle[] {
   return itemsInView(items, view).map(singleRow).sort(queueOrder);
+}
+
+/**
+ * Fold each open notice about the subject of an open action item into that
+ * item, matched by subject id or URL, so the item's row shows it as a status
+ * line. The notice stays open on its own: closing the action item does not
+ * close it, and it then shows on its own again.
+ */
+export function foldNotices(items: readonly ReviewItemPayload[]): {
+  /** The notices that fold into each action item, by the item's id. */
+  folded: ReadonlyMap<string, ReviewItemPayload[]>;
+  /** Every other item, in the same order. */
+  shown: ReviewItemPayload[];
+} {
+  const subjectKeys = (item: ReviewItemPayload) =>
+    [item.subject?.id, item.subject?.url].filter(
+      (key): key is string => key !== undefined,
+    );
+  const hosts = new Map<string, ReviewItemPayload>();
+  for (const item of [...items].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  )) {
+    if (item.status !== "open" || item.kind !== "action") continue;
+    for (const key of subjectKeys(item))
+      if (!hosts.has(key)) hosts.set(key, item);
+  }
+  const folded = new Map<string, ReviewItemPayload[]>();
+  const shown = items.filter((item) => {
+    if (item.status !== "open" || item.kind !== "notice") return true;
+    const host = subjectKeys(item)
+      .map((key) => hosts.get(key))
+      .find(Boolean);
+    if (!host) return true;
+    folded.set(host.id, [...(folded.get(host.id) ?? []), item]);
+    return false;
+  });
+  return { folded, shown };
+}
+
+/**
+ * The FYI list: one row per open notice, newest first. Notices wait on no
+ * one, so they are not in To do.
+ */
+export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
+  return items
+    .filter((item) => item.status === "open" && item.kind === "notice")
+    .map(singleRow)
+    .sort(
+      (a, b) =>
+        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
+        a.key.localeCompare(b.key),
+    );
+}
+
+/**
+ * The status line of a notice folded into an item, such as "Merge conflict".
+ * The item's card already names the subject, so the reference that plugin
+ * titles add after ` · ` drops out.
+ */
+export function foldedNoticeLabel(notice: ReviewItemPayload): string {
+  return notice.title.split(" · ")[0] || notice.title;
 }
 
 /** One labelled group of rows in the stream. */
@@ -252,7 +313,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -267,6 +328,11 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
 }
 
 /**

@@ -5,8 +5,6 @@ import {
   type DashboardIdentity,
 } from "../../../api/schema";
 import { InlineError } from "../../components/InlineError";
-import { AnchorHeading } from "../../components/layout/AnchorHeading";
-import { Card } from "../../components/layout/Card";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
   Field,
@@ -15,12 +13,16 @@ import {
   FieldLabel,
 } from "../../components/ui/field";
 import { patch } from "../../http";
+import { SettingFrame, type SettingFrameKind } from "./SettingFrame";
 
 /**
  * Let the user turn the new dashboard on or off. Both dashboards show it, so
  * a user can always go back.
  */
-export function ExperimentalUiSetting(props: { identity: DashboardIdentity }) {
+export function ExperimentalUiSetting(props: {
+  frame?: SettingFrameKind;
+  identity: DashboardIdentity;
+}) {
   const change = useMutation({
     mutationFn: (experimentalUi: boolean) =>
       patch(dashboardIdentitySchema, "/api/me", { experimentalUi }),
@@ -28,12 +30,11 @@ export function ExperimentalUiSetting(props: { identity: DashboardIdentity }) {
     onSuccess: () => window.location.reload(),
   });
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <AnchorHeading
-        anchor="new-dashboard"
-        className="m-0 text-lg font-bold"
-        title="New dashboard"
-      />
+    <SettingFrame
+      anchor="new-dashboard"
+      frame={props.frame}
+      title="New dashboard"
+    >
       <Field className="mt-4" orientation="horizontal">
         <Checkbox
           aria-describedby="experimental-ui-help"
@@ -57,6 +58,6 @@ export function ExperimentalUiSetting(props: { identity: DashboardIdentity }) {
           Could not change the dashboard. Try again.
         </InlineError>
       ) : null}
-    </Card>
+    </SettingFrame>
   );
 }

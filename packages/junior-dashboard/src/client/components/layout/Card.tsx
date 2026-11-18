@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { cn } from "../../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../../styles";
 
 /** Frame elevated dashboard content with the shared translucent surface. */
 export function Card(props: {
@@ -28,7 +28,8 @@ export function Card(props: {
     <Component
       aria-current={props["aria-current"]}
       className={cn(
-        "min-w-0 overflow-hidden rounded-lg border",
+        "min-w-0 overflow-hidden border",
+        dashboardSurfaceRadiusClass,
         surface,
         padding,
         props.className,

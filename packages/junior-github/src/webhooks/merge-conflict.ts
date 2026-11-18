@@ -200,9 +200,9 @@ export async function loadGitHubMergeConflictEvents(args: {
       return [];
     }
   };
-  const limit = pLimit(PULL_REQUEST_CHECK_CONCURRENCY);
-  const conflicts = await Promise.all(
-    pullRequestRefs(args.events).map((ref) => limit(() => check(ref))),
+  const conflicts = await pLimit(PULL_REQUEST_CHECK_CONCURRENCY).map(
+    pullRequestRefs(args.events),
+    (ref) => check(ref),
   );
   return conflicts.flat();
 }

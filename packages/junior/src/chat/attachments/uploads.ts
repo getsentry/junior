@@ -1,9 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, lte } from "drizzle-orm";
-import pLimit from "p-limit";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachmentUploads, juniorAttachments } from "@/db/schema";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type { InputFile, MessageAttachment } from "./input";
 import { detectImageMediaType, isVisionImageMediaType } from "./media";
 import { readLiveAttachment, recordUploadedAttachment } from "./store";
@@ -291,25 +290,20 @@ export async function recordAttachmentUploads(args: {
   storage: AttachmentStorage;
   uploads: readonly VerifiedAttachmentUpload[];
 }): Promise<MessageAttachment[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    args.uploads
-      .filter((upload) => !upload.recorded)
-      .map((upload) =>
-        limit(() =>
-          recordUploadedAttachment({
-            attachment: {
-              ...upload.attachment,
-              conversationId: args.conversationId,
-              sha256: upload.sha256,
-              storageKey: upload.storageKey,
-            },
-            db: args.db,
-            nowMs: args.nowMs ?? Date.now(),
-            storage: args.storage,
-          }),
-        ),
-      ),
+  await mapBounded(
+    args.uploads.filter((upload) => !upload.recorded),
+    (upload) =>
+      recordUploadedAttachment({
+        attachment: {
+          ...upload.attachment,
+          conversationId: args.conversationId,
+          sha256: upload.sha256,
+          storageKey: upload.storageKey,
+        },
+        db: args.db,
+        nowMs: args.nowMs ?? Date.now(),
+        storage: args.storage,
+      }),
   );
   return args.uploads.map((upload) => upload.attachment);
 }

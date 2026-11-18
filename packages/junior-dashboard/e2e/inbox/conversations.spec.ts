@@ -31,12 +31,17 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       },
     );
-    await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-    const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
-    await expect(inbox.getByText("Loading", { exact: true })).toBeAttached();
+    await page.goto(`${dashboard.baseURL}/?view=conversations`, {
+      waitUntil: "domcontentloaded",
+    });
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await expect(list.getByText("Loading", { exact: true })).toBeAttached();
     releaseFeed?.();
     await expect(
-      inbox.getByRole("link", { name: /Checkout latency triage/ }).first(),
+      list.getByRole("link", { name: /Checkout latency triage/ }).first(),
     ).toBeVisible();
     await screenshot(page, "conversations");
 
@@ -223,10 +228,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(
       page
-        .getByRole("region", { exact: true, name: "Inbox" })
+        .getByRole("region", { exact: true, name: "Conversations" })
         .getByRole("link", { name: /Checkout latency triage/ })
         .first(),
     ).toBeVisible();
@@ -454,9 +459,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     // The list scrolls in its own pane too.
-    await page.getByRole("link", { name: /^Back to/ }).click();
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     const conversationList = page
-      .getByRole("region", { exact: true, name: "Inbox" })
+      .getByRole("region", { exact: true, name: "Conversations" })
       .locator(".overflow-y-auto")
       .first();
     await expect

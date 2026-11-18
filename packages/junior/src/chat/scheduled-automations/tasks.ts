@@ -2,7 +2,7 @@ import { requireAutomationRevision } from "@/chat/automations/revision";
 import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import { refreshAutomationLastRun } from "@/chat/automations/execution-stats";
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -126,33 +126,6 @@ export async function readScheduledAutomation(
     )
     .limit(1);
   return rows[0] ? parseScheduledAutomationRow(rows[0]) : undefined;
-}
-
-/** Read live scheduled automations by ID, in the given order. */
-export async function readScheduledAutomations(
-  db: JuniorDatabase,
-  ids: readonly string[],
-): Promise<ScheduledAutomation[]> {
-  if (ids.length === 0) return [];
-  const rows = await db
-    .select()
-    .from(juniorAutomations)
-    .where(
-      and(
-        inArray(juniorAutomations.id, [...ids]),
-        eq(juniorAutomations.kind, "scheduled"),
-      ),
-    );
-  const tasks = new Map(
-    rows
-      .map(parseScheduledAutomationRow)
-      .filter(isListedScheduledAutomation)
-      .map((task) => [task.id, task]),
-  );
-  return ids.flatMap((id) => {
-    const task = tasks.get(id);
-    return task ? [task] : [];
-  });
 }
 
 async function readListedScheduledAutomations(

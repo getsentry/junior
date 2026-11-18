@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mentionsTag } from "@sentry/junior-plugin-api";
 import { pathToFileURL } from "node:url";
 import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
 import {
@@ -219,26 +220,20 @@ async function collectPackageWarnings(
     return warnings;
   }
 
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const pluginVersions = await Promise.all(
-    packages
-      .filter((declaredPackage) =>
-        declaredPackage.name.startsWith("@sentry/junior-"),
-      )
-      .map((declaredPackage) =>
-        limit(async () => {
-          if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
-            return undefined;
-          }
-          const version = comparableVersion(
-            (await readInstalledPackageVersion(
-              rootDir,
-              declaredPackage.name,
-            )) ?? declaredPackage.spec,
-          );
-          return { name: declaredPackage.name, version };
-        }),
-      ),
+  const pluginVersions = await mapBounded(
+    packages.filter((declaredPackage) =>
+      declaredPackage.name.startsWith("@sentry/junior-"),
+    ),
+    async (declaredPackage) => {
+      if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
+        return undefined;
+      }
+      const version = comparableVersion(
+        (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
+          declaredPackage.spec,
+      );
+      return { name: declaredPackage.name, version };
+    },
   );
   for (const plugin of pluginVersions) {
     if (plugin?.version && plugin.version !== coreVersion) {
@@ -287,9 +282,10 @@ async function validateSkillDirectory(
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
   if (
-    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b/.test(
       parsed.skill.body,
-    )
+    ) ||
+    mentionsTag(parsed.skill.body, ["active-mcp-tools", "active-mcp-catalogs"])
   ) {
     errors.push(
       `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,
@@ -521,21 +517,14 @@ async function collectPluginDirectories(rootDir: string): Promise<string[]> {
     return pluginDirs;
   }
 
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) =>
-        limit(async () => {
-          const pluginDir = path.join(
-            contentRoot(rootDir, "plugins"),
-            entry.name,
-          );
-          if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
-            pluginDirs.push(pluginDir);
-          }
-        }),
-      ),
+  await mapBounded(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
+      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+        pluginDirs.push(pluginDir);
+      }
+    },
   );
 
   return pluginDirs.sort((left, right) => left.localeCompare(right));

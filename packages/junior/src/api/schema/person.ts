@@ -79,8 +79,12 @@ export const identifiedActorSchema = actorIdentitySchema
   .extend({ email: z.string().min(1) })
   .strict();
 
-export const actorSummaryReportSchema = actorTotalsReportSchema
-  .extend({
+/**
+ * One person in the People list. Counts and spend are per range; the Turn
+ * range is all-time. Profile totals live on the profile read.
+ */
+export const actorSummaryReportSchema = z
+  .object({
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
     actor: identifiedActorSchema,

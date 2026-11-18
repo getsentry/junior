@@ -4,8 +4,7 @@
  * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -367,13 +366,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           rawText: content.text,
           userText: replaceTopLevelText(content, strippedUserText),
         };
-        await Promise.all(
-          (options.queuedMessages ?? []).map((queued) =>
-            ensureSlackMessageActorIdentity(
-              queued.message,
-              teamId,
-              lookupSlackUser,
-            ),
+        await mapBounded(options.queuedMessages ?? [], (queued) =>
+          ensureSlackMessageActorIdentity(
+            queued.message,
+            teamId,
+            lookupSlackUser,
           ),
         );
         const effectiveUserText = currentText.userText;
@@ -471,40 +468,33 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
-          const limit = pLimit(FAN_OUT_CONCURRENCY);
-          return await Promise.all(
-            queuedMessages.map((queued) =>
-              limit(async () => {
-                const attachments = queued.message.attachments;
-                // An answer steers in as its Review item tag.
-                const reviewItemInput = await loadReviewItemInput(
-                  getMessageReviewItemChange(queued.message),
-                );
-                return {
-                  actor: inboundMessageActor(queued),
-                  ...(reviewItemInput
-                    ? { kind: "runtime" as const }
-                    : undefined),
-                  provenance: inboundMessageProvenance(queued, teamId),
-                  text: reviewItemInput ?? queued.userText,
-                  timestampMs: queued.message.metadata.dateSent.getTime(),
-                  omittedImageAttachmentCount:
-                    !canReadImages() && hasPotentialImageAttachment(attachments)
-                      ? countPotentialImageAttachments(attachments)
-                      : 0,
-                  attachments: await deps.resolveUserAttachments(attachments, {
-                    conversationId,
-                    threadId,
-                    actorId: queued.message.author.userId,
-                    channelId,
-                    runId,
-                    conversation: preparedState.conversation,
-                    messageTs: getMessageTimestamp(queued.message),
-                  }),
-                };
+          return await mapBounded(queuedMessages, async (queued) => {
+            const attachments = queued.message.attachments;
+            // An answer steers in as its Review item tag.
+            const reviewItemInput = await loadReviewItemInput(
+              getMessageReviewItemChange(queued.message),
+            );
+            return {
+              actor: inboundMessageActor(queued),
+              ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
+              provenance: inboundMessageProvenance(queued, teamId),
+              text: reviewItemInput ?? queued.userText,
+              timestampMs: queued.message.metadata.dateSent.getTime(),
+              omittedImageAttachmentCount:
+                !canReadImages() && hasPotentialImageAttachment(attachments)
+                  ? countPotentialImageAttachments(attachments)
+                  : 0,
+              attachments: await deps.resolveUserAttachments(attachments, {
+                conversationId,
+                threadId,
+                actorId: queued.message.author.userId,
+                channelId,
+                runId,
+                conversation: preparedState.conversation,
+                messageTs: getMessageTimestamp(queued.message),
               }),
-            ),
-          );
+            };
+          });
         };
         /** Save new messages before completing the mailbox delivery. */
         const saveMessagesForPausedTurn = async (

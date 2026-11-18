@@ -5,6 +5,7 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { withoutStandaloneUrl } from "../display-text/DisplayText";
 import { displayPlainText } from "../display-text/plainText";
 
 /** Return the review desk route that selects one item. */
@@ -35,6 +36,18 @@ export function reviewItemSubjectHref(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Return the text of an item without a bare URL to its subject, for a
+ * surface that shows the subject's own card.
+ */
+export function reviewItemText(
+  item: Pick<ReviewItemPayload, "body" | "subject">,
+): string {
+  return item.subject?.url
+    ? withoutStandaloneUrl(item.body, item.subject.url)
+    : item.body;
 }
 
 /** Name the state of an item: what it needs while open, or how it closed. */
@@ -145,6 +158,56 @@ export function answerLine(
   return answerRows(request, answer)
     .map((row) => row.value)
     .join(" · ");
+}
+
+/**
+ * Say what the viewer answered, such as "You answered Hold", so a row shows
+ * it in place of the ask. An answer with no choice, only text, is "You
+ * replied".
+ */
+export function viewerAnswerLine(
+  item: Pick<ReviewItemPayload, "answer" | "request">,
+): string | undefined {
+  if (!item.request || !item.answer) return undefined;
+  const { values } = normalizeUserInputAnswer(item.request, item.answer);
+  const choices = item.request.fields.flatMap((field) =>
+    field.kind === "text" ? [] : (values[field.id] ?? []),
+  );
+  return choices.length > 0
+    ? `You answered ${choices.join(", ")}`
+    : "You replied";
+}
+
+/**
+ * Say what the viewer last answered in a Conversation, from its closed
+ * items newest closed first, until a later Message moves it on. The answer's
+ * own Message has the close time, so it does not count as later.
+ */
+export function conversationAnswerLine(
+  closed: readonly Pick<
+    ReviewItemPayload,
+    "addedByConversationId" | "answer" | "closedAt" | "closedBy" | "request"
+  >[],
+  conversation: { id: string; lastMessageAt?: string | undefined },
+  viewerEmail: string | undefined,
+): string | undefined {
+  if (!viewerEmail) return undefined;
+  const since = conversation.lastMessageAt
+    ? Date.parse(conversation.lastMessageAt)
+    : undefined;
+  for (const item of closed) {
+    if (
+      item.addedByConversationId !== conversation.id ||
+      !item.closedAt ||
+      item.closedBy?.email !== viewerEmail
+    )
+      continue;
+    if (since !== undefined && since > Date.parse(item.closedAt))
+      return undefined;
+    const line = viewerAnswerLine(item);
+    if (line) return line;
+  }
+  return undefined;
 }
 
 /** The open Review items of the inbox, in the groups and order it shows. */

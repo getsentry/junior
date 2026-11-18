@@ -86,7 +86,7 @@ export function ConversationPlan(props: {
     (item) => item.status !== "done" && item.status !== "cancelled",
   ).length;
   return (
-    <DetailsCard count={open} flat title="Plan">
+    <DetailsCard count={open} title="Plan">
       <DetailsList
         itemKey={(item) => String(item.id)}
         items={items}

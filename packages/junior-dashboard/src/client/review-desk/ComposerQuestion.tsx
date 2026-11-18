@@ -26,6 +26,7 @@ import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 import { ReviewItemTitle } from "./ReviewItemPeople";
 import { reviewItemTitleText } from "./reviewItemFormat";
@@ -399,6 +400,7 @@ function DockedQuestion(props: {
               text={item.request.question}
             />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             docked
             ref={props.formRef}

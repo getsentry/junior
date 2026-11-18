@@ -8,7 +8,6 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   getSubscribedReplyPreflightDecision,
@@ -68,7 +67,7 @@ import {
   getTurnLifecycle,
   type FailConversationTurnInput,
 } from "@/chat/conversations/turn-lifecycle";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -430,15 +429,13 @@ export function createSlackTurnRuntime<
   const stopProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(processingReactions.map((reaction) => reaction.stop()));
+    await mapBounded(processingReactions, (reaction) => reaction.stop());
   };
 
   const completeProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(
-      processingReactions.map((reaction) => reaction.complete()),
-    );
+    await mapBounded(processingReactions, (reaction) => reaction.complete());
   };
 
   const createProcessingReactionTracker = (thread: Thread) => {
@@ -616,25 +613,23 @@ export function createSlackTurnRuntime<
     messages: SteeringCandidateMessage[];
     thread: Thread;
   }): Promise<SteeringMessageSelection> => {
-    const limit = pLimit(FAN_OUT_CONCURRENCY);
-    const selected: SteeringMessageDecision[] = await Promise.all(
-      args.messages.map((candidate) =>
-        limit(async () => {
-          const decision = await decideSteeringMessage(
-            args.thread,
-            candidate,
-            args.conversationContext,
-            args.conversationId,
-          );
-          return {
-            context: decision.context,
-            decision: decision.decision,
-            inboundMessageId: candidate.inboundMessageId,
-            message: candidate.message,
-            text: decision.text,
-          };
-        }),
-      ),
+    const selected: SteeringMessageDecision[] = await mapBounded(
+      args.messages,
+      async (candidate) => {
+        const decision = await decideSteeringMessage(
+          args.thread,
+          candidate,
+          args.conversationContext,
+          args.conversationId,
+        );
+        return {
+          context: decision.context,
+          decision: decision.decision,
+          inboundMessageId: candidate.inboundMessageId,
+          message: candidate.message,
+          text: decision.text,
+        };
+      },
     );
     if (selected.some((message) => message.decision.shouldUnsubscribe)) {
       return {
@@ -776,10 +771,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(context, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(context, queued.message),
             );
           };
           const ack = async (): Promise<void> => {
@@ -791,10 +784,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: true,
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(context, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(context, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -1153,10 +1144,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: Boolean(message.isMention),
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(turnContext, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(turnContext, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -1186,10 +1175,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(turnContext, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(turnContext, queued.message),
             );
           };
           const ack = async (): Promise<void> => {

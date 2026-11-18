@@ -56,7 +56,7 @@ import {
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
 import { useInboxUi } from "./uiShell";
-import type { DashboardCoreData, SystemData } from "./types";
+import type { DashboardCoreData, SystemPluginsData } from "./types";
 
 declare global {
   interface Window {
@@ -551,8 +551,9 @@ export function useLocationDetailData(locationId: string | undefined) {
 }
 
 /** Fetch discovered skills used by System navigation and capability views. */
-export function useSkillsData() {
+export function useSkillsData(options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: ["dashboard", "skills"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
@@ -576,7 +577,11 @@ export function useSkillDetail(name: string) {
   });
 }
 
-/** Fetch operational plugin reports used by System navigation and pages. */
+// Reports and conversation stats are aggregates that are slow to build and
+// change slowly. Keep them across route changes and window focus.
+const dashboardAggregateStaleTimeMs = 5 * 60_000;
+
+/** Fetch operational plugin reports shown on the System Plugins pages. */
 export function usePluginReportsData() {
   return useQuery({
     queryKey: ["dashboard", "plugin-reports"],
@@ -586,7 +591,26 @@ export function usePluginReportsData() {
         "/api/plugin-reports",
         signal,
       ),
+    refetchOnWindowFocus: false,
     retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
+  });
+}
+
+/** Fetch conversation activity and model usage for the System overview. */
+export function useConversationStatsData(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    enabled: options.enabled ?? true,
+    queryKey: ["dashboard", "conversation-stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        conversationStatsReportSchema,
+        "/api/conversations/stats",
+        signal,
+      ),
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
   });
 }
 
@@ -615,31 +639,15 @@ export function useCacheWarmingSavings(days: number) {
   });
 }
 
-/** Fetch system metrics, plugin inventory, and operational reports. */
-export function useSystemData(coreData: DashboardCoreData) {
+/** Fetch the plugin inventory, skills, and operational reports. */
+export function useSystemPluginsData() {
   const pluginsQuery = usePluginsData();
-  const conversationStatsQuery = useQuery({
-    queryKey: ["dashboard", "conversation-stats"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationStatsReportSchema,
-        "/api/conversations/stats",
-        signal,
-      ),
-    retry: false,
-  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
   return {
     data: dataReady
       ? ({
-          ...coreData,
-          conversationStatsError: Boolean(conversationStatsQuery.error),
-          ...(conversationStatsQuery.data
-            ? { conversationStats: conversationStatsQuery.data }
-            : undefined),
-          conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
@@ -647,9 +655,8 @@ export function useSystemData(coreData: DashboardCoreData) {
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,
-        } satisfies SystemData)
+        } satisfies SystemPluginsData)
       : undefined,
     error: pluginsQuery.error ?? skillsQuery.error,
-    isPending: pluginsQuery.isPending || skillsQuery.isPending,
   };
 }

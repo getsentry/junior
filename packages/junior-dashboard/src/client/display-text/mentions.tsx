@@ -5,7 +5,7 @@ import { HighlightText } from "../conversations/transcriptSearch";
 import { PersonReference } from "../components/PersonReference";
 import { personFromActor } from "../person";
 import { replaceSlackEmoji } from "./emoji";
-import { ANCHOR_CLASS } from "./links";
+import { useAnchorClass } from "./links";
 
 type Mention = {
   end: number;
@@ -128,6 +128,7 @@ function MentionView(props: { mention: Mention }) {
   const actor = sigil === "@" ? people.get(id) : undefined;
   const label = mentionLabel(props.mention, people);
   const person = personFromActor(actor);
+  const anchorClass = useAnchorClass("person");
   if (!person) {
     return (
       <span className="font-medium text-dashboard-accent-text" title={id}>
@@ -140,7 +141,7 @@ function MentionView(props: { mention: Mention }) {
       card={links}
       className={
         links && person.email
-          ? ANCHOR_CLASS
+          ? anchorClass
           : "font-medium text-dashboard-accent-text"
       }
       highlightSelf

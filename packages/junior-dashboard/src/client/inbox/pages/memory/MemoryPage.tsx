@@ -29,7 +29,7 @@ import {
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../../searchParams";
-import { cn } from "../../../styles";
+import { cn, dashboardIconTileClass } from "../../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
@@ -40,6 +40,11 @@ import { MemoryTimeline } from "../../../pages/memory/MemoryTimeline";
 import { MemoryCostChart } from "../../../pages/memory/MemoryCostChart";
 import { useMemoryRecord } from "../../../pages/memory/memoryRecord";
 import { getDashboardAgentName } from "../../../agentName";
+import {
+  fadeOverflowClass,
+  fadeTextClass,
+  fadeWhenOverflowing,
+} from "../../../textFade";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
@@ -333,7 +338,6 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     {
       detail: "shared across the workspace",
       label: "Total active",
-      tone: "text-dashboard-accent-text",
       value: stats.active.toLocaleString("en-US"),
     },
     {
@@ -352,12 +356,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
           <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             {item.label}
           </div>
-          <div
-            className={cn(
-              "mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text",
-              item.tone,
-            )}
-          >
+          <div className="mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text">
             {item.value}
           </div>
           <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
@@ -448,7 +447,7 @@ function OverviewBreakdownRow(props: {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-bg-elevated px-3 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+      <div className={cn(dashboardIconTileClass, "size-9")}>
         <Icon aria-hidden="true" size={15} />
       </div>
       <div className="min-w-0 flex-1">
@@ -497,11 +496,22 @@ function MemoryRow(props: {
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+            <h3
+              className={cn(
+                fadeOverflowClass,
+                "m-0 font-display text-base font-medium leading-snug text-dashboard-text",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {props.record.title}
             </h3>
           </div>
-          <div className="mt-1.5 truncate font-sans text-xs leading-relaxed text-dashboard-text-muted">
+          <div
+            className={cn(
+              fadeTextClass,
+              "mt-1.5 font-sans text-xs leading-relaxed text-dashboard-text-muted",
+            )}
+          >
             Source: {source}
             <span className="sm:hidden">
               {" "}
@@ -509,10 +519,20 @@ function MemoryRow(props: {
             </span>
           </div>
         </div>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text-muted sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text-muted sm:block",
+          )}
+        >
           {kind}
         </span>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text sm:block",
+          )}
+        >
           {shortDate(remembered)}
         </span>
       </button>

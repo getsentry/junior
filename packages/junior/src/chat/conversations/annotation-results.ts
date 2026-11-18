@@ -15,11 +15,13 @@ export async function saveObjectAnnotations(
   const annotations = objectAnnotationSchema.array().parse(value);
   await getDb().transaction(async (db) => {
     const store = createPluginAnnotations({ conversationId, plugin, db });
+    /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
     for (const annotation of annotations) {
       await store.upsert(annotation);
       // Replace a legacy link for the same object without changing other annotations.
       await store.remove("resource_link", annotation.key);
     }
+    /* oxlint-enable no-await-in-loop */
   });
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }

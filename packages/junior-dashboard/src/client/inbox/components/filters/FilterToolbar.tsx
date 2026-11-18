@@ -8,6 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../../../components/ui/tooltip";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
 
 /** One filter that is set, as its removable chip shows it. */
 export type ActiveFilter = {
@@ -124,7 +125,7 @@ export function ActiveFilterChips(props: { filters: ToolbarFilters }) {
           onClick={() => filters.onRemove(filter.key)}
           title={`${filter.label}: ${filter.valueLabel}`}
         >
-          <span className="truncate">
+          <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             <span className="text-dashboard-text-muted">{filter.label}</span>{" "}
             {filter.valueLabel}
           </span>

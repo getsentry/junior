@@ -50,6 +50,20 @@ test("opens links outside the loaded rows from the page around them", async ({
     pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
   ).toEqual(["?turn=turn-30"]);
 
+  // A Message link shows its row in the transcript.
+  pageRequests.length = 0;
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-51`,
+  );
+  await expect(
+    page
+      .getByLabel("Conversation transcript")
+      .getByText("Transcript message 51 "),
+  ).toBeInViewport();
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?message=message-51"]);
+
   // A link that the server cannot find is dropped.
   await page.goto(
     `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-missing`,
@@ -70,7 +84,7 @@ test("opens a link that the cached latest page holds at its row", async ({
   mock.pagedDetail = true;
   const pageRequests = recordPageRequests(page);
   // A hover caches the latest page, which holds event 100.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -110,7 +124,7 @@ test("opens at the latest event when a link at open fails", async ({
   });
   mock.pagedDetail = true;
   // A hover caches the latest page, so it shows while the link loads.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
