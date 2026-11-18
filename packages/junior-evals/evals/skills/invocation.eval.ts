@@ -9,15 +9,9 @@ import {
   insertWatch,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { toolCallsOf } from "@junior-evals/fixture/results";
+import { loadedSkillNames, toolCallsOf } from "@junior-evals/fixture/results";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
-
-function loadedSkillNames(result: Parameters<typeof toolCallsOf>[1]) {
-  return toolCallsOf("loadSkill", result)
-    .filter((call) => call.status === "completed")
-    .map((call) => (call.input as { skill_name?: unknown }).skill_name);
-}
 
 describe("Skills", () => {
   test("when an explicit skill runs twice in one thread, keep its replies ordered", async ({
