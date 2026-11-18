@@ -30,11 +30,7 @@ import {
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import {
-  findSkillByName,
-  parseSkillInvocations,
-  type Skill,
-} from "@/chat/skills";
+import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
@@ -147,7 +143,7 @@ import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   discoverRunSkills,
-  restoreTurnSkills,
+  restoreActiveSkill,
   skillInvocationText,
 } from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
@@ -526,8 +522,7 @@ async function executeAgentRunInPrivacyContext(
     if (dispatchSkill && invokedSkills.length === 0) {
       throw new Error(missingAutomationSkillReason(dispatchSkill));
     }
-    const activeSkills: Skill[] = [];
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const skillSandbox = new SkillSandbox(availableSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
     const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
@@ -658,10 +653,9 @@ async function executeAgentRunInPrivacyContext(
     );
 
     // A new turn starts with no active skill. A resumed turn recovers the
-    // skills loaded earlier in this Turn, never skill state from older turns.
+    // skill loaded last in this Turn, never skill state from older turns.
     // Invoked skills wait for the model to call `loadSkill`.
-    await restoreTurnSkills({
-      activeSkills,
+    await restoreActiveSkill({
       currentTurnMessages,
       resumed: resumedFromSessionRecord,
       skillSandbox,
@@ -750,7 +744,6 @@ async function executeAgentRunInPrivacyContext(
     // ── Tool wiring ──────────────────────────────────────────────────
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
-      activeSkills,
       behavior,
       currentActor: actor,
       currentAgentMessages,

@@ -25,8 +25,16 @@ export function skillReferences(
   text: string,
   availableSkills: SkillMetadata[],
 ): string[] {
-  const isSkill = (name: string) =>
-    availableSkills.some((skill) => skill.name === name);
+  return referencedSkillNames(text).filter((name) =>
+    availableSkills.some((skill) => skill.name === name),
+  );
+}
+
+/**
+ * Return every name that `text` writes as a skill reference, once each, in
+ * the order they appear, whether or not a skill has that name.
+ */
+export function referencedSkillNames(text: string): string[] {
   // Any character but a letter, digit, or `$` can come before `$`: a tag,
   // such as `<instructions>$name`, Slack code, or Slack italics
   // (`_$name_`). `US$5` is not a reference. The name must end where the
@@ -47,7 +55,6 @@ export function skillReferences(
     ...matches(slashPattern),
   ]
     .sort((left, right) => left.index - right.index)
-    .map(({ name }) => name)
-    .filter(isSkill);
+    .map(({ name }) => name);
   return [...new Set(names)];
 }

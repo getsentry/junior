@@ -9,7 +9,7 @@ import {
   parseSkillInvocations,
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
 import { renderTaskInput } from "@/chat/task-input";
 
@@ -200,32 +200,39 @@ describe("skills", () => {
     expect(parseSkillInvocations("/brief github: octocat", [])).toEqual([]);
   });
 
-  it("lets the model load a manual-only skill only when invoked or referenced by a loaded skill", () => {
-    const names = (invoked: string[], loaded: Skill[] = []) =>
-      loadableSkills(stubSkills, invoked, loaded).map((skill) => skill.name);
-    const loaded = (body: string): Skill => ({ ...stubSkills[0]!, body });
+  it("lets the model load a manual-only skill only when invoked or referenced by a loadable skill", () => {
+    const manual = (name: string, references?: string[]): SkillMetadata => ({
+      name,
+      description: name,
+      skillPath: `/tmp/${name}`,
+      disableModelInvocation: true,
+      ...(references ? { references } : undefined),
+    });
+    const names = (skills: SkillMetadata[], invoked: string[] = []) =>
+      loadableSkills(skills, invoked).map((skill) => skill.name);
 
-    expect(names([])).toEqual(["brief", "sum"]);
-    expect(names(["brief", "weather-lookup"])).toEqual([
+    expect(names(stubSkills)).toEqual(["brief", "sum"]);
+    expect(names(stubSkills, ["brief", "weather-lookup"])).toEqual([
       "brief",
       "sum",
       "weather-lookup",
     ]);
-    expect(names([], [loaded("Then run $weather-lookup.")])).toEqual([
+    // References chain from a model-invocable or invoked skill.
+    const chained = [
+      { ...stubSkills[0]!, references: ["release"] },
+      manual("release", ["signoff"]),
+      manual("signoff"),
+      manual("deploy", ["rollback"]),
+      manual("rollback"),
+    ];
+    expect(names(chained)).toEqual(["brief", "release", "signoff"]);
+    expect(names(chained, ["deploy"])).toEqual([
       "brief",
-      "sum",
-      "weather-lookup",
+      "release",
+      "signoff",
+      "deploy",
+      "rollback",
     ]);
-    expect(
-      names(
-        [],
-        [
-          loaded(
-            "Use **weather-lookup**, `weather-lookup`, or $weather-lookup-v2.",
-          ),
-        ],
-      ),
-    ).toEqual(["brief", "sum"]);
   });
 
   it("treats agents/openai.yaml allow_implicit_invocation: false as manual-only", async () => {

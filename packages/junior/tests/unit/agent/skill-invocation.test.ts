@@ -3,15 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  loadableSkills,
-  restoreTurnSkills,
-  skillInvocationText,
-} from "@/chat/agent/skills";
+import { restoreActiveSkill, skillInvocationText } from "@/chat/agent/skills";
 import type { AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import { agentInvocationInputText } from "@/chat/agent-invocations/work";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
@@ -120,26 +116,20 @@ describe("skillInvocationText", () => {
   });
 });
 
-describe("restoreTurnSkills", () => {
-  it("restores the skills loaded earlier in a resumed Turn", async () => {
+describe("restoreActiveSkill", () => {
+  it("makes the skill loaded last in a resumed Turn active again", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "junior-resume-"));
-    const bodies: Record<string, string> = {
-      triage: "Triage it.",
-      release: "Ask $signoff before you ship.",
-      signoff: "Sign off.",
-    };
     const available: SkillMetadata[] = [];
-    for (const [name, body] of Object.entries(bodies)) {
+    for (const name of ["triage", "release", "signoff"]) {
       await fs.mkdir(path.join(root, name));
       await fs.writeFile(
         path.join(root, name, "SKILL.md"),
-        `---\nname: ${name}\ndescription: ${name}\ndisable-model-invocation: true\n---\n\n${body}\n`,
+        `---\nname: ${name}\ndescription: ${name}\n---\n\n${name}\n`,
       );
       available.push({
         name,
         description: name,
         skillPath: path.join(root, name),
-        disableModelInvocation: true,
       });
     }
     const loadSkillResult = (name: string, isError = false): PiMessage => ({
@@ -152,31 +142,23 @@ describe("restoreTurnSkills", () => {
       timestamp: 1,
     });
     const restore = async (resumed: boolean) => {
-      const activeSkills: Skill[] = [];
-      await restoreTurnSkills({
-        activeSkills,
+      const skillSandbox = new SkillSandbox(available);
+      await restoreActiveSkill({
         currentTurnMessages: [
+          loadSkillResult("triage"),
           loadSkillResult("release"),
           loadSkillResult("signoff", true),
         ],
         resumed,
-        skillSandbox: new SkillSandbox(available, activeSkills),
+        skillSandbox,
       });
-      return activeSkills;
+      return skillSandbox.getActiveSkill()?.name ?? null;
     };
 
     try {
-      // Only successful `loadSkill` results from this Turn come back.
-      const resumed = await restore(true);
-      expect(resumed.map((skill) => skill.name)).toEqual(["release"]);
-      // `release` names `$signoff`, so it stays loadable after the resume.
-      expect(
-        loadableSkills(available, ["triage"], resumed).map(
-          (skill) => skill.name,
-        ),
-      ).toContain("signoff");
-
-      expect(await restore(false)).toEqual([]);
+      // A failed `loadSkill` does not count.
+      expect(await restore(true)).toBe("release");
+      expect(await restore(false)).toBeNull();
     } finally {
       await fs.rm(root, { force: true, recursive: true });
     }

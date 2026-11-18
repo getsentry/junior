@@ -122,9 +122,9 @@ export function createLoadSkillTool(
       if (loadedSkill) {
         await options?.onSkillLoaded?.(loadedSkill);
       }
-      // `onSkillLoaded` adds the manual-only skills that this skill
-      // references to `availableSkills`. `<available-skills>` leaves them
-      // out, so name them here.
+      // `availableSkills` holds the manual-only skills that this skill
+      // references, but `<available-skills>` leaves them out, so name them
+      // here.
       const loadable = skillReferences(
         result.instructions ?? "",
         availableSkills,

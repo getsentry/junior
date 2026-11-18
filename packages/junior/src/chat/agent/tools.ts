@@ -78,7 +78,7 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import {
   credentialAuditAttributes,
@@ -190,7 +190,6 @@ export function createPromptHookContext(args: {
 
 interface ToolWiringArgs {
   abortAgent: () => void;
-  activeSkills: Skill[];
   behavior: TurnBehavior;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
@@ -539,11 +538,9 @@ export async function wireAgentTools(
       modelId: botConfig.guardianModelId,
     }),
   });
-  const invokedSkillNames = args.invokedSkills.map((skill) => skill.name);
   const skills = loadableSkills(
     args.availableSkills,
-    invokedSkillNames,
-    args.activeSkills,
+    args.invokedSkills.map((skill) => skill.name),
   );
   const tools = createTools(
     skills,
@@ -558,20 +555,7 @@ export async function wireAgentTools(
         const resolvedSkill = await args.skillSandbox.loadSkill(
           loadedSkill.name,
         );
-        const effective = resolvedSkill ?? loadedSkill;
-        upsertActiveSkill(args.activeSkills, effective);
-        // `loadSkill` reads `skills` on each call, so the manual-only skills
-        // that this skill references become loadable for the rest of the Turn.
-        skills.splice(
-          0,
-          skills.length,
-          ...loadableSkills(
-            args.availableSkills,
-            invokedSkillNames,
-            args.activeSkills,
-          ),
-        );
-        await tryRecordSkillLoadStat(effective);
+        await tryRecordSkillLoadStat(resolvedSkill ?? loadedSkill);
       },
     },
     toolRuntimeContext,

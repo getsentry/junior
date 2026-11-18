@@ -4,54 +4,43 @@ import type { Actor } from "@sentry/junior-plugin-api";
 import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { logInfo } from "@/chat/logging";
-import { skillReferences } from "@/chat/skill-references";
-import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
+import { discoverSkills, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { mapBounded } from "@/chat/fan-out";
 import { readTaskInstructions } from "@/chat/task-input";
 
 let startupDiscoveryLogged = false;
 
-/** Upsert a skill into the active skills list by name. */
-export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
-  const existing = activeSkills.find((skill) => skill.name === next.name);
-  if (existing) {
-    existing.body = next.body;
-    existing.description = next.description;
-    existing.skillPath = next.skillPath;
-    existing.allowedTools = next.allowedTools;
-    existing.pluginProvider = next.pluginProvider;
-    return;
-  }
-
-  activeSkills.push(next);
-}
-
 /**
  * Return the skills that the model can load with `loadSkill`. A manual-only
- * skill is loadable only in a Turn whose message invokes it, or where a skill
- * loaded in that Turn references it as `$name` in its SKILL.md instructions.
- * No other text, such as memory, thread messages, or tool results, unlocks
- * one.
+ * skill is loadable only when the Turn's message invokes it, or when a
+ * loadable skill references it as `$name` in its SKILL.md instructions. The
+ * model can load any loadable skill at any time, so the list is fixed for the
+ * Turn. No other text, such as memory, thread messages, or tool results,
+ * unlocks one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
   invokedSkillNames: readonly string[],
-  loadedSkills: readonly Skill[],
 ): SkillMetadata[] {
-  const unlocked = new Set([
+  const byName = new Map(availableSkills.map((skill) => [skill.name, skill]));
+  const unlocked = new Set<string>();
+  const pending = [
     ...invokedSkillNames,
-    ...loadedSkills.flatMap((loaded) => [
-      loaded.name,
-      ...skillReferences(loaded.body, availableSkills),
-    ]),
-  ]);
-  return availableSkills.filter(
-    (skill) =>
-      skill.disableModelInvocation !== true || unlocked.has(skill.name),
-  );
+    ...availableSkills
+      .filter((skill) => skill.disableModelInvocation !== true)
+      .map((skill) => skill.name),
+  ];
+  for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+    const skill = byName.get(name);
+    if (!skill || unlocked.has(name)) {
+      continue;
+    }
+    unlocked.add(name);
+    pending.push(...(skill.references ?? []));
+  }
+  return availableSkills.filter((skill) => unlocked.has(skill.name));
 }
 
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
@@ -112,9 +101,9 @@ export function skillInvocationText(
     .join("\n\n");
 }
 
-function loadedSkillNames(messages: readonly PiMessage[]): string[] {
-  return messages.flatMap((entry) => {
-    const message = entry as {
+function lastLoadedSkillName(messages: readonly PiMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as {
       details?: unknown;
       isError?: unknown;
       role?: unknown;
@@ -126,24 +115,26 @@ function loadedSkillNames(messages: readonly PiMessage[]): string[] {
       message.toolName !== "loadSkill" ||
       message.isError === true
     ) {
-      return [];
+      continue;
     }
     const details = message.details;
     const skillName =
       details && typeof details === "object" && "skill_name" in details
         ? (details as { skill_name?: unknown }).skill_name
         : message.skill_name;
-    return typeof skillName === "string" && skillName.trim() ? [skillName] : [];
-  });
+    if (typeof skillName === "string" && skillName.trim()) {
+      return skillName;
+    }
+  }
+  return null;
 }
 
 /**
- * Restore, in a resumed slice, every skill that `loadSkill` loaded earlier in
- * this Turn, so the skills those reference stay loadable. Skills from earlier
- * Turns are never restored.
+ * Make the last skill that `loadSkill` loaded earlier in this Turn active
+ * again in a resumed slice, so its tool limits and files still apply. Skills
+ * from earlier Turns are never restored.
  */
-export async function restoreTurnSkills(args: {
-  activeSkills: Skill[];
+export async function restoreActiveSkill(args: {
   currentTurnMessages: readonly PiMessage[];
   resumed: boolean;
   skillSandbox: SkillSandbox;
@@ -151,13 +142,8 @@ export async function restoreTurnSkills(args: {
   if (!args.resumed) {
     return;
   }
-  const names = [...new Set(loadedSkillNames(args.currentTurnMessages))];
-  const loaded = await mapBounded(names, (name) =>
-    args.skillSandbox.loadSkill(name),
-  );
-  for (const skill of loaded) {
-    if (skill) {
-      upsertActiveSkill(args.activeSkills, skill);
-    }
+  const skillName = lastLoadedSkillName(args.currentTurnMessages);
+  if (skillName) {
+    await args.skillSandbox.loadSkill(skillName);
   }
 }

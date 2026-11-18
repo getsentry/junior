@@ -4,7 +4,7 @@ import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
-import { skillReferences } from "@/chat/skill-references";
+import { referencedSkillNames, skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 import { mapBounded } from "@/chat/fan-out";
@@ -231,6 +231,8 @@ export interface SkillMetadata {
   pluginProvider?: string | undefined;
   allowedTools?: string[] | undefined;
   disableModelInvocation?: boolean;
+  /** Names that SKILL.md writes as skill references, such as `$name`. */
+  references?: string[] | undefined;
 }
 
 export interface Skill extends SkillMetadata {
@@ -404,6 +406,7 @@ async function readSkillDirectory(
       parsed.skill.disableModelInvocation === true ||
       (await openAiImplicitInvocationDisabled(skillDir));
     const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
+    const references = referencedSkillNames(parsed.skill.body);
 
     return {
       name,
@@ -412,6 +415,7 @@ async function readSkillDirectory(
       ...(plugin ? { pluginProvider: plugin.manifest.name } : undefined),
       ...(allowedTools ? { allowedTools } : undefined),
       ...(disableModelInvocation ? { disableModelInvocation } : undefined),
+      ...(references.length > 0 ? { references } : undefined),
     };
   } catch (error) {
     logWarn("skill.directory.read.failed", {
