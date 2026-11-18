@@ -11,7 +11,9 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import type { InboxView } from "./inboxModel";
+import { viewRows, type InboxView } from "./inboxModel";
+import { inboxCounts } from "./inboxCounts";
+import { waitingPullRequestCount } from "./InboxPullRequests";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
@@ -23,7 +25,6 @@ import {
 } from "./queries";
 import {
   useAutomationAttentionData,
-  useInboxTodoCount,
   useInboxCountData,
   scrollPages,
 } from "./inboxQueries";
@@ -157,11 +158,10 @@ function useBuildInboxData(input: {
     return held.length > 0 ? [...read, ...held] : read;
   }, [closedElsewhere, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
-  // The server counts what waits on the viewer for the tab badge. To do
+  // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
   // stop it.
   const serverCounts = useInboxCountData(signedIn).data;
-  const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
   const snoozes = useInboxSnoozes(nowMs);
@@ -203,14 +203,16 @@ function useBuildInboxData(input: {
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
 
+  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  const todoRowsOf = (items: readonly ReviewItemPayload[]) =>
+    inboxBundles(items.filter((item) => !itemUpForGrabs(item))).filter(
+      (bundle) => bundle.needsYou,
+    );
   const bundles = inboxBundles(awake);
   const bundleByConversation = new Map(
     bundles.map((bundle) => [bundle.conversationId, bundle]),
   );
-  // To do holds what names the viewer. Asks for Everyone are up for grabs.
-  const todoRows = inboxBundles(
-    awake.filter((item) => !itemUpForGrabs(item)),
-  ).filter((bundle) => bundle.needsYou);
+  const todoRows = todoRowsOf(awake);
   const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(live.filter(asleep));
 
@@ -250,13 +252,43 @@ function useBuildInboxData(input: {
     ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
 
-  // The server counts each entry, so items past the loaded pages count
-  // too. Done has no count: it would need every closed item.
+  const todoAutomations = automations.filter(
+    (automation) => !alerts.hidden(automation),
+  );
+  // Each badge counts its page's rows (`inboxCounts`). A row that leaves
+  // after a read shows its items closed counts no more.
+  const shown = closedElsewhere.length
+    ? awake.filter((item) => !closedElsewhere.includes(item))
+    : awake;
+  const shownCounts = inboxCounts({
+    automationCards: automationCards(),
+    hasMore: itemsQuery.hasNextPage,
+    loaded: itemsQuery.data ? loaded : undefined,
+    rows: {
+      decisions: viewRows(shown, "decisions").length,
+      prs: waitingPullRequestCount(viewRows(shown, "prs")),
+      todo: todoRowsOf(shown).length,
+    },
+    server: serverCounts,
+  });
+  // Alerts put away in this browser leave To do. Only the attention list
+  // says which Automations they are. Until it loads, show no count: a count
+  // that drops after load marks a false update on a pinned tab. A failed
+  // list cannot say, so all count.
+  function automationCards(): number | undefined {
+    if (attention.data) return todoAutomations.length;
+    if (attention.error) return serverCounts?.automations;
+    if (!serverCounts) return undefined;
+    const counted = serverCounts.automations ?? 0;
+    return counted > 0 && alerts.anyPutAway ? undefined : counted;
+  }
+  // Snoozed and Automations count on the server. Done has no count: it
+  // would need every closed item.
   const counts: Partial<Record<InboxView | "automations", number>> = {
     automations: serverCounts?.automations,
-    decisions: serverCounts?.decisions,
-    inbox: todoCount,
-    prs: serverCounts?.codeChanges,
+    decisions: shownCounts.decisions,
+    inbox: shownCounts.todo,
+    prs: shownCounts.prs,
     snoozed: serverCounts?.snoozed,
   };
 
@@ -292,13 +324,12 @@ function useBuildInboxData(input: {
     signedIn,
     snoozedRows,
     /** Automation alerts for To do: those the viewer has not put away. */
-    todoAutomations: automations.filter(
-      (automation) => !alerts.hidden(automation),
-    ),
+    todoAutomations,
     snoozes,
     sweeper,
     titleOf,
-    todoCount,
+    /** To do's count, the same as its badge, or undefined until known. */
+    todoCount: shownCounts.todo,
     todoRows,
     grabRows,
   };

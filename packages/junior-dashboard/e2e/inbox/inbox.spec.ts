@@ -39,7 +39,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       todo.getByRole("link", { name: new RegExp(audit.title) }),
     ).toBeVisible();
-    // The badge and To do read the same server count.
+    // The badge and To do count the same cards.
     const tab = page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });

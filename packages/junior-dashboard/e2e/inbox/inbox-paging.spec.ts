@@ -383,6 +383,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("the Inbox ends after a few rows of Earlier, with a link to Done", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.goto(`${dashboard.baseURL}/`);
+    const older = page.getByRole("link", { name: "Older work is in Done" });
+    // The mock feed has more old Conversations than Earlier shows.
+    await expect(async () => {
+      await page
+        .locator("[data-inbox-scroll]")
+        .evaluate((node) => (node.scrollTop = node.scrollHeight));
+      await expect(older).toBeVisible({ timeout: 1_000 });
+    }).toPass();
+    await expect(
+      page.getByRole("region", { name: "Earlier" }).locator("[data-inbox-row]"),
+    ).toHaveCount(10);
+    await older.click();
+    await expect(page).toHaveURL(/\/\?view=done$/);
+  });
+
   /**
    * Bring the end of To do into view: the status line after its rows, which
    * asks for the next page. The last row can show while that line does not.
