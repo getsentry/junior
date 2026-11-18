@@ -111,6 +111,9 @@ export function useLeaveRow(
   expandedKey: string,
   setExpandedKey: (key: string) => void,
 ) {
+  // A Retry calls a leave from an earlier render. Read the open row now.
+  const expanded = useRef(expandedKey);
+  expanded.current = expandedKey;
   return (key: string, release: () => void): string | undefined => {
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
@@ -121,7 +124,7 @@ export function useLeaveRow(
       return undefined;
     }
     const next = (rows[at + 1] ?? rows[at - 1])?.dataset["inboxRow"] ?? "";
-    const opened = expandedKey === key ? next : undefined;
+    const opened = expanded.current === key ? next : undefined;
     if (opened !== undefined) setExpandedKey(opened);
     void leaveCard(card).then(() => {
       // The row goes now, before its shut card shows again.

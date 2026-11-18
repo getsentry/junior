@@ -100,7 +100,15 @@ export function useInboxRowActs(options: {
         children: "Retry",
         onClick: () => {
           close(toastId);
-          void act({ ...row, items: failed }, failed, body).catch(() => {});
+          // The row keeps every item that did not close, so a Retry of
+          // some of them does not put the whole row away.
+          const closed = new Set(
+            items
+              .filter((_, index) => results[index]?.status === "fulfilled")
+              .map((item) => item.id),
+          );
+          const rest = row.items.filter((item) => !closed.has(item.id));
+          void act({ ...row, items: rest }, failed, body).catch(() => {});
         },
       },
       description: row.title,

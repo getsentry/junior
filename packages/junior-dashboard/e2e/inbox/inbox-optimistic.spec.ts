@@ -365,5 +365,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(asks.locator("[data-folded-notice]")).toHaveCount(0);
     await expect.poll(() => sent).toHaveLength(2);
     await expect(asks.locator("[data-folded-notice]")).toHaveCount(0);
+    // The ask it folded into still waits, so its row stays open.
+    await expect(
+      asks.getByRole("region", { name: pinReview.title }),
+    ).toBeVisible();
   });
 });

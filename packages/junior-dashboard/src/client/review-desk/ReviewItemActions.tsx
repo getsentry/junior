@@ -88,6 +88,8 @@ export function ReviewItemActions(props: {
   const draft = useFailedReviewItemAnswer(item.id);
   const [error, setError] = useState<string>();
   const [unsent, setUnsent] = useState(false);
+  // `onAction` sends without `action`, so it keeps its own pending state.
+  const [sending, setSending] = useState(false);
   useReportUnsentAnswer(item, unsent);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
@@ -100,7 +102,14 @@ export function ReviewItemActions(props: {
   }
 
   async function run(body: ReviewItemActionBody) {
-    if (props.onAction) return props.onAction(body);
+    if (props.onAction) {
+      setSending(true);
+      try {
+        return await props.onAction(body);
+      } finally {
+        setSending(false);
+      }
+    }
     setError(undefined);
     try {
       await action.mutateAsync({ body, id: item.id });
@@ -117,7 +126,7 @@ export function ReviewItemActions(props: {
     <>
       {take ? (
         <Button
-          disabled={action.isPending}
+          disabled={action.isPending || sending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
           variant="ghost"
         >
@@ -126,7 +135,7 @@ export function ReviewItemActions(props: {
       ) : null}
       {dismiss ? (
         <Button
-          disabled={action.isPending}
+          disabled={action.isPending || sending}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
           variant="ghost"
         >
