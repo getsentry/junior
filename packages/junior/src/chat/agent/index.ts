@@ -870,6 +870,8 @@ async function executeAgentRunInPrivacyContext(
       ...(streamFn ? { base: streamFn } : undefined),
     });
     const nextInputAfterReplacement = createNextInputTracker();
+    // After a replacement, the saved Turn start indexes the old history.
+    let historyReplaced = false;
     /**
      * Commit and adopt an active capacity replacement. True when it replaced
      * history.
@@ -943,6 +945,7 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       setAgentHistory(replacement);
+      historyReplaced = true;
       nextInputAfterReplacement.replaced(
         mode,
         getAgentContextCompactionTriggerTokens(activeModelId),
@@ -1348,10 +1351,13 @@ async function executeAgentRunInPrivacyContext(
 
     let newMessages: PiMessage[] = [];
     // A resumed slice can prompt again, which moves the live Turn start, so
-    // read the answer from the saved start. A slice from before saved Turn
+    // read the answer from the saved start. After a replacement, read it from
+    // the start that the replacement set. A slice from before saved Turn
     // starts reads only its own messages.
     const turnStartIndex = () =>
-      existingSessionRecord?.turnStartMessageIndex ??
+      (historyReplaced
+        ? undefined
+        : existingSessionRecord?.turnStartMessageIndex) ??
       runResume.turnStartMessageIndex ??
       runResume.beforeMessageCount;
     const turnMessages = () => currentAgentMessages().slice(turnStartIndex());
