@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import {
   createEventSource,
   createLocalSource,
@@ -165,12 +165,24 @@ async function getActiveConversationTurnId(
 export async function listActiveMailboxTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
-  const summaries = await listTurnSummaries(conversationId);
+  const summaries = (await listTurnSummaries(conversationId)).filter(
+    isOpenTurnSummary,
+  );
+  // One cursor read rules out the Turns that are not mailbox Turns, so only
+  // the rest load their Turn history. A legacy cursor with no Source needs
+  // its Actors, which come from Turn history.
+  const stored = await getStoredTurnFields(summaries);
+  const candidates = summaries.filter((_summary, index) => {
+    const fields = stored[index];
+    return (
+      fields !== undefined &&
+      (isActiveMailboxTurn(fields) ||
+        (!fields.source && fields.surface !== "api"))
+    );
+  });
   return (
-    await Promise.all(
-      summaries
-        .filter(isOpenTurnSummary)
-        .map((summary) => getTurnRecord(conversationId, summary.turnId)),
+    await mapBounded(candidates, (summary) =>
+      getTurnRecord(conversationId, summary.turnId),
     )
   ).filter(
     (record): record is TurnRecord =>

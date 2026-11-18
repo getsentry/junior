@@ -429,15 +429,13 @@ export function createSlackTurnRuntime<
   const stopProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(processingReactions.map((reaction) => reaction.stop()));
+    await mapBounded(processingReactions, (reaction) => reaction.stop());
   };
 
   const completeProcessingReactions = async (
     processingReactions: ProcessingReaction[],
   ): Promise<void> => {
-    await Promise.all(
-      processingReactions.map((reaction) => reaction.complete()),
-    );
+    await mapBounded(processingReactions, (reaction) => reaction.complete());
   };
 
   const createProcessingReactionTracker = (thread: Thread) => {
@@ -773,10 +771,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(context, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(context, queued.message),
             );
           };
           const ack = async (): Promise<void> => {
@@ -788,10 +784,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: true,
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(context, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(context, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -1150,10 +1144,8 @@ export function createSlackTurnRuntime<
             botUserId: deps.getBotUserId(),
             explicitMention: Boolean(message.isMention),
             onAcceptedForProcessing: async (messages) => {
-              await Promise.all(
-                messages.map((drainedMessage) =>
-                  processingReactions.start(turnContext, drainedMessage),
-                ),
+              await mapBounded(messages, (drainedMessage) =>
+                processingReactions.start(turnContext, drainedMessage),
               );
             },
             onSkipped: (skipped) =>
@@ -1183,10 +1175,8 @@ export function createSlackTurnRuntime<
               return;
             }
             queuedProcessingReactionsStarted = true;
-            await Promise.all(
-              queuedMessages.map((queued) =>
-                processingReactions.start(turnContext, queued.message),
-              ),
+            await mapBounded(queuedMessages, (queued) =>
+              processingReactions.start(turnContext, queued.message),
             );
           };
           const ack = async (): Promise<void> => {
