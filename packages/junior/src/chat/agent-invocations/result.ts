@@ -705,7 +705,9 @@ async function startAgentInvocationsForChildInput(
     if (parentMessage) {
       // A parent message to a child with an open Agent invocation queues
       // behind it, as `messageAgent` does with a row.
+      // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
       await enqueueAgentInvocation(
+        // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
         await createAgentInvocationFromLatest({
           input: message.input.text.trim(),
           invocationId: getAgentInvocationIdForMessage(
@@ -725,10 +727,12 @@ async function startAgentInvocationsForChildInput(
     }
     const input = inputs[index]!;
     // Only an agent invocation sends a result.
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const { invocation: source } = await getChildAgentInputSender(
       message,
       input,
     );
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
       invocationId:
@@ -748,6 +752,7 @@ async function startAgentInvocationsForChildInput(
           }
         : undefined),
     });
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     await enqueueAgentInvocation(invocation, {
       ...options,
       eventMeta: eventBatchMessageMeta([message]),

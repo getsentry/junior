@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import pLimit from "p-limit";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -13,6 +14,7 @@ import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 /**
  * Record a dispatched event automation run with the Automation version it ran,
@@ -64,12 +66,17 @@ export async function settleEventAutomationRuns(
         eq(juniorAutomationRuns.status, "running"),
       ),
     );
-  for (const run of runs) {
-    const dispatch = await getDispatchRecord(run.id);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const dispatches = await Promise.all(
+    runs.map((run) => limit(() => getDispatchRecord(run.id))),
+  );
+  for (const [index, run] of runs.entries()) {
+    const dispatch = dispatches[index];
     const status = dispatch?.status ?? "failed";
     if (status !== "blocked" && status !== "completed" && status !== "failed") {
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Record runs in order, so an Automation's latest run is recorded last.
     await recordAutomationExecution(run.automationId, {
       conversationId: getDispatchConversationId({ id: run.id }),
       errorMessage: dispatch

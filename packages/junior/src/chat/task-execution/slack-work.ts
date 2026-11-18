@@ -1,5 +1,5 @@
-import pLimit from "p-limit";
 import type { SlackAdapter } from "@chat-adapter/slack";
+import pLimit from "p-limit";
 import type { AgentDurability } from "@/chat/agent/types";
 import {
   Message,
@@ -64,6 +64,7 @@ import {
 } from "@/chat/task-execution/attempt-selection";
 import type { TurnRecord } from "@/chat/task-execution/checkpoint";
 import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 // Slack authors that one backfill looks up at once.
 const SLACK_AUTHOR_LOOKUP_CONCURRENCY = 5;
@@ -502,15 +503,15 @@ export async function clearSlackPendingReactions(args: {
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
-  for (const record of args.messages) {
-    if (record.source !== "slack") continue;
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const clear = async (record: InboundMessage) => {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
-      if (!metadata || metadata.route !== "mention") continue;
+      if (!metadata || metadata.route !== "mention") return;
       const timestamp = getMessageTs(Message.fromJSON(metadata.message));
       // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       const target = parseSlackThreadId(metadata.thread.id);
-      if (!timestamp || !target) continue;
+      if (!timestamp || !target) return;
       await runWithSlackInstallation({
         adapter: args.getSlackAdapter(),
         installation: metadata.installation ?? {},
@@ -529,7 +530,12 @@ export async function clearSlackPendingReactions(args: {
         "messaging.message.id": record.inboundMessageId,
       });
     }
-  }
+  };
+  await Promise.all(
+    args.messages
+      .filter((record) => record.source === "slack")
+      .map((record) => limit(() => clear(record))),
+  );
 }
 
 function compareInboundMessages(

@@ -55,6 +55,7 @@ export async function recoverConversationWork(args: {
   });
 
   for (const conversationId of ids) {
+    // oxlint-disable-next-line no-await-in-loop -- Recovery writes shared work indexes, so one Conversation at a time keeps lock waits short.
     await withLogContext({ conversationId }, async () => {
       let work: ConversationWorkState | undefined;
       try {
