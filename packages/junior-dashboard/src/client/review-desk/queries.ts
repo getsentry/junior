@@ -407,6 +407,8 @@ async function takeOutClosedItem(
  * so the other actions in flight keep their own changes.
  */
 function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
+  // A read that already shows the item again also counted it.
+  let restored = false;
   for (const place of places) {
     queryClient.setQueryData<ReviewItemListCache>(place.queryKey, (list) => {
       if (
@@ -416,6 +418,7 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
         )
       )
         return list;
+      restored = true;
       return {
         ...list,
         pages: list.pages.map((page, index) =>
@@ -433,7 +436,12 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
       };
     });
   }
-  changeCounts(queryClient, item, 1);
+  if (restored) changeCounts(queryClient, item, 1);
+}
+
+/** How many Review item actions are in flight. */
+export function reviewItemActionsInFlight(queryClient: QueryClient): number {
+  return queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY });
 }
 
 /**
@@ -470,7 +478,7 @@ export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
       queryClient.setQueryData(reviewItemQueryKey(item.id), item),
     // A read while another action is in flight would show its item again.
     onSettled: () =>
-      queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY }) === 1
+      reviewItemActionsInFlight(queryClient) === 1
         ? invalidateReviewItemCollections(queryClient)
         : undefined,
   });

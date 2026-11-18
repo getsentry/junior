@@ -16,7 +16,11 @@ import {
 
 import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
-import { invalidateReviewItemCollections, reviewItemQueryKey } from "./queries";
+import {
+  invalidateReviewItemCollections,
+  reviewItemActionsInFlight,
+  reviewItemQueryKey,
+} from "./queries";
 
 const UNDO_MS = 6_000;
 // Dismiss requests that one sweep sends at once.
@@ -52,7 +56,10 @@ async function commitSweep(
       queryKey: reviewItemQueryKey(id),
     });
   }
-  await invalidateReviewItemCollections(queryClient);
+  // A read while an action is in flight would show its item again. The
+  // last action to settle reads the lists.
+  if (reviewItemActionsInFlight(queryClient) === 0)
+    await invalidateReviewItemCollections(queryClient);
   return kept;
 }
 

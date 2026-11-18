@@ -242,7 +242,11 @@ export function UserInputForm(props: {
 }) {
   const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
-  const [picked, setPicked] = useState<string>();
+  // A failed button answer comes back with its choice picked.
+  const [picked, setPicked] = useState(() => {
+    const field = buttonUserInputField(props.request);
+    return field && props.draft?.values[field.id]?.[0];
+  });
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
   const [values, setValues] = useState<Record<string, string[]>>(
