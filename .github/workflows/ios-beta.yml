@@ -4,11 +4,6 @@ name: iOS Beta
 # Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`.
 on:
   workflow_dispatch:
-  # TEMP: prove the pipeline from #3606. Remove before merge.
-  pull_request:
-    paths:
-      - apps/ios/**
-      - .github/workflows/ios-beta.yml
 
 permissions:
   contents: read
@@ -20,7 +15,6 @@ concurrency:
 jobs:
   testflight:
     name: Upload to TestFlight
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'armcknight/ios-testflight-beta'
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
