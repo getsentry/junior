@@ -25,10 +25,7 @@ import {
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -39,6 +36,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -82,7 +80,7 @@ export interface ReviewItem {
   dedupeKey: string;
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -100,7 +98,7 @@ export interface ReviewItemContent {
   body: string;
   conversationIds: string[];
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
