@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { Hono } from "hono";
 import {
   disconnectServiceAccount,
@@ -64,10 +65,9 @@ export function createServiceAccountRoutes(): Hono<JuniorApiEnv> {
 
   app.get("/", requireAdmin, async () =>
     jsonResponse(serviceAccountListSchema, {
-      serviceAccounts: await Promise.all(
-        serviceAccountPlugins(pluginCatalogRuntime.getProviders()).map(
-          getServiceAccountStatus,
-        ),
+      serviceAccounts: await mapBounded(
+        serviceAccountPlugins(pluginCatalogRuntime.getProviders()),
+        getServiceAccountStatus,
       ),
     }),
   );

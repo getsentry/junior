@@ -366,13 +366,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           rawText: content.text,
           userText: replaceTopLevelText(content, strippedUserText),
         };
-        await Promise.all(
-          (options.queuedMessages ?? []).map((queued) =>
-            ensureSlackMessageActorIdentity(
-              queued.message,
-              teamId,
-              lookupSlackUser,
-            ),
+        await mapBounded(options.queuedMessages ?? [], (queued) =>
+          ensureSlackMessageActorIdentity(
+            queued.message,
+            teamId,
+            lookupSlackUser,
           ),
         );
         const effectiveUserText = currentText.userText;

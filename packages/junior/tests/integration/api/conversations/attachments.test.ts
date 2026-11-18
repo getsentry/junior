@@ -45,6 +45,7 @@ function apiWithViewer(
     createConversationRoutes({
       attachmentStorage: storage,
       queue: createConversationWorkQueueTestAdapter(),
+      waitUntil: () => undefined,
     }),
   );
   return app;

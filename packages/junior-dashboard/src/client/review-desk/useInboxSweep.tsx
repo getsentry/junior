@@ -1,6 +1,7 @@
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { reviewItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import pLimit from "p-limit";
 import {
   createContext,
   useCallback,
@@ -15,21 +16,30 @@ import {
 
 import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
-import { invalidateReviewItemCollections, reviewItemQueryKey } from "./queries";
+import {
+  invalidateReviewItemCollections,
+  reviewItemActionsInFlight,
+  reviewItemQueryKey,
+} from "./queries";
 
 const UNDO_MS = 6_000;
+// Dismiss requests that one sweep sends at once.
+const SWEEP_REQUESTS = 8;
 
 /** Close swept items, refresh the inbox, and return the ids that stay open. */
 async function commitSweep(
   queryClient: QueryClient,
   items: ReviewItemPayload[],
 ): Promise<string[]> {
+  const limit = pLimit(SWEEP_REQUESTS);
   const results = await Promise.allSettled(
     items.map((item) =>
-      post(
-        reviewItemSchema,
-        `/api/review-items/${encodeURIComponent(item.id)}/actions`,
-        { action: "dismiss" },
+      limit(() =>
+        post(
+          reviewItemSchema,
+          `/api/review-items/${encodeURIComponent(item.id)}/actions`,
+          { action: "dismiss" },
+        ),
       ),
     ),
   );
@@ -46,7 +56,10 @@ async function commitSweep(
       queryKey: reviewItemQueryKey(id),
     });
   }
-  await invalidateReviewItemCollections(queryClient);
+  // A read while an action is in flight would show its item again. The
+  // last action to settle reads the lists.
+  if (reviewItemActionsInFlight(queryClient) === 0)
+    await invalidateReviewItemCollections(queryClient);
   return kept;
 }
 
@@ -122,19 +135,33 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
       const ids = items.map((item) => item.id);
       setSwept((current) => new Set([...current, ...ids]));
       pending.current.set(id, items);
-      const commit = () => {
-        // Undo or leaving the page already settled this Clear.
-        if (!pending.current.delete(id)) return;
-        // Items that did not close come back, so the inbox shows what is
-        // still open on the server.
-        void commitSweep(queryClient, items).then((failed) => {
+      // Items that did not close come back in their places, so the inbox
+      // shows what is still open on the server. Retry hides them again and
+      // closes them at once: the viewer already chose to clear them.
+      const settle = (closing: ReviewItemPayload[]) =>
+        void commitSweep(queryClient, closing).then((kept) => {
+          const failed = closing.filter((item) => kept.includes(item.id));
           if (failed.length === 0) return;
-          unsweep(setSwept, failed);
+          unsweep(setSwept, kept);
+          const errorId = `${id}-error`;
           add({
+            actionProps: {
+              children: "Retry",
+              onClick: () => {
+                close(errorId);
+                setSwept((current) => new Set([...current, ...kept]));
+                settle(failed);
+              },
+            },
+            id: errorId,
             title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
             type: "error",
           });
         });
+      const commit = () => {
+        // Undo or leaving the page already settled this Clear.
+        if (!pending.current.delete(id)) return;
+        settle(items);
       };
       const undo = () => {
         pending.current.delete(id);

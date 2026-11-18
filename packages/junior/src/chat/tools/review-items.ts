@@ -25,6 +25,10 @@ import {
   type ResolvedAssignees,
   type FindMentionedUserId,
 } from "@/chat/review-items/assignees";
+import type {
+  ReviewItemEvidence,
+  ReviewItemRequest,
+} from "@/chat/review-items/evidence";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
@@ -40,7 +44,10 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import {
+  userInputRequestSchema,
+  type UserInputRequest,
+} from "@/chat/tools/runtime/user-input-request";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
@@ -76,6 +83,54 @@ const subjectSchema = z
     url: z.string().url().max(2000).nullable().optional(),
   })
   .strict();
+
+const evidenceSchema = z
+  .array(
+    z
+      .object({
+        url: z
+          .string()
+          .url()
+          .max(2000)
+          .refine(
+            // `url()` also accepts `javascript:` and `data:` URLs.
+            (url) =>
+              URL.canParse(url) &&
+              ["http:", "https:"].includes(new URL(url).protocol),
+            "Use an http(s) URL.",
+          )
+          .nullable()
+          .optional()
+          .describe("Link to the source, such as a chart or a log search."),
+        conversation_id: z
+          .string()
+          .trim()
+          .min(1)
+          .max(500)
+          .nullable()
+          .optional()
+          .describe(
+            "A Conversation that holds the evidence. Set this or `url`.",
+          ),
+        label: z
+          .string()
+          .trim()
+          .min(1)
+          .max(120)
+          .describe("Short name of the source, such as `Checkout p95 chart`."),
+        note: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .regex(/^[^\r\n]*$/, "Use one line.")
+          .nullable()
+          .optional()
+          .describe("One line: what this source shows."),
+      })
+      .strict(),
+  )
+  .max(10);
 
 const conversationIdsSchema = z
   .array(z.string().trim().min(1).max(500))
@@ -170,7 +225,7 @@ function itemResult(item: ReviewItem) {
     updated_at: item.updatedAt.toISOString(),
     ...(item.subject ? { subject: item.subject } : undefined),
     ...(item.automationId ? { automation_id: item.automationId } : undefined),
-    ...(item.request ? { request: item.request } : undefined),
+    ...(item.request ? { request: requestResult(item.request) } : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.closedAt
       ? {
@@ -233,6 +288,14 @@ export const addReviewItemToolDefinition = zodToolDefinition({
           "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
         ),
       request: userInputRequestSchema
+        .safeExtend({
+          evidence: evidenceSchema
+            .nullable()
+            .optional()
+            .describe(
+              "Sources for the facts in the question. With a suggested answer, cite what supports it and what argues against it, such as a Conversation or chart that disagrees. Each entry has a `url` or a `conversation_id`.",
+            ),
+        })
         .nullable()
         .optional()
         .describe(
@@ -250,6 +313,55 @@ export const addReviewItemToolDefinition = zodToolDefinition({
   outputSchema: juniorToolOutputSchema,
 });
 
+/**
+ * Normalize the evidence input: each entry names exactly one source, and
+ * null fields mean omitted.
+ */
+function evidenceInput(
+  evidence: z.output<typeof evidenceSchema> | null | undefined,
+): ReviewItemEvidence[] {
+  return (evidence ?? []).map((entry) => {
+    if (Boolean(entry.url) === Boolean(entry.conversation_id)) {
+      throw new ToolInputError(
+        "Each `evidence` entry needs a `url` or a `conversation_id`, not both.",
+      );
+    }
+    return {
+      label: entry.label,
+      ...(entry.url ? { url: entry.url } : undefined),
+      ...(entry.conversation_id
+        ? { conversationId: entry.conversation_id }
+        : undefined),
+      ...(entry.note ? { note: entry.note } : undefined),
+    };
+  });
+}
+
+/** Store the question with its normalized evidence, if it cites any. */
+function requestInput(
+  { evidence: _input, ...question }: UserInputRequest & { evidence?: unknown },
+  evidence: ReviewItemEvidence[],
+): ReviewItemRequest {
+  return { ...question, ...(evidence.length > 0 ? { evidence } : undefined) };
+}
+
+/** Show the stored question with the tool's snake_case evidence keys. */
+function requestResult({ evidence, ...question }: ReviewItemRequest) {
+  return {
+    ...question,
+    ...(evidence
+      ? {
+          evidence: evidence.map(({ conversationId, ...entry }) => ({
+            ...entry,
+            ...(conversationId
+              ? { conversation_id: conversationId }
+              : undefined),
+          })),
+        }
+      : undefined),
+  };
+}
+
 /** Create the tool that adds a Review item or updates the open one. */
 export function createAddReviewItemTool(
   context: ReviewItemToolContext,
@@ -259,6 +371,7 @@ export function createAddReviewItemTool(
     ...addReviewItemToolDefinition,
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
+      const evidence = evidenceInput(input.request?.evidence);
       if (input.dedupe_key?.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
           `A \`dedupe_key\` that starts with \`${PLUGIN_REVIEW_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
@@ -296,12 +409,21 @@ export function createAddReviewItemTool(
           ...(input.conversation_ids ?? []),
         ]),
       ];
+      // A cited Conversation passes the same check as a link, so evidence
+      // cannot show a Conversation that the item's readers may not see.
       await requireReviewItemLinks({
         allowedIds: new Set([
           context.conversationId,
           ...(existing?.conversationIds ?? []),
         ]),
-        conversationIds,
+        conversationIds: [
+          ...new Set([
+            ...conversationIds,
+            ...evidence.flatMap((entry) =>
+              entry.conversationId ? [entry.conversationId] : [],
+            ),
+          ]),
+        ],
         scope,
         tenant: existing ? existing.tenant : scope.tenant,
         visibility,
@@ -349,7 +471,9 @@ export function createAddReviewItemTool(
         kind: input.kind,
         title: input.title,
         visibility,
-        ...(input.request ? { request: input.request } : undefined),
+        ...(input.request
+          ? { request: requestInput(input.request, evidence) }
+          : undefined),
         ...(input.subject
           ? { subject: subjectInput(input.subject) }
           : undefined),

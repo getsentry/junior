@@ -65,12 +65,12 @@ export function inboxViewPath(
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: ReviewItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: ReviewItemPayload): boolean {
   return Boolean(item.request);
 }
 
@@ -110,6 +110,67 @@ export function viewRows(
   return itemsInView(items, view).map(singleRow).sort(queueOrder);
 }
 
+/**
+ * Fold each open notice about the subject of an open action item into that
+ * item, matched by subject id or URL, so the item's row shows it as a status
+ * line. The notice stays open on its own: closing the action item does not
+ * close it, and it then shows on its own again.
+ */
+export function foldNotices(items: readonly ReviewItemPayload[]): {
+  /** The notices that fold into each action item, by the item's id. */
+  folded: ReadonlyMap<string, ReviewItemPayload[]>;
+  /** Every other item, in the same order. */
+  shown: ReviewItemPayload[];
+} {
+  const subjectKeys = (item: ReviewItemPayload) =>
+    [item.subject?.id, item.subject?.url].filter(
+      (key): key is string => key !== undefined,
+    );
+  const hosts = new Map<string, ReviewItemPayload>();
+  for (const item of [...items].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  )) {
+    if (item.status !== "open" || item.kind !== "action") continue;
+    for (const key of subjectKeys(item))
+      if (!hosts.has(key)) hosts.set(key, item);
+  }
+  const folded = new Map<string, ReviewItemPayload[]>();
+  const shown = items.filter((item) => {
+    if (item.status !== "open" || item.kind !== "notice") return true;
+    const host = subjectKeys(item)
+      .map((key) => hosts.get(key))
+      .find(Boolean);
+    if (!host) return true;
+    folded.set(host.id, [...(folded.get(host.id) ?? []), item]);
+    return false;
+  });
+  return { folded, shown };
+}
+
+/**
+ * The FYI list: one row per open notice, newest first. Notices wait on no
+ * one, so they are not in To do.
+ */
+export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
+  return items
+    .filter((item) => item.status === "open" && item.kind === "notice")
+    .map(singleRow)
+    .sort(
+      (a, b) =>
+        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
+        a.key.localeCompare(b.key),
+    );
+}
+
+/**
+ * The status line of a notice folded into an item, such as "Merge conflict".
+ * The item's card already names the subject, so the reference that plugin
+ * titles add after ` · ` drops out.
+ */
+export function foldedNoticeLabel(notice: ReviewItemPayload): string {
+  return notice.title.split(" · ")[0] || notice.title;
+}
+
 /** One labelled group of rows in the stream. */
 type InboxSection = { key: string; label: string; rows: InboxBundle[] };
 
@@ -128,6 +189,39 @@ export function timeSectionAt(iso: string, nowMs: number): string {
   if (at >= startOfToday.getTime()) return "today";
   if (at >= startOfToday.getTime() - 6 * 86_400_000) return "week";
   return "earlier";
+}
+
+/**
+ * How many rows Earlier shows in the Inbox. A fixed number, not a time
+ * window: Earlier starts where This week ends, and a window such as 30 days
+ * still grows without end for a busy viewer. Older work is in Done.
+ */
+const EARLIER_LIMIT = 10;
+
+/**
+ * Keep the Inbox stream's rows up to the first `EARLIER_LIMIT` rows of
+ * Earlier, so the Inbox ends. `full` says Earlier has all the rows that it
+ * shows, so older pages need not load. `cut` says rows were left out.
+ */
+export function capEarlier<Row>(
+  rows: readonly Row[],
+  timeOf: (row: Row) => string,
+  nowMs: number,
+): { cut: boolean; full: boolean; rows: Row[] } {
+  const kept: Row[] = [];
+  let earlier = 0;
+  for (const row of rows) {
+    if (timeSectionAt(timeOf(row), nowMs) === "earlier") {
+      earlier += 1;
+      if (earlier > EARLIER_LIMIT) continue;
+    }
+    kept.push(row);
+  }
+  return {
+    cut: earlier > EARLIER_LIMIT,
+    full: earlier >= EARLIER_LIMIT,
+    rows: kept,
+  };
 }
 
 /** Split rows into Today, This week, and Earlier, keeping their order. */
