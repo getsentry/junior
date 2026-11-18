@@ -308,6 +308,9 @@ export function InboxImageStrip(props: {
     ...images.map((media) => mediaPreview(props.conversationId, media)),
   ];
   const gallery = previews.filter((preview) => !failed.has(preview.src));
+  // The viewer needs an image. One that fails while it is open leaves it, and
+  // the viewer shows the next one, or closes when none are left.
+  if (shown !== undefined && gallery.length === 0) setShown(undefined);
   const tile = (preview: PreviewImage): TileImage => ({
     failed: failed.has(preview.src),
     onError: () => setFailed((current) => new Set(current).add(preview.src)),
