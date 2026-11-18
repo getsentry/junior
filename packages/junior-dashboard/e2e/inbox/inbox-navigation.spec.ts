@@ -703,13 +703,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
-  test("every pin shows on the first feed page, and a reorder saves them all", async ({
+  test("Pinned only shows every pin from the first feed page, and a reorder saves them all", async ({
     dashboard,
     page,
   }) => {
     // The server's first feed page has every pin, before the page by activity
     // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
     // more pages follow.
+    let olderPages = 0;
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
       const response = await route.fetch();
       const feed = await response.json();
@@ -726,6 +727,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         status: "completed",
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      if (cursor) olderPages += 1;
       return route.fulfill({
         response,
         json: cursor
@@ -743,24 +745,32 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockReviewItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/?view=conversations&pinned=1`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
-    const pinned = page.getByRole("region", { name: "Pinned" });
-    await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
+    const list = page.getByRole("region", {
+      name: "Conversations",
+      exact: true,
+    });
+    await expect(list.locator("[data-inbox-row]")).toHaveCount(4);
+    await expect(
+      list.getByRole("link", { name: /Recent conversation/ }),
+    ).toHaveCount(0);
 
     const save = page.waitForRequest(
       (request) =>
         request.method() === "PUT" &&
         request.url().includes("/api/conversations/pin-order"),
     );
-    await rowHead(pinned, "Old pin 2").focus();
+    await inFlight.getByRole("link", { name: /Old pin 2/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
     expect((await save).postDataJSON()).toEqual({
       conversationIds: [1, 0, 2, 3].map(
         (index) => `slack:CFEED:${1770000000 + index}.000100`,
       ),
     });
+    // The filter read no older page: the first one holds every pin.
+    expect(olderPages).toBe(0);
   });
 
   test("only pins drag in In flight", async ({ dashboard, page }) => {

@@ -7,7 +7,10 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { pinnedFirst } from "../conversations/conversationSections";
+import {
+  newestFirst,
+  pinnedFirst,
+} from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
 import type { InboxView } from "./inboxModel";
@@ -46,8 +49,8 @@ const activityAt = (conversation: Conversation) =>
 const IN_FLIGHT_LIMIT = 5;
 
 // Asks from Conversations outside the loaded feed, such as an Automation
-// run, take their place by time among the unpinned rows. Appended, they
-// would sit below every loaded Conversation, however new they are.
+// run, take their place by time among the feed rows. Appended, they would
+// sit below every loaded Conversation, however new they are.
 function withRowsByTime(
   feedRows: ConversationRow[],
   rows: ConversationRow[],
@@ -57,10 +60,8 @@ function withRowsByTime(
   );
   const merged: ConversationRow[] = [];
   for (const row of feedRows) {
-    if (!row.conversation?.pinnedAt) {
-      while (pending[0] && Date.parse(pending[0].time) > Date.parse(row.time))
-        merged.push(pending.shift()!);
-    }
+    while (pending[0] && Date.parse(pending[0].time) > Date.parse(row.time))
+      merged.push(pending.shift()!);
     merged.push(row);
   }
   return [...merged, ...pending];
@@ -169,11 +170,10 @@ function useBuildInboxData(input: {
   const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(live.filter(asleep));
 
-  // Every Conversation, pinned first in the viewer's order, then newest
-  // activity. A Conversation outside the loaded feed joins when it has
-  // open items.
+  // Every Conversation, a pin in its place, newest activity first. A
+  // Conversation outside the loaded feed joins when it has open items.
   const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map((conversation): ConversationRow => ({
+    newestFirst(conversations).map((conversation): ConversationRow => ({
       bundle: bundleByConversation.get(conversation.id),
       conversation,
       conversationId: conversation.id,

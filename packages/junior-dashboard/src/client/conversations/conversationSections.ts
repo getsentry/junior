@@ -94,6 +94,13 @@ function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
   );
 }
 
+/** Sort conversations by their last Message, newest first. */
+export function newestFirst(conversations: Conversation[]): Conversation[] {
+  return [...conversations].sort(
+    (left, right) => activityTime(right) - activityTime(left),
+  );
+}
+
 /**
  * Sort pinned conversations to the front, in the order that
  * `buildConversationSections` shows them without `waiting`: pins in the
@@ -102,15 +109,13 @@ function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
  * sections do.
  */
 export function pinnedFirst(conversations: Conversation[]): Conversation[] {
-  return [...conversations]
-    .sort((left, right) => activityTime(right) - activityTime(left))
-    .sort((left, right) => {
-      const leftRank = left.pinnedAt ? 0 : 1;
-      return (
-        leftRank - (right.pinnedAt ? 0 : 1) ||
-        (leftRank === 0 ? comparePinOrder(left, right) : 0)
-      );
-    });
+  return newestFirst(conversations).sort((left, right) => {
+    const leftRank = left.pinnedAt ? 0 : 1;
+    return (
+      leftRank - (right.pinnedAt ? 0 : 1) ||
+      (leftRank === 0 ? comparePinOrder(left, right) : 0)
+    );
+  });
 }
 
 /**

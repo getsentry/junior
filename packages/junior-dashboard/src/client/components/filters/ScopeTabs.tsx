@@ -1,0 +1,51 @@
+import type { LucideIcon } from "lucide-react";
+import { Link } from "react-router";
+
+import { cn } from "../../styles";
+
+/** One tab: what it shows, and the search that the list has when it is on. */
+export type ScopeTab = {
+  icon: LucideIcon;
+  label: string;
+  on: boolean;
+  search: string;
+};
+
+/**
+ * Pick what a list shows, as one segmented control in the style of the old
+ * Inbox / Automations tabs. Each tab is a link, so the choice stays in the
+ * URL with the other filters. One tab alone is a toggle.
+ */
+export function ScopeTabs(props: { label: string; tabs: readonly ScopeTab[] }) {
+  return (
+    <nav
+      aria-label={props.label}
+      className="flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5"
+    >
+      {props.tabs.map((tab) => {
+        const Icon = tab.icon;
+        return (
+          <Link
+            aria-current={tab.on ? "page" : undefined}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-[0.625rem] px-3 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              tab.on
+                ? "bg-dashboard-surface-active text-dashboard-text"
+                : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
+            )}
+            key={tab.label}
+            replace
+            to={{ search: tab.search }}
+          >
+            <Icon
+              aria-hidden="true"
+              className="size-4 shrink-0"
+              strokeWidth={1.9}
+            />
+            {tab.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

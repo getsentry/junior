@@ -37,7 +37,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test.describe("conversation rows", () => {
-    test("pinning moves a conversation to Pinned and In flight", async ({
+    test("a pin keeps its row in place and joins In flight", async ({
       page,
       dashboard,
     }) => {
@@ -46,9 +46,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       const list = conversationsList(page);
       const row = rowLink(list, "Investigate checkout latency");
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      const section = await sectionOf(list, "Investigate checkout latency");
+      expect(section).not.toBeNull();
 
       // Pin from the row's hover action.
       const pinRequest = page.waitForRequest(
@@ -61,16 +60,24 @@ test.describe("new UI", { tag: "@new" }, () => {
         .click();
       expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
-      // The row shows only in Pinned, and In flight lists it.
+      // The row stays in its section, with its pin marker, and In flight
+      // lists it. No Pinned section groups pins. The marker shows when the
+      // pointer leaves the row.
+      await page.mouse.move(0, 0);
+      const marker = list
+        .locator(`[data-inbox-row="conversation:${ACTIVE_CONVERSATION_ID}"]`)
+        .getByRole("img", { name: "Pinned" });
+      await expect(marker).toBeVisible();
       await expect(row).toHaveCount(1);
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .toBe("Pinned");
       await expect(
         page
           .getByRole("list", { name: "In flight" })
           .getByRole("link", { name: /Investigate checkout latency/ }),
       ).toBeVisible();
+      await expect(list.getByRole("region", { name: "Pinned" })).toHaveCount(0);
+      expect(await sectionOf(list, "Investigate checkout latency")).toBe(
+        section,
+      );
       await row.hover();
       await expect(
         list.getByRole("button", {
@@ -92,9 +99,78 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.keyboard.press("Escape");
       await page.getByRole("link", { name: "Back to Conversations" }).click();
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      await expect(marker).toHaveCount(0);
+      expect(await sectionOf(list, "Investigate checkout latency")).toBe(
+        section,
+      );
+    });
+
+    test("Pinned only shows only pins, after a reload too", async ({
+      page,
+      dashboard,
+    }) => {
+      await viewAsParticipant(page);
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      const list = conversationsList(page);
+      const pinnedRow = rowLink(list, "Investigate checkout latency");
+      const otherRow = rowLink(list, "Closed issue summary");
+      await expect(otherRow).toBeVisible();
+      await pinnedRow.hover();
+      await list
+        .getByRole("button", { name: "Pin Investigate checkout latency" })
+        .click();
+      await expect(
+        list.getByRole("button", {
+          name: "Unpin Investigate checkout latency",
+        }),
+      ).toHaveCount(1);
+
+      const filter = page.getByRole("link", { name: "Pinned only" });
+      await expect(filter).not.toHaveAttribute("aria-current");
+      await filter.click();
+      await expect(page).toHaveURL(/[?&]pinned=1\b/);
+      await expect(filter).toHaveAttribute("aria-current", "page");
+      await expect(pinnedRow).toBeVisible();
+      await expect(otherRow).toHaveCount(0);
+
+      // The filter is in the URL, so a reload keeps it.
+      await page.reload();
+      await expect(filter).toHaveAttribute("aria-current", "page");
+      await expect(pinnedRow).toBeVisible();
+      await expect(otherRow).toHaveCount(0);
+
+      // An unpin takes the row out of the filtered list.
+      await pinnedRow.hover();
+      await list
+        .getByRole("button", { name: "Unpin Investigate checkout latency" })
+        .click();
+      await expect(pinnedRow).toHaveCount(0);
+      await expect(
+        list.getByText(
+          "Nothing pinned. Pin a conversation from its row or its menu.",
+        ),
+      ).toBeVisible();
+
+      await filter.click();
+      await expect(page).not.toHaveURL(/[?&]pinned=/);
+      await expect(otherRow).toBeVisible();
+    });
+
+    test("Pinned only on the Inbox says how to pin when nothing is", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/?pinned=1`);
+      const inbox = page.getByRole("region", { name: "Inbox", exact: true });
+      await expect(
+        inbox.getByText(
+          "Nothing pinned. Pin a conversation from its row or its menu.",
+        ),
+      ).toBeVisible();
+      await expect(
+        inbox.getByRole("link", { name: "Pinned only" }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(inbox.getByRole("region", { name: "To do" })).toHaveCount(0);
     });
 
     test("lists the rows of the conversation menu in the row menu", async ({

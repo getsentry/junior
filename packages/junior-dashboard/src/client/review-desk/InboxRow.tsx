@@ -36,7 +36,6 @@ import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
 } from "../conversations/ConversationSidebarThreadRow";
-import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
@@ -230,8 +229,6 @@ type InboxRowProps = {
   conversation?: Conversation;
   conversationId: string;
   donePending?: boolean;
-  /** Set on a pinned row of a list that drags pins into a new order. */
-  drag?: PinnedRowDrag;
   expanded: boolean;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
@@ -311,7 +308,7 @@ function ConversationInboxRow(
     motion: ReturnType<typeof useRowMotion>;
   },
 ) {
-  const { conversation, drag } = props;
+  const { conversation } = props;
   const actions = useInboxRowActions(conversation, {
     onRowAction: props.onRowAction,
     selected: props.selected,
@@ -369,10 +366,7 @@ function ConversationInboxRow(
   );
   return (
     <li
-      className={cn(
-        inboxCardClass(props.expanded),
-        drag?.dragging && "opacity-40",
-      )}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
       data-grown={props.motion.grown || undefined}
       data-inbox-row={props.rowKey}
@@ -381,10 +375,7 @@ function ConversationInboxRow(
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
           {...prefetch}
-          {...drag?.listeners}
           className="group relative min-w-0 rounded-xl"
-          onKeyDown={drag?.onKeyDown}
-          ref={drag?.setNodeRef}
         >
           <InboxRowBody
             {...props}
@@ -392,14 +383,6 @@ function ConversationInboxRow(
             hoverActions={hoverActions}
             preview={props.motion.grown}
             threadsShown={hasThreads}
-            linkProps={{
-              "aria-keyshortcuts": drag
-                ? "Alt+ArrowUp Alt+ArrowDown"
-                : undefined,
-              // The browser's own link drag would take the pointer from the
-              // reorder.
-              draggable: drag ? false : undefined,
-            }}
           />
         </ContextMenuTrigger>
         {actions.menu}
@@ -490,7 +473,6 @@ function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
-    linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
     /** In focus on hover: comfortable, unclamped, every preview. */
     preview?: boolean;
     /** Whether the row lists its Threads under the head. */
@@ -635,13 +617,12 @@ function InboxRowBody(
                 <BriefOutcomeMarker status={summary.status} />
               ) : null}
               <Link
-                {...props.linkProps}
                 aria-controls={controls}
                 aria-current={props.selected ? "page" : undefined}
                 aria-expanded={props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-                  // A long press opens the row menu or drags a pin, not the iOS
+                  // A long press opens the row menu, not the iOS
                   // link callout.
                   "[-webkit-touch-callout:none]",
                 )}
