@@ -14,6 +14,7 @@ const CACHE_KEY = "conversation-stats";
 const FRESH_MS = 5 * 60_000;
 // After this, a request reads the stats again before it answers.
 const KEEP_MS = 60 * 60_000;
+const RELOAD_WAIT_MS = 10_000;
 
 const cachedStatsSchema = z
   .object({
@@ -34,19 +35,39 @@ async function loadCachedStats() {
   };
 }
 
+/**
+ * Reload the report under one lock. A caller that gets the lock after
+ * another reload first reads the entry that it wrote.
+ */
+async function reloadCachedStats(
+  state: StateAdapter,
+  usable: (stats: CachedStats) => boolean,
+  waitMs: number,
+) {
+  const cache = createCache(state, CACHE_NAMESPACE);
+  return await withLock(
+    state,
+    `${cacheKeyPrefix(CACHE_NAMESPACE)}${CACHE_KEY}:reload`,
+    async () => {
+      const current = cachedStatsSchema.safeParse(
+        await cache.getOrLoad(CACHE_KEY, loadCachedStats),
+      );
+      if (current.success && usable(current.data)) return current.data;
+      return await cache.getOrLoad<CachedStats>(CACHE_KEY, loadCachedStats, {
+        refresh: true,
+      });
+    },
+    { waitMs },
+  );
+}
+
 async function refreshCachedStats(state: StateAdapter): Promise<void> {
   try {
-    // One refresh at a time. A request that finds one running keeps the
-    // stale report.
-    await withLock(
+    // A request that finds a reload running keeps the stale report.
+    await reloadCachedStats(
       state,
-      `${cacheKeyPrefix(CACHE_NAMESPACE)}${CACHE_KEY}:refresh`,
-      () =>
-        createCache(state, CACHE_NAMESPACE).getOrLoad<CachedStats>(
-          CACHE_KEY,
-          loadCachedStats,
-          { refresh: true },
-        ),
+      (stats) => Date.now() < stats.refreshAtMs,
+      0,
     );
   } catch (error) {
     logException(error, "conversation_stats.refresh.failed");
@@ -62,16 +83,21 @@ export async function readConversationStats(options: {
   waitUntil: WaitUntilFn;
 }): Promise<ConversationStatsReport> {
   const state = getStateAdapter();
-  const cache = createCache(state, CACHE_NAMESPACE);
   const cached = cachedStatsSchema.safeParse(
-    await cache.getOrLoad(CACHE_KEY, loadCachedStats),
+    await createCache(state, CACHE_NAMESPACE).getOrLoad(
+      CACHE_KEY,
+      loadCachedStats,
+    ),
   );
-  // An entry from an older report shape is reloaded.
-  const stats = cached.success
-    ? cached.data
-    : await cache.getOrLoad<CachedStats>(CACHE_KEY, loadCachedStats, {
-        refresh: true,
-      });
+  let stats: CachedStats;
+  if (cached.success) {
+    stats = cached.data;
+  } else {
+    // An entry from an older report shape is reloaded once for all callers.
+    const reload = await reloadCachedStats(state, () => true, RELOAD_WAIT_MS);
+    // The cache only saves work, so a stuck reload must not block this caller.
+    stats = reload.acquired ? reload.value : (await loadCachedStats()).value;
+  }
   if (Date.now() >= stats.refreshAtMs) {
     options.waitUntil(() => refreshCachedStats(state));
   }
