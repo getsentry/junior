@@ -204,6 +204,33 @@ describe("runStep", () => {
     });
   });
 
+  it("does not run calls from a reply that hit the output token limit", async () => {
+    const ran: string[] = [];
+    const send = tool("send", {
+      replay: "safe",
+      execute: () => {
+        ran.push("send");
+        return Promise.resolve({ content: [] });
+      },
+    });
+    const cutOff = fauxAssistantMessage(
+      [fauxToolCall("send", {}, { id: "call-send" })],
+      {
+        stopReason: "length",
+      },
+    );
+
+    const result = await runStep(
+      stepInput({ messages: [user, cutOff], tools: [send] }),
+    );
+
+    expect(ran).toEqual([]);
+    expect(result).toMatchObject({
+      outcome: "continue",
+      messages: [{ toolCallId: "call-send", isError: true }],
+    });
+  });
+
   it("fails the Turn when the model request fails", async () => {
     const result = await runStep(
       stepInput({
