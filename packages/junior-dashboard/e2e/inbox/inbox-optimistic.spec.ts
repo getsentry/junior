@@ -308,7 +308,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
     await page
-      .getByRole("button", { name: /^Dismiss \d+ FYIs? in FYI$/ })
+      .getByRole("button", { name: /^Dismiss \d+ in FYI$/ })
       .click();
     await expect(digestFyi).toHaveCount(0);
     const toast = page
