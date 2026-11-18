@@ -34,7 +34,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page.locator(`li[data-inbox-row="todo:${ask.addedByConversationId}"]`);
   const open = async (page: Page, ask: (typeof asks)[number]) => {
     await row(page, ask)
-      .locator('a[aria-controls^="inbox-row-"]')
+      .locator('button[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await expect(row(page, ask)).toHaveAttribute("data-expanded", "true");
@@ -236,7 +236,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const snoozed = (ask: (typeof asks)[number]) =>
       page.locator(`li[data-inbox-row="${ask.addedByConversationId}"]`);
     await snoozed(buttons!)
-      .locator('a[aria-controls^="inbox-row-"]')
+      .locator('button[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
