@@ -192,12 +192,9 @@ function CustomSnooze(props: {
  * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
  * has no check mark, so it does not read as an answer or an approval.
  */
-export function RowDismissButton(props: {
-  disabled?: boolean;
-  onClick(): void;
-}) {
+export function RowDismissButton(props: { onClick(): void }) {
   return (
-    <Button disabled={props.disabled} onClick={props.onClick} variant="ghost">
+    <Button onClick={props.onClick} variant="ghost">
       <X aria-hidden="true" size={15} />
       Dismiss
     </Button>
