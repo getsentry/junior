@@ -1,6 +1,6 @@
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -390,6 +390,33 @@ describe("conversation status", () => {
       provider: "notion",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+  });
+
+  it("dates a sign-in wait with the app clock, not the database clock", async () => {
+    // The app clock dates the request, so a clock behind the database's
+    // must still see the wait.
+    vi.useFakeTimers({
+      now: Date.now() - 30 * 24 * 60 * 60 * 1000,
+      toFake: ["Date"],
+    });
+    try {
+      const fixture = await createStatusFixture();
+      const conversationId = await recordSlackRoot(
+        fixture.conversationStore,
+        "1700000000.000155",
+      );
+      await recordAuthorizationRequested({
+        actorId: SLACK_VIEWER.slackUserId,
+        authorizationId: "status-sign-in-clock",
+        conversationId,
+        delivery: "private_link_sent",
+        kind: "mcp",
+        provider: "notion",
+      });
+      await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("orders needs_input over working over done, and a stop ends the wait", async () => {
