@@ -87,7 +87,7 @@ function asleepAt(nowMs: number): SQL {
  * Conversation that the item links.
  */
 export function reviewItemSnoozedBy(userId: string, nowMs: number): SQL {
-  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${asleepAt(nowMs)} and (${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${juniorInboxSnoozes.conversationId} in ${rowRootsOfItem(sql`${juniorReviewItems.id}`)})))`;
+  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${asleepAt(nowMs)} and (${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} or (${juniorInboxSnoozes.reviewItemId} is null and ${inArray(juniorInboxSnoozes.conversationId, rowRootsOfItem(sql`${juniorReviewItems.id}`))})))`;
 }
 
 /**
@@ -285,5 +285,8 @@ export async function deleteExpiredInboxSnoozes(
  * to check that a viewer can see a row before they snooze it.
  */
 export function reviewItemInRow(rootConversationId: string): SQL {
-  return sql`${rootConversationId} in ${rowRootsOfItem(sql`${juniorReviewItems.id}`)}`;
+  return inArray(
+    sql`${rootConversationId}`,
+    rowRootsOfItem(sql`${juniorReviewItems.id}`),
+  );
 }
