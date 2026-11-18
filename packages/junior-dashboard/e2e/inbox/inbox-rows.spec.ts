@@ -206,6 +206,51 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title(SENTAUR)).not.toHaveAttribute("data-overflow");
   });
 
+  const CHECKOUT = "Investigate checkout latency";
+
+  test("an In flight title that grows past its column fades", async ({
+    dashboard,
+    page,
+  }) => {
+    const long = `${CHECKOUT}${", then the p99 regression in the EU region".repeat(4)}`;
+    let grown = false;
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{ displayTitle: string }>;
+        };
+        for (const row of feed.conversations) {
+          if (grown && row.displayTitle === CHECKOUT) row.displayTitle = long;
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
+    // The versions poll refreshes the feed once its token moves.
+    await page.route("**/api/versions*", async (route) => {
+      const response = await route.fetch();
+      const versions = (await response.json()) as { conversations: string };
+      await route.fulfill({
+        json: {
+          ...versions,
+          conversations: `${versions.conversations}${grown ? " title:grown" : ""}`,
+        },
+        response,
+      });
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const inFlight = page.getByRole("list", { name: "In flight" });
+    const title = (text: string) => inFlight.getByText(text, { exact: true });
+    await expect(title(CHECKOUT)).toBeVisible();
+    await expect(title(CHECKOUT)).not.toHaveAttribute("data-overflow");
+    // A refetch makes the title longer. Its box keeps the column's width.
+    grown = true;
+    await expect(title(long)).toHaveAttribute("data-overflow", "", {
+      timeout: 15_000,
+    });
+  });
+
   test("a row's actions sit beside its time and pin, and never hide them", async ({
     dashboard,
     page,
