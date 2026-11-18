@@ -1,7 +1,7 @@
 import type {
   ExecOptions,
   ExecResult,
-} from "@/core/tool-execution-environment/types";
+} from "@/core/tool-execution-environment";
 
 /**
  * Starts sandboxes and finds them again. A sandbox lives longer than one
