@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { DockerApiError, dockerRequest } from "@/chat/sandbox/docker/api";
 import {
   createContainer,
@@ -29,7 +28,7 @@ import type {
   SandboxSession,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 /** Create a sandbox container and return a session for it. */
 async function createSession(
@@ -148,7 +147,6 @@ async function deleteWorkspaceSnapshotBuilders(
   names: Iterable<string>,
 ): Promise<void> {
   const failures: unknown[] = [];
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const removeAll = async (name: string) => {
     for (const remove of [removeContainer, deleteSnapshotTag]) {
       try {
@@ -159,9 +157,7 @@ async function deleteWorkspaceSnapshotBuilders(
       }
     }
   };
-  await Promise.all(
-    [...new Set(names)].map((name) => limit(() => removeAll(name))),
-  );
+  await mapBounded([...new Set(names)], (name) => removeAll(name));
   if (failures.length > 0) throw failures[0];
 }
 

@@ -898,35 +898,33 @@ export async function loadCheckSuiteFacts(args: {
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
       });
-      const limit = pLimit(PULL_REQUEST_LOAD_CONCURRENCY);
-      const loaded = await Promise.all(
-        target.pullRequestNumbers.map((number) =>
-          limit(async () => {
-            try {
-              const response = await githubRequest(
-                "https://api.github.com",
-                `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
-                { token: token.token },
+      const loaded = await pLimit(PULL_REQUEST_LOAD_CONCURRENCY).map(
+        target.pullRequestNumbers,
+        async (number) => {
+          try {
+            const response = await githubRequest(
+              "https://api.github.com",
+              `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
+              { token: token.token },
+            );
+            const loadedFacts = pullRequestFactsFromResponse(response);
+            return loadedFacts ? ([number, loadedFacts] as const) : undefined;
+          } catch (error) {
+            // 404 is expected when the suite lists a stale PR number.
+            if (!isGitHubNotFoundError(error)) {
+              logFailOpenFailure(
+                args.log,
+                "GitHub pull request data load failed",
+                error,
+                {
+                  pullRequest: number,
+                  repository: `${target.owner}/${target.repoName}`,
+                },
               );
-              const loadedFacts = pullRequestFactsFromResponse(response);
-              return loadedFacts ? ([number, loadedFacts] as const) : undefined;
-            } catch (error) {
-              // 404 is expected when the suite lists a stale PR number.
-              if (!isGitHubNotFoundError(error)) {
-                logFailOpenFailure(
-                  args.log,
-                  "GitHub pull request data load failed",
-                  error,
-                  {
-                    pullRequest: number,
-                    repository: `${target.owner}/${target.repoName}`,
-                  },
-                );
-              }
-              return undefined;
             }
-          }),
-        ),
+            return undefined;
+          }
+        },
       );
       const pullRequestFactsByNumber: Record<
         number,

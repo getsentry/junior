@@ -161,9 +161,8 @@ export function WorkLine(props: {
           {name}
         </span>
       ) : null}
-      {/* The quiet tier: ids and repos are smaller and fainter, so the
-          title leads. */}
-      <span className="flex shrink-[4] items-baseline whitespace-nowrap text-2xs tabular-nums text-dashboard-text-faint">
+      {/* The quiet tier: ids and repos are fainter, so the title leads. */}
+      <span className="flex shrink-[4] items-baseline whitespace-nowrap tabular-nums text-dashboard-text-faint">
         {ref.repo ? (
           <span className="min-w-0 max-w-24 truncate" data-work-repo="">
             {ref.repo}
@@ -327,7 +326,7 @@ function WorkChipLine(props: { annotations: Annotation[] }) {
       ))}
       overflow={(count) => (
         <span
-          className="shrink-0 text-2xs text-dashboard-text-faint"
+          className="shrink-0 text-xs text-dashboard-text-faint"
           data-linked-work-overflow=""
         >
           +{count}

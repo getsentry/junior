@@ -70,7 +70,6 @@ export function AutomationRow(props: {
   const problem = automationProblemSummary(automation);
   const inactive =
     automation.status === "paused" || automation.status === "completed";
-  const Icon = automation.kind === "scheduled" ? CalendarClock : Zap;
   const ref = useRef<HTMLLIElement>(null);
   useAnimatedHeight(ref, String(props.expanded));
   const regionId = `automation-row-${automation.id}`;
@@ -100,17 +99,11 @@ export function AutomationRow(props: {
           <TriangleAlert
             aria-hidden="true"
             className={cn(
-              "col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center",
+              "col-start-1 row-start-1 mt-[0.25rem] size-3.5 justify-self-center",
               PROBLEM_TONE_CLASS[problem.tone],
             )}
           />
-        ) : (
-          <Icon
-            aria-hidden="true"
-            className="col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center text-dashboard-text-muted"
-            strokeWidth={1.9}
-          />
-        )}
+        ) : null}
         <div
           className={cn(
             "col-start-2 row-start-1 grid min-w-0 gap-1",
@@ -119,7 +112,7 @@ export function AutomationRow(props: {
         >
           <Link
             aria-label={`Open automation: ${automation.title}`}
-            className="min-w-0 truncate rounded-md text-sm leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="min-w-0 truncate rounded-md font-display text-base leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             title={automation.title}
             to={to}
           >

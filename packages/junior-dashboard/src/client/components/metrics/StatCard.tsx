@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useInboxUi } from "../../uiShell";
 import { Card } from "../layout/Card";
 
 /** Present one primary reporting value with quiet supporting context. */
@@ -11,13 +12,17 @@ export function StatCard(props: {
   value: ReactNode;
 }) {
   const Icon = props.icon;
+  // The new UI keeps color for meaning, so its icon is neutral.
+  const iconClass = useInboxUi()
+    ? "text-dashboard-text-faint"
+    : "text-amber-400/55";
   return (
     <Card className="relative p-4 sm:p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="font-sans text-xs font-medium text-dashboard-text-muted">
           {props.label}
         </div>
-        <Icon aria-hidden="true" className="text-amber-400/55" size={15} />
+        <Icon aria-hidden="true" className={iconClass} size={15} />
       </div>
       <div className="mt-4 font-display text-3xl font-light leading-none tracking-[-0.04em] text-dashboard-text sm:text-4xl">
         {props.value}

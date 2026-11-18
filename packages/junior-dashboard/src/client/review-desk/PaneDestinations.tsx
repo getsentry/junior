@@ -58,7 +58,7 @@ function Entry(props: {
    * Conversation.
    */
   phoneSelected: boolean;
-  /** The count waits on the viewer, so it shows in the accent. */
+  /** The count waits on the viewer, so it shows in the row's text color. */
   strong?: boolean;
 }) {
   const link = usePaneRowLink(props.row);
@@ -88,7 +88,7 @@ function Entry(props: {
         <span className="truncate font-medium">{props.label}</span>
         {props.count ? (
           props.strong ? (
-            <span className="rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+            <span className="text-xs font-semibold tabular-nums">
               {props.count > 99 ? "99+" : props.count}
             </span>
           ) : (

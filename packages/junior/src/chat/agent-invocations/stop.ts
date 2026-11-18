@@ -1,6 +1,5 @@
 import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
-import pLimit from "p-limit";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
@@ -13,7 +12,7 @@ import {
   stopConversationWork,
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
@@ -204,32 +203,27 @@ async function dropUnreadLoopReplies(
   state: StateAdapter | undefined,
 ): Promise<void> {
   const stopped = new Set(stoppedIds);
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    mailboxIds.map((conversationId) =>
-      limit(async () => {
-        const messages =
-          (await getConversationWorkState({ conversationId, state }))
-            ?.messages ?? [];
-        const senders = await readChildMessageSenders(messages);
-        const inboundMessageIds = messages.flatMap((message, index) => {
-          const sender = senders[index];
-          return sender &&
-            !ownAgentInvocation(sender) &&
-            stopped.has(sender.conversationId)
-            ? [message.inboundMessageId]
-            : [];
-        });
-        if (inboundMessageIds.length > 0) {
-          await dropPendingMessages({
-            conversationId,
-            inboundMessageIds,
-            state,
-          });
-        }
-      }),
-    ),
-  );
+  await mapBounded(mailboxIds, async (conversationId) => {
+    const messages =
+      (await getConversationWorkState({ conversationId, state }))?.messages ??
+      [];
+    const senders = await readChildMessageSenders(messages);
+    const inboundMessageIds = messages.flatMap((message, index) => {
+      const sender = senders[index];
+      return sender &&
+        !ownAgentInvocation(sender) &&
+        stopped.has(sender.conversationId)
+        ? [message.inboundMessageId]
+        : [];
+    });
+    if (inboundMessageIds.length > 0) {
+      await dropPendingMessages({
+        conversationId,
+        inboundMessageIds,
+        state,
+      });
+    }
+  });
 }
 
 /**
@@ -269,15 +263,10 @@ async function finishStoppedTree(
     await recordSubagentEnded(invocation);
   }
   await markConversationsStopped(conversationIdsToStop, options);
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    conversationIdsToStop.map((conversationId) =>
-      limit(async () => {
-        await cancelSignInWait(conversationId);
-        await stopConversationWork({ conversationId, state: options.state });
-      }),
-    ),
-  );
+  await mapBounded(conversationIdsToStop, async (conversationId) => {
+    await cancelSignInWait(conversationId);
+    await stopConversationWork({ conversationId, state: options.state });
+  });
 }
 
 /**

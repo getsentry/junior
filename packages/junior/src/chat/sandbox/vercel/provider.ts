@@ -1,5 +1,4 @@
 import { FileSystem, Sandbox } from "@vercel/sandbox";
-import pLimit from "p-limit";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/vercel/credentials";
 import { toVercelNetworkPolicy } from "@/chat/sandbox/egress/vercel";
 import { vercelSandboxErrors } from "@/chat/sandbox/vercel/errors";
@@ -14,7 +13,7 @@ import type {
   SandboxSession,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 /**
  * Sandbox client options. Since 4.0, a client without `fetch` uses the SDK's
@@ -224,26 +223,21 @@ async function deleteWorkspaceSnapshotBuilders(
 ): Promise<void> {
   let hasError = false;
   let firstError: unknown;
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    [...new Set(names)].map((name) =>
-      limit(async () => {
-        try {
-          const sandbox = await Sandbox.get({
-            name,
-            resume: false,
-            ...clientOptions(),
-          });
-          await sandbox.delete();
-        } catch (error) {
-          if (!vercelSandboxErrors.isMissing(error)) {
-            if (!hasError) firstError = error;
-            hasError = true;
-          }
-        }
-      }),
-    ),
-  );
+  await mapBounded([...new Set(names)], async (name) => {
+    try {
+      const sandbox = await Sandbox.get({
+        name,
+        resume: false,
+        ...clientOptions(),
+      });
+      await sandbox.delete();
+    } catch (error) {
+      if (!vercelSandboxErrors.isMissing(error)) {
+        if (!hasError) firstError = error;
+        hasError = true;
+      }
+    }
+  });
   if (hasError) throw firstError;
 }
 
