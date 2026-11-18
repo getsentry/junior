@@ -202,7 +202,9 @@ function writeReleaseConsumer(consumer, directory, manifest) {
   );
   writeFileSync(
     join(consumer, "pnpm-workspace.yaml"),
-    `overrides: ${JSON.stringify(dependencies)}\nautoInstallPeers: false\n`,
+    // The release-age cooldown belongs to real consumers. Here it makes pnpm 12 recheck the
+    // lockfile on the offline install, with metadata that the first install did not cache.
+    `overrides: ${JSON.stringify(dependencies)}\nautoInstallPeers: false\nminimumReleaseAge: 0\n`,
   );
 }
 
@@ -229,8 +231,6 @@ export function verifyReleaseInstall(directory, manifest) {
       "Junior package resolved through the registry",
     );
     // Prove a frozen install reconstructs node_modules, not merely accepts an existing install.
-    // Not --offline: pnpm rechecks minimumReleaseAge here and fetches full metadata for any
-    // package with a version from the last day, which the first install did not cache.
     rmSync(join(consumer, "node_modules"), { recursive: true, force: true });
     execFileSync(
       "pnpm",
@@ -238,7 +238,7 @@ export function verifyReleaseInstall(directory, manifest) {
         "install",
         "--ignore-scripts",
         "--frozen-lockfile",
-        "--prefer-offline",
+        "--offline",
         "--store-dir",
         join(consumer, "store"),
       ],
