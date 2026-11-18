@@ -59,6 +59,7 @@ export const TranscriptMessageView = memo(
               chat={chatText}
               key={index}
               mentions={props.message.mentions}
+              skills={roleKind === "user"}
               text={part.text ?? ""}
             />
           ) : null,

@@ -14,7 +14,7 @@ import { MatchedLabel } from "../components/MatchedLabel";
 import { searchSkills, type SkillSearchRow } from "../components/skillSearch";
 import { Badge } from "../components/ui/badge";
 import { cn } from "../styles";
-import { skillTokenAt, type SkillToken } from "./composerSkillToken";
+import { skillTokenAt, type SkillToken } from "./skillReferences";
 
 /**
  * Suggest skills while the reader types `$` in the composer. Focus stays in
