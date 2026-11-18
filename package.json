@@ -27,6 +27,7 @@
     "type-assertions:check": "node --test scripts/check-type-assertions.test.mjs && node scripts/check-type-assertions.mjs",
     "await-in-loop:check": "node --test scripts/check-await-in-loop.test.mjs && node scripts/check-await-in-loop.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
+    "dashboard-bundle-size:check": "node --test scripts/check-dashboard-bundle-size.test.mjs && node scripts/check-dashboard-bundle-size.mjs",
     "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan --error=unused-suppression --error=no-suppress-all && node --test scripts/check-ast-grep-ignores.test.mjs && node scripts/check-ast-grep-ignores.mjs",
     "lint-staged": "lint-staged",
     "build": "pnpm -r --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" run build",
