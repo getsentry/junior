@@ -8,6 +8,12 @@ import { toolCallsOf } from "@junior-evals/fixture/results";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
+function loadedSkillNames(result: Parameters<typeof toolCallsOf>[1]) {
+  return toolCallsOf("loadSkill", result)
+    .filter((call) => call.status === "completed")
+    .map((call) => (call.input as { skill_name?: unknown }).skill_name);
+}
+
 describe("Skills", () => {
   test("when an explicit skill runs twice in one thread, keep its replies ordered", async ({
     run,
@@ -38,15 +44,43 @@ describe("Skills", () => {
     // `launch-signoff`.
     // Only `launch-signoff` has the code, and it becomes loadable only after
     // `launch-checks` loads.
-    const result = await run(slackMention("/launch-review Atlas"));
+    const result = await run(slackMention("$launch-review Atlas"));
 
     const loads = toolCallsOf("loadSkill", result);
     expect(loads.map((call) => call.status)).not.toContain("error");
-    expect(
-      loads.filter((call) => call.status === "completed").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(loadedSkillNames(result)).toEqual(
+      expect.arrayContaining(["launch-checks", "launch-signoff"]),
+    );
     expect(result.replies).toHaveLength(1);
     expect(result.replies[0]!.text).toContain("ORCHID-42");
+  });
+
+  test("when one message invokes two manual-only skills, use both", async ({
+    run,
+  }) => {
+    // Junior injects the first skill. The second is manual-only, so the
+    // agent must load it by the name the message gave.
+    const result = await run(
+      slackMention(
+        "$weather-lookup Vienna, and also give me the $launch-signoff code for Atlas",
+      ),
+    );
+
+    expect(
+      toolCallsOf("loadSkill", result).map((call) => call.status),
+    ).not.toContain("error");
+    expect(loadedSkillNames(result)).toContain("launch-signoff");
+    expect(result.replies).toHaveLength(1);
+    expect(result.replies[0]!.text).toContain("ORCHID-42");
+    await expect(result).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply includes a weather report for Vienna with the simulated data: 72°F or 22°C.",
+          "The reply gives the Atlas sign-off code.",
+        ],
+      }),
+    );
   });
 
   test("when an automation runs a manual-only skill, follow that skill with its context", async ({

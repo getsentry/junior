@@ -204,14 +204,26 @@ function renderInputParts(instruction: AgentInstruction): string[] {
   );
 }
 
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
+/**
+ * Render an explicitly selected skill as instructions for the current turn.
+ * `loadableSkillNames` names the manual-only skills that the model can also
+ * load this Turn, because `<available-skills>` leaves them out.
+ */
+export function renderExplicitSkillInstructions(
+  skill: Skill,
+  loadableSkillNames: readonly string[],
+): string {
   return [
     "<skill>",
     `<name>${escapeXml(skill.name)}</name>`,
     `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
     `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
     `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
+    ...(loadableSkillNames.length > 0
+      ? [
+          `<loadable_skills>${escapeXml(loadableSkillNames.join(", "))}</loadable_skills>`,
+        ]
+      : []),
     skill.body,
     "</skill>",
   ].join("\n");
@@ -634,6 +646,8 @@ export async function assemblePrompt(args: {
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
   explicitSkill: Skill | null;
+  /** Manual-only skills that the `<skill>` block names as loadable. */
+  explicitSkillLoadableNames: readonly string[];
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -763,7 +777,10 @@ export async function assemblePrompt(args: {
       ? [
           {
             type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
+            text: renderExplicitSkillInstructions(
+              args.explicitSkill,
+              args.explicitSkillLoadableNames,
+            ),
           },
         ]
       : []),

@@ -34,9 +34,9 @@ If a skill needs a CLI, system package, MCP server, or credential flow, declare 
 
 ### Invoke a skill
 
-Write `$skill-name` in a message or an automation instruction to run that skill, for example `$weekly-report getsentry/junior`. Junior also accepts `/skill-name` for older messages. Do not describe invocation syntax inside a skill. Junior handles invocation.
+Write `$skill-name` in a message or an automation instruction to run that skill, for example `$weekly-report getsentry/junior`. One message can invoke up to six skills. Junior loads the first one, and the model can load the others in the same Turn. Junior still accepts the older `/skill-name` form. Do not describe invocation syntax inside a skill. Junior handles invocation.
 
-Set `disable-model-invocation: true` in the skill frontmatter when only a person should start the skill. Junior then loads the skill only in a Turn whose own message names it, or in a Turn where a loaded skill references it as `$skill-name` or `/skill-name` in its `SKILL.md`. Other mentions of the name, and references in `references/` files, do not count.
+Set `disable-model-invocation: true` in the skill frontmatter when only a person should start the skill. Junior also reads `policy.allow_implicit_invocation: false` in a Codex `agents/openai.yaml` file the same way. Junior then loads the skill only in a Turn whose own message invokes it with `$skill-name`, or in a Turn where a loaded skill references it as `$skill-name` in its `SKILL.md`. Other mentions of the name, and references in `references/` files, do not count.
 
 ## Plugins
 

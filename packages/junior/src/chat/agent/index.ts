@@ -32,7 +32,7 @@ import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   findSkillByName,
-  parseSkillInvocation,
+  parseSkillInvocations,
   type Skill,
 } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -145,7 +145,11 @@ import {
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import {
+  discoverRunSkills,
+  loadRunSkill,
+  unloadedManualSkillNames,
+} from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
@@ -512,13 +516,13 @@ async function executeAgentRunInPrivacyContext(
     // An Automation in skill mode names its skill in the dispatch, so its
     // text is not parsed for one.
     const dispatchSkill = run.dispatch?.skill;
-    const skillInvocation = dispatchSkill
-      ? { skillName: dispatchSkill }
-      : parseSkillInvocation(userInput, availableSkills);
-    const invokedSkill = skillInvocation
-      ? findSkillByName(skillInvocation.skillName, availableSkills)
-      : null;
-    if (dispatchSkill && !invokedSkill) {
+    const invokedSkillNames = dispatchSkill
+      ? [dispatchSkill]
+      : parseSkillInvocations(userInput, availableSkills);
+    const invokedSkills = invokedSkillNames.flatMap(
+      (name) => findSkillByName(name, availableSkills) ?? [],
+    );
+    if (dispatchSkill && invokedSkills.length === 0) {
       throw new Error(missingAutomationSkillReason(dispatchSkill));
     }
     const activeSkills: Skill[] = [];
@@ -657,10 +661,17 @@ async function executeAgentRunInPrivacyContext(
     const explicitSkill = await loadRunSkill({
       activeSkills,
       currentTurnMessages,
-      invokedSkill,
+      invokedSkills,
       resumed: resumedFromSessionRecord,
       skillSandbox,
     });
+    const explicitSkillLoadableNames = explicitSkill
+      ? unloadedManualSkillNames(
+          availableSkills,
+          invokedSkillNames,
+          activeSkills,
+        )
+      : [];
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, userContentParts } = buildPromptInput({
       instruction: run.instruction,
@@ -758,7 +769,7 @@ async function executeAgentRunInPrivacyContext(
       durability,
       authorization,
       generatedFiles,
-      invokedSkill,
+      invokedSkills,
       onEvent: run.onEvent,
       onFatalToolError(error) {
         pendingPiHookError = error;
@@ -830,6 +841,7 @@ async function executeAgentRunInPrivacyContext(
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       explicitSkill,
+      explicitSkillLoadableNames,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,

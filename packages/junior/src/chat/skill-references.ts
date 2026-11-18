@@ -1,4 +1,4 @@
-/** Explicit skill references: `$name` and `/name`. */
+/** Explicit skill references: `$name`, and `/name` as older input. */
 import type { SkillMetadata } from "@/chat/skills";
 
 function isCommonEnvironmentVariable(name: string): boolean {
@@ -18,8 +18,9 @@ function isCommonEnvironmentVariable(name: string): boolean {
 }
 
 /**
- * Return the skills that `text` references explicitly, in order: each
- * `$name`, then each `/name`. Only these two forms reference a skill.
+ * Return the skills that `text` references explicitly, once each, in the
+ * order they appear. `$name` is the reference form; `/name` is accepted as
+ * older input.
  */
 export function skillReferences(
   text: string,
@@ -33,12 +34,18 @@ export function skillReferences(
   const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
   // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
   const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
-  const names = (pattern: RegExp) =>
+  const matches = (pattern: RegExp) =>
     [...text.matchAll(pattern)].flatMap((match) =>
-      match[1] ? [match[1].toLowerCase()] : [],
+      match[1] ? [{ index: match.index, name: match[1].toLowerCase() }] : [],
     );
-  const dollarNames = names(dollarPattern).filter(
-    (name) => !isCommonEnvironmentVariable(name),
-  );
-  return [...dollarNames, ...names(slashPattern)].filter(isSkill);
+  const names = [
+    ...matches(dollarPattern).filter(
+      ({ name }) => !isCommonEnvironmentVariable(name),
+    ),
+    ...matches(slashPattern),
+  ]
+    .sort((left, right) => left.index - right.index)
+    .map(({ name }) => name)
+    .filter(isSkill);
+  return [...new Set(names)];
 }

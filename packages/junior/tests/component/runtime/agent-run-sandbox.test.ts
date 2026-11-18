@@ -362,7 +362,7 @@ vi.mock("@/chat/skills", () => {
         body: "Skill instructions",
       },
     ],
-    parseSkillInvocation: () => null,
+    parseSkillInvocations: () => [],
     stripFrontmatter: (value: string) =>
       value.replace(/^---[\s\S]*?---\s*/, "").trim(),
   };

@@ -245,8 +245,10 @@ const TOOL_POLICY_RULES = [
 /** Block 5, `<skill-policy>`: when to load a skill and how to use one. */
 const SKILL_POLICY_RULES = [
   "- A `<skill>` block in the current user turn is already loaded. Follow its instructions directly and do not call `loadSkill` for that skill.",
-  "- Otherwise, scan `<available-skills>` before acting. Load the most specific skill whose description matches the request; do not answer from memory when one fits. Only call `loadSkill` with an exact listed `<name>`; if none fits, do not load a skill.",
+  "- Otherwise, scan `<available-skills>` before acting. Load the most specific skill whose description matches the request; do not answer from memory when one fits. If none fits, do not load a skill.",
+  "- Only call `loadSkill` with an exact name from `<available-skills>`, from `<loadable_skills>` in a `<skill>` block, or from `loadable_skills` in a `loadSkill` result.",
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
+  "- A person invokes a skill with `$name`. When you name a skill in a reply, write `$name`.",
 ];
 
 /**

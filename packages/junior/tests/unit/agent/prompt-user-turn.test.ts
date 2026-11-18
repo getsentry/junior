@@ -10,12 +10,15 @@ import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 describe("buildUserTurnText", () => {
   it("renders an explicitly selected skill as loaded instructions", () => {
     expect(
-      renderExplicitSkillInstructions({
-        name: "weather-lookup",
-        description: "Weather lookup",
-        skillPath: "/host/skills/weather-lookup/SKILL.md",
-        body: "Use the weather source.",
-      }),
+      renderExplicitSkillInstructions(
+        {
+          name: "weather-lookup",
+          description: "Weather lookup",
+          skillPath: "/host/skills/weather-lookup/SKILL.md",
+          body: "Use the weather source.",
+        },
+        [],
+      ),
     ).toBe(
       [
         "<skill>",
@@ -25,6 +28,25 @@ describe("buildUserTurnText", () => {
         "<path_resolution>Resolve relative paths in this skill against /vercel/sandbox/skills/weather-lookup. For bash commands from this skill, cd to /vercel/sandbox/skills/weather-lookup first or use absolute paths.</path_resolution>",
         "Use the weather source.",
         "</skill>",
+      ].join("\n"),
+    );
+  });
+
+  it("names the manual-only skills that the explicit skill makes loadable", () => {
+    expect(
+      renderExplicitSkillInstructions(
+        {
+          name: "launch-review",
+          description: "Launch review",
+          skillPath: "/host/skills/launch-review/SKILL.md",
+          body: "Run $launch-checks.",
+        },
+        ["launch-checks", "weather-lookup"],
+      ),
+    ).toContain(
+      [
+        "<loadable_skills>launch-checks, weather-lookup</loadable_skills>",
+        "Run $launch-checks.",
       ].join("\n"),
     );
   });

@@ -7,6 +7,7 @@ import {
   sandboxSkillFile,
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
+import { skillReferences } from "@/chat/skill-references";
 import {
   loadSkillsByName,
   type Skill,
@@ -21,6 +22,7 @@ export type LoadSkillResult = {
   location?: string;
   path_resolution?: string;
   instructions?: string;
+  loadable_skills?: string[];
 } & Record<string, unknown>;
 
 function toLoadedSkill(
@@ -120,7 +122,22 @@ export function createLoadSkillTool(
       if (loadedSkill) {
         await options?.onSkillLoaded?.(loadedSkill);
       }
-      return result;
+      // `onSkillLoaded` adds the manual-only skills that this skill
+      // references to `availableSkills`. `<available-skills>` leaves them
+      // out, so name them here.
+      const loadable = skillReferences(
+        result.instructions ?? "",
+        availableSkills,
+      ).filter(
+        (name) =>
+          name !== result.skill_name &&
+          availableSkills.some(
+            (skill) => skill.name === name && skill.disableModelInvocation,
+          ),
+      );
+      return loadable.length > 0
+        ? { ...result, loadable_skills: loadable }
+        : result;
     },
   });
 }

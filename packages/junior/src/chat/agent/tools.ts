@@ -205,7 +205,7 @@ interface ToolWiringArgs {
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
-  invokedSkill: SkillMetadata | null;
+  invokedSkills: readonly SkillMetadata[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
@@ -542,9 +542,10 @@ export async function wireAgentTools(
       modelId: botConfig.guardianModelId,
     }),
   });
+  const invokedSkillNames = args.invokedSkills.map((skill) => skill.name);
   const skills = loadableSkills(
     args.availableSkills,
-    args.invokedSkill?.name,
+    invokedSkillNames,
     args.activeSkills,
   );
   const tools = createTools(
@@ -569,7 +570,7 @@ export async function wireAgentTools(
           skills.length,
           ...loadableSkills(
             args.availableSkills,
-            args.invokedSkill?.name,
+            invokedSkillNames,
             args.activeSkills,
           ),
         );

@@ -236,10 +236,6 @@ export interface Skill extends SkillMetadata {
   body: string;
 }
 
-export interface SkillInvocation {
-  skillName: string;
-}
-
 export interface DiscoverSkillsOptions {
   additionalRoots?: string[] | undefined;
 }
@@ -325,6 +321,46 @@ function applyPluginRuntimeBoundary(
     : body;
 }
 
+/**
+ * Codex's `agents/openai.yaml` makes a skill manual-only with
+ * `policy.allow_implicit_invocation: false`. Junior treats it the same as
+ * `disable-model-invocation: true`.
+ */
+const openAiSkillPolicySchema = z.object({
+  policy: z
+    .object({ allow_implicit_invocation: z.boolean().optional() })
+    .optional(),
+});
+
+async function openAiImplicitInvocationDisabled(
+  skillDir: string,
+): Promise<boolean> {
+  const policyFile = path.join(skillDir, "agents", "openai.yaml");
+  let raw: string;
+  try {
+    raw = await fs.readFile(policyFile, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(raw);
+  } catch (error) {
+    logWarn("skill.openai_yaml.invalid", {
+      "file.path": policyFile,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+  const result = openAiSkillPolicySchema.safeParse(parsed);
+  return (
+    result.success && result.data.policy?.allow_implicit_invocation === false
+  );
+}
+
 async function readSkillDirectory(
   skillDir: string,
 ): Promise<SkillMetadata | null> {
@@ -341,8 +377,12 @@ async function readSkillDirectory(
       return null;
     }
 
-    const { name, description, allowedTools, disableModelInvocation } =
-      parsed.skill;
+    const { name, description, allowedTools } = parsed.skill;
+    // Read `agents/openai.yaml` only when the frontmatter leaves the skill
+    // model-invocable.
+    const disableModelInvocation =
+      parsed.skill.disableModelInvocation === true ||
+      (await openAiImplicitInvocationDisabled(skillDir));
     const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
 
     return {
@@ -414,44 +454,21 @@ export async function discoverSkills(
   return sorted;
 }
 
+/** Most skills one message can invoke, like Claude Code. */
+const MAX_INVOKED_SKILLS = 6;
+
 /**
- * Extract an explicit skill invocation from a user message. `$name` is the
- * canonical form; `/name` still works for older messages and automations.
+ * Return the skills that a message invokes with `$name`, in message order,
+ * once each. `/name` still works as older input.
  */
-export function parseSkillInvocation(
+export function parseSkillInvocations(
   messageText: string,
   availableSkills: SkillMetadata[],
-): SkillInvocation | null {
-  const trimmed = messageText.trim();
-  const escapePattern = (value: string) =>
-    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const [referencedSkill] = skillReferences(trimmed, availableSkills);
-  if (referencedSkill) {
-    return { skillName: referencedSkill };
-  }
-
-  const namedSkill = availableSkills.find((skill) => {
-    if (skill.disableModelInvocation !== true) {
-      return false;
-    }
-    const skillPattern = escapePattern(skill.name);
-    const explicitUse = new RegExp(
-      `\\b(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
-      "i",
-    );
-    const negatedUse = new RegExp(
-      `\\b(?:do\\s+not|don't|dont|never)\\s+(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
-      "i",
-    );
-    return explicitUse.test(trimmed) && !negatedUse.test(trimmed);
-  });
-  if (!namedSkill) {
-    return null;
-  }
-
-  return {
-    skillName: namedSkill.name,
-  };
+): string[] {
+  return skillReferences(messageText, availableSkills).slice(
+    0,
+    MAX_INVOKED_SKILLS,
+  );
 }
 
 /** Look up a skill by name from the available set. */
@@ -491,8 +508,8 @@ export async function loadSkillsByName(
       ...(parsed.skill.allowedTools
         ? { allowedTools: parsed.skill.allowedTools }
         : undefined),
-      ...(parsed.skill.disableModelInvocation
-        ? { disableModelInvocation: parsed.skill.disableModelInvocation }
+      ...(parsed.skill.disableModelInvocation || meta.disableModelInvocation
+        ? { disableModelInvocation: true }
         : undefined),
     };
 

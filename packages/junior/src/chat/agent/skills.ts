@@ -25,28 +25,45 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
 
 /**
  * Return the skills that the model can load with `loadSkill`. A manual-only
- * skill is loadable only in a Turn where the user invoked it, or where a
- * skill loaded in that Turn references it as `$name` or `/name` in its
- * SKILL.md instructions. No other text, such as memory, thread messages, or
- * tool results, unlocks one.
+ * skill is loadable only in a Turn whose message invokes it, or where a skill
+ * loaded in that Turn references it as `$name` in its SKILL.md instructions.
+ * No other text, such as memory, thread messages, or tool results, unlocks
+ * one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
-  invokedSkillName: string | undefined,
+  invokedSkillNames: readonly string[],
   loadedSkills: readonly Skill[],
 ): SkillMetadata[] {
-  const referenced = new Set(
-    loadedSkills.flatMap((loaded) => [
+  const unlocked = new Set([
+    ...invokedSkillNames,
+    ...loadedSkills.flatMap((loaded) => [
       loaded.name,
       ...skillReferences(loaded.body, availableSkills),
     ]),
-  );
+  ]);
   return availableSkills.filter(
     (skill) =>
-      skill.disableModelInvocation !== true ||
-      skill.name === invokedSkillName ||
-      referenced.has(skill.name),
+      skill.disableModelInvocation !== true || unlocked.has(skill.name),
   );
+}
+
+/**
+ * Name the loadable manual-only skills that are not loaded yet.
+ * `<available-skills>` leaves them out, so the model sees them only here.
+ */
+export function unloadedManualSkillNames(
+  availableSkills: SkillMetadata[],
+  invokedSkillNames: readonly string[],
+  loadedSkills: readonly Skill[],
+): string[] {
+  return loadableSkills(availableSkills, invokedSkillNames, loadedSkills)
+    .filter(
+      (skill) =>
+        skill.disableModelInvocation === true &&
+        !loadedSkills.some((loaded) => loaded.name === skill.name),
+    )
+    .map((skill) => skill.name);
 }
 
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
@@ -103,16 +120,19 @@ function lastLoadedSkillName(
   return undefined;
 }
 
-/** Load the explicit skill, or recover the last skill loaded in a resumed turn. */
+/**
+ * Load the first invoked skill, or recover the last skill loaded in a resumed
+ * turn. The other invoked skills stay loadable for the model.
+ */
 export async function loadRunSkill(args: {
   activeSkills: Skill[];
   currentTurnMessages: readonly PiMessage[];
-  invokedSkill: SkillMetadata | null;
+  invokedSkills: readonly SkillMetadata[];
   resumed: boolean;
   skillSandbox: SkillSandbox;
 }): Promise<Skill | null> {
   const skillName =
-    args.invokedSkill?.name ??
+    args.invokedSkills[0]?.name ??
     (args.resumed ? lastLoadedSkillName(args.currentTurnMessages) : undefined);
   if (!skillName) {
     return null;
