@@ -5,7 +5,6 @@ import type {
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
-  PluginReviewNotice,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import { expect } from "vitest";
@@ -78,22 +77,12 @@ export function createPluginHarness(fixture: GitHubFixture) {
       annotation: ConversationAnnotationInput;
       conversationId: string;
     }>,
-    closedNotices: [] as string[],
     codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
-    /** Review items added. A change to an open item adds none. */
-    notices: [] as Array<{
-      conversationId: string;
-      notice: PluginReviewNotice;
-    }>,
     published: [] as EventInput[],
   };
   const watches = { comments: true, conflicts: true };
-  /** Review desk calls that fail before one succeeds. */
-  const failures = { upsert: 0 };
   const state = memoryState();
-  /** Dedupe keys of the open review items. */
-  const openNotices = new Set<string>();
   const events: EventPublisher = {
     async hasMatch(candidates) {
       return candidates.some(
@@ -109,23 +98,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
     },
   };
   const reviewItems: HeartbeatHookContext["reviewItems"] = {
-    forConversation(conversationId) {
-      return {
-        async upsert(notice) {
-          if (failures.upsert > 0) {
-            failures.upsert -= 1;
-            throw new Error("The review desk is down");
-          }
-          // Like core, an open item with the key only gets new content.
-          if (openNotices.has(notice.dedupeKey)) return;
-          openNotices.add(notice.dedupeKey);
-          recorded.notices.push({ conversationId, notice });
-        },
-        async close(input) {
-          if (!openNotices.delete(input.dedupeKey)) return;
-          recorded.closedNotices.push(input.dedupeKey);
-        },
-      };
+    forConversation() {
+      return { async upsert() {}, async close() {} };
     },
   };
   const cache: HeartbeatHookContext["cache"] = {
@@ -215,9 +189,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     ...recorded,
     deliver,
     events,
-    failures,
     heartbeat,
-    reviewItems,
     watches,
   };
 }

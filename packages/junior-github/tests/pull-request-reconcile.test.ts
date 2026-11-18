@@ -2,10 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequests } from "../src/db/schema";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -157,31 +154,8 @@ describe("daily reconcile of open pull requests", () => {
     vi.restoreAllMocks();
   });
 
-  /** Add a merge conflict notice for pull request 949. */
-  async function noticeFor949(): Promise<void> {
-    await fixture
-      .db()
-      .insert(juniorGitHubPullRequestRequesters)
-      .values({
-        conversationId: "slack:C1:1.0",
-        createdAt: new Date(now - 3 * day),
-        identityId: "identity-jane",
-        number: 949,
-        repositoryFullName: "getsentry/junior",
-        updatedAt: new Date(now - 3 * day),
-      });
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
-      assigneeIdentityIds: ["identity-jane"],
-      body: "Pull request 949 has merge conflicts.",
-      dedupeKey: "merge-conflict:getsentry/junior#949",
-      title: "Merge conflict · #949",
-    });
-  }
-
   it("records closes that GitHub did not deliver, once a day", async () => {
-    await noticeFor949();
     await h.heartbeat(now);
-    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
       [946, 947, 949, 951],
@@ -361,31 +335,6 @@ describe("daily reconcile of open pull requests", () => {
     expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
       new Set(["open"]),
     );
-  });
-
-  it("keeps a close open for the next reconcile when its notice close fails", async () => {
-    await noticeFor949();
-    const desk = h.reviewItems.forConversation("slack:C1:1.0");
-    vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
-      ...desk,
-      close: () => Promise.reject(new Error("The review desk is down")),
-    });
-    await h.heartbeat(now);
-    const state949 = async () =>
-      (
-        await fixture
-          .db()
-          .select({ state: juniorGitHubPullRequests.state })
-          .from(juniorGitHubPullRequests)
-          .where(eq(juniorGitHubPullRequests.number, 949))
-      )[0]?.state;
-    expect(await state949()).toBe("open");
-    expect(h.closedNotices).toEqual([]);
-
-    vi.setSystemTime(now + day);
-    await h.heartbeat(now + day);
-    expect(await state949()).toBe("closed_unmerged");
-    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
   });
 
   it("keeps a close open for the next reconcile when its event fails", async () => {

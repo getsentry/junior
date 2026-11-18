@@ -363,7 +363,6 @@ export function githubPlugin(
             await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          reviewItems: ctx.reviewItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -388,7 +387,6 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
-          reviewItems: ctx.reviewItems,
           state: ctx.state,
         });
       },

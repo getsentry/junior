@@ -635,20 +635,18 @@ so for a pull request that Junior opened, the event publishes only while
 people work on it:
 
 - In the first 2 days after the latest push, review, or comment by a person,
-  or after the pull request opened, the event publishes at most once a day
-  and 3 times in total.
-- After that, or after the third event, Junior publishes no event. It adds
-  a review desk notice to the conversation that asked for the pull request.
-  The notice closes when the conflict is gone.
-- After 3 days without activity by a person, Junior does nothing.
+  or after the pull request opened, the event publishes at most once a day,
+  and at most 3 times in a row with no activity by a person between them.
+- After that, Junior publishes no event.
 - An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, until
-  the total limit. The ready to merge notice needs a clean merge state, so it
-  comes after the fix.
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
 
 Junior stores none of this. For each conflict, it reads the pull request's
 timeline and review decision from GitHub. Merges and force pushes by a bot
-count as earlier fixes. Each head commit publishes one event.
+after the latest activity by a person count as earlier fixes. Each head
+commit publishes one event.
 
 </details>
 

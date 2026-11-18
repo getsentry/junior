@@ -510,34 +510,6 @@ describe("next action item", () => {
     }
   });
 
-  it("closes the merge conflict notice when the conflict is gone", async () => {
-    const fixture = await createGitHubFixture();
-    const github: GitHubState = {
-      draft: false,
-      mergeableStates: ["dirty"],
-      merged: false,
-      requestedReviewers: [],
-      reviews: [],
-      state: "open",
-    };
-    mockGitHub(github, []);
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const closes: string[] = [];
-      const webhook = route(fixture, [], [], { close: 0 }, closes);
-      const conflictCloses = () =>
-        closes.filter((key) => key.startsWith("merge-conflict:"));
-      await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual([]);
-
-      github.mergeableStates = ["blocked"];
-      await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual(["merge-conflict:getsentry/junior#946"]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("shows one item that changes from review to merge", async () => {
     const fixture = await createGitHubFixture();
     const calls: ReviewItemCall[] = [];
@@ -557,12 +529,10 @@ describe("next action item", () => {
       const webhook = route(fixture, calls, [], { close: 0 }, otherCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
-      // Each check closes the items from before one item per pull request,
-      // and the merge conflict notice of a pull request with no conflict.
+      // Each check closes the items from before one item per pull request.
       expect(otherCloses).toEqual([
         "pull-request-ready:getsentry/junior#946",
         "pull-request-review-requested:getsentry/junior#946",
-        "merge-conflict:getsentry/junior#946",
       ]);
 
       // The GitHub login matches the requester's linked account in any case.

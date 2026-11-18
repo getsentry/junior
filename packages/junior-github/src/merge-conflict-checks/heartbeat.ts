@@ -8,7 +8,6 @@
  */
 import type {
   EventPublisher,
-  PluginConversationReviewItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -19,11 +18,7 @@ import {
   type GitHubMergeConflict,
   type GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
-import {
-  applyGitHubConflictPolicy,
-  closeGitHubConflictNotices,
-  GITHUB_CONFLICT_GONE_REASON,
-} from "./policy.js";
+import { applyGitHubConflictPolicy } from "./policy.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -58,7 +53,6 @@ const searchNodeSchema = z.union([
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
     state: z.string(),
-    title: z.string(),
     url: z.string().min(1),
   }),
   z.object({}).strict(),
@@ -89,7 +83,6 @@ async function checkConflict(
     conflict: GitHubMergeConflict;
     draft: boolean;
     ref: { number: number; repositoryFullName: string };
-    title: string;
   },
 ): Promise<void> {
   const events = gitHubMergeConflictEvents({
@@ -99,16 +92,12 @@ async function checkConflict(
   // Conflict events match only `repo` and `pullRequest`.
   if (!(await args.events.hasMatch?.(events))) return;
   for (const event of await applyGitHubConflictPolicy({
-    conflict: input.conflict,
     db: args.db,
     draft: input.draft,
     events,
     loadHistory: args.loadHistory,
-    log: args.log,
     now: args.now,
     ref: input.ref,
-    reviewItems: args.reviewItems,
-    title: input.title,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
     await args.events.publish(event);
@@ -126,11 +115,9 @@ async function checkRepository(
       // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
       await args.search({ after, repositoryFullName }),
     ).data;
-    const mergeable: number[] = [];
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
       if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable === "MERGEABLE") mergeable.push(node.number);
       if (node.mergeable !== "CONFLICTING") continue;
       const ref = { number: node.number, repositoryFullName };
       const conflict: GitHubMergeConflict = {
@@ -139,23 +126,8 @@ async function checkRepository(
         url: node.url,
       };
       // oxlint-disable-next-line no-await-in-loop -- The sweep checks one pull request at a time, under GitHub rate limits.
-      await checkConflict(args, {
-        conflict,
-        draft: node.isDraft,
-        ref,
-        title: node.title,
-      });
+      await checkConflict(args, { conflict, draft: node.isDraft, ref });
     }
-    // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
-    await closeGitHubConflictNotices({
-      db: args.db,
-      log: args.log,
-      numbers: mergeable,
-      reason: GITHUB_CONFLICT_GONE_REASON,
-      repositoryFullName,
-      reviewItems: args.reviewItems,
-      status: "done",
-    });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
     after = search.pageInfo.endCursor;
   }
@@ -168,7 +140,6 @@ interface CheckArgs {
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
-  reviewItems: PluginConversationReviewItems;
   search: SearchOpenPullRequests;
   state: PluginState;
 }
