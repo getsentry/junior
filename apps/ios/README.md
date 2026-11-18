@@ -56,7 +56,7 @@ browser.
    apps/ios/scripts/sim.sh ui-test NavigationUITests/testAnswerQuestion
    ```
 
-To open the project in Xcode, run `xcodegen generate` in `apps/ios`.
+In `apps/ios`, `make init` installs the tools and `xcodegen generate` makes the Xcode project.
 
 ### On an iPhone
 
