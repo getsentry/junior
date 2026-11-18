@@ -52,7 +52,7 @@ const inputSchema = z
     body: z
       .string()
       .optional()
-      .describe(`Replacement pull request body: ${PULL_REQUEST_BODY_RULES}`),
+      .describe(`Replacement pull request body. ${PULL_REQUEST_BODY_RULES}`),
     base: z
       .string()
       .trim()

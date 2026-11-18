@@ -65,6 +65,7 @@ class GitHubPullRequestCreateRejectedError extends Error {
   }
 }
 
+const BODY_DESCRIPTION = `Pull request body. ${PULL_REQUEST_BODY_RULES}`;
 const REVIEWERS_DESCRIPTION =
   "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, the tool asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
 
@@ -84,8 +85,7 @@ const createPullRequestInputSchema = Type.Object(
     }),
     body: Type.Optional(
       Type.String({
-        description:
-          "Pull request body. The runtime appends the conversation footer.",
+        description: BODY_DESCRIPTION,
       }),
     ),
     draft: Type.Optional(
@@ -110,10 +110,7 @@ const createPullRequestToolInputSchema = z
     title: z.string().describe("Pull request title."),
     head: z.string().describe("Head branch or owner:branch ref."),
     base: z.string().describe("Base branch."),
-    body: z
-      .string()
-      .describe(`Pull request body: ${PULL_REQUEST_BODY_RULES}`)
-      .optional(),
+    body: z.string().describe(BODY_DESCRIPTION).optional(),
     draft: z
       .boolean()
       .describe("Whether to open the pull request as a draft.")
