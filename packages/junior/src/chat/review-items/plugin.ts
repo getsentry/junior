@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type {
   PluginReviewItems,
   PluginReviewNotice,
@@ -26,16 +27,18 @@ async function assigneeUserIds(
   identityIds: readonly string[],
   conversationId: string,
 ): Promise<string[]> {
-  const userIds: string[] = [];
-  for (const identityId of new Set(identityIds)) {
-    const user = (await readIdentityByIdFromSql(db, identityId))?.user;
-    if (!user) continue;
-    const access = (
-      await readConversationAccessFromSql(db, [conversationId], user)
-    ).get(conversationId);
-    if (access?.isParticipant) userIds.push(user.id);
-  }
-  return userIds;
+  const userIds = await mapBounded(
+    [...new Set(identityIds)],
+    async (identityId) => {
+      const user = (await readIdentityByIdFromSql(db, identityId))?.user;
+      if (!user) return [];
+      const access = (
+        await readConversationAccessFromSql(db, [conversationId], user)
+      ).get(conversationId);
+      return access?.isParticipant ? [user.id] : [];
+    },
+  );
+  return userIds.flat();
 }
 
 /**
@@ -92,7 +95,8 @@ export function createPluginReviewItems(args: {
         conversationIds: [
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
         ],
-        kind: "notice",
+        // An item that waits on its assignees is an action: it needs them.
+        kind: notice.waitsOnAssignees ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
         ...(notice.subject ? { subject: notice.subject } : undefined),

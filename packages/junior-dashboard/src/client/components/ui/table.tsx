@@ -42,7 +42,7 @@ function TableFooter({ className, ...props }: ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t border-dashboard-border font-medium [&>tr]:last:border-b-0",
+        "border-t border-border font-medium [&>tr]:last:border-b-0",
         className,
       )}
       {...props}
@@ -69,7 +69,7 @@ function TableHead({ className, ...props }: ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "px-2 py-2.5 text-left align-middle font-sans text-xs font-medium whitespace-nowrap text-dashboard-text-muted [&:has([role=checkbox])]:pr-0",
+        "px-2 py-2.5 text-left align-middle font-sans text-xs font-medium whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -82,7 +82,7 @@ function TableCell({ className, ...props }: ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap text-dashboard-text [&:has([role=checkbox])]:pr-0",
+        "p-2 align-middle whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

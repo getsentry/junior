@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-memory",
-  "version": "0.288.0",
+  "version": "0.308.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -24,27 +24,26 @@
   "scripts": {
     "build": "tsdown",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsdown.config.ts",
-    "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "@sentry/junior-search": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
     "commander": "^14.0.3",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
-    "@types/node": "^25.9.1",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.15.6",
     "drizzle-kit": "catalog:",
-    "oxlint": "^1.79.0",
-    "tsdown": "0.23.1",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "pg": "^8.16.3",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

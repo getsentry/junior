@@ -2,6 +2,10 @@ import {
   readAttachmentStorageConfig,
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -88,10 +92,14 @@ export interface BotModelConfig {
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
+  /** Model used to transcribe audio and video attachments. */
+  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
   webSearchModelId?: string;
+  /** Model that continues an agent Turn after the main model refuses it. Unset by default. */
+  refusalFallbackModelId?: string;
 }
 
 export interface BotConfig {
@@ -102,10 +110,12 @@ export interface BotConfig {
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
+  transcriptionModelId: string;
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
-  visionModelId?: string;
+  refusalFallbackModelId?: string | undefined;
+  visionModelId?: string | undefined;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
@@ -129,18 +139,20 @@ export interface ChatConfig {
   cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
     statementTimeoutMs: number | false;
   };
   slack: {
-    botToken?: string;
-    clientId?: string;
-    clientSecret?: string;
+    botToken?: string | undefined;
+    clientId?: string | undefined;
+    clientSecret?: string | undefined;
     completedReactionEmoji: string;
     processingReactionEmoji: string;
-    signingSecret?: string;
+    signingSecret?: string | undefined;
   };
   sandbox: {
     /** Sandbox provider for this deployment. `docker` is for local development. */
@@ -148,8 +160,8 @@ export interface ChatConfig {
   };
   state: {
     adapter: "memory" | "redis";
-    keyPrefix?: string;
-    redisUrl?: string;
+    keyPrefix?: string | undefined;
+    redisUrl?: string | undefined;
   };
 }
 
@@ -251,6 +263,9 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
+// The transcription tool sends a URL, not bytes. The model must accept
+// ElevenLabs `sourceUrl`.
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -299,44 +314,52 @@ function readBotConfig(
   functionMaxDurationSeconds: number,
 ): BotConfig {
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
-  const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
-  const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
+  const modelId = validateGatewayModelId(env["AI_MODEL"]) ?? DEFAULT_MODEL_ID;
+  const reasoningLevel = toOptionalTrimmed(env["AI_REASONING_LEVEL"]);
   const fastModelId =
-    validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
+    validateGatewayModelId(env["AI_FAST_MODEL"] ?? env["AI_MODEL"]) ??
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
-    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
+    validateGatewayModelId(env["AI_GUARDIAN_MODEL"]) ??
+    DEFAULT_GUARDIAN_MODEL_ID;
 
   return {
-    userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    userName: toOptionalTrimmed(env["JUNIOR_BOT_NAME"]) ?? "junior",
     modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
         "AI_MODEL_CONTEXT_WINDOW_TOKENS",
-        env.AI_MODEL_CONTEXT_WINDOW_TOKENS,
+        env["AI_MODEL_CONTEXT_WINDOW_TOKENS"],
       ) ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
     reasoningLevel:
       reasoningLevel === undefined
         ? DEFAULT_REASONING_LEVEL
         : parseTurnReasoningLevel(reasoningLevel),
     decisionModelId:
-      toOptionalTrimmed(env.AI_DECISION_MODEL) ?? DEFAULT_DECISION_MODEL_ID,
+      toOptionalTrimmed(env["AI_DECISION_MODEL"]) ?? DEFAULT_DECISION_MODEL_ID,
     fastModelId,
     guardianModelId,
     imageGenerationModelId:
-      toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
+      toOptionalTrimmed(env["AI_IMAGE_MODEL"]) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
+    transcriptionModelId:
+      toOptionalTrimmed(env["AI_TRANSCRIPTION_MODEL"]) ??
+      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
-      validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
+      validateEmbeddingModelId(env["AI_EMBEDDING_MODEL"]) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     rerankingModelId:
-      toOptionalTrimmed(env.AI_RERANKING_MODEL) ?? DEFAULT_RERANKING_MODEL_ID,
-    loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+      toOptionalTrimmed(env["AI_RERANKING_MODEL"]) ??
+      DEFAULT_RERANKING_MODEL_ID,
+    loadingMessages: parseLoadingMessages(env["JUNIOR_LOADING_MESSAGES"]),
+    refusalFallbackModelId: validateGatewayModelId(
+      env["AI_REFUSAL_FALLBACK_MODEL"],
+    ),
     visionModelId:
-      env.AI_VISION_MODEL === undefined
+      env["AI_VISION_MODEL"] === undefined
         ? DEFAULT_VISION_MODEL_ID
-        : validateGatewayModelId(env.AI_VISION_MODEL),
-    maxAgentDepth: 0,
+        : validateGatewayModelId(env["AI_VISION_MODEL"]),
+    maxAgentDepth: 1,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
@@ -344,17 +367,17 @@ function readBotConfig(
     maxEventAutomationRuns: MAX_EVENT_AUTOMATION_RUNS,
     eventAutomationRunWindowMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
-      env.AGENT_TURN_TIMEOUT_MS,
+      env["AGENT_TURN_TIMEOUT_MS"],
       maxTurnTimeoutMs,
     ),
     webSearchModelId:
-      validateGatewayModelId(env.AI_WEB_SEARCH_MODEL) ??
+      validateGatewayModelId(env["AI_WEB_SEARCH_MODEL"]) ??
       DEFAULT_WEB_SEARCH_MODEL_ID,
   };
 }
 
 function readDatabaseUrl(env: NodeJS.ProcessEnv): string {
-  const databaseUrl = toOptionalTrimmed(env.DATABASE_URL);
+  const databaseUrl = toOptionalTrimmed(env["DATABASE_URL"]);
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
   }
@@ -375,7 +398,7 @@ function isLocalDatabaseUrl(databaseUrl: string): boolean {
 }
 
 function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
-  const value = toOptionalTrimmed(env.JUNIOR_DATABASE_DRIVER);
+  const value = toOptionalTrimmed(env["JUNIOR_DATABASE_DRIVER"]);
   if (value === undefined) {
     if (isLocalDatabaseUrl(databaseUrl)) {
       return "postgres";
@@ -389,7 +412,7 @@ function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
 }
 
 function readSqlStatementTimeoutMs(env: NodeJS.ProcessEnv): number | false {
-  const rawValue = toOptionalTrimmed(env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS);
+  const rawValue = toOptionalTrimmed(env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"]);
   if (rawValue === undefined) {
     return DEFAULT_SQL_STATEMENT_TIMEOUT_MS;
   }
@@ -418,15 +441,16 @@ export function readChatConfig(
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
     cacheWarmingEnabled: parseKillSwitch(
       "JUNIOR_CACHE_WARMING_ENABLED",
-      env.JUNIOR_CACHE_WARMING_ENABLED,
+      env["JUNIOR_CACHE_WARMING_ENABLED"],
     ),
     conversationWorkEnabled: parseKillSwitch(
       "JUNIOR_CONVERSATION_WORK_ENABLED",
-      env.JUNIOR_CONVERSATION_WORK_ENABLED,
+      env["JUNIOR_CONVERSATION_WORK_ENABLED"],
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -434,27 +458,27 @@ export function readChatConfig(
     },
     slack: {
       botToken:
-        toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??
-        toOptionalTrimmed(env.SLACK_BOT_USER_TOKEN),
-      clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
-      clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
+        toOptionalTrimmed(env["SLACK_BOT_TOKEN"]) ??
+        toOptionalTrimmed(env["SLACK_BOT_USER_TOKEN"]),
+      clientId: toOptionalTrimmed(env["SLACK_CLIENT_ID"]),
+      clientSecret: toOptionalTrimmed(env["SLACK_CLIENT_SECRET"]),
       completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
       processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
-      signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
+      signingSecret: toOptionalTrimmed(env["SLACK_SIGNING_SECRET"]),
     },
     sandbox: {
       provider:
-        env.JUNIOR_SANDBOX_PROVIDER?.trim().toLowerCase() === "docker"
+        env["JUNIOR_SANDBOX_PROVIDER"]?.trim().toLowerCase() === "docker"
           ? "docker"
           : "vercel",
     },
     state: {
       adapter:
-        env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
+        env["JUNIOR_STATE_ADAPTER"]?.trim().toLowerCase() === "memory"
           ? "memory"
           : "redis",
-      keyPrefix: toOptionalTrimmed(env.JUNIOR_STATE_KEY_PREFIX),
-      redisUrl: toOptionalTrimmed(env.REDIS_URL),
+      keyPrefix: toOptionalTrimmed(env["JUNIOR_STATE_KEY_PREFIX"]),
+      redisUrl: toOptionalTrimmed(env["REDIS_URL"]),
     },
   };
 }
@@ -468,7 +492,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 0, lets only the root Conversation start child agents.
+   * default, 1, lets a child of the root start child agents, and those
+   * cannot start more. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
@@ -639,22 +664,18 @@ export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
 }
 
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
-}
-
 // ---------------------------------------------------------------------------
 // Runtime metadata
 // ---------------------------------------------------------------------------
 
 export interface RuntimeMetadata {
-  version?: string;
+  version?: string | undefined;
 }
 
 /** Return runtime metadata (version from deploy environment). */
 export function getRuntimeMetadata(): RuntimeMetadata {
   return {
-    version: toOptionalTrimmed(process.env.VERCEL_GIT_COMMIT_SHA),
+    version: toOptionalTrimmed(process.env["VERCEL_GIT_COMMIT_SHA"]),
   };
 }
 
@@ -714,10 +735,24 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateEmbeddingModelId,
     );
   }
+  if (config.transcriptionModelId !== undefined) {
+    botConfig.transcriptionModelId = requireModelId(
+      "transcriptionModelId",
+      config.transcriptionModelId,
+      toOptionalTrimmed,
+    );
+  }
   if (config.visionModelId !== undefined) {
     botConfig.visionModelId = requireModelId(
       "visionModelId",
       config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.refusalFallbackModelId !== undefined) {
+    botConfig.refusalFallbackModelId = requireModelId(
+      "refusalFallbackModelId",
+      config.refusalFallbackModelId,
       validateGatewayModelId,
     );
   }
@@ -728,6 +763,16 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
+}
+
+/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+export function setBotName(name: string | undefined): void {
+  if (name === undefined) return;
+  const trimmed = toOptionalTrimmed(name);
+  if (!trimmed) {
+    throw new Error("botName must not be empty");
+  }
+  botConfig.userName = trimmed;
 }
 
 /** Return the current Slack reaction emoji config. */

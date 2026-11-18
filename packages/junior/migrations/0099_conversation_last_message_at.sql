@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "last_message_at" timestamp with time zone;

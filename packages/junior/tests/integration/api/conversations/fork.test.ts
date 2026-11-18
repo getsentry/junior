@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   forkConversationResponseSchema,
   conversationDetailReportSchema,
+  versionsSchema,
 } from "@/api/schema";
 import {
   getConversationEventStore,
@@ -18,8 +19,12 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeConversationFixture } from "../../../fixtures/conversation";
-import { juniorConversations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  juniorAttachments,
+  juniorConversations,
+  juniorMessageAttachments,
+} from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -155,7 +160,7 @@ describe("conversation forks", () => {
     const source = "local:web:fork-source";
     const reply = await storeAnsweredTurn(source, {
       question: "Remember the blue option.",
-      answer: "First answer.",
+      answer: "First answer: https://example.com/blue",
       turn: "source",
     });
     const events = getConversationEventStore();
@@ -203,6 +208,31 @@ describe("conversation forks", () => {
     );
     const forkId = results[0]!.conversationId;
     expect(results[1]!.conversationId).toBe(forkId);
+    // The fork gets its own url Attachments for the links of the messages
+    // it copies, at the same seqs, for the feed.
+    const links = (conversationId: string) =>
+      getDb()
+        .select({
+          position: juniorMessageAttachments.position,
+          seq: juniorMessageAttachments.seq,
+          url: juniorAttachments.url,
+        })
+        .from(juniorMessageAttachments)
+        .innerJoin(
+          juniorAttachments,
+          and(
+            eq(juniorAttachments.id, juniorMessageAttachments.attachmentId),
+            eq(
+              juniorAttachments.conversationId,
+              juniorMessageAttachments.conversationId,
+            ),
+          ),
+        )
+        .where(eq(juniorMessageAttachments.conversationId, conversationId));
+    expect(await links(forkId)).toEqual(await links(source));
+    expect(await links(forkId)).toMatchObject([
+      { url: "https://example.com/blue" },
+    ]);
     const projection = await openConversationProjection({
       conversationId: forkId,
     });
@@ -240,7 +270,7 @@ describe("conversation forks", () => {
     expect(visibleEvents(detail)).toEqual([
       "user: Remember the blue option.",
       "turn",
-      "assistant: First answer.",
+      "assistant: First answer: https://example.com/blue",
       "turn",
     ]);
 
@@ -279,7 +309,7 @@ describe("conversation forks", () => {
     expect(visibleEvents(await readDetail(later.conversationId))).toEqual([
       "user: Remember the blue option.",
       "turn",
-      "assistant: First answer.",
+      "assistant: First answer: https://example.com/blue",
       "turn",
       "user: Now compare the red option.",
       "turn",
@@ -397,6 +427,11 @@ describe("conversation forks", () => {
     const owner = await authenticatedApi(OWNER_EMAIL);
     // A reader of a public Conversation asks in a fork of their own.
     const reader = await authenticatedApi("reader@example.com");
+    // The feed change token covers the same rows as the feed.
+    const feedToken = async () =>
+      versionsSchema.parse(await (await reader.request("/api/versions")).json())
+        .conversations;
+    const emptyFeedToken = await feedToken();
     const quote = "blue <option>";
     const response = await reader.request(
       `/api/conversations/${encodeURIComponent(source)}/forks`,
@@ -443,6 +478,7 @@ describe("conversation forks", () => {
         ).json(),
       ).forks;
     expect(await listed(reader)).not.toContain(conversationId);
+    expect(await feedToken()).toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([]);
 
     const keep = (api: Hono<JuniorApiEnv>) =>
@@ -454,6 +490,7 @@ describe("conversation forks", () => {
     expect((await keep(reader)).status).toBe(200);
     expect((await keep(reader)).status).toBe(200);
     expect(await listed(reader)).toContain(conversationId);
+    expect(await feedToken()).not.toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([conversationId]);
     expect(
       (await getConversationEventStore().loadHistory(conversationId)).filter(

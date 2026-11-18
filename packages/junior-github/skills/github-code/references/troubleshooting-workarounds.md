@@ -8,6 +8,7 @@
 | `junior-auth-required` with `user-write`                   | Follow the private OAuth prompt. Never ask for a pasted token.                            |
 | `git push` returns 401 or 403                              | Check the remote and repository. Retry once, then report the installation access failure. |
 | `permission_denied` has `source: "upstream"`               | Read GitHub's error. Report an access problem only if it says access denied or SSO.       |
+| `permission_denied` has `source: "policy"`                 | The runtime refused it. Follow its message. Push a new branch and open a PR.              |
 | Other 403 response                                         | Read the error and use the tool it names.                                                 |
 | `gh auth status` shows no token scopes                     | This is normal for GitHub App user tokens. Check App permissions instead.                 |
 | `github_createPullRequest` returns 401 or 403              | Report the installation access failure. Do not use user OAuth.                            |

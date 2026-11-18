@@ -106,6 +106,9 @@ export async function interceptTestGitHubChecksHttp(
               state: "OPEN",
               url: pullRequest.html_url,
               isDraft: false,
+              autoMergeRequest: null,
+              mergeStateStatus: "BLOCKED",
+              reviewDecision: "REVIEW_REQUIRED",
               headRefName: pullRequest.head.ref,
               headRefOid: sha,
               baseRefName: "main",
@@ -123,11 +126,13 @@ export async function interceptTestGitHubChecksHttp(
                               status: "COMPLETED",
                               conclusion: "FAILURE",
                               detailsUrl: check.details_url,
+                              isRequired: true,
                               checkSuite: {
                                 workflowRun: { workflow: { name: "test" } },
                               },
                             },
                           ],
+                          pageInfo: { hasNextPage: false },
                         },
                       },
                     },
@@ -142,6 +147,7 @@ export async function interceptTestGitHubChecksHttp(
     return undefined;
   }
   if (request.method !== "GET") return undefined;
+  // oxlint-disable-next-line junior/no-value-switch -- A fake server routes by URL path, not by type.
   switch (url.pathname) {
     // GitHub's issue endpoint also returns pull requests. Title generation
     // reads a plain owner/repo#number reference through this endpoint.

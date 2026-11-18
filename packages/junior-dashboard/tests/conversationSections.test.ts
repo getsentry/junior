@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attentionConversationIds,
   buildConversationSections,
-  pinnedAndAttentionFirst,
+  pinnedFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
@@ -13,6 +12,7 @@ function conversation(id: string, lastSeenAt: string): Conversation {
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
+    isParticipant: true,
     lastProgressAt: lastSeenAt,
     lastSeenAt,
     startedAt: lastSeenAt,
@@ -48,7 +48,7 @@ describe("conversation activity sections", () => {
         conversation("today-early", "2026-08-03T00:10:00-07:00"),
         conversation("today-late", "2026-08-03T11:45:00-07:00"),
       ],
-      { ...NOW, attentionIds: new Set() },
+      NOW,
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -62,44 +62,28 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts unread, waiting, and open-PR conversations in Needs attention before Today", () => {
-    const conversations = [
-      conversation("today", "2026-08-03T11:00:00-07:00"),
-      {
-        ...conversation("today-unread", "2026-08-03T09:00:00-07:00"),
-        unread: true,
-      },
-      conversation("yesterday", "2026-08-02T12:00:00-07:00"),
-      conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
-      conversation("saturday", "2026-08-01T12:00:00-07:00"),
-      // An open pull request waits on a person once Junior stops running.
-      {
-        ...conversation("open-pr", "2026-08-02T08:00:00-07:00"),
-        unfinishedWork: true,
-      },
-      {
-        ...conversation("open-pr-running", "2026-08-03T10:00:00-07:00"),
-        status: "active" as const,
-        unfinishedWork: true,
-      },
-    ];
-    const sections = buildConversationSections(conversations, {
-      ...NOW,
-      attentionIds: attentionConversationIds(conversations, ["waiting-old"]),
-    });
+  it("keeps conversations that wait on the viewer in their time section", () => {
+    const sections = buildConversationSections(
+      [
+        conversation("today", "2026-08-03T11:00:00-07:00"),
+        // A Turn parked for authorization leaves the conversation idle.
+        {
+          ...conversation("connecting", "2026-08-02T10:00:00-07:00"),
+          awaitingAuthorization: true,
+        },
+        conversation("saturday", "2026-08-01T12:00:00-07:00"),
+      ],
+      NOW,
+    );
 
     expect(sectionIds(sections)).toEqual([
-      {
-        conversations: ["today-unread", "open-pr", "waiting-old"],
-        label: "Needs attention",
-      },
-      { conversations: ["today", "open-pr-running"], label: "Today" },
-      { conversations: ["yesterday"], label: "Yesterday" },
+      { conversations: ["today"], label: "Today" },
+      { conversations: ["connecting"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
   });
 
-  it("puts pinned conversations only in Pinned, before Needs attention", () => {
+  it("puts pinned conversations only in Pinned, first", () => {
     const pinned = (
       id: string,
       lastSeenAt: string,
@@ -132,9 +116,9 @@ describe("conversation activity sections", () => {
           "2026-08-02T08:00:00-07:00",
           0,
         ),
-        conversation("waiting", "2026-08-03T09:00:00-07:00"),
+        conversation("earlier", "2026-08-03T09:00:00-07:00"),
       ],
-      { ...NOW, attentionIds: new Set(["pinned-earlier", "waiting"]) },
+      NOW,
     );
 
     // Pins without a place go first, newest pin first, then the viewer's
@@ -149,20 +133,61 @@ describe("conversation activity sections", () => {
         ],
         label: "Pinned",
       },
-      { conversations: ["waiting"], label: "Needs attention" },
-      { conversations: ["today"], label: "Today" },
+      { conversations: ["today", "earlier"], label: "Today" },
     ]);
   });
 
-  it("moves pinned, then attention conversations before paging", () => {
-    const feed = ["a", "b", "c", "d", "e"].map((id) =>
-      conversation(id, "2026-08-03T12:00:00-07:00"),
+  it("sorts and groups by the last Message, not by later tool or status events", () => {
+    const sections = buildConversationSections(
+      [
+        // A tool event moved its activity today; its last Message was
+        // yesterday.
+        {
+          ...conversation("tool-today", "2026-08-03T11:50:00-07:00"),
+          lastMessageAt: "2026-08-02T10:00:00-07:00",
+        },
+        {
+          ...conversation("reply-early", "2026-08-03T11:55:00-07:00"),
+          lastMessageAt: "2026-08-03T08:00:00-07:00",
+        },
+        {
+          ...conversation("reply-late", "2026-08-03T09:00:00-07:00"),
+          lastMessageAt: "2026-08-03T09:00:00-07:00",
+        },
+        // No Message yet: it uses its last activity.
+        conversation("no-message", "2026-08-03T10:00:00-07:00"),
+      ],
+      NOW,
     );
-    feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
-    feed[2] = { ...feed[2]!, unfinishedWork: true };
 
-    expect(
-      pinnedAndAttentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
-    ).toEqual(["e", "b", "c", "d", "a"]);
+    expect(sectionIds(sections)).toEqual([
+      {
+        conversations: ["no-message", "reply-late", "reply-early"],
+        label: "Today",
+      },
+      { conversations: ["tool-today"], label: "Yesterday" },
+    ]);
+  });
+
+  it("moves pinned conversations before paging, the rest by last Message", () => {
+    const feed = [
+      conversation("recent", "2026-08-03T11:00:00-07:00"),
+      {
+        ...conversation("tool-only", "2026-08-03T11:30:00-07:00"),
+        lastMessageAt: "2026-08-01T11:00:00-07:00",
+      },
+      {
+        ...conversation("pinned", "2026-08-01T10:00:00-07:00"),
+        pinnedAt: "2026-08-03T08:00:00-07:00",
+      },
+      conversation("older", "2026-08-02T10:00:00-07:00"),
+    ];
+
+    expect(pinnedFirst(feed).map((item) => item.id)).toEqual([
+      "pinned",
+      "recent",
+      "older",
+      "tool-only",
+    ]);
   });
 });

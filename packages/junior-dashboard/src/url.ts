@@ -1,5 +1,5 @@
 export interface DashboardBaseURLConfig {
-  baseURL?: string;
+  baseURL?: string | undefined;
 }
 
 export interface DashboardConversationURLConfig extends DashboardBaseURLConfig {
@@ -8,7 +8,9 @@ export interface DashboardConversationURLConfig extends DashboardBaseURLConfig {
 }
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {
@@ -33,17 +35,17 @@ export function normalizeDashboardPath(
 export function resolveDashboardBaseURL(
   config: DashboardBaseURLConfig = {},
 ): string {
-  const explicit = config.baseURL ?? process.env.JUNIOR_BASE_URL;
+  const explicit = config.baseURL ?? process.env["JUNIOR_BASE_URL"];
   if (explicit?.trim()) {
     return stripTrailingSlashes(withHttps(explicit.trim()));
   }
 
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
   if (vercelProd) {
     return stripTrailingSlashes(withHttps(vercelProd));
   }
 
-  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const vercelUrl = process.env["VERCEL_URL"]?.trim();
   if (vercelUrl) {
     return stripTrailingSlashes(withHttps(vercelUrl));
   }

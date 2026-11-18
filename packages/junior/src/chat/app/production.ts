@@ -13,13 +13,13 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
-import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 
@@ -48,19 +48,17 @@ export function getProductionSlackAdapter(): SlackAdapter {
   return productionSlackAdapter;
 }
 
-/** Return the production conversation store for current config. */
-export function getProductionConversationStore(): ConversationStore {
-  return getConversationStore();
-}
-
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options: {
   queue: ConversationWorkQueue;
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
-  const conversationStore = getProductionConversationStore();
+  const conversationStore = getConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
+    // Webhook ingress only starts and refreshes assistant threads. Turns run
+    // in conversation work, so this runtime never sends a plugin task.
+    sendPluginTask: sendVercelPluginTask,
     services: options?.services,
   });
   return {
@@ -76,12 +74,11 @@ export function createProductionSlackWebhookServices(options: {
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
   queue: ConversationWorkQueue;
-  /** Send path for plugin tasks. Without it, tasks go to the Vercel queue. */
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides;
   waitUntil: (task: Promise<unknown>) => void;
 }): ConversationWorkCallbackOptions {
-  const conversationStore = getProductionConversationStore();
+  const conversationStore = getConversationStore();
   return createConversationWork({
     agentRunner: options.agentRunner,
     conversationStore,

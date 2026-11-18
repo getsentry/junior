@@ -3,28 +3,33 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { CollapsibleTrigger } from "../components/ui/collapsible";
+import { Button } from "../components/ui/button";
+import { Item, ItemContent, ItemMedia } from "../components/ui/item";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { OutboundIcon } from "../components/OutboundLink";
+import { useInboxUi } from "../uiShell";
 
 /**
  * Group one kind of detail in a compact card. Conversation details and event
  * details share it, so both panels read the same way. A `label` names the
- * card as a region. An `action` sits at the end of the title row.
+ * card as a region. An `action` sits at the end of the title row. The new UI
+ * draws every card flat, so its panels have no nested frames.
  */
 export function DetailsCard(props: {
   action?: ReactNode;
   children: ReactNode;
-  count?: number;
+  count?: number | undefined;
   flat?: boolean;
-  label?: string;
-  title?: string;
+  label?: string | undefined;
+  title?: string | undefined;
 }) {
+  const flat = useInboxUi() || props.flat;
   return (
     <section
       aria-label={props.label}
       className={cn(
         "grid min-w-0 border-dashboard-border-subtle",
-        props.flat
+        flat
           ? "gap-1.5 border-t px-1 pt-3 pb-1"
           : "gap-2.5 rounded-lg border bg-dashboard-surface-panel p-3",
       )}
@@ -34,7 +39,7 @@ export function DetailsCard(props: {
           <h3
             className={cn(
               "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
-              props.flat
+              flat
                 ? "font-semibold text-dashboard-text"
                 : "font-medium text-dashboard-text-muted",
             )}
@@ -84,11 +89,12 @@ export function DetailsList<T>(props: {
       ))}
       {hidden > 0 ? (
         <li>
-          <button
+          <Button
             aria-expanded={expanded}
-            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 focus-visible:-outline-offset-2"
             onClick={() => setExpanded((value) => !value)}
-            type="button"
+            variant="ghost"
+            size="bare"
           >
             <span className="grid size-5 shrink-0 place-items-center">
               <ChevronRight
@@ -97,7 +103,7 @@ export function DetailsList<T>(props: {
               />
             </span>
             {expanded ? "Show fewer" : `Show ${hidden} more`}
-          </button>
+          </Button>
         </li>
       ) : null}
     </ul>
@@ -119,7 +125,7 @@ export function DetailsRow(props: {
   meta?: ReactNode;
   onClick?(): void;
   title: ReactNode;
-  to?: string;
+  to?: string | undefined;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {
@@ -128,69 +134,35 @@ export function DetailsRow(props: {
     props.to !== undefined ||
     props.onClick !== undefined ||
     props.disclosure === true;
-  const className = cn(
-    "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 rounded-md px-1.5 py-1.5 text-left text-inherit no-underline",
-    interactive &&
-      "group transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-  );
-  const content = (
-    <>
-      <span className="grid size-5 shrink-0 place-items-center text-dashboard-text-muted">
-        {props.icon}
-      </span>
-      <span className="flex min-w-0 items-center text-sm font-medium leading-5 text-dashboard-text">
-        <span className="truncate">{props.title}</span>
-        {props.href ? <OutboundIcon /> : null}
-      </span>
-      <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
-        {props.meta}
-      </span>
-      {props.children}
-    </>
-  );
-  if (props.href) {
-    return (
-      <a
-        className={className}
-        href={props.href}
-        rel="noreferrer"
-        target="_blank"
-        title={props.tooltip}
-      >
-        {content}
-      </a>
-    );
-  }
-  if (props.to) {
-    return (
-      <Link className={className} title={props.tooltip} to={props.to}>
-        {content}
-      </Link>
-    );
-  }
-  if (props.onClick) {
-    return (
-      <button
-        className={cn(className, "cursor-pointer")}
-        onClick={props.onClick}
-        title={props.tooltip}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
-  if (props.disclosure) {
-    return (
-      <CollapsibleTrigger className={className} title={props.tooltip}>
-        {content}
-      </CollapsibleTrigger>
-    );
-  }
+  const render = props.href ? (
+    <a href={props.href} rel="noreferrer" target="_blank" />
+  ) : props.to ? (
+    <Link to={props.to} />
+  ) : props.onClick ? (
+    <button onClick={props.onClick} type="button" />
+  ) : props.disclosure ? (
+    <CollapsibleTrigger />
+  ) : undefined;
   return (
-    <div className={className} title={props.tooltip}>
-      {content}
-    </div>
+    <Item
+      className={cn(interactive && "group")}
+      render={render}
+      title={props.tooltip}
+    >
+      <ItemMedia>{props.icon}</ItemMedia>
+      <ItemContent>
+        <span className="flex min-w-0 items-start gap-2.5">
+          <span className="flex min-w-0 flex-1 items-center text-sm font-medium leading-5 text-dashboard-text">
+            <span className="truncate">{props.title}</span>
+            {props.href ? <OutboundIcon /> : null}
+          </span>
+          <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
+            {props.meta}
+          </span>
+        </span>
+        {props.children}
+      </ItemContent>
+    </Item>
   );
 }
 
@@ -202,7 +174,7 @@ export function DetailsRowLine(props: {
   return (
     <div
       className={cn(
-        "col-start-2 col-end-4 min-w-0 text-xs leading-4 text-dashboard-text-muted",
+        "min-w-0 text-xs leading-4 text-dashboard-text-muted",
         props.className,
       )}
     >

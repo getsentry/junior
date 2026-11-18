@@ -4,11 +4,13 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
+import { Field, FieldLabel } from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
 import { automationOutcomeLabel } from "./automationOutcomes";
+import { getDashboardAgentName } from "../../agentName";
 
 /** Show saved outcomes in order for a reader who cannot change them. */
 export function AutomationOutcomeList(props: {
@@ -78,13 +80,19 @@ export function AutomationOutcomeFields(props: {
         value={props.value.length > 0}
       >
         {[true, false].map((send) => (
-          <label
+          <Field
             key={String(send)}
-            className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
+            className="min-h-8 w-auto"
+            orientation="horizontal"
           >
-            <RadioGroupItem value={send} />
-            {send ? "Send a message" : "No success message"}
-          </label>
+            <RadioGroupItem id={`success-message-${send}`} value={send} />
+            <FieldLabel
+              className="font-normal"
+              htmlFor={`success-message-${send}`}
+            >
+              {send ? "Send a message" : "No success message"}
+            </FieldLabel>
+          </Field>
         ))}
       </RadioGroup>
       {props.value.length ? (
@@ -137,6 +145,7 @@ export function AutomationOutcomeFields(props: {
                 {props.value.length > 1 ? (
                   <>
                     <Button
+                      variant="ghost"
                       size="icon"
                       className="ml-auto sm:ml-0"
                       aria-label={`Move message ${index + 1} up`}
@@ -153,6 +162,7 @@ export function AutomationOutcomeFields(props: {
                       <ArrowUp size={16} />
                     </Button>
                     <Button
+                      variant="ghost"
                       size="icon"
                       aria-label={`Remove message ${index + 1}`}
                       onClick={() =>
@@ -170,6 +180,7 @@ export function AutomationOutcomeFields(props: {
           })}
           {props.value.length < 5 ? (
             <Button
+              variant="outline"
               className="w-fit"
               onClick={() =>
                 props.onChange([
@@ -185,7 +196,8 @@ export function AutomationOutcomeFields(props: {
         </div>
       ) : (
         <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-          Junior still does the work. No message is sent after success.
+          {getDashboardAgentName()} still does the work. No message is sent
+          after success.
         </p>
       )}
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">

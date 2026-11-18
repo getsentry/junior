@@ -6,6 +6,7 @@ import {
 } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 import { renderCompactionSummary } from "@/chat/services/context-compaction";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { closeConversationFixture } from "../fixtures/conversation";
@@ -63,6 +64,10 @@ function toolResult(
     isError,
     timestamp,
   } as PiMessage;
+}
+
+function system(sections: Record<string, string>, timestamp: number) {
+  return { role: "system", content: "", sections, timestamp } as PiMessage;
 }
 
 function textOf(message: PiMessage): string {
@@ -223,9 +228,50 @@ describe("background compaction swap", () => {
     ).toEqual([...messages, reply]);
   });
 
+  it("drops capability section copies from the summarized Turn context", async () => {
+    const conversationId = "local:web:swap-script-tools";
+    // A Turn from before capability sections moved to system messages put a
+    // copy in its Turn context.
+    const sessionContext = buildTurnContextPrompt({
+      runtime: { conversationId },
+    })!.replace(
+      "\n\n</runtime-turn-context>",
+      "\n\n<script-tools>\ntools.a\n</script-tools>\n\n</runtime-turn-context>",
+    );
+    const summarized = [user(sessionContext, 1), ...firstTurn];
+    await prepareSummary(conversationId, summarized);
+    const kept = [
+      user("<current-instruction>And the rollback?</current-instruction>", 7),
+      assistant("Read that too.", 8),
+    ];
+    await commitMessages({
+      conversationId,
+      messages: [...summarized, ...kept],
+    });
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        piMessages: [...summarized, ...kept],
+      },
+      vi.fn(),
+    );
+
+    expect(result.compacted).toBe(true);
+    const context = textOf(result.piMessages![0]!);
+    expect(context).toContain(`- gen_ai.conversation.id: ${conversationId}`);
+    expect(context).not.toContain("<script-tools>");
+  });
+
   it("swaps between model calls only above the threshold, without a summary call", async () => {
     const conversationId = "local:web:swap-active";
-    await prepareSummary(conversationId, firstTurn);
+    const summarized = [
+      ...firstTurn,
+      system({ plan: "<plan>a</plan>", repo: "<repo>x</repo>" }, 4),
+    ];
+    await prepareSummary(conversationId, summarized);
     const instruction = user(
       "<current-instruction>Check the deploy.</current-instruction>",
       5,
@@ -234,19 +280,23 @@ describe("background compaction swap", () => {
     // usage does not count toward the replacement, which drops that history.
     const turn = [
       instruction,
+      system({ plan: "<plan>b</plan>" }, 5),
       {
         ...toolCall("call-2", 6),
         usage: { input: 400_000, output: 20, totalTokens: 400_020 },
       } as PiMessage,
       toolResult("call-2", "ok", 7),
     ];
-    await commitMessages({ conversationId, messages: [...firstTurn, ...turn] });
+    await commitMessages({
+      conversationId,
+      messages: [...summarized, ...turn],
+    });
     const summarize = vi.fn(async () => ({ summary: "Unused." }));
     const args = {
       conversationId,
       mode: "active" as const,
       modelId: MODEL_ID,
-      piMessages: [...firstTurn, ...turn],
+      piMessages: [...summarized, ...turn],
     };
 
     const below = await compactWithPreparedSummary(
@@ -258,7 +308,12 @@ describe("background compaction swap", () => {
     const result = await compactWithPreparedSummary(args, summarize);
     expect(summarize).not.toHaveBeenCalled();
     expect(result.compacted).toBe(true);
-    expect(result.piMessages!.slice(-3)).toEqual(turn);
+    // The summarized system state follows the summary. Kept system messages
+    // stay in place.
+    expect(result.piMessages!.slice(-5)).toEqual([
+      system({ plan: "<plan>a</plan>", repo: "<repo>x</repo>" }, 4),
+      ...turn,
+    ]);
 
     // The next execution slice starts from the swapped history. The kept
     // tool call still holds usage of the old history, so it must not count.

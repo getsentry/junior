@@ -275,7 +275,6 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
-    "audit-tools": nonEmptyStringArraySchema("audit-tools").optional(),
   })
   .passthrough();
 
@@ -296,6 +295,7 @@ const manifestSourceSchema = z
     }),
     "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
+    "review-context": nonEmptyTrimmedString.optional(),
     "config-keys": z
       .array(z.string(), {
         error: "must be an array when provided",
@@ -344,6 +344,9 @@ const manifestSourceSchema = z
         error: "must be an object",
       })
       .optional(),
+    "tools-send-no-credential": z
+      .boolean({ error: "must be a boolean" })
+      .optional(),
   })
   .passthrough();
 
@@ -365,15 +368,17 @@ function manifestConfigPatch(
   const result: Record<string, unknown> = {};
   setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
+  setDefined(result, "review-context", config.reviewContext);
   setDefined(result, "config-keys", config.configKeys);
   setDefined(result, "domains", config.domains);
   setDefined(result, "api-headers", config.apiHeaders);
   setDefined(result, "command-env", config.commandEnv);
   setDefined(result, "env-vars", config.envVars);
+  setDefined(result, "tools-send-no-credential", config.toolsSendNoCredential);
 
   if (config.credentials !== undefined) {
     if (!config.credentials) {
-      result.credentials = null;
+      result["credentials"] = null;
     } else {
       const credentials: Record<string, unknown> = {};
       setDefined(credentials, "type", config.credentials.type);
@@ -389,7 +394,7 @@ function manifestConfigPatch(
         "auth-token-placeholder",
         config.credentials.authTokenPlaceholder,
       );
-      result.credentials = credentials;
+      result["credentials"] = credentials;
     }
   }
   setDefined(result, "runtime-dependencies", config.runtimeDependencies);
@@ -397,7 +402,7 @@ function manifestConfigPatch(
 
   if (config.mcp !== undefined) {
     if (!config.mcp) {
-      result.mcp = null;
+      result["mcp"] = null;
     } else {
       const mcp: Record<string, unknown> = {};
       setDefined(mcp, "transport", config.mcp.transport);
@@ -415,13 +420,12 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
-      setDefined(mcp, "audit-tools", config.mcp.auditTools);
-      result.mcp = mcp;
+      result["mcp"] = mcp;
     }
   }
   if (config.oauth !== undefined) {
     if (!config.oauth) {
-      result.oauth = null;
+      result["oauth"] = null;
     } else {
       const oauth: Record<string, unknown> = {};
       setDefined(oauth, "client-id-env", config.oauth.clientIdEnv);
@@ -437,21 +441,21 @@ function manifestConfigPatch(
         "treat-empty-scope-as-unreported",
         config.oauth.treatEmptyScopeAsUnreported,
       );
-      result.oauth = oauth;
+      result["oauth"] = oauth;
     }
   }
   if (config.accounts !== undefined) {
-    result.accounts = config.accounts && accountsSource(config.accounts);
+    result["accounts"] = config.accounts && accountsSource(config.accounts);
   }
   if (config.target !== undefined) {
     if (!config.target) {
-      result.target = null;
+      result["target"] = null;
     } else {
       const target: Record<string, unknown> = {};
       setDefined(target, "type", config.target.type);
       setDefined(target, "config-key", config.target.configKey);
       setDefined(target, "command-flags", config.target.commandFlags);
-      result.target = target;
+      result["target"] = target;
     }
   }
   return result;
@@ -489,7 +493,7 @@ function applyManifestConfig(
   source: ManifestSource,
   config: PluginCatalogConfig | undefined,
 ): ManifestSource {
-  const name = source.name;
+  const name = source["name"];
   if (typeof name !== "string") {
     return source;
   }
@@ -632,7 +636,7 @@ function expandCommandEnvPlaceholders(
 ): string {
   return template.replace(ENV_PLACEHOLDER_RE, (match, name) => {
     const varName = name as string;
-    const declaration = envVars[varName] as PluginEnvVarDeclaration | undefined;
+    const declaration = envVars[varName];
     if (declaration?.default === undefined) {
       return match;
     }
@@ -729,7 +733,7 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
 
   for (const [key, value] of Object.entries(commandEnv)) {
     for (const name of envReferences(value)) {
-      const declaration = envVars[name] as PluginEnvVarDeclaration | undefined;
+      const declaration = envVars[name];
       if (
         declaration &&
         declaration.default === undefined &&
@@ -747,9 +751,9 @@ function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
 ): PluginCredentials {
-  if (data.type !== "oauth-bearer") {
+  if (data["type"] !== "oauth-bearer") {
     throw new Error(
-      `Plugin ${name} has unsupported credentials.type: "${String(data.type)}"`,
+      `Plugin ${name} has unsupported credentials.type: "${String(data["type"])}"`,
     );
   }
 
@@ -872,7 +876,7 @@ function normalizeRuntimeDependencies(
       continue;
     }
 
-    if (!/^https:\/\//i.test(packageUrl)) {
+    if (URL.parse(packageUrl)?.protocol !== "https:") {
       throw new Error(
         `Plugin ${name} system runtime dependency url must be an https URL`,
       );
@@ -1023,9 +1027,9 @@ function normalizeMcp(
   name: string,
 ): PluginMcpConfig {
   const prepared: Record<string, unknown> = { ...data };
-  if (typeof prepared.url === "string") {
-    prepared.url = expandEnvPlaceholders(
-      prepared.url,
+  if (typeof prepared["url"] === "string") {
+    prepared["url"] = expandEnvPlaceholders(
+      prepared["url"],
       envVars,
       `Plugin ${name} mcp.url`,
     );
@@ -1035,20 +1039,6 @@ function normalizeMcp(
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }
-  const auditTools = result.data["audit-tools"];
-  const unknownAuditTools = unloadedMcpTools(
-    {
-      allowedTools: result.data["allowed-tools"],
-      wrappedTools: result.data["wrapped-tools"],
-    },
-    auditTools ?? [],
-  );
-  if (unknownAuditTools.length > 0) {
-    throw new Error(
-      `Plugin ${name} mcp.audit-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownAuditTools.join(", ")}`,
-    );
-  }
-
   const headers = result.data.headers
     ? normalizeStringMap(result.data.headers, `Plugin ${name} mcp.headers`, {
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
@@ -1123,7 +1113,6 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
-    ...(auditTools ? { auditTools } : undefined),
   } satisfies PluginMcpConfig;
 }
 
@@ -1199,69 +1188,71 @@ function parseManifestSource(
     const issue = sourceResult.error.issues[0];
     const path = formatPath(issue?.path ?? []);
     if (path === "name") {
-      throw new Error(`Invalid plugin name in ${dir}: "${parsedSource.name}"`);
+      throw new Error(
+        `Invalid plugin name in ${dir}: "${String(parsedSource["name"])}"`,
+      );
     }
     if (path === "description") {
       throw new Error(`Invalid plugin description in ${dir}`);
     }
     if (path === "config-keys") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} config-keys must be an array when provided`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} config-keys must be an array when provided`,
       );
     }
     if (path === "domains") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} ${path} must be a non-empty array of domains`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} ${path} must be a non-empty array of domains`,
       );
     }
     if (path === "api-headers") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} api-headers must be an object when provided`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} api-headers must be an object when provided`,
       );
     }
     if (path === "command-env") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} command-env must be an object when provided`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} command-env must be an object when provided`,
       );
     }
     if (path === "credentials") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} credentials must be an object when provided`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} credentials must be an object when provided`,
       );
     }
     if (path === "runtime-dependencies") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} runtime-dependencies must be an array`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} runtime-dependencies must be an array`,
       );
     }
     if (path === "runtime-postinstall") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} runtime-postinstall must be an array`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} runtime-postinstall must be an array`,
       );
     }
     if (path === "env-vars") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} env-vars must be an object`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} env-vars must be an object`,
       );
     }
     if (path === "mcp") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} mcp must be an object`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} mcp must be an object`,
       );
     }
     if (path === "oauth") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} oauth must be an object`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} oauth must be an object`,
       );
     }
     if (path === "accounts") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} accounts must be an object`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} accounts must be an object`,
       );
     }
     if (path === "target") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} target must be an object`,
+        `Plugin ${String(parsedSource["name"] ?? "unknown")} target must be an object`,
       );
     }
     throw new Error(issue?.message ?? `Invalid plugin manifest in ${dir}`);
@@ -1325,6 +1316,9 @@ function parseManifestSource(
     name: data.name,
     displayName: data["display-name"],
     description: data.description,
+    ...(data["review-context"]
+      ? { reviewContext: data["review-context"] }
+      : undefined),
     configKeys,
     ...(domains ? { domains } : undefined),
     ...(apiHeaders ? { apiHeaders } : undefined),
@@ -1335,6 +1329,9 @@ function parseManifestSource(
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
     ...(accounts ? { accounts } : undefined),
+    ...(data["tools-send-no-credential"]
+      ? { toolsSendNoCredential: true }
+      : undefined),
   };
 
   if (data.oauth) {
@@ -1441,6 +1438,7 @@ export function parsePluginManifest(
   } catch (error) {
     throw new Error(
       `Invalid plugin manifest in ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

@@ -2,10 +2,11 @@
 
 ## Intent
 
-Keep credentials out of the sandbox and the model, and bind every credential
-to verified context. This applies to host runtime code, sandbox execution,
-provider credentials, plugins, skills, and telemetry. Egress and credential
-code: `packages/junior/src/chat/sandbox/egress/`,
+Keep credentials out of the sandbox and the model, bind every credential to
+verified context, and keep a breach in the system where it happened. This
+applies to host runtime code, sandbox execution, provider credentials,
+plugins, skills, and telemetry. Egress and credential code:
+`packages/junior/src/chat/sandbox/egress/`,
 `packages/junior/src/chat/credentials/`.
 
 ## Policy
@@ -18,6 +19,22 @@ code: `packages/junior/src/chat/sandbox/egress/`,
   least-privilege credentials.
 - Never put real credentials in repo files, skills, prompts, tool arguments,
   sandbox env vars or files, command arguments, logs, or traces.
+
+### Blast radius
+
+- A breach of one system must not give access to another system.
+- Store a protected value and its key in different systems. State stores
+  such as Redis hold only ciphertext for credentials. The app environment
+  holds the keys.
+- Bind each encrypted value to its storage key. A value copied to another
+  record must not decrypt.
+- When one forged value would release credentials, require proof from a
+  second system. Sandbox egress needs a Vercel OIDC token and a token that
+  Junior signed.
+- Production keys stay in production. Local, CI, and preview environments
+  use their own keys.
+- A change that adds a store, a key, or a credential path states what a
+  breach of it exposes.
 
 ### Sandbox egress
 

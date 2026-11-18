@@ -1,12 +1,11 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
-  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -19,9 +18,14 @@ import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
+import {
+  CONVERT_PULL_REQUEST_TO_DRAFT,
+  MARK_PULL_REQUEST_READY_FOR_REVIEW,
+} from "../graphql-documents.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 import {
@@ -30,6 +34,7 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -75,18 +80,6 @@ const inputSchema = z
     { message: "At least one pull request field must be provided." },
   );
 
-// GitHub's REST API cannot change draft state; only these GraphQL mutations can.
-// Both alias the mutation field to `result` so one schema reads either response.
-const MARK_READY_FOR_REVIEW = {
-  operationName: "MarkPullRequestReadyForReview",
-  query:
-    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
-const CONVERT_TO_DRAFT = {
-  operationName: "ConvertPullRequestToDraft",
-  query:
-    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
 const draftMutationResponseSchema = z.object({
   data: z.object({
     result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
@@ -105,7 +98,7 @@ const pullRequestSchema = z.object({
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
@@ -127,14 +120,15 @@ async function setPullRequestDraft(input: {
   nodeId: string;
   repo: string;
 }): Promise<boolean> {
-  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
+  const mutation = input.draft
+    ? CONVERT_PULL_REQUEST_TO_DRAFT
+    : MARK_PULL_REQUEST_READY_FOR_REVIEW;
   const response = await githubApi(input.egress, {
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
     method: "POST",
     path: "/graphql",
     body: {
-      operationName: mutation.operationName,
-      query: mutation.query,
+      ...mutation,
       variables: { id: input.nodeId },
     },
   });
@@ -151,20 +145,10 @@ async function setPullRequestDraft(input: {
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(ctx: {
-  actor?: Actor;
-  automationLink?: { url: string };
-  conversationId?: string;
-  db: unknown;
-  egress: PluginEgress;
-  log: PluginLogger;
-  events: { canSubscribe: boolean };
-  slack?: { conversationLink?: { url?: string } };
-  source?: Source;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
+export function createGitHubUpdatePullRequestTool(
+  /** Set when the description check experiment is on. */
+  descriptionChecks = false,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -176,7 +160,21 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: {
+        actor?: Actor | undefined;
+        conversationId?: string | undefined;
+        db: unknown;
+        decider: PluginDecider;
+        egress: PluginEgress;
+        log: PluginLogger;
+        events: { canSubscribe: boolean };
+        conversationLink?: { url: string };
+        resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+      },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
@@ -185,6 +183,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (descriptionChecks && update.body !== undefined) {
+        await checkPullRequestDescription(ctx.decider, update.body);
+      }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
@@ -201,12 +202,11 @@ export function createGitHubUpdatePullRequestTool(ctx: {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
                   update.body,
-                  ctx,
                   requester,
                   currentBody,
                 ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
-                ctx.slack?.conversationLink?.url,
+                ctx.conversationLink?.url,
               ),
             }
           : undefined),
@@ -221,9 +221,13 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       });
       const parsed = response.body;
       if (!response.ok) {
-        throw new Error(
-          `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
-        );
+        const message = `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+        // 404 and 422 mean the model named a missing pull request or GitHub
+        // rejected the requested change, such as a base change in a stack.
+        if (response.status === 404 || response.status === 422) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const providerResult = z
         .object({
@@ -253,9 +257,10 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      if (requester?.identity) {
+      const identity = requesterPerson(requester)?.identity;
+      if (identity) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-          identityId: requester.identity.id,
+          identityId: identity.id,
           number: providerResult.number,
           repositoryFullName: repo.ref,
         });

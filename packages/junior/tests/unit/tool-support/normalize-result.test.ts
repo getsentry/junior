@@ -166,6 +166,41 @@ describe("normalizeToolResult", () => {
     });
   });
 
+  it("formats egress policy denials as deterministic tool text", () => {
+    const details = {
+      command: "git push origin main",
+      exit_code: 1,
+      stdout: "",
+      stderr: "error: RPC failed; HTTP 403 curl 22",
+      permission_denied: {
+        message:
+          "The runtime never pushes to the default branch (main) of getsentry/junior.",
+        method: "POST",
+        provider: "github",
+        source: "policy",
+        upstreamHost: "github.com",
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      },
+    };
+
+    const text = normalizeToolResult(details).content[0];
+
+    expect(text).toMatchObject({
+      type: "text",
+      text: expect.stringContaining(
+        "The runtime egress policy denied the request. It did not reach the provider.\nThe runtime never pushes to the default branch (main) of getsentry/junior.",
+      ),
+    });
+    expect(text).toMatchObject({
+      text: expect.stringContaining(
+        "Request: POST github.com/getsentry/junior.git/git-receive-pack",
+      ),
+    });
+    expect(text).toMatchObject({
+      text: expect.stringContaining("stderr:\nerror: RPC failed; HTTP 403"),
+    });
+  });
+
   it("formats upstream permission denials from required structured envelopes", () => {
     const details = {
       command: "git push",

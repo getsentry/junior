@@ -1,5 +1,6 @@
 import { ArrowRight, BookmarkPlus, Brain, ChevronRight } from "lucide-react";
 
+import { Button } from "../components/ui/button";
 import { dashboardDisclosureChevronClass } from "../styles";
 import type {
   ConversationMemoryEntry,
@@ -33,17 +34,18 @@ export function ConversationMemoryCard(props: {
     .join(" · ");
   return (
     <DetailsCard title="Memories">
-      <button
-        className="group -mx-1.5 -my-1 flex min-h-8 w-[calc(100%+0.75rem)] items-center justify-between gap-2.5 rounded-md px-1.5 py-1.5 text-left text-sm tabular-nums text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+      <Button
+        className="group -mx-1.5 -my-1 flex min-h-8 w-[calc(100%+0.75rem)] items-center justify-between gap-2.5 rounded-md px-1.5 py-1.5 text-left text-sm tabular-nums text-foreground focus-visible:-outline-offset-2"
         onClick={props.onOpen}
-        type="button"
+        variant="ghost"
+        size="bare"
       >
         {summary}
         <ChevronRight
           aria-hidden="true"
           className={dashboardDisclosureChevronClass}
         />
-      </button>
+      </Button>
     </DetailsCard>
   );
 }
@@ -68,14 +70,15 @@ function MemoryCard(props: {
           <span />
         )}
         {turnId ? (
-          <button
-            className="-mr-1.5 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+          <Button
+            className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
             onClick={() => props.onSelect({ ...entry, turnId })}
-            type="button"
+            size="bare"
+            variant="ghost"
           >
             Go to message
             <ArrowRight aria-hidden="true" size={13} />
-          </button>
+          </Button>
         ) : null}
       </div>
     </li>

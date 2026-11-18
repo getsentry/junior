@@ -1,11 +1,12 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, exists, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListPage,
+  AutomationListItem,
   AutomationListQuery,
   AutomationVersionList,
   AutomationRunList,
@@ -13,22 +14,27 @@ import type {
 } from "@/api/schema/automation";
 import { automationListQuerySchema } from "@/api/schema/automation";
 import {
+  readAutomationActivityPage,
   readAutomationCollection,
+  readAutomationFacets,
+  selectViewerAutomations,
   viewerAutomationCollection,
+  type AutomationActivityPosition,
 } from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
+import { automationTaskDescription, automationTaskSchema } from "./task";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
-  readAutomationExecutionDays,
-  readAutomationExecutionHours,
   readAutomationExecutions,
   readAutomationExecutionStatusDays,
   readAutomationExecutionStatusHours,
   readAutomationExecutionSummaries,
+  readAutomationRowStats,
   readAutomationRuns,
   type AutomationExecutionSummary,
+  type AutomationRowStats,
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
 import {
@@ -60,7 +66,6 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
-  juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
   juniorIdentities,
@@ -84,9 +89,9 @@ export type TaskCandidate =
     };
 
 function creatorLabel(creator: {
-  fullName?: string;
+  fullName?: string | undefined;
   slackUserId: string;
-  userName?: string;
+  userName?: string | undefined;
 }): string {
   return (
     creator.fullName?.trim() ||
@@ -232,7 +237,7 @@ async function destinationDetails(
   );
 }
 
-function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
+function rowStatsFields(stats: AutomationRowStats | undefined) {
   return {
     lastRunStatus: stats?.lastRunStatus,
     ...(stats?.lastConversationId
@@ -241,19 +246,26 @@ function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
+    recentRuns: stats?.recentRuns ?? [],
+  };
+}
+
+function totalFields(stats: AutomationExecutionSummary | undefined) {
+  return {
     costUsd: stats?.costUsd ?? emptyAutomationRunWindows(),
     runs: stats?.runs ?? emptyAutomationRunWindows(),
+    totalCostUsd: stats?.totalCostUsd ?? 0,
     totalRuns: stats?.totalRuns ?? 0,
   };
 }
 
-function scheduledAutomationSummary(
+function scheduledAutomationListItem(
   task: ScheduledAutomation,
   ownedByViewer: boolean,
   destination: DestinationDetails,
-  stats: AutomationExecutionSummary | undefined,
+  stats: AutomationRowStats | undefined,
   creator: CreatorProfile | undefined,
-): AutomationSummary {
+): AutomationListItem {
   if (task.status === "deleted") {
     throw new Error(
       "Deleted scheduled automations cannot enter the Automations view",
@@ -263,8 +275,8 @@ function scheduledAutomationSummary(
     task.status === "active"
       ? (task.runNowAtMs ?? task.nextRunAtMs)
       : undefined;
-  const instruction = displayText(
-    task.task.text,
+  const description = displayText(
+    automationTaskDescription(task.task),
     "Untitled scheduled automation",
   );
   return {
@@ -279,9 +291,9 @@ function scheduledAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "scheduled",
-    ...executionSummaryFields(stats),
+    ...rowStatsFields(stats),
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
       : undefined),
@@ -294,20 +306,25 @@ function scheduledAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled scheduled automation",
     ),
   };
 }
 
-function eventAutomationSummary(
+function eventAutomationListItem(
   task: StoredEventAutomation,
   ownedByViewer: boolean,
   destination: DestinationDetails,
-  stats: AutomationExecutionSummary | undefined,
+  stats: AutomationRowStats | undefined,
   creator: CreatorProfile | undefined,
-): AutomationSummary {
-  const instruction = task.task.text;
+): AutomationListItem {
+  if (task.status === "deleted") {
+    throw new Error(
+      "Deleted event automations cannot enter the Automations view",
+    );
+  }
+  const description = automationTaskDescription(task.task);
   const catalog = getEventCatalog();
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
@@ -321,9 +338,9 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "event",
-    ...executionSummaryFields(stats),
+    ...rowStatsFields(stats),
     ownedByViewer,
     resource: task.trigger.identifier
       ? `${task.trigger.label} · ${task.trigger.identifier}`
@@ -333,13 +350,49 @@ function eventAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled event automation",
     ),
-    status: task.status === "deleted" ? "active" : task.status,
+    status: task.status,
     statusReason: task.statusReason,
     trigger: describeEventAutomationTrigger(task.trigger, catalog),
   };
+}
+
+/** Build one list row from loaded Destinations, creators, and run stats. */
+function automationListItem(
+  candidate: TaskCandidate,
+  destinations: Map<string, DestinationDetails>,
+  creators: Map<string, CreatorProfile>,
+  stats: AutomationRowStats | undefined,
+): AutomationListItem {
+  const destination = destinations.get(
+    destinationKey(candidate.task.destination),
+  ) ?? {
+    label: `Channel ${candidate.task.destination.channelId}`,
+    visibility: "private" as const,
+  };
+  const creator = creators.get(
+    creatorKey(
+      candidate.task.destination.teamId,
+      candidate.task.createdBy.slackUserId,
+    ),
+  );
+  return candidate.kind === "scheduled"
+    ? scheduledAutomationListItem(
+        candidate.task,
+        candidate.ownedByViewer,
+        destination,
+        stats,
+        creator,
+      )
+    : eventAutomationListItem(
+        candidate.task,
+        candidate.ownedByViewer,
+        destination,
+        stats,
+        creator,
+      );
 }
 
 function viewerTeamIds(viewer: AutomationViewer): string[] {
@@ -422,55 +475,17 @@ async function automationSummaryForCandidate(
     creatorProfiles([candidate]),
     readAutomationExecutionSummaries([candidate.task.id]),
   ]);
-  const destination = destinations.get(
-    destinationKey(candidate.task.destination),
-  ) ?? {
-    label: `Channel ${candidate.task.destination.channelId}`,
-    visibility: "private" as const,
+  const summary = stats.get(candidate.task.id);
+  return {
+    ...automationListItem(candidate, destinations, creators, summary),
+    ...totalFields(summary),
   };
-  const creator = creators.get(
-    creatorKey(
-      candidate.task.destination.teamId,
-      candidate.task.createdBy.slackUserId,
-    ),
-  );
-  if (candidate.kind === "scheduled") {
-    return scheduledAutomationSummary(
-      candidate.task,
-      candidate.ownedByViewer,
-      destination,
-      stats.get(candidate.task.id),
-      creator,
-    );
-  }
-  return eventAutomationSummary(
-    candidate.task,
-    candidate.ownedByViewer,
-    destination,
-    stats.get(candidate.task.id),
-    creator,
-  );
-}
-
-function emptyAutomationExecutionDay(date: string): AutomationExecutionDay {
-  return { costUsd: 0, date, event: 0, scheduled: 0 };
 }
 
 function emptyAutomationExecutionStatusDay(
   date: string,
 ): AutomationExecutionStatusDay {
-  return { blocked: 0, completed: 0, date, failed: 0 };
-}
-
-function automationExecutionSixHours(
-  hours: readonly AutomationExecutionDay[],
-  nowMs = Date.now(),
-): AutomationExecutionDay[] {
-  return sumUtcHoursIntoSixHours({
-    empty: emptyAutomationExecutionDay,
-    hours,
-    nowMs,
-  });
+  return { blocked: 0, completed: 0, costUsd: 0, date, failed: 0 };
 }
 
 function automationExecutionStatusSixHours(
@@ -524,73 +539,97 @@ export async function readTaskCandidates(
   });
 }
 
-/** Read a page from the full accessible Automation collection. */
+type ViewerAutomationPage<List> = Omit<List, "nextCursor"> & {
+  next?: AutomationActivityPosition;
+};
+
+/**
+ * Read a page from the full accessible Automation collection. Rows carry
+ * their last runs, not the totals that read every run. `next` is the
+ * position after the page when `sort=activity` has more rows. A page after
+ * `after` has no counts or filter options.
+ */
+export function readViewerAutomations(
+  user: User,
+  input?: AutomationListQuery,
+): Promise<ViewerAutomationPage<AutomationList>>;
+export function readViewerAutomations(
+  user: User,
+  input: AutomationListQuery,
+  after: AutomationActivityPosition | undefined,
+): Promise<ViewerAutomationPage<AutomationListPage>>;
 export async function readViewerAutomations(
   user: User,
   input: AutomationListQuery = automationListQuerySchema.parse({}),
-): Promise<AutomationList> {
-  const { rows, ...page } = await readAutomationCollection(user, input);
-  const ids = rows.map((row) => row.id);
-  const selected = await readTaskCandidates(user, ids);
-  const [destinations, creators] = await Promise.all([
-    destinationDetails(selected.map(({ task }) => task.destination)),
-    creatorProfiles(selected),
-  ]);
-  const visible = selected.filter(
-    (candidate) =>
-      candidate.ownedByViewer ||
-      destinations.get(destinationKey(candidate.task.destination))
-        ?.visibility === "public",
-  );
-  const collection = viewerAutomationCollection(user);
-  const access = exists(
-    getDb()
-      .select({ id: collection.id })
-      .from(collection)
-      .where(eq(collection.id, juniorAutomationRuns.automationId)),
-  );
-  const [executionDays, executionHours, stats] = await Promise.all([
-    readAutomationExecutionDays(90, { access }),
-    readAutomationExecutionHours(7 * 24, { access }),
-    readAutomationExecutionSummaries(ids),
-  ]);
-  const automations = visible.map((candidate): AutomationSummary => {
-    const destination = destinations.get(
-      destinationKey(candidate.task.destination),
-    ) ?? {
-      label: `Channel ${candidate.task.destination.channelId}`,
-      visibility: "private" as const,
+  after?: AutomationActivityPosition,
+): Promise<ViewerAutomationPage<AutomationListPage>> {
+  if (input.sort !== "activity") {
+    const { rows, ...page } = await readAutomationCollection(user, input);
+    return {
+      automations: await readAutomationListItems(
+        user,
+        rows.map((row) => row.id),
+      ),
+      ...page,
     };
-    const creator = creators.get(
-      creatorKey(
-        candidate.task.destination.teamId,
-        candidate.task.createdBy.slackUserId,
+  }
+  const selection = await selectViewerAutomations(user, input);
+  // The counts and options do not depend on the page, so they load while
+  // the page and its rows do. Later pages skip them.
+  const [facets, { automations, next }] = await Promise.all([
+    after ? undefined : readAutomationFacets(selection),
+    readAutomationActivityPage(selection, input.pageSize, after).then(
+      async ({ rows, next }) => ({
+        automations: await readAutomationListItems(
+          user,
+          rows.map((row) => row.id),
+        ),
+        next,
+      }),
+    ),
+  ]);
+  return {
+    automations,
+    page: 1,
+    pageSize: input.pageSize,
+    ...facets,
+    ...(next ? { next } : undefined),
+  };
+}
+
+/**
+ * Build list items for collection rows, in their order. The run stats load
+ * while the Destination and creator details do.
+ */
+async function readAutomationListItems(
+  user: User,
+  ids: string[],
+): Promise<AutomationListItem[]> {
+  const [{ selected, destinations, creators }, stats] = await Promise.all([
+    readTaskCandidates(user, ids).then(async (selected) => {
+      const [destinations, creators] = await Promise.all([
+        destinationDetails(selected.map(({ task }) => task.destination)),
+        creatorProfiles(selected),
+      ]);
+      return { selected, destinations, creators };
+    }),
+    readAutomationRowStats(ids),
+  ]);
+  return selected
+    .filter(
+      (candidate) =>
+        candidate.ownedByViewer ||
+        destinations.get(destinationKey(candidate.task.destination))
+          ?.visibility === "public",
+    )
+    .map((candidate) =>
+      automationListItem(
+        candidate,
+        destinations,
+        creators,
+        stats.get(candidate.task.id),
       ),
     );
-    if (candidate.kind === "scheduled") {
-      return scheduledAutomationSummary(
-        candidate.task,
-        candidate.ownedByViewer,
-        destination,
-        stats.get(candidate.task.id),
-        creator,
-      );
-    }
-    return eventAutomationSummary(
-      candidate.task,
-      candidate.ownedByViewer,
-      destination,
-      stats.get(candidate.task.id),
-      creator,
-    );
-  });
-  return {
-    executionDays,
-    executionHours,
-    executionSixHours: automationExecutionSixHours(executionHours),
-    automations,
-    ...page,
-  };
 }
 
 /** Load deleted scheduled automations the viewer still owns, newest first. */
@@ -676,7 +715,7 @@ export async function readViewerAutomationRuns(
       `${task.kind}:${task.id}`,
       taskDisplayTitle(
         task.title ?? undefined,
-        task.instruction,
+        automationTaskDescription(automationTaskSchema.parse(task.task)),
         `Untitled ${task.kind} automation`,
       ),
     );
@@ -684,7 +723,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedScheduled) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled scheduled automation",
     );
     addDeletedAutomationRun(
@@ -703,7 +742,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedEvent) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled event automation",
     );
     addDeletedAutomationRun(
@@ -747,22 +786,20 @@ export async function readViewerAutomationExecutions(
 ): Promise<AutomationExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [automation, executions, executionDays, executionHours] =
-    await Promise.all([
-      automationSummaryForCandidate(candidate),
-      readAutomationExecutions({
-        automationId: id,
-        limit: TASK_EXECUTION_LIST_LIMIT + 1,
-      }),
-      readAutomationExecutionStatusDays({ automationId: id }),
-      readAutomationExecutionStatusHours({ automationId: id }),
-    ]);
+  // The summary has its own request, so this one skips its totals.
+  const [executions, executionDays, executionHours] = await Promise.all([
+    readAutomationExecutions({
+      automationId: id,
+      limit: TASK_EXECUTION_LIST_LIMIT + 1,
+    }),
+    readAutomationExecutionStatusDays({ automationId: id }),
+    readAutomationExecutionStatusHours({ automationId: id }),
+  ]);
   return {
     executionDays,
     executionHours,
     executionSixHours: automationExecutionStatusSixHours(executionHours),
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
-    automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
   };
 }
@@ -815,7 +852,11 @@ function eventActionLabel(eventName: string): string {
  */
 async function readRunCredential(
   dispatchId: string | undefined,
-  creator: { fullName?: string; slackUserId: string; userName?: string },
+  creator: {
+    fullName?: string | undefined;
+    slackUserId: string;
+    userName?: string | undefined;
+  },
 ): Promise<Pick<ConversationSourceTask, "credentialMode" | "credentialUser">> {
   if (!dispatchId) return {};
   const dispatch = await getDispatchRecord(dispatchId);
@@ -859,7 +900,7 @@ export async function readConversationSourceTask(args: {
   );
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
-      candidate.task.task.text,
+      automationTaskDescription(candidate.task.task),
       "Untitled scheduled automation",
     );
     const schedule = candidate.task.schedule.description.trim();
@@ -878,7 +919,7 @@ export async function readConversationSourceTask(args: {
     };
   }
   const instruction = displayText(
-    candidate.task.task.text,
+    automationTaskDescription(candidate.task.task),
     "Untitled event automation",
   );
   const { events, label } = candidate.task.trigger;

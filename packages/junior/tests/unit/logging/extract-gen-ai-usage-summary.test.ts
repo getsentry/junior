@@ -137,6 +137,7 @@ describe("extractGenAiUsageSummary", () => {
       "gen_ai.usage.output_tokens": 2,
       "gen_ai.usage.cache_read.input_tokens": 4,
       "gen_ai.usage.cache_creation.input_tokens": 1,
+      "gen_ai.usage.cache_hit_ratio": 4 / 15,
       "gen_ai.usage.reasoning.output_tokens": 1,
       "app.cost.input_usd": 0.001,
       "app.cost.output_usd": 0.002,

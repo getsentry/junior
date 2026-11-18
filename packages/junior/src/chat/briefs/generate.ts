@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
+import { mentionsTag, renderTag } from "@sentry/junior-plugin-api";
 import {
   briefOutcomeStatusSchema,
   conversationBriefSchema,
@@ -67,7 +68,6 @@ type BriefCompleteObject = (request: {
   prompt: string;
   schema: ZodTypeAny;
   system: string;
-  temperature: number;
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /** Evidence-check diagnostics, rendered by the local replay CLI. */
@@ -92,9 +92,11 @@ export type GeneratedBrief = {
 };
 
 export type GenerateBriefArgs = {
+  /** The configured bot name. Decisions the assistant made store it in `by`. */
+  assistantName: string;
   completeObject: BriefCompleteObject;
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   prompt: string;
   throughIndex: number;
 };
@@ -129,14 +131,38 @@ function uniqueStrings(values: string[], limit: number): string[] {
   return [...unique];
 }
 
-const RUNTIME_MARKER_PATTERN =
-  /\[\[NO_REPLY\]\]|<\/?(?:active-asks|analysis-error|available-skills|brief-input|compaction|current-instruction|image-attachment|omitted-image-attachments|pi-history|plugin-contribution|resolved-or-replaced-asks|runtime-turn-context|thread-compactions|thread-context|turn-context)\b/i;
+// Runtime tags that must not leak into a Brief. Older history holds some
+// that the runtime no longer writes.
+const RUNTIME_MARKER_TAGS = [
+  "active-asks",
+  "analysis-error",
+  "available-skills",
+  "brief-input",
+  "compaction",
+  "current-instruction",
+  "image-attachment",
+  "omitted-image-attachments",
+  "pi-history",
+  "plugin-contribution",
+  "resolved-or-replaced-asks",
+  "runtime-turn-context",
+  "thread-compactions",
+  "thread-context",
+  "turn-context",
+];
 
 function hasRuntimeMarker(value: string): boolean {
-  return RUNTIME_MARKER_PATTERN.test(value);
+  return (
+    value.includes("[[NO_REPLY]]") || mentionsTag(value, RUNTIME_MARKER_TAGS)
+  );
 }
 
+// The prompt asks for this key, not the configured name, so the prompt stays
+// the same for every install.
+const ASSISTANT_ATTRIBUTION = "assistant";
+
 function normalizeModelBrief(args: {
+  assistantName: string;
   caps: BriefSizeCaps;
   links: BriefLink[];
   model: ModelBrief;
@@ -156,7 +182,9 @@ function normalizeModelBrief(args: {
       participant.name,
     ]),
   );
-  participantNames.set("junior", "Junior");
+  // A previous Brief stores the configured name, and the model can copy it.
+  participantNames.set(args.assistantName.toLowerCase(), args.assistantName);
+  participantNames.set(ASSISTANT_ATTRIBUTION, args.assistantName);
   const attribution = (
     value: string | null | undefined,
   ): string | undefined => {
@@ -172,11 +200,11 @@ function normalizeModelBrief(args: {
     }
     let by = attribution(decision.by);
     let kind = decision.kind;
-    if (by === "Junior" && kind !== "assumed") {
-      // Junior cannot state or confirm a decision for a human.
+    if (by === args.assistantName && kind !== "assumed") {
+      // The assistant cannot state or confirm a decision for a human.
       kind = "assumed";
       coercedDecisionKinds += 1;
-    } else if (by && by !== "Junior" && kind === "assumed") {
+    } else if (by && by !== args.assistantName && kind === "assumed") {
       // A human named on an assumed decision is not evidence of acceptance.
       by = undefined;
       coercedDecisionKinds += 1;
@@ -288,7 +316,7 @@ function promptInput(args: {
   caps: BriefSizeCaps;
   entries: BriefEntry[];
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   record: ConversationBrief["record"];
   sizeClass: BriefSizeClass;
 }): string {
@@ -341,9 +369,7 @@ function promptInput(args: {
   }
 
   return [
-    "<brief-input>",
-    text,
-    "</brief-input>",
+    renderTag("brief-input", {}, [text]),
     "Return the next Brief as structured data.",
   ].join("\n");
 }
@@ -430,7 +456,7 @@ function buildEvidenceLinks(args: {
   entries: BriefEntry[];
   input: BriefInput;
   model: ModelBrief;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
 }): {
   droppedUrls: BriefEvidenceCheck["droppedUrls"];
   keptUrlCount: number;
@@ -553,7 +579,6 @@ export async function generateBrief(
     }),
     schema: modelBriefSchema,
     system: args.prompt,
-    temperature: 0,
   });
   const model = modelBriefSchema.parse(result.object);
   const { droppedUrls, keptUrlCount, links } = buildEvidenceLinks({
@@ -562,7 +587,13 @@ export async function generateBrief(
     model,
     previous: args.previous,
   });
-  const normalized = normalizeModelBrief({ caps, links, model, record });
+  const normalized = normalizeModelBrief({
+    assistantName: args.assistantName,
+    caps,
+    links,
+    model,
+    record,
+  });
   const mergedClaim = /\bmerged\b/i.test(
     `${normalized.brief.summary}\n${normalized.brief.outcome.text}`,
   );

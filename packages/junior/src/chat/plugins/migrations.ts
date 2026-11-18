@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
-import { buildPendingConcurrentIndexes } from "@/db/concurrent-indexes";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 
@@ -154,6 +153,7 @@ export async function migratePluginSchemas(
       continue;
     }
     const table = migrationTable(root.pluginName);
+    // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
     const initialTime = await appliedMigrationTime(executor, table);
     const initialExisting = appliedCount(migrations, initialTime);
     if (initialExisting === migrations.length) {
@@ -168,6 +168,7 @@ export async function migratePluginSchemas(
       options.onPluginMigration?.(summary);
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
     const summary = await executor.withMigrationLock(table, async () => {
       const currentTime =
         (await appliedMigrationTime(executor, table)) ??
@@ -179,7 +180,6 @@ export async function migratePluginSchemas(
         }));
       const existing = appliedCount(migrations, currentTime);
       if (existing < migrations.length) {
-        await buildPendingConcurrentIndexes(executor, migrations, currentTime);
         await executor.migrate({
           migrationsFolder: root.dir,
           migrationsTable: table,

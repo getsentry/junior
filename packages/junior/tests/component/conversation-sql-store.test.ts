@@ -762,7 +762,7 @@ describe("conversation SQL store", () => {
     }
   }, 15_000);
 
-  it("fills missing actor identity from later observations and keeps it across event writes", async () => {
+  it("keeps the root actor identity across later writes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -780,6 +780,8 @@ describe("conversation SQL store", () => {
         source: "slack",
         nowMs: 1_000,
       });
+      // A later write does not save the root Actor's Identity again. The
+      // person's own Turns save their Slack profile on that Identity.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity-fill").destination,
@@ -808,14 +810,12 @@ describe("conversation SQL store", () => {
       await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
         {
           conversationId: CONVERSATION_ID,
-          actor: {
-            email: "casey@example.com",
-            fullName: "Casey Example",
-            slackUserId: "U123",
-          },
+          actor: { platform: "slack", slackUserId: "U123", teamId: "T123" },
           source: "slack",
         },
       ]);
+      const [stored] = await store.listByActivity({ limit: 5 });
+      expect(stored?.actor?.email).toBeUndefined();
     } finally {
       await fixture.close();
     }
@@ -1312,7 +1312,7 @@ ORDER BY metric
       ).toEqual([
         { metric: "cache_creation_tokens", value: 2 },
         { metric: "cached_input_tokens", value: 5 },
-        { metric: "cost_usd", value: 0.015 },
+        { metric: "cost_micro_usd", value: 15_000 },
         { metric: "duration_ms", value: 1_500 },
         { metric: "input_tokens", value: 5 },
         { metric: "output_tokens", value: 3 },

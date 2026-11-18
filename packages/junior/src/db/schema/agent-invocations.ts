@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   jsonb,
   pgTable,
@@ -68,6 +69,9 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     agentType: text("agent_type").$type<AgentType>(),
+    // The child starts with its parent's history. New rows set it only on
+    // the agent invocation that starts the child.
+    fork: boolean("fork").notNull().default(false),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.

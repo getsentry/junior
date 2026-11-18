@@ -36,7 +36,7 @@ interface TextRangeResult {
   details: {
     target: string;
     content: string;
-    end_line?: number;
+    end_line?: number | undefined;
     path: string;
     start_line: number;
     total_lines: number;
@@ -57,7 +57,7 @@ interface TextRangeResult {
 
 interface LegacyTextRangeResult {
   content: string;
-  end_line?: number;
+  end_line?: number | undefined;
   path: string;
   start_line: number;
   total_lines: number;

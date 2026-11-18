@@ -7,6 +7,8 @@ import {
   type PluginAuthorization,
   type PluginCredentialActor,
   type PluginCredentialResult,
+  type PluginGitPush,
+  type PluginGraphqlRequest,
   type PluginGrant,
   type PluginProviderAccount,
 } from "@sentry/junior-plugin-api";
@@ -105,10 +107,13 @@ function parseCredentialResult(
 
 export interface EgressGrantInput {
   bodyText?: string;
+  gitPush?: PluginGitPush;
+  graphql?: PluginGraphqlRequest;
   method: string;
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  withoutCredential?: true;
 }
 
 /** Ask a plugin which grant an outbound request needs. */
@@ -126,9 +131,12 @@ export async function selectPluginGrant(
       ...(input.bodyText !== undefined
         ? { bodyText: input.bodyText }
         : undefined),
+      ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
+      ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),
+      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     },
   });
   return result === undefined

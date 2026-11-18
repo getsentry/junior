@@ -7,6 +7,7 @@ import {
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 /** Keep indexed event-automation selectors within PostgreSQL B-tree entry limits. */
 export const EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH = 300;
@@ -73,7 +74,7 @@ export const eventAutomationSchema = z
     destinationVisibility: destinationVisibilitySchema,
     /** Explicit visible effects after successful work. An empty list is silent. */
     outcomes: z.array(eventAutomationOutcomeSchema).max(5),
-    task: z.object({ text: z.string().min(1) }).strict(),
+    task: automationTaskSchema,
     trigger: eventAutomationTriggerSchema,
   })
   .strict();
@@ -84,7 +85,7 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
    * Short display title generated from the task instruction.
    * SQL-backed column; never stored inside the JSON task payload.
    */
-  title?: string;
+  title?: string | undefined;
 };
 
 /** The part of an event automation that has no SQL column of its own. */

@@ -3,10 +3,12 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type RefObject,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "@dashboard/lib/utils";
 import {
   conversationOutlineSchema,
   type ConversationReportEvent,
@@ -18,10 +20,14 @@ import {
   MessageOutlineList,
   MessageOutlinePreview,
   MessageOutlinePreviewDescription,
+  MessageOutlinePreviewMeta,
   MessageOutlinePreviewTitle,
   useMessageOutline,
 } from "../components/ui/message-outline";
 import { fetchDashboardJson } from "../http";
+import { transcriptMessageActorLabel } from "../format";
+import { formatTranscriptMessageTime } from "../time";
+import type { ConversationTranscript } from "../types";
 import {
   conversationOutlineItems,
   mergeConversationOutlineItems,
@@ -29,6 +35,7 @@ import {
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
+import { useScrollsWithOutline } from "./transcriptScroller";
 
 const NO_EVENTS: ConversationReportEvent[] = [];
 
@@ -45,8 +52,14 @@ const JUMP_MARGIN_PX = 12;
  * of the whole Conversation and from the loaded rows. `onSelect` must make
  * the transcript load and mount the row of the seq, because the transcript
  * mounts only the rows near the viewport.
+ *
+ * When the person scrolls with the outline, it stands in for the scrollbar
+ * while it shows: it marks the items on screen, a drag along it jumps, and
+ * `ChatLayout` hides the scrollbar of the region.
  */
 export function ConversationOutline(props: {
+  /** Names the authors. Previews show no author before it loads. */
+  conversation: ConversationTranscript | undefined;
   conversationId: string;
   events: ConversationReportEvent[];
   onSelect(seq: number): void;
@@ -68,8 +81,27 @@ export function ConversationOutline(props: {
       ),
     [events, outline],
   );
-  const activeSeq = useActiveOutlineSeq(items, scrollRef);
+  const scrollsWithOutline = useScrollsWithOutline();
+  const seqsInView = useOutlineSeqsInView(items, scrollRef, scrollsWithOutline);
+  const activeIndex = items.findIndex((item) => item.seq === seqsInView.top);
   const [jumpSeq, setJumpSeq] = useState<number>();
+  const select = (seq: number) => {
+    props.onSelect(seq);
+    setJumpSeq(seq);
+  };
+  const navRef = useRef<HTMLElement>(null);
+  const replacesScrollbar = useDisplayed(
+    navRef,
+    scrollsWithOutline && items.length >= 2,
+  );
+  const lastIndex = items.findIndex((item) => item.seq === seqsInView.bottom);
+  const inView = useMemo(
+    () =>
+      replacesScrollbar && activeIndex >= 0
+        ? { from: activeIndex, to: Math.max(activeIndex, lastIndex) }
+        : undefined,
+    [activeIndex, lastIndex, replacesScrollbar],
+  );
 
   // A message outside the loaded rows renders after its page loads, so the
   // jump waits for new events.
@@ -86,27 +118,54 @@ export function ConversationOutline(props: {
   }, [events, jumpSeq, scrollRef]);
 
   if (items.length < 2) return null;
+  // In place of the scrollbar, the rail sits where the scrollbar would.
+  const side = scrollsWithOutline ? "right" : "left";
   return (
     <MessageOutline
-      activeIndex={items.findIndex((item) => item.seq === activeSeq)}
+      // `ChatLayout` hides the scrollbar beside this attribute.
+      data-replaces-scrollbar={replacesScrollbar ? "" : undefined}
+      activeIndex={activeIndex}
       aria-label="Conversation outline"
-      className="absolute inset-y-8 left-3 z-20 hidden @min-[62rem]/chat:flex"
+      // From `md`, the transcript has side padding that holds the rail, so
+      // it shows beside narrow transcripts too.
+      className={cn(
+        "absolute inset-y-8 z-20 hidden md:flex",
+        side === "left"
+          ? "left-1 @min-[62rem]/chat:left-3"
+          : "right-1 @min-[62rem]/chat:right-3",
+      )}
       itemCount={items.length}
+      inView={inView}
+      onScrub={
+        replacesScrollbar
+          ? (index) => {
+              const item = items[index];
+              if (item) select(item.seq);
+            }
+          : undefined
+      }
+      ref={navRef}
+      side={side}
     >
-      <MessageOutlineList>
+      {/* The list's inner padding would cover text in a narrow transcript. */}
+      <MessageOutlineList
+        className={
+          side === "left" ? "@max-[62rem]/chat:pr-0" : "@max-[62rem]/chat:pl-0"
+        }
+      >
         {items.map((item, index) => (
           <MessageOutlineItem
             aria-label={item.title}
             index={index}
             key={item.seq}
-            onClick={() => {
-              props.onSelect(item.seq);
-              setJumpSeq(item.seq);
-            }}
+            onClick={() => select(item.seq)}
           />
         ))}
       </MessageOutlineList>
-      <ConversationOutlinePreview items={items} />
+      <ConversationOutlinePreview
+        conversation={props.conversation}
+        items={items}
+      />
     </MessageOutline>
   );
 }
@@ -132,16 +191,37 @@ function useConversationOutline(conversationId: string) {
   });
 }
 
-/** Preview the pointed message with the last Junior reply to it. */
+/**
+ * Preview the pointed message, who sent it and when, and Junior's reply.
+ * The author has the same name as on the message's transcript row.
+ */
 function ConversationOutlinePreview(props: {
+  conversation: ConversationTranscript | undefined;
   items: readonly ConversationOutlineItem[];
 }) {
   const { previewIndex } = useMessageOutline();
   const item =
     previewIndex === undefined ? undefined : props.items[previewIndex];
   if (!item) return null;
+  const meta = [
+    props.conversation &&
+      transcriptMessageActorLabel(props.conversation, {
+        ...item.author,
+        parts: [],
+        role: "user",
+        sourceSeq: item.seq,
+      }),
+    item.timestamp === undefined
+      ? undefined
+      : formatTranscriptMessageTime(item.timestamp),
+  ].filter(Boolean);
   return (
     <MessageOutlinePreview>
+      {meta.length > 0 ? (
+        <MessageOutlinePreviewMeta>
+          {meta.join(" · ")}
+        </MessageOutlinePreviewMeta>
+      ) : null}
       <MessageOutlinePreviewTitle>{item.title}</MessageOutlinePreviewTitle>
       {item.reply ? (
         <MessageOutlinePreviewDescription>
@@ -153,35 +233,49 @@ function ConversationOutlinePreview(props: {
 }
 
 /**
- * Track the item whose section holds the top of the transcript viewport. The
- * transcript mounts only rows near the viewport, so this reads the seq of the
- * top mounted row, not the item rows themselves.
+ * Track the item whose section holds the top of the transcript viewport,
+ * and with `withBottom` the one that holds the bottom. The transcript mounts
+ * only rows near the viewport, so this reads the seqs of the mounted rows,
+ * not the item rows themselves.
  */
-function useActiveOutlineSeq(
+function useOutlineSeqsInView(
   items: readonly ConversationOutlineItem[],
   scrollRef: RefObject<HTMLDivElement | null>,
-): number | undefined {
-  const [activeSeq, setActiveSeq] = useState<number>();
+  withBottom: boolean,
+): { bottom: number | undefined; top: number | undefined } {
+  const [top, setTop] = useState<number>();
+  const [bottom, setBottom] = useState<number>();
   const update = useCallback(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
-    const top = scroll.getBoundingClientRect().top + JUMP_MARGIN_PX;
+    const viewport = scroll.getBoundingClientRect();
+    const viewTop = viewport.top + JUMP_MARGIN_PX;
     let topRowSeq: number | undefined;
     let topRowStart = Infinity;
+    let bottomRowSeq: number | undefined;
+    let bottomRowStart = -Infinity;
     for (const row of scroll.querySelectorAll<HTMLElement>(
       "[data-transcript-seq]",
     )) {
       const rect = row.getBoundingClientRect();
-      if (rect.bottom <= top || rect.top >= topRowStart) continue;
-      topRowStart = rect.top;
-      topRowSeq = Number(row.dataset.transcriptSeq);
+      if (rect.bottom <= viewTop) continue;
+      const seq = Number(row.dataset["transcriptSeq"]);
+      if (rect.top < topRowStart) {
+        topRowStart = rect.top;
+        topRowSeq = seq;
+      }
+      if (rect.top < viewport.bottom && rect.top > bottomRowStart) {
+        bottomRowStart = rect.top;
+        bottomRowSeq = seq;
+      }
     }
-    setActiveSeq(
-      topRowSeq === undefined
-        ? undefined
-        : outlineItemAtSeq(items, topRowSeq)?.seq,
-    );
-  }, [items, scrollRef]);
+    const itemSeq = (seq: number | undefined) =>
+      seq === undefined ? undefined : outlineItemAtSeq(items, seq)?.seq;
+    setTop(itemSeq(topRowSeq));
+    // The bottom item changes the outline only when it marks a thumb, so
+    // the default outline does not render on its change.
+    setBottom(withBottom ? itemSeq(bottomRowSeq) : undefined);
+  }, [items, scrollRef, withBottom]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -193,11 +287,40 @@ function useActiveOutlineSeq(
     };
     schedule();
     scroll.addEventListener("scroll", schedule, { passive: true });
+    // A resize moves rows in and out of view without a scroll.
+    const observer = new ResizeObserver(schedule);
+    observer.observe(scroll);
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       scroll.removeEventListener("scroll", schedule);
     };
   }, [scrollRef, update]);
 
-  return activeSeq;
+  return { bottom, top };
+}
+
+/**
+ * Tell whether an element shows. The outline hides itself with CSS where
+ * the transcript is narrow, so this reads the rendered box.
+ */
+function useDisplayed(
+  ref: RefObject<HTMLElement | null>,
+  enabled: boolean,
+): boolean {
+  const [displayed, setDisplayed] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!enabled || !element) return;
+    // A change to or from `display: none` resizes the box.
+    const observer = new ResizeObserver(() =>
+      setDisplayed(element.getClientRects().length > 0),
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      setDisplayed(false);
+    };
+  }, [enabled, ref]);
+  return enabled && displayed;
 }

@@ -1,0 +1,63 @@
+# Squawk lints migrations for statements that lock a table while they scan,
+# rewrite, or build. `junior upgrade` runs each migration in a transaction
+# with a lock_timeout (packages/junior/src/db/migrate.ts).
+# scripts/check-migration-locks.mjs checks backfills and DO blocks.
+pg_version = "17"
+assume_in_transaction = true
+excluded_rules = [
+  # The runner bounds every lock wait, and the migration is retried.
+  "require-lock-timeout",
+  "require-statement-timeout",
+  # A migration that only uses CREATE INDEX CONCURRENTLY runs outside a
+  # transaction. The runner rejects one that mixes it with other statements.
+  "ban-concurrent-index-creation-in-transaction",
+  # DROP INDEX holds its lock only for an instant, like ADD COLUMN.
+  "require-concurrent-index-deletion",
+  # These rules are not about locks.
+  "prefer-robust-stmts",
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  "identifier-too-long",
+  "ban-drop-column",
+  "ban-drop-constraint",
+  "ban-drop-function",
+  "ban-drop-not-null",
+  "ban-drop-table",
+  "renaming-column",
+  "renaming-object",
+  "renaming-table",
+]
+# Shipped migrations already ran.
+excluded_paths = [
+  "packages/junior-github/migrations/0007_shallow_millenium_guard.sql",
+  "packages/junior-memory/migrations/0001_closed_madrox.sql",
+  "packages/junior-memory/migrations/0004_gigantic_celestials.sql",
+  "packages/junior-memory/migrations/0005_short_jamie_braddock.sql",
+  "packages/junior-memory/migrations/0006_friendly_hydra.sql",
+  "packages/junior-memory/migrations/0007_military_tyger_tiger.sql",
+  "packages/junior-memory/migrations/0008_web_memory_source_platform.sql",
+  "packages/junior-memory/migrations/0009_faithful_whizzer.sql",
+  "packages/junior-memory/migrations/0013_memory_embedding_models.sql",
+  "packages/junior/migrations/0002_conversation_message_search.sql",
+  "packages/junior/migrations/0005_conversation_events.sql",
+  "packages/junior/migrations/0007_thick_sugar_man.sql",
+  "packages/junior/migrations/0020_restrict_task_execution_kinds.sql",
+  "packages/junior/migrations/0022_task_execution_status.sql",
+  "packages/junior/migrations/0026_conversation_event_actor_and_participants.sql",
+  "packages/junior/migrations/0033_workspace_snapshot_active_build.sql",
+  "packages/junior/migrations/0035_workspace_snapshot_size_bytes.sql",
+  "packages/junior/migrations/0038_event_task_status.sql",
+  "packages/junior/migrations/0039_attachment_provider.sql",
+  "packages/junior/migrations/0045_conversation_forks.sql",
+  "packages/junior/migrations/0050_agent_invocation_parent_mailbox.sql",
+  "packages/junior/migrations/0055_automations.sql",
+  "packages/junior/migrations/0058_automation_creator_identity.sql",
+  "packages/junior/migrations/0059_automation_run_version.sql",
+  "packages/junior/migrations/0064_any_resource_event_triggers.sql",
+  "packages/junior/migrations/0067_review_item_dedupe_tenant.sql",
+  "packages/junior/migrations/0070_review_item_foreign_keys.sql",
+  "packages/junior/migrations/0076_conversation_auto_archive.sql",
+  "packages/junior/migrations/0083_conversation_kind.sql",
+  "packages/junior/migrations/0086_shared_archive.sql",
+  "packages/junior/migrations/0092_turn_metric_actor.sql",
+]

@@ -44,22 +44,39 @@ export async function getConversationIdByProviderConversation(
 
 /**
  * Bind provider coordinates to a durable conversation unless another
- * conversation has them. Return whether they belong to this conversation.
+ * conversation has them. Return the conversation that has them.
  */
-export async function claimProviderConversation(
+export async function claimProviderConversationOwner(
   executor: JuniorSqlDatabase,
   args: ProviderConversationBinding,
-): Promise<boolean> {
+): Promise<string> {
   const rows = await executor
     .db()
     .insert(juniorConversationBindings)
     .values({ ...args, createdAt: new Date() })
     .onConflictDoNothing()
     .returning({ conversationId: juniorConversationBindings.conversationId });
-  const boundConversationId =
+  const ownerId =
     rows[0]?.conversationId ??
     (await getConversationIdByProviderConversation(executor, args));
-  return boundConversationId === args.conversationId;
+  if (!ownerId) {
+    throw new Error("Provider conversation binding disappeared during claim");
+  }
+  return ownerId;
+}
+
+/**
+ * Bind provider coordinates to a durable conversation unless another
+ * conversation has them. Return whether they belong to this conversation.
+ */
+export async function claimProviderConversation(
+  executor: JuniorSqlDatabase,
+  args: ProviderConversationBinding,
+): Promise<boolean> {
+  return (
+    (await claimProviderConversationOwner(executor, args)) ===
+    args.conversationId
+  );
 }
 
 /** Bind provider coordinates to a durable conversation in the caller's SQL scope. */

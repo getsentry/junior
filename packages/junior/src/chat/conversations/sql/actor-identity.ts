@@ -1,10 +1,11 @@
+import { eq } from "drizzle-orm";
 import type { Actor, StoredSlackActor } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { Conversation, ConversationSource } from "../store";
-import type { juniorIdentities } from "@/db/schema";
+import { juniorConversations, type juniorIdentities } from "@/db/schema";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
@@ -80,13 +81,26 @@ function systemIdentityFromSource(
 }
 
 /**
- * Save the Identity of a Conversation's actor and return its id. Use the
- * legacy source system Identity when the Conversation has no actor.
+ * Return the root Actor's Identity id. Save the Identity only when the
+ * Conversation has none yet. Use the legacy source system Identity when the
+ * Conversation has no actor.
  */
 export async function resolveConversationActorIdentityId(
   executor: JuniorSqlDatabase,
   conversation: Conversation,
 ): Promise<string | undefined> {
+  // The root Actor is set once. A later write merges other people's Actor
+  // fields into `conversation.actor`, so saving it again could link the root
+  // Actor's Identity to the User of whoever wrote last.
+  const [stored] = await executor
+    .db()
+    .select({ actorIdentityId: juniorConversations.actorIdentityId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversation.conversationId))
+    .limit(1);
+  if (stored?.actorIdentityId) {
+    return stored.actorIdentityId;
+  }
   const actor = actorFromStoredActor(conversation.actor);
   if (actor) {
     return await resolveActorIdentityId(

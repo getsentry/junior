@@ -2,13 +2,21 @@ import { credentialLogContext } from "@/chat/credentials/context";
 import type { LogContext } from "@/chat/log-context";
 import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
+  egressDecisionAttributes,
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import {
+  classifySandboxCredentialRequest,
+  sandboxRequestGetsCredential,
+  type SandboxCredentialRequest,
+} from "@/chat/sandbox/egress/credential-request";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   parseSandboxEgressCredentialToken,
+  setSandboxEgressAuthRequiredSignal,
   type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
@@ -39,8 +47,8 @@ export type SandboxEgressHttpInterceptor = CredentialedEgressHttpInterceptor;
 /** Runtime dependencies for running one verified sandbox egress request. */
 export interface SandboxEgressProxyDeps {
   fetch?: typeof fetch;
-  interceptHttp?: SandboxEgressHttpInterceptor;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
+  interceptHttp?: SandboxEgressHttpInterceptor | undefined;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
 }
 
 /** One sandbox egress request that its sandbox provider has authenticated. */
@@ -52,7 +60,7 @@ export interface SandboxEgressRequest {
   /** The original upstream URL that the sandbox requested. */
   upstreamUrl: URL;
   /** The signed credential token from the sandbox network policy. */
-  credentialToken?: string;
+  credentialToken?: string | undefined;
 }
 
 function jsonError(message: string, status: number): Response {
@@ -159,6 +167,33 @@ function continueSandboxEgressTrace<T>(
 }
 
 /**
+ * Choose whether this request gets the plugin's credential. Only a request
+ * that asks for one gets it, so Sandbox code does not act as the Actor only
+ * because it calls a provider domain.
+ */
+function credentialRequestInput(
+  provider: string,
+  request: Request,
+): { withoutCredential?: Exclude<SandboxCredentialRequest, "placeholder"> } {
+  const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
+  if (!manifest) {
+    throw new Error(`Plugin "${provider}" has no manifest for sandbox egress`);
+  }
+  const credentialRequest = classifySandboxCredentialRequest(
+    manifest,
+    request.headers,
+  );
+  if (
+    credentialRequest === "placeholder" ||
+    sandboxRequestGetsCredential(manifest, credentialRequest)
+  ) {
+    return {};
+  }
+  // Narrowed by the placeholder check above.
+  return { withoutCredential: credentialRequest };
+}
+
+/**
  * Run one sandbox egress request that its sandbox provider authenticated.
  *
  * This is the shared authorization boundary. It rejects upstream hosts that no
@@ -183,6 +218,7 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes("denied", "no provider owns forwarded host"),
     });
     return jsonError("No provider owns forwarded host", 403);
   }
@@ -204,6 +240,10 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes(
+        "denied",
+        "credential context is not authorized",
+      ),
     });
     return jsonError(
       "Sandbox egress credential context is not authorized",
@@ -216,14 +256,24 @@ export async function executeSandboxEgressRequest(
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
     credentialContext,
-    async () =>
-      await executeCredentialedEgressRequest({
+    async () => {
+      const result = await executeCredentialedEgressRequest({
         activeEgressId,
         credentialContext,
         deps,
         provider,
         request,
         upstreamUrl,
-      }),
+        ...credentialRequestInput(provider, request),
+      });
+      // The sandbox command reads this signal to ask the person to connect.
+      if (result.authRequired) {
+        await setSandboxEgressAuthRequiredSignal(
+          credentialContext,
+          result.authRequired,
+        );
+      }
+      return result.response;
+    },
   );
 }

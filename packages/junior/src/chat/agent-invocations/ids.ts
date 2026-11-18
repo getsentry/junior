@@ -76,29 +76,31 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
-const RESULT_MESSAGE_PREFIX = "agent-invocation:";
-const RESULT_MESSAGE_SUFFIX = ":result";
+const REPLY_MESSAGE_PREFIX = "agent-reply:";
+
+/**
+ * Return the parent mailbox identity of one child agent `reply` call.
+ * `senderId` is the Agent invocation that sent it, or the child Conversation
+ * when no Agent invocation names the child.
+ */
+export function getAgentReplyMessageId(
+  senderId: string,
+  toolCallId: string,
+): string {
+  return `${REPLY_MESSAGE_PREFIX}${senderId}:${toolCallId}`;
+}
+
+/**
+ * Return the key of the `reply` of one Turn on a child's Conversation loop.
+ * Readers take the sender from the message's sender fields, not this key.
+ */
+export function getTurnReplyKey(turnId: string, toolCallId: string): string {
+  return `${turnId}:${toolCallId}`;
+}
 
 /** Return the stable parent mailbox identity for one terminal result. */
 export function getAgentInvocationResultMessageId(
   invocationId: string,
 ): string {
-  return `${RESULT_MESSAGE_PREFIX}${invocationId}${RESULT_MESSAGE_SUFFIX}`;
-}
-
-/** Read the invocation identity from one parent result mailbox identity. */
-export function parseAgentInvocationResultMessageId(
-  messageId: string,
-): string | undefined {
-  if (
-    !messageId.startsWith(RESULT_MESSAGE_PREFIX) ||
-    !messageId.endsWith(RESULT_MESSAGE_SUFFIX)
-  ) {
-    return undefined;
-  }
-  const invocationId = messageId.slice(
-    RESULT_MESSAGE_PREFIX.length,
-    -RESULT_MESSAGE_SUFFIX.length,
-  );
-  return invocationId || undefined;
+  return `agent-invocation:${invocationId}:result`;
 }

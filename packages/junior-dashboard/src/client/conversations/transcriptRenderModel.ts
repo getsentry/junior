@@ -1,4 +1,5 @@
 import {
+  AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
   messageCardText,
 } from "@sentry/junior/api/schema";
@@ -20,10 +21,11 @@ import type {
 import { memoryRecallContent } from "./turnContext";
 
 /**
- * True for the parent Event message that delivers agent invocation results.
- * Core writes `subagent_ended` before it sends the result, so the Thread card
- * or Task line already shows the outcome. The transcript keeps this message
- * only for the memories its Turn recalled, folded into activity.
+ * True for the parent Event message that delivers agent invocation results
+ * or a child's `reply`. Core writes `subagent_ended` before it sends the
+ * result, so the Thread card or Task line already shows the outcome. The
+ * transcript keeps this message only for the memories its Turn recalled,
+ * folded into activity.
  */
 export function isAgentInvocationResultMessage(
   message: Pick<TranscriptViewMessage, "eventType" | "role">,
@@ -31,7 +33,8 @@ export function isAgentInvocationResultMessage(
   return (
     message.role === "user" &&
     message.eventType !== undefined &&
-    isAgentInvocationResultEventType(message.eventType)
+    (isAgentInvocationResultEventType(message.eventType) ||
+      message.eventType === AGENT_REPLY_EVENT_TYPE)
   );
 }
 
@@ -48,49 +51,49 @@ export type RenderedFailureEntry = {
   failureCode: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedAttachmentsDeliveredEntry = {
   key: string;
   kind: "attachments_delivered";
   part: TranscriptViewAttachmentsDeliveredPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedContextEventEntry = {
   key: string;
   kind: "context";
   part: TranscriptViewContextEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedSubagentEntry = {
   key: string;
   kind: "subagent";
   part: TranscriptViewSubagentPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedStructuredEventEntry = {
   key: string;
   kind: "structured_event";
   part: TranscriptViewStructuredEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedToolEntry = {
   key: string;
   kind: "tool";
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedReasoningEntry = {
   key: string;
   kind: "reasoning";
   part: TranscriptViewReasoningPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 export type RenderedMessageEntry = {

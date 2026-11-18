@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -34,15 +35,20 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
+
 const NEON = vi.hoisted(() => ({
   sql: undefined as
     | Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>["sql"]
     | undefined,
-  originalDatabaseUrl: process.env.DATABASE_URL,
+  originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
 
 vi.hoisted(() => {
-  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
+  process.env["DATABASE_URL"] = "postgres://configured.example.test/neon";
 });
 
 vi.mock("@/db/executor", () => ({
@@ -92,9 +98,9 @@ afterEach(async () => {
 
 afterAll(() => {
   if (NEON.originalDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete process.env["DATABASE_URL"];
   } else {
-    process.env.DATABASE_URL = NEON.originalDatabaseUrl;
+    process.env["DATABASE_URL"] = NEON.originalDatabaseUrl;
   }
 });
 
@@ -169,6 +175,7 @@ function memoryToolsFor(args: {
     userId: args.userId,
   };
   return getPluginTools({
+    turnTools: rootTurnTools,
     actor,
     conversationId: args.conversationId,
     destination: {
@@ -454,7 +461,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories!.execute!({}, {}),
+        })["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toEqual({
         memories: [expect.objectContaining({ id: publicMemory.memory.id })],
         target: "listMemories",
@@ -484,6 +491,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         user: { id: viewer.user.id },
       });
       const webTools = getPluginTools({
+        turnTools: rootTurnTools,
         actor: webActor,
         conversationId: webConversationId,
         destination: { platform: "local", conversationId: webConversationId },
@@ -498,7 +506,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
       await expect(
-        webTools.memory_listMemories!.execute!({}, {}),
+        webTools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [expect.objectContaining({ id: publicMemory.memory.id })],
       });
@@ -575,12 +583,13 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         resolveActorIdentity: () => readActorIdentity(actor),
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
         userText: "remember memory plugin facts",
+        turnTools: rootTurnTools,
       };
       const tools = getPluginTools({ ...turnContext, source });
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories!.execute!({}, {}),
+        tools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -592,7 +601,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
+        tools["memory_searchMemories"]!.execute!(
+          { query: "personal recall" },
+          {},
+        ),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -624,11 +636,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ]),
       );
       await expect(
-        tools.memory_createMemory!.execute!(
+        tools["memory_createMemory"]!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",
-          } as never,
+          },
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);
@@ -646,20 +658,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         }),
       });
       const agentToolsFor = (registry: typeof tools) =>
-        createPiAgentTools(
-          registry,
-          new SkillSandbox([], []),
-          {},
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          { countToolCall: () => 1 },
-        );
+        createPiAgentTools(registry, new SkillSandbox([], []), {
+          spanContext: {},
+          searchToolsCost: { owner: "none" },
+          codeMode: { countToolCall: () => 1 },
+        });
       const modelView = (agentTools: ReturnType<typeof agentToolsFor>) =>
         JSON.stringify(
           agentTools.map(({ name, description, parameters }) => ({
@@ -682,7 +685,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         "memory_createMemory is disabled in this Turn. Only a person's message in a public Conversation can write memory.",
       );
       await expect(
-        eventTools.memory_listMemories!.execute!({}, {}),
+        eventTools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({ memories: { length: 2 } });
     } finally {
       await fixture.close();

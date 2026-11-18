@@ -56,6 +56,7 @@ function privateConversationLabel(
 function surfaceFromConversationId(
   conversationId: string,
 ): ConversationSurface {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   if (parseSlackThreadId(conversationId)) return "slack";
   if (conversationId.startsWith("scheduler:")) return "scheduler";
   if (conversationId.startsWith("api:")) return "api";
@@ -72,7 +73,7 @@ function surfaceFromSource(
     source === "web" ||
     source === "scheduler"
   ) {
-    // Dashboard web conversations share the product api surface label.
+    // Dashboard Conversations share the product api surface label.
     return source === "web" ? "api" : source;
   }
   return surfaceFromConversationId(conversationId);
@@ -120,13 +121,14 @@ function actorIdentityReport(
 }
 
 function titleFromConversation(args: {
-  automationTitle?: string;
+  automationTitle?: string | undefined;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   surface: ConversationSurface;
-  visibility?: SlackConversationVisibility;
+  visibility?: SlackConversationVisibility | undefined;
 }): string {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName = args.conversation.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
@@ -163,6 +165,7 @@ function channelNameFromConversation(
   visibility?: SlackConversationVisibility,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return undefined;
@@ -183,6 +186,7 @@ function channelNameRedactedFromConversation(
   canViewPrivateContent: boolean,
 ): boolean {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return false;
@@ -208,24 +212,22 @@ export function conversationEventHistory(args: {
 
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   /** Name of the Automation that started this conversation, when known. */
-  automationTitle?: string;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
+  automationTitle?: string | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
   childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
   /** First human message text, used as the title until one is stored. */
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   locationId?: string;
-  pinnedAtMs?: number;
+  pinnedAtMs?: number | undefined;
   pinPosition?: number;
   /** The status that `conversationStatusSql` read with the row. */
   status: ConversationReportStatus;
-  /** A visible Junior reply is after the viewer's read position. */
-  unreadReply?: boolean;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
-  usage?: ConversationUsage;
+  usage?: ConversationUsage | undefined;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
   const canViewPrivateContent = args.access?.canViewPrivateContent ?? false;
@@ -246,6 +248,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
       : undefined),
   });
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,
@@ -257,8 +260,6 @@ export function conversationSummaryFromStoredConversation(args: {
     canViewPrivateContent,
   );
   const { status } = args;
-  // A reply waits on the reader once no work runs.
-  const unread = status !== "active" && args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -303,7 +304,6 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(args.pinPosition === undefined
       ? undefined
       : { pinPosition: args.pinPosition }),
-    ...(unread ? { unread: true } : undefined),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

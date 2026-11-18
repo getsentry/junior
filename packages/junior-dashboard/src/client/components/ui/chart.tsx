@@ -36,7 +36,7 @@ function ChartContainer({
       data-slot="chart"
       data-chart={chartId}
       className={cn(
-        "flex aspect-video justify-center font-sans text-2xs tabular-nums [&_.recharts-cartesian-axis-tick-value]:fill-dashboard-text-muted [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-dashboard-border-subtle [&_.recharts-curve.recharts-tooltip-cursor]:stroke-dashboard-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-dashboard-fill-soft [&_.recharts-reference-line_[stroke='#ccc']]:stroke-dashboard-border [&_.recharts-surface]:outline-hidden [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-dashboard-focus",
+        "flex aspect-video justify-center font-sans text-2xs tabular-nums [&_.recharts-cartesian-axis-tick-value]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-dashboard-border-subtle [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-dashboard-fill-soft [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-surface]:outline-hidden [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring",
         className,
       )}
       {...props}

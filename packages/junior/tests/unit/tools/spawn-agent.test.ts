@@ -15,7 +15,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: " Failing checks ",
           name: null,
@@ -35,15 +35,16 @@ describe("spawnAgent", () => {
     );
   });
 
-  it("passes the agent type through", async () => {
+  it("passes the agent type and fork through", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
     const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
 
     await tool.execute!(
-      tool.prepareArguments!({
-        agent_type: "fork",
+      tool.prepareArguments({
+        agent_type: "explore",
+        fork: true,
         task: "Check the other path.",
         title: "Other path",
       }),
@@ -51,7 +52,8 @@ describe("spawnAgent", () => {
     );
     expect(spawnAgent).toHaveBeenCalledWith(
       {
-        agentType: "fork",
+        agentType: "explore",
+        fork: true,
         task: "Check the other path.",
         title: "Other path",
       },
@@ -64,7 +66,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({ task: "Investigate the failing checks." }),
+        tool.prepareArguments({ task: "Investigate the failing checks." }),
         {},
       ),
     ).rejects.toBeInstanceOf(ToolInputError);
@@ -78,7 +80,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: "Failing checks",
           name: "researcher",
@@ -103,7 +105,7 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           task: "Investigate the failing checks.",
           title: "Failing checks",
         }),

@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,
@@ -62,7 +58,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context: unknown) => Promise<unknown> | unknown)
+      | undefined;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurnWithContext?: (
@@ -79,7 +78,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -88,7 +94,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -163,6 +170,15 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           content: [{ type: "text", text: JSON.stringify(toolResult) }],
           isError: false,
         });
+        // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+        // the next model call.
+        for (const listener of this.listeners) {
+          await listener({
+            type: "turn_end",
+            message: assistantMessage,
+            toolResults: [toolResult],
+          });
+        }
         const update = (await this.prepareNextTurn?.({
           context: {
             messages: this.state.messages,
@@ -216,6 +232,19 @@ vi.mock("@/chat/pi/client", () => ({
   },
   getGatewayApiKey: () => "unauthenticated",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
+}));
+
+// Guardian reviews each bash call. These tests cover sandbox wiring, so the
+// reviewer allows every call.
+vi.mock("@/chat/guardian/reviewer", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises sandbox runtime behavior.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => ({
@@ -463,12 +492,39 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  AGENTS_REMOVAL_NOTICE,
+  renderAgentsInstructions,
+} from "@/chat/repository-instructions";
+import {
+  renderCompactionSummary,
+  selectRetainedUserMessages,
+  summarizedRuntimeContextMessage,
+  userMessage,
+} from "@/chat/services/context-compaction";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
   conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+// Guardian review of a bash call needs the Actor of the Run.
+const LOCAL_ACTOR = { platform: "local" as const, userId: "local-test" };
+
+/** Return each AGENTS.md block in history, in order. */
+function agentsBlocks(messages: PiMessage[] | undefined): string[] {
+  return (messages ?? []).flatMap((message) =>
+    message.role === "user" && Array.isArray(message.content)
+      ? message.content.flatMap((part) =>
+          part.type === "text" &&
+          part.text.startsWith("# AGENTS.md instructions")
+            ? [part.text]
+            : [],
+        )
+      : [],
+  );
+}
 
 async function generateLocalReply(
   message: string,
@@ -484,12 +540,13 @@ async function generateLocalReply(
       text: message,
       ...instructionOverrides,
     },
+    actor: LOCAL_ACTOR,
     destination: LOCAL_DESTINATION,
     source: LOCAL_SOURCE,
     ...rest,
   });
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }
@@ -695,5 +752,76 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).not.toContain(
       '"stdout":"# AGENTS.md instructions',
     );
+  });
+
+  it("adds AGENTS.md once across Turns and again only when it changes", async () => {
+    // A bash call runs the AGENTS.md check before the next model call.
+    agentMode.value = "agentsAfterBash";
+    const state = {
+      sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+    };
+    const first = await generateLocalReply("first request", { state });
+    const original =
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nCall retries the cobalt budget.\n</INSTRUCTIONS>";
+    expect(agentsBlocks(first.piMessages)).toEqual([original]);
+
+    const second = await generateLocalReply("second request", {
+      history: first.piMessages,
+      state,
+    });
+    expect(agentsBlocks(second.piMessages)).toEqual([original]);
+
+    // No sandbox at Turn start: the bash call boots one and reads AGENTS.md.
+    createSandboxCallCount.value = 0;
+    const lazyBoot = await generateLocalReply("lazy boot request", {
+      history: first.piMessages,
+    });
+    expect(agentsBlocks(lazyBoot.piMessages)).toEqual([original]);
+
+    // The history that a compaction replacement keeps for later Turns.
+    const compacted = [
+      summarizedRuntimeContextMessage(second.piMessages!, [])!,
+      ...selectRetainedUserMessages(second.piMessages!),
+      userMessage(renderCompactionSummary("Earlier work.")),
+    ];
+    const afterCompaction = await generateLocalReply("third request", {
+      history: compacted,
+      state,
+    });
+    expect(agentsBlocks(afterCompaction.piMessages)).toEqual([original]);
+
+    activeSandboxVersion.value = 2;
+    const changed = await generateLocalReply("fourth request", {
+      history: afterCompaction.piMessages,
+      state,
+    });
+    expect(agentsBlocks(changed.piMessages)).toEqual([
+      original,
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nThese AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\nUse the current repository formatter.\n</INSTRUCTIONS>",
+    ]);
+
+    // Unchanged after a replacement: the replacement notice must not count as a change.
+    const afterReplace = await generateLocalReply("fifth request", {
+      history: changed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterReplace.piMessages)).toHaveLength(2);
+
+    // Removed: one removal notice, then nothing more.
+    repositoryInstructionsAvailable.value = false;
+    const removed = await generateLocalReply("sixth request", {
+      history: afterReplace.piMessages,
+      state,
+    });
+    const removedBlocks = agentsBlocks(removed.piMessages);
+    expect(removedBlocks).toHaveLength(3);
+    expect(removedBlocks[2]).toEqual(
+      renderAgentsInstructions({ text: AGENTS_REMOVAL_NOTICE }),
+    );
+    const afterRemoved = await generateLocalReply("seventh request", {
+      history: removed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterRemoved.piMessages)).toHaveLength(3);
   });
 });

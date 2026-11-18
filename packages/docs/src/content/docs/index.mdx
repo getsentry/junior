@@ -19,6 +19,10 @@ hero:
             <li>i keep going after you log off</li>
             <li>open source. you host it.</li>
           </ul>
+          <button class="jr-demo-thumb" type="button" data-demo-video-open aria-label="Watch the demo video">
+            <img src="/junior-demo-poster.webp" alt="" width="1920" height="1080" />
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" /><path d="M9.5 7.5v9l7-4.5z" /></svg>
+          </button>
         </div>
         <img class="jr-hero-mascot" src="/junior-character.png" alt="Junior, a one-eyed robot in a purple cap and pink hoodie" width="576" height="920" />
       </div>
@@ -27,3 +31,7 @@ hero:
       link: /start-here/quickstart/
       icon: right-arrow
 ---
+
+import DemoVideo from "../../components/DemoVideo.astro";
+
+<DemoVideo />

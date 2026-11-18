@@ -16,15 +16,15 @@ import {
   Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Badge } from "../components/ui/badge";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
-import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,6 +32,7 @@ import {
 } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { DetailsList, DetailsRow } from "./DetailsList";
+import { formatTime } from "../time";
 
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {
@@ -205,15 +206,12 @@ function WatchDetail(props: { watch: ConversationWatch }) {
 /** Label one event type, or a dashed match filter that narrows the events. */
 function WatchChip(props: { children: ReactNode; filter?: boolean }) {
   return (
-    <span
-      className={
-        props.filter
-          ? "min-w-0 truncate rounded-md border border-dashed border-dashboard-border px-1.5 py-px text-xs leading-4 text-dashboard-text-muted"
-          : "min-w-0 truncate rounded-md bg-dashboard-fill-soft px-1.5 py-px text-xs leading-4 text-dashboard-text-subtle"
-      }
+    <Badge
+      className="min-w-0 truncate py-px"
+      variant={props.filter ? "dashed" : "secondary"}
     >
       {props.children}
-    </span>
+    </Badge>
   );
 }
 

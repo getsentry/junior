@@ -5,6 +5,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createProviderError,
+  isProviderRefusal,
   type ProviderError,
 } from "@/chat/services/provider-error";
 import {
@@ -18,7 +19,7 @@ const MAX_PROVIDER_RETRY_DELAY_MS = 60_000;
 /** Apply Junior's retry budget to a retryable Pi assistant failure. */
 export function nextProviderRetry(args: {
   attempt: number;
-  failure?: AssistantMessage;
+  failure?: AssistantMessage | undefined;
   messages: PiMessage[];
 }):
   | {
@@ -61,4 +62,34 @@ export function nextProviderRetry(args: {
   }
 
   return { delayMs, messages, providerError };
+}
+
+/**
+ * Return the messages to send to the refusal fallback model, or undefined
+ * when the failure is not a provider refusal or no fallback model is set.
+ */
+export function nextRefusalFallback(args: {
+  failure?: AssistantMessage | undefined;
+  fallbackModelId?: string | undefined;
+  messages: PiMessage[];
+}): { messages: PiMessage[]; modelId: string } | undefined {
+  if (
+    !args.fallbackModelId ||
+    !args.failure ||
+    args.failure.stopReason !== "error" ||
+    !isProviderRefusal(args.failure)
+  ) {
+    return undefined;
+  }
+
+  const messages = trimTrailingAssistantMessages(args.messages);
+  const tailRole = getPiMessageRole(messages.at(-1));
+  if (
+    messages.length === args.messages.length ||
+    (tailRole !== "user" && tailRole !== "toolResult")
+  ) {
+    return undefined;
+  }
+
+  return { messages, modelId: args.fallbackModelId };
 }

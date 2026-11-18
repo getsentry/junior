@@ -15,10 +15,13 @@ import {
   Agent,
   type AgentMessage,
   type AgentTool,
-  type StreamFn,
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { Tool } from "@earendil-works/pi-ai";
+import {
+  getInitialSystemMessage,
+  getSystemMessageText,
+  type Tool,
+} from "@earendil-works/pi-ai";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -32,12 +35,12 @@ import {
 } from "@/chat/conversation-privacy";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
+import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
 import {
-  logInfo,
-  logWarn,
-  setSpanAttributes,
-  withLogContext,
-} from "@/chat/logging";
+  readAgentHistory,
+  type AgentRequestStreamFn,
+  withAgentRequest,
+} from "@/chat/pi/agent-history";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -190,7 +193,9 @@ export async function requestBackgroundCompaction(args: {
   if (!args.queue) {
     return;
   }
-  const inputSize = lastRequestInputSize(args.agent.state.messages);
+  const inputSize = lastRequestInputSize(
+    readAgentHistory(args.agent.state.messages),
+  );
   if (
     inputSize === undefined ||
     inputSize < getAgentBackgroundCompactionMarkTokens(args.modelId)
@@ -261,19 +266,24 @@ async function requestAboveMark(args: {
     historyVersion,
     markSeq,
   };
-  const { systemPrompt, thinkingLevel, tools } = args.agent.state;
+  const { messages, thinkingLevel, tools } = args.agent.state;
+  // Not `agent.state.systemPrompt`: it also folds in saved system messages,
+  // and the job folds them again from the projection.
+  const leading = getInitialSystemMessage(messages);
   const snapshot: RequestSnapshot = {
     // Unknown privacy is private, as in the Turn.
     conversationPrivacy: args.conversationPrivacy ?? "private",
     inputSize: args.inputSize,
     modelId: args.modelId,
-    systemPrompt,
+    systemPrompt: leading ? getSystemMessageText(leading) : "",
     thinkingLevel,
     // The provider request reads only these fields of a tool.
     tools: tools.map((tool) => ({
       name: tool.name,
       label: tool.label,
       description: tool.description,
+      // pi-ai types tool parameters with a generic that defaults to `any`.
+      // oxlint-disable-next-line typescript/no-unsafe-assignment
       parameters: tool.parameters,
       ...(tool.constrainedSampling === undefined
         ? undefined
@@ -307,11 +317,6 @@ async function requestAboveMark(args: {
     return;
   }
   await args.queue.send(message);
-  logInfo("context_compaction.background.requested", {
-    "app.compaction.mark_seq": markSeq,
-    "app.compaction.history_version": historyVersion,
-    "app.compaction.input.size": args.inputSize,
-  });
 }
 
 /** A fixed label for a failed summary. Never raw exception text. */
@@ -329,6 +334,11 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   return providerError ? `provider_${providerError.kind}` : "summary_error";
 }
 
+/**
+ * `app.compaction.outcome` of a job. `stale`: the History was replaced before
+ * the job ran. `duplicate`: the request already has a result. Both write
+ * nothing. A `failed` job sets `error.type` to its failure label.
+ */
 type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
 
 /**
@@ -341,7 +351,7 @@ type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
  */
 export async function processBackgroundCompaction(
   message: BackgroundCompactionMessage,
-  options: { enqueuedAtMs?: number; streamFn?: StreamFn } = {},
+  options: { enqueuedAtMs?: number; streamFn?: AgentRequestStreamFn } = {},
 ): Promise<void> {
   const startedAtMs = Date.now();
   await withLogContext({ conversationId: message.conversationId }, () =>
@@ -366,7 +376,7 @@ export async function processBackgroundCompaction(
 
 async function prepareSummary(
   message: BackgroundCompactionMessage,
-  streamFn: StreamFn | undefined,
+  streamFn: AgentRequestStreamFn | undefined,
 ): Promise<JobOutcome> {
   const eventStore = getConversationEventStore();
   const state = getStateAdapter();
@@ -462,22 +472,26 @@ async function prepareSummary(
           promptName: CONTEXT_COMPACTION_PROMPT_NAME,
           ...(streamFn ? { base: streamFn } : undefined),
         });
+        const tools = snapshot.tools.map((tool) => ({
+          ...tool,
+          execute: async () => {
+            throw new Error("Background compaction does not run tools");
+          },
+        }));
         // The live agent sets only these request options. Keep them equal,
         // or the request prefix differs and the provider cache misses.
         const agent = new Agent({
           getApiKey: getGatewayApiKey,
           sessionId: message.conversationId,
-          streamFn: summaryStreamFn,
+          streamFn: withAgentRequest(summaryStreamFn, {
+            systemPrompt: snapshot.systemPrompt,
+            tools,
+          }),
           initialState: {
             systemPrompt: snapshot.systemPrompt,
             model: resolveGatewayModel(snapshot.modelId),
             thinkingLevel: snapshot.thinkingLevel,
-            tools: snapshot.tools.map((tool) => ({
-              ...tool,
-              execute: async () => {
-                throw new Error("Background compaction does not run tools");
-              },
-            })),
+            tools,
           },
         });
         return await requestContextSummary(

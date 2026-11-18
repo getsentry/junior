@@ -1,10 +1,14 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { generateKeyPairSync } from "node:crypto";
+import { createServer, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import {
   createLocalSource,
   definePluginTool,
   defineJuniorPlugin,
   EgressAuthRequired,
+  EgressPolicyDenied,
   pluginToolOutputSchema,
   type PluginHooks,
 } from "@sentry/junior-plugin-api";
@@ -20,6 +24,11 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
+
 const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -34,6 +43,9 @@ const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_UPLOAD_HOST = "uploads.github.com";
+const GITHUB_GIT_HOST = "github.com";
+const GRAPHQL_MUTATIONS_DISABLED =
+  "GitHub GraphQL mutations are not enabled for runtime credentials.";
 
 const managedEgressReadResultSchema = pluginToolOutputSchema.extend({
   body: z.string(),
@@ -95,8 +107,13 @@ function traceHeadersFor(
   return allow?.[host]?.[0]?.transform?.[0]?.headers;
 }
 
+// Sandbox tools ask for a credential by sending the plugin placeholder.
+const PLACEHOLDER_AUTHORIZATION = "Bearer host_managed_credential";
+
 function proxiedRequest(input: {
   body?: BodyInit;
+  /** The Authorization header. `null` sends none, as git does. */
+  credential?: string | null;
   forwardURL: string;
   headers?: Record<string, string>;
   method?: string;
@@ -118,6 +135,9 @@ function proxiedRequest(input: {
       "vercel-forwarded-path": upstreamPath,
       "vercel-forwarded-scheme": "https",
       "vercel-sandbox-oidc-token": "signed-vercel-token",
+      ...(input.credential === null
+        ? undefined
+        : { authorization: input.credential ?? PLACEHOLDER_AUTHORIZATION }),
       ...(input.body !== undefined
         ? { "content-type": "application/json" }
         : undefined),
@@ -126,12 +146,30 @@ function proxiedRequest(input: {
   });
 }
 
+/** Return the headers that Node's built-in fetch sends on its own. */
+async function nodeFetchHeaders(): Promise<Record<string, string>> {
+  const server = createServer((_request, response) => response.end());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const received = new Promise<IncomingHttpHeaders>((resolve) =>
+    server.once("request", (request) => resolve(request.headers)),
+  );
+  try {
+    const { port } = server.address() as AddressInfo;
+    await fetch(`http://127.0.0.1:${port}/`);
+    const { host: _host, connection: _connection, ...headers } = await received;
+    return headers as Record<string, string>;
+  } finally {
+    server.close();
+  }
+}
+
 async function registerManagedEgressPlugin(input?: {
   egressTracePropagationDomains?: string[];
   grantForEgress?: NonNullable<PluginHooks["grantForEgress"]>;
   issueCredential?: NonNullable<PluginHooks["issueCredential"]>;
   onEgressResponse?: NonNullable<PluginHooks["onEgressResponse"]>;
   tools?: NonNullable<PluginHooks["tools"]>;
+  toolsSendNoCredential?: boolean;
 }) {
   const { createApp, defineJuniorPlugins } = await import("@/app");
   await createApp({
@@ -142,6 +180,9 @@ async function registerManagedEgressPlugin(input?: {
           displayName: "Managed Egress",
           description: "Managed egress integration fixture",
           domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
+          ...(input?.toolsSendNoCredential
+            ? { toolsSendNoCredential: true }
+            : undefined),
         },
         hooks: {
           grantForEgress:
@@ -248,9 +289,9 @@ async function registerGitHubPlugin(
 }
 
 function configureGitHubAppEnv() {
-  process.env.GITHUB_APP_ID = "123";
-  process.env.GITHUB_INSTALLATION_ID = "456";
-  process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
+  process.env["GITHUB_APP_ID"] = "123";
+  process.env["GITHUB_INSTALLATION_ID"] = "456";
+  process.env["GITHUB_APP_PRIVATE_KEY"] = generateKeyPairSync("rsa", {
     modulusLength: 2048,
   })
     .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -272,6 +313,31 @@ function mockGitHubInstallationToken() {
     ),
   );
   return requests;
+}
+
+function mockGitHubDefaultBranch() {
+  mswServer.use(
+    http.get("https://api.github.com/repos/getsentry/junior", () =>
+      HttpResponse.json({ default_branch: "main" }),
+    ),
+  );
+}
+
+/** A Git push body: one ref update, the flush packet, then binary pack data. */
+function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
+  const command = `${"1".repeat(40)} ${"2".repeat(40)} ${ref}\0report-status side-band-64k`;
+  const commands = `${(command.length + 4).toString(16).padStart(4, "0")}${command}0000`;
+  return new Uint8Array([
+    ...new TextEncoder().encode(commands),
+    ...new TextEncoder().encode("PACK"),
+    0x00,
+    0x00,
+    0x00,
+    0x02,
+    0x9c,
+    0xff,
+    0x80,
+  ]);
 }
 
 describe("sandbox egress proxy integration", () => {
@@ -351,7 +417,11 @@ describe("sandbox egress proxy integration", () => {
     // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
     // for the missing-env-token case. This should be normalized to an egress credential error
     // before reaching the proxy, and the proxy should return the canonical auth-required 401.
-    delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
+    delete process.env["SANDBOX_EGRESS_TEST_TOKEN"]; // remove env token so broker has no credential
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
@@ -367,8 +437,21 @@ describe("sandbox egress proxy integration", () => {
       proxiedRequest({ forwardURL }),
       { verifyOidc: async () => ({ sandbox_id: EGRESS_ID }) },
     );
+    unregister();
 
     expect(response.status).toBe(401);
+    // A refused request is on record with its decision and reason.
+    expect(
+      records.find(
+        (record) =>
+          record.attributes["app.egress.policy.decision"] !== undefined,
+      )?.attributes,
+    ).toMatchObject({
+      "app.egress.policy.decision": "denied",
+      "app.sandbox.egress.policy.reason": expect.any(String),
+      "server.address": PROVIDER_HOST,
+      "user.id": ACTOR_ID,
+    });
     const body = await response.text();
     expect(body).toContain("junior-auth-required");
     expect(body).toContain("provider=sandbox-egress-test");
@@ -383,7 +466,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("records OAuth authorization metadata for broker credential gaps", async () => {
-    delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
+    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
     await registerOAuthBrokerPlugin();
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
@@ -425,7 +508,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("uses OAuth broker credentials when a credential hook returns no grant", async () => {
-    delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
+    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
     await registerOAuthBrokerPlugin({
       grantForEgress: (ctx) =>
         ctx.request.method === "GET"
@@ -654,8 +737,22 @@ describe("sandbox egress proxy integration", () => {
     );
     expect(writeAudit?.attributes).toMatchObject({
       "app.actor.type": "user",
+      "app.credential.account": "app",
+      "app.egress.policy.decision": "allowed",
       "app.log.audit": true,
       "gen_ai.conversation.id": "conversation-1",
+      "user.id": ACTOR_ID,
+    });
+    // Reads are on record too, not only writes.
+    const readAudit = records.find(
+      (record) =>
+        record.eventName === "sandbox.egress.upstream.requested" &&
+        record.attributes["http.request.method"] === "GET",
+    );
+    expect(readAudit?.attributes).toMatchObject({
+      "app.egress.policy.decision": "allowed",
+      "app.grant.access": "read",
+      "app.log.audit": true,
       "user.id": ACTOR_ID,
     });
   });
@@ -776,7 +873,7 @@ describe("sandbox egress proxy integration", () => {
     await registerManagedEgressPlugin({
       grantForEgress,
       issueCredential,
-      tools(ctx) {
+      tools() {
         return {
           managedEgressRead: definePluginTool({
             approvalMode: "approve",
@@ -789,7 +886,7 @@ describe("sandbox egress proxy integration", () => {
             description: "Read managed provider data through host egress",
             inputSchema: z.object({}),
             outputSchema: managedEgressReadResultSchema,
-            async execute() {
+            async execute(_input, _options, ctx) {
               const response = await ctx.egress.fetch({
                 provider: "managed-egress",
                 operation: "managed.issues.read",
@@ -836,6 +933,7 @@ describe("sandbox egress proxy integration", () => {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId,
         destination: {
           platform: "local",
@@ -855,7 +953,10 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {});
+    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTools.find(
       (candidate) => candidate.name === "executeTool",
     );
@@ -920,7 +1021,7 @@ describe("sandbox egress proxy integration", () => {
         upstreamPath: "/v1/issues",
       }),
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );
@@ -1046,6 +1147,10 @@ describe("sandbox egress proxy integration", () => {
       refreshToken: "github-refresh-token",
       scope: "repo",
     });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
@@ -1090,9 +1195,19 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ url: assetUrl });
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.upstream.requested",
+      )?.attributes,
+    ).toMatchObject({
+      "app.credential.account": "actor",
+      "app.grant.name": "user-write",
+    });
   });
 
   it("uses GitHub App installation credentials for workflow dispatch", async () => {
@@ -1103,9 +1218,18 @@ describe("sandbox egress proxy integration", () => {
         actions: "write",
       },
     });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      credentials: { actor: { platform: "system", name: "scheduler" } },
       egressId: EGRESS_ID,
+      source: {
+        kind: "scheduled_automation",
+        automationId: "auto-1",
+        automationRunId: "run-1",
+      },
       ttlMs: 60_000,
     });
     const networkPolicy = buildVercelNetworkPolicy({
@@ -1140,9 +1264,152 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(response.status).toBe(204);
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
     expect(tokenRequests).toEqual([{}]);
+    const writeAudit = records.find(
+      (record) => record.eventName === "sandbox.egress.upstream.requested",
+    );
+    expect(writeAudit?.attributes).toMatchObject({
+      "app.actor.type": "system",
+      "app.credential.account": "app",
+      "app.egress.policy.decision": "allowed",
+      "app.github.repository": "getsentry/junior",
+      "app.grant.name": "installation-write",
+      "app.log.audit": true,
+      "app.source.kind": "scheduled_automation",
+      "app.task.id": "auto-1",
+      "app.task.run.id": "run-1",
+    });
+  });
+
+  it("forwards a Git branch push with its pack bytes and records its refs", async () => {
+    configureGitHubAppEnv();
+    mockGitHubDefaultBranch();
+    await registerGitHubPlugin({ appPermissions: { contents: "write" } });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_GIT_HOST,
+    );
+    const body = gitPushBody("refs/heads/feat/x");
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        await expect(
+          new Response(init?.body).arrayBuffer(),
+        ).resolves.toStrictEqual(body.buffer);
+        return new Response("", { status: 200 });
+      },
+    );
+
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        body,
+        credential: null,
+        forwardURL,
+        headers: {
+          "content-type": "application/x-git-receive-pack-request",
+        },
+        method: "POST",
+        upstreamHost: GITHUB_GIT_HOST,
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    unregister();
+
+    expect(response.status).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.upstream.requested",
+      )?.attributes,
+    ).toMatchObject({
+      "app.credential.account": "app",
+      "app.github.default_branch": "main",
+      "app.github.default_branch_targeted": false,
+      "app.github.refs": ["refs/heads/feat/x"],
+      "app.github.repository": "getsentry/junior",
+      "app.grant.name": "installation-write",
+    });
+  });
+
+  it("denies a Git push to the default branch with a policy signal", async () => {
+    configureGitHubAppEnv();
+    mockGitHubDefaultBranch();
+    await registerGitHubPlugin({ appPermissions: { contents: "write" } });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { platform: "system", name: "scheduler" } },
+      egressId: EGRESS_ID,
+      source: { kind: "scheduled_automation", automationId: "auto-1" },
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_GIT_HOST,
+    );
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        body: gitPushBody("refs/heads/main"),
+        forwardURL,
+        headers: {
+          "content-type": "application/x-git-receive-pack-request",
+        },
+        method: "POST",
+        upstreamHost: GITHUB_GIT_HOST,
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    unregister();
+
+    expect(response.status).toBe(403);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      message: expect.stringContaining(
+        "The runtime never pushes to the default branch (main) of getsentry/junior.",
+      ),
+      method: "POST",
+      provider: "github",
+      source: "policy",
+      upstreamHost: GITHUB_GIT_HOST,
+      upstreamPath: "/getsentry/junior.git/git-receive-pack",
+    });
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.policy.denied",
+      )?.attributes,
+    ).toMatchObject({
+      "app.egress.policy.decision": "denied",
+      "app.github.default_branch_targeted": true,
+      "app.github.refs": ["refs/heads/main"],
+      "app.source.kind": "scheduled_automation",
+      "app.task.id": "auto-1",
+    });
   });
 
   it("returns a Junior egress error instead of forwarding an unreadable body", async () => {
@@ -1175,7 +1442,7 @@ describe("sandbox egress proxy integration", () => {
     const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       request,
       {
-        fetch: upstreamFetch as typeof fetch,
+        fetch: upstreamFetch,
         verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
       },
     );
@@ -1464,6 +1731,71 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      name: "a mutation after a query with no operationName",
+      body: JSON.stringify({
+        query:
+          'query ReadIssues { viewer { login } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+      }),
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+    {
+      name: "an aliased mutation",
+      body: JSON.stringify({
+        query:
+          'mutation { issues: createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+      }),
+      error: "GitHub issue creation must use the github_createIssue tool",
+    },
+    {
+      name: "a batch",
+      body: JSON.stringify([{ query: "{ viewer { login } }" }]),
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+    {
+      name: "a body that is not JSON",
+      body: "{",
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+  ])(
+    "denies raw GitHub GraphQL with $name before credential injection",
+    async ({ body, error }) => {
+      await registerGitHubPlugin();
+      const credentialToken =
+        modules.session.createSandboxEgressCredentialToken({
+          credentials: { actor: { type: "user", userId: ACTOR_ID } },
+          egressId: EGRESS_ID,
+          ttlMs: 60_000,
+        });
+      const forwardURL = forwardUrlFor(
+        buildVercelNetworkPolicy({ credentialToken }),
+        GITHUB_API_HOST,
+      );
+      const upstreamFetch = vi.fn();
+
+      const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+        proxiedRequest({
+          body,
+          forwardURL,
+          method: "POST",
+          upstreamHost: GITHUB_API_HOST,
+          upstreamPath: "/graphql",
+        }),
+        {
+          fetch: upstreamFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        },
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: expect.stringContaining(error),
+      });
+      expect(upstreamFetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("denies raw GitHub pull request creation before credential injection", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
@@ -1719,9 +2051,9 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("returns a controlled egress auth response when GitHub App setup is unavailable", async () => {
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-    delete process.env.GITHUB_INSTALLATION_ID;
+    delete process.env["GITHUB_APP_ID"];
+    delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    delete process.env["GITHUB_INSTALLATION_ID"];
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
@@ -1762,5 +2094,197 @@ describe("sandbox egress proxy integration", () => {
       },
       message: "Missing GITHUB_APP_ID",
     });
+  });
+
+  /** Send one Sandbox request and return the response and the upstream headers. */
+  async function sendFromSandbox(input: {
+    credential?: string | null;
+    headers?: Record<string, string>;
+    method?: string;
+    upstreamHost: string;
+  }) {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      input.upstreamHost,
+    );
+    const upstream: Headers[] = [];
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        upstream.push(new Headers(init?.headers));
+        return new Response("ok");
+      },
+    );
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        ...(input.credential !== undefined
+          ? { credential: input.credential }
+          : undefined),
+        forwardURL,
+        ...(input.headers ? { headers: input.headers } : undefined),
+        ...(input.method ? { method: input.method } : undefined),
+        upstreamHost: input.upstreamHost,
+        upstreamPath: "/v1/items",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    return { response, upstream };
+  }
+
+  it("sandbox-credentials#placeholder-only: adds the credential only to a request that sends the placeholder", async () => {
+    const asked = await sendFromSandbox({ upstreamHost: PROVIDER_HOST });
+    expect(asked.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
+    // Git and other tools send the placeholder as a Basic auth password.
+    const basic = await sendFromSandbox({
+      credential: `Basic ${Buffer.from("x-access-token:ghp_host_managed_credential").toString("base64")}`,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(basic.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#placeholder-only: asks nobody to connect for a request without the placeholder", async () => {
+    const issueCredential = vi.fn(() => ({
+      type: "needed" as const,
+      message: "Connect the managed provider.",
+    }));
+    await registerManagedEgressPlugin({ issueCredential });
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+    expect(issueCredential).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
+  });
+
+  it("sandbox-credentials#own-credential-kept: keeps a credential that the request carries", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    const strict = await sendFromSandbox({
+      credential: "Bearer person-test-login",
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(strict.upstream[0]?.get("authorization")).toBe(
+      "Bearer person-test-login",
+    );
+
+    const token = await sendFromSandbox({
+      credential: "token person-test-login",
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(token.upstream[0]?.get("authorization")).toBe(
+      "token person-test-login",
+    );
+
+    // A browser that a person signed in keeps its session.
+    const browser = await sendFromSandbox({
+      credential: null,
+      headers: { cookie: "user_session=person" },
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(browser.upstream[0]?.get("authorization")).toBeNull();
+    expect(browser.upstream[0]?.get("cookie")).toBe("user_session=person");
+  });
+
+  it("sandbox-credentials#tools-send-none: adds the credential to a bare request only when the plugin's tools send none", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(bare.upstream[0]?.get("authorization")).toBe(
+      "Bearer installation-read",
+    );
+
+    const strict = await sendFromSandbox({
+      credential: null,
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(strict.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#browser-none: adds no credential to a browser request", async () => {
+    await registerManagedEgressPlugin({ toolsSendNoCredential: true });
+
+    // CLIs such as `sentry` use Node's built-in fetch, which sends
+    // `Sec-Fetch-Mode` but is not a browser. Send the headers that it sends.
+    const nodeFetch = await sendFromSandbox({
+      headers: await nodeFetchHeaders(),
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(nodeFetch.upstream[0]?.get("authorization")).toBe(
+      "Bearer integration-egress-token",
+    );
+
+    // A page script can send the placeholder too.
+    const placeholder = await sendFromSandbox({
+      headers: { "sec-fetch-mode": "cors", "sec-fetch-site": "cross-site" },
+      upstreamHost: PROVIDER_HOST,
+    });
+    expect(placeholder.response.status).toBe(200);
+    expect(placeholder.upstream[0]?.get("authorization")).toBe(
+      "Bearer host_managed_credential",
+    );
+
+    const bare = await sendFromSandbox({
+      credential: null,
+      headers: { "sec-fetch-mode": "navigate", "sec-fetch-site": "none" },
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+    expect(bare.response.status).toBe(200);
+    expect(bare.upstream[0]?.get("authorization")).toBeNull();
+  });
+
+  it("sandbox-credentials#policy-any-credential: applies the plugin's egress policy to a request that carries its own credential", async () => {
+    const grantForEgress = vi.fn<NonNullable<PluginHooks["grantForEgress"]>>(
+      (ctx) => {
+        if (ctx.request.method === "DELETE") {
+          throw new EgressPolicyDenied("Deletes are blocked here.");
+        }
+        return { name: "installation-read", access: "read" };
+      },
+    );
+    await registerManagedEgressPlugin({ grantForEgress });
+
+    const denied = await sendFromSandbox({
+      credential: "token person-test-login",
+      method: "DELETE",
+      upstreamHost: MANAGED_PROVIDER_HOST,
+    });
+
+    expect(denied.response.status).toBe(403);
+    await expect(denied.response.json()).resolves.toEqual({
+      error: "Deletes are blocked here.",
+    });
+    expect(denied.upstream).toHaveLength(0);
+    // The hook knows that Junior adds no credential to this request.
+    expect(grantForEgress.mock.calls[0]?.[0].request.withoutCredential).toBe(
+      true,
+    );
   });
 });

@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type {
@@ -13,23 +14,23 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 /**
  * Return the Turn inputs of web Messages, one per non-empty Message, in
  * order. Each one becomes its own prompt content part. A Message that
- * records an answer or a dismiss becomes its Review item tag. A batch with
- * only attachments keeps one empty input, so the prompt still has an
- * instruction.
+ * records an answer becomes its Review item tag. A batch with only
+ * attachments keeps one empty input, so the prompt still has an instruction.
  */
 export async function webTurnInputs(
   messages: readonly {
-    reviewItemChange?: ReviewItemChangeRecord;
+    reviewItemChange?: ReviewItemChangeRecord | undefined;
     text: string;
   }[],
 ): Promise<AgentInstructionInput[]> {
-  const inputs = await Promise.all(
-    messages.map(async (message): Promise<AgentInstructionInput[]> => {
+  const inputs = await mapBounded(
+    messages,
+    async (message): Promise<AgentInstructionInput[]> => {
       const reviewItem = await loadReviewItemInput(message.reviewItemChange);
       if (reviewItem) return [{ kind: "runtime", text: reviewItem }];
       const text = message.text.trim();
       return text ? [{ kind: "person", text }] : [];
-    }),
+    },
   );
   const flat = inputs.flat();
   return flat.length ? flat : [{ kind: "person", text: "" }];

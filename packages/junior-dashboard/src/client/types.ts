@@ -1,7 +1,6 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
-  InputImage,
   MessageAttachment,
   MessageCard,
   PluginOperationalReportFeed,
@@ -11,6 +10,7 @@ import type {
 import type {
   ActorIdentity,
   ConversationReportMessageEvent,
+  ConversationFeedItem,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
@@ -34,8 +34,8 @@ export type TranscriptViewToolCallPart = {
   input?: unknown;
   name: string;
   output?: unknown;
-  resultTimestamp?: number;
-  startedTimestamp?: number;
+  resultTimestamp?: number | undefined;
+  startedTimestamp?: number | undefined;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -66,7 +66,7 @@ export type TranscriptViewContextEventPart = {
     details?: {
       reason: "capacity";
       estimatedInputTokens: number;
-      replacementInputTokens?: number;
+      replacementInputTokens?: number | undefined;
       triggerTokens: number;
       inputLimitTokens: number;
       inputMessageCount: number;
@@ -125,7 +125,7 @@ export type TranscriptViewMessage = {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
-  eventObjectType?: ObjectType;
+  eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Every Event when several arrived together in one message. */
@@ -151,8 +151,8 @@ export type TranscriptViewMessage = {
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
-  /** Local images of a pending send that the server has not stored yet. */
-  images?: InputImage[];
+  /** Local files of a pending send that the server has not stored yet. */
+  files?: File[];
   parts: TranscriptViewPart[];
   /** Plugin whose tool posted this Junior reply, such as `github`. */
   postedTo?: string;
@@ -165,41 +165,51 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
-  activityPreview?: ConversationSummaryReport["activityPreview"];
-  annotations?: ConversationSummaryReport["annotations"];
-  sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
-  archivedAt?: string | null;
-  pinnedAt?: string | null;
-  pinPosition?: number;
-  /** Idle with activity after the viewer last acted on it. Server-owned. */
-  unread?: boolean;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
-  channel?: string;
-  channelName?: string;
-  channelNameRedacted?: boolean;
-  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
+  activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
+  /** The latest Brief's status, summary, and intent, when visible. */
+  brief?: ConversationFeedItem["brief"] | undefined;
+  /** The newest stored files, when private content is visible. */
+  media?: ConversationFeedItem["media"] | undefined;
+  links?: ConversationFeedItem["links"] | undefined;
+  annotations?: ConversationSummaryReport["annotations"] | undefined;
+  sidebarAnnotations?:
+    | ConversationSummaryReport["sidebarAnnotations"]
+    | undefined;
+  archivedAt?: string | null | undefined;
+  pinnedAt?: string | null | undefined;
+  pinPosition?: number | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
+  channel?: string | undefined;
+  channelName?: string | undefined;
+  channelNameRedacted?: boolean | undefined;
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"] | undefined;
   cumulativeDurationMs: number;
-  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
+  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"] | undefined;
   displayTitle: string;
   id: string;
+  /** The viewer takes part, so they can pin, archive, rename, and mark it. */
+  isParticipant: boolean;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string | undefined;
   lastProgressAt: string;
   lastSeenAt: string;
-  locationId?: string;
-  locationUrl?: string;
-  actorIdentity?: ConversationSummaryReport["actorIdentity"];
-  participants?: ConversationSummaryReport["participants"];
-  sentryTraceUrl?: string;
+  locationId?: string | undefined;
+  locationUrl?: string | undefined;
+  actorIdentity?: ConversationSummaryReport["actorIdentity"] | undefined;
+  participants?: ConversationSummaryReport["participants"] | undefined;
+  sentryTraceUrl?: string | undefined;
   startedAt: string;
   status: ConversationStatus;
   surface: ConversationSummaryReport["surface"];
-  traceId?: string;
-  isPriority?: boolean;
+  traceId?: string | undefined;
+  isPriority?: boolean | undefined;
   kind: ConversationSummaryReport["kind"];
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
   /** Visible Threads under this row, newest first. */
-  threads?: Conversation[];
-  unfinishedWork?: boolean;
-  visibility?: ConversationSummaryReport["visibility"];
+  threads?: Conversation[] | undefined;
+  /** A Turn waits on a person to finish an authorization. Server-owned. */
+  awaitingAuthorization?: boolean | undefined;
+  visibility?: ConversationSummaryReport["visibility"] | undefined;
 };
 
 export type Identity = DashboardIdentity;

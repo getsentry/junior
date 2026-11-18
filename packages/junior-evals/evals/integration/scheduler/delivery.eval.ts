@@ -4,11 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import {
-  completedToolCalls,
-  toolCallsOf,
-  toolOutput,
-} from "@junior-evals/fixture/results";
+import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -33,8 +29,8 @@ describe("Scheduled Delivery", () => {
     expect(followUp.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
     expect(followUp.replies).toHaveLength(1);
     expect(followUp.replies[0]!.text).toMatch(/5\s*pm/i);
-    // The reply is a chat Turn. It does not end with a declared result.
-    expect(toolCallsOf("finishAutomationRun", followUp)).toEqual([]);
+    // The reply is a chat Turn. It does not end with an answer tool.
+    expect(toolCallsOf("reply", followUp)).toEqual([]);
   });
 
   test("when a due automation has no message outcome, do the work without posting", async ({
@@ -52,8 +48,6 @@ describe("Scheduled Delivery", () => {
     const silent = await run(heartbeat());
 
     expect(silent.replies).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", silent).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "no_action" })]);
+    expect(completedToolCalls("noReply", silent)).toHaveLength(1);
   });
 });

@@ -5,6 +5,8 @@ import {
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
+  PluginGitPush,
+  PluginGraphqlRequest,
   PluginGrant,
 } from "@sentry/junior-plugin-api";
 import {
@@ -54,13 +56,13 @@ export type SandboxEgressCredentialErrorKind = "auth_required" | "unavailable";
  * request authorization without exposing provider-specific lease internals.
  */
 export class SandboxEgressCredentialError extends Error {
-  readonly authorization?: PluginAuthorization;
+  readonly authorization?: PluginAuthorization | undefined;
   readonly grant: PluginGrant;
   readonly kind: SandboxEgressCredentialErrorKind;
   readonly provider: string;
 
   constructor(input: {
-    authorization?: PluginAuthorization;
+    authorization?: PluginAuthorization | undefined;
     grant: PluginGrant;
     kind: SandboxEgressCredentialErrorKind;
     message: string;
@@ -142,25 +144,55 @@ function assertLeaseTransformsOwnedByProvider(
  * use that default for one request.
  */
 export async function selectSandboxEgressGrant(input: {
-  bodyText?: string;
+  bodyText?: string | undefined;
+  gitPush?: PluginGitPush;
+  graphql?: PluginGraphqlRequest;
   method: string;
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  /**
+   * Use only the credential subject's own stored OAuth token. Plugin grants
+   * are skipped, because they can issue an install or app credential.
+   */
+  userOAuthOnly?: boolean;
+  /**
+   * Junior adds no credential to this request. The plugin hook still runs
+   * so its policy applies, and the returned grant is not used.
+   */
+  withoutCredential?: true;
 }): Promise<SandboxEgressGrantSelection> {
+  if (input.userOAuthOnly) {
+    const manifest = pluginCatalogRuntime.getDefinition(
+      input.provider,
+    )?.manifest;
+    // Without OAuth the broker falls back to an environment token.
+    if (!manifest?.credentials || !manifest.oauth) {
+      throw new Error(
+        `Plugin "${input.provider}" has no user OAuth for user-only egress`,
+      );
+    }
+    return defaultGrantForProvider(input);
+  }
   if (!hasEgressCredentialHooks(input.provider)) {
     return defaultGrantForProvider(input);
   }
 
   const pluginGrant = await selectPluginGrant({
+    ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }
       : undefined),
+    ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
+    ...(input.graphql ? { graphql: input.graphql } : undefined),
     ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
+  if (input.withoutCredential) {
+    return defaultGrantForProvider(input);
+  }
   if (!pluginGrant) {
     if (hasGenericCredentials(input.provider)) {
       return defaultGrantForProvider(input);

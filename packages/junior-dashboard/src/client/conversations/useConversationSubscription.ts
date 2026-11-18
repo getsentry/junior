@@ -4,16 +4,21 @@ import { conversationSubscriptionResponseSchema } from "@sentry/junior/api/schem
 
 import { patch } from "../http";
 import { conversationDetailQueryKey } from "./queries";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
  * Subscribe the viewer to one conversation, or unsubscribe them. An
  * unsubscribe drops the viewer's pin, and it archives the conversation when
  * the viewer was the last subscriber.
  */
-export function useConversationSubscription(conversationId: string) {
+export function useConversationSubscription(
+  conversationId: string,
+  options?: { onError?(): void },
+) {
   const queryClient = useQueryClient();
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   return useMutation({
+    onError: () => options?.onError?.(),
     mutationFn: (subscribed: boolean) =>
       patch(
         conversationSubscriptionResponseSchema,
@@ -39,9 +44,6 @@ export function useConversationSubscription(conversationId: string) {
           : detail,
       );
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSettled: () => invalidateConversationFeeds(queryClient),
   });
 }

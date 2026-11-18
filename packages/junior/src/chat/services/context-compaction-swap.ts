@@ -28,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
@@ -35,6 +36,7 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -47,7 +49,6 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -63,6 +64,11 @@ type PreparedCompaction = Extract<
   { type: "compaction_prepared"; outcome: "ready" }
 >;
 
+/**
+ * Why a ready summary was not used (`app.compaction.discard_reason`).
+ * `conflict`: another replacement committed first. `split_tool_call`: the
+ * mark falls between a tool call and its result.
+ */
 type DiscardReason =
   | "conflict"
   | "history_version_changed"
@@ -72,7 +78,7 @@ type DiscardReason =
 interface ReplacementEntry {
   message: PiMessage;
   provenance: ConversationMessageProvenance;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Compare a message across a durable commit, which drops undefined fields. */
@@ -148,6 +154,7 @@ async function waitForRunningSummary(
   signal: AbortSignal | undefined,
 ): Promise<LatestBackgroundCompaction | undefined> {
   let latest: LatestBackgroundCompaction | undefined = request;
+  /* oxlint-disable no-await-in-loop -- Poll until the summary changes or the wait ends. */
   while (latest?.event.seq === request.event.seq && Date.now() < waitUntilMs) {
     await sleep(
       Math.min(RUNNING_SUMMARY_POLL_MS, waitUntilMs - Date.now()),
@@ -156,6 +163,7 @@ async function waitForRunningSummary(
     );
     latest = await loadLatestBackgroundCompaction(conversationId);
   }
+  /* oxlint-enable no-await-in-loop */
   return latest;
 }
 
@@ -227,6 +235,8 @@ async function swapPreparedCompaction(
       prepared?.type !== "compaction_prepared" ||
       prepared.outcome !== "ready"
     ) {
+      // The request is older than the wait, the job failed, or the wait
+      // ended. A blocking compaction can still follow at the threshold.
       setSpanAttributes({ "app.compaction.outcome": "not_ready" });
       return { compacted: false };
     }
@@ -300,6 +310,9 @@ async function applyPreparedSummary(
       : { message, provenance: contextProvenance };
   });
   const { entries: trimmedEntries, trimming } = trimToolResults(keptEntries);
+  // Kept system messages stay in place. The summarized ones fold into one
+  // that directly follows the summary, as in a full compaction.
+  const systemMessage = foldSystemMessages(summarized);
   const replacement: ReplacementEntry[] = [
     ...(contextMessage
       ? [{ message: contextMessage, provenance: contextProvenance }]
@@ -307,10 +320,16 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        appendOpenPlan(renderCompactionSummary(prepared.summary), summarized),
+        await appendPlanSnapshot(
+          renderCompactionSummary(prepared.summary),
+          args.conversationId,
+        ),
       ),
       provenance: contextProvenance,
     },
+    ...(systemMessage
+      ? [{ message: systemMessage, provenance: contextProvenance }]
+      : []),
     ...trimmedEntries,
     ...pendingMessages,
   ];

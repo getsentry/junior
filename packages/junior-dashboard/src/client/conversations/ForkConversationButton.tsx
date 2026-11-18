@@ -16,6 +16,7 @@ import { MessageAction } from "../components/ui/message";
 import { DashboardApiError } from "../http";
 import { conversationPath } from "./conversationRoutes";
 import { useForkConversation } from "./queries";
+import { getDashboardAgentName } from "../agentName";
 
 type ForkTarget = { conversationId: string; messageId: string };
 
@@ -53,7 +54,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
       {
         onSuccess: (accepted) => {
           props.onClose();
-          navigate(conversationPath(accepted.conversationId));
+          void navigate(conversationPath(accepted.conversationId));
         },
       },
     );
@@ -91,7 +92,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
               className="min-h-24 leading-relaxed"
-              placeholder="Message Junior…"
+              placeholder={`Message ${getDashboardAgentName()}…`}
               value={message}
               disabled={fork.isPending}
               onChange={(event) => setMessage(event.target.value)}
@@ -112,10 +113,10 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
           <DialogFooter>
             <DialogClose
               disabled={fork.isPending}
-              render={<Button>Cancel</Button>}
+              render={<Button variant="outline">Cancel</Button>}
             />
             <Button
-              variant="primary"
+              variant="default"
               type="submit"
               disabled={!message.trim() || fork.isPending}
             >

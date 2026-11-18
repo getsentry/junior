@@ -1,0 +1,15 @@
+{
+  // Type checks the custom Oxlint plugins. They are not workspace packages,
+  // so the root `typecheck` script runs this project directly.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

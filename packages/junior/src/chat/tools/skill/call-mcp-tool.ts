@@ -4,39 +4,13 @@ import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import * as z from "zod";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { nestedArgumentsErrorMap } from "@/chat/tool-support/dispatcher-envelope";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+
+const MISSING_TOOL_NAME_ERROR = "callMcpTool requires an MCP tool_name";
 
 interface CallMcpToolManager {
   getResolvedActiveTools(): ManagedMcpTool[];
-}
-
-function resolveMcpArguments(
-  input: Record<string, unknown>,
-): Record<string, unknown> {
-  const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments" && key !== "intent",
-  );
-  if (extraKeys.length > 0) {
-    throw new ToolInputError(
-      `callMcpTool MCP arguments must be nested under arguments, not top-level fields: ${extraKeys.join(", ")}`,
-    );
-  }
-
-  if ("arguments" in input) {
-    const args = input.arguments;
-    if (args === undefined) {
-      return {};
-    }
-    if (!args || typeof args !== "object" || Array.isArray(args)) {
-      throw new ToolInputError(
-        "callMcpTool arguments must be an object when provided",
-      );
-    }
-    return args as Record<string, unknown>;
-  }
-
-  return {};
 }
 
 function activeProviderNames(tools: ManagedMcpTool[]): string[] {
@@ -52,9 +26,13 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
   return `MCP tool is not active for this turn: ${toolName}. ${retryHint}`;
 }
 
-/** Create the stable dispatcher for active MCP provider tools. */
 // TODO(dcramer): Fold MCP execution into executeTool once searchTools can
 // disclose MCP tool schemas and the execution catalog keeps them active.
+/**
+ * Create the stable dispatcher for active MCP provider tools.
+ *
+ * @runBuilt callMcpTool
+ */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",
@@ -65,28 +43,33 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       readOnlyHint: false,
     },
     description:
-      "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
+      "Call an active MCP tool by its exact name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Authorization is handled by the runtime when required.",
     inputSchema: z
-      .object({
-        tool_name: z
-          .string()
-          .min(1)
-          .describe("Exact MCP tool_name from searchMcpTools."),
-        arguments: z
-          .record(z.string(), z.unknown())
-          .describe(
-            'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
-          )
-          .optional(),
-        intent: z
-          .string()
-          .min(1)
-          .describe(
-            'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
-          )
-          .optional(),
-      })
-      .passthrough(),
+      .object(
+        {
+          tool_name: z
+            .string({ error: MISSING_TOOL_NAME_ERROR })
+            .min(1, { error: MISSING_TOOL_NAME_ERROR })
+            .describe("Exact MCP tool_name from searchMcpTools."),
+          arguments: z
+            .record(z.string(), z.unknown(), {
+              error: "callMcpTool arguments must be an object when provided",
+            })
+            .describe(
+              'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required. Omit only when the discovered tool has no arguments.',
+            )
+            .optional(),
+          intent: z
+            .string()
+            .min(1)
+            .describe(
+              'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+            )
+            .optional(),
+        },
+        { error: nestedArgumentsErrorMap("callMcpTool MCP") },
+      )
+      .strict(),
     resolveApprovalMetadata: ({ tool_name }) => {
       const activeTool = mcpToolManager
         .getResolvedActiveTools()
@@ -143,17 +126,14 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         });
         throw new McpToolError(missingToolMessage(tool_name, provider));
       }
-      const result = await mcpTool.execute(
-        resolveMcpArguments(input as Record<string, unknown>),
-        {
-          ...(intent ? { authorizationIntent: intent } : undefined),
-          conversationPrivacy: options?.conversationPrivacy ?? "private",
-          ...(options?.signal ? { signal: options.signal } : undefined),
-          ...(options?.toolCallId
-            ? { toolCallId: options.toolCallId }
-            : undefined),
-        },
-      );
+      const result = await mcpTool.execute(input.arguments ?? {}, {
+        ...(intent ? { authorizationIntent: intent } : undefined),
+        conversationPrivacy: options?.conversationPrivacy ?? "private",
+        ...(options?.signal ? { signal: options.signal } : undefined),
+        ...(options?.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
+      });
       // Scripts get `details`, so it carries the MCP result. The result is
       // nested, so provider data cannot set fields that the runtime reads,
       // such as `objectCards`.

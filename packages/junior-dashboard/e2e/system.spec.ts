@@ -2,6 +2,19 @@ import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { screenshot } from "./screenshot";
 
+/** Vary outcomes so the running cost lines move. */
+function unitCostDay(index: number) {
+  const merged = index % 5 === 3 ? 1 : 0;
+  const mergedCost = merged * (3 + (index % 7) * 0.5);
+  const answered = 2 + (index % 3);
+  return {
+    mergedCodeChangeCostUsd: mergedCost,
+    mergedCodeChanges: merged,
+    outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
+    outcomes: answered + merged,
+  };
+}
+
 test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.route("**/api/conversations/stats", async (route) => {
@@ -18,13 +31,14 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
       cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
       tokens: 205_000,
       costUsd: 1.5,
+      ...unitCostDay(index),
     }));
     const metricHours = Array.from({ length: 24 }, (_, index) => ({
       ...metricDays[index],
       date: new Date(NOW_MS - (23 - index) * 3_600_000)
         .toISOString()
         .slice(0, 13),
-      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : undefined),
     }));
     await route.fulfill({
       json: { ...report, metricDays, metricHours, metricSixHours: undefined },
@@ -38,6 +52,12 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Input cache")).toBeVisible();
+  await expect(
+    page.getByText(/6 merged changes and 90 answered or done conversations/),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("7-day rolling cost per outcome per day"),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
@@ -59,6 +79,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.evaluate(() => window.scrollTo(0, 0));
   await screenshot(page, "system-cache-tokens", { view: "desktop" });
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(
+    page.getByLabel("6-hour rolling cost per outcome per hour"),
+  ).toBeVisible();
   await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
   await page.getByText("Largest cache writes", { exact: true }).click();
   const largestWrites = page.getByRole("table", {
@@ -280,4 +303,93 @@ test("keeps System navigation usable on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test("shows what cache warming saved in the range", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Effectiveness", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText(/of possible savings had no warm state/),
+  ).toBeVisible();
+  await expect(
+    panel.getByText(/Excludes 8 days without warmup cost/),
+  ).toBeVisible();
+  await expect(
+    panel.getByLabel("Cache warming net savings and effectiveness per day"),
+  ).toBeVisible();
+  await expect(
+    panel
+      .getByLabel("Cache warming chart legend")
+      .getByText("Daily effectiveness", { exact: true }),
+  ).toBeVisible();
+  // Only admins can re-fill history.
+  await expect(
+    panel.getByRole("button", { name: "Re-fill history" }),
+  ).toHaveCount(0);
+  await screenshot(page, "system-cache-warming", { target: panel });
+
+  const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  expect((await week).ok()).toBe(true);
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+});
+
+test("lets an admin re-fill cache warming savings from history", async ({
+  page,
+  dashboard,
+}) => {
+  // The page shell embeds the viewer, so make that viewer an admin.
+  await page.addInitScript(() => {
+    let bootstrap: { me?: { user?: { isAdmin?: boolean } } } | undefined;
+    Object.defineProperty(window, "__JUNIOR_DASHBOARD_BOOTSTRAP__", {
+      configurable: true,
+      get: () => bootstrap,
+      set: (value) => {
+        if (value?.me?.user) value.me.user.isAdmin = true;
+        bootstrap = value;
+      },
+    });
+  });
+  let refill: Record<string, unknown> = {
+    status: "done",
+    startedAt: new Date(NOW_MS - 3 * 60 * 60 * 1_000).toISOString(),
+    finishedAt: new Date(NOW_MS - 2 * 60 * 60 * 1_000).toISOString(),
+    scannedConversations: 1_284,
+    totalConversations: 1_284,
+  };
+  const starts: string[] = [];
+  await page.route("**/api/cache-warming/savings/refill", async (route) => {
+    if (route.request().method() === "POST") {
+      starts.push(route.request().method());
+      refill = {
+        status: "running",
+        startedAt: new Date(NOW_MS).toISOString(),
+        scannedConversations: 420,
+        totalConversations: 1_310,
+      };
+      await route.fulfill({ status: 202, json: { refill } });
+      return;
+    }
+    await route.fulfill({ json: { refill } });
+  });
+
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  const button = panel.getByRole("button", { name: "Re-fill history" });
+  await expect(button).toBeEnabled();
+  await expect(panel.getByText(/Last re-fill finished/)).toBeVisible();
+  await screenshot(page, "system-cache-warming-refill", { target: panel });
+
+  await button.click();
+  await expect(panel.getByText(/Re-filling history: 420 of/)).toBeVisible();
+  await expect(button).toBeDisabled();
+  await screenshot(page, "system-cache-warming-refill-running", {
+    target: panel,
+  });
+  expect(starts).toEqual(["POST"]);
 });

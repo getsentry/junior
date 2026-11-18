@@ -57,7 +57,10 @@ describe("searchAutomations MCP tool", () => {
         expect.objectContaining({
           id: "sched_viewer_digest",
           kind: "scheduled",
-          instruction: "Post the weekly issue digest.",
+          task: {
+            kind: "instruction",
+            instruction: "Post the weekly issue digest.",
+          },
           ownedByYou: true,
           status: "active",
           title: "Weekly digest",

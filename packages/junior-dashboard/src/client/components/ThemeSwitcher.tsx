@@ -11,13 +11,14 @@ const themeChoices = [
 ] as const satisfies ReadonlyArray<PreferenceChoice<DashboardThemeChoice>>;
 
 /** Choose the dashboard theme for this browser: system, light, or dark. */
-export function ThemeSwitcher(props: { className?: string }) {
+export function ThemeSwitcher(props: { className?: string; menu?: boolean }) {
   const [choice, setChoice] = useDashboardThemeChoice();
   return (
     <PreferenceToggle
       choices={themeChoices}
       className={props.className}
       itemLabel={(item) => `${item.label} theme`}
+      menu={props.menu}
       label="Theme"
       onChange={setChoice}
       value={choice}

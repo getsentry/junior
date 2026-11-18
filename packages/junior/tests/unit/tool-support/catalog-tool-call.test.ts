@@ -18,8 +18,8 @@ describe("catalog tool calls", () => {
       ),
       prepareArguments: (args) => {
         const input = args as Record<string, unknown>;
-        return typeof input.customer_id === "string"
-          ? { customerId: input.customer_id }
+        return typeof input["customer_id"] === "string"
+          ? { customerId: input["customer_id"] }
           : (input as { customerId: string });
       },
     });
@@ -38,6 +38,28 @@ describe("catalog tool calls", () => {
       definition,
       toolName: "agentDemo_lookupCustomer",
       arguments: { customerId: "C123" },
+    });
+  });
+
+  it("accepts a top-level intent like callMcpTool and drops it", () => {
+    const definition = tool({
+      description: "Catalog demo",
+      inputSchema: Type.Object({ query: Type.String() }),
+    });
+
+    expect(
+      resolveCatalogToolCall(
+        {
+          tool_name: "catalogDemo",
+          arguments: { query: "standup" },
+          intent: "find a slot for the standup",
+        },
+        { catalogDemo: definition },
+      ),
+    ).toEqual({
+      definition,
+      toolName: "catalogDemo",
+      arguments: { query: "standup" },
     });
   });
 

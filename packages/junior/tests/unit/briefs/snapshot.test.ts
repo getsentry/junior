@@ -255,6 +255,7 @@ describe("Brief snapshot", () => {
     `);
 
     const generation = await generateBrief({
+      assistantName: "Junior",
       input,
       throughIndex: 8,
       prompt: "Write a Brief.",

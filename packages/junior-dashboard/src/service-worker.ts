@@ -17,7 +17,9 @@ export const NOTIFICATION_TARGET_KEY = "/_junior/dashboard/notification-target";
  * shows nothing. When the user already looks at the same page, the
  * notification is silent.
  */
-const SERVICE_WORKER_SOURCE = String.raw`
+function serviceWorkerSource(agentName: string): string {
+  return String.raw`
+const AGENT_NAME = ${JSON.stringify(agentName)};
 const SCOPE_URL = new URL(self.registration.scope);
 const TARGET_CACHE = ${JSON.stringify(NOTIFICATION_TARGET_CACHE)};
 const TARGET_KEY = new URL(${JSON.stringify(NOTIFICATION_TARGET_KEY)}, SCOPE_URL).href;
@@ -63,6 +65,8 @@ self.addEventListener("push", (event) => {
     (async () => {
       const payload = readPayload(event);
       const url = targetUrl(payload.url);
+      const tag =
+        typeof payload.tag === "string" && payload.tag ? payload.tag : undefined;
       const windows = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",
@@ -74,14 +78,15 @@ self.addEventListener("push", (event) => {
           new URL(client.url).pathname === url.pathname,
       );
       await self.registration.showNotification(
-        typeof payload.title === "string" ? payload.title : "Junior",
+        typeof payload.title === "string" ? payload.title : AGENT_NAME,
         {
           body: typeof payload.body === "string" ? payload.body : "",
           data: { url: url.href },
           icon: "/_junior/dashboard/icon-512.png",
-          renotify: !viewing,
+          // showNotification() throws when renotify is set without a tag.
+          renotify: Boolean(tag) && !viewing,
           silent: viewing,
-          tag: typeof payload.tag === "string" ? payload.tag : undefined,
+          tag,
         },
       );
       await updateBadge();
@@ -156,13 +161,17 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   );
 });
 `;
+}
 
 /**
  * Serve the service worker. `Service-Worker-Allowed` lets a script under
  * `/_junior/dashboard/` control the whole dashboard base path.
  */
-export function renderServiceWorker(basePath: string): Response {
-  return new Response(SERVICE_WORKER_SOURCE, {
+export function renderServiceWorker(
+  basePath: string,
+  agentName: string,
+): Response {
+  return new Response(serviceWorkerSource(agentName), {
     headers: {
       "cache-control": "no-cache",
       "content-type": "application/javascript; charset=utf-8",

@@ -123,8 +123,18 @@ function fixtureDeliveries(
     ),
     ...["opened", "closed", "reopened"].map((action) => ({
       eventName: "issues",
-      body: { action, issue: { number: scope.issue }, repository },
+      body: { action, issue: { number: scope.issue }, repository, sender },
     })),
+    {
+      eventName: "issues",
+      body: {
+        action: "labeled",
+        issue: { number: scope.issue },
+        label: { name: "Junior: repro" },
+        repository,
+        sender,
+      },
+    },
     {
       eventName: "issue_comment",
       body: {
@@ -247,6 +257,7 @@ async function publish(
         ...delivery,
         botEmail,
         checkSuiteFacts: {
+          allCheckSuitesPassed: true,
           pullRequestFactsByNumber: {
             [BASE_SCOPE.pullRequest]: {
               isDraft: false,
@@ -297,8 +308,8 @@ function gitHubIdentifierMatch(event: {
   if (deployment) {
     const [, repo, environment, commitSha] = deployment;
     return {
-      repo: repo!,
-      commitSha: commitSha!,
+      repo: repo,
+      commitSha: commitSha,
       ...(environment
         ? { environment: decodeURIComponent(environment) }
         : undefined),
@@ -308,14 +319,14 @@ function gitHubIdentifierMatch(event: {
   if (release) {
     const [, repo, tag] = release;
     return {
-      repo: repo!,
+      repo: repo,
       ...(tag ? { tag: decodeURIComponent(tag) } : undefined),
     };
   }
   const numbered = /^([^#]+\/[^#]+)#(\d+)$/.exec(identifier);
   if (numbered) {
     const key = eventType.startsWith("issue.") ? "issue" : "pullRequest";
-    return { repo: numbered[1]!, [key]: Number(numbered[2]) };
+    return { repo: numbered[1], [key]: Number(numbered[2]) };
   }
   return /^[^/:#]+\/[^/:#]+$/.test(identifier)
     ? { repo: identifier }
@@ -469,8 +480,8 @@ describe("GitHub event data", () => {
       }),
     ).toEqual([]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.
-    expect(new Set(events.flatMap((event) => event.data?.tag ?? []))).toEqual(
-      new Set(["v1.2.0", "release/Ü1", "release/ü1"]),
-    );
+    expect(
+      new Set(events.flatMap((event) => event.data?.["tag"] ?? [])),
+    ).toEqual(new Set(["v1.2.0", "release/Ü1", "release/ü1"]));
   });
 });

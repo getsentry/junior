@@ -1,5 +1,6 @@
 /** Run-scoped skill discovery and explicit invocation. */
 import { logInfo } from "@/chat/logging";
+import { skillReferences } from "@/chat/skill-references";
 import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -23,22 +24,34 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
 }
 
 /**
- * Return the skills that the model can load with `loadSkill`. A user-callable
- * skill is loadable only in the Turn where the user invoked it.
+ * Return the skills that the model can load with `loadSkill`. A manual-only
+ * skill is loadable only in a Turn where the user invoked it, or where a
+ * skill loaded in that Turn references it as `$name` or `/name` in its
+ * SKILL.md instructions. No other text, such as memory, thread messages, or
+ * tool results, unlocks one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
   invokedSkillName: string | undefined,
+  loadedSkills: readonly Skill[],
 ): SkillMetadata[] {
+  const referenced = new Set(
+    loadedSkills.flatMap((loaded) => [
+      loaded.name,
+      ...skillReferences(loaded.body, availableSkills),
+    ]),
+  );
   return availableSkills.filter(
     (skill) =>
-      skill.disableModelInvocation !== true || skill.name === invokedSkillName,
+      skill.disableModelInvocation !== true ||
+      skill.name === invokedSkillName ||
+      referenced.has(skill.name),
   );
 }
 
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
 export async function discoverRunSkills(args: {
-  skillDirs?: string[];
+  skillDirs?: string[] | undefined;
 }): Promise<SkillMetadata[]> {
   const availableSkills = await discoverSkills({
     additionalRoots: args.skillDirs,

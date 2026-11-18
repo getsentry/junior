@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Duration, formatDuration } from "../../components/Duration";
+import { Duration } from "../../components/Duration";
 import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
 import { Link, useParams } from "react-router";
 import type {
@@ -34,6 +34,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
+import { formatDuration } from "../../time";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -43,7 +44,9 @@ function runtimeLabel(durationMs: number, conversations: number): string {
 /** Render one actor's profile and activity summary. */
 export function PersonProfilePage() {
   const params = useParams();
-  const email = params.email ? decodeURIComponent(params.email) : undefined;
+  const email = params["email"]
+    ? decodeURIComponent(params["email"])
+    : undefined;
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
   const codeQuery = useActorCodeData(email);
@@ -73,7 +76,7 @@ export function PersonProfilePage() {
 
 /** Present one actor's activity and dimensions. */
 export function Profile(props: {
-  code?: CodePersonReport;
+  code?: CodePersonReport | undefined;
   codeError?: boolean;
   codeLoading?: boolean;
   pluginReports?: PluginOperationalReport[];

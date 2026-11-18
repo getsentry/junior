@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses `github_createIssue`, one-issue reads use `github_getIssue`, title, body, and state updates use `github_updateIssue`, and new comments use `github_commentOnIssue`. Comment reads, labels, assignees, and issue lists use `gh`; generic GraphQL-backed `gh issue` mutations are not supported.
+Issue creation uses `github_createIssue`, one-issue reads use `github_getIssue`, title, body, and state updates use `github_updateIssue`, new comments use `github_commentOnIssue`, edits of your own comments use `github_updateIssueComment`, and reactions on an issue use `github_reactToIssue`. Comment reads, labels, assignees, and issue lists use `gh`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 
@@ -28,6 +28,8 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Add assignees       | `gh api repos/owner/repo/issues/NUMBER/assignees --method POST --input assignees.json`                                |
 | Remove assignees    | `gh api repos/owner/repo/issues/NUMBER/assignees --method DELETE --input assignees.json`                              |
 | Add comment         | `github_commentOnIssue({ repo: "owner/repo", number: NUMBER, body: "..." })`                                          |
+| Edit own comment    | `github_updateIssueComment({ repo: "owner/repo", comment_id: ID, body: "..." })`                                      |
+| React to issue      | `github_reactToIssue({ repo: "owner/repo", number: NUMBER, content: "eyes" })`                                        |
 | List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                            |
 | Read issue          | `github_getIssue({ repo: "owner/repo", number: NUMBER })`                                                             |
 | Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"`         |

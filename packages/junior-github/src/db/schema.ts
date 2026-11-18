@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -18,6 +19,12 @@ export const githubPullRequestStateSchema = z.enum([
 export type GitHubPullRequestState = z.output<
   typeof githubPullRequestStateSchema
 >;
+
+/**
+ * What waits on the requester of a Junior pull request: merge it, or review
+ * it. They take one, not both.
+ */
+export type GitHubPullRequestAction = "merge" | "review";
 
 export const githubPullRequestCommitCompositionSchema = z.enum([
   "junior_only",
@@ -85,18 +92,20 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    /** The daily reconcile compares this with GitHub. */
+    draft: boolean("draft").notNull().default(false),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     /**
-     * When Junior saw the pull request become ready to merge and added its
-     * review desk notice. Null when it is not ready.
+     * The requester's next action that Junior last derived from GitHub, and
+     * shows on the review desk. Null when no action waits on them.
      */
-    readyToMergeAt: timestamp("ready_to_merge_at", { withTimezone: true }),
+    nextAction: text("next_action").$type<GitHubPullRequestAction>(),
     /**
-     * Webhooks that asked to check whether the pull request is ready to
-     * merge. The check runs again when this changes during a check.
+     * Webhooks that asked to check the next action. The check runs again
+     * when this changes during a check.
      */
     readySyncRequests: integer("ready_sync_requests").notNull().default(0),
     /**

@@ -213,14 +213,13 @@ async function findViewerWebAuthorization(
   conversationId: string,
   viewer: User,
 ) {
-  for (const actorId of webActorUserIds(viewer)) {
-    const authorization = await getWebAuthorization({
-      actorId,
-      conversationId,
-    });
-    if (authorization) return authorization;
-  }
-  return undefined;
+  // The viewer has two actor ids, so read both at once. The current id wins.
+  const authorizations = await Promise.all(
+    webActorUserIds(viewer).map((actorId) =>
+      getWebAuthorization({ actorId, conversationId }),
+    ),
+  );
+  return authorizations.find((authorization) => authorization !== undefined);
 }
 
 /**
@@ -231,7 +230,10 @@ async function findViewerWebAuthorization(
  */
 export async function readConversationPendingMessages(
   conversationId: string,
-  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
+  options: {
+    readAccess?: ConversationAccessReader;
+    viewer?: User | undefined;
+  } = {},
 ): Promise<ConversationPendingMessagesReport | undefined> {
   // A detail request passes its reader, so it reads access only once.
   const readAccess =
@@ -287,7 +289,10 @@ export async function readConversationPendingMessages(
 /** Load pending mailbox messages or throw a standard API not-found error. */
 export async function requireConversationPendingMessages(
   conversationId: string,
-  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
+  options: {
+    readAccess?: ConversationAccessReader;
+    viewer?: User | undefined;
+  } = {},
 ): Promise<ConversationPendingMessagesReport> {
   const report = await readConversationPendingMessages(conversationId, options);
   if (!report) throwApiError(404, "Conversation not found.");

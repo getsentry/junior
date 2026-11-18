@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { logWarn } from "@/chat/logging";
+import { SANDBOX_SCRATCH_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 /** Default limit for the text that the model sees from one tool result. */
 export const TOOL_RESULT_MAX_CHARS = 32_000;
 
 // The path goes into every cut note that the model reads, so keep it short.
-const FULL_RESULT_DIR = "/tmp/jr";
+const FULL_RESULT_DIR = `${SANDBOX_SCRATCH_ROOT}/spills`;
 
 type ToolContent = Array<TextContent | ImageContent>;
 
@@ -82,7 +83,7 @@ export async function capToolResult<TResult extends { content: ToolContent }>(
   result: TResult,
   options: {
     toolCallId: string;
-    workspace?: Pick<SandboxWorkspace, "writeFiles">;
+    workspace?: Pick<SandboxWorkspace, "writeFiles"> | undefined;
     maxChars?: number;
   },
 ): Promise<TResult> {

@@ -10,6 +10,8 @@ export type JuniorDestinationVisibility =
 
 // TODO(dcramer): Rename this legacy destination table and its provider fields
 // to Location terms after the SQL migration and deployed reader cutover.
+// Conversations share a row only when they have the same audience. Access
+// between Conversations depends on this (policies/conversation-access.md).
 export const juniorDestinations = pgTable(
   "junior_destinations",
   {

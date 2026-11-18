@@ -1,42 +1,11 @@
-import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversationEvents,
-  juniorConversations,
-  juniorIdentities,
-} from "@/db/schema";
-import { isUserInstruction } from "@/db/schema/conversation-events";
+import { juniorConversations } from "@/db/schema";
+import { userMessageQueries } from "@/chat/conversations/sql/last-message";
 
-/**
- * The newest event of one type in the outer Conversation that matches the
- * filter. It walks the message role or user message time index from the
- * newest event. The user message index has only matching entries, so that
- * read stops at the first one.
- */
-function latestEventAt(
-  db: JuniorDatabase,
-  type: "message" | "user_message",
-  filter: SQL,
-) {
-  return db
-    .select({ createdAt: juniorConversationEvents.createdAt })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(
-          juniorConversationEvents.conversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationEvents.type, type),
-        filter,
-      ),
-    )
-    .orderBy(
-      desc(juniorConversationEvents.createdAt),
-      desc(juniorConversationEvents.seq),
-    )
-    .limit(1)
-    .as(`latest_${type}`);
+function latestIso(times: Array<Date | null>): string | undefined {
+  const ms = times.flatMap((at) => (at ? [at.getTime()] : []));
+  return ms.length > 0 ? new Date(Math.max(...ms)).toISOString() : undefined;
 }
 
 /** Read the latest true user message time for each selected conversation. */
@@ -46,27 +15,9 @@ export async function readLastUserMessageAtByConversation(
 ): Promise<Map<string, string>> {
   if (conversationIds.length === 0) return new Map();
 
-  const payload = juniorConversationEvents.payload;
-  const instruction = latestEventAt(
-    db,
-    "user_message",
-    isUserInstruction(payload),
-  );
-  // System Messages, such as events, carry the system Identity. A scalar
-  // subquery, unlike a join or `exists`, keeps the newest-first index walk:
-  // it reads entries only until the first Message from a user. An index
-  // predicate cannot hold this check, because it reads another table.
-  const authorKind = sql`(${db
-    .select({ kind: juniorIdentities.kind })
-    .from(juniorIdentities)
-    .where(
-      eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
-    )})`;
-  const message = latestEventAt(
-    db,
-    "message",
-    sql`${payload}->>'role' = 'user' and ${authorKind} = 'user'`,
-  );
+  const queries = userMessageQueries(db);
+  const instruction = queries.instruction.as("latest_instruction");
+  const message = queries.message.as("latest_user_message");
   const rows = await db
     .select({
       conversationId: juniorConversations.conversationId,
@@ -80,12 +31,8 @@ export async function readLastUserMessageAtByConversation(
 
   const result = new Map<string, string>();
   for (const { conversationId, instructionAt, messageAt } of rows) {
-    const times = [instructionAt, messageAt].flatMap((at) =>
-      at ? [at.getTime()] : [],
-    );
-    if (times.length > 0) {
-      result.set(conversationId, new Date(Math.max(...times)).toISOString());
-    }
+    const at = latestIso([instructionAt, messageAt]);
+    if (at) result.set(conversationId, at);
   }
   return result;
 }

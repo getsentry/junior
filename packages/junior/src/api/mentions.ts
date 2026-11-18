@@ -1,11 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { ActorIdentity } from "./schema/conversation";
-
-// Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
-const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
 
 /**
  * Display text from one API object, such as one event or one Automation.
@@ -13,13 +11,14 @@ const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
  * Junior identities resolve.
  */
 export type MentionSource = {
-  tenantId?: string;
+  tenantId?: string | undefined;
   texts: readonly (string | undefined)[];
 };
 
 function mentionedSlackUserIds(texts: MentionSource["texts"]): string[] {
+  // Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
   const ids = texts.flatMap((text) =>
-    text ? [...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!) : [],
+    text ? slackMentionedUserIds(text) : [],
   );
   return [...new Set(ids)];
 }
@@ -38,14 +37,15 @@ export async function resolveMentions(
     mentionedSlackUserIds(source.texts),
   );
   const idsByTenant = new Map<string | undefined, Set<string>>();
-  sources.forEach((source, index) => {
-    if (idsBySource[index]!.length === 0) return;
+  for (const [index, source] of sources.entries()) {
+    if (idsBySource[index]!.length === 0) continue;
     const ids = idsByTenant.get(source.tenantId) ?? new Set<string>();
     for (const id of idsBySource[index]!) ids.add(id);
     idsByTenant.set(source.tenantId, ids);
-  });
+  }
   const peopleByTenant = new Map(
     await Promise.all(
+      // oxlint-disable-next-line junior/bounded-fan-out -- One read per workspace.
       [...idsByTenant].map(
         async ([tenantId, ids]) =>
           [

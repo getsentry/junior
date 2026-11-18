@@ -9,10 +9,16 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mapBounded } from "@/chat/fan-out";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
@@ -34,7 +40,7 @@ export interface McpAuthSessionState {
   userMessage: string;
   channelId?: string;
   threadTs?: string;
-  toolChannelId?: string;
+  toolChannelId?: string | undefined;
   configuration?: Record<string, unknown>;
   authorizationUrl?: string;
   codeVerifier?: string;
@@ -88,74 +94,71 @@ function parseSessionIndex(value: unknown): string[] {
 }
 
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
-  if (typeof value !== "string") {
+  if (!isRecord(value)) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    const parsed = value;
 
     if (
-      parsed.schemaVersion !== 2 ||
-      typeof parsed.authSessionId !== "string" ||
-      typeof parsed.provider !== "string" ||
-      typeof parsed.userId !== "string" ||
-      typeof parsed.conversationId !== "string" ||
-      typeof parsed.sessionId !== "string" ||
-      typeof parsed.userMessage !== "string" ||
-      typeof parsed.createdAtMs !== "number" ||
-      typeof parsed.updatedAtMs !== "number"
+      parsed["schemaVersion"] !== 2 ||
+      typeof parsed["authSessionId"] !== "string" ||
+      typeof parsed["provider"] !== "string" ||
+      typeof parsed["userId"] !== "string" ||
+      typeof parsed["conversationId"] !== "string" ||
+      typeof parsed["sessionId"] !== "string" ||
+      typeof parsed["userMessage"] !== "string" ||
+      typeof parsed["createdAtMs"] !== "number" ||
+      typeof parsed["updatedAtMs"] !== "number"
     ) {
       return undefined;
     }
 
     const destination =
-      parsed.destination === undefined
+      parsed["destination"] === undefined
         ? undefined
-        : parseDestination(parsed.destination);
-    if (parsed.destination !== undefined && !destination) {
+        : parseDestination(parsed["destination"]);
+    if (parsed["destination"] !== undefined && !destination) {
       return undefined;
     }
     const source =
-      parsed.source === undefined
+      parsed["source"] === undefined
         ? undefined
-        : sourceSchema.safeParse(parsed.source);
-    if (parsed.source !== undefined && (!source || !source.success)) {
+        : sourceSchema.safeParse(parsed["source"]);
+    if (parsed["source"] !== undefined && (!source || !source.success)) {
       return undefined;
     }
 
     return {
       schemaVersion: 2,
-      authSessionId: parsed.authSessionId,
-      provider: parsed.provider,
-      userId: parsed.userId,
-      conversationId: parsed.conversationId,
+      authSessionId: parsed["authSessionId"],
+      provider: parsed["provider"],
+      userId: parsed["userId"],
+      conversationId: parsed["conversationId"],
       ...(destination ? { destination } : undefined),
       ...(source?.success ? { source: source.data } : undefined),
-      sessionId: parsed.sessionId,
-      userMessage: parsed.userMessage,
-      createdAtMs: parsed.createdAtMs,
-      updatedAtMs: parsed.updatedAtMs,
-      ...(typeof parsed.channelId === "string"
-        ? { channelId: parsed.channelId }
+      sessionId: parsed["sessionId"],
+      userMessage: parsed["userMessage"],
+      createdAtMs: parsed["createdAtMs"],
+      updatedAtMs: parsed["updatedAtMs"],
+      ...(typeof parsed["channelId"] === "string"
+        ? { channelId: parsed["channelId"] }
         : undefined),
-      ...(typeof parsed.threadTs === "string"
-        ? { threadTs: parsed.threadTs }
+      ...(typeof parsed["threadTs"] === "string"
+        ? { threadTs: parsed["threadTs"] }
         : undefined),
-      ...(typeof parsed.toolChannelId === "string"
-        ? { toolChannelId: parsed.toolChannelId }
+      ...(typeof parsed["toolChannelId"] === "string"
+        ? { toolChannelId: parsed["toolChannelId"] }
         : undefined),
-      ...(isRecord(parsed.configuration)
-        ? { configuration: parsed.configuration }
+      ...(isRecord(parsed["configuration"])
+        ? { configuration: parsed["configuration"] }
         : undefined),
-      ...(typeof parsed.authorizationUrl === "string"
-        ? { authorizationUrl: parsed.authorizationUrl }
+      ...(typeof parsed["authorizationUrl"] === "string"
+        ? { authorizationUrl: parsed["authorizationUrl"] }
         : undefined),
-      ...(typeof parsed.codeVerifier === "string"
-        ? { codeVerifier: parsed.codeVerifier }
+      ...(typeof parsed["codeVerifier"] === "string"
+        ? { codeVerifier: parsed["codeVerifier"] }
         : undefined),
     };
   } catch {
@@ -172,15 +175,15 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
     const parsed = JSON.parse(value) as Record<string, unknown>;
     if (
       !isRecord(parsed) ||
-      typeof parsed.sessionId !== "string" ||
-      typeof parsed.updatedAtMs !== "number"
+      typeof parsed["sessionId"] !== "string" ||
+      typeof parsed["updatedAtMs"] !== "number"
     ) {
       return undefined;
     }
 
     return {
-      sessionId: parsed.sessionId,
-      updatedAtMs: parsed.updatedAtMs,
+      sessionId: parsed["sessionId"],
+      updatedAtMs: parsed["updatedAtMs"],
     };
   } catch {
     return undefined;
@@ -190,36 +193,57 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    // Plaintext values from before encryption are JSON strings.
+    const parsed: unknown =
+      typeof value === "string" ? JSON.parse(value) : value;
     if (!isRecord(parsed)) {
       return undefined;
     }
 
     return {
-      ...(isRecord(parsed.clientInformation)
+      ...(isRecord(parsed["clientInformation"])
         ? {
-            clientInformation:
-              parsed.clientInformation as OAuthClientInformationMixed,
+            clientInformation: parsed[
+              "clientInformation"
+            ] as OAuthClientInformationMixed,
           }
         : undefined),
-      ...(isRecord(parsed.discoveryState)
+      ...(isRecord(parsed["discoveryState"])
         ? {
             // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
             discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
         : undefined),
-      ...(isRecord(parsed.tokens)
-        ? { tokens: parsed.tokens as OAuthTokens }
+      ...(isRecord(parsed["tokens"])
+        ? { tokens: parsed["tokens"] as OAuthTokens }
         : undefined),
     };
   } catch {
     return undefined;
   }
+}
+
+// Attempts hold the PKCE code verifier and the user's message, so they are
+// encrypted. The attempt index holds only ids and stays plain.
+async function readMcpAuthSession(
+  stateAdapter: StateAdapter,
+  authSessionId: string,
+): Promise<unknown> {
+  const stored = await readEncryptedState(
+    stateAdapter,
+    sessionKey(authSessionId),
+  );
+  // TODO(dcramer): Delete one attempt TTL after deploy. Attempts saved before
+  // encryption are JSON strings; the next write encrypts them.
+  if (stored?.stale && typeof stored.value === "string") {
+    try {
+      return JSON.parse(stored.value);
+    } catch {
+      return undefined;
+    }
+  }
+  return stored?.value;
 }
 
 async function getConnectedStateAdapter() {
@@ -232,7 +256,9 @@ export async function getMcpAuthSession(
   authSessionId: string,
 ): Promise<McpAuthSessionState | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseMcpAuthSession(await stateAdapter.get(sessionKey(authSessionId)));
+  return parseMcpAuthSession(
+    await readMcpAuthSession(stateAdapter, authSessionId),
+  );
 }
 
 export async function putMcpAuthSession(
@@ -240,9 +266,9 @@ export async function putMcpAuthSession(
   ttlMs: number = MCP_AUTH_SESSION_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     sessionKey(session.authSessionId),
-    JSON.stringify(session),
+    session,
     ttlMs,
   );
   const nextIndex = parseSessionIndex(
@@ -290,7 +316,7 @@ export async function deleteMcpAuthSession(
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
   const current = parseMcpAuthSession(
-    await stateAdapter.get(sessionKey(authSessionId)),
+    await readMcpAuthSession(stateAdapter, authSessionId),
   );
   await stateAdapter.delete(sessionKey(authSessionId));
   if (!current) {
@@ -321,9 +347,9 @@ export async function deleteMcpAuthSessionsForUserProvider(
   const indexKey = sessionIndexKey(userId, provider);
   const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
 
-  for (const authSessionId of authSessionIds) {
-    await stateAdapter.delete(sessionKey(authSessionId));
-  }
+  await mapBounded(authSessionIds, (authSessionId) =>
+    stateAdapter.delete(sessionKey(authSessionId)),
+  );
 
   await stateAdapter.delete(indexKey);
 }
@@ -337,11 +363,11 @@ export async function getLatestMcpAuthSessionForUserProvider(
     await stateAdapter.get(sessionIndexKey(userId, provider)),
   );
 
+  const sessions = await mapBounded(authSessionIds, async (authSessionId) =>
+    parseMcpAuthSession(await readMcpAuthSession(stateAdapter, authSessionId)),
+  );
   let latestSession: McpAuthSessionState | undefined;
-  for (const authSessionId of authSessionIds) {
-    const session = parseMcpAuthSession(
-      await stateAdapter.get(sessionKey(authSessionId)),
-    );
+  for (const session of sessions) {
     if (!session) {
       continue;
     }
@@ -358,8 +384,11 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
+  // Stale values expire within the credential TTL or move to the active key
+  // on the next save, so they are not saved again here.
   const stored = parseStoredCredentials(
-    await stateAdapter.get(credentialsKey(userId, provider)),
+    (await readEncryptedState(stateAdapter, credentialsKey(userId, provider)))
+      ?.value,
   );
   if (stored) return stored;
   // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
@@ -367,7 +396,9 @@ export async function getMcpStoredOAuthCredentials(
   const legacyUserId = await findLegacyWebActorUserId(userId);
   if (!legacyUserId) return undefined;
   const legacyKey = credentialsKey(legacyUserId, provider);
-  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  const legacy = parseStoredCredentials(
+    (await readEncryptedState(stateAdapter, legacyKey))?.value,
+  );
   if (!legacy) return undefined;
   await putMcpStoredOAuthCredentials(userId, provider, legacy);
   await stateAdapter.delete(legacyKey);
@@ -381,9 +412,9 @@ export async function putMcpStoredOAuthCredentials(
   ttlMs: number = MCP_AUTH_CREDENTIALS_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     credentialsKey(userId, provider),
-    JSON.stringify(value),
+    value,
     ttlMs,
   );
 }

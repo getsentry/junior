@@ -2,7 +2,6 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
-import { buildPendingConcurrentIndexes } from "@/db/concurrent-indexes";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorSqlSchema as schema } from "@/db/schema";
@@ -101,7 +100,7 @@ function assertSupportedMigrationState(state: CoreMigrationState): void {
     return;
   }
   throw new Error(
-    `Existing Junior SQL tables have no core Drizzle migration history. Stop old Junior workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this Junior version and rerun \`junior upgrade\` before restarting workers.`,
+    `Existing SQL tables have no core Drizzle migration history. Stop old workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this version and rerun \`junior upgrade\` before restarting workers.`,
   );
 }
 
@@ -130,11 +129,6 @@ export async function migrateSchema(
       return migrationResult(migrations, lockedState);
     }
     assertSupportedMigrationState(lockedState);
-    await buildPendingConcurrentIndexes(
-      executor,
-      migrations,
-      lockedState.appliedAt,
-    );
     await executor.migrate({
       migrationsFolder,
       migrationsTable: MIGRATIONS_TABLE,

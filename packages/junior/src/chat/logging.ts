@@ -66,6 +66,7 @@ import {
   spanToJSON,
   withScope,
 } from "@/chat/sentry";
+import type { LogEventName } from "@/chat/log-event-name";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
 
@@ -151,7 +152,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
   if (!Array.isArray(value)) {
     return value;
   }
-  return value.map((reason) =>
+  return value.map((reason: unknown) =>
     typeof reason === "string" ? normalizeGenAiFinishReason(reason) : reason,
   );
 }
@@ -210,9 +211,9 @@ const SENTRY_TAG_ATTRIBUTE_KEYS = new Set([
 
 function getSentryEnvironment(): string {
   return (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV ??
+    process.env["SENTRY_ENVIRONMENT"] ??
+    process.env["VERCEL_ENV"] ??
+    process.env["NODE_ENV"] ??
     ""
   )
     .trim()
@@ -234,7 +235,7 @@ function shouldSuppressInfoLog(
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
-  if (process.env.NODE_ENV === "test") {
+  if (process.env["NODE_ENV"] === "test") {
     return level === "error";
   }
 
@@ -242,10 +243,10 @@ function shouldEmitConsole(level: LogLevel): boolean {
 }
 
 function isDevelopmentLoggingMode(): boolean {
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env["NODE_ENV"] !== "development") {
     return false;
   }
-  if (process.env.CI) {
+  if (process.env["CI"]) {
     return false;
   }
   return true;
@@ -255,7 +256,9 @@ function shouldUseDevelopmentConsoleFormat(): boolean {
   if (!isDevelopmentLoggingMode()) {
     return false;
   }
-  return process.env.JUNIOR_LOG_FORMAT?.trim().toLowerCase() !== "structured";
+  return (
+    process.env["JUNIOR_LOG_FORMAT"]?.trim().toLowerCase() !== "structured"
+  );
 }
 
 function shouldUsePrettyConsole(level: LogLevel): boolean {
@@ -269,11 +272,11 @@ function shouldUseConsoleColor(): boolean {
   if (!shouldUseDevelopmentConsoleFormat()) {
     return false;
   }
-  if (process.env.NO_COLOR) {
+  if (process.env["NO_COLOR"]) {
     return false;
   }
   return (
-    process.env.FORCE_COLOR?.trim() === "1" ||
+    process.env["FORCE_COLOR"]?.trim() === "1" ||
     Boolean(process.stdout?.isTTY) ||
     Boolean(process.stderr?.isTTY)
   );
@@ -391,7 +394,7 @@ function normalizeEventName(value: string): string {
         ? `app.${segments[0]}`
         : segments.join(".");
   if (
-    process.env.NODE_ENV !== "production" &&
+    process.env["NODE_ENV"] !== "production" &&
     (!EVENT_NAME_PATTERN.test(value) || value !== normalized)
   ) {
     throw new Error(
@@ -479,8 +482,8 @@ function getTraceCorrelationAttributes(): LogAttributes {
     if (!span) return {};
     const json = spanToJSON(span);
     const attrs: LogAttributes = {};
-    if (json.trace_id) attrs.trace_id = json.trace_id;
-    if (json.span_id) attrs.span_id = json.span_id;
+    if (json.trace_id) attrs["trace_id"] = json.trace_id;
+    if (json.span_id) attrs["span_id"] = json.span_id;
     return attrs;
   } catch {
     return {};
@@ -643,7 +646,7 @@ function getLogTapeLogger(category: readonly string[] = []): LogTapeLogger {
     throw new Error("LogTape backend is unavailable");
   }
 
-  let logger = rootLogger as LogTapeLogger;
+  let logger = rootLogger;
   for (const part of category) {
     logger = logger.getChild(part);
   }
@@ -853,9 +856,7 @@ function booleanConsoleToken(
 
 function shouldShowPrettyCorrelation(eventName: string): boolean {
   return !(
-    eventName === "plugin.loaded" ||
-    eventName === "startup.discovery.completed" ||
-    eventName.endsWith(".loaded")
+    eventName === "startup.discovery.completed" || eventName.endsWith(".loaded")
   );
 }
 
@@ -1166,36 +1167,36 @@ function emit(
  * exists for adapters that must preserve an external free-form body.
  */
 export const log = {
-  debug(
-    eventName: string,
+  debug<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("debug", eventName, attrs, body);
   },
-  info(
-    eventName: string,
+  info<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("info", eventName, attrs, body);
   },
-  warn(
-    eventName: string,
+  warn<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("warn", eventName, attrs, body);
   },
-  error(
-    eventName: string,
+  error<const N extends string>(
+    eventName: LogEventName<N>,
     attrs: Record<string, unknown> = {},
     body?: string,
   ): void {
     emit("error", eventName, attrs, body);
   },
-  exception(
-    eventName: string,
+  exception<const N extends string>(
+    eventName: LogEventName<N>,
     error: unknown,
     attrs: Record<string, unknown> = {},
     body?: string,
@@ -1386,7 +1387,7 @@ export function registerLogRecordSink(
   };
 }
 
-export function createLogContextFromRequest(
+function createLogContextFromRequest(
   request: Request,
   context: Partial<LogContext> = {},
 ): LogContext {
@@ -1403,7 +1404,7 @@ export function createLogContextFromRequest(
 }
 
 /** Attach filterable non-user context tags to Sentry. */
-export function setSentryTagsFromContext(context: LogContext): void {
+function setSentryTagsFromContext(context: LogContext): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
     if (!SENTRY_TAG_ATTRIBUTE_KEYS.has(key)) {
@@ -1533,8 +1534,8 @@ export function captureException(error: unknown): void {
  * Bind correlation context at the owning operation boundary instead of
  * passing it here.
  */
-export function logInfo(
-  eventName: string,
+export function logInfo<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, attributes);
@@ -1547,8 +1548,8 @@ export function logInfo(
  * info events stay out of Sentry in production. Sentry log retention is not
  * durable audit storage.
  */
-export function logAudit(
-  eventName: string,
+export function logAudit<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, { ...attributes, [AUDIT_LOG_ATTRIBUTE]: true });
@@ -1560,8 +1561,8 @@ export function logAudit(
  * Bind correlation context at the owning operation boundary instead of
  * passing it here.
  */
-export function logWarn(
-  eventName: string,
+export function logWarn<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.warn(eventName, attributes);
@@ -1572,8 +1573,8 @@ export function logWarn(
  *
  * Use `logException` when an actual exception instance owns the failure.
  */
-export function logError(
-  eventName: string,
+export function logError<const N extends string>(
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): void {
   log.error(eventName, attributes);
@@ -1586,9 +1587,9 @@ export function logError(
  * generic operation exception. Existing domain failure events may retain a
  * `.failed` outcome when the event also covers non-exception failures.
  */
-export function logException(
+export function logException<const N extends string>(
   error: unknown,
-  eventName: string,
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): string | undefined {
   const normalizedError =
@@ -1597,9 +1598,9 @@ export function logException(
 }
 
 /** Run an optional side effect without changing the successful primary outcome. */
-export async function runBestEffort(
+export async function runBestEffort<const N extends string>(
   operation: () => Promise<void>,
-  eventName: string,
+  eventName: LogEventName<N>,
   attributes: Record<string, unknown> = {},
 ): Promise<void> {
   try {
@@ -1692,7 +1693,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 
 /** Return the active trace as a durable trace context, if there is one. */
 export function getActiveTraceContext():
-  | { baggage?: string; sentryTrace: string }
+  | { baggage?: string | undefined; sentryTrace: string }
   | undefined {
   const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
   return sentryTrace ? { baggage, sentryTrace } : undefined;
@@ -1716,20 +1717,6 @@ export function setSpanStatus(status: "ok" | "error"): void {
   span.setStatus(
     status === "ok" ? { code: 1 } : { code: 2, message: "internal_error" },
   );
-}
-
-/** Capture an exception within an isolated Sentry scope. */
-export function captureExceptionInScope(
-  error: unknown,
-  context: LogContext = {},
-): void {
-  const normalizedError =
-    error instanceof Error ? error : new Error(String(error));
-
-  withScope((scope) => {
-    setSentryScopeContext(scope, context);
-    captureSentryException(normalizedError);
-  });
 }
 
 /** Return the trace ID from the active Sentry span, if any. */
@@ -1913,7 +1900,7 @@ function readPiUsage(source: unknown): AgentTurnUsage {
     return {};
   }
   // Accept either a pi-ai AssistantMessage (has `.usage`) or a bare Usage record.
-  const usage = asRecord(record.usage) ?? record;
+  const usage = asRecord(record["usage"]) ?? record;
   const summary: AgentTurnUsage = {};
   for (const [piKey, ourKey] of PI_USAGE_FIELDS) {
     const value =
@@ -1922,7 +1909,7 @@ function readPiUsage(source: unknown): AgentTurnUsage {
       summary[ourKey] = value;
     }
   }
-  const piCost = asRecord(usage.cost);
+  const piCost = asRecord(usage["cost"]);
   if (piCost) {
     const cost: AgentTurnCost = {};
     for (const field of PI_COST_FIELDS) {
@@ -1985,6 +1972,7 @@ export function extractGenAiUsageAttributes(
     | "gen_ai.usage.output_tokens"
     | "gen_ai.usage.cache_read.input_tokens"
     | "gen_ai.usage.cache_creation.input_tokens"
+    | "gen_ai.usage.cache_hit_ratio"
     | "gen_ai.usage.reasoning.output_tokens",
     number
   > &
@@ -2026,6 +2014,17 @@ export function extractGenAiUsageAttributes(
       : undefined),
     ...(cacheCreationTokens !== undefined
       ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
+      : undefined),
+    // Per-call ratio, because metric monitors cannot divide two sums. Calls
+    // that report no cache reads, such as embeddings, get no ratio. `avg()`
+    // weights each call the same, so it is usually below the token-weighted
+    // rate. Cache warmups (`junior.cache_warmup`) read almost all; exclude
+    // them to see agent calls.
+    ...(cachedInputTokens !== undefined && semanticInputTokens
+      ? {
+          "gen_ai.usage.cache_hit_ratio":
+            cachedInputTokens / semanticInputTokens,
+        }
       : undefined),
     ...(reasoningTokens !== undefined
       ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }

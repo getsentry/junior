@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
-import { updateUserAutoArchiveSettings } from "@/api/conversations/auto-archive";
+import { updateUserSettings } from "@/api/user-settings";
 import { createApp } from "@/app";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -13,7 +13,12 @@ import {
   conversationAutoArchiveSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
 import {
@@ -53,7 +58,7 @@ async function addParticipant(args: {
 
 describe("conversation auto-archive API", () => {
   afterEach(async () => {
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
     await closeDb();
   });
 
@@ -135,15 +140,15 @@ describe("conversation auto-archive API", () => {
       email: "manual@example.com",
       lastMessageAt: new Date(nowMs - 30 * hour),
     });
-    await updateUserAutoArchiveSettings(viewer.id, {
+    await updateUserSettings(viewer.id, {
       autoArchiveDefault: true,
     });
-    await updateUserAutoArchiveSettings(otherViewer.id, {
+    await updateUserSettings(otherViewer.id, {
       autoArchiveDefault: true,
       autoArchiveGraceHours: 36,
     });
     const finishedAt = new Date(nowMs - 30 * hour).toISOString();
-    process.env.JUNIOR_SCHEDULER_SECRET = "auto-archive-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "auto-archive-secret";
     const juniorApp = await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([
@@ -422,5 +427,128 @@ describe("conversation auto-archive API", () => {
         await readConversationDetail(doneId, { viewer }),
       ).archivedAt,
     ).toEqual(expect.any(String));
+  });
+
+  it("keeps a conversation that waits on a person to finish an authorization", async () => {
+    const nowMs = Date.now();
+    const hour = 60 * 60 * 1000;
+    const connectingId = "local:test:archive-auth-connecting";
+    // A person's message in a Thread asked for the connection.
+    const childConnectingId = "local:test:archive-auth-child-connecting";
+    const connectedId = "local:test:archive-auth-connected";
+    // The connect link expired before anyone used it.
+    const expiredId = "local:test:archive-auth-expired";
+    const ids = [connectingId, childConnectingId, connectedId, expiredId];
+    const requestedMsById = (id: string) =>
+      id === expiredId ? nowMs - 25 * hour : nowMs - 3 * hour;
+    for (const conversationId of ids) {
+      await getConversationStore().recordActivity({
+        destination: { platform: "local" as const, conversationId },
+        conversationId,
+        nowMs: requestedMsById(conversationId),
+        source: "internal",
+      });
+    }
+    await getConversationStore().createChild({
+      childConversationId: `${childConnectingId}:child`,
+      kind: "thread",
+      nowMs: nowMs - 3 * hour,
+      parentConversationId: childConnectingId,
+    });
+    const requestedIn = async (conversationId: string, createdAtMs: number) => {
+      const authorizationId = `${conversationId}:turn:mcp:linear`;
+      await getConversationEventStore().append(conversationId, [
+        {
+          data: {
+            type: "turn_started",
+            turnId: `${conversationId}:turn`,
+            inputMessageIds: [`${conversationId}:message`],
+            surface: "api",
+          },
+          createdAtMs: createdAtMs - 60_000,
+        },
+        {
+          data: {
+            type: "authorization_requested",
+            kind: "mcp",
+            provider: "linear",
+            actorId: "identity:archive-auth",
+            authorizationId,
+            delivery: "private_link_sent",
+          },
+          createdAtMs,
+        },
+      ]);
+      return authorizationId;
+    };
+    await requestedIn(connectingId, nowMs - 3 * hour);
+    await requestedIn(`${childConnectingId}:child`, nowMs - 3 * hour);
+    await requestedIn(expiredId, nowMs - 25 * hour);
+    const connectedAuthorizationId = await requestedIn(
+      connectedId,
+      nowMs - 3 * hour,
+    );
+    await getConversationEventStore().append(connectedId, [
+      {
+        data: {
+          type: "authorization_completed",
+          kind: "mcp",
+          provider: "linear",
+          actorId: "identity:archive-auth",
+          authorizationId: connectedAuthorizationId,
+        },
+        createdAtMs: nowMs - 3 * hour + 60_000,
+      },
+    ]);
+    const viewer = await addParticipant({
+      conversationId: connectingId,
+      email: "archive-auth@example.com",
+      lastMessageAt: new Date(nowMs - 3 * hour),
+    });
+    for (const conversationId of ids.slice(1)) {
+      await getDb()
+        .insert(juniorConversationParticipants)
+        .values({
+          lastMessageAt: new Date(requestedMsById(conversationId)),
+          rootConversationId: conversationId,
+          userId: viewer.id,
+        });
+    }
+    await updateUserSettings(viewer.id, {
+      autoArchiveGraceHours: 1,
+    });
+    await createApp({ dashboard: { disabled: true } });
+
+    // The Turn parked for the connection leaves every conversation idle and
+    // quiet, but the feed shows the waits that have not expired.
+    const feed = await readConversationFeedFromSql({ viewer });
+    expect(
+      Object.fromEntries(
+        feed.conversations.map((conversation) => [
+          conversation.conversationId,
+          conversation.awaitingAuthorization ?? false,
+        ]),
+      ),
+    ).toEqual({
+      [childConnectingId]: true,
+      [connectedId]: false,
+      [connectingId]: true,
+      [expiredId]: false,
+    });
+
+    const { app } = await authenticatedApi(viewer.email);
+    const response = await app.request(
+      "http://localhost/api/conversations/archive-done",
+      { method: "POST" },
+    );
+    expect(
+      archiveDoneConversationsResponseSchema.parse(await response.json()),
+    ).toEqual({ archived: 2 });
+    const remaining = await readConversationFeedFromSql({ viewer });
+    expect(
+      remaining.conversations
+        .map((conversation) => conversation.conversationId)
+        .sort(),
+    ).toEqual([childConnectingId, connectingId].sort());
   });
 });

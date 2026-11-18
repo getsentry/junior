@@ -8,9 +8,9 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("dashboard agent name", () => {
-  it("defaults to Junior outside the browser", () => {
-    expect(getDashboardAgentName()).toBe("Junior");
-    expect(agentNamePossessive()).toBe("Junior's");
+  it("defaults to a neutral name outside the browser", () => {
+    expect(getDashboardAgentName()).toBe("Assistant");
+    expect(agentNamePossessive()).toBe("Assistant's");
   });
 
   it("reads the configured shell value without mutable client state", () => {

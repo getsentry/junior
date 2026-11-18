@@ -63,10 +63,10 @@ export function inboundMessageProvenance(
 
 /** Slack channel facts for one Turn. */
 export interface SlackChannelFacts {
-  channelType?: SlackEventChannelType;
-  name?: string;
-  topic?: string;
-  description?: string;
+  channelType?: SlackEventChannelType | undefined;
+  name?: string | undefined;
+  topic?: string | undefined;
+  description?: string | undefined;
 }
 
 /**

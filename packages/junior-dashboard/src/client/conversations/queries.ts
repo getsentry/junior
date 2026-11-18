@@ -11,9 +11,7 @@ import {
 import type {
   ConversationDetailReport,
   ConversationEventPage,
-  ConversationFeed,
   ConversationPendingMessagesReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
@@ -30,7 +28,13 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
-import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
+import { postWebMessage } from "./attachmentUploads";
+import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+  invalidateConversationFeeds,
+} from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
@@ -53,6 +57,7 @@ import {
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
+import { refreshSideReadsOnChange } from "./conversationSideReads";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -70,17 +75,12 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
 }
 
 /**
- * Read reports and Mark as unread for one conversation share this scope, so
- * they reach the server one at a time, in order. A forward-only read report
- * that is in flight can then not undo a later Mark as unread.
+ * Read reports for one conversation share this scope, so they reach the
+ * server one at a time, in order. A slow older report then cannot put an
+ * older position in the cache after a newer one.
  */
 export function conversationReadScope(conversationId: string) {
   return { id: `conversation:${conversationId}:read` };
-}
-
-/** Return the mutation key for Mark as read or unread on one conversation. */
-export function conversationUnreadMutationKey(conversationId: string) {
-  return ["conversation", conversationId, "unread"] as const;
 }
 
 // Right after a send, Junior usually reads the message within a few seconds.
@@ -123,45 +123,6 @@ function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
   );
 }
 
-const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
-
-/**
- * Key a read that shows beside the detail report, such as in the details
- * panel. A detail change refreshes it.
- */
-export function conversationSideReadQueryKey(
-  conversationId: string,
-  read: (typeof CONVERSATION_SIDE_READS)[number],
-) {
-  return ["conversation", conversationId, read] as const;
-}
-
-/**
- * Refresh the side reads and Review items when a fetch brings a new ETag.
- * Side reads do not poll. A new ETag means the Conversation changed, so the
- * details panel may be stale too. Only mounted reads refetch.
- */
-export function refreshSideReadsOnChange(
-  client: QueryClient,
-  conversationId: string,
-  previous: ConversationSnapshot | undefined,
-  next: ConversationSnapshot,
-) {
-  if (
-    !previous?.detailEtag ||
-    !next.detailEtag ||
-    previous.detailEtag === next.detailEtag
-  ) {
-    return;
-  }
-  for (const read of CONVERSATION_SIDE_READS) {
-    void client.invalidateQueries({
-      queryKey: conversationSideReadQueryKey(conversationId, read),
-    });
-  }
-  void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
-}
-
 /**
  * Whether the detail polls by itself: a Turn runs, input waits in the
  * mailbox, or the viewer must authorize a connection.
@@ -182,14 +143,14 @@ export function conversationDetailQueryOptions(
   options?: {
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
-    fastPollUntilMs?: number;
+    fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
     /**
      * The versions poll refreshes this Conversation while it is idle, so
      * the detail does not poll then.
      */
-    versionsPoll?: boolean;
+    versionsPoll?: boolean | undefined;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -241,16 +202,14 @@ export function conversationDetailQueryOptions(
  * finished must not put an older position back in the cache, nor the unread
  * cursor of that older position. The cache already holds the cursor for the
  * newer position: a read does not change the detail version, so no later poll
- * would bring it back. Mark as unread is the one backward move, on this or
- * another device. The server then reports the Conversation unread, so take
- * its position.
+ * would bring it back.
  */
 function keepLatestReadPosition(
   previous: ConversationSnapshot,
   next: ConversationSnapshot,
 ): ConversationSnapshot {
   const kept = previous.readPosition;
-  if (!kept || next.unread) return next;
+  if (!kept) return next;
   if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
   const { unreadCursor: _olderCursor, unreadPage: _olderPage, ...rest } = next;
   return {
@@ -269,9 +228,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -288,9 +247,7 @@ export function useCreateConversation() {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(accepted.conversationId),
@@ -339,9 +296,7 @@ export function useForkConversation(sourceConversationId: string) {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
     },
   });
 }
@@ -359,12 +314,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -400,9 +355,7 @@ export function useAppendConversationMessage(conversationId: string) {
             accepted.messageId,
           ),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(conversationId),
@@ -462,9 +415,7 @@ export function useCancelConversationPendingMessages(conversationId: string) {
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
+        invalidateConversationFeeds(queryClient),
         queryClient.invalidateQueries({
           exact: true,
           queryKey: conversationDetailQueryKey(conversationId),
@@ -690,22 +641,24 @@ export function useConversationData(
       .getQueryCache()
       .findAll({ queryKey: ["dashboard", "conversations"] });
     for (const query of feeds) {
-      const feed = query.state.data as ConversationFeed | undefined;
+      const feed = query.state.data as ConversationFeedCache | undefined;
       if (!feed || query.state.dataUpdatedAt > detailUpdatedAt) continue;
-      const stale = feed.conversations.some(
+      const stale = conversationFeedCacheRows(feed).some(
         (conversation) =>
           conversation.conversationId === conversationId &&
           conversation.displayTitle !== displayTitle,
       );
       if (!stale) continue;
-      queryClient.setQueryData<ConversationFeed>(query.queryKey, {
-        ...feed,
-        conversations: feed.conversations.map((conversation) =>
-          conversation.conversationId === conversationId
-            ? { ...conversation, displayTitle }
-            : conversation,
+      queryClient.setQueryData<ConversationFeedCache>(
+        query.queryKey,
+        mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) =>
+            conversation.conversationId === conversationId
+              ? { ...conversation, displayTitle }
+              : conversation,
+          ),
         ),
-      });
+      );
     }
   }, [conversationId, detailUpdatedAt, displayTitle, queryClient]);
   const historyStatus = detailData?.eventHistory.status;
@@ -874,7 +827,7 @@ export async function readConversationData(
   options?: {
     /** Also read the mailbox, before history, in the same request. */
     mailbox?: boolean;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
   },
 ): Promise<ConversationSnapshot> {
   const query = new URLSearchParams();
@@ -959,7 +912,10 @@ function withCachedEvents(
 function withDetailEtag<T extends ConversationDetailReport>(
   report: T,
   response: Response,
-): T & { conversationVersion?: string; detailEtag?: string } {
+): T & {
+  conversationVersion?: string | undefined;
+  detailEtag?: string | undefined;
+} {
   return {
     ...report,
     conversationVersion:

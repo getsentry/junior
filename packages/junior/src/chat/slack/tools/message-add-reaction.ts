@@ -1,4 +1,4 @@
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { addReactionToMessage } from "@/chat/slack/outbound";
 import * as z from "zod";
@@ -10,7 +10,11 @@ import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
-/** Create the tool that reacts to the current inbound Slack message. */
+/**
+ * Create the tool that reacts to the current inbound Slack message.
+ *
+ * @runBuilt addReaction
+ */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,
@@ -27,7 +31,7 @@ export function createSlackMessageAddReactionTool(
     },
     // The system prompt owns the no-reply protocol. This names when a
     // reaction is the whole reply, as `addReviewItem` does for its card.
-    description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with exactly ${NO_REPLY_MARKER}.`,
+    description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
     inputSchema: z.object({
       emoji: z
         .string()

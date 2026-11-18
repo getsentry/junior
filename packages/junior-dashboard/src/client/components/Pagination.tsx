@@ -18,6 +18,7 @@ export function LoadMorePagination(props: {
   if (!props.hasMore) return null;
   return (
     <Button
+      variant="outline"
       className={cn("justify-self-center", props.className)}
       disabled={props.loading}
       onClick={props.onLoadMore}

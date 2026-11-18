@@ -1,10 +1,13 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import * as z from "zod";
 
 import { createDashboardApp } from "../src/app";
 import { auth, embeddedBootstrap } from "./dashboard-test-helpers";
@@ -13,16 +16,24 @@ import {
   resetMockConversationViewerState,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
-import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardVersionDrift,
+} from "../src/client/dashboard-version";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
-  conversationSideReadQueryKey,
   readConversationData,
   readConversationEvents,
 } from "../src/client/conversations/queries";
-import { REVIEW_ITEMS_QUERY_KEY } from "../src/client/review-desk/queries";
+import { conversationSideReadQueryKey } from "../src/client/conversations/conversationSideReads";
+import {
+  REVIEW_ITEMS_QUERY_KEY,
+  reviewItemListQueryKey,
+  useConversationReviewItemData,
+} from "../src/client/review-desk/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
+import { fetchDashboardJson } from "../src/client/http";
 
 const generatedAt = "2026-07-23T00:00:00.000Z";
 
@@ -56,6 +67,7 @@ describe("dashboard client API", () => {
 
   it("seeds core data from the page shell once, then reads the API", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: auth({ user: { email: "dev@example.com", emailVerified: true } }),
@@ -194,12 +206,44 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
+  it("reads a transcript Review item from its Conversation's list", () => {
+    const conversationId = "slack:C1:123";
+    const client = new QueryClient();
+    client.setQueryData(reviewItemListQueryKey({ conversationId }), {
+      pageParams: [undefined],
+      pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
+    });
+    const detail = (id: string) =>
+      client.getQueryCache().find({
+        exact: true,
+        queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+      });
+    const render = (id: string) =>
+      renderToStaticMarkup(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(function Row() {
+            const { data } = useConversationReviewItemData(conversationId, id);
+            return data?.title ?? "loading";
+          }),
+        ),
+      );
+
+    expect(render("listed")).toBe("Listed item");
+    expect(detail("listed")).toBeUndefined();
+    // An item that the list leaves out, such as a closed one, loads by itself.
+    expect(render("closed")).toBe("loading");
+    expect(detail("closed")).toBeDefined();
+  });
+
   it("revalidates detail without caching the mailbox or bypassing sign-in", async () => {
     let signedIn = true;
     const sessionAuth = auth({
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {
@@ -218,10 +262,16 @@ describe("dashboard client API", () => {
     const client = new QueryClient();
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
-    // The details panel reads these beside the detail report.
+    // The details panel reads these beside the detail report, and the
+    // transcript reads its open items from the list. The versions poll
+    // refreshes the other Review item reads.
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
-      [...REVIEW_ITEMS_QUERY_KEY, "list", "conversationId=x"],
+      reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
+      [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
+      reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
+      [...REVIEW_ITEMS_QUERY_KEY, "count"],
+      [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
@@ -230,7 +280,14 @@ describe("dashboard client API", () => {
       for (const key of sideReads) client.setQueryData(key, {});
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
-      expect(sideReadsInvalidated()).toEqual([false, false]);
+      expect(sideReadsInvalidated()).toEqual([
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+      ]);
       // Each read brings the mailbox with the detail. An unchanged poll gets
       // only the mailbox and keeps the cached detail.
       expect(reads).toEqual([
@@ -246,7 +303,14 @@ describe("dashboard client API", () => {
       expect(changed.archivedAt).toBeUndefined();
       expect(changed.detailEtag).not.toBe(first.detailEtag);
       expect(reads.at(-1)).toEqual([`${detailPath}?mailbox=true`, 200]);
-      expect(sideReadsInvalidated()).toEqual([true, true]);
+      expect(sideReadsInvalidated()).toEqual([
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+      ]);
 
       // The detail endpoint must also reject a valid old validator after logout.
       signedIn = false;
@@ -270,6 +334,8 @@ describe("dashboard client API", () => {
     if (typeof interval !== "function") {
       throw new Error("Expected a dynamic polling interval");
     }
+    // A partial TanStack Query object holds only the fields the interval reads.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     const query = {
       state: {
         data: {
@@ -320,6 +386,33 @@ describe("dashboard client API", () => {
       detail: "999.0.0",
       type: "junior:dashboard-version",
     });
+  });
+
+  it("names version drift when a newer server sends unknown fields", async () => {
+    const schema = z.object({ label: z.string() }).strict();
+    const respond = (version: string) =>
+      Response.json(
+        { label: "PR", title: "New field" },
+        { headers: { [DASHBOARD_VERSION_HEADER]: version } },
+      );
+    vi.stubGlobal("window", { dispatchEvent: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond("999.0.0")),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      DASHBOARD_VERSION_DRIFT_MESSAGE,
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => respond(JUNIOR_VERSION)),
+    );
+
+    await expect(fetchDashboardJson(schema, "/api/x")).rejects.toThrow(
+      "Unrecognized key",
+    );
   });
 
   it("does not redirect for non-auth product API failures", async () => {

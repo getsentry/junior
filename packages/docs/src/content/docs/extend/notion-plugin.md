@@ -33,12 +33,13 @@ pnpm add @sentry/junior @sentry/junior-notion
 
 ## Runtime setup
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Add the plugin to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { notionPlugin } from "@sentry/junior-notion";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
+export const plugins = defineJuniorPlugins([notionPlugin()]);
 ```
 
 ## Config
@@ -92,7 +93,7 @@ never sends a Notion connect link. Junior hides the Notion tools that the
 service account does not list, so moving pages is not available:
 
 ```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
+export const plugins = defineJuniorPlugins([notionPlugin()], {
   manifests: {
     notion: { accounts: { userOAuth: false } },
   },
@@ -102,6 +103,16 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
 Until an admin connects the account, Junior tells people that Notion is not
 available yet. If Notion revokes the grant, Notion stays unavailable until an
 admin connects the account again.
+
+## Link cards
+
+A Notion page or database link in a dashboard conversation shows as a card
+with its title, emoji, first paragraph, last edit time, and cover. Junior
+reads the page with the viewer's own Notion connection, so only a viewer who
+can open the page in Notion sees the card. Other viewers see what Notion
+shows to anyone who is signed out: the public card of a published
+`notion.site` page, or the plain link. A card read never asks the viewer to
+connect, and it never uses the service account.
 
 ## What users can do
 
@@ -119,7 +130,7 @@ admin connects the account again.
 - Database deletion, schema redesign, and other broad administrative operations stay out of scope.
 - Permission failures remain user-scoped. Junior can only act on Notion content the authenticated user can access.
 - With a service account, anyone who can talk to Junior can read what that account can read, and create or update pages where that account can edit.
-- Each successful create, update, or move emits the `mcp.tool_call.completed` audit event. `app.credential.account` shows whether the service account or the person's own account made the call. See [Audit tools](/extend/build-a-plugin/#audit-tools) to change the list.
+- Each successful tool call emits the `mcp.tool_call.completed` audit event. `app.credential.account` shows whether the service account or the person's own account made the call. See [Audit events](/extend/build-a-plugin/#audit-events).
 
 ## Verify
 

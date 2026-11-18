@@ -1,6 +1,7 @@
 // Ingress rules for Slack messages that reach a thread. Steering behavior
 // that needs the agent lives in the agent test fixture evals:
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import {
@@ -22,6 +23,10 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
+import {
+  isConversationDeliveryPaused,
+  pauseConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -52,7 +57,7 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /**
@@ -92,7 +97,7 @@ function failNextConversationRecord(state: StateAdapter) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -119,7 +124,7 @@ function failNextExecutionWrite(store: ConversationStore) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as ConversationStore,
+    }),
   };
 }
 
@@ -133,7 +138,10 @@ function ingress(
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
-    runtime: createSlackRuntime({ getSlackAdapter: () => adapter }),
+    runtime: createSlackRuntime({
+      getSlackAdapter: () => adapter,
+      sendPluginTask: sendVercelPluginTask,
+    }),
     state,
   };
   const send = (args: {
@@ -178,16 +186,16 @@ function statusClears() {
     .calls("assistant.threads.setStatus")
     .filter(
       (call) =>
-        call.params.channel_id === CHANNEL_ID &&
-        call.params.thread_ts === THREAD_TS &&
-        call.params.status === "",
+        call.params["channel_id"] === CHANNEL_ID &&
+        call.params["thread_ts"] === THREAD_TS &&
+        call.params["status"] === "",
     );
 }
 
 function stopAcks() {
   return slackApiOutbox
     .messages()
-    .filter((call) => call.params.text === SLACK_STOP_ACK);
+    .filter((call) => call.params["text"] === SLACK_STOP_ACK);
 }
 
 /** Start a queued mention Turn with a running child agent in the thread. */
@@ -420,6 +428,36 @@ describe("Slack ingress: thread messages", () => {
     expect(stopAcks()).toHaveLength(0);
     await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
       stoppedAtMs,
+    );
+  });
+
+  it("attaches a detached Conversation again on the next mention", async () => {
+    const { send } = ingress();
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> watch the deploy`,
+      ts: THREAD_TS,
+    });
+    await expect(pauseConversationDelivery(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+    // A message that does not mention Junior keeps it detached.
+    await send({
+      eventType: "message",
+      text: "looks fine to me",
+      ts: "1712345.000200",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> anything new?`,
+      ts: "1712345.000300",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      false,
     );
   });
 });

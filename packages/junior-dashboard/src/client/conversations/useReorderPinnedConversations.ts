@@ -5,10 +5,14 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useReducer } from "react";
-import type { ConversationFeed } from "@sentry/junior/api/schema";
 import { reorderPinnedConversationsResponseSchema } from "@sentry/junior/api/schema";
 
 import { put } from "../http";
+import {
+  invalidateConversationFeeds,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 
 const PIN_ORDER_MUTATION_KEY = ["dashboard", "pin-order"];
 const feeds = { queryKey: ["dashboard", "conversations"] };
@@ -49,7 +53,7 @@ export function useReorderPinnedConversations(): ReorderPins {
     // A later queued drop owns the cache, so only the last save refetches.
     onSettled: () =>
       queryClient.isMutating({ mutationKey: PIN_ORDER_MUTATION_KEY }) === 1
-        ? queryClient.invalidateQueries(feeds)
+        ? invalidateConversationFeeds(queryClient)
         : undefined,
   });
   return useCallback(
@@ -74,17 +78,16 @@ export function usePinOrderSaving(): boolean {
 
 function setPinPositions(queryClient: QueryClient, conversationIds: string[]) {
   const positions = new Map(conversationIds.map((id, index) => [id, index]));
-  queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
+  queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
     feed
-      ? {
-          ...feed,
-          conversations: feed.conversations.map((conversation) => {
+      ? mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) => {
             const pinPosition = positions.get(conversation.conversationId);
             return pinPosition === undefined
               ? conversation
               : { ...conversation, pinPosition };
           }),
-        }
+        )
       : feed,
   );
 }

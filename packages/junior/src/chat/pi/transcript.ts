@@ -9,40 +9,63 @@
 import type {
   AssistantMessage,
   ToolResultMessage,
+  UserMessage,
 } from "@earendil-works/pi-ai";
-import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
+import { openingTag, stripTags } from "@sentry/junior-plugin-api";
+import {
+  hasCurrentInstruction,
+  unwrapCurrentInstruction,
+} from "@/chat/current-instruction";
+import {
+  isRuntimeInputText,
+  readParentAgentTask,
+  THREAD_CONTEXT_TAGS,
+} from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
-const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
+const RUNTIME_TURN_CONTEXT_START = openingTag(TURN_CONTEXT_TAG);
 const AGENTS_INSTRUCTIONS_START = "# AGENTS.md instructions";
 
-function userMessageContent(message: PiMessage): unknown[] | undefined {
-  const record = message as { role?: unknown; content?: unknown };
-  return record.role === "user" && Array.isArray(record.content)
-    ? record.content
+/** Starts of user text parts that hold runtime context, not a person's words. */
+export const RUNTIME_CONTEXT_TEXT_STARTS = [
+  RUNTIME_TURN_CONTEXT_START,
+  AGENTS_INSTRUCTIONS_START,
+] as const;
+
+type UserContentPart = Exclude<UserMessage["content"], string>[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function userMessageContent(message: PiMessage): UserContentPart[] | undefined {
+  return message.role === "user" && Array.isArray(message.content)
+    ? message.content
     : undefined;
 }
 
-function isRuntimeTurnContextPart(part: unknown): boolean {
+/** The message with other content parts, if it is a user message. */
+function withUserContent(
+  message: PiMessage,
+  content: UserContentPart[],
+): PiMessage {
+  return message.role === "user" ? { ...message, content } : message;
+}
+
+// Stored history is parsed only by role, so a part's text is still checked.
+function textPartValue(part: UserContentPart): string | undefined {
+  return part.type === "text" && typeof part.text === "string"
+    ? part.text
+    : undefined;
+}
+
+function isRuntimeTurnContextPart(part: UserContentPart): boolean {
+  const text = textPartValue(part);
   return (
-    part !== null &&
-    typeof part === "object" &&
-    (part as { type?: unknown }).type === "text" &&
-    typeof (part as { text?: unknown }).text === "string" &&
-    ((part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START) ||
-      (part as { text: string }).text.startsWith(AGENTS_INSTRUCTIONS_START))
+    text !== undefined &&
+    RUNTIME_CONTEXT_TEXT_STARTS.some((start) => text.startsWith(start))
   );
-}
-
-function textPartValue(part: unknown): string | undefined {
-  return part !== null &&
-    typeof part === "object" &&
-    (part as { type?: unknown }).type === "text" &&
-    typeof (part as { text?: unknown }).text === "string"
-    ? (part as { text: string }).text
-    : undefined;
 }
 
 /**
@@ -55,14 +78,10 @@ export function hasTurnInput(message: PiMessage): boolean {
       const text = textPartValue(part);
       return (
         text !== undefined &&
-        (text.includes("<current-instruction") || isRuntimeInputText(text))
+        (hasCurrentInstruction(text) || isRuntimeInputText(text))
       );
     }) ?? false
   );
-}
-
-function messageTimestamp(message: PiMessage): unknown {
-  return (message as { timestamp?: unknown }).timestamp;
 }
 
 /** Return whether the message is a Turn's context, paired with the instruction after it. */
@@ -77,101 +96,67 @@ export function isStandaloneRuntimeContextMessage(
     next &&
     userMessageContent(message) &&
     userMessageContent(next) &&
-    messageTimestamp(message) === messageTimestamp(next) &&
+    message.timestamp === next.timestamp &&
     !hasTurnInput(message) &&
     hasTurnInput(next),
   );
 }
 
-// Prior-thread context blocks the runtime embeds beside the <current-instruction>
-// block (see buildUserTurnText and renderThreadContextForPrompt). Each holds
-// other participants' verbatim messages, so completed-run projections must drop
-// them and keep only the instruction. Legacy tag names stay stripable for older
-// durable history.
-const EMBEDDED_THREAD_CONTEXT_TAGS = [
-  "thread-context",
-  "recent-thread-messages",
-  "thread-compactions",
-  "thread-transcript",
-  "thread-background",
-] as const;
-
-// Greedy body so a raw closing tag inside ambient text cannot end the match
-// early; the last matching closer wins for that envelope name.
-const EMBEDDED_THREAD_CONTEXT_PATTERN = new RegExp(
-  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*</\\1>`,
-  "g",
-);
-
 /** Type guard for Pi SDK assistant messages. */
 export function isAssistantMessage(value: unknown): value is AssistantMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "assistant"
-  );
+  return isRecord(value) && value["role"] === "assistant";
 }
 
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
-): value is ToolResultMessage<any> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "toolResult"
-  );
+): value is ToolResultMessage {
+  return isRecord(value) && value["role"] === "toolResult";
 }
 
 /** Check whether a tool result carries an error flag. */
 export function isToolResultError(result: unknown): boolean {
-  if (!result || typeof result !== "object") return false;
-  return Boolean((result as { isError?: unknown }).isError);
+  return isRecord(result) && Boolean(result["isError"]);
 }
 
 /** Extract the tool name from a raw tool result message. */
 export function normalizeToolNameFromResult(
   result: unknown,
 ): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const record = result as { toolName?: unknown; name?: unknown };
-  if (typeof record.toolName === "string" && record.toolName.length > 0) {
-    return record.toolName;
-  }
-  if (typeof record.name === "string" && record.name.length > 0) {
-    return record.name;
-  }
+  if (!isRecord(result)) return undefined;
+  const { name, toolName } = result;
+  if (typeof toolName === "string" && toolName.length > 0) return toolName;
+  if (typeof name === "string" && name.length > 0) return name;
   return undefined;
 }
 
 /** Extract role string from a raw Pi message. */
 export function getPiMessageRole(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const role = (value as { role?: unknown }).role;
-  return typeof role === "string" ? role : undefined;
+  return isRecord(value) && typeof value["role"] === "string"
+    ? value["role"]
+    : undefined;
 }
 
 /** Return whether Pi can continue directly from the current history tail. */
 export function isContinuablePiBoundary(
   messages: readonly PiMessage[],
 ): boolean {
-  const lastRole = getPiMessageRole(messages.at(-1));
+  // A saved system message applies to the next model call, so the message
+  // before it decides.
+  let end = messages.length;
+  while (end > 0 && getPiMessageRole(messages[end - 1]) === "system") {
+    end -= 1;
+  }
+  const lastRole = getPiMessageRole(messages[end - 1]);
   return lastRole === "user" || lastRole === "toolResult";
 }
 
 /** Concatenate text content parts from an assistant message. */
 export function extractAssistantText(message: AssistantMessage): string {
-  const content =
-    (message as { content?: Array<{ type?: unknown; text?: unknown }> })
-      .content ?? [];
-  return content
-    .filter(
-      (part): part is { type: "text"; text: string } =>
-        part.type === "text" && typeof part.text === "string",
+  return (message.content ?? [])
+    .flatMap((part) =>
+      part.type === "text" && typeof part.text === "string" ? [part.text] : [],
     )
-    .map((part) => part.text)
     .join("\n");
 }
 
@@ -219,7 +204,7 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
     const runtimeContent =
       userMessageContent(message)?.filter(isRuntimeTurnContextPart) ?? [];
     return runtimeContent.length > 0
-      ? [{ ...message, content: runtimeContent } as PiMessage]
+      ? [withUserContent(message, runtimeContent)]
       : [];
   });
 }
@@ -242,9 +227,7 @@ export function instructionTextForProjection(text: string): string {
   // Drop ambient envelopes first, then read the instruction. Unwrapping before
   // strip would let ambient text that embeds a full <current-instruction>
   // block win over the real turn instruction.
-  const withoutContext = text
-    .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
-    .trim();
+  const withoutContext = stripTags(text, THREAD_CONTEXT_TAGS).trim();
   return unwrapCurrentInstruction(withoutContext) ?? withoutContext;
 }
 
@@ -256,20 +239,15 @@ export function instructionTextForProjection(text: string): string {
  * text.
  */
 export function getUserMessageInstructionText(message: PiMessage): string {
-  if (getPiMessageRole(message) !== "user") {
+  if (message.role !== "user") {
     return "";
   }
-  const content = (message as { content?: unknown }).content;
   const texts =
-    typeof content === "string"
-      ? [content]
-      : Array.isArray(content)
-        ? content.flatMap((part) => textPartValue(part) ?? [])
-        : [];
+    typeof message.content === "string"
+      ? [message.content]
+      : message.content.flatMap((part) => textPartValue(part) ?? []);
   const inputs = texts.flatMap((text) => {
-    const withoutContext = text
-      .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
-      .trim();
+    const withoutContext = stripTags(text, THREAD_CONTEXT_TAGS).trim();
     if (isRuntimeInputText(withoutContext)) {
       return [readParentAgentTask(withoutContext) ?? withoutContext];
     }
@@ -296,6 +274,6 @@ export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
     );
     if (nextContent.length === content.length) return [message];
     if (nextContent.length === 0) return [];
-    return [{ ...message, content: nextContent } as PiMessage];
+    return [withUserContent(message, nextContent)];
   });
 }

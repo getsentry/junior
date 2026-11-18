@@ -1,5 +1,8 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import {
+  DASHBOARD_SERVICE_WORKER_PATH,
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
@@ -12,8 +15,9 @@ test("updates the signed-in user's display name", async ({
 }) => {
   await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.locator("#profile-popover")).toHaveCount(0);
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
 
@@ -35,9 +39,7 @@ test("saves notification working hours and the Slack schedule choice", async ({
     page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Push notifications are not set up for this Junior install.",
-    ),
+    page.getByText("Push notifications are not set up for this app."),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
 
@@ -90,6 +92,8 @@ test("turns on push notifications from a one-time tip", async ({
   await page.addInitScript(() => {
     PushManager.prototype.getSubscription = async () => null;
     PushManager.prototype.subscribe = async () =>
+      // A partial PushSubscription stub holds only what the app reads.
+      // oxlint-disable-next-line anti-slop/no-chained-type-assertions
       ({
         toJSON: () => ({
           endpoint: "https://fcm.googleapis.com/fcm/send/e2e",
@@ -223,6 +227,50 @@ test("opens a tapped notification that the app did not open", async ({
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
 });
 
+test("shows a push notification that has no tag", async ({
+  page,
+  dashboard,
+}) => {
+  // The DevTools Push button sends plain text like this. Chrome rejects
+  // renotify without a tag, so the worker must still show the notification.
+  // The push opens "/", so stay on another page: there the worker alerts.
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto(`${dashboard.baseURL}/settings`);
+  test.skip(
+    (await page.evaluate(() => Notification.permission)) !== "granted",
+    "Chromium headless shell denies notifications. CI runs Chrome.",
+  );
+  const cdp = await page.context().newCDPSession(page);
+  const registrationId = new Promise<string>((resolve) => {
+    cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
+      const active = versions.find((version) => version.status === "activated");
+      if (active) resolve(active.registrationId);
+    });
+  });
+  await cdp.send("ServiceWorker.enable");
+  await page.evaluate(async (path) => {
+    await navigator.serviceWorker.register(path, { scope: "/" });
+    await navigator.serviceWorker.ready;
+  }, DASHBOARD_SERVICE_WORKER_PATH);
+
+  await cdp.send("ServiceWorker.deliverPushMessage", {
+    data: "Test push message from DevTools.",
+    origin: new URL(dashboard.baseURL).origin,
+    registrationId: await registrationId,
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.ready;
+        return (await registration.getNotifications()).map(
+          (notification) => notification.title,
+        );
+      }),
+    )
+    .toEqual(["Junior"]);
+});
+
 test("follows the system theme until the user picks one", async ({
   page,
   dashboard,
@@ -234,17 +282,26 @@ test("follows the system theme until the user picks one", async ({
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await expect(
-    page.getByRole("button", { name: "System theme" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toHaveAttribute("aria-checked", "true");
   await screenshot(page, "settings-theme-light", { view: "desktop" });
+  // Arrow keys reach the theme choices inside the menu.
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "Light theme" }),
+  ).toBeFocused();
 
-  await page.getByRole("button", { name: "Dark theme" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "dark");
   await page.reload();
   await expect(root).toHaveAttribute("data-theme", "dark");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "System theme" }).click();
+  await page.getByRole("menuitemradio", { name: "System theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(root).toHaveAttribute("data-theme", "dark");
@@ -262,7 +319,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocomplete", "off");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await page.getByText("Autocorrect", { exact: true }).click();
 
   await page.goto(dashboard.baseURL);
@@ -324,5 +381,105 @@ test("links to a settings section", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/settings#conversations`);
   await expect(
     page.getByRole("heading", { exact: true, name: "Conversations" }),
+  ).toBeInViewport();
+
+  // The Interface section holds the dashboard choices, and links
+  // to each choice still work.
+  await page.goto(`${dashboard.baseURL}/settings#open-conversations-at`);
+  const openAt = page.getByRole("heading", {
+    exact: true,
+    name: "Open conversations at",
+  });
+  await expect(openAt).toBeInViewport();
+  const ui = page.getByRole("region", { exact: true, name: "Interface" });
+  await expect(ui).toContainText("New dashboard");
+  await expect(ui).toContainText("Open conversations at");
+  await expect(ui).toContainText("Scroll conversations with");
+  await expect(ui).toContainText("Message box");
+  await expect(ui).toContainText("Browser tab");
+  await screenshot(page, "settings-interface", {
+    target: ui,
+    view: "desktop",
+  });
+});
+
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  return release;
+}
+
+test("lets the reader scroll away from a linked section while it loads", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "MCP" }),
+  ).toBeInViewport();
+
+  // Scroll to the top over a few frames with no input event, as a
+  // scrollbar drag does.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "General" }),
+  ).toBeInViewport();
+});
+
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+  await expect(heading).toBeInViewport();
+
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(heading).toBeInViewport();
+});
+
+test("opens an old Settings page as its section and keeps the query", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens?name=Review`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings?name=Review#api-tokens`,
+  );
+  await expect(
+    page.getByRole("heading", { exact: true, name: "API Tokens" }),
+  ).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings/connections`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
 });

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import * as z from "zod";
+import { readJuniorSecret } from "@/chat/secrets";
 
 const LOCAL_OAUTH_STATE_PREFIX = "jr-local";
 const LOCAL_OAUTH_TOKEN_CONTEXT = "junior.local-oauth-relay.v1";
@@ -17,7 +18,7 @@ const localOAuthRelayPayloadSchema = z
 
 /** Derive the HMAC key used only for signed local OAuth relay state. */
 function relayKey(): Uint8Array {
-  const secret = process.env.JUNIOR_SECRET?.trim();
+  const secret = readJuniorSecret();
   if (!secret) {
     throw new Error("Local OAuth requires JUNIOR_SECRET");
   }

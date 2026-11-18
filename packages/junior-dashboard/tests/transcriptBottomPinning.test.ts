@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isFarFromScrollBottom,
   isNearScrollBottom,
   programmaticSettleScrollAction,
   shouldAutoPinTranscriptBottom,
@@ -447,6 +448,31 @@ describe("transcript bottom pinning", () => {
         endsAtLatest: false,
         following: false,
         hasPendingUpdate: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows jump-to-latest once the reader scrolls far up a finished transcript", () => {
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        farFromBottom: true,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFarFromScrollBottom({
+        clientHeight: 800,
+        scrollHeight: 10_000,
+        scrollTop: 8_000,
+      }),
+    ).toBe(false);
+    expect(
+      isFarFromScrollBottom({
+        clientHeight: 800,
+        scrollHeight: 10_000,
+        scrollTop: 6_000,
       }),
     ).toBe(true);
   });

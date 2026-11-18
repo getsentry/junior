@@ -37,9 +37,10 @@ import {
 } from "./RepositoryTabs";
 import { cn, dashboardInlineLinkClass } from "../../styles";
 import { OutboundLink } from "../../components/OutboundLink";
+import { getDashboardAgentName } from "../../agentName";
 
 const RECENT_ROWS = 5;
-const DESCRIPTION = "Conversations and code changes from Junior.";
+const DESCRIPTION = "Conversations and code changes in this repository.";
 
 /** Inline link style used by `ConversationSummary` location links. */
 const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
@@ -47,7 +48,7 @@ const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
 /** Render one repository tab under the shared header and tab bar. */
 export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const params = useParams();
-  const repositoryId = params.repositoryId;
+  const repositoryId = params["repositoryId"];
   const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeRepositoryData(repositoryId);
   if (!query.data && !query.error) {
@@ -67,7 +68,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
         <BackToCode />
         <EmptyTelemetry>
           This repository is unavailable. It may not have any code changes from
-          Junior.
+          {getDashboardAgentName()}.
         </EmptyTelemetry>
       </PageLayout>
     );
@@ -100,7 +101,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
                 <OutboundLink
-                  className={buttonVariants()}
+                  className={buttonVariants({ variant: "outline" })}
                   href={repository.url}
                 >
                   Open repository

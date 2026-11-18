@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eventCatalogEntry } from "@/chat/events/catalog";
@@ -14,7 +15,13 @@ vi.mock("@/chat/events/store", () => ({
 
 import { createEventTools } from "@/chat/tools/events";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
+
 const context: ToolRuntimeContext = {
+  turnTools: rootTurnTools,
   conversationId: "slack:C123:1712345.0001",
   destination: {
     platform: "slack",
@@ -80,7 +87,7 @@ describe("event tools", () => {
   });
 
   it("returns the inverse action after creating a resource watch", async () => {
-    const tool = createEventTools(context, GITHUB_EVENTS).watchEvents!;
+    const tool = createEventTools(context, GITHUB_EVENTS)["watchEvents"]!;
 
     await expect(
       tool.execute!(
@@ -123,7 +130,7 @@ describe("event tools", () => {
         conversationId: "agent:deadbeefcafebabe",
       },
       GITHUB_EVENTS,
-    ).watchEvents!;
+    )["watchEvents"]!;
 
     await tool.execute!(
       {
@@ -154,10 +161,10 @@ describe("event tools", () => {
     expect(exposure.directTools).not.toHaveProperty("listWatches");
     expect(exposure.directTools).not.toHaveProperty("stopWatchingResources");
     expect(exposure.catalogTools).toHaveProperty("listWatches");
-    expect(exposure.catalogTools.searchEventTypes).toMatchObject({
+    expect(exposure.catalogTools["searchEventTypes"]).toMatchObject({
       source: { id: "resource-watches" },
     });
-    expect(exposure.catalogTools.stopWatchingResources).toMatchObject({
+    expect(exposure.catalogTools["stopWatchingResources"]).toMatchObject({
       source: { id: "resource-watches" },
     });
   });
@@ -185,7 +192,10 @@ describe("event tools", () => {
 
     await expect(
       // "events" names nothing in the catalog; the other terms still match.
-      tools.searchEventTypes!.execute!({ query: "review changes events" }, {}),
+      tools["searchEventTypes"]!.execute!(
+        { query: "review changes events" },
+        {},
+      ),
     ).resolves.toMatchObject({
       namespace: null,
       total_matches: 1,
@@ -220,7 +230,7 @@ describe("event tools", () => {
     const tool = createEventTools(context, {
       ...VERCEL_EVENTS,
       ...GITHUB_EVENTS,
-    }).watchEvents!;
+    })["watchEvents"]!;
 
     expect(tool.inputSchema).toMatchObject({
       properties: {
@@ -254,7 +264,7 @@ describe("event tools", () => {
           "pull_request.merged": { reach: "resource" },
         },
       }),
-    }).watchEvents!;
+    })["watchEvents"]!;
 
     await expect(
       tool.execute!(
@@ -275,7 +285,7 @@ describe("event tools", () => {
   });
 
   it("rejects a watch duration over 30 days instead of shortening it", async () => {
-    const tool = createEventTools(context, GITHUB_EVENTS).watchEvents!;
+    const tool = createEventTools(context, GITHUB_EVENTS)["watchEvents"]!;
 
     await expect(
       tool.execute!(

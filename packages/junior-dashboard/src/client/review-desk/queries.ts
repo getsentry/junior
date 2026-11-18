@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -6,6 +6,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
@@ -15,13 +16,72 @@ import {
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
   type ReviewItemActionBody,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import {
+  conversationDetailQueryKey,
+  type ConversationSnapshot,
+} from "../conversations/queries";
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
+import { automationKeys } from "../api";
 
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
+
+type ReviewItemListFilters = {
+  /** Lists the done and dismissed items instead, newest closed first. */
+  closed?: boolean;
+  conversationId?: string;
+  enabled?: boolean;
+  forViewer?: boolean;
+  q?: string;
+  /**
+   * `waiting` pages the open items that wait on the viewer first, so the
+   * first page holds what needs them now.
+   */
+  sort?: "waiting";
+};
+
+function reviewItemListSearch(filters: ReviewItemListFilters) {
+  const params = new URLSearchParams();
+  if (filters.conversationId) {
+    params.set("conversationId", filters.conversationId);
+  }
+  if (filters.forViewer) params.set("for", "viewer");
+  if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.closed) params.set("status", "done,dismissed");
+  return params.toString();
+}
+
+/** Key one Review item. Each Review item row reads its own item. */
+export function reviewItemQueryKey(id: string | undefined) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
+}
+
+const REVIEW_ITEM_COLLECTIONS = ["count", "list", "waiting-conversations"];
+
+/**
+ * Refresh the Review item reads that a change to known items moves: the
+ * count, the lists, and the waiting Conversations. Write each changed item
+ * to its own key, so the rows of the other items do not refetch.
+ */
+export function invalidateReviewItemCollections(queryClient: QueryClient) {
+  return Promise.all(
+    REVIEW_ITEM_COLLECTIONS.map((collection) =>
+      queryClient.invalidateQueries({
+        queryKey: [...REVIEW_ITEMS_QUERY_KEY, collection],
+      }),
+    ),
+  );
+}
+
+/** Key the Review item list that these filters read. */
+export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "list", reviewItemListSearch(filters)];
+}
 
 /**
  * List the open Review items that the viewer can see, one page at a time.
@@ -29,21 +89,12 @@ export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
  * items of every loaded page, and `query` loads more. `forViewer` drops the
  * items that are assigned only to other people.
  */
-export function useReviewItemsData(filters: {
-  conversationId?: string;
-  forViewer?: boolean;
-  q?: string;
-}) {
-  const params = new URLSearchParams();
-  if (filters.conversationId) {
-    params.set("conversationId", filters.conversationId);
-  }
-  if (filters.forViewer) params.set("for", "viewer");
-  if (filters.q) params.set("q", filters.q);
-  const search = params.toString();
+export function useReviewItemsData(filters: ReviewItemListFilters) {
+  const search = reviewItemListSearch(filters);
   const query = useInfiniteQuery({
+    enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
+    queryKey: reviewItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {
       const pageParams = new URLSearchParams(search);
       if (pageParam) pageParams.set("cursor", pageParam);
@@ -65,11 +116,18 @@ export function useReviewItemsData(filters: {
   return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
 }
 
-/** Read one Review item, for a link to an item outside the current list. */
-export function useReviewItemData(id: string | undefined) {
+/**
+ * Read one Review item, for a link to an item outside the current list.
+ * `placeholder` shows until the read finishes.
+ */
+export function useReviewItemData(
+  id: string | undefined,
+  placeholder?: ReviewItemPayload,
+) {
   return useQuery({
     enabled: Boolean(id),
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+    placeholderData: placeholder,
+    queryKey: reviewItemQueryKey(id),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemSchema,
@@ -81,23 +139,70 @@ export function useReviewItemData(id: string | undefined) {
 }
 
 /**
+ * Read one Review item that a Conversation's transcript shows. An item in
+ * the Conversation's list comes from there, so it refreshes with the list
+ * and needs no read of its own. The list holds only open items, so a
+ * closed item, or one on a later page, loads by itself.
+ */
+export function useConversationReviewItemData(
+  conversationId: string,
+  id: string,
+) {
+  const { items, query } = useReviewItemsData({ conversationId });
+  const listed = items.find((item) => item.id === id);
+  // An item that closes leaves the list, and a list read that starts again,
+  // such as Try again after a failed page, turns the item read off. The row
+  // keeps the last item until a read finishes, so it does not blank.
+  const lastShown = useRef(listed);
+  // Wait for this Conversation's list before reading the item by itself.
+  const waiting = query.isPending || query.isPlaceholderData;
+  const direct = useReviewItemData(
+    listed || waiting ? undefined : id,
+    lastShown.current,
+  );
+  const data =
+    listed ?? direct.data ?? (waiting ? lastShown.current : undefined);
+  if (data) lastShown.current = data;
+  return { data, isError: listed ? false : direct.isError };
+}
+
+/**
  * Read the titles of the Conversations linked to an item. Each read asks for
  * one event only. A Conversation that the viewer cannot read has no title.
  */
 export function useLinkedConversationTitles(
   conversationIds: readonly string[],
 ): (string | undefined)[] {
+  const queryClient = useQueryClient();
   return useQueries({
     queries: conversationIds.map((conversationId) => ({
       queryKey: ["dashboard", "conversation-title", conversationId],
-      queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        conversationDetailTitle(
-          await fetchDashboardJson(
-            conversationDetailReportSchema,
-            `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
-            signal,
-          ),
-        ) ?? null,
+      queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        // An open Conversation reads its full detail. Take the title from
+        // that read, cached or in flight, and do not read it a second time.
+        const detailKey = conversationDetailQueryKey(conversationId);
+        const cached =
+          queryClient.getQueryData<ConversationSnapshot>(detailKey);
+        if (cached) return conversationDetailTitle(cached) ?? null;
+        if (queryClient.getQueryState(detailKey)?.fetchStatus === "fetching") {
+          return (
+            conversationDetailTitle(
+              await queryClient.fetchQuery<ConversationSnapshot>({
+                queryKey: detailKey,
+              }),
+            ) ?? null
+          );
+        }
+        return (
+          conversationDetailTitle(
+            await fetchDashboardJson(
+              conversationDetailReportSchema,
+              `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
+              signal,
+            ),
+          ) ?? null
+        );
+      },
       retry: false,
       staleTime: 5 * 60_000,
     })),
@@ -129,7 +234,7 @@ export function useReviewItemCountData(enabled: boolean) {
 export function useBlockedAutomationsData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "scope=mine&state=blocked"],
+    queryKey: [...automationKeys.lists(), "scope=mine&state=blocked"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
@@ -150,52 +255,67 @@ export function useReviewItemAction() {
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
       ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
+    onError: (_error, args) =>
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: reviewItemQueryKey(args.id),
+      }),
+    // The row of an item that this closes reads it by itself, so it starts
+    // from the answer.
+    onSuccess: (item) =>
+      queryClient.setQueryData(reviewItemQueryKey(item.id), item),
+    onSettled: () => invalidateReviewItemCollections(queryClient),
   });
 }
 
-/** Newest open Review item title and item count for one waiting Conversation. */
-export type WaitingConversation = { count: number; title: string };
+/**
+ * Open Review items, newest first, that one Conversation waits on the viewer
+ * for, and when the wait began (the oldest item).
+ */
+export type WaitingConversation = {
+  items: Array<{ plugin?: string; title: string }>;
+  waitingSince: string;
+};
 
 const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
+const waitingConversationsQuery = {
+  queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    fetchDashboardJson(
+      reviewItemWaitingConversationsSchema,
+      "/api/review-items/waiting-conversations",
+      signal,
+    ),
+  retry: false,
+};
+
+/** Whether the first read of the waiting Conversations has finished. */
+export function useWaitingConversationsSettled(): boolean {
+  return !useQuery(waitingConversationsQuery).isPending;
+}
+
 /**
- * Return the Conversations that wait on the viewer, by Conversation id. Today
- * only the review desk sets this: a linked open action item assigned to the
- * viewer.
+ * Return the Conversations that wait on the viewer, by Conversation id: each
+ * has a linked open action item assigned to the viewer. An agent's action
+ * asks a question; a plugin's action asks for a step such as a merge.
  */
 export function useWaitingConversations(): ReadonlyMap<
   string,
   WaitingConversation
 > {
-  const query = useQuery({
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemWaitingConversationsSchema,
-        "/api/review-items/waiting-conversations",
-        signal,
-      ),
-    retry: false,
-  });
+  const query = useQuery(waitingConversationsQuery);
   const conversations = query.data?.conversations;
   return useMemo(
     () =>
       conversations
         ? new Map(
-            conversations.map(({ conversationId, count, title }) => [
+            conversations.map(({ conversationId, items, waitingSince }) => [
               conversationId,
-              { count, title },
+              { items, waitingSince },
             ]),
           )
         : NO_WAITING,
     [conversations],
   );
-}
-
-/** Return the ids of the Conversations that wait on the viewer. */
-export function useWaitingConversationIds(): ReadonlySet<string> {
-  const waiting = useWaitingConversations();
-  return useMemo(() => new Set(waiting.keys()), [waiting]);
 }

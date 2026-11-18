@@ -7,7 +7,6 @@ import {
 } from "@tanstack/react-query";
 import type {
   ConversationDetailReport,
-  ConversationFeed,
   ConversationFeedItem,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
@@ -19,12 +18,18 @@ import { buildConversations } from "../format";
 import { patch } from "../http";
 import type { Conversation } from "../types";
 import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+  invalidateConversationFeeds,
+} from "./conversationFeedCache";
+import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "./queries";
 
-/** Apply archive marks to one feed row, at any depth of nested Threads. */
-function markFeedConversation(
+/** Apply a patch to one feed row, at any depth of nested Threads. */
+export function patchFeedConversation(
   items: ConversationFeedItem[],
   conversationId: string,
   marks: Partial<ConversationFeedItem>,
@@ -35,7 +40,7 @@ function markFeedConversation(
       : item.threads
         ? {
             ...item,
-            threads: markFeedConversation(item.threads, conversationId, marks),
+            threads: patchFeedConversation(item.threads, conversationId, marks),
           }
         : item,
   );
@@ -46,7 +51,9 @@ function findFeedRow(
   items: ConversationFeedItem[],
   conversationId: string,
   parentConversationId?: string,
-): { parentConversationId?: string; row: ConversationFeedItem } | undefined {
+):
+  | { parentConversationId?: string | undefined; row: ConversationFeedItem }
+  | undefined {
   for (const item of items) {
     if (item.conversationId === conversationId) {
       return { parentConversationId, row: item };
@@ -113,7 +120,7 @@ type ArchivedConversationSnapshot = {
   conversation: ConversationFeedItem;
   feedQueryHashes: string[];
   /** Set for a nested Thread: the feed row whose `threads` held it. */
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 };
 
 const archiveConversationMutationKey = [
@@ -132,12 +139,12 @@ type ArchiveConversationMutationContext = {
   detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
   previousArchivedSnapshot?: ArchivedConversationSnapshot;
   previousDetail?: ConversationDetailReport;
-  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
+  previousFeeds: Array<[readonly unknown[], ConversationFeedCache | undefined]>;
 };
 
 export type PendingArchiveConversationUpdate = {
   archived: boolean;
-  conversation?: ConversationSummaryReport;
+  conversation?: ConversationSummaryReport | undefined;
   conversationId: string;
 };
 
@@ -208,7 +215,7 @@ export function useConversationPageArchiveResult(
     if (status === "success") onArchived(conversation);
     else onArchiveError(conversation, true);
     // Clear the state so a reload or a later restore does not report again.
-    navigate(
+    void navigate(
       { hash: location.hash, search: location.search },
       { replace: true, state: null },
     );
@@ -268,7 +275,7 @@ export function archiveConversationMutationOptions(
         queryClient.cancelQueries({ queryKey: detailQueryKey }),
       ]);
       const previousFeeds =
-        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
+        queryClient.getQueriesData<ConversationFeedCache>(conversationQueries);
       const previousDetail =
         queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
       const previousArchivedSnapshot =
@@ -276,28 +283,17 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also marks it read for this viewer; restore
-      // keeps the read state, because auto-archive does not mark it read.
-      const viewerMarks = args.archived
-        ? { archivedAt, unread: undefined }
-        : { archivedAt };
+      const viewerMarks = { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
-      const snapshot =
+      const archivedSnapshot =
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
-      const archivedSnapshot =
-        snapshot && args.archived
-          ? {
-              ...snapshot,
-              conversation: { ...snapshot.conversation, unread: undefined },
-            }
-          : snapshot;
 
-      previousFeeds.forEach(([queryKey, feed]) => {
-        if (!feed) return;
+      for (const [queryKey, feed] of previousFeeds) {
+        if (!feed) continue;
         const conversationExists = Boolean(
-          findFeedRow(feed.conversations, conversationId),
+          findFeedRow(conversationFeedCacheRows(feed), conversationId),
         );
         const feedStatus = conversationFeedStatus(queryKey);
         const shouldRestore =
@@ -306,39 +302,35 @@ export function archiveConversationMutationOptions(
           Boolean(archivedSnapshot) &&
           feedStatus !== "archived";
         const restoreParentId = archivedSnapshot?.parentConversationId;
-        const conversations = !shouldRestore
-          ? markFeedConversation(
-              feed.conversations,
-              conversationId,
-              viewerMarks,
-            )
-          : restoreParentId
-            ? withRestoredThread(feed.conversations, restoreParentId, {
-                ...archivedSnapshot!.conversation,
-                archivedAt: null,
-              })
-            : [
-                ...feed.conversations,
-                { ...archivedSnapshot!.conversation, archivedAt: null },
-              ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
-        queryClient.setQueryData<ConversationFeed>(queryKey, {
-          ...feed,
-          // The feed nests Threads under their root, so hide an archived
-          // Thread there too.
-          conversations: args.archived
-            ? withoutThreads(
-                conversations,
-                (thread) => thread.conversationId === conversationId,
-              )
-            : conversations,
-        });
-      });
-      queryClient.setQueryData<ConversationSnapshot>(
-        detailQueryKey,
-        (detail) =>
-          detail
-            ? { ...detail, ...viewerMarks, detailEtag: undefined }
-            : detail,
+        queryClient.setQueryData<ConversationFeedCache>(
+          queryKey,
+          mapConversationFeedCache(feed, (pageRows, first) => {
+            const conversations = !shouldRestore
+              ? patchFeedConversation(pageRows, conversationId, viewerMarks)
+              : restoreParentId
+                ? withRestoredThread(pageRows, restoreParentId, {
+                    ...archivedSnapshot.conversation,
+                    archivedAt: null,
+                  })
+                : first
+                  ? [
+                      ...pageRows,
+                      { ...archivedSnapshot!.conversation, archivedAt: null },
+                    ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
+                  : pageRows;
+            // The feed nests Threads under their root, so hide an archived
+            // Thread there too.
+            return args.archived
+              ? withoutThreads(
+                  conversations,
+                  (thread) => thread.conversationId === conversationId,
+                )
+              : conversations;
+          }),
+        );
+      }
+      queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
+        detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -353,9 +345,9 @@ export function archiveConversationMutationOptions(
       } satisfies ArchiveConversationMutationContext;
     },
     onError: (_error, _args, context) => {
-      context?.previousFeeds.forEach(([queryKey, feed]) => {
+      for (const [queryKey, feed] of context?.previousFeeds ?? []) {
         queryClient.setQueryData(queryKey, feed);
-      });
+      }
       if (context) {
         queryClient.setQueryData(
           context.detailQueryKey,
@@ -397,12 +389,11 @@ export function archiveConversationMutationOptions(
     },
     onSettled: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // Location and Person pages count and list archived Conversations.
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which Location lists it.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which People list it.
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         queryClient.invalidateQueries({ predicate: isTreeArchiveRead }),
       ]);
@@ -411,13 +402,15 @@ export function archiveConversationMutationOptions(
 }
 
 function buildArchivedConversationSnapshot(
-  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
+  feeds: Array<[readonly unknown[], ConversationFeedCache | undefined]>,
   conversationId: string,
 ): ArchivedConversationSnapshot | undefined {
   let found: ReturnType<typeof findFeedRow>;
   const feedQueryHashes: string[] = [];
   for (const [queryKey, feed] of feeds) {
-    const feedRow = feed && findFeedRow(feed.conversations, conversationId);
+    const feedRow = feed
+      ? findFeedRow(conversationFeedCacheRows(feed), conversationId)
+      : undefined;
     if (!feedRow) continue;
     found ??= feedRow;
     feedQueryHashes.push(JSON.stringify(queryKey));
@@ -452,7 +445,7 @@ export function applyPendingArchiveUpdate(
 }
 
 /** Drop matching Threads from the nested `threads` of rows, at any depth. */
-export function withoutThreads<T extends { threads?: T[] }>(
+export function withoutThreads<T extends { threads?: T[] | undefined }>(
   rows: T[],
   isDropped: (thread: T) => boolean,
 ): T[] {

@@ -77,7 +77,8 @@ describe("Asking a Person", () => {
     const delivery = await run(heartbeat());
 
     expect(askedRequests(delivery)).not.toHaveLength(0);
-    expect(toolCallsOf("finishAutomationRun", delivery)).not.toHaveLength(0);
+    // The card is the answer, so the run posts nothing else.
+    expect(toolCallsOf("noReply", delivery)).not.toHaveLength(0);
   });
 
   test("when a child agent is blocked on input that only the person has, the parent adds an action item and does not ask in text", async ({

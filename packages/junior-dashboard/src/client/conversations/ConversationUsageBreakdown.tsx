@@ -41,7 +41,7 @@ import {
 
 /** One token type of a model, shown as an indented row under the model. */
 type BreakdownPart = {
-  cost?: string;
+  cost?: string | undefined;
   count: string;
   label: string;
 };
@@ -51,7 +51,7 @@ type BreakdownRow = {
   count: string;
   key: string;
   label: ReactNode;
-  parts?: BreakdownPart[];
+  parts?: BreakdownPart[] | undefined;
 };
 
 const NOT_RECORDED = "—";
@@ -99,7 +99,7 @@ function BreakdownTable(props: {
   countLabel: string;
   label: string;
   rows: BreakdownRow[];
-  total?: { cost: string; count: string; label: string };
+  total?: { cost: string; count: string; label: string } | undefined;
 }) {
   return (
     <Table
@@ -230,7 +230,7 @@ function BreakdownTable(props: {
 /** True when the Conversation has model or auxiliary usage to break down. */
 export function hasConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
 }): boolean {
   if (!props.conversation) return false;
   const auxiliaryCosts =
@@ -246,7 +246,7 @@ export function hasConversationUsageBreakdown(props: {
  */
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
 }) {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
     return null;

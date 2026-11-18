@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 
 const conversationMemoryListSchema = z
   .object({
@@ -119,8 +119,8 @@ export type MemoryJump = OpenMemoryPopover & { seq: number };
 
 /** Shared memory popover state for one Conversation page. */
 export type ConversationMemoryState = {
-  list?: ConversationMemoryList;
-  open?: OpenMemoryPopover;
+  list?: ConversationMemoryList | undefined;
+  open?: OpenMemoryPopover | undefined;
   setOpen(open: OpenMemoryPopover | undefined): void;
 };
 

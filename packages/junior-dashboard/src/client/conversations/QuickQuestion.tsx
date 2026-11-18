@@ -37,6 +37,7 @@ import {
   selectionMarkdown,
 } from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 const HIGHLIGHT_NAME = "quick-question";
 const STARTER_PROMPTS = ["Explain this", "Is this right?", "What's the risk?"];
@@ -89,7 +90,7 @@ function readSelection(
   const message = element?.closest<HTMLElement>(
     "[data-quick-question-message-id]",
   );
-  const messageId = message?.dataset.quickQuestionMessageId;
+  const messageId = message?.dataset["quickQuestionMessageId"];
   if (!message || !messageId || !root.contains(message)) return undefined;
   return { messageId, quote, range: range.cloneRange() };
 }
@@ -247,7 +248,7 @@ export function QuickQuestionSelectionButton(props: {
       <Button
         className="h-8 text-dashboard-text"
         onClick={() => take(onAsk)}
-        variant="quiet"
+        variant="ghost"
       >
         Quick question
       </Button>
@@ -259,7 +260,7 @@ export function QuickQuestionSelectionButton(props: {
               onRespond(markdownQuote(selectionMarkdown(range))),
             )
           }
-          variant="quiet"
+          variant="ghost"
         >
           Respond
         </Button>
@@ -277,7 +278,7 @@ function useAskQuickQuestion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      forkId?: string;
+      forkId?: string | undefined;
       /** The composer key of this ask, so a retry cannot add the question twice. */
       idempotencyKey: string;
       messageId: string;
@@ -322,10 +323,7 @@ function useKeepQuickQuestion() {
         `/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
         {},
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSuccess: () => invalidateConversationFeeds(queryClient),
   });
 }
 
@@ -438,21 +436,30 @@ export function QuickQuestionPanel(props: {
   const me = useDashboardCoreData().data?.me.user;
   const viewerName = me?.name?.trim() || me?.email || "You";
   const agentName = getDashboardAgentName();
+  // A starter prompt has no draft to hold, so the panel shows it while the
+  // ask is sent. It belongs to the thread that sent it.
+  const [sending, setSending] = useState<{ text: string; threadId: string }>();
+  const starter = sending?.threadId === thread.id ? sending.text : undefined;
   const fork = useQuery(
     conversationDetailQueryOptions(thread.forkId, {
       fastPollUntilMs: thread.askedAtMs && thread.askedAtMs + 10_000,
     }),
   ).data;
   const saved = forkThreadMessages(fork, thread.messageId);
-  const unsaved = thread.asked
-    .slice(saved.filter((message) => message.role === "user").length)
-    .map((text) => ({ role: "user" as const, text }));
+  const unsaved = [
+    ...thread.asked.slice(
+      saved.filter((message) => message.role === "user").length,
+    ),
+    ...(starter ? [starter] : []),
+  ].map((text) => ({ role: "user" as const, text }));
   const messages = [...saved, ...unsaved];
-  // A failed Turn ends without an answer. The person can then ask again.
+  // Think only once the question shows. A typed question stays in the
+  // composer until the ask is accepted. A failed Turn ends without an
+  // answer, and the person can then ask again.
   const thinking =
-    props.pending ||
     unsaved.length > 0 ||
     (fork?.status === "active" && messages.at(-1)?.role === "user");
+  const busy = props.pending || thinking;
 
   useEffect(() => {
     footerRef.current?.querySelector("textarea")?.focus();
@@ -498,14 +505,23 @@ export function QuickQuestionPanel(props: {
             <div className="flex flex-wrap gap-2">
               {STARTER_PROMPTS.map((prompt) => (
                 <Button
+                  variant="outline"
                   className="h-7 rounded-full px-2.5 text-xs"
                   key={prompt}
                   // Each click is a new ask. The panel shows the error.
-                  onClick={() =>
+                  onClick={() => {
+                    const send = { text: prompt, threadId: thread.id };
+                    setSending(send);
+                    // A late result must not clear a newer send.
                     void props
                       .onSubmit(prompt, crypto.randomUUID())
                       .catch(() => {})
-                  }
+                      .finally(() =>
+                        setSending((current) =>
+                          current === send ? undefined : current,
+                        ),
+                      );
+                  }}
                 >
                   {prompt}
                 </Button>
@@ -546,7 +562,7 @@ export function QuickQuestionPanel(props: {
         <div className="grid gap-1.5 px-3 pt-2 pb-2" ref={footerRef}>
           <ConversationComposer
             compact
-            disabled={thinking}
+            disabled={busy}
             draftId={`quick-question:${props.conversationId}`}
             error={
               props.error
@@ -569,7 +585,7 @@ export function QuickQuestionPanel(props: {
               Closing discards this question.
             </span>
             <KeepAsForkButton
-              disabled={thinking}
+              disabled={busy}
               forkId={thread.forkId}
               // A new thread needs a new keep request.
               key={thread.id}
@@ -582,7 +598,10 @@ export function QuickQuestionPanel(props: {
 }
 
 /** Keep the hidden fork: it shows in lists and is no longer read-only. */
-function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
+function KeepAsForkButton(props: {
+  disabled: boolean;
+  forkId?: string | undefined;
+}) {
   const navigate = useNavigate();
   const keep = useKeepQuickQuestion();
   const forkId = props.forkId;
@@ -593,10 +612,10 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
       onClick={() =>
         forkId &&
         keep.mutate(forkId, {
-          onSuccess: () => navigate(conversationPath(forkId)),
+          onSuccess: () => void navigate(conversationPath(forkId)),
         })
       }
-      variant="quiet"
+      variant="ghost"
     >
       <GitFork aria-hidden="true" size={13} />
       {keep.isError ? "Retry keep" : "Keep as fork"}

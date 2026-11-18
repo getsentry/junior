@@ -44,9 +44,9 @@ describe("conversation privacy metadata", () => {
       payload,
     );
 
-    expect(metadata.keys).toHaveLength(20);
-    expect(metadata.keys).toContain("privateKey0");
-    expect(metadata.keys).not.toContain("privateKey20");
+    expect(metadata["keys"]).toHaveLength(20);
+    expect(metadata["keys"]).toContain("privateKey0");
+    expect(metadata["keys"]).not.toContain("privateKey20");
     expect(attributes["gen_ai.tool.call.arguments.keys"]).toHaveLength(20);
     expect(attributes["gen_ai.tool.call.arguments.keys"]).toContain(
       "privateKey0",

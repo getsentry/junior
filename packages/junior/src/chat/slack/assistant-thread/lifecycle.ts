@@ -5,7 +5,7 @@ import { normalizeSlackConversationId } from "@/chat/slack/client";
 interface AssistantThreadLifecycleEvent {
   channelId: string;
   threadTs: string;
-  sourceChannelId?: string;
+  sourceChannelId?: string | undefined;
   getSlackAdapter: () => SlackAdapter;
 }
 

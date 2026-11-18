@@ -9,8 +9,9 @@ import {
   parseSkillInvocation,
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
-import type { SkillMetadata } from "@/chat/skills";
+import type { Skill, SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
+import { renderTaskInput } from "@/chat/task-input";
 
 async function writeSkillFile(
   rootDir: string,
@@ -42,7 +43,7 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skills-default-"),
     );
-    const originalSkillDirs = process.env.SKILL_DIRS;
+    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     await writeSkillFile(tempRoot, "brief", [
       "---",
@@ -64,7 +65,7 @@ describe("skills", () => {
     ]);
 
     resetSkillDiscoveryCache();
-    process.env.SKILL_DIRS = tempRoot;
+    process.env["SKILL_DIRS"] = tempRoot;
 
     try {
       const skills = await discoverSkills();
@@ -75,9 +76,9 @@ describe("skills", () => {
     } finally {
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
+        delete process.env["SKILL_DIRS"];
       } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
+        process.env["SKILL_DIRS"] = originalSkillDirs;
       }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -147,6 +148,20 @@ describe("skills", () => {
     });
   });
 
+  it("parses $skill inside Automation task input and Slack code", () => {
+    // A scheduled run's text starts with the instruction inside its tag.
+    expect(
+      parseSkillInvocation(
+        renderTaskInput({ instructions: "$weather-lookup San Francisco" }),
+        stubSkills,
+      ),
+    ).toEqual({ skillName: "weather-lookup" });
+    expect(
+      parseSkillInvocation("run `$brief` github: octocat", stubSkills),
+    ).toEqual({ skillName: "brief" });
+    expect(parseSkillInvocation("costs US$brief", stubSkills)).toBeNull();
+  });
+
   it("ignores environment variables and keeps scanning for a skill", () => {
     expect(
       parseSkillInvocation("use $HOME then $brief github: octocat", stubSkills),
@@ -172,6 +187,23 @@ describe("skills", () => {
     ).toBeNull();
   });
 
+  it("prefers $skill over /skill and scans past paths", () => {
+    expect(parseSkillInvocation("/brief then $sum 1 2", stubSkills)).toEqual({
+      skillName: "sum",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then /brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then $brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(parseSkillInvocation("read /brief/notes.md", stubSkills)).toBeNull();
+  });
+
   it("returns null for an unregistered skill reference", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
     expect(parseSkillInvocation("$jr link sentry", stubSkills)).toBeNull();
@@ -181,17 +213,30 @@ describe("skills", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
-  it("lets the model load a user-callable skill only when the user invoked it", () => {
-    const names = (invoked: string | undefined) =>
-      loadableSkills(stubSkills, invoked).map((skill) => skill.name);
+  it("lets the model load a manual-only skill only when invoked or referenced by a loaded skill", () => {
+    const names = (invoked: string | undefined, loaded: Skill[] = []) =>
+      loadableSkills(stubSkills, invoked, loaded).map((skill) => skill.name);
+    const loaded = (body: string): Skill => ({ ...stubSkills[0]!, body });
 
     expect(names(undefined)).toEqual(["brief", "sum"]);
     expect(names("weather-lookup")).toEqual(["brief", "sum", "weather-lookup"]);
+    expect(names(undefined, [loaded("Then run $weather-lookup.")])).toEqual([
+      "brief",
+      "sum",
+      "weather-lookup",
+    ]);
+    expect(
+      names(undefined, [
+        loaded(
+          "Use **weather-lookup**, `weather-lookup`, or $weather-lookup-v2.",
+        ),
+      ]),
+    ).toEqual(["brief", "sum"]);
   });
 
   it("skips skills with unsupported capability metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
-    const originalSkillDirs = process.env.SKILL_DIRS;
+    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     try {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
@@ -213,7 +258,7 @@ describe("skills", () => {
         "",
         "# Body",
       ]);
-      process.env.SKILL_DIRS = tempRoot;
+      process.env["SKILL_DIRS"] = tempRoot;
       resetSkillDiscoveryCache();
 
       const skills = await discoverSkills();
@@ -224,9 +269,9 @@ describe("skills", () => {
     } finally {
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
+        delete process.env["SKILL_DIRS"];
       } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
+        process.env["SKILL_DIRS"] = originalSkillDirs;
       }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

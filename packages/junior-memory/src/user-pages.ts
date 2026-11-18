@@ -21,7 +21,7 @@ function originLabel(origin: MemoryView["origin"]): string {
   return "Other";
 }
 
-function pageEmptyText(input: { query?: string }): string {
+function pageEmptyText(input: { query?: string | undefined }): string {
   if (input.query) return "No memories matched your search.";
   return "No memories yet.";
 }
@@ -32,7 +32,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     id: "memories",
     label: "Memories",
     navigation: "profile",
-    description: "Public memories Junior can use across conversations.",
+    description: "Public memories that every conversation can use.",
     async read(ctx, input) {
       const page = await listMemories(ctx.db as MemoryDb, {
         cursor: input.cursor,

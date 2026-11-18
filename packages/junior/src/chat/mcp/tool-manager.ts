@@ -15,6 +15,7 @@ import {
   type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import {
   logAudit,
   logWarn,
@@ -33,6 +34,7 @@ import {
   estimateTextTokens,
   textCharsForTokens,
 } from "@/chat/services/token-estimate";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
@@ -66,8 +68,8 @@ function summarizeStructuredContent(value: unknown): string | undefined {
 function summarizeResourcePart(part: {
   type: "resource";
   resource:
-    | { uri: string; text: string; mimeType?: string }
-    | { uri: string; blob: string; mimeType?: string };
+    | { uri: string; text: string; mimeType?: string | undefined }
+    | { uri: string; blob: string; mimeType?: string | undefined };
 }): string {
   if ("text" in part.resource) {
     return part.resource.text;
@@ -304,6 +306,8 @@ export interface McpToolManagerOptions {
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /** Run attributes, such as the Source, for each tool call audit event. */
+  auditAttributes?: Record<string, string>;
   fetch?: typeof fetch;
   onAuthorizationRequired?: (
     provider: string,
@@ -454,19 +458,17 @@ export class McpToolManager {
   }
 
   async close(): Promise<void> {
-    let firstError: unknown;
-
-    for (const client of [
-      ...this.clientsByProvider.values(),
-      ...this.actorClientsByProvider.values(),
-      ...this.forgottenClients,
-    ]) {
-      try {
-        await client.close();
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
+    const limit = pLimit(FAN_OUT_CONCURRENCY);
+    const closed = await Promise.allSettled(
+      [
+        ...this.clientsByProvider.values(),
+        ...this.actorClientsByProvider.values(),
+        ...this.forgottenClients,
+      ].map((client) => limit(() => client.close())),
+    );
+    const firstError: unknown = closed.find(
+      (result) => result.status === "rejected",
+    )?.reason;
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();
@@ -635,7 +637,7 @@ export class McpToolManager {
   }
 
   /**
-   * Record a completed call to an audit tool, with the account that made it.
+   * Record a completed tool call, with the account that made it.
    * Arguments stay out: the conversation history keeps them.
    */
   private logToolCallAudit(
@@ -647,6 +649,7 @@ export class McpToolManager {
       this.serviceAccountProviders.has(plugin.manifest.name) &&
       serviceAccountAllows(plugin.manifest, { tool: toolName });
     logAudit("mcp.tool_call.completed", {
+      ...this.options.auditAttributes,
       ...attributes,
       "mcp.method.name": "tools/call",
       "app.plugin.name": plugin.manifest.name,
@@ -674,7 +677,7 @@ export class McpToolManager {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
-      parameters: tool.inputSchema as Record<string, unknown>,
+      parameters: tool.inputSchema,
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),
@@ -729,14 +732,12 @@ export class McpToolManager {
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }
-              if (plugin.manifest.mcp?.auditTools?.includes(tool.name)) {
-                this.logToolCallAudit(plugin, tool.name, {
-                  "gen_ai.tool.name": managedToolName,
-                  ...(options?.toolCallId
-                    ? { "gen_ai.tool.call.id": options.toolCallId }
-                    : undefined),
-                });
-              }
+              this.logToolCallAudit(plugin, tool.name, {
+                "gen_ai.tool.name": managedToolName,
+                ...(options?.toolCallId
+                  ? { "gen_ai.tool.call.id": options.toolCallId }
+                  : undefined),
+              });
 
               const resultAttribute = serializeMcpPayload(
                 result,
@@ -809,7 +810,10 @@ export class McpToolManager {
               };
               setSpanAttributes(errorAttributes);
               if (error instanceof McpToolError) {
-                logWarn("mcp.tool_call.failed", errorAttributes);
+                logWarn("mcp.tool_call.failed", {
+                  ...this.options.auditAttributes,
+                  ...errorAttributes,
+                });
               }
               throw error;
             }

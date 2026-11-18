@@ -17,6 +17,10 @@ import {
   type EventTriggerDescription,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import {
+  automationSkillNameSchema,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
@@ -48,6 +52,9 @@ export const automationCostWindowsSchema = z
   })
   .strict();
 
+/** Runs each summary carries for the list run strip. */
+export const AUTOMATION_RECENT_RUN_LIMIT = 20;
+
 const automationSummaryBaseSchema = z.object({
   costUsd: automationCostWindowsSchema,
   credentialMode: z.enum(["creator", "system"]),
@@ -57,17 +64,31 @@ const automationSummaryBaseSchema = z.object({
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
-  instruction: z.string().min(1),
-  /** People mentioned in the instruction, resolved at read time. */
+  task: automationTaskSchema,
+  /** People mentioned in the task text, resolved at read time. */
   mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
   ownedByViewer: z.boolean(),
+  /** Newest terminal runs, oldest first, so the list can show recent health. */
+  recentRuns: z
+    .array(
+      z
+        .object({
+          durationMs: z.number().finite().nonnegative().optional(),
+          executedAt: z.string().datetime(),
+          status: z.enum(["blocked", "completed", "failed"]),
+        })
+        .strict(),
+    )
+    .max(AUTOMATION_RECENT_RUN_LIMIT),
   runs: automationRunWindowsSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
-  /** Short display title; falls back from instruction when unset. */
+  /** Short display title; falls back from the task when unset. */
   title: z.string().min(1),
+  /** Linked Conversation cost of every run, since the Automation was created. */
+  totalCostUsd: z.number().finite().nonnegative(),
   totalRuns: z.number().int().nonnegative(),
 });
 
@@ -108,21 +129,27 @@ export const automationSummarySchema = z.discriminatedUnion("kind", [
   eventAutomationSummarySchema,
 ]);
 
+/**
+ * Totals that read every run of an Automation. Only the Automation page
+ * shows them, so list rows leave them out.
+ */
+const AUTOMATION_TOTAL_FIELDS = {
+  costUsd: true,
+  runs: true,
+  totalCostUsd: true,
+  totalRuns: true,
+} as const;
+
+/** One list row: a summary without the totals that read every run. */
+export const automationListItemSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationSummarySchema.omit(AUTOMATION_TOTAL_FIELDS),
+  eventAutomationSummarySchema.omit(AUTOMATION_TOTAL_FIELDS),
+]);
+
 /** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) execution bucket key. */
 export const automationMetricBucketSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
-
-/** One UTC day/hour of completed automation executions stacked by automation type. */
-export const automationExecutionDaySchema = z
-  .object({
-    /** Linked conversation spend for executions in this bucket. */
-    costUsd: z.number().finite().nonnegative(),
-    date: automationMetricBucketSchema,
-    event: z.number().int().nonnegative(),
-    scheduled: z.number().int().nonnegative(),
-  })
-  .strict();
 
 export const automationListQuerySchema = z
   .object({
@@ -133,8 +160,18 @@ export const automationListQuerySchema = z
       .enum(["all", "active", "blocked", "paused", "completed", "unavailable"])
       .default("all"),
     creator: z.string().max(300).optional(),
+    /** Only the viewer's own Automations, inside any scope. */
+    owner: z.literal("me").optional(),
     destination: z.string().max(300).optional(),
-    sort: z.enum(["newest", "oldest", "title"]).default("newest"),
+    /** Only Automations that run this skill. */
+    skill: automationSkillNameSchema.optional(),
+    /**
+     * `activity` lists the latest run or creation first, and pages with
+     * `cursor`. The other orders page with `page`.
+     */
+    sort: z.enum(["newest", "oldest", "title", "activity"]).default("newest"),
+    /** `nextCursor` of the page before, with `sort=activity`. */
+    cursor: z.string().min(1).max(1_000).optional(),
     page: z.coerce.number().int().min(1).max(1_000_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),
   })
@@ -149,10 +186,9 @@ const automationFilterOptionSchema = z
 
 export const automationListSchema = z
   .object({
-    executionDays: z.array(automationExecutionDaySchema),
-    executionHours: z.array(automationExecutionDaySchema).optional(),
-    executionSixHours: z.array(automationExecutionDaySchema).optional(),
-    automations: z.array(automationSummarySchema),
+    automations: z.array(automationListItemSchema),
+    /** Set when more rows follow `sort=activity`. Pass it as `cursor`. */
+    nextCursor: z.string().min(1).optional(),
     total: z.number().int().nonnegative(),
     page: z.number().int().positive(),
     pageSize: z.number().int().positive(),
@@ -168,6 +204,17 @@ export const automationListSchema = z
     destinations: z.array(automationFilterOptionSchema),
   })
   .strict();
+
+/**
+ * One `sort=activity` page. A page after the first omits the total, counts,
+ * and filter options, because the first page already has them.
+ */
+export const automationListPageSchema = automationListSchema.partial({
+  total: true,
+  counts: true,
+  creators: true,
+  destinations: true,
+});
 
 export const automationParamsSchema = z
   .object({
@@ -211,6 +258,8 @@ export const automationExecutionStatusDaySchema = z
   .object({
     blocked: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
+    /** Linked Conversation cost of the runs in this bucket. */
+    costUsd: z.number().finite().nonnegative(),
     date: automationMetricBucketSchema,
     failed: z.number().int().nonnegative(),
   })
@@ -222,7 +271,6 @@ export const automationExecutionListSchema = z
     executionHours: z.array(automationExecutionStatusDaySchema).optional(),
     executionSixHours: z.array(automationExecutionStatusDaySchema).optional(),
     executions: z.array(automationExecutionSchema),
-    automation: automationSummarySchema,
     truncated: z.boolean(),
   })
   .strict();
@@ -244,7 +292,7 @@ export const automationRunListSchema = z
 
 const automationDefinitionFields = {
   title: z.string().nullable(),
-  instruction: z.string(),
+  task: automationTaskSchema,
 };
 
 const automationVersionFields = {
@@ -326,9 +374,6 @@ export type AutomationVersionList = z.output<
   typeof automationVersionListSchema
 >;
 
-export type AutomationExecutionDay = z.output<
-  typeof automationExecutionDaySchema
->;
 export type AutomationExecutionStatusDay = z.output<
   typeof automationExecutionStatusDaySchema
 >;
@@ -340,7 +385,9 @@ export type AutomationRun = z.output<typeof automationRunSchema>;
 export type AutomationRunList = z.output<typeof automationRunListSchema>;
 export type AutomationRunWindows = z.output<typeof automationRunWindowsSchema>;
 export type AutomationSummary = z.output<typeof automationSummarySchema>;
+export type AutomationListItem = z.output<typeof automationListItemSchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
+export type AutomationListPage = z.output<typeof automationListPageSchema>;
 
 export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
@@ -365,7 +412,7 @@ const automationEditBaseSchema = scheduledAutomationSchema
     id: z.string().min(1),
     revision: automationRevisionSchema,
     title: z.string().nullable(),
-    instruction: z.string(),
+    task: automationTaskSchema,
     credentialMode: z.enum(["system", "creator"]),
     outcomes: z.array(taskOutcomeSchema).max(5),
     /** Creator-only rules apply when false. */

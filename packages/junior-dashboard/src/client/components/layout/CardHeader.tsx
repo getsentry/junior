@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../../styles";
+import { SectionTitle } from "./SectionTitle";
 
 /** Render a consistent card heading, supporting copy, and optional trailing content. */
 export function CardHeader(props: {
@@ -17,9 +18,7 @@ export function CardHeader(props: {
       )}
     >
       <div>
-        <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-          {props.title}
-        </h3>
+        <SectionTitle>{props.title}</SectionTitle>
         {props.description ? (
           <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             {props.description}

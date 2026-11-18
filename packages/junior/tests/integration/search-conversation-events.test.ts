@@ -1,5 +1,10 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
+import {
+  createWebSource,
+  type PluginEmbedder,
+} from "@sentry/junior-plugin-api";
 import {
   recordWebConversationActivity,
   webActorFromUser,
@@ -10,14 +15,25 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import { embedConversationEvents } from "@/chat/conversations/event-embedding";
+import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { juniorConversationEvents } from "@/db/schema";
+import {
+  juniorConversationEventEmbeddings,
+  juniorConversationEvents,
+} from "@/db/schema";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 
 function context(): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId: CURRENT_CONVERSATION_ID,
     destination: {
       platform: "slack",
@@ -44,6 +60,7 @@ function context(): ToolRuntimeContext {
 /** Tool context of a Turn in a web Conversation. */
 function webContext(conversationId: string): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId,
     destination: { platform: "local", conversationId },
     source: createWebSource(conversationId),
@@ -55,8 +72,9 @@ function webContext(conversationId: string): ToolRuntimeContext {
 async function executeTool(
   input: Record<string, unknown>,
   toolContext: ToolRuntimeContext = context(),
+  options: { embedder?: PluginEmbedder } = {},
 ) {
-  const tool = createSearchConversationEventsTool(toolContext);
+  const tool = createSearchConversationEventsTool(toolContext, options);
   if (!tool.execute) throw new Error("tool execute function missing");
   return await tool.execute(input, {});
 }
@@ -79,6 +97,29 @@ async function recordSlackConversation(args: {
     visibility: args.visibility,
   });
 }
+
+// The fake embedding model puts text about one topic on one axis, so a query
+// matches an event by meaning without a shared word.
+const TOPICS = [/pull request|getsentry\/junior#\d+/i, /lease/i];
+function topicVector(text: string): number[] {
+  return [...TOPICS.map((topic) => (topic.test(text) ? 1 : 0)), 0.01];
+}
+const embedder: PluginEmbedder = {
+  model: "test-embedding",
+  provider: "test",
+  async embedTexts({ texts }) {
+    // Like the real embedder, which trims each text.
+    if (texts.some((text) => text.trim() === "")) {
+      throw new Error("Embedding input is empty");
+    }
+    return {
+      dimensions: TOPICS.length + 1,
+      model: "test-embedding",
+      provider: "test",
+      vectors: texts.map(topicVector),
+    };
+  },
+};
 
 describe("searchConversationEvents", () => {
   afterEach(async () => {
@@ -248,6 +289,258 @@ describe("searchConversationEvents", () => {
     expect(oversized.events[0]!.data).not.toHaveProperty("json_preview");
   });
 
+  it("finds history that compaction replaced by words and by meaning", async () => {
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: CURRENT_CONVERSATION_ID,
+      visibility: "public",
+    });
+    const events = getConversationEventStore();
+    const filler = "worker 3 ok\n".repeat(2_000);
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "user_message",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>dashboard skills</runtime-turn-context>",
+            },
+            // Text cut inside an emoji keeps half of its surrogate pair,
+            // which Postgres jsonb rejects.
+            {
+              type: "text",
+              text: `Why does the queue test fail? ${"\u{1F600}".slice(0, 1)}`,
+            },
+          ],
+          timestamp: 1,
+          provenance: { authority: "instruction" },
+        },
+      },
+      {
+        createdAtMs: 2,
+        data: {
+          type: "assistant_message",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "bash",
+              arguments: { command: "cat logs/ci-7421.log", attempt: 7733 },
+            },
+          ],
+          timestamp: 2,
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          type: "tool_result",
+          toolCallId: "call-1",
+          toolName: "bash",
+          isError: false,
+          content: [
+            {
+              type: "text",
+              text: `${filler}lease token mismatch at packages/junior/src/chat/queue/lease.ts:42\n${filler}`,
+            },
+          ],
+          timestamp: 3,
+        },
+      },
+      {
+        createdAtMs: 4,
+        data: {
+          type: "message",
+          messageId: "m-fix",
+          role: "assistant",
+          text: "Opened getsentry/junior#4821 with the fix.",
+        },
+      },
+    ]);
+    await events.replaceHistory(CURRENT_CONVERSATION_ID, {
+      createdAtMs: 5,
+      data: {
+        type: "compaction",
+        modelId: "test/model",
+        replacementHistory: [],
+      },
+    });
+
+    // A file name matches inside a path, and the excerpt shows the line.
+    const byPath = await executeTool({ query: "lease.ts" });
+    expect(byPath.events[0]).toMatchObject({
+      seq: 2,
+      data: { type: "tool_result", payload_omitted: true },
+      excerpt: expect.stringContaining(
+        "lease token mismatch at packages/junior/src/chat/queue/lease.ts:42",
+      ),
+    });
+    expect(byPath).not.toHaveProperty("has_older");
+    await expect(executeTool({ query: "ci-7421.log" })).resolves.toMatchObject({
+      events: [{ seq: 1, data: { type: "assistant_message" } }],
+    });
+    // A number inside a file name matches on its own.
+    await expect(executeTool({ query: "7421" })).resolves.toMatchObject({
+      events: [{ seq: 1, data: { type: "assistant_message" } }],
+    });
+    await expect(executeTool({ query: "7733" })).resolves.toMatchObject({
+      events: [{ seq: 1, data: { type: "assistant_message" } }],
+    });
+    await expect(executeTool({ query: "4821" })).resolves.toMatchObject({
+      events: [
+        { seq: 3, excerpt: "Opened getsentry/junior#4821 with the fix." },
+      ],
+    });
+    // Runtime context is not searchable text.
+    await expect(executeTool({ query: "dashboard" })).resolves.toMatchObject({
+      events: [],
+    });
+    await expect(
+      executeTool({ query: "lease.ts", types: ["message"] }),
+    ).resolves.toMatchObject({ events: [] });
+
+    // Without vectors, a query with no shared word finds nothing.
+    await expect(
+      executeTool({ query: "pull request" }, context(), {
+        embedder,
+      }),
+    ).resolves.toMatchObject({ events: [] });
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(4);
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(0);
+    const byMeaning = await executeTool({ query: "pull request" }, context(), {
+      embedder,
+    });
+    expect(byMeaning.events[0]).toMatchObject({ seq: 3 });
+    // A vector of another model and size does not break the search.
+    await getDb()
+      .update(juniorConversationEventEmbeddings)
+      .set({ dimensions: 2, embedding: [1, 0], model: "other-embedding" })
+      .where(eq(juniorConversationEventEmbeddings.seq, 1));
+    const mixedSizes = await executeTool({ query: "pull request" }, context(), {
+      embedder,
+    });
+    expect(mixedSizes.events[0]).toMatchObject({ seq: 3 });
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(1);
+
+    // Stored lexemes give the same matches. Newer events without stored
+    // lexemes stay searchable, and an event without text gets empty ones.
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(4);
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(0);
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 6,
+        data: {
+          type: "user_message",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>queue</runtime-turn-context>",
+            },
+          ],
+          timestamp: 6,
+          provenance: { authority: "instruction" },
+        },
+      },
+      {
+        createdAtMs: 7,
+        data: {
+          type: "message",
+          messageId: "m-retry",
+          role: "assistant",
+          text: "Retried the lease fix in getsentry/junior#4822.",
+        },
+      },
+      {
+        createdAtMs: 8,
+        data: {
+          type: "message",
+          messageId: "m-blank",
+          role: "assistant",
+          text: "\n\t\n",
+        },
+      },
+      {
+        createdAtMs: 9,
+        data: {
+          type: "message",
+          messageId: "m-no-break-space",
+          role: "assistant",
+          text: "\u00a0",
+        },
+      },
+    ]);
+    // Text that trims to nothing is not embedded and does not stop the rest.
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(1);
+    await expect(executeTool({ query: "lease.ts" })).resolves.toMatchObject({
+      events: [{ seq: 2 }],
+    });
+    await expect(executeTool({ query: "dashboard" })).resolves.toMatchObject({
+      events: [],
+    });
+    await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
+      events: [{ seq: 6 }],
+    });
+    await expect(
+      storeConversationEventLexemes(getDb(), CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(4);
+    await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
+      events: [{ seq: 6 }],
+    });
+
+    // The input of the running Turn is in the model context already, so a
+    // search in that Turn does not return it.
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 10,
+        data: {
+          type: "message",
+          messageId: "m-ask",
+          role: "user",
+          text: "Which lease.ts line failed?",
+        },
+      },
+      {
+        createdAtMs: 11,
+        data: {
+          type: "turn_started",
+          turnId: "turn-ask",
+          inputMessageIds: ["m-ask"],
+          surface: "slack",
+        },
+      },
+      {
+        createdAtMs: 12,
+        data: {
+          type: "user_message",
+          content: [{ type: "text", text: "Which lease.ts line failed?" }],
+          timestamp: 12,
+          provenance: { authority: "instruction" },
+        },
+      },
+    ]);
+    const withInput = await executeTool({ query: "lease.ts" });
+    expect(
+      withInput.events.map((event) => event.seq).sort((a, b) => a - b),
+    ).toEqual([2, 9, 11]);
+    await expect(
+      executeTool({ query: "lease.ts" }, { ...context(), turnId: "turn-ask" }),
+    ).resolves.toMatchObject({ events: [{ seq: 2 }] });
+  });
+
   it("omits replacement history from unknown event versions", async () => {
     await recordSlackConversation({
       channelId: "C123",
@@ -384,7 +677,7 @@ describe("searchConversationEvents", () => {
       `Conversation events are not accessible: ${privateConversationId}`,
     );
     await expect(
-      executeTool({ conversation_id: privateWebConversationId }),
+      executeTool({ conversation_id: privateWebConversationId, query: "x" }),
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateWebConversationId}`,
     );
@@ -396,6 +689,26 @@ describe("searchConversationEvents", () => {
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateConversationId}`,
     );
+    // Another Conversation in the same private channel or DM has the same
+    // audience, so it reads the private Conversation.
+    const privateNeighborId = "slack:D999:1700000000.350000";
+    await recordSlackConversation({
+      channelId: "D999",
+      conversationId: privateNeighborId,
+      visibility: "private",
+    });
+    await getConversationEventStore().append(
+      privateConversationId,
+      turnStarted,
+    );
+    await expect(
+      executeTool(
+        { conversation_id: privateConversationId, types: ["turn_started"] },
+        { ...context(), conversationId: privateNeighborId },
+      ),
+    ).resolves.toMatchObject({
+      events: [{ data: { type: "turn_started" } }],
+    });
     // A missing Conversation gets the same error as a private one.
     const missingConversationId = "slack:C404:1700000000.400000";
     await expect(

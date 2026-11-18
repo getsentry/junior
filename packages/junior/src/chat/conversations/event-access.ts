@@ -1,16 +1,15 @@
 /**
  * Read access to a Conversation's durable event log for model-facing tools,
  * under `policies/conversation-access.md`. The current Conversation tree is
- * always readable. Other Conversations are readable only when they are
- * public.
+ * always readable. Other Conversations are readable when they are public or
+ * at the same Destination as the current one.
  */
 import {
   canAccessConversation,
-  type ConversationReach,
+  readConversationAccessFromSql,
 } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -26,35 +25,21 @@ export async function assertCanReadConversationEvents(
   const notAccessible = new ToolInputError(
     `Conversation events are not accessible: ${conversationId}`,
   );
-  const conversationStore = getConversationStore();
-  const target = await conversationStore.get({ conversationId });
-  if (!target) {
-    throw notAccessible;
-  }
-
-  const requester = await resolveRequesterReach(
-    conversationStore,
-    context.conversationId,
-  );
-  // A Conversation with a parent uses the root privacy boundary.
-  const targetRootConversationId = await resolveRootConversationId(
-    conversationStore,
-    conversationId,
-    target.parentConversationId,
-  );
-  const targetRoot =
-    targetRootConversationId === conversationId
-      ? target
-      : await conversationStore.get({
-          conversationId: targetRootConversationId,
-        });
+  const [access, target] = await Promise.all([
+    readConversationAccessFromSql(getDb(), [
+      context.conversationId,
+      conversationId,
+    ]),
+    getConversationStore().get({ conversationId }),
+  ]);
+  const targetAccess = access.get(conversationId);
   if (
+    !target ||
+    !targetAccess ||
     !canAccessConversation({
-      requester,
-      target: {
-        rootConversationId: targetRootConversationId,
-        visibility: targetRoot?.visibility ?? target.visibility ?? null,
-      },
+      // A requester that is not stored yet reaches only public targets.
+      requester: access.get(context.conversationId) ?? { visibility: null },
+      target: targetAccess,
     })
   ) {
     throw notAccessible;
@@ -64,53 +49,6 @@ export async function assertCanReadConversationEvents(
       `Conversation transcript was purged: ${conversationId}`,
     );
   }
-}
-
-async function resolveRequesterReach(
-  conversationStore: ConversationStore,
-  currentConversationId: string,
-): Promise<ConversationReach> {
-  const current = await conversationStore.get({
-    conversationId: currentConversationId,
-  });
-  // Only the requester tree matters for read access, not its visibility.
-  const rootConversationId = current
-    ? await resolveRootConversationId(
-        conversationStore,
-        currentConversationId,
-        current.parentConversationId,
-      )
-    : currentConversationId;
-  return { rootConversationId, visibility: null };
-}
-
-async function resolveRootConversationId(
-  conversationStore: ConversationStore,
-  conversationId: string,
-  parentConversationId: string | undefined,
-): Promise<string> {
-  if (!parentConversationId) {
-    return conversationId;
-  }
-
-  let cursor: string | undefined = parentConversationId;
-  const seen = new Set<string>([conversationId]);
-  while (cursor) {
-    if (seen.has(cursor)) {
-      // Fail closed on cycles; callers treat missing root as unauthorized.
-      return conversationId;
-    }
-    seen.add(cursor);
-    const parent = await conversationStore.get({ conversationId: cursor });
-    if (!parent) {
-      return conversationId;
-    }
-    if (!parent.parentConversationId) {
-      return parent.conversationId;
-    }
-    cursor = parent.parentConversationId;
-  }
-  return conversationId;
 }
 
 /** Replace replacement history with its item count; the original events stay readable by seq. */

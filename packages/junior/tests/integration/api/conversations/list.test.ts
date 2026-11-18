@@ -164,6 +164,10 @@ describe("conversation list API", () => {
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
       });
+      const invalidCursor = await app.request(
+        "http://localhost/api/conversations?cursor=not-a-cursor",
+      );
+      expect(invalidCursor.status).toBe(400);
     } finally {
       await fixture.close();
     }

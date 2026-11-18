@@ -9,11 +9,13 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { microUsdToUsd } from "@/db/micro-usd";
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
   type ConversationMetricBucket,
 } from "./metric-buckets";
+import { readOutcomeBuckets, type OutcomeBucket } from "./outcome-buckets";
 import type {
   ConversationMetricDay,
   ConversationStatsItem,
@@ -46,6 +48,7 @@ function emptyStatsItem(label: string): ConversationStatsItem {
   };
 }
 
+// Usage and event JSON keep provider USD floats, so their sums need rounding.
 function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
 }
@@ -167,44 +170,57 @@ type MetricRow = {
   date: string;
   durationMs: number;
   inputTokens: number | null;
+  mergedCodeChangeCostUsd: number | null;
+  mergedCodeChanges: number | null;
+  outcomeCostUsd: number | null;
+  outcomes: number | null;
   tokens: number | null;
 };
+
+function emptyMetricRow(date: string): MetricRow {
+  return {
+    cachedInputTokens: null,
+    cacheCreationTokens: null,
+    conversations: 0,
+    costUsd: null,
+    date,
+    durationMs: 0,
+    inputTokens: null,
+    mergedCodeChangeCostUsd: null,
+    mergedCodeChanges: null,
+    outcomeCostUsd: null,
+    outcomes: null,
+    tokens: null,
+  };
+}
 
 function applyMetricBuckets(
   rows: Array<Pick<MetricRow, "conversations" | "date">>,
   metrics: ConversationMetricBucket[],
+  outcomes: OutcomeBucket[],
 ): MetricRow[] {
   const byDate = new Map<string, MetricRow>(
     rows.map((row) => [
       row.date,
-      {
-        ...row,
-        cachedInputTokens: null,
-        cacheCreationTokens: null,
-        costUsd: null,
-        durationMs: 0,
-        inputTokens: null,
-        tokens: null,
-      },
+      { ...emptyMetricRow(row.date), conversations: row.conversations },
     ]),
   );
+  for (const bucket of outcomes) {
+    const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
+    row.mergedCodeChanges = bucket.mergedCodeChanges;
+    row.mergedCodeChangeCostUsd = bucket.mergedCodeChangeCostUsd;
+    row.outcomes = bucket.outcomes;
+    row.outcomeCostUsd = bucket.outcomeCostUsd;
+    byDate.set(bucket.date, row);
+  }
   for (const metric of metrics) {
-    const row = byDate.get(metric.date) ?? {
-      cachedInputTokens: null,
-      cacheCreationTokens: null,
-      conversations: 0,
-      costUsd: null,
-      date: metric.date,
-      durationMs: 0,
-      inputTokens: null,
-      tokens: null,
-    };
+    const row = byDate.get(metric.date) ?? emptyMetricRow(metric.date);
     if (metric.metric === "cached_input_tokens") {
       row.cachedInputTokens = metric.value;
     } else if (metric.metric === "cache_creation_tokens") {
       row.cacheCreationTokens = metric.value;
-    } else if (metric.metric === "cost_usd") {
-      row.costUsd = metric.value;
+    } else if (metric.metric === "cost_micro_usd") {
+      row.costUsd = microUsdToUsd(metric.value);
     } else if (metric.metric === "duration_ms") {
       row.durationMs = metric.value;
     } else if (metric.metric === "input_tokens") {
@@ -236,6 +252,10 @@ function metricPoint(
         costUsd?: number | null;
         durationMs?: number;
         inputTokens?: number | null;
+        mergedCodeChangeCostUsd?: number | null;
+        mergedCodeChanges?: number | null;
+        outcomeCostUsd?: number | null;
+        outcomes?: number | null;
         tokens?: number | null;
       }
     | undefined,
@@ -252,10 +272,21 @@ function metricPoint(
       ? { cacheCreationTokens: row.cacheCreationTokens }
       : undefined),
     ...(row?.costUsd !== null && row?.costUsd !== undefined
-      ? { costUsd: addUsd(undefined, row.costUsd) }
+      ? { costUsd: row.costUsd }
       : undefined),
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
+      : undefined),
+    ...(row?.outcomes !== null && row?.outcomes !== undefined
+      ? {
+          mergedCodeChangeCostUsd: addUsd(
+            undefined,
+            row.mergedCodeChangeCostUsd ?? 0,
+          ),
+          mergedCodeChanges: row.mergedCodeChanges ?? 0,
+          outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
+          outcomes: row.outcomes,
+        }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
       ? { tokens: row.tokens }
@@ -424,6 +455,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     metricHourRows,
     dayMetrics,
     hourMetrics,
+    dayOutcomes,
+    hourOutcomes,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -535,12 +568,18 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       start: hourStart,
       end,
     }),
+    readOutcomeBuckets(db, { bucket: "day", start, end }),
+    readOutcomeBuckets(db, { bucket: "hour", start: hourStart, end }),
   ]);
   return {
     actorRows,
     locationRows,
-    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics),
-    metricRows: applyMetricBuckets(metricRows, dayMetrics),
+    metricHourRows: applyMetricBuckets(
+      metricHourRows,
+      hourMetrics,
+      hourOutcomes,
+    ),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayOutcomes),
     totals: totalsRows[0],
   };
 }

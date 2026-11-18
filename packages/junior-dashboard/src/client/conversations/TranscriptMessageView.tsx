@@ -1,9 +1,9 @@
 import { ForkConversationButton } from "./ForkConversationButton";
 import {
   TranscriptAttachments,
-  TranscriptLocalImages,
+  TranscriptLocalFiles,
 } from "./TranscriptAttachment";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectRow } from "./ObjectRow";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
@@ -12,7 +12,6 @@ import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 
 import {
-  formatMessageTimestamp,
   transcriptMessageActor,
   transcriptMessageActorLabel,
   transcriptRoleKind,
@@ -30,10 +29,12 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
+import { formatMessageTimestamp } from "../time";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
+    footer?: ReactNode;
     message: TranscriptViewMessage;
     conversation: ConversationTranscript;
   }) {
@@ -89,6 +90,7 @@ export const TranscriptMessageView = memo(
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
               <ReviewItemChangeRow
+                conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
                 record={record}
@@ -102,14 +104,14 @@ export const TranscriptMessageView = memo(
             conversationId={props.conversation.conversationId}
           />
         ) : null}
-        {props.message.images?.length ? (
-          <TranscriptLocalImages images={props.message.images} />
+        {props.message.files?.length ? (
+          <TranscriptLocalFiles files={props.message.files} />
         ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {
             case "object":
               return (
-                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                <ObjectRow key={`${card.plugin}:${card.key}`} card={card} />
               );
             case "automation":
               return (
@@ -117,6 +119,7 @@ export const TranscriptMessageView = memo(
               );
           }
         })}
+        {props.footer}
         {roleKind === "assistant" &&
         !props.message.pending &&
         (rawText || forkMessageId) ? (
@@ -144,6 +147,7 @@ export const TranscriptMessageView = memo(
     );
   },
   (previous, next) =>
+    previous.footer === next.footer &&
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
@@ -154,6 +158,7 @@ export const TranscriptMessageView = memo(
 
 /** Render a redacted primary chat message without exposing body content. */
 export function RedactedMessageView(props: {
+  footer?: ReactNode;
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
@@ -170,13 +175,14 @@ export function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         {props.message.parts.map((_part, index) => (
           <div className="py-1" key={index}>
             <RedactedMarker />
           </div>
         ))}
       </div>
+      {props.footer}
     </TranscriptMessageShell>
   );
 }

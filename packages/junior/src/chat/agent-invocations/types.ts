@@ -4,8 +4,7 @@ import {
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { ConversationReportStatus } from "@/api/schema/conversation";
-import type { ConversationKind } from "@/chat/conversations/store";
+import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
@@ -29,7 +28,7 @@ export const agentNameSchema = exactStringSchema.max(64);
 export const CHILD_AGENT_KINDS = [
   "thread",
   "task",
-] as const satisfies readonly Exclude<ConversationKind, "root">[];
+] as const satisfies readonly ChildConversationKind[];
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
 /** `messageAgent` target for the parent of a child agent. */
@@ -65,6 +64,8 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    /** The child starts with its parent's history. */
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -102,12 +103,23 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })
   .strict();
 
 export type AgentBinding = z.output<typeof agentBindingSchema>;
+/**
+ * The child agent that sent one reply or message to its parent. A child that
+ * an Agent invocation names has its `invocationId` and `actor`. A child that
+ * none names has only its child Conversation.
+ */
+export type ChildAgentSender = Pick<
+  AgentInvocation,
+  "agentName" | "childConversationId" | "parentConversationId" | "title"
+> &
+  Partial<Pick<AgentInvocation, "actor" | "invocationId">>;
 export type AgentInvocation = z.output<typeof agentInvocationSchema>;
 export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type TerminalAgentInvocation = Extract<
@@ -128,8 +140,6 @@ export type ChildAgent = {
   /** Set while the child Conversation is archived. */
   archivedAtMs?: number;
   childConversationId: string;
-  /** Status of the child Conversation's own work. */
-  conversationStatus: ConversationReportStatus;
   /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
   errorMessage?: string;
   kind: ChildAgentKind;

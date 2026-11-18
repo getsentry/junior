@@ -14,7 +14,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+  from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
+  never changes. `automation` is a top-level Conversation for an Automation run.
+  A Conversation is the default. Slack is a Destination attached to it. Do not
+  say "web Conversation".
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -63,6 +66,9 @@ Canonical words for Junior code and docs. One concept, one word.
   defaults that need people use Participants. A Conversation has no owner.
   The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
   Participant like any other, and is kept only for attribution such as spend.
+- **Work owner**: who a Turn's work is credited to, for attribution only: the
+  person Actor of the Turn, else the root Actor if it is a person, else the
+  system record that started the root, such as an Automation run.
 - **Admin**: a User with the Junior-wide admin role, set only by
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed
@@ -80,6 +86,20 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Quiet Event**: a Watch Event that the code that made the Watch marked
+  quiet. Core saves it as a Conversation note and starts no Turn.
+- **Event author**: the account that wrote the content of an Event, such as
+  a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
+  with no author is a system Event. The author never becomes the Turn Actor.
+- **Author trust**: core's decision for one Event author, `AuthorTrust`:
+  `system`, `trusted`, or `untrusted` with a reason. Core makes it once at
+  ingest. `chat/identities/trust.ts` owns it and every other trust check
+  (Slack ingress, Identity dispatch, allowed emails).
+- **Trusted author**: an Event author with `trusted` Author trust. Like a
+  Slack author, a linked person writes the Event's Message. Any other author
+  is an Untrusted author: the Event runs as system context, and the task
+  input says the account is not verified. Either way, the author's own text
+  is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops
@@ -95,27 +115,32 @@ Canonical words for Junior code and docs. One concept, one word.
   boundary. **Follow-up message**: one that waits for the next Turn.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
+- **Answer**: the tool call that ends a gated Turn: `reply`, `noReply`, or
+  `reportBlocked`. A Turn that a person did not open is gated on kinds
+  `automation`, `thread`, and `task`. Its final response is not delivered.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
-  tool calls), or `tool_result` event. Not `model_item` or `model_message`.
+  tool calls), `tool_result`, or `system_message` (a Pi system message after
+  the leading one) event. Not `model_item` or `model_message`.
 - **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
-- **Quiet message**: an Event Turn's assistant Message that the agent marked
-  as routine. Junior stores it but does not deliver it to the Location.
+- **Quiet message**: a Message in older history that Junior stored but did
+  not deliver. A `noReply` note is not a Message.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
-  its terminal result. Never shorten to "invocation".
+  its terminal result. Only a `reply`, or a failed, blocked, or stopped
+  result, reaches the parent. Never shorten to "invocation".
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: it starts an Agent invocation or steers a running one.
@@ -126,8 +151,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
-- **Annotation**: saved facts or a link on one Conversation. An update sends
-  no message.
+- **Annotation**: saved facts or a link on one Conversation, for an object
+  that it created or changed. A read saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
   Annotation types for provider work items, meetings, and other objects.
 - **Message card**: a Message's reference to an Annotation, shown with the
@@ -136,6 +161,12 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Done** (Inbox): the view of done and dismissed Review items. Not
+  Conversation archive.
+- **Plan**: the durable list of work that outlives a Turn in one
+  Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
+  entry, with a status and one Assignee: the Conversation's own agent, one of
+  its child agents, or a User. Each change gets a new version.
 
 ## Naming
 

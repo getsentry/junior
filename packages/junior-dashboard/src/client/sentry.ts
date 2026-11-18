@@ -1,11 +1,15 @@
 import {
   BrowserClient,
-  browserTracingIntegration,
+  browserTracingCoreIntegration,
   captureFeedback,
   defaultStackParser,
+  fetchTracingIntegration,
   getActiveSpan,
   getClient,
+  getIsolationScope,
   getRootSpan,
+  linkedTracesIntegration,
+  longTasksIntegration,
   makeFetchTransport,
   setCurrentClient,
   spanToJSON,
@@ -15,6 +19,12 @@ import {
   type Span,
 } from "@sentry/browser";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
+import {
+  DASHBOARD_VERSION_DRIFT_MESSAGE,
+  dashboardServerVersion,
+  dashboardVersionDrift,
+} from "./dashboard-version";
+import type { UiShell } from "./uiShell";
 
 declare global {
   interface Window {
@@ -35,12 +45,13 @@ const QUERY_ATTRIBUTE_KEYS = [
   "url.fragment",
   "url.query",
 ];
-// Element selectors in interaction and web vital attributes include these
-// attribute values, such as a conversation title in an `aria-label`. The SDK
-// does not escape quotes in values, so a value can contain `"]` and fake
-// selector parts. Cutting from the first marker to the last `"]` removes every
-// value, at the cost of the selector parts between them.
-const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt)="/;
+// Element selectors in interaction, web vital, and long animation frame
+// invoker attributes include these attribute values, such as a conversation
+// title in an `aria-label` or an image URL in a `src`. The SDK does not escape
+// quotes in values, so a value can contain `"]` and fake selector parts.
+// Cutting from the first marker to the last `"]` removes every value, at the
+// cost of the selector parts between them.
+const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt|src)="/;
 
 function scrubSelector(value: string): string {
   const start = value.search(ELEMENT_ATTRIBUTE_START);
@@ -53,7 +64,9 @@ function scrubSelector(value: string): string {
 
 function scrubAttribute(value: string): string {
   // Page and API URLs carry search text in the query string.
-  if (/^https?:\/\//.test(value)) return value.split(/[?#]/, 1)[0] ?? value;
+  if (value.startsWith("https://") || value.startsWith("http://")) {
+    return value.split(/[?#]/, 1)[0] ?? value;
+  }
   return scrubSelector(value);
 }
 
@@ -123,6 +136,22 @@ export function recordTranscriptShown(): void {
   }).end();
 }
 
+// Response schemas are strict, so a tab that still runs an older bundle can
+// reject a field that a newer server added. Name that cause, not the schema
+// issues. The version drift banner offers the refresh.
+function parseResponseValue<T>(
+  response: Response,
+  schema: { parse: (value: unknown) => T },
+  value: unknown,
+): T {
+  try {
+    return schema.parse(value);
+  } catch (error) {
+    if (!dashboardVersionDrift(dashboardServerVersion(response))) throw error;
+    throw new Error(DASHBOARD_VERSION_DRIFT_MESSAGE, { cause: error });
+  }
+}
+
 /**
  * Read, parse, and validate a dashboard API response body. While a pageload
  * or navigation is open, a span times it from the response headers to the
@@ -134,7 +163,9 @@ export async function readResponseJson<T>(
   schema: { parse: (value: unknown) => T },
 ): Promise<T> {
   const routeSpan = activeRouteSpan();
-  if (!routeSpan) return schema.parse(await response.json());
+  if (!routeSpan) {
+    return parseResponseValue(response, schema, await response.json());
+  }
   const span = startInactiveSpan({
     attributes: {
       "url.path": response.url ? new URL(response.url).pathname : undefined,
@@ -148,7 +179,7 @@ export async function readResponseJson<T>(
     const downloadedAt = performance.now();
     const json: unknown = JSON.parse(text);
     const parsedAt = performance.now();
-    const value = schema.parse(json);
+    const value = parseResponseValue(response, schema, json);
     span.setAttributes({
       "app.dashboard.response.chars": text.length,
       "app.dashboard.response.json_parse_ms": Math.round(
@@ -189,56 +220,89 @@ export function recordMovedVersions(
 /** A reader's rating of one Junior Reply. */
 export type ReplyRating = "good" | "bad";
 
-/** Whether the server gave the browser a DSN, so Reply ratings can be sent. */
-export function canSendReplyRating(): boolean {
+/** What feedback from the Send feedback dialog is about. */
+export type FeedbackTopic = "agent" | "new_ui";
+
+/**
+ * One reader feedback: a rating of one Junior Reply, or feedback from the
+ * Send feedback dialog about the agent or the new UI.
+ */
+type DashboardFeedback =
+  | {
+      conversationId: string;
+      kind: "reply_rating";
+      messageId: string;
+      rating: ReplyRating;
+    }
+  | { kind: "general"; topic: FeedbackTopic };
+
+/** Whether the server gave the browser a DSN, so feedback can be sent. */
+export function canSendFeedback(): boolean {
   return getClient() !== undefined;
 }
 
 /**
- * Send a reader's rating of one Junior Reply as Sentry user feedback, with
- * the reader's name and email and their optional comment. It holds no Reply
- * text or page query.
+ * Send one reader feedback as Sentry user feedback, with the reader's name
+ * and email and their comment. It holds no Reply text or page query.
  */
-export function sendReplyRating(props: {
-  comment?: string;
-  conversationId: string;
-  messageId: string;
-  rating: ReplyRating;
-  reader?: { email: string; name?: string | null };
-}): void {
-  const label = props.rating === "good" ? "Good reply" : "Bad reply";
+export function sendFeedback(
+  props: DashboardFeedback & {
+    comment?: string;
+    reader?: { email: string; name?: string | null };
+  },
+): void {
+  const { comment, reader } = props;
+  const fields =
+    props.kind === "general"
+      ? {
+          label: undefined,
+          source: "dashboard_feedback",
+          tags: { "app.feedback.topic": props.topic },
+        }
+      : {
+          label: props.rating === "good" ? "Good reply" : "Bad reply",
+          source: "dashboard_reply_rating",
+          tags: {
+            "app.reply.rating": props.rating,
+            "gen_ai.conversation.id": props.conversationId,
+            "messaging.message.id": props.messageId,
+          },
+        };
   captureFeedback({
-    email: props.reader?.email,
-    message: props.comment ? `${label}: ${props.comment}` : label,
-    name: props.reader?.name || undefined,
-    source: "dashboard_reply_rating",
-    tags: {
-      "app.reply.rating": props.rating,
-      "gen_ai.conversation.id": props.conversationId,
-      "messaging.message.id": props.messageId,
-    },
+    email: reader?.email,
+    message: [fields.label, comment].filter(Boolean).join(": "),
+    name: reader?.name || undefined,
+    source: fields.source,
+    tags: fields.tags,
     url: `${window.location.origin}${window.location.pathname}`,
   });
 }
 
 /**
- * Send dashboard performance spans and Reply ratings to the server's Sentry
+ * Send dashboard performance spans and reader feedback to the server's Sentry
  * project when the server provides a DSN. Error events and breadcrumbs stay
- * off: they could carry conversation content shown on the page.
+ * off: they could carry conversation content shown on the page. Every span
+ * and feedback names the UI shell in `app.dashboard.ui`.
  */
-export function initDashboardSentry(): void {
+export function initDashboardSentry(ui: UiShell): void {
   const config = window.__JUNIOR_DASHBOARD_SENTRY__;
   if (!config) return;
+  // Feedback reads scope tags, and streamed spans read scope attributes.
+  const scope = getIsolationScope();
+  scope.setTag("app.dashboard.ui", ui);
+  scope.setAttribute("app.dashboard.ui", ui);
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
-  // A client built directly bundles only browser tracing.
+  // A client built directly bundles only the integrations listed here.
+  // `browserTracingIntegration` would also bundle web vitals, XHR, and
+  // resource spans.
   const client = new BrowserClient({
     ...config,
     beforeSendSpan: scrubSpan,
     stackParser: defaultStackParser,
     transport: makeFetchTransport,
     integrations: [
-      browserTracingIntegration({
+      browserTracingCoreIntegration({
         beforeStartSpan: (options) =>
           options.op === "pageload"
             ? {
@@ -250,6 +314,9 @@ export function initDashboardSentry(): void {
               }
             : options,
       }),
+      fetchTracingIntegration(),
+      linkedTracesIntegration(),
+      longTasksIntegration(),
     ],
   });
   setCurrentClient(client);

@@ -29,6 +29,8 @@ export type DispatchStatus =
 export type SlackDispatchOptions = Omit<DispatchOptions, "destination"> & {
   destination: SlackDestination;
   outcomes?: TaskOutcome[];
+  /** Skill that an Automation run invokes. Core-owned; plugins cannot set it. */
+  skill?: string;
 };
 
 export interface BoundDispatchOptions extends Omit<
@@ -48,7 +50,7 @@ export interface DispatchRecord {
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
   destinationVisibility: DestinationVisibility;
-  errorMessage?: string;
+  errorMessage?: string | undefined;
   id: string;
   idempotencyKey: string;
   input: string;
@@ -59,6 +61,8 @@ export interface DispatchRecord {
   source: Source;
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
+  /** Skill that the run invokes, from an Automation in skill mode. */
+  skill?: string;
   status: DispatchStatus;
   /** Title of the dispatch Conversation, saved when it is created. */
   title?: string;
@@ -77,18 +81,26 @@ export interface DispatchCreateResult {
   status: "created" | "already_exists";
 }
 
-export type DispatchTurnOutcome =
-  | "awaiting_resume"
-  | "blocked"
-  | "completed"
-  | "failed";
-
-/** Facts returned by one attempt to advance a dispatched turn. */
-export interface DispatchTurnResult {
-  errorMessage?: string;
-  outcome?: DispatchTurnOutcome;
-  resultMessageTs?: string;
-}
+/**
+ * Where one attempt left a dispatched turn. Each turn state maps to one
+ * outcome.
+ */
+export type DispatchTurnResult =
+  | { outcome: "awaiting_resume" }
+  | {
+      errorMessage?: string;
+      outcome: "blocked" | "completed" | "failed";
+      resultMessageTs?: string;
+    }
+  /**
+   * The turn failed before it recorded a dispatch outcome. A later Run may
+   * still finish it.
+   */
+  | { errorMessage?: string; outcome: "retryable" }
+  /** The turn record is running, but no Run advances it. */
+  | { outcome: "still_running" }
+  /** The dispatch has no turn record. */
+  | { outcome: "not_started" };
 
 /** Dispatch-owned authority supplied to the shared turn runtime. */
 export interface DispatchTurnContext {

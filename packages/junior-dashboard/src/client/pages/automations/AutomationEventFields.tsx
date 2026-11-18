@@ -30,6 +30,8 @@ import {
   FieldDescription,
   FieldError,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { FormNotice } from "../../components/FormNotice";
@@ -127,7 +129,9 @@ export function AutomationEventFields(props: {
       {catalog.error ? (
         <FormNotice title="Event choices could not be loaded.">
           Saved values are kept.{" "}
-          <Button onClick={() => void catalog.refetch()}>Try again</Button>
+          <Button variant="outline" onClick={() => void catalog.refetch()}>
+            Try again
+          </Button>
         </FormNotice>
       ) : catalog.isPending ? (
         <p role="status">Loading event choices…</p>
@@ -214,7 +218,7 @@ export function AutomationEventFields(props: {
                 if (replacement) props.onChange(replacement);
                 setReplacement(undefined);
               }}
-              variant="primary"
+              variant="default"
             >
               Replace trigger
             </AlertDialogAction>
@@ -262,20 +266,22 @@ export function AutomationEventFields(props: {
               </FieldDescription>
             </Field>
           )}
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">
+          <FieldSet className="gap-0">
+            <FieldLegend className="mb-2" variant="label">
               Run on these events
-            </legend>
+            </FieldLegend>
             <div className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis">
               {choices.events.map((event) => (
-                <label
+                <Field
                   key={event}
-                  className="flex min-h-11 cursor-pointer items-start gap-3 px-3 py-3 text-sm"
+                  className="min-h-11 items-start px-3 py-3"
+                  orientation="horizontal"
                 >
                   <Checkbox
                     className="mt-0.5"
                     checked={props.value.events.includes(event)}
                     disabled={props.disabled}
+                    id={`trigger-event-${event}`}
                     onCheckedChange={() =>
                       props.onChange({
                         ...props.value,
@@ -285,7 +291,11 @@ export function AutomationEventFields(props: {
                       })
                     }
                   />
-                  <span className="min-w-0 break-words">
+                  {/* Block, not the label flex row, so the reach text wraps inline. */}
+                  <FieldLabel
+                    className="block min-w-0 font-normal break-words"
+                    htmlFor={`trigger-event-${event}`}
+                  >
                     {eventTypeText(event)}
                     {anyResource && reachText(source, event) ? (
                       <span className="text-dashboard-text-muted">
@@ -293,14 +303,16 @@ export function AutomationEventFields(props: {
                         · {reachText(source, event)}
                       </span>
                     ) : null}
-                  </span>
-                </label>
+                  </FieldLabel>
+                </Field>
               ))}
             </div>
-          </fieldset>
+          </FieldSet>
           {matchFields.length ? (
-            <fieldset className="grid gap-4">
-              <legend className="mb-3 text-sm font-semibold">Filters</legend>
+            <FieldSet>
+              <FieldLegend className="mb-3" variant="label">
+                Filters
+              </FieldLegend>
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
                 Every filter must match. Leave a filter blank to match any
                 value.
@@ -321,7 +333,10 @@ export function AutomationEventFields(props: {
                         <span className="break-all">
                           {eventMatchFilterText(key, field, value)}
                         </span>{" "}
-                        <Button onClick={() => setMatch(key, undefined)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => setMatch(key, undefined)}
+                        >
                           Remove filter
                         </Button>
                       </div>
@@ -375,12 +390,13 @@ export function AutomationEventFields(props: {
                   </Field>
                 );
               })}
-            </fieldset>
+            </FieldSet>
           ) : null}
         </>
       ) : null}
       {JSON.stringify(props.value) !== JSON.stringify(props.original) ? (
         <Button
+          variant="outline"
           className="w-fit"
           onClick={() => props.onChange(props.original)}
         >

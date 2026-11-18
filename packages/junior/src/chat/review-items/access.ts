@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -131,13 +132,12 @@ export function reviewItemLinkedTo(conversationId: string): SQL {
 }
 
 function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
-  return tenants.map(
-    (tenant) =>
-      and(
-        eq(juniorReviewItems.visibility, "public"),
-        eq(juniorReviewItems.provider, tenant.provider),
-        eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
-      )!,
+  return tenants.map((tenant) =>
+    and(
+      eq(juniorReviewItems.visibility, "public"),
+      eq(juniorReviewItems.provider, tenant.provider),
+      eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+    )!,
   );
 }
 
@@ -146,18 +146,21 @@ function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
  * Review item access test checks that they agree.
  */
 export function reviewItemVisibleTo(reader: ReviewItemReader): SQL {
-  // `or` of nothing is undefined, so `false` keeps the query closed.
-  return or(
-    sql`false`,
-    ...publicIn(reader.tenants ?? []),
-    ...(reader.userId ? [reviewItemAssignedTo(reader.userId)] : []),
-    ...(reader.conversationId
-      ? [reviewItemLinkedTo(reader.conversationId)]
-      : []),
-    ...(reader.automationId
-      ? [eq(juniorReviewItems.automationId, reader.automationId)]
-      : []),
-  )!;
+  // `or` of nothing is undefined, so `false` keeps the query closed. Do not
+  // put `false` inside the `or`: Postgres then cannot turn a lone assignee
+  // `exists` into a semi-join, and it scans every closed item.
+  return (
+    or(
+      ...publicIn(reader.tenants ?? []),
+      ...(reader.userId ? [reviewItemAssignedTo(reader.userId)] : []),
+      ...(reader.conversationId
+        ? [reviewItemLinkedTo(reader.conversationId)]
+        : []),
+      ...(reader.automationId
+        ? [eq(juniorReviewItems.automationId, reader.automationId)]
+        : []),
+    ) ?? sql`false`
+  );
 }
 
 /** Return whether a reader can see one Review item. */
@@ -279,6 +282,15 @@ export async function readReviewItemAgentScope(
  */
 export const PLUGIN_REVIEW_ITEM_KEY_PREFIX = "plugin:";
 
+/** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
+export function reviewItemPlugin(dedupeKey: string): string | undefined {
+  if (!dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return undefined;
+  const plugin = dedupeKey
+    .slice(PLUGIN_REVIEW_ITEM_KEY_PREFIX.length)
+    .split(":", 1)[0];
+  return plugin || undefined;
+}
+
 /**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public
@@ -366,16 +378,12 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const inConversation = new Set<string>();
-  for (const conversationId of new Set(args.conversationIds)) {
-    for (const id of await conversationParticipantUserIds(
-      getDb(),
-      conversationId,
-      others,
-    )) {
-      inConversation.add(id);
-    }
-  }
+  const participants = await mapBounded(
+    [...new Set(args.conversationIds)],
+    (conversationId) =>
+      conversationParticipantUserIds(getDb(), conversationId, others),
+  );
+  const inConversation = new Set(participants.flatMap((ids) => [...ids]));
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",
@@ -394,6 +402,19 @@ export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   if (item.assignedToEveryone) return true;
   if (item.assignees.length === 0) return true;
   return item.assignees.some((assignee) => assignee.userId === userId);
+}
+
+/**
+ * Return whether a Review item needs a User: an open `action` item that is
+ * assigned to them. `reviewItemNeedsUser` is the SQL form; keep the two the
+ * same.
+ */
+export function itemNeedsUser(item: ReviewItem, userId: string): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.assignees.some((assignee) => assignee.userId === userId)
+  );
 }
 
 /** Return whether a User is already the only assignee, so take does nothing. */

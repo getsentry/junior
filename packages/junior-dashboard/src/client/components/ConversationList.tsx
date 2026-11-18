@@ -1,12 +1,12 @@
 import { useNavigate } from "react-router";
 
 import { conversationPath } from "../conversations/conversationRoutes";
-import { formatTime } from "../format";
 import { cn } from "../styles";
 import type { Conversation, ConversationStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
+import { formatTime } from "../time";
 
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {
@@ -48,21 +48,19 @@ export function ConversationList(props: {
 
 function ConversationTableRow(props: {
   conversation: Conversation;
-  search?: string;
+  search?: string | undefined;
   selected?: boolean;
 }) {
+  const visualStatus = props.conversation.status;
   const navigate = useNavigate();
   const href = {
     pathname: conversationPath(props.conversation.id),
     search: props.search ?? "",
   };
-  const openConversation = () => navigate(href);
+  const openConversation = () => void navigate(href);
   return (
     <div
-      className={conversationRecordClass(
-        props.conversation.status,
-        props.selected,
-      )}
+      className={conversationRecordClass(visualStatus, props.selected)}
       onClick={openConversation}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

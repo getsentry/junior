@@ -15,6 +15,11 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
+import {
+  gitHubPullRequestCreateWatch,
+  gitHubPullRequestSubscription,
+} from "../../../junior-github/src/events/pull-request";
+import type { AutomationTask } from "@/chat/automations/task";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
@@ -28,6 +33,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
 import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -108,22 +114,24 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
 }
 
 /**
- * Link a GitHub login to a Slack person, as account linking does, so Events
- * that name the login resolve to that person.
+ * Link a GitHub account to a Slack person, as account linking does. Core
+ * trusts an Event author by the account id that GitHub sends as
+ * `sender.id`, never by login.
  */
 export async function insertLinkedGitHubIdentity(args: {
   author?: SlackAuthor;
+  id: number;
   login: string;
 }): Promise<void> {
   const slack = await insertSlackIdentity(resolveAuthor(args.author));
   if (!slack.userId) {
-    throw new Error("Slack identity has no Junior user to link");
+    throw new Error("Slack identity has no User to link");
   }
   await upsertLinkedIdentity(getSqlExecutor(), slack.userId, {
     handle: args.login,
     kind: "user",
     provider: "github",
-    providerSubjectId: `github-user-${args.login}`,
+    providerSubjectId: String(args.id),
   });
 }
 
@@ -169,7 +177,8 @@ export async function insertScheduledAutomation(args: {
    * An empty list stores no outcomes, so a successful run posts nothing.
    */
   sendTo?: SlackChannel[];
-  task: string;
+  /** An instruction, or the task of a skill run. */
+  task: string | AutomationTask;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
@@ -212,7 +221,10 @@ export async function insertScheduledAutomation(args: {
           timezone: "America/Los_Angeles",
         },
     status: "active",
-    task: { text: args.task },
+    task:
+      typeof args.task === "string"
+        ? { kind: "instruction", instruction: args.task }
+        : args.task,
     updatedAtMs: nowMs - 60_000,
   };
   await insertCreationThread(args.destination);
@@ -248,7 +260,7 @@ export async function insertEventAutomation(args: {
     destination: args.destination,
     destinationVisibility: "public",
     outcomes: [{ action: "send_message", destination: args.destination }],
-    task: { text: args.task },
+    task: { kind: "instruction", instruction: args.task },
     trigger: args.trigger,
   });
   return { id };
@@ -272,7 +284,7 @@ export async function insertReviewItem(args: {
 }): Promise<{ id: string }> {
   const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
   if (!identity.userId) {
-    throw new Error("insertReviewItem() needs an assignee with a Junior user");
+    throw new Error("insertReviewItem() needs an assignee with a User");
   }
   const conversationId = await insertCreationThread(args.destination);
   const item = await insertStoredReviewItem(getDb(), {
@@ -305,7 +317,7 @@ export async function insertWebReviewItem(args: {
   viewerEmail: string;
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
-  if (!user) throw new Error(`No Junior user for ${args.viewerEmail}`);
+  if (!user) throw new Error(`No User for ${args.viewerEmail}`);
   const item = await insertStoredReviewItem(getDb(), {
     addedByConversationId: args.conversationId,
     assignedToEveryone: false,
@@ -331,10 +343,12 @@ export async function insertWebReviewItem(args: {
 export async function insertWatch(args: {
   conversation: { conversationId: string };
   events: string[];
+  guidance?: Partial<Record<string, string>>;
   identifier: string;
   intent: string;
   label: string;
   namespace?: string;
+  quietEvents?: string[];
   resourceType: string;
 }): Promise<{ id: string }> {
   const nowMs = Date.now();
@@ -343,15 +357,39 @@ export async function insertWatch(args: {
       conversationId: args.conversation.conversationId,
       events: args.events,
       expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+      guidance: args.guidance,
       identifier: args.identifier,
       intent: args.intent,
       label: args.label,
       namespace: args.namespace ?? "github",
+      quietEvents: args.quietEvents,
       resourceType: args.resourceType,
     },
     { nowMs },
   );
   return { id: watch.id };
+}
+
+/**
+ * Add the Watch that the GitHub plugin adds after Junior opens a pull
+ * request, with the default intent. A draft also gets the draft guidance.
+ */
+export async function insertGitHubPullRequestWatch(args: {
+  conversation: { conversationId: string };
+  draft: boolean;
+  pullRequest: string;
+}): Promise<{ id: string }> {
+  const watch = gitHubPullRequestCreateWatch(
+    gitHubPullRequestSubscription(undefined)!,
+    { draft: args.draft },
+  );
+  return await insertWatch({
+    conversation: args.conversation,
+    ...watch,
+    identifier: args.pullRequest,
+    label: `GitHub PR ${args.pullRequest}`,
+    resourceType: "pull_request",
+  });
 }
 
 /**
@@ -373,6 +411,8 @@ export async function insertMemory(args: {
   const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
+    // Junior and the plugin type the same Drizzle client with separate schemas.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     getDb() as unknown as MemoryDb,
     {
       actor: {
@@ -428,4 +468,18 @@ export async function insertCredential(args: {
     scope: args.scope,
   });
   onTestFinished(() => store.delete(userId, args.provider));
+}
+
+/**
+ * Create an install-wide Workspace recipe. Workspaces are install-wide, so
+ * the recipe is deleted when the test finishes.
+ */
+export async function insertWorkspace(args: {
+  name: string;
+  repos: Array<{ provider: "github"; repo: string }>;
+}): Promise<void> {
+  const workspace = await createWorkspace(args);
+  onTestFinished(async () => {
+    await deleteWorkspace(workspace.id);
+  });
 }

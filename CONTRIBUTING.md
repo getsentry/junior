@@ -34,11 +34,12 @@ reopen the old one. Users with the `maintain` or `admin` role are exempt.
 
 ## Local Setup
 
-You need Node.js 24, pnpm, Docker, the Vercel CLI
-(`pnpm dlx vercel@latest`), and access to the Sentry Vercel team.
+You need Node.js 24, pnpm 10 or later, Docker, the Vercel CLI
+(`pnpm dlx vercel@latest`), and access to the Sentry Vercel team. pnpm
+switches to the version that `packageManager` in `package.json` pins.
 
 ```bash
-make   # pnpm install + dotagents install
+make   # pnpm install + pnpm build + dotagents install
 pnpm dlx vercel@latest login
 pnpm dlx vercel@latest switch
 pnpm dlx vercel@latest link --yes --scope sentry
@@ -51,16 +52,18 @@ dashboard mock data, and the `pnpm worktree` helper for isolated branches.
 
 ## Checks
 
-Run from the repo root:
+Run from the repo root. `pnpm install` does not build workspace packages.
+Typecheck and lint read the built declarations, so run `pnpm build` first.
 
 ```bash
+pnpm build
 pnpm test
 pnpm typecheck
 pnpm lint
 pnpm skills:check
 pnpm docs:check
 pnpm release:check
-pnpm build && pnpm package-types:check
+pnpm package-types:check
 ```
 
 `AGENTS.md` lists file-scoped test and eval commands. `contribute/testing.md` and
@@ -73,8 +76,6 @@ Write docs in ASD-STE100 English and use the words in `TERMINOLOGY.md`.
 - Internal docs: follow `policies/documentation.md`.
 - Public docs: follow `contribute/documentation-guidelines.md` and the `public-docs`
   skill.
-- `openspec/changes/` holds temporary plans. Plans cannot override policy.
-  Delete a plan when its work is complete.
 
 ## Slack Tunnel
 
@@ -120,6 +121,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
 - `@sentry/junior-restream`
+- `@sentry/junior-search`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
 - `@sentry/junior-xdotcom`

@@ -137,20 +137,42 @@ test("switches conversations from the command palette without a server search", 
   await expect(palette).toHaveCount(0);
 });
 
-test("a palette switch leaves the reply box hidden while Junior waits for an answer", async ({
+test("a palette switch focuses the question while Junior waits for an answer", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
   await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
-  // The question loads after the reply box shows.
+  // The question sits on a second page that loads after the reply box
+  // shows.
   let releaseQuestion = () => {};
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
   });
-  await page.route(`**/api/review-items/${question.id}`, async (route) => {
-    await questionHeld;
-    await route.fulfill({ json: question });
+  // A third page loads after the reader starts to type.
+  let lastPageSent = false;
+  let releaseLastPage = () => {};
+  const lastPageHeld = new Promise<void>((resolve) => {
+    releaseLastPage = resolve;
+  });
+  await page.route(`**/api/review-items?*`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
+      return route.fallback();
+    }
+    const cursor = url.searchParams.get("cursor");
+    if (!cursor) {
+      return route.fulfill({ json: { items: [], nextCursor: "page-2" } });
+    }
+    if (cursor === "page-2") {
+      await questionHeld;
+      return route.fulfill({
+        json: { items: [question], nextCursor: "page-3" },
+      });
+    }
+    await lastPageHeld;
+    await route.fulfill({ json: { items: [] } });
+    lastPageSent = true;
   });
   await page.goto(dashboard.baseURL);
 
@@ -163,9 +185,29 @@ test("a palette switch leaves the reply box hidden while Junior waits for an ans
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toBeVisible();
 
-  // Focus would keep the reply box shown, so the reader answers the question.
+  // The question takes focus, so a number key answers it at once.
   releaseQuestion();
-  await expect(composer).toBeHidden();
+  const docked = page.getByRole("region", {
+    name: `Question: ${question.title}`,
+  });
+  await expect(docked).toBeFocused();
+  await expect(composer).toBeVisible();
+
+  // The last page does not take the focus back from the message box.
+  await composer.click();
+  await composer.pressSequentially("Hold on");
+  releaseLastPage();
+  await expect.poll(() => lastPageSent).toBe(true);
+  // Let the app render the last page before the next keys.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await composer.pressSequentially(" 1");
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("Hold on 1");
 });
 
 test("jumps to a page from the command palette", async ({

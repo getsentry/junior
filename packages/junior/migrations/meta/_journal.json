@@ -663,8 +663,204 @@
     {
       "idx": 94,
       "version": "7",
-      "when": 1794267243361,
-      "tag": "0094_review_item_status_index",
+      "when": 1794266800377,
+      "tag": "0094_conversation_delivery_paused_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1794312577586,
+      "tag": "0095_web_linked_slack_identity_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1794333504935,
+      "tag": "0096_automation_task_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794344562301,
+      "tag": "0097_conversation_kind_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794349592269,
+      "tag": "0098_review_item_plugin_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794351117170,
+      "tag": "0099_conversation_last_message_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794360831303,
+      "tag": "0100_automation_task_kind_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794414686731,
+      "tag": "0101_drop_legacy_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794416510222,
+      "tag": "0102_code_change_last_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794424481991,
+      "tag": "0103_agent_invocation_fork",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794493721940,
+      "tag": "0104_code_change_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794515341853,
+      "tag": "0105_attachment_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794521047106,
+      "tag": "0106_conversation_agent_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794557567747,
+      "tag": "0107_attachment_deferred_download",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794691958927,
+      "tag": "0109_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794695127545,
+      "tag": "0110_code_change_repository_state_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1794763565188,
+      "tag": "0111_attachment_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1794763804002,
+      "tag": "0112_attachment_url_fill",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1794765736832,
+      "tag": "0113_attachment_url_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1794825420550,
+      "tag": "0114_plan_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1794909660518,
+      "tag": "0115_automation_creator_slack_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1794921922374,
+      "tag": "0116_conversation_event_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1794933607046,
+      "tag": "0117_automation_last_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1794933647013,
+      "tag": "0118_automation_last_run_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794949484361,
+      "tag": "0119_money_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1794949505801,
+      "tag": "0120_conversation_cost_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1794989656613,
+      "tag": "0121_people_list_metric_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795000054449,
+      "tag": "0122_review_item_status_index",
       "breakpoints": true
     }
   ]

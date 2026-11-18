@@ -1,4 +1,5 @@
 import { ObjectIcon } from "../components/ObjectIcon";
+import { Badge } from "../components/ui/badge";
 import { objectPresentation } from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
@@ -9,14 +10,18 @@ import {
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import { useSyncExternalStore, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
-  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -37,6 +42,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -48,6 +54,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -100,6 +107,7 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   const isMobile = useIsMobileViewport();
+  const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
   const details = annotations.map((annotation) =>
@@ -116,12 +124,18 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip>
+    <Tooltip
+      onOpenChange={(open, details) => {
+        if (open && details.trigger) setSide(sideWithMoreRoom(details.trigger));
+      }}
+    >
       <TooltipTrigger
         render={
           <span
             aria-label={`Linked work, newest first: ${details.join(", ")}`}
-            className="inline-flex min-w-0 max-w-full items-center"
+            // Rows that are one stretched link turn off pointer events.
+            // The trigger takes them back, so hover opens the tooltip.
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center"
           >
             {useMobileFacepile ? (
               <SidebarAnnotationIconFacepile
@@ -135,18 +149,23 @@ export function ConversationSidebarAnnotations(props: {
                   <SidebarAnnotationGroupChip group={group} key={group.label} />
                 ))}
                 {badges.overflowGroupCount > 0 ? (
-                  <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
+                  <Badge
+                    className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center"
+                    variant="count"
+                  >
                     +{badges.overflowGroupCount}
-                  </span>
+                  </Badge>
                 ) : null}
               </span>
             )}
           </span>
         }
       />
-      <TooltipContent align="start">
+      <TooltipContent align="start" side={side}>
         <TooltipTitle>Linked work</TooltipTitle>
-        <ul className="m-0 list-none space-y-1 p-0">
+        {/* A row can link many items. Scroll the list so the tooltip stays on
+            screen; Base UI keeps the popup open while the pointer is on it. */}
+        <ul className="thin-scrollbar m-0 max-h-80 list-none space-y-1 overflow-y-auto overscroll-contain p-0 pr-1">
           {annotations.map((annotation, index) => (
             <li
               className="flex min-w-0 items-center gap-1.5"
@@ -184,53 +203,143 @@ function SidebarAnnotationIconFacepile(props: {
     <span
       className={cn(
         // Isolate stacking context so z-index only orders chips inside the pile.
-        // Extra right pad keeps the last chip's cutout ring from clipping.
-        "relative isolate inline-flex h-[18px] items-center pr-0.5",
+        "relative isolate inline-flex h-[18px] min-w-0 items-center",
         props.className,
       )}
     >
-      {props.annotations.map((annotation, index) => (
-        <SidebarAnnotationStatusChip
-          annotation={annotation}
-          cutoutColor={props.cutoutColor}
-          key={annotation.key}
-          // Each chip to the right layers above the chip before it.
-          stacked={index > 0}
-          zIndex={index + 1}
-        />
-      ))}
+      <FittingIcons
+        // The padding keeps the cutout rings inside the clipped row.
+        className="-m-0.5 h-[22px] min-w-[22px] p-0.5"
+        icons={props.annotations.map((annotation, index) => (
+          <SidebarAnnotationStatusChip
+            annotation={annotation}
+            cutoutColor={props.cutoutColor}
+            key={annotation.key}
+            // Each chip to the right layers above the chip before it.
+            stacked={index > 0}
+            zIndex={index + 1}
+          />
+        ))}
+        overflow={(count) => (
+          <Badge
+            aria-hidden="true"
+            className="relative -ml-0.5 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
+            style={{
+              boxShadow: `0 0 0 2px ${props.cutoutColor}`,
+              zIndex: props.annotations.length + 1,
+            }}
+            variant="count"
+          >
+            +{count}
+          </Badge>
+        )}
+      />
     </span>
   );
 }
 
-/** One shared label with every status icon for that label. */
+/**
+ * Show the icons that fit in the row and a +N count for the rest. Icons that
+ * do not fit wrap onto lines that the row clips, so the count follows the
+ * real width.
+ */
+export function FittingIcons(props: {
+  className: string;
+  icons: ReactNode[];
+  overflow(count: number): ReactNode;
+}) {
+  const rowRef = useRef<HTMLSpanElement>(null);
+  const overflowRef = useRef<HTMLSpanElement>(null);
+  const total = props.icons.length;
+  const [shown, setShown] = useState(total);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const countFirstLine = () => {
+      const items = Array.from(row.children);
+      const bottom = items[0]?.getBoundingClientRect().bottom ?? 0;
+      return items.filter((item) => item.getBoundingClientRect().top < bottom)
+        .length;
+    };
+    const measure = () => {
+      // Measure without the +N first. Otherwise its own width keeps the
+      // last icons hidden after the row grows wide enough for all of them.
+      const overflow = overflowRef.current;
+      if (overflow) overflow.style.display = "none";
+      const fitting = countFirstLine();
+      if (overflow) overflow.style.display = "";
+      setShown(fitting === total || !overflow ? fitting : countFirstLine());
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+    // Run again when `shown` changes: the +N that mounts takes width, and
+    // this pass counts it before paint. The observer would run after paint.
+  }, [shown, total]);
+
+  return (
+    <>
+      <span
+        className={cn(
+          // The row gap pushes wrapped lines fully outside the clip.
+          "flex flex-wrap items-center gap-y-6 overflow-hidden",
+          props.className,
+        )}
+        ref={rowRef}
+      >
+        {props.icons}
+      </span>
+      {shown < total ? (
+        <span className="contents" ref={overflowRef}>
+          {props.overflow(total - shown)}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** One shared label with the status icons that fit and a count of the rest. */
 function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
-      {props.group.annotations.map((annotation) =>
-        annotation.objectType ? (
-          <ObjectIcon
-            {...annotation}
-            objectType={annotation.objectType}
-            key={annotation.key}
-            decorative
-            size={14}
-          />
-        ) : annotation.icon ? (
-          <SidebarAnnotationIcon
-            decorative
-            icon={annotation.icon}
-            key={annotation.key}
-            size={11}
-          />
-        ) : null,
-      )}
-      <span className="min-w-0 truncate whitespace-nowrap">
+    // No min-w-0: a chip shrinks only to one icon and its label, so the
+    // longest group gives up icons before a shorter one loses its label.
+    <Badge className="inline-flex h-5 items-center gap-1" variant="count">
+      <FittingIcons
+        className="h-3.5 min-w-3.5 gap-x-1"
+        icons={props.group.annotations.flatMap((annotation) =>
+          annotation.objectType ? (
+            <ObjectIcon
+              {...annotation}
+              objectType={annotation.objectType}
+              key={annotation.key}
+              // Match the h-3.5 row in rem. A px icon is cut at a small root font size.
+              className="size-3.5"
+              decorative
+              size={14}
+            />
+          ) : annotation.icon ? (
+            <SidebarAnnotationIcon
+              decorative
+              icon={annotation.icon}
+              key={annotation.key}
+              size={11}
+            />
+          ) : (
+            []
+          ),
+        )}
+        overflow={(count) => (
+          <span className="shrink-0 tabular-nums">+{count}</span>
+        )}
+      />
+      <span className="max-w-40 shrink-0 truncate whitespace-nowrap">
         {props.group.label}
       </span>
-    </span>
+    </Badge>
   );
 }
 
@@ -283,6 +392,12 @@ function SidebarAnnotationStatusChip(props: {
   );
 }
 
+/** Open toward the taller free space, so a long list covers fewer rows. */
+function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
+  const rect = trigger.getBoundingClientRect();
+  return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
+}
+
 function useIsMobileViewport(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -301,8 +416,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -325,9 +440,14 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -347,12 +467,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -361,7 +481,8 @@ const SIDEBAR_ICON_PRESENTATION = {
   { className: string; Icon: typeof CircleDot; label: string }
 >;
 
-function SidebarAnnotationIcon(props: {
+/** Show a GitHub-style status icon for linked work, such as an open pull request. */
+export function SidebarAnnotationIcon(props: {
   icon: SidebarAnnotationIconName;
   size?: number;
   /** Hide accessible name when a parent already labels the control. */
@@ -406,7 +527,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]
@@ -426,7 +547,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -476,7 +600,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 

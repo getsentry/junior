@@ -1,20 +1,23 @@
 import { useState } from "react";
-import {
-  normalizeUserInputAnswer,
-  type ReviewItemActionBody,
-  type ReviewItemPayload,
+import type {
+  ReviewItemActionBody,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction } from "./queries";
+import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
+import { formatRelativeTime } from "../time";
 
-function personLabel(person: { displayName?: string; email: string }) {
+function personLabel(person: {
+  displayName?: string | undefined;
+  email: string;
+}) {
   return person.displayName ?? person.email;
 }
 
@@ -30,14 +33,7 @@ export function AnswerSummary(props: {
   answer: NonNullable<ReviewItemPayload["answer"]>;
   request: NonNullable<ReviewItemPayload["request"]>;
 }) {
-  const answer = normalizeUserInputAnswer(props.request, props.answer);
-  const rows = props.request.fields.flatMap((field) => {
-    const values = answer.values[field.id];
-    return values?.length
-      ? [{ label: field.label, value: values.join(", ") }]
-      : [];
-  });
-  if (answer.other) rows.push({ label: "Other", value: answer.other });
+  const rows = answerRows(props.request, props.answer);
   return (
     <dl className="m-0 grid gap-2 rounded-md bg-dashboard-fill-soft p-3">
       {rows.map((row) => (
@@ -74,9 +70,15 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The review desk, the transcript card, and the side panel use it.
+ * closed. The review desk and the side panel use it. A caller that shows
+ * its own Dismiss turns this one off.
  */
-export function ReviewItemActions(props: { item: ReviewItemPayload }) {
+export function ReviewItemActions(props: {
+  dismiss?: boolean;
+  item: ReviewItemPayload;
+  /** The take button's label, or false to leave it out. */
+  take?: string | false;
+}) {
   const { item } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
@@ -102,25 +104,29 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
+  const dismiss = props.dismiss ?? true;
+  const take = item.canTake ? (props.take ?? "Take") : false;
   // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
-      {item.canTake ? (
+      {take ? (
         <Button
           disabled={action.isPending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
-          variant="quiet"
+          variant="ghost"
         >
-          Take
+          {take}
         </Button>
       ) : null}
-      <Button
-        disabled={action.isPending}
-        onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="quiet"
-      >
-        Dismiss
-      </Button>
+      {dismiss ? (
+        <Button
+          disabled={action.isPending}
+          onClick={() => void run({ action: "dismiss" }).catch(() => {})}
+          variant="ghost"
+        >
+          Dismiss
+        </Button>
+      ) : null}
     </>
   );
 
@@ -147,13 +153,13 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             secondaryActions={secondaryActions}
           />
         </div>
-      ) : (
+      ) : take || dismiss ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>
         </div>
-      )}
+      ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
   );

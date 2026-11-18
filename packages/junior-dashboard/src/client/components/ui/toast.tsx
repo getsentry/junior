@@ -38,7 +38,7 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
     <ToastPrimitive.Root
       data-slot="toast"
       className={cn(
-        "group/toast pointer-events-auto absolute right-0 bottom-0 z-[calc(1000-var(--toast-index))] w-full origin-bottom rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised text-dashboard-text shadow-lg will-change-transform outline-none select-none focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+        "group/toast pointer-events-auto absolute right-0 bottom-0 z-[calc(1000-var(--toast-index))] w-full origin-bottom rounded-lg border border-input bg-secondary text-foreground shadow-lg will-change-transform outline-none select-none focus-visible:outline-2 focus-visible:outline-ring",
         "[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)*-1+calc(var(--toast-index)*var(--gap)*-1)+var(--toast-swipe-movement-y))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))]",
         "h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)-(var(--toast-index)*var(--peek))-(var(--shrink)*var(--height))))_scale(var(--scale))] [transition:transform_180ms_ease-out,opacity_180ms,height_180ms] motion-reduce:transition-none",
         "after:absolute after:top-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
@@ -90,7 +90,7 @@ function ToastDescription({
   return (
     <ToastPrimitive.Description
       data-slot="toast-description"
-      className={cn("break-words text-sm text-dashboard-text-muted", className)}
+      className={cn("break-words text-sm text-muted-foreground", className)}
       {...props}
     />
   );
@@ -98,7 +98,7 @@ function ToastDescription({
 
 function ToastAction({
   className,
-  render = <Button />,
+  render = <Button variant="outline" />,
   ...props
 }: ToastPrimitive.Action.Props) {
   return (
@@ -114,7 +114,7 @@ function ToastAction({
 function ToastClose({
   className,
   children,
-  render = <Button size="icon" />,
+  render = <Button size="icon" variant="ghost" />,
   ...props
 }: ToastPrimitive.Close.Props) {
   return (
@@ -123,7 +123,7 @@ function ToastClose({
       aria-label="Close toast"
       render={render}
       className={cn(
-        "relative shrink-0 text-dashboard-text-muted after:absolute after:-inset-2 after:content-[''] hover:text-dashboard-text",
+        "relative shrink-0 text-muted-foreground after:absolute after:-inset-2 after:content-[''] hover:text-foreground",
         className,
       )}
       {...props}

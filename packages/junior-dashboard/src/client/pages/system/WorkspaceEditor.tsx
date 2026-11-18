@@ -14,6 +14,7 @@ import {
   type RepoDraft,
   type WorkspaceDraft,
 } from "./workspaceDraft";
+import { getDashboardAgentName } from "../../agentName";
 
 type WorkspaceEditorProps = {
   busy: boolean;
@@ -21,7 +22,7 @@ type WorkspaceEditorProps = {
   cancelPath: string;
   defaultVcpus: number | null;
   draft: WorkspaceDraft;
-  error?: string;
+  error?: string | undefined;
   editing: boolean;
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;
@@ -83,12 +84,13 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
                 Each repository clones to a fixed{" "}
                 <code className="text-dashboard-text">repos/{"{name}"}</code>{" "}
-                path. Junior loads{" "}
+                path. {getDashboardAgentName()} loads{" "}
                 <code className="text-dashboard-text">AGENTS.md</code> from each
                 repository and labels those instructions with that directory.
               </p>
             </div>
             <Button
+              variant="outline"
               className="w-full sm:w-auto"
               disabled={props.busy}
               onClick={() =>
@@ -149,7 +151,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     aria-label={`Remove repository ${index + 1}`}
                     className="w-full sm:w-auto"
                     onClick={() => removeRepo(repo.key)}
-                    variant="danger"
+                    variant="destructive"
                     type="button"
                   >
                     <Trash2 aria-hidden="true" size={14} />
@@ -179,8 +181,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           />
           <FieldDescription id="workspace-setup-help">
             <>
-              Runs once while Junior builds the reusable snapshot. Current
-              working directory is{" "}
+              Runs once while {getDashboardAgentName()} builds the reusable
+              snapshot. Current working directory is{" "}
               <code className="text-dashboard-text">
                 $JUNIOR_WORKSPACE_ROOT
               </code>{" "}
@@ -217,14 +219,17 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">
-          <Button disabled={!props.canSave} type="submit" variant="primary">
+          <Button disabled={!props.canSave} type="submit" variant="default">
             {props.busy
               ? "Saving…"
               : props.editing
                 ? "Save changes"
                 : "Create Workspace"}
           </Button>
-          <Link className={buttonVariants()} to={props.cancelPath}>
+          <Link
+            className={buttonVariants({ variant: "outline" })}
+            to={props.cancelPath}
+          >
             Cancel
           </Link>
           <p className="m-0 text-xs text-dashboard-text-muted">

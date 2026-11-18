@@ -1,11 +1,12 @@
 import type {
   AutomationExecution,
-  AutomationSummary,
+  AutomationRun,
+  AutomationListItem,
 } from "@sentry/junior/api/schema";
 import type { StatusChipTone } from "../../components/StatusChip";
-import { formatTime } from "../../format";
+import { formatTime } from "../../time";
 
-type ScheduledAutomation = Extract<AutomationSummary, { kind: "scheduled" }>;
+type ScheduledAutomation = Extract<AutomationListItem, { kind: "scheduled" }>;
 
 /** Show the schedule with its timezone unless the schedule text already names it. */
 export function automationScheduleLabel(
@@ -29,11 +30,7 @@ export function formatAutomationRunTime(
     timeZoneName: "short",
     year: "numeric",
   };
-  return timeZone
-    ? new Intl.DateTimeFormat(undefined, { ...options, timeZone }).format(
-        new Date(value),
-      )
-    : formatTime(value, options);
+  return formatTime(value, timeZone ? { ...options, timeZone } : options);
 }
 
 /** Map a run outcome to its status color. */
@@ -54,4 +51,17 @@ export function automationRunTitle(
     run.title?.trim() ||
     (run.conversationId ? automationTitle : "No conversation")
   );
+}
+
+/** Name the Automation on one of its runs, so run details can show it. */
+export function automationRunOf(
+  execution: AutomationExecution,
+  automation: AutomationListItem,
+): AutomationRun {
+  return {
+    ...execution,
+    automationId: automation.id,
+    automationTitle: automation.title,
+    kind: automation.kind,
+  };
 }

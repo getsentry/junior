@@ -6,6 +6,8 @@ export type TitleModelRequest = {
 };
 
 type TitleModelFixtureOptions = {
+  /** Prompt tokens that the response reports as read from the cache. */
+  cacheReadTokens?: number;
   onRequest?: (request: TitleModelRequest) => void;
   waitFor?: Promise<unknown>;
 };
@@ -33,7 +35,13 @@ export function mockTitleModel(
               content: [],
               stop_reason: null,
               stop_sequence: null,
-              usage: { input_tokens: 1, output_tokens: 0 },
+              usage: {
+                input_tokens: 1,
+                output_tokens: 0,
+                ...(options.cacheReadTokens
+                  ? { cache_read_input_tokens: options.cacheReadTokens }
+                  : undefined),
+              },
             },
           },
           {

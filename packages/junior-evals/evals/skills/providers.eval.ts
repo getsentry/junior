@@ -50,7 +50,7 @@ describe("Skill Providers", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The visible thread output includes a final answer based on the demo MCP provider result.",
+          "The visible thread output includes a final response based on the demo MCP provider result.",
           "The visible thread output refers to the handbook or US holidays request.",
           "The visible thread output does not claim the MCP lookup was blocked by missing arguments.",
         ],

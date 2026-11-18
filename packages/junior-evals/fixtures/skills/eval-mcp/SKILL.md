@@ -9,4 +9,4 @@ description: Use for `/eval-mcp` requests that need the eval MCP handbook lookup
 
 2. Use the exact returned `mcp__eval-mcp__handbook-search` tool and pass the user's lookup request as `query` inside the tool `arguments` object. Never call the tool with only `tool_name`; use `tool_name: "mcp__eval-mcp__handbook-search", arguments: { "query": "<current lookup request>" }`.
 
-3. Answer from the MCP result. Keep the final answer short.
+3. Answer from the MCP result. Keep the final response short.

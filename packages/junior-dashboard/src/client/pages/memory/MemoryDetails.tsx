@@ -23,6 +23,7 @@ import type {
   PluginUserPageRecord,
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
+import { getDashboardAgentName } from "../../agentName";
 
 // The heading and origin rows already show these values.
 const SUMMARIZED_METADATA = new Set(["Learned", "Memory ID", "Source", "Type"]);
@@ -93,7 +94,7 @@ export function MemoryDetails(props: {
                       else props.onForget(forgetAction);
                     }}
                     size="icon"
-                    variant="danger"
+                    variant="destructive"
                   >
                     <Trash2 aria-hidden="true" size={16} />
                   </Button>
@@ -116,7 +117,7 @@ export function MemoryDetails(props: {
                   setConfirmOpen(false);
                   props.onForget(forgetAction);
                 }}
-                variant="danger"
+                variant="destructive"
               >
                 {forgetAction.label}
               </AlertDialogAction>
@@ -136,7 +137,7 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
     learned === "Automatic"
       ? `From a ${source ?? "past"} conversation`
       : learned === "Explicit"
-        ? "Someone asked Junior"
+        ? `Someone asked ${getDashboardAgentName()}`
         : learned
           ? "Before origin tracking"
           : undefined;

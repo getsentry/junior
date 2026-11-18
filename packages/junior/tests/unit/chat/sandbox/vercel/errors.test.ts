@@ -40,3 +40,35 @@ describe("vercelSandboxErrors.isTransient", () => {
     expect(vercelSandboxErrors.isTransient(missing)).toBe(false);
   });
 });
+
+describe("vercelSandboxErrors.isCommandStreamInterrupted", () => {
+  function socketError(code: string): Error {
+    return Object.assign(new Error("socket failure"), { code });
+  }
+
+  it("recognizes a command stream whose socket dropped", () => {
+    const terminated = new TypeError("terminated", {
+      cause: socketError("UND_ERR_SOCKET"),
+    });
+    const fetchFailed = new TypeError("fetch failed", {
+      cause: socketError("ECONNRESET"),
+    });
+
+    expect(vercelSandboxErrors.isCommandStreamInterrupted(terminated)).toBe(
+      true,
+    );
+    expect(vercelSandboxErrors.isCommandStreamInterrupted(fetchFailed)).toBe(
+      true,
+    );
+  });
+
+  it("does not treat other fetch failures as interrupted streams", () => {
+    const badUrl = new TypeError("fetch failed", {
+      cause: socketError("ERR_INVALID_URL"),
+    });
+    const noCause = new TypeError("terminated");
+
+    expect(vercelSandboxErrors.isCommandStreamInterrupted(badUrl)).toBe(false);
+    expect(vercelSandboxErrors.isCommandStreamInterrupted(noCause)).toBe(false);
+  });
+});

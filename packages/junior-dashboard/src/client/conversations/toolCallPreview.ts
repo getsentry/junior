@@ -1,3 +1,4 @@
+import { skillLabel } from "../components/SkillLink";
 import { stringifyPartValue } from "../format";
 
 const MAX_VALUE_LENGTH = 48;
@@ -11,7 +12,8 @@ export function toolCallPreview(name: string, input: unknown): string | null {
   }
 
   if (name === "loadSkill") {
-    return fieldValue(input, "skill_name");
+    const name = fieldValue(input, "skill_name");
+    return name ? skillLabel(name) : null;
   }
 
   if (name === "webSearch") {

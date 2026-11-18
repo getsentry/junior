@@ -19,7 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
-  ConversationKind,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -34,6 +34,7 @@ import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
@@ -48,8 +49,12 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
-import { conversationKindFromRow } from "./conversation-row";
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -66,7 +71,7 @@ interface DestinationUpsert {
   metadata?: Record<string, unknown>;
   provider: string;
   providerDestinationId: string;
-  providerTenantId?: string;
+  providerTenantId?: string | undefined;
   refreshVisibility: boolean;
   visibility: JuniorDestinationVisibility;
 }
@@ -137,7 +142,7 @@ function localWorkspaceFromConversationId(
 }
 
 function destinationUpsertFromDestination(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId?: string;
   destination: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -179,13 +184,11 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove the awaiting_resume name after the release that stops
-// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
@@ -298,22 +301,26 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.stoppedAt) !== undefined
       ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
 
 function emptyConversation(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
+  kind?: "root" | "automation" | undefined;
   nowMs: number;
-  source?: ConversationSource;
+  source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
 }): Conversation {
   return {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: "root",
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -358,9 +365,21 @@ export class SqlStore implements ConversationStore {
     await bindProviderConversation(this.executor, args);
   }
 
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
+  }
+
   async createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -439,13 +458,14 @@ export class SqlStore implements ConversationStore {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
-    destination?: Destination;
+    destination?: Destination | undefined;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -466,6 +486,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -498,11 +519,11 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
-    actorIdentityId?: string;
+    actorIdentityId?: string | undefined;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
-    destination?: Destination;
+    destination?: Destination | undefined;
     execution: ConversationExecution;
     lastActivityAtMs: number;
     metrics: ConversationRunMetrics | null;
@@ -550,8 +571,8 @@ export class SqlStore implements ConversationStore {
         ? args.execution
         : (existing?.execution ?? args.execution);
       // Root Actor and origin Source come from the saved Conversation, as in
-      // recordActivity. A later Turn, such as an event on a web Conversation,
-      // must not derive a system Actor from its own Source.
+      // recordActivity. A later Turn, such as an event on a Conversation that
+      // the dashboard started, must not derive a system Actor from its Source.
       const actor = mergeActor(existing?.actor, args.actor);
       const source = existing?.source ?? args.source;
       await this.upsertConversation({
@@ -766,10 +787,12 @@ export class SqlStore implements ConversationStore {
   private async upsertConversation(args: {
     conversation: Conversation;
     /** A new child's Destination row, copied from its parent. */
-    destinationId?: string;
+    destinationId?: string | undefined;
   }): Promise<void> {
     const { conversation } = args;
-    if ((conversation.kind === "root") !== !conversation.parentConversationId) {
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
       );

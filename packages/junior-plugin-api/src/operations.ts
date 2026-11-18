@@ -1,6 +1,12 @@
 import * as z from "zod";
 import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import type {
+  Dispatch,
+  DispatchOptions,
+  DispatchResult,
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
+} from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
@@ -16,10 +22,25 @@ export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
+    /**
+     * Start a public Conversation for one person. Each call counts toward the
+     * dispatch limit of this heartbeat. See the route context version.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
   };
+  /** Conversation annotations, as from a plugin route. */
+  annotations: PluginConversationAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: CodeChangePublisher;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
   nowMs: number;
+  /** Review desk items, as from a plugin route. */
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 
@@ -163,6 +184,20 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  agent: {
+    /**
+     * Start a public Conversation for one person, as if they sent `input` from
+     * the dashboard. It has no Slack Destination. Core starts work only when
+     * the person maps to exactly one current Slack member on the allowed
+     * domains: through an Identity of this plugin's provider that the OAuth
+     * account-linking flow linked, or through a verified email that is the
+     * User's primary email and the member's Slack email. Otherwise it returns
+     * `not_linked` and calls no model.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
+  };
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
@@ -170,6 +205,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   events: EventPublisher;
   /** Review desk items that the plugin adds and closes from its events. */
   reviewItems: PluginConversationReviewItems;
+  /** Plugin-namespaced state, the same as in heartbeats. */
+  state: PluginState;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

@@ -99,4 +99,23 @@ describe("createInProcessQueue", () => {
 
     expect(deliveries).toBe(2);
   });
+
+  it("runs later deliveries on the worker that connected last", async () => {
+    const queue = createInProcessQueue();
+    const delivered: string[] = [];
+    queue.connect(async ({ conversationId }) => {
+      delivered.push(`old ${conversationId}`);
+    });
+    await queue.send(message("c1"));
+    await drain(queue);
+
+    // A redeployed app binds the same queue to its own worker.
+    queue.connect(async ({ conversationId }) => {
+      delivered.push(`new ${conversationId}`);
+    });
+    await queue.send(message("c1"));
+    await drain(queue);
+
+    expect(delivered).toEqual(["old c1", "new c1"]);
+  });
 });

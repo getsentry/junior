@@ -14,7 +14,7 @@ import {
 } from "./conversationSidebarLayout";
 
 const SIDE_PANEL_ID = "conversation-side-panel";
-const TRANSCRIPT_MIN_WIDTH = 448;
+const TRANSCRIPT_MIN_WIDTH = "28rem";
 
 /** Show the transcript with its open side panel in a resizable column. */
 export function ConversationSidePanelLayout(props: {
@@ -76,8 +76,8 @@ export function ConversationSidePanelLayout(props: {
               defaultSize={readDetailsWidth()}
               groupResizeBehavior="preserve-pixel-size"
               id={SIDE_PANEL_ID}
-              maxSize={DETAILS_WIDTH.max}
-              minSize={DETAILS_WIDTH.min}
+              maxSize={`${DETAILS_WIDTH.max}rem`}
+              minSize={`${DETAILS_WIDTH.min}rem`}
             >
               <div className="grid h-full min-h-0" ref={columnRef} />
             </ResizablePanel>

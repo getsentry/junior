@@ -9,7 +9,8 @@
  * - no plugin reported unfinished work on it or a child conversation
  * - any reported work finished at least the grace period ago, and no human
  *   message arrived after it finished
- * - the root and every child conversation are `idle` or `stopped`
+ * - the root and every child conversation are `idle` or `stopped` and do
+ *   not wait on a person to finish an authorization
  * - no open Review item on it waits on a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
@@ -31,6 +32,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   isNotNull,
   isNull,
   lte,
@@ -48,6 +50,7 @@ import {
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { awaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
 import {
   juniorConversationParticipants,
@@ -59,24 +62,13 @@ import {
 import { AUTO_ARCHIVE_DEFAULT_GRACE_HOURS } from "@/db/schema/users";
 import { throwApiError } from "../http";
 import { readConversationAccessFromSql } from "./access";
+import { readUserSettings } from "../user-settings";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 
 const HOUR_MS = 60 * 60 * 1000;
 
 /** Participant rows checked per page. A run reads pages until none remain. */
 const AUTO_ARCHIVE_PAGE_SIZE = 500;
-
-/** A user's auto-archive settings. */
-export type AutoArchiveSettings = {
-  autoArchiveDefault: boolean;
-  autoArchiveGraceHours: number;
-};
-
-/** Settings of a user who has not changed auto-archive. */
-export const DEFAULT_AUTO_ARCHIVE_SETTINGS: AutoArchiveSettings = {
-  autoArchiveDefault: false,
-  autoArchiveGraceHours: AUTO_ARCHIVE_DEFAULT_GRACE_HOURS,
-};
 
 /**
  * One archive run for one user. A scheduled run needs the user's effective
@@ -102,10 +94,11 @@ function runCutoff(run: ArchiveRun): Date {
 
 /**
  * True when the participant row's root and every child conversation are
- * `idle` or `stopped` and had no activity after the cutoff. Child activity
- * does not move the root's `lastActivityAt`, so the whole tree is checked.
+ * `idle` or `stopped`, do not wait on a person to finish an authorization,
+ * and had no activity after the cutoff. Child activity does not move the
+ * root's `lastActivityAt`, so the whole tree is checked.
  */
-function treeIsQuiet(cutoff: Date) {
+function treeIsQuiet(run: ArchiveRun) {
   const active = getDb()
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
@@ -123,7 +116,9 @@ function treeIsQuiet(cutoff: Date) {
         ),
         or(
           sql`${conversationStatusSql(juniorConversations)} not in ('idle', 'stopped')`,
-          gt(juniorConversations.lastActivityAt, cutoff),
+          gt(juniorConversations.lastActivityAt, runCutoff(run)),
+          // A Turn parked for authorization leaves the conversation idle.
+          awaitsAuthorization(juniorConversations.conversationId),
         ),
       ),
     );
@@ -230,7 +225,7 @@ function archivableRow(run: ArchiveRun) {
     run.kind === "scheduled"
       ? sql`${juniorUsers.autoArchiveGraceHours} <= ${run.graceHours}`
       : undefined,
-    treeIsQuiet(runCutoff(run)),
+    treeIsQuiet(run),
     notWaitingOnAnyone(),
   );
 }
@@ -310,13 +305,14 @@ async function selectDoneRoots(
 }
 
 /**
- * Archive one root for everyone when it is still archivable for the run's
- * user.
+ * Archive roots for everyone when they are still archivable for the run's
+ * user, in one statement, and count the archived roots.
  */
-async function archiveRoot(
+async function archiveRoots(
   run: ArchiveRun,
-  rootConversationId: string,
-): Promise<boolean> {
+  rootConversationIds: string[],
+): Promise<number> {
+  if (rootConversationIds.length === 0) return 0;
   const archivable = getDb()
     .select({ userId: juniorConversationParticipants.userId })
     .from(juniorConversationParticipants)
@@ -328,7 +324,7 @@ async function archiveRoot(
       and(
         eq(
           juniorConversationParticipants.rootConversationId,
-          rootConversationId,
+          juniorConversations.conversationId,
         ),
         archivableRow(run),
       ),
@@ -338,13 +334,13 @@ async function archiveRoot(
     .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
     .where(
       and(
-        eq(juniorConversations.conversationId, rootConversationId),
+        inArray(juniorConversations.conversationId, rootConversationIds),
         isNull(juniorConversations.archivedAt),
         sql`exists (${archivable})`,
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return updated.length > 0;
+  return updated.length;
 }
 
 /** Archive every done conversation of one user and count the rows. */
@@ -355,17 +351,20 @@ async function archiveUserDoneConversations(
   let after: CandidateCursor | undefined;
   let archived = 0;
   let scanned = 0;
+  /* oxlint-disable no-await-in-loop -- Each page starts after the last root of the page before. */
   for (;;) {
     const rows = await selectCandidateRoots(run, after);
     if (rows.length === 0) break;
     scanned += rows.length;
     const rootIds = rows.map((row) => row.rootConversationId);
-    for (const rootId of await selectDoneRoots(rootIds, cutoffMs)) {
-      if (await archiveRoot(run, rootId)) archived += 1;
-    }
+    archived += await archiveRoots(
+      run,
+      await selectDoneRoots(rootIds, cutoffMs),
+    );
     if (rows.length < AUTO_ARCHIVE_PAGE_SIZE) break;
     after = rows.at(-1);
   }
+  /* oxlint-enable no-await-in-loop */
   return { archived, scanned };
 }
 
@@ -410,6 +409,7 @@ export async function runAutoArchiveSweep(args: {
   let archived = 0;
   let scanned = 0;
   for (const user of await selectAutoArchiveUsers()) {
+    // oxlint-disable-next-line no-await-in-loop -- The sweep archives for one user at a time to keep database load low.
     const result = await archiveUserDoneConversations({
       graceHours: user.graceHours,
       kind: "scheduled",
@@ -434,11 +434,10 @@ export async function runAutoArchiveSweep(args: {
 export async function archiveViewerDoneConversations(
   viewer: User,
 ): Promise<{ archived: number }> {
-  const settings = await readUserAutoArchiveSettings(viewer.id);
+  const settings = await readUserSettings(viewer.id);
   const { archived } = await archiveUserDoneConversations({
     graceHours:
-      settings?.autoArchiveGraceHours ??
-      DEFAULT_AUTO_ARCHIVE_SETTINGS.autoArchiveGraceHours,
+      settings?.autoArchiveGraceHours ?? AUTO_ARCHIVE_DEFAULT_GRACE_HOURS,
     kind: "manual",
     now: new Date(),
     userId: viewer.id,
@@ -488,35 +487,4 @@ export async function setConversationAutoArchive(
       set: { autoArchive },
     });
   return { autoArchive };
-}
-
-/** Read the user's auto-archive settings. */
-export async function readUserAutoArchiveSettings(
-  userId: string,
-): Promise<AutoArchiveSettings | undefined> {
-  const [user] = await getDb()
-    .select({
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-      autoArchiveGraceHours: juniorUsers.autoArchiveGraceHours,
-    })
-    .from(juniorUsers)
-    .where(eq(juniorUsers.id, userId))
-    .limit(1);
-  return user;
-}
-
-/** Save changed auto-archive settings and return the saved settings. */
-export async function updateUserAutoArchiveSettings(
-  userId: string,
-  settings: Partial<AutoArchiveSettings>,
-): Promise<AutoArchiveSettings | undefined> {
-  const [user] = await getDb()
-    .update(juniorUsers)
-    .set({ ...settings, updatedAt: new Date() })
-    .where(eq(juniorUsers.id, userId))
-    .returning({
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-      autoArchiveGraceHours: juniorUsers.autoArchiveGraceHours,
-    });
-  return user;
 }

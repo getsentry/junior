@@ -1,12 +1,25 @@
 import * as z from "zod";
-import type {
-  ConversationReportEvent,
-  ReviewItemPayload,
+import {
+  normalizeUserInputAnswer,
+  type ConversationReportEvent,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
+}
+
+/**
+ * Return the new UI's Inbox route that expands one item's row: Done for a
+ * closed item. The route names the entry, because phones show the entries
+ * at `/`.
+ */
+export function inboxItemPath(
+  item: Pick<ReviewItemPayload, "id" | "status">,
+): string {
+  const view = item.status === "open" ? "inbox" : "done";
+  return `/?view=${view}&item=${encodeURIComponent(item.id)}`;
 }
 
 /**
@@ -25,7 +38,9 @@ export function reviewItemSubjectHref(url: string): string | undefined {
 /** Name the state of an item: what it needs while open, or how it closed. */
 export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   if (item.status === "open") {
-    return item.kind === "action" ? "Needs an answer" : "Notice";
+    if (item.kind === "notice") return "Notice";
+    // A plugin ask waits on a step outside Junior, so it has no question.
+    return item.request ? "Needs an answer" : "Waiting on you";
   }
   return item.status === "done" ? "Done" : "Dismissed";
 }
@@ -76,21 +91,6 @@ export function reviewItemIdFromToolCall(call: {
   return addedItemId(call.output);
 }
 
-/** Return the id of the last Review item that a tool call in the events added. */
-export function latestReviewItemId(
-  events: readonly ConversationReportEvent[] | undefined,
-): string | undefined {
-  for (let index = (events?.length ?? 0) - 1; index >= 0; index -= 1) {
-    const data = events![index]!.data;
-    if (data.type !== "tool_calls") continue;
-    for (let call = data.calls.length - 1; call >= 0; call -= 1) {
-      const id = reviewItemIdFromToolCall(data.calls[call]!);
-      if (id) return id;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Return a message for another item's excerpt, without the Review item
  * changes that it records: those show on their own items. Returns undefined
@@ -117,10 +117,63 @@ export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
   );
 }
 
+/**
+ * Return a submitted answer as one labeled row for each answered field, then
+ * the note.
+ */
+export function answerRows(
+  request: NonNullable<ReviewItemPayload["request"]>,
+  answer: NonNullable<ReviewItemPayload["answer"]>,
+): Array<{ label: string; value: string }> {
+  const normalized = normalizeUserInputAnswer(request, answer);
+  const rows = request.fields.flatMap((field) => {
+    const values = normalized.values[field.id];
+    return values?.length
+      ? [{ label: field.label, value: values.join(", ") }]
+      : [];
+  });
+  if (normalized.other) rows.push({ label: "Other", value: normalized.other });
+  return rows;
+}
+
+/**
+ * Return a submitted answer as one line: the values of each field, then the
+ * note, so a transcript row can show it after the question.
+ */
+export function answerLine(
+  request: NonNullable<ReviewItemPayload["request"]>,
+  answer: NonNullable<ReviewItemPayload["answer"]>,
+): string {
+  return answerRows(request, answer)
+    .map((row) => row.value)
+    .join(" · ");
+}
+
 /** The open Review items of the inbox, in the groups and order it shows. */
 export type InboxGroups = {
   fyi: ReviewItemPayload[];
   needsYou: ReviewItemPayload[];
+};
+
+/**
+ * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
+ * the bundle into the queue; other bundles are FYI and sort after it.
+ */
+export type InboxBundle = {
+  /**
+   * Names the row: the Conversation id for a Conversation bundle, or the
+   * item id for a row that shows one item.
+   */
+  key: string;
+  /** The Conversation that added the items. */
+  conversationId: string;
+  /** Items in inbox order: questions first, then the oldest. */
+  items: ReviewItemPayload[];
+  /** The item added last, which the collapsed bundle shows. */
+  newest: ReviewItemPayload;
+  needsYou: boolean;
+  /** When the first item that needs the viewer arrived, or the first item. */
+  waitingSince: string;
 };
 
 /** Inbox order: action items first, then the oldest, then the item id. */
@@ -129,6 +182,74 @@ function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
   const age = Date.parse(a.createdAt) - Date.parse(b.createdAt);
   if (age !== 0) return age;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * True when an item waits on the viewer, as the server's waiting rule says:
+ * an open action item assigned to them, not to Everyone. A plugin ask, such
+ * as `Ready to merge · #42`, is an action item with no `request`.
+ */
+export function itemNeedsViewer(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    !item.assignedToEveryone
+  );
+}
+
+/**
+ * True when an open ask is for Everyone, so anyone can answer or take it.
+ * It waits on no one, so it is up for grabs instead of in To do.
+ */
+export function itemUpForGrabs(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    item.assignedToEveryone
+  );
+}
+
+/**
+ * Group items into one bundle per Conversation. Bundles that need the viewer
+ * come first, the one that waited longest at the top, so the order does not
+ * change while the reader works. FYI bundles follow, oldest first.
+ */
+export function inboxBundles(
+  items: readonly ReviewItemPayload[],
+): InboxBundle[] {
+  const byConversation = new Map<string, ReviewItemPayload[]>();
+  for (const item of items) {
+    const key = item.addedByConversationId;
+    byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
+  }
+  const bundles = [...byConversation].map(([conversationId, group]) => {
+    const sorted = [...group].sort(inboxOrder);
+    const waiting = sorted.filter(itemNeedsViewer);
+    const newest = sorted.reduce((latest, item) =>
+      Date.parse(item.createdAt) > Date.parse(latest.createdAt) ? item : latest,
+    );
+    const since = Math.min(
+      ...(waiting.length > 0 ? waiting : sorted).map((item) =>
+        Date.parse(item.createdAt),
+      ),
+    );
+    return {
+      conversationId,
+      items: sorted,
+      key: conversationId,
+      newest,
+      needsYou: waiting.length > 0,
+      waitingSince: new Date(since).toISOString(),
+    };
+  });
+  return bundles.sort(
+    (a, b) =>
+      Number(b.needsYou) - Number(a.needsYou) ||
+      Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
+      a.conversationId.localeCompare(b.conversationId),
+  );
 }
 
 /**

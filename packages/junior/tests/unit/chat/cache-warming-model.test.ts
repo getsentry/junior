@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   decideWarmup as decideWarmupAt,
   NO_REPLY_GAP_MS,
+  parentGapSegment,
+  timerFloorMaxDueIdleMs,
   type WarmupDecisionInput,
   warmupFailureCountsAsMiss,
 } from "@/chat/cache-warming/model";
@@ -44,7 +46,7 @@ describe("decideWarmup", () => {
       ...prices,
       // The global gaps say "soon", but this conversation has enough gaps of
       // its own to replace them.
-      conversationGapsMs: gaps(20, 3 * 60 * MINUTE),
+      conversationGapsMs: gaps(100, 3 * 60 * MINUTE),
       globalGapsMs: gaps(100, 7 * MINUTE),
       idleMs: 4 * MINUTE,
       prefixTokens: 200_000,
@@ -54,17 +56,19 @@ describe("decideWarmup", () => {
   });
 
   it("gives a conversation's own gaps their share next to a large global list", () => {
-    const decision = decideWarmup({
-      ...prices,
-      // Half of the weight is on this conversation's slow replies, even though
-      // the global list is 200 times longer.
-      conversationGapsMs: gaps(10, 3 * 60 * MINUTE),
-      globalGapsMs: gaps(2_000, 5 * MINUTE),
-      idleMs: 4 * MINUTE,
-      prefixTokens: 200_000,
-    });
+    const returnProbability = (ownGaps: number) =>
+      decideWarmup({
+        ...prices,
+        conversationGapsMs: gaps(ownGaps, 3 * 60 * MINUTE),
+        globalGapsMs: gaps(2_000, 5 * MINUTE),
+        idleMs: 4 * MINUTE,
+        prefixTokens: 200_000,
+      }).returnProbability;
 
-    expect(decision.returnProbability).toBeCloseTo(0.5);
+    // Each of this conversation's slow replies moves 1% of the weight, even
+    // though the global list is much longer. A few gaps move it little.
+    expect(returnProbability(20)).toBeCloseTo(0.8);
+    expect(returnProbability(50)).toBeCloseTo(0.5);
   });
 
   it("counts idle periods with no reply and stops at the idle horizon", () => {
@@ -156,15 +160,15 @@ describe("decideWarmup", () => {
   });
 
   it("counts warmups every TTL minus the margin in a plan", () => {
-    // A 400k-token prefix warms 135 seconds before expiry, so warmups come
-    // every 165 seconds. A plan that reaches replies 20 minutes out costs
-    // more warmups than one 5-minute step each would count.
+    // A warmup runs 45 seconds before expiry, so warmups come every 255
+    // seconds. A plan that reaches replies 20 minutes out costs more warmups
+    // than one 5-minute step each would count, and then it does not pay.
     const decision = decideWarmup({
       ...prices,
       conversationGapsMs: [],
-      globalGapsMs: [...gaps(30, 20 * MINUTE), ...gaps(70, NO_REPLY_GAP_MS)],
+      globalGapsMs: [...gaps(23, 20 * MINUTE), ...gaps(77, NO_REPLY_GAP_MS)],
       idleMs: 4 * MINUTE,
-      prefixTokens: 400_000,
+      prefixTokens: 200_000,
     });
 
     expect(decision).toMatchObject({ warm: false, reason: "unlikely_return" });
@@ -222,6 +226,103 @@ describe("decideWarmup", () => {
         prefixTokens: 200_000,
       }),
     ).toMatchObject({ warm: false, reason: "few_gaps" });
+  });
+
+  it("leans on the parent segment only while the segment is thin", () => {
+    const input = {
+      ...prices,
+      conversationGapsMs: [],
+      idleMs: 4 * MINUTE,
+      prefixTokens: 200_000,
+    };
+
+    // A new segment warms with the return chances of its parent.
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [6 * MINUTE],
+        priorGapsMs: [gaps(100, 7 * MINUTE)],
+      }),
+    ).toMatchObject({ warm: true, reason: "warm", parentPrior: true });
+    // A thin parent does not make enough gaps either.
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [6 * MINUTE],
+        priorGapsMs: [gaps(5, 7 * MINUTE)],
+      }),
+    ).toMatchObject({ warm: false, reason: "few_gaps", parentPrior: true });
+    // A full segment decides alone.
+    const full = { ...input, globalGapsMs: gaps(20, 3 * 60 * MINUTE) };
+    const withParent = decideWarmup({
+      ...full,
+      priorGapsMs: [gaps(100, 7 * MINUTE)],
+    });
+    expect(withParent).toMatchObject({
+      warm: false,
+      reason: "unlikely_return",
+      parentPrior: false,
+    });
+    expect(withParent).toEqual(decideWarmup(full));
+  });
+  it("warms for a timer until its Turn reads the cache, and never warms less", () => {
+    const timerDueIdleMs = 80 * MINUTE;
+    const gapLists = [
+      [],
+      gaps(20, 7 * MINUTE),
+      gaps(100, 3 * 60 * MINUTE),
+      [...gaps(50, 7 * MINUTE), ...gaps(50, NO_REPLY_GAP_MS)],
+    ];
+    for (const globalGapsMs of gapLists) {
+      for (let idleMs = 4 * MINUTE; idleMs < 90 * MINUTE; idleMs += MINUTE) {
+        const input = {
+          ...prices,
+          conversationGapsMs: [],
+          globalGapsMs,
+          idleMs,
+          prefixTokens: 200_000,
+        };
+        const withTimer = decideWarmup({ ...input, timerDueIdleMs });
+        // The cache expires a minute after the decision. The timer's Turn
+        // starts up to 2 minutes after the timer is due.
+        const expiresBeforeTurn = idleMs + MINUTE < timerDueIdleMs + 2 * MINUTE;
+        expect(withTimer.warm).toBe(
+          decideWarmup(input).warm || expiresBeforeTurn,
+        );
+      }
+    }
+  });
+});
+
+describe("timerFloorMaxDueIdleMs", () => {
+  it("warms for a timer only while the warmups cost less than a miss", () => {
+    // A miss costs 24 reads, so 23 warmups, one each 4.25 minutes, keep the
+    // cache until 102.75 minutes. The timer's Turn starts 2 minutes late.
+    expect(timerFloorMaxDueIdleMs(prices)).toBe(100.75 * MINUTE);
+    // A read at twice the price allows 11 warmups.
+    expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0.4 })).toBe(
+      49.75 * MINUTE,
+    );
+    expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0 })).toBe(0);
+  });
+});
+
+describe("parentGapSegment", () => {
+  it("picks the none segment with the same Actor and Turn depth", () => {
+    const turn = { userActor: true, endedTurns: 1 };
+
+    expect(
+      parentGapSegment({ ...turn, workState: "open", archived: false }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "done", archived: true }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "none", archived: true }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "none", archived: false }),
+    ).toBeUndefined();
   });
 });
 

@@ -3,6 +3,7 @@ import { scheduledAutomationEditSchema } from "@/chat/automations/edit-schema";
 import { isDeepStrictEqual } from "node:util";
 import {
   AutomationEditError,
+  changesAutomationTask,
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
 import { compileScheduleIntent, ScheduleIntentError } from "./schedule-intent";
@@ -38,8 +39,7 @@ export async function editScheduledAutomation(
   }
   // A new Schedule changes when creator credentials are used.
   const changesExecution =
-    (input.instruction !== undefined &&
-      input.instruction !== current.task.text) ||
+    changesAutomationTask(current.task, input) ||
     (compiled !== undefined &&
       !isDeepStrictEqual(compiled.schedule, current.schedule));
   const fields = await editAutomationFields(

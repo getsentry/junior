@@ -100,7 +100,7 @@ export function WorkspaceDeleteDialog(props: {
           <AlertDialogAction
             disabled={deletion.isPending}
             onClick={() => deletion.mutate()}
-            variant="danger"
+            variant="destructive"
           >
             {deletion.isPending ? "Deleting…" : "Delete Workspace"}
           </AlertDialogAction>

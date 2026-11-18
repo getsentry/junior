@@ -31,13 +31,17 @@ export const navLayoutChoices = [
  * Choose desktop navigation for this browser: adaptive (top bar on tall
  * windows), top bar, or sidebar.
  */
-export function NavLayoutSwitcher(props: { className?: string }) {
+export function NavLayoutSwitcher(props: {
+  className?: string;
+  menu?: boolean;
+}) {
   const [choice, setChoice] = useNavLayoutChoice();
   return (
     <PreferenceToggle<NavLayoutChoice>
       choices={navLayoutChoices}
       className={props.className}
       itemLabel={(item) => `${item.label} navigation`}
+      menu={props.menu}
       label="Navigation"
       onChange={setChoice}
       value={choice}

@@ -42,7 +42,7 @@ export function WorkspacesPage() {
           `[data-workspace-id="${CSS.escape(workspaceId)}"] button`,
         )
       : undefined;
-    navigate(listPath);
+    void navigate(listPath);
     (trigger ?? listRef.current)?.focus();
   };
 
@@ -64,7 +64,10 @@ export function WorkspacesPage() {
           <PageLayout>
             <PageHeader
               actions={
-                <Link className={buttonVariants()} to={`${listPath}/new`}>
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  to={`${listPath}/new`}
+                >
                   <Plus aria-hidden="true" size={14} />
                   New Workspace
                 </Link>
@@ -121,7 +124,7 @@ export function WorkspacesPage() {
         <WorkspaceDeleteDialog
           onClose={() => setDeleteTarget(undefined)}
           onDeleted={() => {
-            if (workspaceId === deleteTarget.id) navigate(listPath);
+            if (workspaceId === deleteTarget.id) void navigate(listPath);
           }}
           returnFocus={() =>
             deleteSource.current?.isConnected

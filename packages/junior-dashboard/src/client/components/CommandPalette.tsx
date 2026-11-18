@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useConversationsData } from "../api";
-import { formatCompactAge } from "../conversations/conversationAge";
 import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
@@ -31,6 +30,8 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import { Kbd } from "./ui/kbd";
+import { formatCompactAge } from "../time";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -47,7 +48,7 @@ type PaletteItem = {
   id: string;
   label: string;
   /** Label indices that the typed text matched. */
-  matches?: number[];
+  matches?: number[] | undefined;
   meta?: string;
   score: number;
   /** Navigation state for the destination page. */
@@ -62,7 +63,7 @@ type PaletteItem = {
  */
 export function CommandPalette(props: {
   /** Left out of the rows: the viewer is already there. */
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -95,7 +96,7 @@ export function CommandPalette(props: {
 
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   onClose(): void;
 }) {
@@ -154,9 +155,7 @@ function CommandPaletteBody(props: {
         spellCheck={false}
         value={query}
       >
-        <kbd className="shrink-0 rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-xs text-dashboard-text-faint max-sm:hidden">
-          esc
-        </kbd>
+        <Kbd className="max-sm:hidden">esc</Kbd>
       </CommandInput>
       <CommandList ref={list}>
         <CommandEmpty>{searching ? "Searching…" : "No matches."}</CommandEmpty>
@@ -168,7 +167,7 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to, { state: item.state });
+                    void navigate(item.to, { state: item.state });
                     props.onClose();
                   }}
                   value={item.id}
@@ -199,7 +198,7 @@ function CommandPaletteBody(props: {
  * outside the feed. The open conversation is never a row.
  */
 function paletteItems(input: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   feed: Conversation[];
   navItems: DashboardHeaderNavItem[];
   query: string;

@@ -52,7 +52,9 @@ function cloneInlineManifests(
                   }
                 : undefined),
             },
-            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
+            ...(plugin.packageName
+              ? { packageName: plugin.packageName }
+              : undefined),
           },
         ]
       : [],
@@ -146,7 +148,7 @@ export function pluginCatalogConfigFromPluginSet(
 function readEnvPluginPackages(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | undefined {
-  const value = env.JUNIOR_PLUGIN_PACKAGES;
+  const value = env["JUNIOR_PLUGIN_PACKAGES"];
   if (!value) {
     return undefined;
   }
@@ -162,7 +164,10 @@ function readEnvPluginPackages(
 
   if (
     !Array.isArray(parsed) ||
-    parsed.some((item) => typeof item !== "string" || !item.trim())
+    !parsed.every(
+      (item: unknown): item is string =>
+        typeof item === "string" && item.trim() !== "",
+    )
   ) {
     throw new Error(
       "JUNIOR_PLUGIN_PACKAGES must be a JSON array of package names",
@@ -186,7 +191,12 @@ export function pluginRuntimeRegistrationsFromPluginSet(
 ): PluginRegistration[] {
   return (
     pluginSet?.registrations.filter(
-      (plugin) => plugin.hooks || plugin.tasks || plugin.userPages?.length,
+      (plugin) =>
+        plugin.hooks ||
+        plugin.images ||
+        plugin.tasks ||
+        plugin.userPages?.length ||
+        plugin.objectLinks?.length,
     ) ?? []
   );
 }

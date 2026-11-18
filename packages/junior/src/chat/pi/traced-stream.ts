@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessageEvent,
@@ -13,6 +12,7 @@ import {
   streamSimple,
 } from "@earendil-works/pi-ai/compat";
 import * as Sentry from "@/chat/sentry";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import {
   extractGenAiUsageAttributes,
   getLogContextAttributesForSpan,
@@ -33,7 +33,7 @@ import {
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 import {
-  createProviderError,
+  createAssistantProviderError,
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
@@ -52,7 +52,7 @@ function attributeModeForPrivacy(
 function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
-  options: Parameters<StreamFn>[2],
+  options: Parameters<AgentRequestStreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
   promptName: string | undefined,
@@ -150,7 +150,7 @@ function buildChatEndAttributes(
   }
 
   if (message.stopReason === "error") {
-    const providerError = createProviderError(message.errorMessage ?? "");
+    const providerError = createAssistantProviderError(message);
     Object.assign(attributes, getProviderErrorAttributes(providerError));
     attributes["error.type"] = providerError.kind;
   }
@@ -207,8 +207,8 @@ function createResponseTiming(requestStartedAtMs: number): {
 // loop could have delayed the request on Junior's side.
 function traceResponseHeaders(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const eventLoopStart = performance.eventLoopUtilization();
   const onResponse = options?.onResponse;
   return {
@@ -238,8 +238,8 @@ function traceResponseHeaders(
 // result of the wrapped hook, so it never changes the payload itself.
 function traceRequestPayload(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const onPayload = options?.onPayload;
   return {
     ...options,
@@ -291,17 +291,21 @@ function relayStream(
  *
  * The base argument exists so tests can inject a stub stream function.
  * `promptName` names a request that is not an agent loop call, such as a
- * context summary.
+ * context summary. `endAttributes` adds caller attributes from the final
+ * message.
  */
 export function createTracedStreamFn(
   baseOrOptions:
-    | StreamFn
+    | AgentRequestStreamFn
     | {
-        conversationPrivacy?: ConversationPrivacy;
-        base?: StreamFn;
+        conversationPrivacy?: ConversationPrivacy | undefined;
+        base?: AgentRequestStreamFn;
+        endAttributes?: (
+          message: AssistantMessage,
+        ) => Record<string, TraceAttributeValue> | undefined;
         promptName?: string;
       } = streamSimple,
-): StreamFn {
+): AgentRequestStreamFn {
   const base =
     typeof baseOrOptions === "function"
       ? baseOrOptions
@@ -318,6 +322,10 @@ export function createTracedStreamFn(
   const effectivePrivacy = conversationPrivacy ?? "private";
   const promptName =
     typeof baseOrOptions === "function" ? undefined : baseOrOptions.promptName;
+  const callerEndAttributes =
+    typeof baseOrOptions === "function"
+      ? undefined
+      : baseOrOptions.endAttributes;
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
@@ -360,6 +368,7 @@ export function createTracedStreamFn(
               const endAttributes = {
                 ...buildChatEndAttributes(finalMessage, mode),
                 ...responseTiming.attributes(),
+                ...callerEndAttributes?.(finalMessage),
               };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);

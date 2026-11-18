@@ -5,11 +5,11 @@ import { Link } from "react-router";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { ChildConversationStatusPill } from "./ChildConversationStatus";
-import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
 import { HighlightText } from "./transcriptSearch";
+import { formatCompactAge } from "../time";
 
 /**
  * Link a Thread that the parent started to its page: title, status, and age.
@@ -19,7 +19,7 @@ import { HighlightText } from "./transcriptSearch";
  */
 export function TranscriptThreadCard(props: {
   part: TranscriptViewSubagentPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const id = props.part.childConversationId;
   const thread = useContext(FeedThreads).get(id);

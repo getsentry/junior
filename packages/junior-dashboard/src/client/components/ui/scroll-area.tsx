@@ -24,7 +24,7 @@ function ScrollArea({
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
         className={cn(
-          "size-full overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+          "size-full overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
           viewportClassName,
         )}
       >

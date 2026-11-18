@@ -50,13 +50,14 @@ export async function githubApi(
   // Writes are not followed: write policy needs a `/repos/{owner}/{repo}` URL.
   const follow = input.followRedirects === true && method === "GET";
   for (let hop = 0; ; hop++) {
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     response = await egress.fetch({
       provider: "github",
       operation: input.operation,
       request: new Request(url, {
         method,
         headers,
-        signal: input.signal,
+        signal: input.signal ?? null,
         ...(input.body !== undefined
           ? { body: JSON.stringify(input.body) }
           : undefined),
@@ -64,6 +65,7 @@ export async function githubApi(
     });
     const next = follow ? redirectTarget(response, url) : undefined;
     if (!next || hop >= MAX_REDIRECTS) break;
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     await response.body?.cancel();
     url = next;
   }
@@ -80,6 +82,28 @@ function redirectTarget(response: Response, from: string): string | undefined {
   if (!location) return undefined;
   const target = new URL(location, from);
   return target.origin === GITHUB_API_BASE ? target.href : undefined;
+}
+
+/**
+ * Return where a `github.com` attachment URL redirects, through host
+ * egress. GitHub signs that address for a short time, so it needs no
+ * credential. Egress does not follow the redirect, so the credential never
+ * reaches the image host.
+ */
+export async function githubAttachmentLocation(
+  egress: PluginEgress,
+  url: string,
+): Promise<string | undefined> {
+  const response = await egress.fetch({
+    provider: "github",
+    operation: "github.attachment.get",
+    request: new Request(url, { redirect: "manual" }),
+  });
+  await response.body?.cancel();
+  const location = REDIRECT_STATUSES.has(response.status)
+    ? response.headers.get("location")
+    : null;
+  return location ? new URL(location, url).href : undefined;
 }
 
 async function readBody(response: Response): Promise<unknown> {
@@ -119,8 +143,10 @@ export function parseRepo(value: string): {
 export function githubErrorMessage(body: unknown): string {
   if (typeof body === "string" && body.trim()) return body.trim();
   if (!isRecord(body)) return "GitHub request failed";
-  const errors = Array.isArray(body.errors) ? body.errors.filter(isRecord) : [];
-  if (typeof body.message === "string" && body.message.trim()) {
+  const errors = Array.isArray(body["errors"])
+    ? body["errors"].filter(isRecord)
+    : [];
+  if (typeof body["message"] === "string" && body["message"].trim()) {
     const details = errors
       .map((error) =>
         ["resource", "field", "code", "message"]
@@ -135,11 +161,11 @@ export function githubErrorMessage(body: unknown): string {
       )
       .filter(Boolean)
       .join("; ");
-    const message = body.message.trim();
+    const message = body["message"].trim();
     return details ? `${message}: ${details}` : message;
   }
   const graphqlMessages = errors
-    .map((error) => error.message)
+    .map((error) => error["message"])
     .filter((message) => typeof message === "string" && message.trim());
   return graphqlMessages.length
     ? graphqlMessages.join("; ")

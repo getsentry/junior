@@ -19,11 +19,14 @@ const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
 });
 
-/** Create a tool that publishes one sandbox image at a public internet URL. */
+/**
+ * Create a tool that publishes one sandbox image at a public internet URL.
+ *
+ * @runBuilt publishImage
+ */
 export function createPublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  publicBaseUrl?: () => string | undefined;
   storage: Pick<AttachmentStorage, "put">;
   workspace: SandboxWorkspace;
 }) {
@@ -50,7 +53,7 @@ export function createPublishImageTool(args: {
       .strict(),
     outputSchema,
     async execute({ path }) {
-      const publicBaseUrl = (args.publicBaseUrl ?? resolveBaseUrl)()?.trim();
+      const publicBaseUrl = resolveBaseUrl()?.trim();
       if (!publicBaseUrl) {
         throw new Error(
           "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.",

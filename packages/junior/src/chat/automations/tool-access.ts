@@ -1,4 +1,5 @@
 /** Automation access for the Automation tools. */
+import { automationSkillNameSchema } from "@/chat/automations/task";
 import type { Identity, User } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { automationListQuerySchema } from "@/api/schema/automation";
@@ -243,7 +244,7 @@ export const automationSearchInputSchema = z
       .max(200)
       .nullable()
       .describe(
-        "Text in the title or instruction, an automation ID, or a dashboard URL.",
+        "Text in the title, instruction, or skill name, an automation ID, or a dashboard URL.",
       )
       .optional(),
     scope: z
@@ -262,6 +263,10 @@ export const automationSearchInputSchema = z
       .describe(
         "Limit results to automations that deliver to this destination. Use destination.id from an earlier result.",
       )
+      .optional(),
+    skill: automationSkillNameSchema
+      .nullable()
+      .describe("Only automations that run this skill, by exact name.")
       .optional(),
   })
   .strict();
@@ -292,6 +297,7 @@ export async function searchToolAutomations(
       scope: input.scope === "mine" ? "mine" : "all",
       type: input.type ?? "all",
       destination,
+      skill: input.skill ?? undefined,
       pageSize: MAX_SEARCHED_AUTOMATIONS,
     }),
   );

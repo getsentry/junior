@@ -4,8 +4,17 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
+import {
+  createEncryptedState,
+  readEncryptedState,
+  type EncryptedState,
+} from "@/chat/encryption/state";
 import { sleep } from "@/chat/sleep";
-import { acquireActiveLock } from "@/chat/state/locks";
+import {
+  acquireActiveLock,
+  MUTATION_LOCK_TTL_MS,
+  withLock,
+} from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime
@@ -23,19 +32,48 @@ function refreshLockKey(userId: string, provider: string): string {
 
 export class StateAdapterTokenStore implements UserTokenStore {
   private readonly state: StateAdapter;
+  private readonly secrets: EncryptedState;
 
   constructor(stateAdapter: StateAdapter) {
     this.state = stateAdapter;
+    this.secrets = createEncryptedState(stateAdapter);
   }
 
   async get(
     userId: string,
     provider: string,
   ): Promise<StoredTokens | undefined> {
-    const stored = await this.state.get<unknown>(tokenKey(userId, provider));
-    return stored === null || stored === undefined
-      ? undefined
-      : storedTokensSchema.parse(stored);
+    const stored = await readEncryptedState(
+      this.state,
+      tokenKey(userId, provider),
+    );
+    if (!stored) return undefined;
+    const tokens = storedTokensSchema.parse(stored.value);
+    if (stored.stale) await this.saveStale(userId, provider);
+    return tokens;
+  }
+
+  /**
+   * Save stale tokens again with the active key. It runs only when the
+   * refresh gate is free, so it cannot write back a refresh token that a
+   * refresh replaced.
+   */
+  private async saveStale(userId: string, provider: string): Promise<void> {
+    await withLock(
+      this.state,
+      refreshLockKey(userId, provider),
+      async () => {
+        const key = tokenKey(userId, provider);
+        const current = await readEncryptedState(this.state, key);
+        if (!current?.stale) return;
+        await this.set(
+          userId,
+          provider,
+          storedTokensSchema.parse(current.value),
+        );
+      },
+      { ttlMs: MUTATION_LOCK_TTL_MS },
+    );
   }
 
   async set(
@@ -48,7 +86,7 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const ttlMs = expiresAt
       ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
       : LONG_LIVED_TTL_MS;
-    await this.state.set(tokenKey(userId, provider), parsed, ttlMs);
+    await this.secrets.set(tokenKey(userId, provider), parsed, ttlMs);
   }
 
   async delete(userId: string, provider: string): Promise<void> {
@@ -64,17 +102,21 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const lockKey = refreshLockKey(userId, provider);
     const deadline = Date.now() + REFRESH_LOCK_WAIT_MS;
     while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- Try the lock again until the deadline.
       const lock = await acquireActiveLock(this.state, lockKey);
       if (lock) {
         try {
+          // oxlint-disable-next-line no-await-in-loop -- This runs once, while this try holds the lock.
           return await callback();
         } finally {
+          // oxlint-disable-next-line no-await-in-loop -- Release the lock before the loop returns.
           await this.state.releaseLock(lock);
         }
       }
       if (Date.now() >= deadline) {
         throw new Error(`Could not acquire OAuth token refresh lock`);
       }
+      // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
       await sleep(REFRESH_LOCK_RETRY_MS);
     }
   }

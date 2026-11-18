@@ -5,13 +5,14 @@
 import { TestRunner } from "vitest";
 import { createJudge, createJudgeHarness } from "vitest-evals";
 import type { JsonValue, NormalizedSession } from "vitest-evals/harness";
+// oxlint-disable-next-line no-restricted-imports -- The eval judge is eval spend, not Conversation spend.
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { runEvalWork } from "../eval-work";
 
 /** Pass and fail conditions in product language. */
 export interface Rubric {
   pass: readonly string[];
-  fail?: readonly string[];
+  fail?: readonly string[] | undefined;
 }
 
 /** One user-visible message in a judge transcript. */
@@ -129,7 +130,7 @@ function parseJudgeResult(text: string): {
 
 async function completeJudge(args: {
   prompt: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   system: string;
 }): Promise<string> {
   const { text } = await completeText({
@@ -137,7 +138,6 @@ async function completeJudge(args: {
     modelId: JUDGE_MODEL_ID,
     system: args.system,
     messages: [{ role: "user", content: args.prompt, timestamp: Date.now() }],
-    temperature: 0,
   });
   return text;
 }
@@ -171,7 +171,7 @@ function visibleMessages(session: NormalizedSession): VisibleMessage[] {
     ) {
       return [];
     }
-    const author = event.metadata?.author_name;
+    const author = event.metadata?.["author_name"];
     return [
       {
         content: event.content,

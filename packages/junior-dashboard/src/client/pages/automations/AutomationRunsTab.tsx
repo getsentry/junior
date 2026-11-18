@@ -1,8 +1,7 @@
-import { useMemo, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   AutomationExecution,
   AutomationExecutionList,
-  AutomationRun,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 
@@ -10,6 +9,7 @@ import { useAutomationExecutionsData } from "../../api";
 import { Button } from "../../components/ui/button";
 import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusDot } from "../../components/StatusDot";
@@ -19,25 +19,22 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import {
-  formatCompactNumber,
-  formatCostSummary,
-  formatRuntime,
-} from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import { useSearchParamEnum } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
 import {
   AutomationRunDetails,
-  AutomationRunsFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
 import {
+  automationRunOf,
   automationRunStatusTone,
   automationRunTitle,
   formatAutomationRunTime,
 } from "./automationFormat";
+import { formatRuntime } from "../../time";
 
 /** Search param that filters the Runs tab by result. */
 export const AUTOMATION_RESULT_PARAM = "result";
@@ -71,13 +68,8 @@ export function AutomationRunsTab(props: {
   // Details look up every loaded run, so a filter never hides the open run.
   const runs = useMemo(
     () =>
-      (query.data?.executions ?? []).map(
-        (execution): AutomationRun => ({
-          ...execution,
-          automationId: automation.id,
-          automationTitle: automation.title,
-          kind: automation.kind,
-        }),
+      (query.data?.executions ?? []).map((execution) =>
+        automationRunOf(execution, automation),
       ),
     [automation, query.data],
   );
@@ -85,11 +77,10 @@ export function AutomationRunsTab(props: {
     executions.map((execution) => execution.executionId),
   );
   return (
-    <AutomationRunsFrame
+    <ListPanelFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
-            key={selection.runId}
             loading={!query.data && !query.error}
             onClose={selection.close}
             run={runs.find((run) => run.executionId === selection.runId)}
@@ -103,10 +94,10 @@ export function AutomationRunsTab(props: {
       {props.header}
       {query.data ? (
         <AutomationRunsView
+          automation={automation}
           data={query.data}
           executions={executions}
           onResultChange={setResult}
-          onRowsKeyDown={selection.onRowsKeyDown}
           onSelect={selection.toggle}
           range={props.range}
           result={result}
@@ -115,20 +106,22 @@ export function AutomationRunsTab(props: {
       ) : query.error ? (
         <InlineError>
           Runs could not be loaded.{" "}
-          <Button onClick={() => void query.refetch()}>Try again</Button>
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
         </InlineError>
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />
       )}
-    </AutomationRunsFrame>
+    </ListPanelFrame>
   );
 }
 
 function AutomationRunsView(props: {
+  automation: AutomationSummary;
   data: AutomationExecutionList;
   executions: AutomationExecution[];
   onResultChange(value: (typeof RESULT_OPTIONS)[number]): void;
-  onRowsKeyDown(event: KeyboardEvent<HTMLElement>): void;
   onSelect(executionId: string): void;
   range: TimeRangeDays;
   result: (typeof RESULT_OPTIONS)[number];
@@ -153,6 +146,7 @@ function AutomationRunsView(props: {
             emptySixHour: (date) => ({
               blocked: 0,
               completed: 0,
+              costUsd: 0,
               date,
               failed: 0,
             }),
@@ -176,7 +170,7 @@ function AutomationRunsView(props: {
           value={props.result}
         />
         <p className="m-0 text-xs text-dashboard-text-muted">
-          {data.automation.totalRuns} total · newest first
+          {props.automation.totalRuns} total · newest first
         </p>
       </div>
 
@@ -204,15 +198,11 @@ function AutomationRunsView(props: {
                 <div>Tokens</div>
                 <div>Cost</div>
               </div>
-              <div
-                className="min-w-0"
-                onKeyDown={props.onRowsKeyDown}
-                role="list"
-              >
+              <div className="min-w-0" role="list">
                 {props.executions.map((execution) => (
                   <ExecutionRow
                     execution={execution}
-                    fallbackTitle={data.automation.title}
+                    fallbackTitle={props.automation.title}
                     key={execution.executionId}
                     onSelect={() => props.onSelect(execution.executionId)}
                     selected={props.selectedRunId === execution.executionId}

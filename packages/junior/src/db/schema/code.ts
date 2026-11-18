@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -39,6 +40,9 @@ export const juniorCodeChanges = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    draft: boolean("draft").notNull().default(false),
+    /** Latest push, review, or comment by a person, from the code plugin. */
+    lastActivityAt: timestamptz("last_activity_at"),
     mergedAt: timestamptz("merged_at"),
     number: integer("number").notNull(),
     openedAt: timestamptz("opened_at").notNull(),
@@ -60,6 +64,13 @@ export const juniorCodeChanges = pgTable(
     index("junior_code_changes_opened_at_idx").on(table.openedAt),
     index("junior_code_changes_merged_at_idx").on(table.mergedAt),
     index("junior_code_changes_closed_at_idx").on(table.closedAt),
+    // Repository pages count changes by state and list one state newest
+    // first.
+    index("junior_code_changes_repository_state_idx").on(
+      table.repositoryId,
+      table.state,
+      table.updatedAt.desc(),
+    ),
     index("junior_code_changes_open_idx")
       .on(table.id)
       .where(sql`${table.state} = 'open'`),

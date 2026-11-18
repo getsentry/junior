@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { slackMention, reply, webMessage, type MessageInput } from "./inputs";
 import { isRecordedConversation } from "./recorded";
 import {
@@ -19,6 +20,8 @@ import {
 const VOLATILE_KEYS = new Set([
   "authorIdentityId",
   "cacheWrite1h",
+  "durationMs",
+  "id",
   "idempotencyKey",
   "inputMessageIds",
   "messageId",
@@ -26,6 +29,7 @@ const VOLATILE_KEYS = new Set([
   "responseId",
   "slackTs",
   "timestamp",
+  "toolCallId",
   "turnId",
   "usage",
 ]);
@@ -50,16 +54,26 @@ function stripVolatile(value: unknown): unknown {
     return value.replace(/ slack_ts="[^"]*"/g, "");
   }
   if (!value || typeof value !== "object") return value;
+  // The model may give `noReply` a note, which loaded history cannot know.
+  // A person's Turn keeps only the call, so its input and output are free
+  // text, like a reply.
+  const noReplyKeys =
+    "name" in value && value.name === NO_REPLY_TOOL_NAME
+      ? ["arguments"]
+      : "toolName" in value && value.toolName === NO_REPLY_TOOL_NAME
+        ? ["content", "details"]
+        : [];
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !VOLATILE_KEYS.has(key))
+      .filter(([key]) => !VOLATILE_KEYS.has(key) && !noReplyKeys.includes(key))
       .map(([key, entry]) => [key, stripVolatile(entry)]),
   );
 }
 
 /**
  * Stored rows without volatile fields. A message update folds into its
- * message. Runtime context belongs to the run, not the history. Model cost
+ * message. Runtime context and capability sections belong to the run, not
+ * the history: a Turn after loaded history sends the sections. Model cost
  * events record what a call spent, such as the title, and loaded history
  * spent nothing.
  */
@@ -70,28 +84,30 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
   for (const row of rows) {
     const data = row.data as Record<string, unknown>;
     if (
-      data.type === "user_message" &&
-      (data.provenance as { authority?: string } | undefined)?.authority ===
+      data["type"] === "user_message" &&
+      (data["provenance"] as { authority?: string } | undefined)?.authority ===
         "context"
     ) {
       continue;
     }
+    if (data["type"] === "system_message") continue;
     if (
-      data.type === "structured_event" &&
-      typeof (data.content as { costUsd?: unknown } | undefined)?.costUsd ===
+      data["type"] === "structured_event" &&
+      typeof (data["content"] as { costUsd?: unknown } | undefined)?.costUsd ===
         "number"
     ) {
       continue;
     }
-    if (data.type === "message_updated") {
-      Object.assign(messages.get(String(data.messageId)) ?? {}, {
+    if (data["type"] === "message_updated") {
+      Object.assign(messages.get(String(data["messageId"])) ?? {}, {
         ...data,
         type: "message",
       });
       continue;
     }
     const copy = { ...data };
-    if (data.type === "message") messages.set(String(data.messageId), copy);
+    if (data["type"] === "message")
+      messages.set(String(data["messageId"]), copy);
     result.push(copy);
   }
   return result.map(stripVolatile);
@@ -153,8 +169,6 @@ describe("loaded history", () => {
     run,
   }) => {
     // Slack ingress escapes markdown, such as the brackets and underscore.
-    // The input does not name the no-reply marker, because the model then
-    // repeats the escaped text, which Junior delivers as a reply.
     await compareWithRealTurn(
       run,
       slackMention(

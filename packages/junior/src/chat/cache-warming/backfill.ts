@@ -1,6 +1,6 @@
 /**
- * One-time fill of the cache warming gap lists from stored Conversation
- * history.
+ * Fill of the empty cache warming gap lists from stored Conversation
+ * history, about once a month.
  *
  * `warmup.ts` learns reply gaps only from idle periods after it is deployed.
  * Until a `gapSegment` has gaps, Junior sends no warmups for it. This replays
@@ -17,18 +17,39 @@
  * Conversation had when an idle period started. So it fills only the
  * segments of Conversations that are not archived and have work state
  * `none`, which most Conversations have. The `open` and `done` segments and
- * the `archived:*` segments stay empty until live gaps arrive. With fewer
- * than `MIN_GAP_SAMPLES` gaps, `decideWarmup` returns `few_gaps` and Junior
- * sends no warmup. The idle period still records its gap, so the segment
- * fills from live idle periods.
+ * the `archived:*` segments stay empty until live gaps arrive. Until then,
+ * `decideWarmup` leans on their `parentGapSegment`, a `none` segment that
+ * this fills. Each idle period still records its gap, so the segment fills
+ * from live idle periods.
  */
 import { performance } from "node:perf_hooks";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
+import { storedMessageJson } from "@/chat/conversations/sql/message-json";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { isPostgresErrorCode } from "@/db/postgres-error";
+import {
+  juniorAgentInvocations,
+  juniorConversationEvents,
+  juniorConversations,
+} from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -37,26 +58,39 @@ import {
   NO_REPLY_GAP_MS,
 } from "./model";
 import {
+  ANSWER_TOOL_ENDINGS,
   CONVERSATION_STATE_TTL_MS,
   GLOBAL_GAPS_MAX,
   GLOBAL_GAPS_TTL_MS,
   segmentGapsKey,
+  type TurnEnding,
 } from "./warmup";
 
 // The key names the segment format. A change of the `gapSegment` keys must
-// change it, so that the fill runs again for the new segment lists.
-const BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
+// change it, so that the fill runs again for the new segment lists. `v2`
+// replaces a key whose `done` had no TTL. Existing installs run the backfill
+// once more after deploy, and that run fills only segments that are empty.
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
+// A completed run expires after the gap list TTL. Then a heartbeat checks
+// for empty segment lists again, about once a month, for a fresh install and
+// for one that has run for a long time. A list that expired while warming was
+// off gets history again. Until then a heartbeat makes one state call.
+const BACKFILL_DONE_TTL_MS = GLOBAL_GAPS_TTL_MS;
 // Each batch is one query, and the SQL statement timeout applies to it. Small
 // batches keep each query short and let the budget check run often.
 const CONVERSATION_BATCH_SIZE = 10;
+// Conversations of one page of a scan that continues across runs.
+const CONVERSATION_PAGE_SIZE = 500;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
-// The heartbeat gives no deadline. This leaves most of its function time for
-// the gap writes and the other heartbeat work.
-const BACKFILL_BUDGET_MS = 60_000;
+/**
+ * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
+ * most of its function time for the writes and the other heartbeat work.
+ */
+export const BACKFILL_BUDGET_MS = 60_000;
 // State lists have no atomic replace, so live recording can append to a
 // segment list while the backfill writes it. Each append over
 // `GLOBAL_GAPS_MAX` drops the oldest entry. The backfill writes at most half
@@ -89,42 +123,104 @@ interface ConversationRow {
 
 interface EventRow {
   conversationId: string;
-  type: "assistant_message" | "user_message";
+  /** `tool_result`: only a successful answer tool result. */
+  type: "assistant_message" | "tool_result" | "user_message";
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
   stopReason: string | null;
+  /** Tool result: the answer tool that returned it. */
+  toolName: string | null;
   /** Assistant message: Pi sets it when the model request starts. */
   startedAtMs: string | null;
+  modelId: string | null;
   cacheRead: string | null;
   cacheWrite: string | null;
 }
 
-interface IdlePeriod {
-  sinceMs: number;
+/** One idle period of the stored history, as live recording would see it. */
+export interface ReplayedIdlePeriod {
   segment: string;
-  eligible: boolean;
-}
-
-interface RecordedGap {
-  segment: string;
+  turnEnding: TurnEnding;
   sinceMs: number;
+  /** Real time until the call that ended it, or until now. */
   gapMs: number;
+  /** Read and write tokens of the call that started it. */
+  prefixTokens: number;
+  /** The call that ended it. Unset when no call came before now. */
+  next?: { modelId: string | null; cacheRead: number; cacheWrite: number };
 }
 
-// Each Conversation that had activity in the window, newest first, so a run
-// that stops on its budget has the most recent gaps. A Conversation that
-// started earlier still needs its earlier Turns to get its Turn count.
+/**
+ * One tool wait of the stored history: from a `toolUse` call to the next call
+ * of its run, as `tool-wait.ts` records it live.
+ */
+export type ReplayedToolWait = Omit<
+  ReplayedIdlePeriod,
+  "segment" | "turnEnding" | "next"
+> & {
+  next: NonNullable<ReplayedIdlePeriod["next"]>;
+};
+
+// A Conversation that had activity in the window. One that started earlier
+// still needs its earlier Turns to get its Turn count.
+const inWindow = (windowStartMs: number) =>
+  and(
+    gte(juniorConversations.lastActivityAt, new Date(windowStartMs)),
+    isNull(juniorConversations.transcriptPurgedAt),
+  );
+
+const conversationColumns = {
+  conversationId: juniorConversations.conversationId,
+  kind: juniorConversations.kind,
+  parentConversationId: juniorConversations.parentConversationId,
+};
+
+// Each Conversation in the window, newest first, so a run that stops on its
+// budget has the most recent gaps.
 async function loadConversations(
   windowStartMs: number,
 ): Promise<ConversationRow[]> {
-  return await getSqlExecutor().query<ConversationRow>(
-    `SELECT conversation_id AS "conversationId", kind,
-       parent_conversation_id AS "parentConversationId"
-     FROM junior_conversations
-     WHERE last_activity_at >= $1 AND transcript_purged_at IS NULL
-     ORDER BY last_activity_at DESC, conversation_id`,
-    [new Date(windowStartMs).toISOString()],
-  );
+  return await getDb()
+    .select(conversationColumns)
+    .from(juniorConversations)
+    .where(inWindow(windowStartMs))
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      juniorConversations.conversationId,
+    );
+}
+
+// The next page of Conversations in the window, in id order. New activity
+// does not move a Conversation in this order, so a scan that continues after
+// an id reads each Conversation once.
+async function loadConversationPage(
+  windowStartMs: number,
+  afterConversationId: string | undefined,
+): Promise<ConversationRow[]> {
+  return await getDb()
+    .select(conversationColumns)
+    .from(juniorConversations)
+    .where(
+      and(
+        inWindow(windowStartMs),
+        afterConversationId === undefined
+          ? undefined
+          : gt(juniorConversations.conversationId, afterConversationId),
+      ),
+    )
+    .orderBy(juniorConversations.conversationId)
+    .limit(CONVERSATION_PAGE_SIZE);
+}
+
+/** Count the Conversations that a history scan from `windowStartMs` reads. */
+export async function countHistoryConversations(
+  windowStartMs: number,
+): Promise<number> {
+  const [row] = await getDb()
+    .select({ count: count() })
+    .from(juniorConversations)
+    .where(inWindow(windowStartMs));
+  return row?.count ?? 0;
 }
 
 // Agent history stores each model response as an `assistant_message` and
@@ -133,68 +229,128 @@ async function loadConversations(
 // A fork copies the rows of its source with their old times, so rows from
 // before the Conversation was created are skipped.
 async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
-  return await getSqlExecutor().query<EventRow>(
-    `SELECT e.conversation_id AS "conversationId", e.type,
-       CASE WHEN e.type = 'user_message' THEN
-         (e.payload->'provenance'->'actor'->>'userId') IS NOT NULL
-       END AS "personInstruction",
-       m.message->>'stopReason' AS "stopReason",
-       m.message->>'timestamp' AS "startedAtMs",
-       e.payload->'usage'->>'cacheRead' AS "cacheRead",
-       e.payload->'usage'->>'cacheWrite' AS "cacheWrite"
-     FROM junior_conversation_events e
-     JOIN junior_conversations c ON c.conversation_id = e.conversation_id
-     CROSS JOIN LATERAL (
-       SELECT CASE
-         WHEN e.type <> 'assistant_message' THEN NULL
-         WHEN e.schema_version >= 2 THEN (e.payload->>'message')::jsonb
-         ELSE e.payload
-       END AS message
-     ) m
-     WHERE e.conversation_id = ANY($1::text[])
-       AND (
-         e.type = 'assistant_message'
-         OR (
-           e.type = 'user_message'
-           AND (e.payload->'provenance'->>'authority') = 'instruction'
-         )
-       )
-       AND e.created_at >= c.created_at
-     ORDER BY e.conversation_id, e.seq`,
-    [conversationIds],
-  );
+  const events = juniorConversationEvents;
+  const isUserMessage = sql`${events.type} = 'user_message'`;
+  const isToolResult = sql`${events.type} = 'tool_result'`;
+  const messageText = sql`${events.payload}->>'message'`;
+  // Newer rows keep the fields that replay reads as payload keys. Older rows
+  // keep them only in the message string. The fields that replay reads have
+  // no Unicode escapes, so the cast keeps their values.
+  const message = sql`CASE
+    WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
+    WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
+    WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
+    ELSE ${storedMessageJson(messageText)}
+  END`;
+  return await getDb()
+    .select({
+      conversationId: events.conversationId,
+      type: sql<EventRow["type"]>`${events.type}`,
+      personInstruction: sql<
+        boolean | null
+      >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
+      stopReason: sql<string | null>`(${message})->>'stopReason'`,
+      toolName: sql<string | null>`(${message})->>'toolName'`,
+      startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
+      modelId: sql<string | null>`${events.payload}->>'model'`,
+      cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
+      cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+    })
+    .from(events)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, events.conversationId),
+    )
+    .where(
+      and(
+        inArray(events.conversationId, conversationIds),
+        or(
+          eq(events.type, "assistant_message"),
+          // Live recording ends the Turn only after an answer tool succeeds.
+          and(
+            isToolResult,
+            inArray(
+              sql`(${message})->>'toolName'`,
+              Object.keys(ANSWER_TOOL_ENDINGS),
+            ),
+            sql`(${message})->>'isError' IS DISTINCT FROM 'true'`,
+          ),
+          and(
+            isUserMessage,
+            sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
+          ),
+        ),
+        gte(events.createdAt, juniorConversations.createdAt),
+      ),
+    )
+    .orderBy(events.conversationId, events.seq);
+}
+
+interface ChildAgentRow {
+  /** The parent Conversation. */
+  conversationId: string;
+  createdAt: Date;
+  terminalAt: Date | null;
+}
+
+// The child agents of a batch. Live recording starts an Automation idle
+// period only while a child agent still runs.
+async function loadChildAgents(
+  conversationIds: string[],
+): Promise<ChildAgentRow[]> {
+  return await getDb()
+    .select({
+      conversationId: juniorAgentInvocations.parentConversationId,
+      createdAt: juniorAgentInvocations.createdAt,
+      terminalAt: juniorAgentInvocations.terminalAt,
+    })
+    .from(juniorAgentInvocations)
+    .where(
+      inArray(juniorAgentInvocations.parentConversationId, conversationIds),
+    );
 }
 
 /**
- * Replay the model calls of one Conversation the way the recorder in
- * `warmup.ts` sees them, and return the gap of each idle period.
+ * Replay the model calls of one Conversation the way the recorders in
+ * `warmup.ts` and `tool-wait.ts` see them, and return each idle period and
+ * tool wait. An idle period starts at a call that ends the Turn: a `stop`
+ * call or an answer tool call that succeeded. A tool wait starts at any
+ * other `toolUse` call, so no pair of calls is in both.
  *
  * Live recording measures from the start of the request that ended a Turn to
  * the start of the next recorded request. Here both times are the
  * `timestamp` of the stored assistant message, which Pi sets when it starts
  * the request. That is the closest stored time to the recorder's clock.
- *
- * Live recording records gaps only for idle periods that it could warm. The
- * stored usage gives the prefix size, so periods with a prefix below
- * `MIN_WARMUP_PREFIX_TOKENS` are skipped. The model, cache retention, and
- * snapshot size of the request are not checked: this assumes that reply
- * timing does not depend on them.
  */
 function replayConversation(
   kind: ConversationKind,
   events: EventRow[],
+  children: readonly ChildAgentRow[],
   nowMs: number,
-): RecordedGap[] {
-  const gaps: RecordedGap[] = [];
-  const close = (idle: IdlePeriod, untilMs: number) => {
+): { periods: ReplayedIdlePeriod[]; toolWaits: ReplayedToolWait[] } {
+  const periods: ReplayedIdlePeriod[] = [];
+  const toolWaits: ReplayedToolWait[] = [];
+  // `waitsOnPendingWork`: an Automation Turn, whose idle period live
+  // recording starts only while a child agent or a Watch can start a later
+  // Turn.
+  type Idle = Omit<ReplayedIdlePeriod, "gapMs" | "next"> & {
+    waitsOnPendingWork: boolean;
+    childRunning: boolean;
+  };
+  const close = (
+    { waitsOnPendingWork, childRunning, ...idle }: Idle,
+    untilMs: number,
+    next?: ReplayedIdlePeriod["next"],
+  ) => {
     const gapMs = untilMs - idle.sinceMs;
-    if (!idle.eligible || gapMs <= 0) return;
-    gaps.push({
-      segment: idle.segment,
-      sinceMs: idle.sinceMs,
-      // The horizon message records no reply before a later reply can.
-      gapMs: gapMs >= IDLE_HORIZON_MS ? NO_REPLY_GAP_MS : gapMs,
-    });
+    if (gapMs <= 0) return;
+    // An Automation run has its own Conversation, so only a child agent or a
+    // Watch starts a later Turn. History has no Watches: a later Turn without
+    // a running child stands for one.
+    if (waitsOnPendingWork && !childRunning && !next) return;
+    const period: ReplayedIdlePeriod = { ...idle, gapMs };
+    if (next) period.next = next;
+    periods.push(period);
   };
   let userActor = false;
   // Live recording takes the Actor when the Turn starts. A later instruction
@@ -202,8 +358,28 @@ function replayConversation(
   let inTurn = false;
   let endedTurns = 0;
   let lastCallMs: number | undefined;
-  let idle: IdlePeriod | undefined;
+  let idle: Idle | undefined;
+  // History does not show where a run ended, so a run that stopped during
+  // its tools continues with the first call of a later run. That gap is
+  // hours long, and `idlePeriodSavings` skips a gap that warming never pays
+  // for.
+  let waiting: { sinceMs: number; prefixTokens: number } | undefined;
+  // The ending of each answer tool call that succeeded. Its result follows
+  // the call.
+  const answerEndings = new Map<EventRow, TurnEnding>();
+  let toolUse: EventRow | undefined;
   for (const event of events) {
+    if (event.type === "assistant_message") {
+      toolUse = event.stopReason === "toolUse" ? event : undefined;
+    }
+    const ending =
+      event.type === "tool_result" && event.toolName
+        ? ANSWER_TOOL_ENDINGS[event.toolName]
+        : undefined;
+    if (toolUse && ending) answerEndings.set(toolUse, ending);
+  }
+  for (const event of events) {
+    if (event.type === "tool_result") continue;
     if (event.type === "user_message") {
       if (!inTurn) {
         // `agent/index.ts` counts a Task as not started by a person.
@@ -212,20 +388,41 @@ function replayConversation(
       }
       continue;
     }
+    // An answer tool call ends the Turn like a final response.
+    const answerEnding = answerEndings.get(event);
+    const turnEnding = event.stopReason === "stop" ? "reply" : answerEnding;
     // Pi continues the Turn only after a tool call.
-    if (event.stopReason !== "toolUse") inTurn = false;
+    if (event.stopReason !== "toolUse" || answerEnding) inTurn = false;
     // `Number(null)` is 0, so check for a missing time first.
     const startedAtMs =
       event.startedAtMs === null ? Number.NaN : Number(event.startedAtMs);
-    // The recorder skips failed and stopped requests.
-    if (
-      !Number.isFinite(startedAtMs) ||
-      event.stopReason === "error" ||
-      event.stopReason === "aborted"
-    ) {
+    if (!Number.isFinite(startedAtMs)) continue;
+    const next = {
+      modelId: event.modelId,
+      cacheRead: Number(event.cacheRead ?? 0),
+      cacheWrite: Number(event.cacheWrite ?? 0),
+    };
+    // The tool wait recorder also counts a failed or stopped request.
+    if (waiting && startedAtMs > waiting.sinceMs) {
+      toolWaits.push({
+        ...waiting,
+        gapMs: startedAtMs - waiting.sinceMs,
+        next,
+      });
+    }
+    waiting =
+      event.stopReason === "toolUse" && !answerEnding
+        ? {
+            sinceMs: startedAtMs,
+            prefixTokens: next.cacheRead + next.cacheWrite,
+          }
+        : undefined;
+    // The idle period recorder skips failed and stopped requests.
+    if (event.stopReason === "error" || event.stopReason === "aborted") {
       continue;
     }
-    if (idle) close(idle, startedAtMs);
+    const { cacheRead, cacheWrite } = next;
+    if (idle) close(idle, startedAtMs, next);
     idle = undefined;
     // The Conversation state expired, so the recorder starts the Turn count
     // again.
@@ -236,101 +433,190 @@ function replayConversation(
       endedTurns = 0;
     }
     lastCallMs = startedAtMs;
-    if (event.stopReason === "stop") {
-      const prefixTokens =
-        Number(event.cacheRead ?? 0) + Number(event.cacheWrite ?? 0);
+    if (turnEnding) {
+      const waitsOnPendingWork = turnBehavior({
+        kind,
+        personInput: userActor,
+      }).idleNeedsPendingWork;
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),
-        eligible: prefixTokens >= MIN_WARMUP_PREFIX_TOKENS,
+        turnEnding,
+        prefixTokens: cacheRead + cacheWrite,
+        waitsOnPendingWork,
+        childRunning:
+          waitsOnPendingWork &&
+          children.some(
+            (child) =>
+              child.createdAt.getTime() <= startedAtMs &&
+              (child.terminalAt === null ||
+                child.terminalAt.getTime() > startedAtMs),
+          ),
       };
       endedTurns += 1;
     }
   }
   // An idle period that is still in its horizon has no gap yet.
   if (idle && nowMs - idle.sinceMs >= IDLE_HORIZON_MS) close(idle, nowMs);
-  return gaps;
+  return { periods, toolWaits };
 }
 
-function isQueryCanceled(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (typeof current !== "object") return false;
-    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
-    current = (current as { cause?: unknown }).cause;
+function byConversation<Row extends { conversationId: string }>(
+  rows: readonly Row[],
+): Map<string, Row[]> {
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.conversationId) ?? [];
+    list.push(row);
+    grouped.set(row.conversationId, list);
   }
-  return false;
+  return grouped;
 }
 
-// Stop before the next batch when the budget is used. The budget uses the
-// monotonic clock, not `nowMs`.
-async function collectGaps(
-  nowMs: number,
-  budgetMs: number,
-): Promise<{
-  bySegment: Map<string, number[]>;
+/** Idle periods of a history scan, and how much of the history it read. */
+export interface HistoryScan {
+  periods: ReplayedIdlePeriod[];
+  toolWaits: ReplayedToolWait[];
   scanned: number;
   canceledBatches: number;
   budgetExceeded: boolean;
-}> {
+}
+
+// Replay the Conversations batch by batch until the budget is used, and
+// return the idle periods that started in the window, oldest first.
+async function replayConversations(
+  conversations: readonly ConversationRow[],
+  args: { windowStartMs: number; nowMs: number; budgetMs: number },
+): Promise<HistoryScan & { lastConversationId?: string }> {
+  const { windowStartMs, nowMs, budgetMs } = args;
   const startedAt = performance.now();
-  const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
-  const conversations = await loadConversations(windowStartMs);
-  const recorded: RecordedGap[] = [];
+  const periods: ReplayedIdlePeriod[] = [];
+  const toolWaits: ReplayedToolWait[] = [];
   let scanned = 0;
   let canceledBatches = 0;
   let budgetExceeded = false;
+  let lastConversationId: string | undefined;
   for (let i = 0; i < conversations.length; i += CONVERSATION_BATCH_SIZE) {
     if (i > 0 && performance.now() - startedAt >= budgetMs) {
       budgetExceeded = true;
       break;
     }
     const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
+    lastConversationId = batch.at(-1)!.conversationId;
     let rows: EventRow[];
+    let children: ChildAgentRow[];
     try {
-      rows = await loadEvents(batch.map((row) => row.conversationId));
+      const ids = batch.map((row) => row.conversationId);
+      // oxlint-disable-next-line no-await-in-loop -- Load one batch at a time to bound memory.
+      [rows, children] = await Promise.all([
+        loadEvents(ids),
+        loadChildAgents(ids),
+      ]);
     } catch (error) {
       // A batch with too much history for one query is skipped. The budget
       // check still stops the scan in time.
-      if (!isQueryCanceled(error)) throw error;
+      if (!isPostgresErrorCode(error, QUERY_CANCELED)) throw error;
       canceledBatches += 1;
       continue;
     }
-    const events = new Map<string, EventRow[]>();
-    for (const event of rows) {
-      const list = events.get(event.conversationId) ?? [];
-      list.push(event);
-      events.set(event.conversationId, list);
-    }
+    const events = byConversation(rows);
+    const childrenByParent = byConversation(children);
     for (const conversation of batch) {
-      const gaps = replayConversation(
+      const replayed = replayConversation(
         conversationKindFromRow(conversation),
         events.get(conversation.conversationId) ?? [],
+        childrenByParent.get(conversation.conversationId) ?? [],
         nowMs,
       );
-      recorded.push(...gaps.filter((gap) => gap.sinceMs >= windowStartMs));
+      const inScanWindow = (period: { sinceMs: number }) =>
+        period.sinceMs >= windowStartMs;
+      periods.push(...replayed.periods.filter(inScanWindow));
+      toolWaits.push(...replayed.toolWaits.filter(inScanWindow));
     }
     scanned += batch.length;
   }
-  recorded.sort((a, b) => a.sinceMs - b.sinceMs);
-  const bySegment = new Map<string, number[]>();
-  for (const gap of recorded) {
-    const list = bySegment.get(gap.segment) ?? [];
-    list.push(gap.gapMs);
-    bySegment.set(gap.segment, list);
-  }
+  periods.sort((a, b) => a.sinceMs - b.sinceMs);
   return {
-    bySegment,
+    periods,
+    toolWaits,
     scanned,
     canceledBatches,
     budgetExceeded,
+    lastConversationId,
   };
 }
 
 /**
- * Fill each empty cache warming gap list once per install from the stored
- * Conversation history. The heartbeat calls it each minute. After one run
- * completes, a call makes one state request and returns.
+ * Replay the stored history of each Conversation with activity since
+ * `windowStartMs`, newest first, and return its idle periods that started in
+ * the window, oldest first. The scan stops before the next batch when the
+ * budget is used. The budget uses the monotonic clock, not `nowMs`.
+ */
+export async function scanIdlePeriods(args: {
+  windowStartMs: number;
+  nowMs: number;
+  budgetMs: number;
+}): Promise<HistoryScan> {
+  const { lastConversationId: _, ...scan } = await replayConversations(
+    await loadConversations(args.windowStartMs),
+    args,
+  );
+  return scan;
+}
+
+/** One part of a history scan that continues across runs. */
+export interface HistoryScanSlice extends HistoryScan {
+  /** Continue after this Conversation. Unset when the slice read none. */
+  lastConversationId?: string;
+  /** No Conversation is left after this slice. */
+  complete: boolean;
+}
+
+/**
+ * Replay the next Conversations in id order after `afterConversationId`,
+ * until the budget is used, as `scanIdlePeriods` does. Continue with the
+ * returned `lastConversationId` until the slice is `complete`.
+ */
+export async function scanIdlePeriodSlice(args: {
+  windowStartMs: number;
+  nowMs: number;
+  budgetMs: number;
+  afterConversationId?: string;
+}): Promise<HistoryScanSlice> {
+  const page = await loadConversationPage(
+    args.windowStartMs,
+    args.afterConversationId,
+  );
+  const scan = await replayConversations(page, args);
+  return {
+    ...scan,
+    complete: !scan.budgetExceeded && page.length < CONVERSATION_PAGE_SIZE,
+  };
+}
+
+// Live recording records gaps only for idle periods that it could warm. The
+// stored usage gives the prefix size, so periods with a prefix below
+// `MIN_WARMUP_PREFIX_TOKENS` are skipped. The model, cache retention, and
+// snapshot size of the request are not checked: this assumes that reply
+// timing does not depend on them.
+function gapsBySegment(
+  periods: readonly ReplayedIdlePeriod[],
+): Map<string, number[]> {
+  const bySegment = new Map<string, number[]>();
+  for (const period of periods) {
+    if (period.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) continue;
+    const list = bySegment.get(period.segment) ?? [];
+    // The horizon message records no reply before a later reply can.
+    list.push(period.gapMs >= IDLE_HORIZON_MS ? NO_REPLY_GAP_MS : period.gapMs);
+    bySegment.set(period.segment, list);
+  }
+  return bySegment;
+}
+
+/**
+ * Fill each empty cache warming gap list from the stored Conversation
+ * history. The heartbeat calls it each minute. After a run completes, a call
+ * makes one state request and returns, until the completed run expires.
  *
  * A run that uses its scan budget writes the gaps that it has and also
  * completes. Some gaps are better than none, and a run that cannot finish
@@ -360,13 +646,22 @@ export async function backfillCacheWarmingGaps(args: {
       // Check before the scan, so live gaps that arrive during the scan do
       // not stop the fill. A list that has gaps now has live gaps, or gaps
       // from a run that failed while it wrote. Both are kept as they are.
-      const emptySegments = new Set<string>();
-      for (const segment of BACKFILL_SEGMENTS) {
-        const gaps = await state.getList(segmentGapsKey(segment));
-        if (gaps.length === 0) emptySegments.add(segment);
-      }
-      const { bySegment, scanned, canceledBatches, budgetExceeded } =
-        await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
+      const segments = [...BACKFILL_SEGMENTS];
+      const gapCounts = await mapBounded(
+        segments,
+        async (segment) =>
+          (await state.getList(segmentGapsKey(segment))).length,
+      );
+      const emptySegments = new Set(
+        segments.filter((_segment, index) => gapCounts[index] === 0),
+      );
+      const { periods, scanned, canceledBatches, budgetExceeded } =
+        await scanIdlePeriods({
+          windowStartMs: args.nowMs - GLOBAL_GAPS_TTL_MS,
+          nowMs: args.nowMs,
+          budgetMs: args.budgetMs ?? BACKFILL_BUDGET_MS,
+        });
+      const bySegment = gapsBySegment(periods);
       const logAttributes = {
         "app.cache_warming.backfill.conversation_count": scanned,
         "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
@@ -389,6 +684,7 @@ export async function backfillCacheWarmingGaps(args: {
         const key = segmentGapsKey(segment);
         const newest = gaps.slice(-BACKFILL_GAPS_MAX);
         for (const gapMs of newest) {
+          // oxlint-disable-next-line no-await-in-loop -- Append the gaps of a list in time order.
           await state.appendToList(key, gapMs, {
             maxLength: GLOBAL_GAPS_MAX,
             ttlMs: GLOBAL_GAPS_TTL_MS,
@@ -397,7 +693,7 @@ export async function backfillCacheWarmingGaps(args: {
         gapCount += newest.length;
         segmentCount += 1;
       }
-      await state.set(BACKFILL_KEY, "done");
+      await state.set(BACKFILL_KEY, "done", BACKFILL_DONE_TTL_MS);
       const completed = {
         ...logAttributes,
         "app.cache_warming.backfill.gap_count": gapCount,

@@ -16,7 +16,18 @@ export const personalTokenListSchema = z
   .strict();
 
 export const createPersonalTokenBodySchema = z
-  .object({ name: z.string().trim().min(1).max(80) })
+  .object({
+    name: z.string().trim().min(1).max(80),
+    /**
+     * Origin of a Preview that will receive the token. The API creates the
+     * token only when Junior made that Preview for the viewer.
+     */
+    previewOrigin: z
+      .string()
+      .url()
+      .refine((value) => new URL(value).origin === value, "Expected an origin.")
+      .optional(),
+  })
   .strict();
 
 export const createdPersonalTokenSchema = personalTokenMetadataSchema

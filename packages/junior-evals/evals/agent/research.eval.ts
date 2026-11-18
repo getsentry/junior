@@ -18,8 +18,8 @@ describe("Research Reply Shape", () => {
       rubric({
         pass: [
           "The final thread reply is a concise researched answer, not a status update or process note.",
-          "The final answer coherently summarizes Slack agent streaming across the provided sources.",
-          "The final answer stays brief enough for a normal Slack reply.",
+          "The final response coherently summarizes Slack agent streaming across the provided sources.",
+          "The final response stays brief enough for a normal Slack reply.",
         ],
         fail: [
           "Do not expose low-level tool mechanics, partial drafts, or repetitive progress updates.",

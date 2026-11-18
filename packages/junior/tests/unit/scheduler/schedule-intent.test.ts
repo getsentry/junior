@@ -25,7 +25,7 @@ function scheduledAutomation(
     outcomes: [],
     schedule: compiled.schedule,
     status: "active",
-    task: { text: "Post the reminder." },
+    task: { kind: "instruction", instruction: "Post the reminder." },
     updatedAtMs: nowMs,
   };
 }
@@ -182,7 +182,7 @@ describe("schedule intent compiler", () => {
       outcomes: [],
       schedule: compiled.schedule,
       status: "active",
-      task: { text: "Post the daily reminder." },
+      task: { kind: "instruction", instruction: "Post the daily reminder." },
       updatedAtMs: Date.parse("2026-03-07T08:00:00.000Z"),
     };
 

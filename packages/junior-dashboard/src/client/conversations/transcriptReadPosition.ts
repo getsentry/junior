@@ -16,19 +16,14 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  conversationReadReportSchema,
+  conversationReadPositionSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
-  type ConversationFeed,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
 import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
-import {
-  conversationDetailQueryKey,
-  conversationReadScope,
-  conversationUnreadMutationKey,
-} from "./queries";
+import { conversationDetailQueryKey, conversationReadScope } from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
@@ -61,7 +56,7 @@ export type ReadPositionAtOpen = {
   /** Set when unread events start before the latest page. */
   unreadCursor?: string;
   /** The page around `unreadCursor`, when the fetch brought it. */
-  unreadPage?: ConversationEventPage;
+  unreadPage?: ConversationEventPage | undefined;
 };
 
 /** Edit the browser-only preference for where Conversations open. */
@@ -104,11 +99,11 @@ export function useReadPositionAtOpen(
   fetched: DetailAtOpen | undefined,
 ): ReadPositionAtOpen {
   // Store derived state during render so the first transcript render has it.
-  const [opened, setOpened] = useState<{ lastReadSeq?: number }>();
+  const [opened, setOpened] = useState<{ lastReadSeq?: number | undefined }>();
   const [fetchedEnd, setFetchedEnd] = useState<{
-    throughSeq?: number;
-    unreadCursor?: string;
-    unreadPage?: ConversationEventPage;
+    throughSeq?: number | undefined;
+    unreadCursor?: string | undefined;
+    unreadPage?: ConversationEventPage | undefined;
   }>();
   const read =
     opened ??
@@ -137,9 +132,9 @@ export function useReadPositionAtOpen(
 
 type DetailAtOpen = {
   events: readonly { seq: number }[];
-  readPosition?: ConversationReadPosition;
-  unreadCursor?: string;
-  unreadPage?: ConversationEventPage;
+  readPosition?: ConversationReadPosition | undefined;
+  unreadCursor?: string | undefined;
+  unreadPage?: ConversationEventPage | undefined;
 };
 
 /** Find the rows after the read position, through the last row at open. */
@@ -187,57 +182,14 @@ export function useMarkConversationRead(conversationId: string) {
     scope: conversationReadScope(conversationId),
     mutationFn: (lastReadSeq: number) =>
       put(
-        conversationReadReportSchema,
+        conversationReadPositionSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
         { lastReadSeq },
       ),
-    onSuccess: async ({ unreadReply, ...readPosition }) => {
-      const detailQueryKey = conversationDetailQueryKey(conversationId);
-      const feeds = { queryKey: ["dashboard", "conversations"] };
-      // A Mark as read or unread queued after this report owns the flag.
-      const clearsUnread =
-        !unreadReply &&
-        queryClient.isMutating({
-          mutationKey: conversationUnreadMutationKey(conversationId),
-        }) === 0 &&
-        (queryClient.getQueryData<ConversationDetailReport>(detailQueryKey)
-          ?.unread ||
-          queryClient
-            .getQueriesData<ConversationFeed>(feeds)
-            .some(([, feed]) =>
-              feed?.conversations.some(
-                (conversation) =>
-                  conversation.conversationId === conversationId &&
-                  conversation.unread,
-              ),
-            ));
-      if (clearsUnread) {
-        // A poll that started before this read would put the unread flag
-        // back. The next poll reads after the write.
-        await Promise.all([
-          queryClient.cancelQueries(feeds),
-          queryClient.cancelQueries({ exact: true, queryKey: detailQueryKey }),
-        ]);
-        queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
-          feed
-            ? {
-                ...feed,
-                conversations: feed.conversations.map((conversation) =>
-                  conversation.conversationId === conversationId
-                    ? { ...conversation, unread: undefined }
-                    : conversation,
-                ),
-              }
-            : feed,
-        );
-      }
+    onSuccess: (readPosition) => {
       queryClient.setQueryData<ConversationDetailReport>(
-        detailQueryKey,
-        (detail) =>
-          detail && {
-            ...withReadPosition(detail, readPosition),
-            ...(clearsUnread ? { unread: undefined } : undefined),
-          },
+        conversationDetailQueryKey(conversationId),
+        (detail) => detail && withReadPosition(detail, readPosition),
       );
     },
   });
@@ -247,14 +199,6 @@ export function useMarkConversationRead(conversationId: string) {
         conversationDetailQueryKey(conversationId),
       )?.readPosition?.lastReadSeq;
       if (stored !== undefined && lastReadSeq <= stored) return;
-      // A row seen before Mark as unread must not read the conversation again.
-      if (
-        queryClient.isMutating({
-          mutationKey: conversationUnreadMutationKey(conversationId),
-        }) > 0
-      ) {
-        return;
-      }
       mutate(lastReadSeq);
     },
     [conversationId, mutate, queryClient],
@@ -279,10 +223,10 @@ export function useMarkConversationRead(conversationId: string) {
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
   /** The stored position. Rows after it report. */
-  lastReadSeq?: number;
-  onRead?: (seq: number) => void;
+  lastReadSeq?: number | undefined;
+  onRead?: ((seq: number) => void) | undefined;
   /** The reader acted outside the transcript, such as in the composer. */
-  engaged?: boolean;
+  engaged?: boolean | undefined;
   /**
    * Stop reporting while the rows are not in reading order, such as search
    * results. This is read when a report is scheduled, so the render that
@@ -301,8 +245,8 @@ export function useTranscriptReadReporter(input: {
   const engagedInputRef = useRef(input.engaged);
   engagedInputRef.current = input.engaged;
 
-  // Mark as unread moves the stored position back. A cached copy at open can
-  // also be ahead of the fetched one. Rows after it must report again.
+  // A cached copy at open can be ahead of the fetched position. Rows after
+  // the fetched one must report again.
   useEffect(() => {
     if (
       input.lastReadSeq !== undefined &&
@@ -345,7 +289,7 @@ export function useTranscriptReadReporter(input: {
       }
       // Read the seq now: an activity group row moves its seq as it grows.
       for (const row of visibleRows) {
-        const seq = Number(row.dataset.transcriptSeq);
+        const seq = Number(row.dataset["transcriptSeq"]);
         if (Number.isSafeInteger(seq)) seenSeq = Math.max(seenSeq ?? -1, seq);
       }
       if (seenSeq === null) return;
@@ -386,8 +330,8 @@ export function useTranscriptReadReporter(input: {
     const mutations = new MutationObserver((records) => {
       let seqChanged = false;
       for (const record of records) {
-        record.addedNodes.forEach(observeRows);
-        record.removedNodes.forEach(forgetRows);
+        for (const node of record.addedNodes) observeRows(node);
+        for (const node of record.removedNodes) forgetRows(node);
         if (record.type === "attributes") {
           const row = record.target as HTMLElement;
           intersections.observe(row);

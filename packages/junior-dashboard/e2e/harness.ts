@@ -8,6 +8,11 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { Page, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+import type * as DashboardApp from "../src/app";
+
+// The built dashboard. A plain string keeps the type check from needing a
+// build; `DashboardApp` gives it the source's types.
+const BUILT_APP = "../dist/app.js";
 
 /**
  * Add the mailbox that a first detail read asks for, so a mocked detail report
@@ -64,8 +69,12 @@ export type DashboardE2eServer = {
  * `startDashboardE2eServer` sets `DATABASE_URL`.
  */
 export async function resetDashboardMockState(): Promise<void> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  const { resetMockDashboardState } = await import("../dist/app.js");
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+  const { resetMockDashboardState }: typeof DashboardApp = await import(
+    BUILT_APP
+  );
   resetMockDashboardState();
 }
 
@@ -83,7 +92,8 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   }
 
   const method = req.method ?? "GET";
-  return new Request(url, {
+  // Node needs `duplex` to stream a request body; the DOM types lack it.
+  const init: RequestInit & { duplex?: "half" } = {
     body:
       method === "GET" || method === "HEAD"
         ? undefined
@@ -91,24 +101,28 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
     duplex: method === "GET" || method === "HEAD" ? undefined : "half",
     headers,
     method,
-  });
+  };
+  return new Request(url, init);
 }
 
 async function writeResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     res.setHeader(name, value);
-  });
+  }
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { basePath?: string } = {},
+  options: { authRequired?: boolean; basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  const { createDashboardApp } = await import("../dist/app.js");
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+  const { createDashboardApp }: typeof DashboardApp = await import(BUILT_APP);
   const app = createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["example.com"],
     auth: {
       async getSession() {
@@ -127,14 +141,14 @@ export async function startDashboardE2eServer(
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    authRequired: options.authRequired,
     basePath: options.basePath,
     mockConversations: true,
   });
 
   let baseURL = "http://127.0.0.1";
   const server = createServer((req, res) => {
-    void app
-      .fetch(requestFromNode(req, baseURL))
+    void Promise.resolve(app.fetch(requestFromNode(req, baseURL)))
       .then((response) => writeResponse(res, response))
       .catch((error) => {
         res.statusCode = 500;
@@ -356,68 +370,6 @@ export async function mockDashboardApis(
       });
       return;
     }
-    const automation = {
-      createdAt: "2026-07-28T16:00:00.000Z",
-      createdBy: "Morgan",
-      createdByEmail: "dev@example.com",
-      destination: {
-        channelId: "C123",
-        label: "#project-updates",
-        teamId: "T123",
-        visibility: "public" as const,
-      },
-      id,
-      instruction:
-        kind === "scheduled"
-          ? "Send the weekly project summary"
-          : "Summarize the closed issue",
-      kind,
-      credentialMode: "creator",
-      ownedByViewer: true,
-      costUsd:
-        kind === "scheduled"
-          ? { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 }
-          : { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
-      runs:
-        kind === "scheduled"
-          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
-          : { 1: 0, 7: 1, 30: 4, 90: 7 },
-      outcomes:
-        kind === "scheduled"
-          ? [
-              {
-                action: "send_message" as const,
-                destination: {
-                  channelId: "C123",
-                  platform: "slack" as const,
-                  teamId: "T123",
-                },
-              },
-            ]
-          : [],
-      title:
-        kind === "scheduled"
-          ? "Weekly project summary"
-          : "Closed issue summary",
-      totalRuns: kind === "scheduled" ? 48 : 7,
-      ...(kind === "scheduled"
-        ? {
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            schedule: "Every Monday at 9:00 AM",
-            timezone: "America/Los_Angeles",
-            status: "active" as const,
-          }
-        : {
-            resource: "Issue · ACME-42",
-            source: "github",
-            trigger: {
-              events: ["issue closed"],
-              filters: [],
-              problems: [],
-            },
-            status: "active",
-          }),
-    };
     const executionDays = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
@@ -425,6 +377,7 @@ export async function mockDashboardApis(
       return {
         blocked: index % 13 === 0 ? 1 : 0,
         completed: index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0,
+        costUsd: index % 2 === 0 ? 0.21 : 0,
         date,
         failed: index % 9 === 0 ? 1 : 0,
       };
@@ -464,7 +417,6 @@ export async function mockDashboardApis(
             status: "blocked",
           },
         ],
-        automation,
         truncated: false,
       },
     });
@@ -642,11 +594,6 @@ export async function mockDashboardApis(
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
             firstSeenAt: "2026-03-15T00:00:00.000Z",
             lastSeenAt: "2026-06-12T00:00:00.000Z",
             actor: {

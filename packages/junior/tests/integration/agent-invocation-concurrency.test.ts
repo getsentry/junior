@@ -1,12 +1,18 @@
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
-import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
+  createAgentInvocation,
   createAgentInvocationForMessage,
-  MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/create";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
+  listAgentInvocationsForConversation,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  TERMINAL_AGENT_INVOCATION_STATUSES,
+} from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocation,
   createAndEnqueueAgentInvocation,
@@ -31,8 +37,9 @@ import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { loadMessageEvents } from "../fixtures/agent-invocations";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
@@ -41,6 +48,7 @@ import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -54,18 +62,34 @@ const baseInput = {
   parentConversationId,
 };
 
-async function searchAgents() {
-  return await createSearchAgentsTool({ conversationId: parentConversationId })
+async function listAgents() {
+  return await createListAgentsTool({ conversationId: parentConversationId })
     .execute!({}, {});
 }
 
-function taskModel(request: AgentRun): StreamFn {
-  return createModelStream([
-    { type: "text", text: `result:${request.instruction.text}` },
-  ]);
+const NO_ANSWER = "Do not answer.";
+
+/** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
+function taskModel(request: AgentRun): AgentRequestStreamFn {
+  return createModelStream(
+    request.instruction.text.includes(NO_ANSWER)
+      ? [
+          { type: "text", text: "Thinking about it." },
+          { type: "text", text: "Still thinking." },
+        ]
+      : [
+          {
+            type: "toolCall",
+            name: "reply",
+            arguments: { text: `result:${request.instruction.text}` },
+          },
+        ],
+  );
 }
 
-async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
+async function createHarness(
+  streamForRun: (request: AgentRun) => AgentRequestStreamFn,
+) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
@@ -130,6 +154,7 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
       return created;
     },
     queue,
+    state,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
     spawn: async (
       overrides: Partial<CreateAgentInvocationInput> & {
@@ -199,7 +224,7 @@ describe("agent invocation identity and concurrency", () => {
         idempotencyKey: "named-2",
         input: "second named task",
       });
-      await expect(searchAgents()).resolves.toEqual({
+      await expect(listAgents()).resolves.toEqual({
         agents: [
           {
             conversation_id: first.childConversationId,
@@ -207,7 +232,7 @@ describe("agent invocation identity and concurrency", () => {
             last_result: "completed",
             name: "researcher",
             relation: "child",
-            status: "active",
+            status: "pending",
             task: "second named task",
             updated_at: expect.any(String),
           },
@@ -220,16 +245,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[0]?.history).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
-      expect(requests[0]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
       // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
-      expect(requests[1]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[1]?.disabledFeatures).toEqual(["interactive-auth"]);
       expect(requests[1]?.history).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
@@ -267,8 +286,9 @@ describe("agent invocation identity and concurrency", () => {
       }
       return createModelStream([
         {
-          type: "text",
-          text: `result:${task}`,
+          type: "toolCall",
+          name: "reply",
+          arguments: { text: `result:${task}` },
           waitFor: release.promise,
         },
       ]);
@@ -321,157 +341,16 @@ describe("agent invocation identity and concurrency", () => {
     }
   });
 
-  it("coalesces concurrent replay and rejects a second child with the same name", async () => {
-    const harness = await createHarness(taskModel);
-    try {
-      const replayInput = {
-        agentName: "replayed",
-        idempotencyKey: "same-call",
-        input: "same task",
-      };
-      const [first, replay] = await Promise.all([
-        harness.spawn(replayInput),
-        harness.spawn(replayInput),
-      ]);
-
-      expect(replay.invocationId).toBe(first.invocationId);
-      expect(harness.queue.sentRecords()).toHaveLength(1);
-
-      const contention = await Promise.allSettled([
-        harness.spawn({
-          agentName: "taken",
-          idempotencyKey: "taken-1",
-          input: "first task",
-        }),
-        harness.spawn({
-          agentName: "taken",
-          idempotencyKey: "taken-2",
-          input: "second task",
-        }),
-      ]);
-      expect(
-        contention.filter((result) => result.status === "fulfilled"),
-      ).toHaveLength(1);
-      const rejected = contention.find(
-        (result) => result.status === "rejected",
-      );
-      expect(rejected).toMatchObject({
-        reason: expect.objectContaining({
-          name: "AgentNameInUseError",
-        }),
-        status: "rejected",
-      });
-
-      await harness.drainQueuedWork();
-      expect(harness.requests()).toHaveLength(2);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("rejects new children once the parent concurrent active limit is reached", async () => {
-    const harness = await createHarness(taskModel);
-    try {
-      const idle = await harness.spawn({
-        idempotencyKey: "limit-idle",
-        input: "idle task",
-      });
-      await harness.drainQueuedWork();
-
-      const active = await Promise.all(
-        Array.from(
-          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
-          (_, index) =>
-            harness.spawn({
-              idempotencyKey: `limit-${index}`,
-              input: `active task ${index}`,
-            }),
-        ),
-      );
-      expect(active).toHaveLength(MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT);
-
-      await expect(
-        harness.spawn({
-          idempotencyKey: "limit-overflow",
-          input: "one too many",
-        }),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
-
-      // Idempotent replay of an in-flight invocation must not count as new fan-out.
-      await expect(
-        harness.spawn({
-          idempotencyKey: "limit-0",
-          input: "active task 0",
-        }),
-      ).resolves.toMatchObject({
-        invocationId: active[0]?.invocationId,
-      });
-
-      // A message to an idle child makes it active, so it needs room.
-      await expect(
-        harness.message({
-          childConversationId: idle.childConversationId,
-          idempotencyKey: "limit-idle-message",
-          input: "wake the idle child",
-        }),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
-
-      // A busy child already counts, so a message to it queues.
-      await expect(
-        harness.message({
-          childConversationId: active[0]!.childConversationId,
-          idempotencyKey: "limit-busy-message",
-          input: "more for the busy child",
-        }),
-      ).resolves.toMatchObject({ queued: true });
-
-      await harness.drainQueuedWork();
-
-      await expect(
-        harness.spawn({
-          idempotencyKey: "limit-after-drain",
-          input: "room again",
-        }),
-      ).resolves.toMatchObject({
-        status: "pending",
-      });
-      await harness.drainQueuedWork();
-
-      // A nested coordinator's own open work does not count as one of its
-      // children, so it can still start the full cap of children.
-      const coordinator = await harness.spawn({
-        idempotencyKey: "limit-coordinator",
-        input: "coordinate nested work",
-      });
-      await Promise.all(
-        Array.from(
-          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
-          (_, index) =>
-            harness.spawn({
-              idempotencyKey: `limit-nested-${index}`,
-              input: `nested task ${index}`,
-              parentConversationId: coordinator.childConversationId,
-            }),
-        ),
-      );
-      await expect(
-        harness.spawn({
-          idempotencyKey: "limit-nested-overflow",
-          input: "one too many nested",
-          parentConversationId: coordinator.childConversationId,
-        }),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
-    } finally {
-      await harness.close();
-    }
-  });
-
   it("keeps a successful parallel child independent from a failing sibling", async () => {
     const harness = await createHarness((request) =>
       createModelStream([
         request.instruction.text === "failing sibling"
           ? { type: "error", errorMessage: "sibling failed" }
-          : { type: "text", text: "successful sibling result" },
+          : {
+              type: "toolCall",
+              name: "reply",
+              arguments: { text: "successful sibling result" },
+            },
       ]),
     );
     try {
@@ -518,11 +397,11 @@ describe("agent invocation identity and concurrency", () => {
         error: "sibling failed",
         kind: "task",
         last_result: "failed",
-        status: "failed",
+        status: "idle",
         task: "failing sibling",
         updated_at: expect.any(String),
       };
-      const listed = await searchAgents();
+      const listed = await listAgents();
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
@@ -532,7 +411,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       // A child agent sees itself, its parent, and its sibling.
       await expect(
-        createSearchAgentsTool({
+        createListAgentsTool({
           conversationId: successful.childConversationId,
           parentConversationId,
         }).execute!({}, {}),
@@ -543,7 +422,7 @@ describe("agent invocation identity and concurrency", () => {
             conversation_id: parentConversationId,
             relation: "parent",
             // Both child results wait in the parent mailbox.
-            status: "active",
+            status: "pending",
             updated_at: expect.any(String),
           },
           { relation: "sibling", ...failingChild },
@@ -570,7 +449,7 @@ describe("agent invocation identity and concurrency", () => {
         getEventCatalog(),
       );
       const timer = (await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check the deploy again." },
         "child-timer",
       )) as { id: string };
@@ -580,8 +459,9 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
 
-      // The timer runs on the child as the event Actor, with an event Source
-      // and the grants of the person who set it.
+      // The timer runs on the child's Conversation loop, with no agent
+      // invocation, as the event Actor, with an event Source and the grants
+      // of the person who set it.
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
       const timerRun = requests[1]!;
@@ -604,35 +484,43 @@ describe("agent invocation identity and concurrency", () => {
           namespace: "junior",
         },
       });
+      expect(timerRun.agentInvocationId).toBeUndefined();
       // The child transcript shows the timer input as an Event, as on a root.
       await expect(
         loadMessageEvents(child.childConversationId),
       ).resolves.toContainEqual(
         expect.objectContaining({
           meta: expect.objectContaining({
-            agentInvocationId: timerRun.runId,
             eventNamespace: "junior",
             eventType: "timer.fired",
           }),
           role: "user",
         }),
       );
-      // Its result is saved on its own agent invocation for the parent.
-      await expect(getAgentInvocation(timerRun.runId!)).resolves.toMatchObject({
-        agentName: "watcher",
-        childConversationId: child.childConversationId,
-        parentConversationId,
-        result: expect.stringContaining("Check the deploy again."),
-        status: "completed",
+      // Its `reply` reaches the parent once, and it adds no agent invocation.
+      const parentWork = await getConversationWorkState({
+        conversationId: parentConversationId,
+        state: harness.state,
       });
+      expect(
+        parentWork?.messages
+          .map((message) => message.input.text)
+          .filter((text) => text.includes("Check the deploy again.")),
+      ).toHaveLength(1);
+      await expect(
+        listAgentInvocationsForConversation(child.childConversationId, [
+          ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+          ...TERMINAL_AGENT_INVOCATION_STATUSES,
+        ]),
+      ).resolves.toHaveLength(1);
       // The timer Turn counts toward the automated-turn limit, as on a root.
       await expect(
         getAutomatedTurnLimitState({
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
-      // searchAgents still shows the task from the parent.
-      await expect(searchAgents()).resolves.toMatchObject({
+      // listAgents still shows the task from the parent.
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
@@ -640,12 +528,12 @@ describe("agent invocation identity and concurrency", () => {
       // a timer event that already reached it is saved to its transcript
       // with no Turn, and a later timer never fires.
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 600_000, intent: "Check much later." },
         "child-timer-3",
       );
@@ -655,7 +543,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });
-      await expect(execute(childTools.listWatches!, {})).resolves.toEqual({
+      await expect(execute(childTools["listWatches"]!, {})).resolves.toEqual({
         subscriptions: [],
       });
       clock.mockReturnValue(clock() + 600_000);
@@ -665,7 +553,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stoppedConversationMessageTexts(child.childConversationId),
       ).resolves.toEqual([expect.stringContaining("Check once more.")]);
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });
 
@@ -682,11 +570,11 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle" }],
       });
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check after the restart." },
         "child-timer-4",
       );
@@ -705,6 +593,108 @@ describe("agent invocation identity and concurrency", () => {
       await harness.close();
     }
   });
+
+  // A child with no open agent invocation, such as after a Watch Event Turn
+  // that spawned a helper, gets the helper's `reply` on its Conversation
+  // loop. That Turn answers the parent itself. After the re-ask, a Task that
+  // ends without an answer tells the parent, and a Thread stays quiet. It
+  // runs as the web user who started it, but cannot wait for that person to
+  // sign in.
+  it.each([
+    {
+      name: "a Task reply",
+      kind: "task",
+      finding: "Helper fact: 42.",
+      expected: ["Helper fact"],
+    },
+    {
+      name: "a Task with no answer",
+      kind: "task",
+      finding: NO_ANSWER,
+      expected: ["No reply was sent."],
+    },
+    {
+      name: "a Thread with no answer",
+      kind: "thread",
+      finding: NO_ANSWER,
+      expected: [],
+    },
+  ] as const)(
+    "runs a grandchild reply on the child's Conversation loop for $name",
+    async ({ expected, finding, kind }) => {
+      const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const harness = await createHarness(taskModel);
+      try {
+        const actor = {
+          platform: "web" as const,
+          userId: "alice@example.com",
+          email: "alice@example.com",
+          fullName: "Alice",
+        };
+        const child = await createAgentInvocation({
+          ...baseInput,
+          actor,
+          idempotencyKey: "loop-child",
+          kind,
+        });
+        await completeAgentInvocation({
+          invocationId: child.invocationId,
+          result: "Watching.",
+          status: "completed",
+        });
+        const helper = await createAgentInvocation({
+          ...baseInput,
+          actor,
+          idempotencyKey: "loop-helper",
+          parentConversationId: child.childConversationId,
+        });
+        await enqueueChildResultToParent({
+          actor,
+          messageKey: "helper-reply",
+          queue: harness.queue,
+          result: {
+            kind: "reply",
+            reply: { text: finding, toolCallId: "helper-reply" },
+          },
+          sender: helper,
+          turnId: getAgentInvocationTurnId(helper.invocationId),
+          state: harness.state,
+        });
+        // The child Turn runs after the Event burst window, as on a root.
+        clock.mockReturnValue(clock() + 60_000);
+        await harness.drainQueuedWork();
+
+        const requests = harness.requests();
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({
+          actor,
+          conversationId: child.childConversationId,
+          disabledFeatures: ["interactive-auth"],
+          parentConversationId,
+        });
+        expect(requests[0]!.authorization).toBeUndefined();
+        expect(requests[0]!.agentInvocationId).toBeUndefined();
+        // The child starts no agent invocation, and its answer reaches the
+        // parent once.
+        await expect(
+          listAgentInvocationsForConversation(child.childConversationId, [
+            ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+            ...TERMINAL_AGENT_INVOCATION_STATUSES,
+          ]),
+        ).resolves.toHaveLength(1);
+        const parentWork = await getConversationWorkState({
+          conversationId: parentConversationId,
+          state: harness.state,
+        });
+        expect(
+          (parentWork?.messages ?? []).map((message) => message.input.text),
+        ).toEqual(expected.map((text) => expect.stringContaining(text)));
+      } finally {
+        clock.mockRestore();
+        await harness.close();
+      }
+    },
+  );
 
   it("gives a child the Review item tag for an answer to its item", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
@@ -806,7 +796,7 @@ describe("agent invocation identity and concurrency", () => {
         })
       ).events.flatMap(({ data }) =>
         data.type === "structured_event" && data.name === "conversation_note"
-          ? [data.content.text]
+          ? [data.content["text"]]
           : [],
       );
     const stoppedNote = (id: string) =>
@@ -825,8 +815,7 @@ describe("agent invocation identity and concurrency", () => {
           input: "Watch the queue.",
         }),
       ]);
-      // A child agent can start its own child agent only while it has open
-      // work.
+      // A child agent with open work can start its own child agent.
       const helper = await harness.spawn({
         agentName: "helper",
         idempotencyKey: "owned-3",
@@ -845,7 +834,7 @@ describe("agent invocation identity and concurrency", () => {
       ) => {
         clock.mockReturnValue(clock() + 1_000);
         const timer = (await execute(
-          tools.watchTimer!,
+          tools["watchTimer"]!,
           { after_ms: 600_000, intent },
           intent,
         )) as { id: string };
@@ -853,7 +842,7 @@ describe("agent invocation identity and concurrency", () => {
       };
       const owners = async (tools: ReturnType<typeof toolsFor>) =>
         (
-          (await execute(tools.listWatches!, {})) as {
+          (await execute(tools["listWatches"]!, {})) as {
             subscriptions: { child_agent?: unknown; id: string }[];
           }
         ).subscriptions.map(({ child_agent, id }) => ({ child_agent, id }));
@@ -896,7 +885,7 @@ describe("agent invocation identity and concurrency", () => {
       ]);
       for (const id of [parentWatch, siblingWatch]) {
         await expect(
-          execute(watcherTools.stopWatchingResources!, { id }),
+          execute(watcherTools["stopWatchingResources"]!, { id }),
         ).rejects.toThrow(
           "Watch was not found in the current conversation or its child agents.",
         );
@@ -905,7 +894,7 @@ describe("agent invocation identity and concurrency", () => {
       const requestsBeforeStops = modelInputs.length;
       // The parent stops a watch of its child agent by id.
       await expect(
-        execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
+        execute(parentTools["stopWatchingResources"]!, { id: watcherWatch }),
       ).resolves.toEqual({
         stopped_ids: [watcherWatch],
         watching_status: "stopped",
@@ -917,7 +906,7 @@ describe("agent invocation identity and concurrency", () => {
       // A stop of every watch includes the watches of the child agents below,
       // and nothing above or beside them.
       await expect(
-        execute(watcherTools.stopWatchingResources!, {}),
+        execute(watcherTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [helperWatch],
         watching_status: "stopped",
@@ -927,7 +916,7 @@ describe("agent invocation identity and concurrency", () => {
         { child_agent: siblingAgent, id: siblingWatch },
       ]);
       await expect(
-        execute(parentTools.stopWatchingResources!, {}),
+        execute(parentTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [parentWatch, siblingWatch],
         watching_status: "stopped",
@@ -954,7 +943,7 @@ describe("agent invocation identity and concurrency", () => {
       // Turn runs waits for the Turn after it. Each note is shown once.
       const lateWatch = await watchTimer(watcherTools, "Check again.");
       duringNextRequest = () =>
-        execute(parentTools.stopWatchingResources!, { id: lateWatch });
+        execute(parentTools["stopWatchingResources"]!, { id: lateWatch });
       await harness.message({
         childConversationId: watcher.childConversationId,
         idempotencyKey: "owned-message-1",

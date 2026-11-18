@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
@@ -13,6 +14,11 @@ import {
 } from "../../fixtures/conversation";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import { signedInViewer } from "../../fixtures/user";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 async function webFiles() {
   const fixture = await createConversationFixture();
@@ -33,6 +39,7 @@ async function webFiles() {
   ]);
   const storage = createMemoryAttachmentStorage();
   const context: ToolRuntimeContext = {
+    turnTools: rootTurnTools,
     conversationId,
     conversationPrivacy: "private",
     destination,
@@ -58,7 +65,7 @@ describe("web file delivery", () => {
     expect(
       createTools([], {}, { ...context, attachmentStorage: undefined }),
     ).not.toHaveProperty("sendFiles");
-    const tool = createTools([], {}, context).sendFiles;
+    const tool = createTools([], {}, context)["sendFiles"];
     if (!tool?.execute) throw new Error("sendFiles is unavailable");
     const input = {
       files: [{ path: "/tmp/desktop.png" }, { path: "/tmp/mobile.png" }],
@@ -124,7 +131,7 @@ describe("web file delivery", () => {
 
   it("does not report delivery when storage fails and can retry the same files", async () => {
     const { context, conversationId, storage } = await webFiles();
-    const tool = createTools([], {}, context).sendFiles;
+    const tool = createTools([], {}, context)["sendFiles"];
     if (!tool?.execute) throw new Error("sendFiles is unavailable");
     const put = storage.put;
     storage.put = async () => {

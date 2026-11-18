@@ -86,4 +86,31 @@ describe("Threads", () => {
       false,
     );
   });
+
+  test("when a person writes in a Thread, the Thread answers them there", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      webMessage(
+        "Start a thread that I can talk to directly. It drafts a three-line changelog entry for the new CSV export.",
+      ),
+    );
+    const [thread] = completedToolCalls("spawnAgent", conversation).filter(
+      (call) => spawnInput(call).kind === "thread",
+    );
+    expect(
+      thread,
+      "No Thread: this run does not test a person's Turn",
+    ).toBeDefined();
+
+    const answered = await (
+      await conversation.child(childId(thread!))
+    ).continue(webMessage("What is the first line of the entry?"));
+
+    // A person's Turn in a Thread is not gated. Its final response is
+    // delivered in the Thread.
+    const last = answered.turns.at(-1);
+    expect(last?.status).toBe("succeeded");
+    expect(last?.replies).not.toEqual([]);
+  });
 });

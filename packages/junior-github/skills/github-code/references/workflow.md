@@ -34,7 +34,7 @@ Open this when making repository edits, not for read-only inspection.
 1. Reuse the current non-default branch or create a focused branch.
 2. Commit with repo conventions, else `<type>(<scope>): <Subject>` imperative present, no agent branding.
 3. Push with `git push -u origin BRANCH`.
-   If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks. A watched PR gets `pull_request.merge_conflict` only with its next event, so do not wait for it.
+   If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks. A watched PR gets `pull_request.merge_conflict` minutes later at the earliest, so do not wait for it.
    - Run `gh pr view NUMBER --repo owner/repo --json mergeable,baseRefName`.
    - `UNKNOWN`: GitHub is still calculating it. Wait about 5 seconds and check again, up to 3 times. If it stays `UNKNOWN`, report that and continue.
    - `CONFLICTING`: resolve it now. Do not ask first. First check if the PR is in a stack: `gh api 'repos/owner/repo/stacks?pull_request=NUMBER'`.
@@ -42,7 +42,7 @@ Open this when making repository edits, not for read-only inspection.
      - Not in a stack: GitHub checks mergeability against the PR base (`baseRefName`), which is usually the default branch. Fetch the base and merge `origin/BASE` into the PR branch. Do not rebase. Resolve each conflict so that both the PR change and the base branch change stay intact. Run the checks again and push.
      - Then check mergeability again.
 4. Resolve the actual default branch.
-5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
+5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` unless the requester asked for a ready PR).
 6. PR title matches the current dominant change, same conventional form as commits.
 7. PR body: short, plain English, what changed and why. Only context the diff cannot show. No empty sections, file lists, commit logs, or Checks/Verification/Test plan blocks.
 8. After material follow-up commits, refresh title and body against the current diff.

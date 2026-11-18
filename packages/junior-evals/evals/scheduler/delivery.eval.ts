@@ -6,7 +6,7 @@ import {
   slackDirectMessage,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -86,9 +86,7 @@ describe("Scheduled Delivery", () => {
 
     const delivery = await run(heartbeat());
 
-    expect(
-      completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "send_message" })]);
+    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
     expect(delivery.replies).toHaveLength(1);
     expect(delivery.replies[0]!.text).toMatch(/weekly update/i);
   });
@@ -156,7 +154,7 @@ describe("Scheduled Delivery", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a due automation needs a provider that Junior does not have, end it as misconfigured without a post", async ({
+  test("when a due automation needs a provider that Junior does not have, block it without a post", async ({
     run,
   }) => {
     await insertScheduledAutomation({
@@ -171,8 +169,6 @@ describe("Scheduled Delivery", () => {
     // Nobody reads the channel for run problems. The reason goes to the
     // creator through the blocked run, not into a post.
     expect(blocked.replies).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
+    expect(completedToolCalls("reportBlocked", blocked)).toHaveLength(1);
   });
 });

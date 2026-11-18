@@ -30,7 +30,7 @@ export function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            "w-80 max-w-[calc(100vw-2rem)] max-h-(--available-height) origin-(--transform-origin) overflow-y-auto rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-4 text-sm text-dashboard-text shadow-lg outline-none focus-visible:outline-2 focus-visible:outline-dashboard-focus transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:opacity-0 data-starting-style:opacity-0 data-ending-style:scale-95 data-starting-style:scale-95",
+            "w-80 max-w-[calc(100vw-2rem)] max-h-(--available-height) origin-(--transform-origin) overflow-y-auto rounded-lg border border-input bg-secondary p-4 text-sm text-foreground shadow-lg outline-none focus-visible:outline-2 focus-visible:outline-ring transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:opacity-0 data-starting-style:opacity-0 data-ending-style:scale-95 data-starting-style:scale-95",
             className,
           )}
           {...props}
@@ -60,7 +60,7 @@ export function PopoverDescription({
 }: PopoverPrimitive.Description.Props) {
   return (
     <PopoverPrimitive.Description
-      className={cn("m-0 leading-relaxed text-dashboard-text-muted", className)}
+      className={cn("m-0 leading-relaxed text-muted-foreground", className)}
       {...props}
     />
   );

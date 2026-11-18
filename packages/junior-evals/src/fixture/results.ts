@@ -6,13 +6,20 @@ import type * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
+  conversationWatchesReportSchema,
 } from "@/api/schema";
+import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  CODEMODE_TOOL_NAME,
+  type CodeModeCallStatus,
+} from "@/chat/codemode/result";
 import {
   serializeError,
   toJsonValue,
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
+import type { CapturedSlackApiCall } from "@junior-tests/msw/captured-slack-api-calls";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -40,10 +47,48 @@ export interface ToolCall {
   toolCallId: string;
 }
 
+const SCRIPT_CALL_STATUS = new Map(
+  Object.entries(CODE_MODE_CALL_STATUS_TEXT).map(([status, text]) => [
+    text,
+    status as CodeModeCallStatus,
+  ]),
+);
+
+/**
+ * The tool calls that a `codemode` script made, read from its result text
+ * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * then `<i>. <tool>: <status>` for each call, with indented notes. The
+ * reporting API does not return script arguments, so the calls have no
+ * `input`. A call that did not start is not a call.
+ */
+function scriptToolCalls(call: ToolCall): ToolCall[] {
+  const lines = typeof call.output === "string" ? call.output.split("\n") : [];
+  const count = /^Tool calls \((\d+)\):$/.exec(lines[1] ?? "")?.[1];
+  if (!lines[0]?.startsWith("Script ") || !count) return [];
+  const calls: ToolCall[] = [];
+  let index = 0;
+  for (const line of lines.slice(2)) {
+    if (index === Number(count)) break;
+    if (line.startsWith(" ")) continue;
+    const match = /^(\d+)\. (\S+): (.+)$/.exec(line);
+    const status = match && SCRIPT_CALL_STATUS.get(match[3]!);
+    if (!status || Number(match[1]) !== index + 1) break;
+    index += 1;
+    if (status === "not_started") continue;
+    calls.push({
+      name: match[2]!,
+      status: status === "ok" ? "completed" : "error",
+      toolCallId: `${call.toolCallId}/${index}`,
+    });
+  }
+  return calls;
+}
+
 /**
  * Calls of one tool in any state across the results of several calls. The
  * agent runs deferred tools through `executeTool`; those calls count as calls
- * of the inner tool, with its arguments as `input`.
+ * of the inner tool, with its arguments as `input`. Calls that a `codemode`
+ * script made count too, without `input`.
  */
 export function toolCallsOf(
   name: string,
@@ -53,6 +98,9 @@ export function toolCallsOf(
     .flatMap((result) => result.toolCalls)
     .flatMap((call) => {
       if (call.name === name) return [call];
+      if (call.name === CODEMODE_TOOL_NAME) {
+        return scriptToolCalls(call).filter((inner) => inner.name === name);
+      }
       const deferred = call.input as
         | { arguments?: unknown; tool_name?: unknown }
         | undefined;
@@ -120,6 +168,8 @@ export type TurnStatus =
   | "succeeded";
 
 export interface Turn {
+  /** Time from the start of the turn to its last state, once it has ended. */
+  durationMs?: number;
   replies: Reply[];
   status: TurnStatus;
   toolCalls: ToolCall[];
@@ -130,9 +180,9 @@ export interface Turn {
 export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
+  /** Text of each compaction summary, for checks that the answer is not in it. */
+  compactionSummaries: string[];
   lastSeq: number;
-  /** Quiet messages: stored, but not delivered, so people did not see them. */
-  quietReplies: Reply[];
   replies: Reply[];
   toolCalls: ToolCall[];
   turns: Turn[];
@@ -176,7 +226,7 @@ type CallTranscriptSource = {
 export async function readFailedCallRun(args: {
   api: RequestApp;
   target: CallTranscriptSource | (() => CallTranscriptSource);
-  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>;
+  calls: ReportCall[];
   error: unknown;
   usage: FixtureUsage;
   startedAtMs: number;
@@ -200,6 +250,7 @@ export async function readFailedCallRun(args: {
       calls.push({
         conversationId: record.conversationId,
         events: toTranscriptEvents(events.visibleMessages, events.toolCalls),
+        turns: events.turns,
       });
     }
   } catch (snapshotError) {
@@ -209,6 +260,30 @@ export async function readFailedCallRun(args: {
     ...combinedRun(calls, args.usage, args.startedAtMs),
     errors,
   };
+}
+
+/**
+ * Ids of the active Watches of one Conversation, read through
+ * `GET /api/conversations/:id/watches` as the dashboard does.
+ */
+export async function readWatchIds(
+  api: RequestApp,
+  conversationId: string,
+  viewerEmail: string,
+): Promise<string[]> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Watches returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { watches } = conversationWatchesReportSchema.parse(
+    await response.json(),
+  );
+  return watches.map((watch) => watch.id);
 }
 
 /** The connect prompt that the dashboard shows to a person. */
@@ -263,14 +338,15 @@ export function readCallEvents(args: {
   conversationId: string;
   detail: ConversationDetail;
 }): CallEvents {
-  const quietReplies: Reply[] = [];
   const replies: Reply[] = [];
   const visibleMessages: VisibleMessage[] = [];
   const turns = new Map<string, Turn>();
   const toolCalls = new Map<string, ToolCall>();
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
+  const turnStartedAtMs = new Map<Turn, number>();
   let compactions = 0;
+  const compactionSummaries: string[] = [];
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -287,10 +363,14 @@ export function readCallEvents(args: {
       turn.status = data.state;
       turns.set(data.turnId, turn);
       if (!turnToolCallIds.has(turn)) turnToolCallIds.set(turn, []);
+      const atMs = Date.parse(event.createdAt);
       if (data.state === "started") {
         currentTurn = turn;
-      } else if (currentTurn === turn) {
-        currentTurn = undefined;
+        if (!turnStartedAtMs.has(turn)) turnStartedAtMs.set(turn, atMs);
+      } else {
+        const startedAtMs = turnStartedAtMs.get(turn);
+        if (startedAtMs !== undefined) turn.durationMs = atMs - startedAtMs;
+        if (currentTurn === turn) currentTurn = undefined;
       }
       continue;
     }
@@ -301,10 +381,6 @@ export function readCallEvents(args: {
           messageId: data.messageId,
           text: data.text,
         };
-        if (data.quiet) {
-          quietReplies.push(reply);
-          continue;
-        }
         replies.push(reply);
         currentTurn?.replies.push(reply);
         visibleMessages.push({ content: data.text, role: "assistant" });
@@ -336,6 +412,7 @@ export function readCallEvents(args: {
     }
     if (data.type === "compaction") {
       compactions += 1;
+      if (data.summary) compactionSummaries.push(data.summary);
       continue;
     }
   }
@@ -349,8 +426,8 @@ export function readCallEvents(args: {
 
   return {
     compactions,
+    compactionSummaries,
     lastSeq,
-    quietReplies,
     replies,
     toolCalls: [...toolCalls.values()],
     turns: [...turns.values()],
@@ -373,6 +450,56 @@ function comparableText(text: string): string {
     .replace(/[*_~`>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** What one call did in a Slack thread, read from its Slack API calls. */
+export function slackThreadEffects(
+  slackCalls: CapturedSlackApiCall[],
+  thread: { channelId: string; threadTs: string } | undefined,
+): {
+  files: string[];
+  reactions: string[];
+  statuses: string[];
+  threadTitles: string[];
+} {
+  // Slack reactions are sets; ingress and the worker can add the same one.
+  const reactions = [
+    ...new Set(
+      slackCalls.flatMap((captured) =>
+        captured.method === "reactions.add" &&
+        captured.params["channel"] === thread?.channelId &&
+        typeof captured.params["name"] === "string"
+          ? [
+              `${String(captured.params["timestamp"])}:${captured.params["name"]}`,
+            ]
+          : [],
+      ),
+    ),
+  ].map((key) => key.slice(key.indexOf(":") + 1));
+  const files = slackCalls.flatMap((captured) =>
+    captured.method === "files.completeUploadExternal" &&
+    captured.params["channel_id"] === thread?.channelId &&
+    captured.params["thread_ts"] === thread?.threadTs &&
+    Array.isArray(captured.params["files"])
+      ? captured.params["files"].map((file: { title?: unknown }) =>
+          String(file.title),
+        )
+      : [],
+  );
+  const threadCalls = (method: string) =>
+    slackCalls.filter(
+      (captured) =>
+        captured.method === method &&
+        captured.params["channel_id"] === thread?.channelId &&
+        captured.params["thread_ts"] === thread?.threadTs,
+    );
+  const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
+    String(captured.params["status"]),
+  );
+  const threadTitles = threadCalls("assistant.threads.setTitle").map(
+    (captured) => String(captured.params["title"]),
+  );
+  return { files, reactions, statuses, threadTitles };
 }
 
 /**
@@ -402,7 +529,7 @@ export function slackCallReplies(args: {
   };
   const extra: VisibleMessage[] = [];
   const replies: Reply[] = [];
-  for (let start = 0; start < args.posts.length; ) {
+  for (let start = 0; start < args.posts.length;) {
     let count = 0;
     const index = unmatched.findIndex((reply) => {
       count = postCount(start, reply);
@@ -432,16 +559,14 @@ function toTranscriptEvents(
   toolCalls: ToolCall[],
 ): TranscriptEvent[] {
   return [
-    ...messages.map(
-      (message): TranscriptEvent => ({
-        type: "message",
-        role: message.role,
-        content: message.content,
-        ...(message.author
-          ? { metadata: { author_name: message.author } }
-          : undefined),
-      }),
-    ),
+    ...messages.map((message): TranscriptEvent => ({
+      type: "message",
+      role: message.role,
+      content: message.content,
+      ...(message.author
+        ? { metadata: { author_name: message.author } }
+        : undefined),
+    })),
     ...toolCalls.flatMap((toolCall): TranscriptEvent[] => {
       const input = toJsonValue(toolCall.input);
       const output = toJsonValue(toolCall.output) ?? null;
@@ -510,9 +635,16 @@ export function toHarnessRun(args: {
   };
 }
 
+/** What the eval report keeps of one call. */
+export interface ReportCall {
+  conversationId: string;
+  events: TranscriptEvent[];
+  turns: Turn[];
+}
+
 /** One vitest-evals run with every call of the test, for the eval report. */
 export function combinedRun(
-  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>,
+  calls: ReportCall[],
   usage: FixtureUsage,
   startedAtMs: number,
 ): HarnessRun {
@@ -531,7 +663,17 @@ export function combinedRun(
         gatewayRequests: usage.gatewayRequests,
       },
     },
-    timings: { totalMs: Date.now() - startedAtMs },
+    timings: {
+      totalMs: Date.now() - startedAtMs,
+      metadata: {
+        // Turns of every call, in order. A turn that did not end has none.
+        turnMs: calls.flatMap((entry) =>
+          entry.turns.flatMap((turn) =>
+            turn.durationMs === undefined ? [] : [turn.durationMs],
+          ),
+        ),
+      },
+    },
     errors: [],
   };
 }

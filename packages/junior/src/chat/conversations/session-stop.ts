@@ -1,8 +1,10 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
@@ -36,15 +38,19 @@ const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
  */
 export async function markConversationsStopped(
   conversationIds: readonly string[],
-  options: { cancelWatches: boolean; nowMs?: number; state?: StateAdapter },
+  options: {
+    cancelWatches: boolean;
+    nowMs?: number;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   if (conversationIds.length === 0) {
     return;
   }
   if (options.cancelWatches) {
-    for (const conversationId of conversationIds) {
-      await cancelSubscriptions({ conversationId, state: options.state });
-    }
+    await mapBounded(conversationIds, (conversationId) =>
+      cancelSubscriptions({ conversationId, state: options.state }),
+    );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()
@@ -120,7 +126,9 @@ export async function skipInputAfterConversationStop(
   { context: ConversationWorkerContext } | { skipped: ConversationWorkerResult }
 > {
   const messages = context.attempt.messages;
-  const personInput = messages.filter(isPersonInput);
+  const personInput = messages.filter((message) =>
+    isPersonInput(message.source),
+  );
   if (personInput.length > 0) {
     // The batch can still hold input that the stop cancels. Only input sent
     // after the stop ends it. A Slack stop takes its time from Slack, so this
@@ -142,7 +150,7 @@ export async function skipInputAfterConversationStop(
   }
   const saved = messages.filter(isWatchEvent);
   const live = messages.filter(
-    (message) => !isWatchEvent(message) && message.receivedAtMs > stoppedAtMs,
+    (message) => !isSkippedAfterConversationStop(message, stoppedAtMs),
   );
   if (live.length > 0 && saved.length > 0) {
     // Events of all Watches debounce in one batch. Wait out the window of the
@@ -172,8 +180,20 @@ export async function skipInputAfterConversationStop(
   return { skipped: { status: "completed" } };
 }
 
-function isPersonInput(message: InboundMessage): boolean {
-  return message.source === "web" || message.source === "slack";
+/**
+ * Return whether a session stop at `stoppedAtMs` keeps one Event from
+ * starting a Turn: a Watch Event is saved, and another Event received at or
+ * before the stop is dropped. Input from a person is never skipped.
+ */
+export function isSkippedAfterConversationStop(
+  message: InboundMessage,
+  stoppedAtMs: number | undefined,
+): boolean {
+  return (
+    stoppedAtMs !== undefined &&
+    isEventInput(message) &&
+    (isWatchEvent(message) || message.receivedAtMs <= stoppedAtMs)
+  );
 }
 
 function isEventInput(message: InboundMessage): boolean {

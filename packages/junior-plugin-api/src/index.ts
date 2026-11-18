@@ -2,6 +2,8 @@ export * from "./object-annotations";
 export * from "./object-presentation";
 export * from "./object-icons";
 export * from "./object-facts";
+export * from "./images";
+export * from "./object-links";
 export * from "./annotations";
 export * from "./code";
 export * from "./conversation-events";
@@ -20,6 +22,7 @@ export {
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
+export * from "./prompt-tags";
 export * from "./dispatch";
 export * from "./events";
 export * from "./event-triggers";

@@ -14,75 +14,13 @@ import type {
   TranscriptViewPart,
 } from "./types";
 import { getDashboardAgentName } from "./agentName";
-import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
-
-/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-}
+import { formatRuntime } from "./time";
 
 function parseTime(value: string | undefined): number | null {
   if (!value) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
-}
-
-/** Format absolute dashboard timestamps in the viewer's browser timezone. */
-export function formatTime(
-  value: string | undefined,
-  options?: Intl.DateTimeFormatOptions,
-): string {
-  const time = parseTime(value);
-  if (time == null) return "none";
-  return new Date(time).toLocaleString(undefined, {
-    ...options,
-    timeZone: getDashboardTimeZone(),
-  });
-}
-
-/** Format conversation activity timestamps as human-relative recency labels. */
-export function formatRelativeTime(value: string | undefined): string {
-  const time = parseTime(value);
-  if (time == null) return "not updated yet";
-
-  const seconds = Math.round((time - Date.now()) / 1000);
-  const absoluteSeconds = Math.abs(seconds);
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-
-  for (const [unit, unitSeconds] of units) {
-    if (absoluteSeconds >= unitSeconds) {
-      return new Intl.RelativeTimeFormat(undefined, {
-        numeric: "auto",
-      }).format(Math.round(seconds / unitSeconds), unit);
-    }
-  }
-
-  return "just now";
-}
-
-/** Format millisecond durations for compact transcript metadata. */
-export function formatMs(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "none";
-  const ms = Math.max(0, Math.floor(value));
-  if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-  const roundedSeconds = Math.round(seconds);
-  const minutes = Math.floor(roundedSeconds / 60);
-  const remainingSeconds = roundedSeconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
 }
 
 /** Format a serialized payload size for compact transcript metadata. */
@@ -93,90 +31,6 @@ export function formatPayloadSize(value: unknown): string | undefined {
   const bytes = new TextEncoder().encode(serialized).byteLength;
   if (bytes < 1_000) return `${bytes}b`;
   return `${Math.round(bytes / 1_000)}kb`;
-}
-
-/** Format the elapsed duration between two transcript event timestamps. */
-export function formatElapsedDuration(
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-): string | undefined {
-  if (
-    typeof startedAt !== "number" ||
-    typeof endedAt !== "number" ||
-    endedAt < startedAt
-  ) {
-    return undefined;
-  }
-  return formatMs(endedAt - startedAt);
-}
-
-/** Format a persisted conversation runtime when duration data exists. */
-export function formatRuntime(durationMs: number | undefined): string {
-  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return "";
-  const runtime = Math.max(0, Math.floor(durationMs));
-  return runtime === 0 ? "" : formatDuration(runtime);
-}
-
-/** Format transcript event timestamps independently from conversation start. */
-export function formatMessageTimestamp(
-  value: number | undefined,
-  includeDate = false,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return "no timestamp";
-  const date = new Date(value);
-  return includeDate
-    ? date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "medium",
-        timeZone: getDashboardTimeZone(),
-      })
-    : date.toLocaleTimeString(undefined, {
-        timeZone: getDashboardTimeZone(),
-      });
-}
-
-/** Format a transcript timestamp relative to the current time. */
-export function formatRelativeMessageTimestamp(
-  value: number | undefined,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return "no timestamp";
-  const seconds = Math.round((value - Date.now()) / 1000);
-  const absoluteSeconds = Math.abs(seconds);
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-  ];
-  const [unit, unitSeconds] =
-    units.find(([, threshold]) => absoluteSeconds >= threshold) ??
-    units.at(-1)!;
-  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-    Math.round(seconds / unitSeconds),
-    unit,
-  );
-}
-
-/** Format canonical local and UTC values for a transcript timestamp. */
-export function formatTranscriptTimestampDetails(value: number): {
-  local: string;
-  utc: string;
-} {
-  const date = new Date(value);
-  const options: Intl.DateTimeFormatOptions = {
-    dateStyle: "medium",
-    timeStyle: "long",
-  };
-  return {
-    local: date.toLocaleString(undefined, {
-      ...options,
-      timeZone: getDashboardTimeZone(),
-    }),
-    utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
-  };
 }
 
 function formatNumber(value: number | undefined): string {
@@ -436,20 +290,20 @@ export function formatActivityChartAverage(value: number | undefined): string {
 }
 
 export type TokenUsageSummary = {
-  cachedInputTokens?: number;
-  cacheCreationTokens?: number;
-  inputTokens?: number;
-  outputTokens?: number;
+  cachedInputTokens?: number | undefined;
+  cacheCreationTokens?: number | undefined;
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
   providerTotalTokens?: number;
-  reasoningTokens?: number;
+  reasoningTokens?: number | undefined;
   totalTokens: number;
 };
 
 export type CostUsageSummary = {
-  cacheRead?: number;
-  cacheWrite?: number;
-  input?: number;
-  output?: number;
+  cacheRead?: number | undefined;
+  cacheWrite?: number | undefined;
+  input?: number | undefined;
+  output?: number | undefined;
   total: number;
 };
 
@@ -621,14 +475,9 @@ export function formatConversationCostTotal(
 }
 
 /** Format the execution time accumulated across a conversation's runs. */
-export function formatTranscriptDuration(
-  conversation: Pick<ConversationTranscript, "cumulativeDurationMs">,
+export function formatConversationDuration(
+  conversation: Pick<Conversation, "cumulativeDurationMs">,
 ): string {
-  return formatRuntime(conversation.cumulativeDurationMs) || "none";
-}
-
-/** Format the execution time accumulated across a conversation's runs. */
-export function formatConversationDuration(conversation: Conversation): string {
   return formatRuntime(conversation.cumulativeDurationMs) || "none";
 }
 
@@ -831,12 +680,14 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
+      brief: summary.brief,
+      media: summary.media,
+      links: summary.links,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
       pinPosition: summary.pinPosition,
-      unread: summary.unread,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,
@@ -846,6 +697,8 @@ export function buildConversations(
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
+      isParticipant: summary.isParticipant,
+      lastMessageAt: summary.lastMessageAt,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
@@ -861,7 +714,7 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
-      unfinishedWork: summary.unfinishedWork,
+      awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
@@ -872,7 +725,22 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  const conversation = buildConversations([detail])[0];
+  // The detail carries the whole Brief; a row keeps the feed's short form.
+  const { brief, ...summary } = detail;
+  const conversation = buildConversations([
+    {
+      ...summary,
+      ...(brief
+        ? {
+            brief: {
+              intent: brief.content.intent,
+              status: brief.content.outcome.status,
+              summary: brief.content.summary,
+            },
+          }
+        : undefined),
+    },
+  ])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

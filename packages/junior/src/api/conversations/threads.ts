@@ -6,7 +6,7 @@ import {
   readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
-import type { ConversationFeedItem } from "../schema/conversation";
+import type { ConversationFeedItem } from "../schema/conversation-feed";
 import type { ConversationAccess } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -42,7 +42,10 @@ function findThreadPlacement(
  */
 export async function readFeedThreads(
   db: JuniorDatabase,
-  roots: ReadonlyArray<{ access?: ConversationAccess; conversationId: string }>,
+  roots: ReadonlyArray<{
+    access?: ConversationAccess | undefined;
+    conversationId: string;
+  }>,
 ): Promise<Map<string, ConversationFeedItem[]>> {
   if (roots.length === 0) return new Map();
   const rootIdList = roots.map((root) => root.conversationId);

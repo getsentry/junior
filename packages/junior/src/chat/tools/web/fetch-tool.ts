@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
@@ -30,6 +30,21 @@ function filenameForUrl(url: URL, mediaType: string): string {
   return `fetched-file.${extensionForMediaType(mediaType)}`;
 }
 
+export const webFetchToolDefinition = zodToolDefinition({
+  description:
+    "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    url: z.string().min(1).describe("HTTP(S) URL to fetch."),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create the fetch tool with delivery guidance scoped to active file-send capability. */
 export function createWebFetchTool(
   hooks: ToolHooks,
@@ -39,18 +54,7 @@ export function createWebFetchTool(
 ) {
   const override = hooks.toolOverrides?.webFetch;
   return zodTool({
-    description:
-      "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      url: z.string().min(1).describe("HTTP(S) URL to fetch."),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...webFetchToolDefinition,
     execute: async ({ url }) => {
       if (override?.execute) {
         return override.execute({ url });
@@ -87,17 +91,17 @@ export function createWebFetchTool(
             mimeType: contentType.split(";")[0] ?? "application/octet-stream",
           },
         ];
-        const artifactRefs = hooks.writeGeneratedArtifacts
-          ? await hooks.writeGeneratedArtifacts(files)
+        const fileRefs = hooks.writeGeneratedFiles
+          ? await hooks.writeGeneratedFiles(files)
           : [];
 
         return {
           url: safeUrl.toString(),
           media_type: contentType,
           bytes: bytes.byteLength,
-          images: artifactRefs,
+          images: fileRefs,
           delivery:
-            artifactRefs.length > 0
+            fileRefs.length > 0
               ? options.canSendFilesToActiveConversation
                 ? "Fetched images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
                 : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."

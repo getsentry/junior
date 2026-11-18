@@ -57,7 +57,7 @@ export async function setupAutomationEditApi(kind: "scheduled" | "event") {
     createdBy: { slackUserId: "U123" },
     credentialMode: "creator" as const,
     destination,
-    task: { text: originalInstruction },
+    task: { kind: "instruction" as const, instruction: originalInstruction },
     title: "My custom title",
     // Keep an existing Destination that the new editor cannot create.
     outcomes: [

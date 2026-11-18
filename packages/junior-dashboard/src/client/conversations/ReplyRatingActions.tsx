@@ -23,11 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import {
-  canSendReplyRating,
-  sendReplyRating,
-  type ReplyRating,
-} from "../sentry";
+import { canSendFeedback, sendFeedback, type ReplyRating } from "../sentry";
 
 // Good waits this long before it sends, so a mistaken click can be undone.
 const GOOD_SEND_DELAY_MS = 5000;
@@ -103,7 +99,7 @@ export function ReplyRatingActions(props: {
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
 
-  if (!canSendReplyRating()) return null;
+  if (!canSendFeedback()) return null;
 
   // Handlers read the store, not the render values, so a fast second submit
   // sees `sent`, and a Good timer still works after its row unmounts.
@@ -114,7 +110,13 @@ export function ReplyRatingActions(props: {
   const send = (next: ReplyRating, text?: string) => {
     if (read().sent) return;
     write({ rating: next, sent: true });
-    sendReplyRating({ ...props, comment: text, rating: next, reader });
+    sendFeedback({
+      ...props,
+      comment: text,
+      kind: "reply_rating",
+      rating: next,
+      reader,
+    });
   };
   const cancelGood = () => {
     clearTimeout(read().timer);
@@ -175,6 +177,7 @@ export function ReplyRatingActions(props: {
                 <PopoverTrigger
                   render={
                     <Button
+                      variant="ghost"
                       aria-label="Bad reply"
                       aria-pressed={rating === "bad"}
                       data-slot="message-action"
@@ -220,7 +223,7 @@ export function ReplyRatingActions(props: {
               <Button
                 className="justify-self-end"
                 type="submit"
-                variant="primary"
+                variant="default"
               >
                 Send
               </Button>

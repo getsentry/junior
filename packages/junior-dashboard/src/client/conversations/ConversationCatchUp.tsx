@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { InlineError } from "../components/InlineError";
 import { DisplayText } from "../display-text/DisplayText";
+import { useInboxUi } from "../uiShell";
 import { useConversationCatchUpState } from "./conversationCatchUpState";
 import { TranscriptJumpToLatestContext } from "./transcriptBottomPinning";
 
@@ -43,6 +44,8 @@ export function ConversationCatchUpButton() {
 /** Show the loading, loaded, or failed catch-up under the "New" marker. */
 export function ConversationCatchUpCard() {
   const state = useConversationCatchUpState();
+  // The new UI drops the label: To do already says what waits on you.
+  const inbox = useInboxUi();
   const jumpToLatest = useContext(TranscriptJumpToLatestContext);
   const cardRef = useRef<HTMLDivElement>(null);
   const shown = state?.data ? "data" : state?.pending ? "pending" : undefined;
@@ -75,15 +78,19 @@ export function ConversationCatchUpCard() {
         <DisplayText text={state.data.summary} />
         {state.data.needsYou ? (
           <p className="m-0 border-t border-dashboard-accent/15 pt-2.5">
-            <span className="font-semibold text-dashboard-accent-text">
-              Needs you
-            </span>
-            <span
-              aria-hidden="true"
-              className="px-1.5 text-dashboard-text-muted"
-            >
-              ·
-            </span>
+            {inbox ? null : (
+              <>
+                <span className="font-semibold text-dashboard-accent-text">
+                  Needs you
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="px-1.5 text-dashboard-text-muted"
+                >
+                  ·
+                </span>
+              </>
+            )}
             {state.data.needsYou}
           </p>
         ) : null}
@@ -91,7 +98,7 @@ export function ConversationCatchUpCard() {
           <Button
             className="-mb-1 h-7 justify-self-center gap-1.5 px-2 text-xs"
             onClick={jumpToLatest}
-            variant="quiet"
+            variant="ghost"
           >
             <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
             Jump to latest

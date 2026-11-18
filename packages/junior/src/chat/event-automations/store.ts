@@ -1,4 +1,5 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
+import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import {
   eventMatches,
@@ -29,7 +30,7 @@ type AutomationRow = typeof juniorAutomations.$inferSelect;
 export type StoredEventAutomation = EventAutomation & {
   status: EventAutomationStatus;
   /** Why a run blocked this automation, until its creator resumes it. */
-  statusReason?: string;
+  statusReason?: string | undefined;
 };
 
 /**
@@ -54,7 +55,7 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
     creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
     identifier: record.trigger.identifier ?? null,
-    instruction: record.task.text,
+    ...automationTaskColumns(record.task),
     namespace: record.trigger.namespace,
     record,
     teamId: record.destination.teamId,

@@ -21,6 +21,8 @@ import { projectConversationMessages } from "@/chat/conversations/message-projec
 import {
   commitAcceptedReply,
   commitMessages,
+  loadConversationProjection,
+  recordToolExecutionStarted,
 } from "@/chat/conversations/projection";
 import {
   contextProvenance,
@@ -33,9 +35,11 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import { parseContent } from "@/chat/slack/message/content";
@@ -140,8 +144,7 @@ function groupTurns(items: HistoryItem[]): {
       continue;
     }
     // A real turn stores what it read from a file. History has no such data.
-    const files = item.kind === "web_message" ? item.images : item.files;
-    if (files?.length) {
+    if (item.files?.length) {
       throw new Error("history takes no files; send the file in a call");
     }
     // A real turn stores the text that it read from a forwarded message.
@@ -219,6 +222,8 @@ function assistantPiMessage(
     stopReason: content.some((part) => part.type === "toolCall")
       ? "toolUse"
       : "stop",
+    // Pi stamps the requested level on every agent-loop response.
+    thinkingLevel: toPiReasoningLevel(botConfig.reasoningLevel),
     timestamp,
     usage: {
       input: 0,
@@ -336,7 +341,15 @@ async function historyUserMessage(args: {
       actor,
       agentMessage: {
         role: "user",
-        content: [{ type: "text", text: renderCurrentInstruction(input.text) }],
+        content: [
+          {
+            type: "text",
+            text: renderCurrentInstruction(
+              input.text,
+              instructionActorFor(actor),
+            ),
+          },
+        ],
         timestamp: args.createdAtMs,
       },
       conversationMessage: {
@@ -430,10 +443,15 @@ function slackInputText(text: string): string {
   }).text;
 }
 
-/** Write `items` as earlier turns. Return the last event sequence. */
+/**
+ * Write `items` as earlier turns. Return the last event sequence. In a
+ * Conversation that already started, the turns follow its current agent
+ * history, as later real turns would.
+ */
 export async function loadHistory(args: {
   api: RequestApp;
   conversation: LoadedConversation;
+  started: boolean;
   items: HistoryItem[] | RecordedConversation;
   replyMessages: WeakMap<HistoryReply, string>;
   slack: SlackMock;
@@ -442,6 +460,7 @@ export async function loadHistory(args: {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
   if (isRecordedConversation(args.items)) {
+    if (args.started) throw new Error("A recording starts a Conversation");
     return await loadRecording({ ...args, recording: args.items });
   }
   const { appMessages, turns } = groupTurns(args.items);
@@ -463,21 +482,31 @@ export async function loadHistory(args: {
   }
   // Junior has no rows for a thread that only apps posted in.
   if (turns.length === 0) return BEFORE_FIRST_EVENT;
-  // Earlier turns happened before the call, one millisecond apart.
-  let clockMs = Date.now() - args.items.length - 1;
+  // Agent history commits take the full history, not only new messages.
+  const current = args.started
+    ? await loadConversationProjection({ conversationId })
+    : undefined;
+  // Earlier turns happened before the call, one millisecond apart, and after
+  // the turns that the Conversation already has.
+  let clockMs = Math.max(
+    Date.now() - args.items.length - 1,
+    current?.messages.at(-1)?.timestamp ?? 0,
+  );
   const tick = () => (clockMs += 1);
-  await recordRoot(conversation, tick(), turns[0]?.input);
+  if (!args.started) await recordRoot(conversation, tick(), turns[0]?.input);
   const lifecycle = getTurnLifecycle();
   const state = coerceThreadConversationState({});
-  // Agent history commits take the full history, not only new messages.
-  const agentHistory: PiMessage[] = [];
-  const agentProvenance: ConversationMessageProvenance[] = [];
+  const agentHistory: PiMessage[] = [...(current?.messages ?? [])];
+  const agentProvenance: ConversationMessageProvenance[] = [
+    ...(current?.provenance ?? []),
+  ];
 
+  /* oxlint-disable no-await-in-loop -- History replays each Turn in order, like a real Conversation. */
   for (const [index, turn] of turns.entries()) {
     const message = await historyUserMessage({
       conversation,
       createdAtMs: tick(),
-      first: index === 0 && appMessages.length === 0,
+      first: index === 0 && appMessages.length === 0 && !args.started,
       input: turn.input,
       slack: args.slack,
     });
@@ -584,12 +613,21 @@ export async function loadHistory(args: {
       args.replyMessages.set(historyReply, replyId);
     }
     if (turn.replies.length === 0) {
-      // Junior answered an input that addressed it with the silence marker.
+      // Junior answered an input that addressed it with `noReply`.
       if (message.conversationMessage.meta?.explicitMention) {
-        agentHistory.push(
-          assistantPiMessage([{ type: "text", text: NO_REPLY_MARKER }], tick()),
+        const [request, output] = toolCallPiMessages(
+          { name: NO_REPLY_TOOL_NAME, arguments: {}, result: {} },
+          tick(),
         );
-        agentProvenance.push(contextProvenance);
+        // A real Turn records the tool start before it saves the call.
+        await recordToolExecutionStarted({
+          conversationId,
+          createdAtMs: request.timestamp,
+          toolCallId: output.toolCallId,
+          toolName: NO_REPLY_TOOL_NAME,
+        });
+        agentHistory.push(request, output);
+        agentProvenance.push(contextProvenance, contextProvenance);
         await commitMessages({
           conversationId,
           messages: agentHistory,
@@ -608,6 +646,7 @@ export async function loadHistory(args: {
       turnId,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   if (
     conversation.surface === "slack" &&

@@ -4,11 +4,7 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
-import {
-  missingToolAnnotationKeys,
-  type Destination,
-  type Source,
-} from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type {
@@ -38,9 +34,9 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
-  actor?: Actor;
+  actor?: Actor | undefined;
   conversationId: string;
-  credentialContext?: CredentialContext;
+  credentialContext?: CredentialContext | undefined;
   destination: Destination;
   source: Source;
   userIntent?: () => string;
@@ -136,9 +132,11 @@ function rejectionInstructions(
 export class ToolActionRejectedError extends Error {
   readonly decision: Exclude<ToolActionDecision, "allow">;
   readonly reason: string;
-  readonly reviewedAction?: ToolActionPriorRejection;
-  readonly riskLevel?: ToolActionReviewDecision["riskLevel"];
-  readonly userAuthorization?: ToolActionReviewDecision["userAuthorization"];
+  readonly reviewedAction?: ToolActionPriorRejection | undefined;
+  readonly riskLevel?: ToolActionReviewDecision["riskLevel"] | undefined;
+  readonly userAuthorization?:
+    | ToolActionReviewDecision["userAuthorization"]
+    | undefined;
 
   constructor(
     decision: Exclude<ToolActionDecision, "allow">,
@@ -187,21 +185,19 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. Only a core action with a
- * complete set of annotations that marks it read-only, closed-world, and not
- * destructive skips review. Missing or partial annotations are unknown risk.
+ * True when an `auto` action must enter review. The tool's annotations alone
+ * decide: an action marked read-only and not destructive skips review, like
+ * MCP clients such as Codex do. MCP annotations come from the server, and
+ * plugin annotations from the plugin. Anything else, including missing
+ * annotations, is unknown risk.
  */
 function autoActionNeedsReview(
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
 ): boolean {
   const annotations = resolved?.annotations ?? tool.annotations;
-  return (
-    missingToolAnnotationKeys(annotations).length > 0 ||
-    annotations?.destructiveHint === true ||
-    annotations?.openWorldHint === true ||
-    annotations?.readOnlyHint === false ||
-    Boolean(tool.identity || resolved?.source || tool.source)
+  return !(
+    annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
 }
 
@@ -485,11 +481,13 @@ async function mapConcurrent<T, R>(
   const results: R[] = [];
   let next = 0;
   const worker = async () => {
+    /* oxlint-disable no-await-in-loop -- Each worker takes the next item after its current one ends; this is the limiter. */
     while (next < items.length) {
       const index = next;
       next += 1;
       results[index] = await fn(items[index]!);
     }
+    /* oxlint-enable no-await-in-loop */
   };
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, worker),
@@ -600,20 +598,20 @@ export function createToolActionReview(options: {
       }
       return state;
     });
-    states.forEach((state, index) => {
+    for (const [index, state] of states.entries()) {
       const step = steps[index]!;
       if (step.kind !== "reviewed" || state.rejected) {
-        return;
+        continue;
       }
       if (step.decision.decision === "allow") {
         // A later action of the same attempt can still add one.
         consecutiveRejections = 0;
-        return;
+        continue;
       }
       state.rejected = true;
       consecutiveRejections = state.before + 1;
       if (consecutiveRejections < MAX_CONSECUTIVE_REJECTIONS) {
-        return;
+        continue;
       }
       state.exhausted = true;
       // Keep Sentry visibility for the limit without aborting the run.
@@ -628,7 +626,7 @@ export function createToolActionReview(options: {
           "gen_ai.tool.call.id": actions[index]!.toolCallId,
         },
       );
-    });
+    }
     return states;
   };
 

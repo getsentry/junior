@@ -1,8 +1,11 @@
 import type { StateAdapter } from "chat";
-import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
+import {
+  dropOwnUnreadLoopReplies,
+  stopChildAgentsBelow,
+} from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { cancelSignInWait } from "@/chat/task-execution/conversation-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessageClaim } from "@/chat/task-execution/state";
 import {
@@ -50,9 +53,9 @@ export type StopConversationResult =
  */
 export async function stopConversation(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   /** The message or button press that asked for the stop, if any. */
-  message?: StopRequest;
+  message?: StopRequest | undefined;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<StopConversationResult> {
@@ -87,6 +90,7 @@ export async function stopConversation(args: {
       nowMs: stoppedAtMs,
       state: args.state,
     });
+    await dropOwnUnreadLoopReplies(args.conversationId, args.state);
     await cancelSignInWait(args.conversationId);
     const result = await stopConversationWork({
       conversationId: args.conversationId,

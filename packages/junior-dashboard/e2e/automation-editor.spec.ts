@@ -93,9 +93,140 @@ test("edits an Automation in place, preserves list state, and protects the draft
     {
       kind: "scheduled",
       revision: "a".repeat(64),
-      instruction: "Review the weekly changes and link the relevant issues.",
+      task: {
+        kind: "instruction",
+        instruction: "Review the weekly changes and link the relevant issues.",
+      },
     },
   ]);
+});
+
+test("runs a skill with optional context instead of an instruction", async ({
+  page,
+  dashboard,
+}) => {
+  const state = await mockAutomationEditor(page, "scheduled");
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "release-check",
+          description: "Check release readiness and post a short summary.",
+          disableModelInvocation: true,
+        },
+        {
+          name: "triage-incident",
+          description: "Triage a live incident into a suspects-first note.",
+        },
+        {
+          name: "diff-quality",
+          description: "Run a quality pass on a diff before it ships itself.",
+        },
+        {
+          name: "self-update",
+          description: "Update this app to the latest Junior release.",
+          pluginProvider: "github",
+        },
+        {
+          name: "tpm",
+          description: "Run the TPM bug digest from Linear.",
+          pluginProvider: "linear",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/skills/release-check", (route) =>
+    route.fulfill({
+      json: {
+        name: "release-check",
+        description: "Check release readiness and post a short summary.",
+        disableModelInvocation: true,
+        body: "# Release check\n\nCompare the release branch with `main`.",
+      },
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
+  await page.getByRole("button", { name: "Skill", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does.",
+    ),
+  ).toBeVisible();
+  await page.getByLabel("Skill", { exact: true }).click();
+  await screenshot(page, "automation-skill-picker", { view: "desktop" });
+  const search = page.getByPlaceholder("Search by name or description");
+  // A name match outranks a description match, even from a plugin. The
+  // `$` from the shown skill label still matches by name.
+  await search.fill("$self");
+  await expect(
+    page.getByRole("listbox", { name: "Suggestions" }).getByRole("option"),
+  ).toHaveText([/^\$self-update/, /^\$diff-quality/]);
+  await screenshot(page, "automation-skill-search", { view: "desktop" });
+  await search.fill("release");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Skill", { exact: true })).toContainText(
+    "Manual only",
+  );
+  await page.getByRole("button", { name: "View skill", exact: true }).click();
+  const skillDrawer = page.getByRole("dialog", { name: "$release-check" });
+  await expect(
+    skillDrawer.getByRole("heading", { name: "Release check" }),
+  ).toBeVisible();
+  await expect(skillDrawer).toContainText("Compare the release branch");
+  await screenshot(page, "automation-skill-drawer");
+  await skillDrawer.getByRole("button", { name: "Raw", exact: true }).click();
+  await expect(skillDrawer).toContainText("# Release check");
+  await expect(skillDrawer).toContainText("`main`");
+  await skillDrawer
+    .getByRole("button", { name: "Close $release-check", exact: true })
+    .click();
+  // Reopening after a pick starts from an empty search.
+  await page.getByLabel("Skill", { exact: true }).click();
+  await expect(search).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Add context", exact: true }).click();
+  await page
+    .getByLabel("Additional context", { exact: true })
+    .fill("Only check getsentry/junior.");
+  const yourChanges = page.getByRole("complementary", {
+    name: "Your changes",
+  });
+  await expect(yourChanges).toContainText("What to run");
+  await expect(yourChanges).toContainText(
+    "New: $release-check · Only check getsentry/junior.",
+  );
+  await screenshot(page, "automation-skill-editor");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByText("Automation saved", { exact: true }),
+  ).toBeVisible();
+  expect(state.writes).toEqual([
+    {
+      kind: "scheduled",
+      revision: "a".repeat(64),
+      task: {
+        kind: "skill",
+        skill: "release-check",
+        context: "Only check getsentry/junior.",
+      },
+    },
+  ]);
+
+  // A saved skill that is gone stays selected and says why runs block.
+  state.value = {
+    ...state.value,
+    task: { kind: "skill", skill: "removed-check" },
+  };
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
+  await expect(
+    page.getByText(
+      "$removed-check is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel("Skill", { exact: true })).toContainText(
+    "Not found",
+  );
+  await screenshot(page, "automation-skill-missing");
 });
 
 test("keeps Event edits through validation, failed saves, and concurrent changes", async ({
@@ -170,7 +301,10 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     {
       kind: "event",
       revision: "c".repeat(64),
-      instruction: "Summarize the issue and include a link.",
+      task: {
+        kind: "instruction",
+        instruction: "Summarize the issue and include a link.",
+      },
       trigger: {
         namespace: "github",
         resourceType: "issue",
@@ -251,7 +385,10 @@ test("public non-creators edit settings without creator credentials", async ({
     {
       kind: "event",
       revision: "a".repeat(64),
-      instruction: "Notify responders and link the incident timeline.",
+      task: {
+        kind: "instruction",
+        instruction: "Notify responders and link the incident timeline.",
+      },
     },
   ]);
 });
@@ -263,7 +400,7 @@ test("makes an earlier version active from version history", async ({
   const editor = await mockAutomationEditor(page, "scheduled");
   const definition = {
     title: editor.value.title,
-    instruction: editor.value.instruction,
+    task: editor.value.task,
     credentialMode: editor.value.credentialMode,
     destination: editor.value.destination,
     outcomes: editor.value.outcomes,
@@ -276,7 +413,10 @@ test("makes an earlier version active from version history", async ({
       version: 2,
       createdAt: "2026-08-04T16:00:00.000Z",
       editedBy: { slackUserId: "U456", fullName: "Avery Chen" },
-      definition: { ...definition, instruction: "Post a shorter summary" },
+      definition: {
+        ...definition,
+        task: { kind: "instruction", instruction: "Post a shorter summary" },
+      },
     },
     {
       kind: "scheduled",
@@ -308,7 +448,7 @@ test("makes an earlier version active from version history", async ({
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
   await page
-    .getByRole("complementary", { name: "Automation status" })
+    .getByRole("complementary", { name: "Automation details" })
     .getByRole("link", { name: "Version 2" })
     .click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);

@@ -5,8 +5,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  pauseConversationDelivery,
+  resumeConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { setTrustConfig } from "@/chat/identities/trust";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import {
@@ -100,7 +111,7 @@ async function addItem(
 }
 
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
-  const blocks = call?.params.blocks;
+  const blocks = call?.params["blocks"];
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
     elements?: Array<{
       action_id?: string;
@@ -134,11 +145,17 @@ describe("Slack webhook: Review item cards", () => {
   afterEach(async () => {
     process.env = { ...ORIGINAL_ENV };
     resetSlackApiMockState();
+    setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
     await disconnectStateAdapter();
     await closeDb();
   });
 
   function harness(options: { allowedDomains?: string[] } = {}) {
+    // Slack ingress reads the allowed domains that `createApp` applies.
+    setTrustConfig({
+      allowedBotUserIds: [],
+      allowedDomains: options.allowedDomains ?? [],
+    });
     const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
@@ -207,7 +224,6 @@ describe("Slack webhook: Review item cards", () => {
         }),
         waitUntil: waitUntil.fn,
         services: {
-          ...options,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),
@@ -266,7 +282,7 @@ describe("Slack webhook: Review item cards", () => {
     // Each linked thread gets a card with one button per choice. The
     // recommended choice is the primary button.
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel).sort()).toEqual([
+    expect(posts.map((post) => post.params["channel"]).sort()).toEqual([
       "C123",
       "C456",
     ]);
@@ -357,6 +373,16 @@ describe("Slack webhook: Review item cards", () => {
       kind: "submitted",
       reviewItemId: item.id,
     });
+    // The click starts input in a thread no Conversation claimed, so it
+    // claims the thread for this one.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1712345.0001",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBe(THREAD);
     // The other linked thread learns about it once, from the person.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,
@@ -373,9 +399,9 @@ describe("Slack webhook: Review item cards", () => {
     const updates = slackApiOutbox
       .calls("chat.update")
       .slice(updatesBeforeClose);
-    expect(updates.slice(0, 2).map((update) => update.params.channel)).toEqual(
-      expect.arrayContaining(["C123", "C456"]),
-    );
+    expect(
+      updates.slice(0, 2).map((update) => update.params["channel"]),
+    ).toEqual(expect.arrayContaining(["C123", "C456"]));
     for (const update of updates) {
       const blocks = blocksOf(update);
       expect(blocks.some((block) => block.type === "actions")).toBe(false);
@@ -460,6 +486,84 @@ describe("Slack webhook: Review item cards", () => {
     expect(work?.messages[0]?.input.text).toContain(
       "Decision (decision): Ship it",
     );
+  });
+
+  it("posts one card in a thread that a linked child agent shares", async () => {
+    const { click, state } = harness();
+    await slackThread(THREAD, "public");
+    // A child agent shares the thread of its parent.
+    const child = "agent:card-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    // The child adds the item first, and the parent links it later. The
+    // thread keeps one card.
+    await addItem(ana, input, child);
+    const { item } = await addItem(ana, input);
+    expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
+    const cards = slackApiOutbox.messages();
+    expect(cards).toHaveLength(1);
+
+    await click({
+      actionId: "junior_review_item:choice:0",
+      actionTs: "1712345.0003",
+      itemId: item.id,
+      userId: "U123",
+      value: buttonValue(cards[0], "junior_review_item:choice:0"),
+    });
+
+    // A click acts for the parent, which owns the thread, so the parent gets
+    // the answer once.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
+  });
+
+  it("posts no card in a detached thread until it attaches again", async () => {
+    harness();
+    await slackThread(THREAD, "public");
+    // A child agent's item reads the detach of its root.
+    const child = "agent:detached-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    await pauseConversationDelivery(THREAD);
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    await addItem(ana, input, child);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+
+    await resumeConversationDelivery(THREAD);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
   it("names the recommended option of a form in the card text", async () => {
@@ -560,7 +664,7 @@ describe("Slack webhook: Review item cards", () => {
     });
 
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    expect(posts.map((post) => post.params["channel"])).toEqual(["C123"]);
     // The title links to the subject.
     expect(blocksOf(posts[0])[0]?.text).toContain(
       "**[Rotate the deploy key](https://github.com/acme/infra/pull/12)**",
@@ -594,14 +698,18 @@ describe("Slack webhook: Review item cards", () => {
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
       "ana@example.com dismissed this",
     );
-    // The thread input records the dismiss.
+    // A dismiss starts no Turn. The thread saves it as a handled Message.
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
     });
-    expect(
-      work?.messages.map((message) => message.input.reviewItemChange),
-    ).toEqual([{ kind: "dismissed", reviewItemId: item.id }]);
+    expect(work?.messages ?? []).toEqual([]);
+    const saved = projectConversationMessages(
+      await getConversationEventStore().loadMessageHistory(THREAD),
+    );
+    expect(saved.map((message) => message.meta?.reviewItemChanges)).toEqual([
+      [{ kind: "dismissed", reviewItemId: item.id }],
+    ]);
   });
 
   // Which open question a reply answers is a decision model choice, so the

@@ -8,6 +8,8 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
+// Warm the module cache so the first test's timeout doesn't include the cold load.
+import "@/chat/task-execution/checkpoint";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -67,6 +69,7 @@ function failingConversationStore(): ConversationStore {
     get: vi.fn(),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -593,6 +596,7 @@ describe("turn checkpoint", () => {
       get: vi.fn(),
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
+      claimProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
       recordDestinationVisibility: vi.fn(),
       getRunMetrics: vi.fn(async () => undefined),

@@ -94,8 +94,7 @@ export function useConfirmUnsentAnswers() {
   const resolveRef = useRef<(send: boolean) => void>(undefined);
 
   const confirmSubmit = useCallback(() => {
-    // The transcript card and the side panel can show the same item.
-    const unsent = [...new Set(context?.titles.values())];
+    const unsent = [...(context?.titles.values() ?? [])];
     if (unsent.length === 0) return undefined;
     setTitles(unsent);
     setOpen(true);
@@ -136,7 +135,7 @@ export function useConfirmUnsentAnswers() {
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Go back</AlertDialogCancel>
-          <AlertDialogAction onClick={() => close(true)} variant="danger">
+          <AlertDialogAction onClick={() => close(true)} variant="destructive">
             Send message
           </AlertDialogAction>
         </AlertDialogFooter>

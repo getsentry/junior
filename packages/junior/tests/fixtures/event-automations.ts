@@ -1,6 +1,7 @@
 import { githubPlugin } from "@sentry/junior-github";
 import { vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
@@ -61,6 +62,10 @@ export function context(
       visibility: sourceVisibility,
     }),
     userText: "Create a task for review feedback.",
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+    }).tools,
   } as ToolRuntimeContext;
 }
 
@@ -99,12 +104,14 @@ export async function createTask(
   toolCallId?: string,
   events = ["pull_request.review.changes_requested"],
   taskContext = context(),
+  credentialMode?: "creator" | "system",
 ) {
   return (await execute(
     createAutomationTool(automationToolContext(taskContext), getEventCatalog()),
     {
       instruction,
       outcomes: [],
+      credential_mode: credentialMode,
       trigger: {
         type: "event",
         namespace: "github",

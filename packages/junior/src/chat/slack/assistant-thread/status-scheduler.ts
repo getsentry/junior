@@ -29,10 +29,12 @@ export interface AssistantStatusSession {
 export function createAssistantStatusScheduler(args: {
   sendStatus: (text: string, loadingMessages?: string[]) => Promise<void>;
   loadingMessages?: string[];
-  now?: () => number;
-  setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
-  clearTimer?: (timer: TimerHandle) => void;
-  random?: () => number;
+  now?: (() => number) | undefined;
+  setTimer?:
+    | ((callback: () => void, delayMs: number) => TimerHandle)
+    | undefined;
+  clearTimer?: ((timer: TimerHandle) => void) | undefined;
+  random?: (() => number) | undefined;
 }): AssistantStatusSession {
   const now = args.now ?? (() => Date.now());
   const setTimer =

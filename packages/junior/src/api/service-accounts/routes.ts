@@ -9,7 +9,7 @@ import {
 import { logInfo } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import { escapeXml } from "@/chat/xml";
+import { escapeHtml } from "@/api/html";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -30,7 +30,7 @@ import { requireAdmin } from "../viewer";
  */
 function callbackUrl(request: Request, provider: string): string {
   const base =
-    process.env.JUNIOR_BASE_URL?.trim() || new URL(request.url).origin;
+    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
   return new URL(
     `api/service-accounts/${encodeURIComponent(provider)}/callback`,
     base.endsWith("/") ? base : `${base}/`,
@@ -46,7 +46,7 @@ function requirePlugin(provider: string): PluginDefinition {
 }
 
 function callbackPage(title: string, message: string, status: number) {
-  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status, {
+  return htmlCallbackResponse(escapeHtml(title), escapeHtml(message), status, {
     footerMessage: "You can close this tab and return to the dashboard.",
   });
 }

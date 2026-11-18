@@ -7,7 +7,7 @@ import {
 import * as z from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 
 const DEFAULT_SEARCH_RESULTS = 10;
@@ -112,9 +112,9 @@ function searchableResourceTypes(catalog: EventCatalog) {
     );
 }
 
-/** Create the read-only tool that searches enabled event types. */
-export function createSearchEventTypesTool(catalog: EventCatalog) {
-  return zodTool({
+/** Static definition of `searchEventTypes` for the deployment event catalog. */
+export function searchEventTypesToolDefinition(catalog: EventCatalog) {
+  return zodToolDefinition({
     exposure: "deferred",
     source: RESOURCE_WATCH_TOOL_SOURCE,
     annotations: {
@@ -149,6 +149,13 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       })
       .strict(),
     outputSchema,
+  });
+}
+
+/** Create the read-only tool that searches enabled event types. */
+export function createSearchEventTypesTool(catalog: EventCatalog) {
+  return zodTool({
+    ...searchEventTypesToolDefinition(catalog),
     async execute({ query, namespace, max_results: maxResults }) {
       const normalizedQuery = normalizeSearchText(query ?? "");
       const terms = normalizedQuery.split(/\s+/).filter(Boolean);

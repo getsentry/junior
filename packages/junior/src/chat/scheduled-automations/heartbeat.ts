@@ -4,7 +4,14 @@ import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
+import { isTerminalDispatchStatus } from "@/chat/agent-dispatch/store";
+import { AGENT_DISPATCH_MAX_AGE_MS } from "@/chat/agent-dispatch/work";
 import { renderTaskInput } from "@/chat/task-input";
+import { automationTaskText } from "@/chat/automations/task";
+import {
+  findAutomationSkill,
+  missingAutomationSkillReason,
+} from "@/chat/automations/skill";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
@@ -43,7 +50,8 @@ function singleLineMetadataValue(value: string): string {
 function buildDispatchInput(task: ScheduledAutomation): string {
   return renderTaskInput({
     creator: slackMention(task.createdBy.slackUserId),
-    instructions: task.task.text,
+    instructions: automationTaskText(task.task),
+    ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
 }
@@ -53,9 +61,6 @@ function buildDispatchMetadata(args: {
   run: ScheduledRun;
   task: ScheduledAutomation;
 }): Record<string, string> {
-  if (!args.task.task.text?.trim()) {
-    throw new Error("Scheduled automation text is required");
-  }
   return {
     runId: args.run.id,
     schedule: singleLineMetadataValue(args.task.schedule.description),
@@ -102,7 +107,7 @@ async function logRunOutcome(args: {
   db: JuniorDatabase;
   /** Prefer a fresh task load after terminal status transitions. */
   task?: ScheduledAutomation;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> | undefined;
 }): Promise<void> {
   const task =
     args.task ?? (await readScheduledAutomation(args.db, args.run.taskId));
@@ -274,6 +279,7 @@ export async function runScheduledAutomationHeartbeat(args: {
   await settleEventAutomationRuns(db, args.nowMs);
   let processedCount = 0;
   let dispatchCount = 0;
+  /* oxlint-disable no-await-in-loop -- Settle runs in schedule order, so each Automation's runs finish in order. */
   for (const run of await listIncompleteScheduledRuns(db)) {
     if (!run.dispatchId) continue;
     const dispatch = await getScheduledAutomationDispatch(run.dispatchId);
@@ -296,9 +302,28 @@ export async function runScheduledAutomationHeartbeat(args: {
       })
     ) {
       processedCount += 1;
+      continue;
+    }
+    // Dispatch work does not run past this age. A dispatch that is still
+    // open now lost its work, and its run would block every later run.
+    if (
+      !isTerminalDispatchStatus(dispatch.status) &&
+      args.nowMs - (run.startedAtMs ?? run.claimedAtMs) >
+        AGENT_DISPATCH_MAX_AGE_MS
+    ) {
+      await finishClaimedRun({
+        db,
+        errorMessage:
+          "Scheduled automation run did not finish within 24 hours.",
+        nowMs: args.nowMs,
+        run,
+        status: "failed",
+      });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
+  /* oxlint-disable no-await-in-loop -- Claim one due run at a time, up to the heartbeat limit. */
   for (
     let index = processedCount;
     index < SCHEDULED_AUTOMATION_HEARTBEAT_LIMIT;
@@ -344,16 +369,11 @@ export async function runScheduledAutomationHeartbeat(args: {
       continue;
     }
 
-    let metadata: Record<string, string>;
-    try {
-      metadata = buildDispatchMetadata({ nowMs: args.nowMs, run, task });
-    } catch (error) {
+    const skill = task.task.kind === "skill" ? task.task.skill : undefined;
+    if (skill && !(await findAutomationSkill(skill))) {
       await finishClaimedRun({
         db,
-        errorMessage:
-          error instanceof Error
-            ? `Scheduled automation dispatch metadata could not be built: ${error.message}`
-            : "Scheduled automation dispatch metadata could not be built.",
+        errorMessage: missingAutomationSkillReason(skill),
         nowMs: args.nowMs,
         run,
         status: "blocked",
@@ -382,7 +402,8 @@ export async function runScheduledAutomationHeartbeat(args: {
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),
-          metadata,
+          ...(skill ? { skill } : undefined),
+          metadata: buildDispatchMetadata({ nowMs: args.nowMs, run, task }),
           replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
@@ -419,5 +440,6 @@ export async function runScheduledAutomationHeartbeat(args: {
     );
     dispatchCount += 1;
   }
+  /* oxlint-enable no-await-in-loop */
   return dispatchCount;
 }

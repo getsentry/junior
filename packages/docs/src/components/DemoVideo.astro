@@ -1,0 +1,39 @@
+---
+// The homepage demo video. The thumbnail on the hero note opens it.
+---
+
+<dialog class="jr-demo-dialog" aria-label="Junior demo video">
+  <form method="dialog">
+    <button class="jr-demo-close" type="submit">Close</button>
+  </form>
+  <video
+    controls
+    playsinline
+    preload="none"
+    poster="/junior-demo-poster.webp"
+    src="/junior-demo.mp4"></video>
+</dialog>
+
+<script>
+  const dialog = document.querySelector<HTMLDialogElement>(".jr-demo-dialog");
+  const video = dialog?.querySelector("video");
+  const opener = document.querySelector<HTMLButtonElement>(
+    "[data-demo-video-open]",
+  );
+
+  if (dialog && video && opener) {
+    opener.addEventListener("click", () => {
+      dialog.showModal();
+      void video.play();
+    });
+    // A click on the dialog itself is a click on its backdrop.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener("close", () => {
+      video.pause();
+      video.currentTime = 0;
+      opener.focus();
+    });
+  }
+</script>

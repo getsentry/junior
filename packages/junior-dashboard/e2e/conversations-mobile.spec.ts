@@ -1,8 +1,9 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
+import { viewAsParticipant } from "./conversationMenu";
 
 /** Hold new Conversation creates until the returned function runs. */
 async function holdCreate(page: Page): Promise<() => void> {
@@ -138,7 +139,9 @@ test("starts a new conversation from a centered compose empty state", async ({
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
-  await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Conversation visibility" }),
+  ).toHaveText("Public");
   await expect(composer).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
@@ -226,6 +229,76 @@ test.describe("on a touch screen", () => {
     await composer.pressSequentially("Second line");
     await expect(composer).toHaveValue("First line\nSecond line");
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("opens the row sheet on a long press of a home card", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const card = page.getByRole("link", { name: "Open Closed issue summary" });
+    await expect(card).toBeVisible();
+    // Playwright has no long press. Hold a touch past the menu delay.
+    await card.dispatchEvent("touchstart", {
+      touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+    });
+    // A touch opens the rows as a sheet, not as a menu at the finger.
+    const sheet = page.getByRole("dialog", { name: "Closed issue summary" });
+    await expect(sheet).toBeVisible();
+    // A mobile browser can send its own contextmenu from the same press.
+    // The open sheet hides the card from role queries.
+    await page
+      .locator('a[aria-label="Open Closed issue summary"]')
+      .dispatchEvent("contextmenu");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await screenshot(page, "conversation-home-card-sheet", { view: "mobile" });
+
+    await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(
+      page
+        .locator("section:has(#conversation-section-pinned)")
+        .getByRole("link", { name: "Open Closed issue summary" }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("moves a pinned home card from its row sheet", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const pinned = page.locator(
+      'section[aria-labelledby="conversation-section-pinned"] a[aria-label]',
+    );
+    const sheet = page.getByRole("dialog");
+    // Playwright has no long press. Hold a touch past the menu delay.
+    const longPress = (card: Locator) =>
+      card.dispatchEvent("touchstart", {
+        touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+      });
+    for (const name of ["Closed issue summary", "Sandbox validation"]) {
+      await longPress(page.getByRole("link", { name: `Open ${name}` }));
+      await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+      await expect(
+        page
+          .locator('section[aria-labelledby="conversation-section-pinned"]')
+          .getByRole("link", { name: `Open ${name}` }),
+      ).toBeVisible();
+    }
+    const second = await pinned.nth(1).getAttribute("aria-label");
+
+    // A still touch on a pinned card opens the sheet, not a pin drag.
+    await longPress(pinned.first());
+    await expect(sheet.getByRole("button", { name: "Move up" })).toBeDisabled();
+    await sheet.getByRole("button", { name: "Move down" }).click();
+    await expect(pinned.first()).toHaveAttribute("aria-label", second!);
   });
 
   test("opens the keyboard on home only when the dashboard opens there", async ({
@@ -373,14 +446,14 @@ test("opens and closes a conversation on mobile", async ({
   await expect(menu).toBeVisible();
   await menu.click();
   await expect(
-    page.getByRole("button", { name: "Search transcript" }),
+    page.getByRole("menuitem", { name: "Search transcript" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "App menu" })).toBeVisible();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(details).toHaveAttribute("aria-modal", "true");
@@ -400,14 +473,14 @@ test("opens and closes a conversation on mobile", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await menu.click();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   await details.getByRole("button", { name: "Close", exact: true }).click();
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
   await menu.click();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   // The sheet moves focus inside it.
   await expect(details.locator(":focus")).toHaveCount(1);
@@ -719,11 +792,15 @@ test("opens and closes a conversation on mobile", async ({
     .toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
+  // The search field keeps focus after the menu closes.
+  await expect(
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByPlaceholder("Search transcript…")).toBeFocused();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page
-    .getByRole("button", { name: "Open event log", exact: true })
+    .getByRole("menuitem", { name: "Open event log", exact: true })
     .click();
   await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
@@ -884,10 +961,10 @@ test("keeps the message in view while earlier history and late content load", as
   // corrections make the transcript jump.
   await transcript.evaluate((element) => {
     const scrollTo = element.scrollTo.bind(element);
-    element.dataset.scrollCorrections = "0";
+    element.dataset["scrollCorrections"] = "0";
     element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
-      element.dataset.scrollCorrections = String(
-        Number(element.dataset.scrollCorrections) + 1,
+      element.dataset["scrollCorrections"] = String(
+        Number(element.dataset["scrollCorrections"]) + 1,
       );
       scrollTo(...args);
     };

@@ -1,4 +1,8 @@
 import { interceptTestGitHubChecksHttp } from "./github-checks";
+import {
+  interceptTestGitHubDraftsHttp,
+  resetTestGitHubDraftFixtures,
+} from "./github-drafts";
 
 const GITHUB_API_HOST = "api.github.com";
 
@@ -25,6 +29,7 @@ const textEncoder = new TextEncoder();
 export function resetTestGitHubHttpFixtures(): void {
   nextIssueNumber = 101;
   issues.clear();
+  resetTestGitHubDraftFixtures();
 }
 
 function base64(input: string): string {
@@ -43,23 +48,27 @@ function base64Url(input: string): string {
     .replace(/\//g, "_");
 }
 
+// Spreading HeadersInit drops entries from a Headers instance or an array.
+function headersWithContentType(
+  init: ResponseInit | undefined,
+  contentType: string,
+): Headers {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("content-type")) headers.set("content-type", contentType);
+  return headers;
+}
+
 function json(value: unknown, init?: ResponseInit): Response {
   return Response.json(value, {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "application/json; charset=utf-8"),
   });
 }
 
 function text(value: string, init?: ResponseInit): Response {
   return new Response(value, {
     ...init,
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "text/plain; charset=utf-8"),
   });
 }
 
@@ -139,7 +148,7 @@ function repoPayload(repo: string): Record<string, unknown> {
     private: false,
     owner: organizationPayload(ownerLogin),
     html_url: htmlUrl,
-    description: "Junior eval repository fixture",
+    description: "Eval repository fixture",
     fork: false,
     url: apiUrl,
     trees_url: `${apiUrl}/git/trees{/sha}`,
@@ -241,26 +250,27 @@ function contentPayload(pathname: string): Response | undefined {
 
 async function graphqlResponse(request: Request): Promise<Response> {
   const body = await requestJson(request);
-  const query = String(body.query ?? "");
+  const query = String(body["query"] ?? "");
   const variables =
-    body.variables && typeof body.variables === "object"
-      ? (body.variables as Record<string, unknown>)
+    body["variables"] && typeof body["variables"] === "object"
+      ? (body["variables"] as Record<string, unknown>)
       : {};
   const repo =
-    typeof variables.owner === "string" && typeof variables.name === "string"
-      ? `${variables.owner}/${variables.name}`
+    typeof variables["owner"] === "string" &&
+    typeof variables["name"] === "string"
+      ? `${variables["owner"]}/${variables["name"]}`
       : "getsentry/junior";
 
   if (/createIssue/i.test(query)) {
     const input =
-      variables.input && typeof variables.input === "object"
-        ? (variables.input as Record<string, unknown>)
+      variables["input"] && typeof variables["input"] === "object"
+        ? (variables["input"] as Record<string, unknown>)
         : {};
     const number = nextIssueNumber++;
     const issue = {
       ...defaultIssue(repo, number),
-      title: String(input.title ?? "Eval issue"),
-      body: String(input.body ?? ""),
+      title: String(input["title"] ?? "Eval issue"),
+      body: String(input["body"] ?? ""),
     };
     issues.set(issueKey(repo, number), issue);
     return json({
@@ -346,8 +356,8 @@ async function githubResponse(
       const number = nextIssueNumber++;
       const issue = {
         ...defaultIssue(repo, number),
-        title: String(body.title ?? "Eval issue"),
-        body: String(body.body ?? ""),
+        title: String(body["title"] ?? "Eval issue"),
+        body: String(body["body"] ?? ""),
       };
       issues.set(issueKey(repo, number), issue);
       return json(issuePayload(repo, issue), { status: 201 });
@@ -367,11 +377,15 @@ async function githubResponse(
       const body = await requestJson(request);
       const updated: EvalIssue = {
         ...issue,
-        ...(typeof body.title === "string" ? { title: body.title } : {}),
-        ...(typeof body.body === "string" ? { body: body.body } : {}),
-        ...(body.state === "closed" || body.state === "open"
-          ? { state: body.state }
-          : {}),
+        ...(typeof body["title"] === "string"
+          ? { title: body["title"] }
+          : undefined),
+        ...(typeof body["body"] === "string"
+          ? { body: body["body"] }
+          : undefined),
+        ...(body["state"] === "closed" || body["state"] === "open"
+          ? { state: body["state"] }
+          : undefined),
         updated_at: timestamp,
       };
       issues.set(key, updated);
@@ -395,7 +409,7 @@ async function githubResponse(
         user: userPayload("junior-eval"),
         created_at: "2026-05-27T00:01:00Z",
         updated_at: "2026-05-27T00:01:00Z",
-        body: String((await requestJson(request)).body ?? ""),
+        body: String((await requestJson(request))["body"] ?? ""),
       },
       { status: 201 },
     );
@@ -405,6 +419,26 @@ async function githubResponse(
     `Missing eval GitHub egress fixture for ${request.method} ${upstreamUrl.pathname}\n`,
     { status: 501 },
   );
+}
+
+const ISSUE_ROUTE = /^\/repos\/[^/]+\/[^/]+\/issues(?:\/\d+(?:\/comments)?)?$/;
+
+/**
+ * Serve the issue routes to GitHub calls that plugin tools make in process,
+ * such as `github_createIssue` and `github_getIssue`. Other routes return
+ * undefined, so the caller's unhandled-request rule still applies.
+ */
+export async function interceptTestGitHubIssuesHttp(
+  request: Request,
+  upstreamUrl: URL,
+): Promise<Response | undefined> {
+  if (
+    upstreamUrl.hostname !== GITHUB_API_HOST ||
+    !ISSUE_ROUTE.test(upstreamUrl.pathname)
+  ) {
+    return undefined;
+  }
+  return await githubResponse(request, upstreamUrl);
 }
 
 /** Intercept GitHub API traffic for test scenarios without shell command stubs. */
@@ -419,6 +453,11 @@ export async function interceptTestGitHubHttp(input: {
     input.upstreamUrl,
   );
   if (checks) return checks;
+  const drafts = await interceptTestGitHubDraftsHttp(
+    input.request,
+    input.upstreamUrl,
+  );
+  if (drafts) return drafts;
   if (input.upstreamUrl.hostname !== GITHUB_API_HOST) return undefined;
   return await githubResponse(input.request, input.upstreamUrl);
 }

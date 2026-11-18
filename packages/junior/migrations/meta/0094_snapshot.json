@@ -1,5 +1,5 @@
 {
-  "id": "07491383-e86f-4d48-b916-bba0b9d26874",
+  "id": "17669830-0478-4c94-b1f6-6743605513dd",
   "prevId": "8824dd3b-a083-4147-b86e-47e85fbad32f",
   "version": "7",
   "dialect": "postgresql",
@@ -2686,6 +2686,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "delivery_paused_at": {
+          "name": "delivery_paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "duration_ms": {
           "name": "duration_ms",
           "type": "integer",
@@ -3849,22 +3855,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_review_items_open_action_added_by_idx": {
-          "name": "junior_review_items_open_action_added_by_idx",
-          "columns": [
-            {
-              "expression": "added_by_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -16,7 +16,7 @@ test("opens a registered plugin page from the profile menu", async ({
     .click();
   const memoriesLink = page
     .locator("#profile-popover")
-    .getByRole("link", { name: "Memories" });
+    .getByRole("menuitem", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 

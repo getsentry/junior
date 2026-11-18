@@ -52,7 +52,7 @@ export function TranscriptSearchProvider({
   query,
 }: {
   children: ReactNode;
-  match?: number;
+  match?: number | undefined;
   onMatches?(count: number, prepended: number): void;
   query: string;
 }) {
@@ -110,6 +110,11 @@ export function useTranscriptSearchMatch(query: string) {
     step(delta: 1 | -1) {
       if (count === 0) return;
       setPosition({ index: (index + delta + count) % count, query });
+    },
+    /** Forget the current match, such as when another transcript opens. */
+    reset() {
+      setPosition({ index: 0, query: "" });
+      setCount(0);
     },
   };
 }

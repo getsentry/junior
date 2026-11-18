@@ -123,10 +123,10 @@ function writeStream(
 
 /** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
 function defaultStateAdapterForLocalChat(): void {
-  if (process.env.JUNIOR_STATE_ADAPTER) {
+  if (process.env["JUNIOR_STATE_ADAPTER"]) {
     return;
   }
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 }
 
 /** Load the app plugin module so source-mode local chat matches server wiring. */
@@ -226,7 +226,7 @@ function newRunConversationId(): string {
 }
 
 function localDevServerUrl(): string {
-  return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+  return `http://127.0.0.1:${process.env["PORT"]?.trim() || "3000"}`;
 }
 
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
@@ -236,8 +236,10 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setBriefsConfig } = await import("@/chat/briefs/registration");
+  const { setBriefsConfig, setEventEmbeddingsConfig } =
+    await import("@/chat/briefs/registration");
   setBriefsConfig({ enabled: true });
+  setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -246,8 +248,10 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker } =
+  const { createChildConversationWorker, createDeliverToParent } =
     await import("@/chat/agent-invocations/result");
+  const { createConversationTurnWorker } =
+    await import("@/chat/task-execution/conversation-turn");
   const { skipInputAfterConversationStop } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
@@ -261,6 +265,11 @@ async function prepareLocalChatRun(
     }
     const childWorker = createChildConversationWorker(agentRunner, {
       queue: localConversationWork.queue,
+      runTurn: createConversationTurnWorker(
+        agentRunner,
+        undefined,
+        createDeliverToParent({ queue: localConversationWork.queue }),
+      ),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -275,9 +284,10 @@ async function prepareLocalChatRun(
   });
   agentRunner = createAgentRunner(executeAgentRun, {
     // The local CLI does not send child results or messages back to the
-    // root Conversation, so an Agent invocation gets no messageAgent here.
-    bindMessageAgent: (request) =>
-      request.agentInvocationId
+    // root Conversation, so a Turn that can message its parent gets no
+    // messageAgent here.
+    bindMessageAgent: (request, agents) =>
+      agents === "children_and_parent"
         ? undefined
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>
@@ -357,6 +367,7 @@ async function runInteractive(
     terminal: true,
   });
   try {
+    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
     while (true) {
       const message = (await rl.question("junior> ")).trim();
       if (!message) {
@@ -380,6 +391,7 @@ async function runInteractive(
         await reportStatus(io, errorMessage(error));
       }
     }
+    /* oxlint-enable no-await-in-loop */
   } finally {
     rl.close();
     await close();
@@ -390,7 +402,7 @@ async function runInteractive(
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
-  deps: { pluginSet?: JuniorPluginSet | null } = {},
+  deps: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {

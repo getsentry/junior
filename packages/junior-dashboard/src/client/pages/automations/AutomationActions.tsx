@@ -15,11 +15,12 @@ import { Link } from "react-router";
 import { CircleHelp, Pencil, Trash2 } from "lucide-react";
 import {
   automationEditSchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
+import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
 
 /**
  * Header actions for one Automation: Edit, Pause or Resume, and Delete.
@@ -31,10 +32,10 @@ export function AutomationActions({
   editVariant,
   onDelete,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   editPath: string;
-  /** Use "default" when a notice on the page owns the main action. */
-  editVariant: "default" | "primary";
+  /** Use "outline" when a notice on the page owns the main action. */
+  editVariant: "default" | "outline";
   onDelete(source: HTMLButtonElement): void;
 }) {
   const toast = useToastManager();
@@ -63,9 +64,7 @@ export function AutomationActions({
       });
     },
     onSuccess: async (updated) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await refreshChangedAutomation(queryClient, updated);
       toast.add({
         title:
           updated.status === "blocked"
@@ -102,6 +101,7 @@ export function AutomationActions({
         {canPause ? (
           <>
             <Button
+              variant="outline"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
@@ -113,7 +113,13 @@ export function AutomationActions({
             </Button>
             <Popover>
               <PopoverTrigger
-                render={<Button aria-label="About pausing" size="icon" />}
+                render={
+                  <Button
+                    variant="ghost"
+                    aria-label="About pausing"
+                    size="icon"
+                  />
+                }
               >
                 <CircleHelp aria-hidden="true" size={16} />
               </PopoverTrigger>
@@ -141,7 +147,7 @@ export function AutomationActions({
                 focusableWhenDisabled
                 aria-label="Delete automation"
                 size="icon"
-                variant="danger"
+                variant="destructive"
                 onClick={(event) => onDelete(event.currentTarget)}
                 disabled={mutation.isPending}
               >

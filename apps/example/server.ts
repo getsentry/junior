@@ -6,10 +6,12 @@ const [
   { createApp },
   { exampleDashboardAuthRequired, exampleDashboardMockConversations },
   { plugins },
+  { withExampleLivePreview },
 ] = await Promise.all([
   import("@sentry/junior"),
   import("./dashboard.ts"),
   import("./plugins.ts"),
+  import("./live-preview.ts"),
 ]);
 
 const app = await createApp({
@@ -25,4 +27,4 @@ const app = await createApp({
   },
 });
 
-export default app;
+export default withExampleLivePreview(app);

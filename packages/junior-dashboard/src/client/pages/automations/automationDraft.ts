@@ -1,8 +1,10 @@
 import type {
   AutomationEdit,
   AutomationScheduleIntent,
+  AutomationTask,
   AutomationUpdate,
 } from "@sentry/junior/api/schema";
+import { dateTimeFormat } from "../../time";
 
 export const weekdays = [
   "sunday",
@@ -21,23 +23,48 @@ export type AutomationScheduleDraft =
       timing: { type: "at"; date: string; time: string };
     };
 
+/**
+ * Form state of the task. Text stays as typed. An empty skill is skill mode
+ * before a skill is chosen, and empty context means no context.
+ */
+export type AutomationTaskDraft =
+  | { kind: "instruction"; instruction: string }
+  | { kind: "skill"; skill: string; context: string };
+
 export type AutomationDraft = {
   title: string;
-  instruction: string;
+  task: AutomationTaskDraft;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
-  schedule?: AutomationScheduleDraft;
-  trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"];
+  schedule?: AutomationScheduleDraft | undefined;
+  trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"] | undefined;
 };
 
 /** Keep stored values intact until a user edits that field. */
 export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
   return {
     title: value.title ?? "",
-    instruction: value.instruction,
+    task: taskDraft(value.task),
     credentialMode: value.credentialMode,
     outcomes: value.outcomes,
     trigger: value.kind === "event" ? value.trigger : undefined,
+  };
+}
+
+/** Edit a saved task. */
+export function taskDraft(task: AutomationTask): AutomationTaskDraft {
+  return task.kind === "instruction"
+    ? task
+    : { kind: "skill", skill: task.skill, context: task.context ?? "" };
+}
+
+/** The task that saving the form sends. Blank context is no context. */
+export function draftTask(task: AutomationTaskDraft): AutomationTask {
+  if (task.kind === "instruction") return task;
+  return {
+    kind: "skill",
+    skill: task.skill,
+    ...(task.context.trim() ? { context: task.context } : undefined),
   };
 }
 
@@ -57,7 +84,7 @@ export function scheduleDraft(
     };
   }
   if (value.nextRunAtMs) {
-    const parts = new Intl.DateTimeFormat("en-CA", {
+    const parts = dateTimeFormat({
       timeZone: value.schedule.timezone,
       year: "numeric",
       month: "2-digit",
@@ -86,15 +113,21 @@ export function scheduleDraft(
   };
 }
 
+/** Draft fields that differ from the saved Automation, as the API takes them. */
+export type AutomationDraftChanges = Partial<
+  Omit<AutomationDraft, "task"> & { task: AutomationTask }
+>;
+
 /** Keep metadata edits from replacing unchanged triggers or outcomes. */
 export function automationDraftChanges(
   original: AutomationEdit,
   draft: AutomationDraft,
-): Partial<AutomationDraft> {
-  const changes: Partial<AutomationDraft> = {};
+): AutomationDraftChanges {
+  const changes: AutomationDraftChanges = {};
   if (draft.title !== (original.title ?? "")) changes.title = draft.title;
-  if (draft.instruction !== original.instruction)
-    changes.instruction = draft.instruction;
+  const task = draftTask(draft.task);
+  if (JSON.stringify(task) !== JSON.stringify(original.task))
+    changes.task = task;
   if (draft.credentialMode !== original.credentialMode)
     changes.credentialMode = draft.credentialMode;
   if (JSON.stringify(draft.outcomes) !== JSON.stringify(original.outcomes))

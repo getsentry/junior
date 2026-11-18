@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
 
 const ATTRIBUTED_BODY = `Original body
@@ -12,8 +13,9 @@ function toolContext(
   options: {
     actor?: unknown;
     currentBody?: string;
-    requester?: unknown;
-    source?: unknown;
+    decider?: unknown;
+    /** Overrides the host's work owner. By default the Turn Actor. */
+    workOwner?: unknown;
   } = {},
 ) {
   const fetch = vi.fn(async (input: { operation: string }) => {
@@ -41,26 +43,56 @@ function toolContext(
       )
     );
   });
+  const ctxActor = options.actor ?? {
+    platform: "slack",
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: options.actor ?? {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor: ctxActor,
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
-    slack: {
-      conversationLink: { url: "https://example.com/session" },
-    },
-    source: options.source,
-    users: {
-      resolveActor: async () => options.requester,
-    },
+    conversationLink: { url: "https://example.com/session" },
+    resolveWorkOwner: async () =>
+      "workOwner" in options
+        ? options.workOwner
+        : { kind: "person", actor: ctxActor },
   };
-  return { fetch, tool: createGitHubUpdatePullRequestTool(ctx as any) };
+  return {
+    fetch,
+    tool: bindPluginTool(
+      createGitHubUpdatePullRequestTool(options.decider !== undefined),
+      { ...ctx, decider: options.decider } as any,
+    ),
+  };
+}
+
+/** The card facts that an update saves for this GitHub pull request response. */
+async function savedFacts(pullRequest: Record<string, unknown>) {
+  const { tool } = toolContext(
+    new Response(
+      JSON.stringify({
+        base: { ref: "main" },
+        draft: false,
+        head: { ref: "feat/events" },
+        html_url: "https://github.com/getsentry/junior/pull/691",
+        merged: false,
+        number: 691,
+        state: "open",
+        title: "Updated title",
+        ...pullRequest,
+      }),
+      { status: 200 },
+    ),
+  );
+  const result = (await tool.execute?.(
+    { repo: "getsentry/junior", number: 691, title: "Updated title" },
+    { toolCallId: "update-pr" },
+  )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
+  return result.objectAnnotations[0]!.facts;
 }
 
 async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
@@ -72,6 +104,10 @@ async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
 }
 
 describe("updatePullRequest", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     const { fetch, tool } = toolContext(undefined, {
       currentBody: ATTRIBUTED_BODY,
@@ -139,13 +175,13 @@ describe("updatePullRequest", () => {
     {
       name: "a review event keeps the requesters",
       actor: { platform: "system", name: "event" },
-      source: { kind: "event" },
       expected: "via @lcian.",
     },
     {
       name: "another person with a linked GitHub account is added",
       actor: jan,
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "jan-auer" }] },
       },
       expected: "via @lcian, @jan-auer.",
@@ -163,7 +199,8 @@ describe("updatePullRequest", () => {
         teamId: "T1",
         userId: "U3",
       },
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "lcian" }] },
       },
       expected: "via @lcian.",
@@ -171,20 +208,22 @@ describe("updatePullRequest", () => {
     {
       name: "an automation run is added after the people",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
-        automationId: "evt_1",
-        automationRunId: "run_1",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_1",
       },
       expected: "via @lcian, automation `evt_1` · Run ID `run_1`.",
     },
     {
       name: "each automation run is kept, like each person",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
-        automationId: "evt_1",
-        automationRunId: "run_2",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_2",
       },
       currentBody: `Original body
 
@@ -194,12 +233,11 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       expected:
         "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
     },
-  ])("$name", async ({ actor, currentBody, expected, requester, source }) => {
+  ])("$name", async ({ actor, currentBody, expected, workOwner }) => {
     const { fetch, tool } = toolContext(undefined, {
       actor,
       currentBody: currentBody ?? ATTRIBUTED_BODY,
-      requester,
-      source,
+      ...(workOwner ? { workOwner } : undefined),
     });
 
     await tool.execute?.(
@@ -212,6 +250,50 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       /^Updated body\n\n<!-- junior-request-attribution:start -->/,
     );
     expect(body).toContain(`\n${expected}\n`);
+  });
+
+  it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
+    // The decision model finds a test plan and nothing else.
+    const decider = {
+      decide: vi.fn(async ({ instructions }: { instructions: string }) => ({
+        choice: instructions.includes("test plan") ? "yes" : "no",
+      })),
+    };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          number: 691,
+          body: "Retry timed-out webhooks.\n\n## Test plan\n- [x] pnpm test",
+        },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining(
+        "- Remove check results, test plans, test coverage notes, and commands.",
+      ),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("with the description check experiment on, rejects a blank body without asking the decision model", async () => {
+    const decider = { decide: vi.fn() };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, body: "  " },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining("- Say why the change is needed."),
+    });
+    expect(decider.decide).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("preserves merged status when updating a merged pull request", async () => {
@@ -249,6 +331,90 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch.mock.calls.map(([input]) => input.operation)).toEqual([
       "github.pull.update",
     ]);
+  });
+
+  it("saves card facts with the artifact and GitHub attachment images as previews", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const artifact =
+      "https://junior.example.com/public/artifacts/0123456789abcdef.png";
+    const after =
+      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    const body = [
+      "![Unknown](https://github.com/user-attachments/assets/1)",
+      // A signed attachment URL expires in minutes.
+      "![Signed](https://private-user-images.githubusercontent.com/1/2.png?jwt=signed)",
+      `![Attachment](${attachment})`,
+      "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
+      "```md",
+      "![Example](https://junior.example.com/public/artifacts/code.png)",
+      "```",
+      // A `src=` inside another attribute value is not the image.
+      `| Before | After |\n| --- | --- |\n| ![Before][before] | <img alt=" src=https://junior.example.com/public/artifacts/alt.png" src="${after}"> |`,
+      `![Again](${artifact})`,
+      "",
+      `[before]: ${artifact}`,
+    ].join("\n");
+
+    await expect(
+      savedFacts({
+        body,
+        user: { login: "alex" },
+        requested_reviewers: [{ login: "sam" }],
+        changed_files: 8,
+        additions: 120,
+        deletions: 30,
+      }),
+    ).resolves.toEqual({
+      type: "code_change",
+      author: "alex",
+      reviewers: ["sam"],
+      sourceBranch: "feat/events",
+      targetBranch: "main",
+      changedFiles: 8,
+      additions: 120,
+      deletions: 30,
+      previewImageUrls: [attachment, artifact, after],
+    });
+    for (const other of [
+      "![Private](https://github.com/user-attachments/assets/1)",
+      "No image.",
+    ]) {
+      await expect(savedFacts({ body: other })).resolves.not.toHaveProperty(
+        "previewImageUrls",
+      );
+    }
+  });
+
+  it("saves as many preview images as fit in the facts limit", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const images = Array.from(
+      { length: 80 },
+      (_, index) =>
+        `https://junior.example.com/public/artifacts/${String(index).padStart(16, "0")}.png`,
+    );
+
+    const facts = await savedFacts({
+      body: images.map((url) => `![Step](${url})`).join("\n"),
+      // 180 extra UTF-8 bytes, more than one image entry, so counting
+      // characters instead of bytes would save one image too many.
+      user: { login: "ü".repeat(60) },
+      head: { ref: "ü".repeat(60) },
+      base: { ref: "ü".repeat(60) },
+    });
+    const saved = facts["previewImageUrls"] as string[];
+
+    const bytes = (value: unknown) =>
+      new TextEncoder().encode(JSON.stringify(value)).length;
+
+    // More than the old fixed 4, in body order, and the next one would not fit.
+    expect(saved.length).toBeGreaterThan(4);
+    expect(saved).toEqual(images.slice(0, saved.length));
+    expect(bytes(facts)).toBeLessThanOrEqual(4096);
+    expect(
+      bytes({ ...facts, previewImageUrls: images.slice(0, saved.length + 1) }),
+    ).toBeGreaterThan(4096);
   });
 
   it("marks a draft pull request ready for review through GraphQL", async () => {
@@ -389,7 +555,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("includes GitHub's error message when the update fails", async () => {
+  it("returns a rejected update to the model with GitHub's error message", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,
@@ -401,8 +567,28 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
         { repo: "getsentry/junior", number: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request update failed with HTTP 422: Validation Failed",
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request update failed with HTTP 422: Validation Failed",
+    });
+  });
+
+  it("keeps GitHub server failures as system errors", async () => {
+    const { tool } = toolContext(
+      new Response(JSON.stringify({ message: "Server Error" }), {
+        status: 500,
+      }),
     );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, base: "main" },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "Error",
+      message: "GitHub pull request update failed with HTTP 500: Server Error",
+    });
   });
 });

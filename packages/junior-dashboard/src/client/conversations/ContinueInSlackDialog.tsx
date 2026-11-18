@@ -30,6 +30,8 @@ import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
 import { OutboundLink } from "../components/OutboundLink";
+import { getDashboardAgentName } from "../agentName";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /**
  * Move a public dashboard conversation to a thread in a public Slack channel
@@ -74,17 +76,17 @@ export function ContinueInSlackDialog(props: {
     // The feed and Location pages list the conversation under its Location.
     onSuccess: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
+        invalidateConversationFeeds(queryClient),
+        // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The old Location and the new one both change.
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(props.conversationId),
         }),
       ]),
   });
+  const submit = () => {
+    if (selected && !move.isPending) move.mutate(selected);
+  };
   const error = move.error
     ? (move.error instanceof DashboardApiError && move.error.apiError) ||
       "Could not move the conversation. Try again."
@@ -109,15 +111,15 @@ export function ContinueInSlackDialog(props: {
           <>
             <DialogTitle>Moved to Slack</DialogTitle>
             <p className="m-0 text-dashboard-text-muted">
-              Mention Junior in the{" "}
+              Mention {getDashboardAgentName()} in the{" "}
               {move.data.channelName ? `#${move.data.channelName} ` : ""}
               thread to continue. Replies to dashboard messages stay here.
             </p>
             <DialogFooter>
-              <DialogClose render={<Button>Close</Button>} />
+              <DialogClose render={<Button variant="outline">Close</Button>} />
               {move.data.locationUrl ? (
                 <OutboundLink
-                  className={buttonVariants({ variant: "primary" })}
+                  className={buttonVariants({ variant: "default" })}
                   href={move.data.locationUrl}
                 >
                   Open in Slack
@@ -130,7 +132,7 @@ export function ContinueInSlackDialog(props: {
             className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (selected && !move.isPending) move.mutate(selected);
+              submit();
             }}
           >
             <DialogTitle>Continue in Slack</DialogTitle>
@@ -143,6 +145,15 @@ export function ContinueInSlackDialog(props: {
                 disablePointerSelection
                 label="Channel"
                 loop
+                onKeyDown={(event) => {
+                  // cmdk takes Enter to pick the row. The row is already
+                  // picked, so Enter and Cmd/Ctrl+Enter move instead.
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                    return;
+                  }
+                  event.preventDefault();
+                  submit();
+                }}
                 onValueChange={setLocationId}
                 shouldFilter={false}
                 value={selected}
@@ -192,18 +203,18 @@ export function ContinueInSlackDialog(props: {
                 ) : null}
               </Command>
               <FieldDescription>
-                Junior starts a thread there with this conversation. You can
-                move a conversation once.
+                {getDashboardAgentName()} starts a thread there with this
+                conversation. You can move a conversation once.
               </FieldDescription>
               <FieldError id={errorId}>{error}</FieldError>
             </Field>
             <DialogFooter>
               <DialogClose
                 disabled={move.isPending}
-                render={<Button>Cancel</Button>}
+                render={<Button variant="outline">Cancel</Button>}
               />
               <Button
-                variant="primary"
+                variant="default"
                 type="submit"
                 disabled={!selected || move.isPending}
               >

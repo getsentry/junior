@@ -1,8 +1,10 @@
 /** Store web input in a Conversation mailbox. */
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { storeInputImages } from "@/chat/attachments/images";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import {
+  recordAttachmentUploads,
+  type VerifiedAttachmentUpload,
+} from "@/chat/attachments/uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -31,10 +33,11 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -44,7 +47,8 @@ type EnqueueOptions = {
 export interface CreateConversationInput {
   actor: WebActor;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of the first message. */
+  uploads?: VerifiedAttachmentUpload[];
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
   /** Saved title. Title generation runs only when it is omitted. */
@@ -58,10 +62,11 @@ export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
   message: string;
-  images?: SandboxFileUpload[];
+  /** Checked uploads of this Message. */
+  uploads?: VerifiedAttachmentUpload[] | undefined;
   idempotencyKey: string;
   /** Review item change that this Message reports. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
@@ -132,7 +137,7 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
 export function acceptsWebMessages(
   conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
 ): boolean {
-  if (conversation.kind !== "root") return conversation.kind === "thread";
+  if (!isTopLevelKind(conversation.kind)) return conversation.kind === "thread";
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
@@ -146,7 +151,7 @@ export function acceptsWebMessages(
  */
 export function webActorFromUser(
   user: Pick<User, "displayName" | "email" | "id">,
-  profile?: { userName?: string },
+  profile?: { userName?: string | undefined },
 ): WebActor {
   return {
     platform: "web",
@@ -161,11 +166,11 @@ export function webActorFromUser(
 export function buildWebInboundMessage(args: {
   actor: WebActor;
   /** Identity of the web Actor, resolved at ingress. */
-  authorIdentityId?: string;
+  authorIdentityId?: string | undefined;
   conversationId: string;
   createdAtMs?: number;
   /** Existing Conversation Destination. A child's work keeps none. */
-  destination?: Destination;
+  destination?: Destination | undefined;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
@@ -229,7 +234,7 @@ export function buildWebInboundMessage(args: {
 export async function recordWebConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
   rootTitle?: string;
@@ -263,7 +268,7 @@ export async function recordWebConversationActivity(args: {
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
   });
-  return existing && existing.kind !== "root" ? undefined : destination;
+  return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */
@@ -284,7 +289,7 @@ export async function createAndEnqueueConversation(
       conversationId,
       idempotencyKey: input.idempotencyKey,
       message: input.message,
-      images: input.images,
+      uploads: input.uploads,
       ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
     },
@@ -306,7 +311,7 @@ export async function appendAndEnqueueWebMessage(
   options: EnqueueOptions & { exclusive?: boolean },
 ): Promise<WebMessageResult> {
   const text = input.message.trim();
-  if (!text && !input.images?.length) {
+  if (!text && !input.uploads?.length) {
     throw new Error("Web Message must not be empty");
   }
   if (!input.actor.email) {
@@ -326,13 +331,16 @@ export async function appendAndEnqueueWebMessage(
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
   });
   let attachments: MessageAttachment[] = [];
-  if (input.images?.length) {
+  if (input.uploads?.length) {
     if (!options.attachmentStorage)
       throw new Error("Attachment storage is unavailable.");
-    attachments = await storeInputImages({
+    // The Conversation row exists now, so attachment rows can refer to it.
+    attachments = await recordAttachmentUploads({
       conversationId: input.conversationId,
-      files: input.images,
+      db: getSqlExecutor(),
+      nowMs,
       storage: options.attachmentStorage,
+      uploads: input.uploads,
     });
   }
   const enqueue = options.exclusive

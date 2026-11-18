@@ -27,7 +27,10 @@ export function TranscriptRows({
   return (
     <div
       {...props}
-      className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1", className)}
+      className={cn(
+        "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 comfortable:gap-3",
+        className,
+      )}
     />
   );
 }
@@ -101,12 +104,12 @@ export function TranscriptRow(props: {
   children: ReactNode;
   indent?: boolean;
   /** Last event sequence in the row. Read positions use it. */
-  seq?: number;
+  seq?: number | undefined;
 }) {
   return (
     <div
       className={cn(
-        "py-1.5",
+        "py-1.5 comfortable:py-2.5",
         props.indent && cn("grid", transcriptColumnsClass),
       )}
       data-scroll-anchor={props.anchorKey}

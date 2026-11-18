@@ -71,46 +71,6 @@ describe("plugin manifest config", () => {
     });
   });
 
-  it("chooses MCP audit tools through manifest config", () => {
-    const source = [
-      "name: notion",
-      "display-name: Notion",
-      "description: Notion",
-      "mcp:",
-      "  url: https://mcp.notion.com/mcp",
-      "  allowed-tools:",
-      "    - notion-search",
-      "    - notion-create-pages",
-      "  audit-tools:",
-      "    - notion-create-pages",
-    ].join("\n");
-
-    expect(
-      parsePluginManifest(source, "/plugins/notion").mcp?.auditTools,
-    ).toEqual(["notion-create-pages"]);
-    expect(
-      parsePluginManifest(source, "/plugins/notion", {
-        manifests: {
-          notion: {
-            mcp: { auditTools: ["notion-search", "notion-create-pages"] },
-          },
-        },
-      }).mcp?.auditTools,
-    ).toEqual(["notion-search", "notion-create-pages"]);
-    expect(
-      parsePluginManifest(source, "/plugins/notion", {
-        manifests: { notion: { mcp: { auditTools: null } } },
-      }).mcp?.auditTools,
-    ).toBeUndefined();
-    expect(() =>
-      parsePluginManifest(source, "/plugins/notion", {
-        manifests: { notion: { mcp: { auditTools: ["notion-delete"] } } },
-      }),
-    ).toThrow(
-      "Plugin notion mcp.audit-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: notion-delete",
-    );
-  });
-
   it("overrides empty OAuth scope reporting through manifest config", () => {
     const manifest = parsePluginManifest(
       [

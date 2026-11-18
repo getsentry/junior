@@ -2,6 +2,7 @@ import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   slackAssistantThreadSchema,
+  slackChannelScope,
   slackEventEnvelopeSchema,
   type SlackEventEnvelope,
   type SlackInboundEvent,
@@ -9,6 +10,8 @@ import {
 import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
+import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -40,11 +43,12 @@ import {
   verifySlackSignature,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { eventMentionsBot } from "@/chat/ingress/bot-mention";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   SLACK_EVENT_NAMESPACE,
   slackChannelMessageEvent,
+  type SlackChannelMessageAuthor,
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
@@ -58,8 +62,11 @@ import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
-import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import {
+  isSlackWorkspaceMember,
+  slackWorkspaceBotId,
+} from "@/chat/ingress/workspace-membership";
+import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -106,10 +113,6 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
-  /** Email domains Slack authors need to start a Turn. Empty allows all. */
-  allowedDomains?: readonly string[];
-  /** Slack user IDs of bots that may start a Turn without an email domain. */
-  allowedBotUserIds?: readonly string[];
   /** Join each public channel created after this is on. Defaults to off. */
   autoJoinNewChannels?: boolean;
   runtime: Pick<
@@ -187,9 +190,7 @@ async function buildThread(args: {
 }
 
 function shouldIgnoreMessage(message: Message): boolean {
-  return (
-    message.author.isMe === true || !parseActorUserId(message.author.userId)
-  );
+  return message.author.isMe || !parseActorUserId(message.author.userId);
 }
 
 /**
@@ -221,22 +222,40 @@ function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
 
 async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
-  conversationStore?: ConversationStore;
+  /** Claim an unowned thread for the Conversation this message starts. */
+  claimAtMs?: number;
+  conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
 }): Promise<string> {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
   if (!providerThread) {
     return args.canonicalThreadId;
   }
-  return (
-    (await conversationStore.getConversationIdByProviderConversation({
-      provider: "slack",
-      providerDestinationId: providerThread.channelId,
-      providerTenantId: args.installation.teamId ?? "",
-      providerConversationId: providerThread.threadTs,
-    })) ?? args.canonicalThreadId
-  );
+  const ownerId = await findSlackThreadOwnerId({
+    channelId: providerThread.channelId,
+    conversationStore,
+    teamId: args.installation.teamId ?? "",
+    threadTs: providerThread.threadTs,
+  });
+  if (ownerId) {
+    return ownerId;
+  }
+  if (args.claimAtMs === undefined || !args.installation.teamId) {
+    return args.canonicalThreadId;
+  }
+  // Claim the thread now, not at the first reply. Otherwise another
+  // Conversation that posts here first takes the thread, and later replies
+  // split between the two.
+  return await conversationStore.claimProviderConversation({
+    atMs: args.claimAtMs,
+    conversationId: args.canonicalThreadId,
+    provider: "slack",
+    providerConversationId: providerThread.threadTs,
+    providerDestinationId: providerThread.channelId,
+    providerTenantId: args.installation.teamId,
+  });
 }
 
 /**
@@ -246,7 +265,7 @@ async function resolveSlackConversationId(args: {
 async function buildSlackInput(args: {
   adapter: SlackAdapter;
   conversationId: string;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
@@ -270,10 +289,10 @@ async function buildSlackInput(args: {
 
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   route: SlackConversationRoute;
@@ -288,6 +307,9 @@ async function persistSlackMessage(args: {
     args.conversationId ??
     (await resolveSlackConversationId({
       canonicalThreadId,
+      ...(args.route === "mention"
+        ? { claimAtMs: args.receivedAtMs }
+        : undefined),
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
@@ -339,11 +361,9 @@ async function routeParsedMessage(args: {
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
-  allowedBotUserIds: readonly string[];
-  allowedDomains: readonly string[];
   /** Run the task after the caller releases the thread's ingress lock. */
   runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
@@ -355,20 +375,7 @@ async function routeParsedMessage(args: {
   const normalized = normalizeMessageThreadId(args.message);
   const message = normalized.message;
   const canonicalThreadId = normalized.threadId;
-  // Slack still emits app_mention for tokens inside code spans/blocks. Only
-  // count mentions that sit outside code as activations.
-  const botUserId = args.adapter.botUserId;
-  const isMention = Boolean(
-    botUserId &&
-    (textMentionsBot(args.event.text ?? "", botUserId) ||
-      args.event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
-      )),
-  );
+  const isMention = eventMentionsBot(args.event, args.adapter.botUserId);
   if (isMention) {
     message.isMention = true;
   }
@@ -385,27 +392,12 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // A new top-level message can run Event automations for this channel.
-    // Use only `message`: Slack also sends `app_mention` for a mention in code.
-    const channelMessage =
-      args.event.type === "message" && args.event.channel && args.event.ts
-        ? slackChannelMessageEvent({
-            botId: args.event.bot_id,
-            channelId: args.event.channel,
-            subtype: args.event.subtype,
-            text: args.event.text,
-            threadTs: args.event.thread_ts,
-            ts: args.event.ts,
-            userId: message.author.userId,
-          })
-        : undefined;
-    const teamId = args.installation.teamId;
-    if (channelMessage && teamId) {
-      await ingestEventAutomations(
-        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
-        { queue: args.queue, teamId },
-      );
-    }
+    await ingestChannelMessage({
+      author: { kind: "user", userId: message.author.userId },
+      event: args.event,
+      queue: args.queue,
+      teamId: args.installation.teamId,
+    });
     return;
   }
 
@@ -415,26 +407,23 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  const isAuthorDomainAllowed = () =>
-    isSlackAuthorDomainAllowed({
-      allowedBotUserIds: args.allowedBotUserIds,
-      allowedDomains: args.allowedDomains,
+  const isAuthorTrusted = () =>
+    isTrustedSlackAuthor({
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
     });
   // Passive thread messages and stops are not checked for the allowed domains.
-  if (
-    !stopDecision &&
-    route === "mention" &&
-    !(await isAuthorDomainAllowed())
-  ) {
+  if (!stopDecision && route === "mention" && !(await isAuthorTrusted())) {
     return;
   }
 
   await bindSlackAuthorIdentity(message, args.installation);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
+    ...(route === "mention" && !stopDecision
+      ? { claimAtMs: args.receivedAtMs }
+      : undefined),
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
@@ -456,6 +445,7 @@ async function routeParsedMessage(args: {
       conversationStore: args.conversationStore,
       queue: args.queue,
       request: inbound,
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       slackThread: parseSlackThreadId(canonicalThreadId),
       state: args.state,
       stopMessage: {
@@ -464,6 +454,11 @@ async function routeParsedMessage(args: {
       },
     });
     return;
+  }
+
+  // A mention in the thread attaches a detached Conversation again.
+  if (route === "mention") {
+    await resumeConversationDelivery(conversationId);
   }
 
   // Keep non-mention thread messages as Conversation history without waking a
@@ -498,9 +493,7 @@ async function routeParsedMessage(args: {
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
     await closeReviewItemsAnsweredByReply({
-      ...(route === "subscribed"
-        ? { canAnswer: isAuthorDomainAllowed }
-        : undefined),
+      ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
       delivery: {
         queue: args.queue,
@@ -533,6 +526,37 @@ async function routeParsedMessage(args: {
   args.runAfterUnlock(closeAnswered);
 }
 
+/**
+ * Run the channel-message automations of the channel for a new message or
+ * thread reply.
+ */
+async function ingestChannelMessage(args: {
+  author: SlackChannelMessageAuthor;
+  event: SlackInboundEvent;
+  queue: ConversationWorkQueue;
+  teamId?: string | undefined;
+}): Promise<void> {
+  // Use only `message`: Slack also sends `app_mention` for a mention in code.
+  const { event } = args;
+  if (event.type !== "message" || !event.channel || !event.ts || !args.teamId) {
+    return;
+  }
+  const channelMessage = slackChannelMessageEvent({
+    author: args.author,
+    botId: event.bot_id,
+    channelId: event.channel,
+    subtype: event.subtype,
+    text: event.text,
+    threadTs: event.thread_ts,
+    ts: event.ts,
+  });
+  if (!channelMessage) return;
+  await ingestEventAutomations(
+    { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+    { queue: args.queue, teamId: args.teamId },
+  );
+}
+
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -546,6 +570,7 @@ async function handleSlackEvent(args: {
   const state = args.services.state ?? getStateAdapter();
   await state.connect();
   const installation = installationFromEnvelope(args.body);
+  const channelScope = slackChannelScope(args.body);
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
@@ -573,7 +598,7 @@ async function handleSlackEvent(args: {
           event.type === "assistant_thread_context_changed"
         ) {
           const parsed = slackAssistantThreadSchema.safeParse(
-            event.assistant_thread,
+            event["assistant_thread"],
           );
           if (!parsed.success) return;
 
@@ -597,7 +622,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "entity_details_requested") {
-          const ref = event.external_ref;
+          const ref = event["external_ref"];
           if (
             ref &&
             typeof ref === "object" &&
@@ -614,7 +639,7 @@ async function handleSlackEvent(args: {
         if (event.type === "link_shared") {
           await unfurlDashboardConversationLinks({
             event,
-            isExtSharedChannel: args.body.is_ext_shared_channel === true,
+            channelScope,
             state,
             teamId: installation.teamId,
           });
@@ -676,6 +701,24 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          // A post with a bot ID and no user, such as from an app
+          // integration, runs only channel-message automations that name the
+          // bot. It never starts a Turn. A post that mentions Junior runs
+          // nothing, the same as a mention from a person.
+          if (event.user === undefined && event.bot_id !== undefined) {
+            const botId = await slackWorkspaceBotId(event, channelScope, state);
+            setSpanAttributes({
+              "app.slack.membership": botId ? "verified" : "unverified",
+            });
+            if (!botId || eventMentionsBot(event, adapter.botUserId)) return;
+            await ingestChannelMessage({
+              author: { kind: "bot", botId },
+              event,
+              queue: args.services.queue,
+              teamId: installation.teamId,
+            });
+            return;
+          }
           const member = await isSlackWorkspaceMember(event, state);
           setSpanAttributes({
             "app.slack.membership": member ? "verified" : "unverified",
@@ -696,14 +739,13 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
-                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-                allowedDomains: args.services.allowedDomains ?? [],
                 runAfterUnlock: (task) => {
                   afterUnlock = task;
                 },
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
+            // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
           ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
@@ -721,7 +763,7 @@ async function handleSlackEvent(args: {
  */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   services: SlackWebhookServices;
@@ -780,9 +822,7 @@ export async function handleSlackWebhook(args: {
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
       isAuthorAllowed: (userId, installation) =>
-        isSlackAuthorDomainAllowed({
-          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-          allowedDomains: args.services.allowedDomains ?? [],
+        isTrustedSlackAuthor({
           state,
           teamId: installation.teamId,
           user: userId,

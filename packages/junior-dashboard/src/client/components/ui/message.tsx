@@ -65,6 +65,7 @@ function MessageAction({
             data-slot="message-action"
             aria-label={label}
             size="icon"
+            variant="ghost"
             {...props}
           >
             {children}

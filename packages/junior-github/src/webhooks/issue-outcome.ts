@@ -91,7 +91,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 /** Normalize only the fields required for the Junior-owned issue projection. */
 export function normalizeGitHubIssueOutcome(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubIssueOutcomeInput | undefined {
   const lifecycle = issueLifecycleActionSchema.safeParse(args.body);
   if (
@@ -133,7 +133,9 @@ export function normalizeGitHubIssueOutcome(args: {
     repositoryId: String(parsed.repository.id),
     state: parsed.action === "closed" ? "closed" : "open",
     stateReason:
-      parsed.action === "closed" ? (issue.state_reason ?? undefined) : undefined,
+      parsed.action === "closed"
+        ? (issue.state_reason ?? undefined)
+        : undefined,
     updatedAt,
   };
 }
@@ -147,7 +149,10 @@ const canonicalIssueConversationSchema = z
         user: z.object({ login: z.string().min(1) }).strict(),
       })
       .strict(),
-    sender: z.object({ login: z.string().min(1) }).strict().optional(),
+    sender: z
+      .object({ login: z.string().min(1) })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -160,7 +165,10 @@ const issueConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    sender: z.object({ login: z.string().min(1) }).passthrough().optional(),
+    sender: z
+      .object({ login: z.string().min(1) })
+      .passthrough()
+      .optional(),
   })
   .passthrough()
   .transform((provider) =>
@@ -179,7 +187,7 @@ const issueConversationSchema = z
 /** Normalize native conversation ids written to a Junior-owned issue by its bot. */
 export function normalizeGitHubIssueConversations(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubIssueConversationsInput | undefined {
   const parsed = issueConversationSchema.safeParse(args.body);
   if (!parsed.success) return undefined;
