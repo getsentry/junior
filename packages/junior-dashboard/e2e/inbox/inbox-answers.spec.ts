@@ -11,7 +11,7 @@ function rollout(page: Page) {
 async function answerHold(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/`);
   const todo = page.getByRole("region", { name: "To do" });
-  await rollout(page).getByRole("button", { name: "Question" }).click();
+  await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
   await todo
     .getByRole("region", { name: "Approve the payments-v42 rollout" })
     .getByRole("button", { exact: true, name: "Hold" })
@@ -42,13 +42,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // Conversations lists the row. It says the answer in place of the ask
-    // at once, and after a reload too.
-    const answered = page.waitForResponse(
-      /\/api\/review-items\/[^/]+\/actions$/,
-    );
+    // The answered item leaves the Inbox. Its Conversation's row says the
+    // answer in place of the ask at once, and after a reload too.
     release();
-    await answered;
+    await expect(rollout(page)).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { exact: true, name: "Conversations" })

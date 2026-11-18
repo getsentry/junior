@@ -1,6 +1,8 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+
 import type { InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
@@ -8,20 +10,8 @@ const HOUR_MS = 60 * 60 * 1000;
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/** One snoozed row: until when, and its newest item at the snooze. */
-type Snooze = { newestItemId: string; untilMs: number };
-
-/**
- * Every key that can snooze a row: the row itself, its Conversation, and
- * its items. A row can show under another entry's key.
- */
-function rowKeys(bundle: InboxBundle): Set<string> {
-  return new Set([
-    bundle.key,
-    bundle.conversationId,
-    ...bundle.items.map((item) => item.id),
-  ]);
-}
+/** One snoozed item, by its id: until when. */
+type Snooze = { untilMs: number };
 
 /** A snooze choice, such as "Tomorrow morning". */
 export type SnoozeChoice = { label: string; untilMs(nowMs: number): number };
@@ -97,59 +87,58 @@ function useWakeAtNextEnd(snoozes: Record<string, Snooze>, nowMs: number) {
 }
 
 /**
- * The newest item of each row that sleeps now, sorted, so the server can
- * count the snoozed rows that are still open.
+ * The items that sleep now, sorted, so the server can count the snoozed
+ * items that are still open.
  */
 export function useSnoozedItemIds(): string[] {
   const [snoozes] = useStoredSnoozes();
   const nowMs = Date.now();
   useWakeAtNextEnd(snoozes, nowMs);
-  return [
-    ...new Set(
-      Object.values(snoozes)
-        .filter((snooze) => snooze.untilMs > nowMs)
-        .map((snooze) => snooze.newestItemId),
-    ),
-  ].sort();
+  return Object.entries(snoozes)
+    .filter(([, snooze]) => snooze.untilMs > nowMs)
+    .map(([id]) => id)
+    .sort();
 }
 
 /**
- * Snooze inbox rows in this browser. A row is a Conversation bundle or one
- * item; its `key` names it. A Conversation bundle wakes at its time, or as
- * soon as its Conversation adds a newer item. The server has no snooze, so
- * other browsers do not see it; the nav count names the snoozed items to
- * the server (`useSnoozedItemIds`).
+ * Snooze Inbox items in this browser, each by its id. A row snoozes its
+ * item, and a stack's Snooze all snoozes each of its items until the same
+ * time. Each item wakes at its time. An item that arrives later is not
+ * snoozed, so it shows by itself while the rest stay in Snoozed. The
+ * server has no snooze, so other browsers do not see it; the nav count
+ * names the snoozed items to the server (`useSnoozedItemIds`).
  */
 export function useInboxSnoozes(nowMs: number) {
   const [snoozes, setSnoozes] = useStoredSnoozes();
   useWakeAtNextEnd(snoozes, nowMs);
-  /** True while `key` sleeps and `newestItemId` is still its newest item. */
-  const sleeps = (key: string, newestItemId: string) => {
-    const snooze = snoozes[key];
-    return (
-      snooze !== undefined &&
-      snooze.untilMs > nowMs &&
-      snooze.newestItemId === newestItemId
-    );
-  };
+  /** True while the item sleeps. */
+  const sleeps = (item: ReviewItemPayload) =>
+    (snoozes[item.id]?.untilMs ?? 0) > nowMs;
+  /** Snooze each item of a row or a stack until `untilMs`. */
   const snooze = (bundle: InboxBundle, untilMs: number) =>
     setSnoozes({
       ...snoozes,
-      [bundle.key]: {
-        newestItemId: bundle.newest.id,
-        untilMs,
-      },
+      ...Object.fromEntries(bundle.items.map((item) => [item.id, { untilMs }])),
     });
-  /** Wake the row and every key in it: its Conversation and its items. */
+  /** Snooze one item. The rest of its stack stays. */
+  const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
+    setSnoozes({ ...snoozes, [item.id]: { untilMs } });
+  /** Wake each item of a row. */
   const wake = (bundle: InboxBundle) => {
-    const keys = rowKeys(bundle);
+    const ids = new Set(bundle.items.map((item) => item.id));
     setSnoozes(
       Object.fromEntries(
-        Object.entries(snoozes).filter(([key]) => !keys.has(key)),
+        Object.entries(snoozes).filter(([id]) => !ids.has(id)),
       ),
     );
   };
+  /** Wake one item. The other items of its stack stay snoozed. */
+  const wakeItem = (item: ReviewItemPayload) => {
+    const { [item.id]: _woken, ...rest } = snoozes;
+    setSnoozes(rest);
+  };
+  /** When a row wakes: when its last item does. */
   const until = (bundle: InboxBundle) =>
-    Math.max(...[...rowKeys(bundle)].map((key) => snoozes[key]?.untilMs ?? 0));
-  return { sleeps, snooze, until, wake };
+    Math.max(...bundle.items.map((item) => snoozes[item.id]?.untilMs ?? 0));
+  return { sleeps, snooze, snoozeItem, until, wake, wakeItem };
 }

@@ -7,13 +7,22 @@ import type { RefObject } from "react";
 
 import { useToastManager } from "../components/ui/toast";
 import { useReviewItemAction } from "./queries";
+import type { InboxCardActions } from "./RowHoverActions";
 import { viewerAnswerLine } from "./reviewItemFormat";
-import { showReturnedRow, type useLeaveRow } from "./rowMotion";
+import {
+  showReturnedRow,
+  type useLeaveCard,
+  type useLeaveRow,
+} from "./rowMotion";
 
 /** The Inbox row that an action acts on, as it shows now. */
 type ActedRow = {
   items: readonly ReviewItemPayload[];
   key: string;
+  /** Rows that leave with this one, as its stack in To do. */
+  passing?: ReadonlySet<string>;
+  /** The row that opens again when the action fails, when not this one. */
+  reopen?: string;
   title: string;
 };
 
@@ -45,7 +54,9 @@ function openRowKey(scroller: HTMLElement): string {
 /**
  * Act on the items of Inbox rows before the server answers. An action that
  * closes every open item of a row puts the row away as it starts: the row
- * leaves, and the next one opens. Actions in flight settle one by one.
+ * leaves, and the next one opens, in its stack first. An action on one card
+ * of a row with more puts only that card away. Actions in flight settle
+ * one by one.
  *
  * An answer says what the viewer answered in a toast as it goes, so the
  * row that leaves at once still confirms it.
@@ -60,12 +71,13 @@ function openRowKey(scroller: HTMLElement): string {
 export function useInboxRowActs(options: {
   holdLeaving(items: readonly ReviewItemPayload[], held: boolean): void;
   leave: ReturnType<typeof useLeaveRow>;
+  leaveCard: ReturnType<typeof useLeaveCard>;
   scroller: RefObject<HTMLElement | null>;
   setExpandedKey(key: string): void;
 }) {
   const action = useReviewItemAction({ optimistic: true });
   const { add, close } = useToastManager();
-  const { holdLeaving, leave, scroller, setExpandedKey } = options;
+  const { holdLeaving, leave, leaveCard, scroller, setExpandedKey } = options;
 
   const act = async (
     row: ActedRow,
@@ -78,10 +90,14 @@ export function useInboxRowActs(options: {
     const ids = new Set(items.map((item) => item.id));
     const open = row.items.filter((item) => item.status === "open");
     let opened: string | undefined;
+    const [only] = items;
     if (body.action !== "take" && open.every((item) => ids.has(item.id))) {
       // The read drops the items at once. Hold them while the row leaves.
       holdLeaving(open, true);
-      opened = leave(row.key, () => holdLeaving(open, false));
+      opened = leave(row.key, () => holdLeaving(open, false), row.passing);
+    } else if (body.action !== "take" && only && items.length === 1) {
+      holdLeaving(items, true);
+      opened = leaveCard(row.key, only.id, () => holdLeaving(items, false));
     }
     const [answered] = items;
     const answerTitle =
@@ -114,7 +130,7 @@ export function useInboxRowActs(options: {
     const area = scroller.current;
     if (area) {
       if (opened !== undefined && openRowKey(area) === opened && !typing())
-        setExpandedKey(row.key);
+        setExpandedKey(row.reopen ?? row.key);
       showReturnedRow(area, row.key);
     }
     const title = FAILED_TITLES[body.action];
@@ -142,4 +158,79 @@ export function useInboxRowActs(options: {
     throw new Error(title);
   };
   return act;
+}
+
+/**
+ * Each card's own Dismiss and Snooze in an Inbox row. A stack row leaves
+ * with the rows that go with it. A card of a row with more leaves by itself.
+ */
+export function inboxCardActions(input: {
+  act: ReturnType<typeof useInboxRowActs>;
+  leave: ReturnType<typeof useLeaveRow>;
+  leaveCard: ReturnType<typeof useLeaveCard>;
+  setSnoozeKey(key: string | undefined): void;
+  snoozeItem(item: ReviewItemPayload, untilMs: number): void;
+  snoozeKey?: string;
+}) {
+  const { act, leave, leaveCard, setSnoozeKey } = input;
+  return (row: ActedRow, options: { snoozed?: boolean }) =>
+    (item: ReviewItemPayload): InboxCardActions => {
+      const menuKey = `${row.key}:${item.id}`;
+      const putAway = (release: () => void) =>
+        row.passing
+          ? leave(row.key, release, row.passing)
+          : leaveCard(row.key, item.id, release);
+      return {
+        onDismiss:
+          item.status === "open" && item.canAct
+            ? () => void act(row, [item], { action: "dismiss" }).catch(() => {})
+            : undefined,
+        onSnooze: options.snoozed
+          ? undefined
+          : (untilMs) => {
+              setSnoozeKey(undefined);
+              putAway(() => input.snoozeItem(item, untilMs));
+            },
+        onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
+        snoozeMenuOpen: input.snoozeKey === menuKey,
+      };
+    };
+}
+
+/**
+ * A stack's own actions: Snooze all, and Dismiss all, which closes every
+ * open ask of the stack that the viewer can act on. A snoozed stack has
+ * neither. Dismiss all puts the whole stack away (`useLeaveRow`), so the
+ * next row after it opens.
+ */
+export function inboxStackActions(input: {
+  act: ReturnType<typeof useInboxRowActs>;
+  expandedKey: string;
+  items: readonly ReviewItemPayload[];
+  /** The stack's row keys, in order. */
+  keys: readonly string[];
+  snooze(untilMs: number): void;
+  snoozed?: boolean;
+  stackKey: string;
+  title: string;
+}): { onDismiss?(): void; onSnooze?(untilMs: number): void } {
+  if (input.snoozed) return {};
+  const open = input.items.filter(
+    (item) => item.status === "open" && item.canAct,
+  );
+  const row: ActedRow = {
+    items: input.items,
+    key: input.stackKey,
+    ...(input.keys.includes(input.expandedKey)
+      ? { reopen: input.expandedKey }
+      : undefined),
+    title: input.title,
+  };
+  return {
+    onDismiss:
+      open.length > 0
+        ? () => void input.act(row, open, { action: "dismiss" }).catch(() => {})
+        : undefined,
+    onSnooze: input.snooze,
+  };
 }

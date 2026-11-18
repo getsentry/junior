@@ -209,16 +209,17 @@ export type InboxGroups = {
 };
 
 /**
- * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
- * the bundle into the queue; other bundles are FYI and sort after it.
+ * The Review items of one root Conversation and its child agents: a stack of
+ * cards, each with its own actions. `needsYou` sorts the stack into the
+ * queue; other stacks are FYI and sort after it.
  */
 export type InboxBundle = {
   /**
-   * Names the row: the Conversation id for a Conversation bundle, or the
+   * Names the row: the Conversation id for a Conversation stack, or the
    * item id for a row that shows one item.
    */
   key: string;
-  /** The Conversation that added the items. */
+  /** The root Conversation whose stack shows the items (`rootConversationId`). */
   conversationId: string;
   /** Items in inbox order: questions first, then the oldest. */
   items: ReviewItemPayload[];
@@ -265,16 +266,16 @@ export function itemUpForGrabs(item: ReviewItemPayload): boolean {
 }
 
 /**
- * Group items into one bundle per Conversation. Bundles that need the viewer
- * come first, the one that waited longest at the top, so the order does not
- * change while the reader works. FYI bundles follow, oldest first.
+ * Group items into one stack per root Conversation. Stacks that need the
+ * viewer come first, the one that waited longest at the top, so the order
+ * does not change while the reader works. FYI stacks follow, oldest first.
  */
 export function inboxBundles(
   items: readonly ReviewItemPayload[],
 ): InboxBundle[] {
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of items) {
-    const key = item.addedByConversationId;
+    const key = item.rootConversationId;
     byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
   }
   const bundles = [...byConversation].map(([conversationId, group]) => {
