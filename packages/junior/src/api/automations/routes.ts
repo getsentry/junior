@@ -36,17 +36,7 @@ import {
   automationVersionListSchema,
   automationVersionParamsSchema,
 } from "@/api/schema/automation";
-import {
-  wakeAutomationCreateSchema,
-  wakeAutomationSchema,
-} from "@/api/schema/wake-automation";
 import { validateRequest } from "@/api/validation";
-import {
-  createViewerSnooze,
-  unsnoozeViewerSnooze,
-  WakeAutomationInputError,
-  WakeSubjectNotFoundError,
-} from "@/chat/wake-automations/viewer";
 import { requireViewer } from "@/api/viewer";
 import { getSqlExecutor } from "@/chat/db";
 import { attachAutomationMentions } from "./mentions";
@@ -134,45 +124,6 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           ? { nextCursor: encodePageCursor(automationListCursorSchema, next) }
           : undefined),
       });
-    },
-  );
-  app.post(
-    "/",
-    requireViewer,
-    validateRequest("json", wakeAutomationCreateSchema, "Invalid snooze."),
-    async (context) => {
-      const input = context.req.valid("json");
-      try {
-        const wake = await createViewerSnooze(context.get("viewer"), input);
-        return jsonResponse(
-          wakeAutomationSchema,
-          {
-            action: wake.action,
-            createdAt: new Date(wake.createdAtMs).toISOString(),
-            id: wake.id,
-            status: wake.status,
-            subject: wake.subject,
-            triggers: wake.triggers,
-          },
-          { status: 201 },
-        );
-      } catch (error) {
-        if (error instanceof WakeSubjectNotFoundError) {
-          return jsonResponse(
-            apiErrorSchema,
-            { error: error.message },
-            { status: 404 },
-          );
-        }
-        if (error instanceof WakeAutomationInputError) {
-          return jsonResponse(
-            apiErrorSchema,
-            { error: error.message },
-            { status: 400 },
-          );
-        }
-        throw error;
-      }
     },
   );
   app.get("/event-catalog", requireViewer, () => {
@@ -382,8 +333,6 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const user = context.get("viewer");
       const params = context.req.valid("param");
-      // Deleting a Snooze undoes it: the row comes back now.
-      if (await unsnoozeViewerSnooze(user, params.id)) return emptyResponse();
       try {
         await deleteViewerTask(user, params.id);
         return emptyResponse();

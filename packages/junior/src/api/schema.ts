@@ -445,5 +445,14 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export {
+  inboxSnoozeCreateSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
+export type {
+  InboxSnoozeCreateBody,
+  InboxSnoozeSubjectBody,
+} from "./schema/inbox-snooze";
 export { versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

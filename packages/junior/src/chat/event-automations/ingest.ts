@@ -49,7 +49,6 @@ import {
 } from "@/chat/identities/trust";
 import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { wakeAutomationsForEvent } from "@/chat/wake-automations/store";
 
 /** Bind provider delivery identity to one automation's durable dispatch. */
 function eventAutomationDispatchKey(
@@ -103,8 +102,7 @@ export async function ingestEventAutomations(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
-    /** The Slack team of run rows. Without it, only Snoozes match. */
-    teamId?: string;
+    teamId: string;
   },
 ): Promise<{ dispatched: number }> {
   const event = eventSchema.parse(input);
@@ -116,19 +114,9 @@ export async function ingestEventAutomations(
     [event],
     options.teamId,
     catalog,
-    nowMs,
   );
-  // A Snooze wakes before any run limit or dispatch: it runs no Turn.
-  await wakeAutomationsForEvent(db, {
-    eventType: event.eventType,
-    ids: matches.flatMap((match) =>
-      match.action === "wake" ? [match.id] : [],
-    ),
-    nowMs,
-  });
-  const tasks = matches.filter(
-    (task): task is Extract<typeof task, { action: "run" }> =>
-      task.action === "run" && slackChannelMessageRunsAutomation(event, task),
+  const tasks = matches.filter((task) =>
+    slackChannelMessageRunsAutomation(event, task),
   );
   if (tasks.length === 0) return { dispatched: 0 };
   const author = await resolveEventAuthor(event);

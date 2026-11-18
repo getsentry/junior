@@ -18,10 +18,10 @@ import {
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import {
+  inboxSnoozesVersion,
   reviewItemSnoozedBy,
-  wakeAutomationsForNewItem,
-  wakeAutomationsVersion,
-} from "@/chat/wake-automations/store";
+  wakeInboxSnoozesForNewItem,
+} from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -358,7 +358,7 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
-    await wakeAutomationsForNewItem(tx, {
+    await wakeInboxSnoozesForNewItem(tx, {
       itemId: inserted[0].id,
       nowMs: input.nowMs,
     });
@@ -567,6 +567,8 @@ export interface ReviewItemFilters {
   forUserId?: string;
   /** Drop the items in Inbox rows that this User snoozed. */
   awakeForUserId?: string;
+  /** Keep only the items in Inbox rows that this User snoozed. */
+  snoozedForUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
@@ -651,6 +653,9 @@ function searchConditions(
     conditions.push(
       not(reviewItemSnoozedBy(filters.awakeForUserId, Date.now())),
     );
+  }
+  if (filters.snoozedForUserId) {
+    conditions.push(reviewItemSnoozedBy(filters.snoozedForUserId, Date.now()));
   }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
@@ -737,7 +742,7 @@ export function reviewItemsNeedingUserVersionQuery(
   const nowMs = Date.now();
   return db
     .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${wakeAutomationsVersion(userId, nowMs)})`,
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${inboxSnoozesVersion(userId, nowMs)})`,
     })
     .from(juniorReviewItems)
     .where(reviewItemNeedsUserNow(userId, nowMs));

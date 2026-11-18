@@ -113,6 +113,7 @@
   "packages/junior/src/chat/conversations/web-authorization.ts": 2,
   "packages/junior/src/chat/egress/graphql.ts": 1,
   "packages/junior/src/chat/event-automations/store.ts": 3,
+  "packages/junior/src/chat/events/app-publisher.ts": 1,
   "packages/junior/src/chat/events/catalog.ts": 2,
   "packages/junior/src/chat/events/notification.ts": 2,
   "packages/junior/src/chat/events/store.ts": 1,

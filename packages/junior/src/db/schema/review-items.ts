@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -64,12 +63,9 @@ export const juniorReviewItems = pgTable(
      */
     provider: text("provider"),
     providerTenantId: text("provider_tenant_id"),
-    // The return type breaks the type cycle: a wake Automation references
-    // its subject Review item.
-    automationId: text("automation_id").references(
-      (): AnyPgColumn => juniorAutomations.id,
-      { onDelete: "set null" },
-    ),
+    automationId: text("automation_id").references(() => juniorAutomations.id, {
+      onDelete: "set null",
+    }),
     closedAt: timestamptz("closed_at"),
     closedByUserId: text("closed_by_user_id").references(() => juniorUsers.id, {
       onDelete: "set null",
