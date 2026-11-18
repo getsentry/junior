@@ -194,7 +194,7 @@ async function executeToolCall(
   if (!tool) {
     return errorRun("not_found", `Tool ${call.name} not found`);
   }
-  if (input.replay && tool.replay === "unsafe") {
+  if (input.replay && tool.replay === "never") {
     return errorRun(
       "replay_skipped",
       "This call was interrupted before its result was saved, so it may have run. Check its effect before you call it again.",
