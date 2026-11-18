@@ -52,7 +52,7 @@ export type ExecOptions = {
    * and stderr. The environment does not keep the output, so the caller keeps
    * only what it needs. The command never waits for this callback.
    */
-  onOutput(chunk: OutputChunk): void;
+  onOutputChunk(chunk: OutputChunk): void;
 };
 
 /**
@@ -66,7 +66,7 @@ export type OutputChunk = {
   text: string;
 };
 
-/** How a command exited. The output went to `onOutput`. */
+/** How a command exited. The output went to `onOutputChunk`. */
 export type ExecResult = {
   exitCode: number;
 };
