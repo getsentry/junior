@@ -4,7 +4,11 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { dashboardContainerClass } from "../../styles";
+import {
+  dashboardContainerClass,
+  cn,
+  dashboardIconTileClass,
+} from "../../styles";
 import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
 import { CacheWarmingSection } from "./CacheWarmingSection";
 import {
@@ -43,7 +47,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
         {nothingToSet ? (
           <Card padding="md">
             <div className="flex items-center gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+              <div className={cn(dashboardIconTileClass, "size-10")}>
                 <Boxes aria-hidden="true" size={17} />
               </div>
               <p className="m-0 text-sm text-dashboard-text-muted">

@@ -16,7 +16,7 @@ import type {
 
 import { HoverPreview } from "../components/ui/hover-preview";
 import { FOCUS_REPLY_STATE } from "../conversations/conversationRoutes";
-import { cn } from "../styles";
+import { cn, dashboardMessageCardClass } from "../styles";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
@@ -132,7 +132,12 @@ function ChangeRow(props: {
         </ReviewItemPreview>
       </p>
       {rows.length ? (
-        <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
+        <dl
+          className={cn(
+            "m-0 grid w-fit max-w-full gap-1.5 px-3.5 py-2 font-sans text-base leading-relaxed",
+            dashboardMessageCardClass,
+          )}
+        >
           {rows.map((row) => (
             <div key={row.label}>
               {/* One answer needs no label: a quote or the question names it. */}
