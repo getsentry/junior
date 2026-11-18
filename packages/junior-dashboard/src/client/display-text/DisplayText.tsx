@@ -12,6 +12,7 @@ import { MessageObjectsProvider } from "./resolvedObjects";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
 export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
+export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
