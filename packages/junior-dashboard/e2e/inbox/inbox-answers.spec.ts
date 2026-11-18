@@ -28,7 +28,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Approve the payments-v42 rollout",
     });
     answering = true;
-    await card.getByRole("button", { name: "Hold" }).click();
+    await card.getByRole("button", { exact: true, name: "Hold" }).click();
     await expect(card.getByRole("status")).toHaveText("You answered Hold");
     // It stays when the card mounts again: a phone shows the menu here.
     await page.setViewportSize(mobile);
