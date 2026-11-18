@@ -1,0 +1,36 @@
+# A poll refetches a query on a timer, whether its data changed or not. The
+# dashboard learns about changes from `/api/versions`, so a new poll needs a
+# deliberate exception here. Each entry names why that read must poll.
+id: no-dashboard-poll-outside-allowlist
+language: TypeScript
+severity: error
+message: Do not poll with `refetchInterval`. Refresh the query from `/api/versions` or a mutation (see policies/performance.md). If this read must poll, add the file to this rule's `ignores` with its reason.
+files:
+  - packages/junior-dashboard/src/**/*.ts
+ignores:
+  # The open Conversation polls fast while a reply streams in.
+  - packages/junior-dashboard/src/client/conversations/queries.ts
+  # The versions poll tells every other query when to refresh.
+  - packages/junior-dashboard/src/client/versions.ts
+rule:
+  any:
+    - kind: property_identifier
+      regex: ^refetchInterval$
+    - kind: shorthand_property_identifier
+      regex: ^refetchInterval$
+---
+id: no-dashboard-poll-outside-allowlist-tsx
+language: Tsx
+severity: error
+message: Do not poll with `refetchInterval`. Refresh the query from `/api/versions` or a mutation (see policies/performance.md). If this read must poll, add the file to this rule's `ignores` with its reason.
+files:
+  - packages/junior-dashboard/src/**/*.tsx
+ignores:
+  # A running re-fill is a server job with no version to watch.
+  - packages/junior-dashboard/src/client/pages/system/CacheWarmingRefill.tsx
+rule:
+  any:
+    - kind: property_identifier
+      regex: ^refetchInterval$
+    - kind: shorthand_property_identifier
+      regex: ^refetchInterval$

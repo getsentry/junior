@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import type { Job } from "bullmq";
 import { getChatConfig } from "@/chat/config";
@@ -163,8 +165,11 @@ async function startWorker(consumers: QueueConsumer[]): Promise<QueueWorker> {
     // stops the worker process if it does not exit within its grace period.
     close: async () => {
       try {
+        const limit = pLimit(FAN_OUT_CONCURRENCY);
         const failures = (
-          await Promise.allSettled(workers.map((worker) => worker.close()))
+          await Promise.allSettled(
+            workers.map((worker) => limit(() => worker.close())),
+          )
         ).flatMap((result): unknown[] =>
           result.status === "rejected" ? [result.reason] : [],
         );

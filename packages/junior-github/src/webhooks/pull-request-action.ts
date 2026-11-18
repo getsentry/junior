@@ -76,7 +76,7 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
 const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-ready:",
   "pull-request-review-requested:",
-];
+] as const;
 
 async function closeLegacyItems(
   items: PluginReviewItems,
