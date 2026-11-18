@@ -285,21 +285,23 @@ describe("runStep", () => {
     expect(modelStep).toEqual({ outcome: "completed", messages: [cutOffText] });
   });
 
-  it("fails the Turn when the model request fails", async () => {
+  it("fails the step with the failed reply when the model request fails", async () => {
+    const failure = fauxAssistantMessage([], {
+      stopReason: "error",
+      errorMessage: "overloaded",
+    });
     const result = await runStep(
       stepInput({
         messages: [user],
-        complete: () =>
-          Promise.resolve(
-            fauxAssistantMessage([], {
-              stopReason: "error",
-              errorMessage: "overloaded",
-            }),
-          ),
+        complete: () => Promise.resolve(failure),
       }),
     );
 
-    expect(result).toEqual({ outcome: "failed", error: "overloaded" });
+    expect(result).toEqual({
+      outcome: "failed",
+      error: "overloaded",
+      reply: failure,
+    });
   });
 
   it("throws instead of returning results when the step is aborted", async () => {
