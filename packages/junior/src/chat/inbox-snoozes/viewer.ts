@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   canUserReadReviewItem,
@@ -37,6 +37,21 @@ async function rootConversationId(
   return row ? (row.rootConversationId ?? row.conversationId) : undefined;
 }
 
+/** The root Conversations of these Conversations, in one read. */
+async function rootConversationIds(
+  conversationIds: string[],
+): Promise<string[]> {
+  if (conversationIds.length === 0) return [];
+  const rows = await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      rootConversationId: juniorConversations.rootConversationId,
+    })
+    .from(juniorConversations)
+    .where(inArray(juniorConversations.conversationId, conversationIds));
+  return rows.map((row) => row.rootConversationId ?? row.conversationId);
+}
+
 /**
  * Return the root Conversation of the row when the viewer can see an open
  * Review item in it. A missing row and a hidden row look the same.
@@ -49,9 +64,7 @@ async function visibleRowRoot(
   if (!root) throw new InboxRowNotFoundError("Inbox row was not found.");
   if (subject.reviewItemId) {
     const item = await getReviewItem(getDb(), subject.reviewItemId);
-    const roots = item
-      ? await Promise.all(item.conversationIds.map(rootConversationId))
-      : [];
+    const roots = item ? await rootConversationIds(item.conversationIds) : [];
     if (
       item?.status === "open" &&
       roots.includes(root) &&
