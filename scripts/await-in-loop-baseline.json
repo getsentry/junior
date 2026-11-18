@@ -1,22 +1,4 @@
 {
-  "packages/junior/src/chat/agent-dispatch/heartbeat.ts": 9,
-  "packages/junior/src/chat/agent-invocations/list.ts": 1,
-  "packages/junior/src/chat/agent-invocations/result.ts": 5,
-  "packages/junior/src/chat/agent-invocations/stop.ts": 10,
-  "packages/junior/src/chat/agent-invocations/store.ts": 1,
-  "packages/junior/src/chat/agent-invocations/work.ts": 11,
-  "packages/junior/src/chat/agent/index.ts": 8,
-  "packages/junior/src/chat/agent/tools.ts": 2,
   "packages/junior/src/chat/automations/edit-rules.ts": 1,
-  "packages/junior/src/chat/automations/edit.ts": 1,
-  "packages/junior/src/chat/event-automations/ingest.ts": 8,
-  "packages/junior/src/chat/event-automations/runs.ts": 2,
-  "packages/junior/src/chat/scheduled-automations/heartbeat.ts": 14,
-  "packages/junior/src/chat/scheduled-automations/runs.ts": 1,
-  "packages/junior/src/chat/task-execution/heartbeat.ts": 1,
-  "packages/junior/src/chat/task-execution/paused-turn.ts": 6,
-  "packages/junior/src/chat/task-execution/slack-work.ts": 1,
-  "packages/junior/src/chat/task-execution/state.ts": 6,
-  "packages/junior/src/chat/task-execution/supersede-turns.ts": 2,
-  "packages/junior/src/chat/task-execution/worker.ts": 18
+  "packages/junior/src/chat/automations/edit.ts": 1
 }

@@ -9,26 +9,8 @@
     },
     {
       "files": [
-        "packages/junior/src/chat/agent-dispatch/heartbeat.ts",
-        "packages/junior/src/chat/agent-invocations/list.ts",
-        "packages/junior/src/chat/agent-invocations/result.ts",
-        "packages/junior/src/chat/agent-invocations/stop.ts",
-        "packages/junior/src/chat/agent-invocations/store.ts",
-        "packages/junior/src/chat/agent-invocations/work.ts",
-        "packages/junior/src/chat/agent/index.ts",
-        "packages/junior/src/chat/agent/tools.ts",
         "packages/junior/src/chat/automations/edit-rules.ts",
-        "packages/junior/src/chat/automations/edit.ts",
-        "packages/junior/src/chat/event-automations/ingest.ts",
-        "packages/junior/src/chat/event-automations/runs.ts",
-        "packages/junior/src/chat/scheduled-automations/heartbeat.ts",
-        "packages/junior/src/chat/scheduled-automations/runs.ts",
-        "packages/junior/src/chat/task-execution/heartbeat.ts",
-        "packages/junior/src/chat/task-execution/paused-turn.ts",
-        "packages/junior/src/chat/task-execution/slack-work.ts",
-        "packages/junior/src/chat/task-execution/state.ts",
-        "packages/junior/src/chat/task-execution/supersede-turns.ts",
-        "packages/junior/src/chat/task-execution/worker.ts"
+        "packages/junior/src/chat/automations/edit.ts"
       ],
       "rules": {
         "no-await-in-loop": "off"
