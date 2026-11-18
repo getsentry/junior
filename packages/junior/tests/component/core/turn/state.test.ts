@@ -76,7 +76,13 @@ describe("Turn state", () => {
       { turnId, stepSeq: 0, leaseEpoch: 1, attempts: 1 },
     ]);
     const turn = await readTurn();
-    expect(turn.state).toBe("running");
+    // The losing claim wrote nothing, so each counter went up once.
+    expect(turn).toMatchObject({
+      state: "running",
+      stepSeq: 0,
+      leaseEpoch: 1,
+      attempts: 1,
+    });
     expect(["worker-a", "worker-b"]).toContain(turn.leaseOwner);
     expect(turn.leaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
   });
@@ -105,6 +111,8 @@ describe("Turn state", () => {
     const queued = await readTurn();
     expect(queued).toMatchObject({
       state: "queued",
+      leaseEpoch: 1,
+      attempts: 1,
       leaseOwner: null,
       leaseExpiresAt: null,
     });
@@ -134,6 +142,8 @@ describe("Turn state", () => {
     const completed = await readTurn();
     expect(completed).toMatchObject({
       state: "completed",
+      leaseEpoch: 1,
+      attempts: 1,
       leaseOwner: null,
       leaseExpiresAt: null,
       endReason: null,
@@ -172,7 +182,8 @@ describe("Turn state", () => {
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
-      leaseEpoch: claimed.leaseEpoch + 1,
+      leaseEpoch: 2,
+      attempts: 1,
       leaseOwner: null,
       leaseExpiresAt: null,
     });
