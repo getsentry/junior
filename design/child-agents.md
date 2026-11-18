@@ -64,25 +64,20 @@ child chooses to report reaches the parent.
 
 ## Gaps
 
-- By default, each child gets an Agent invocation, with its own worker and
-  status. Spawn and message without one (getsentry/junior#3435) is behind
-  the `child-agents-without-agent-invocations` flag, off by default. Some
-  branches on `kind`
-  are outside the one switch. This breaks "its `kind` is the only
-  switch". getsentry/junior#3060 and getsentry/junior#2567 track it.
+- Some behavior of a child agent branches on `kind` outside the one switch.
+  This breaks "its `kind` is the only switch". getsentry/junior#3435,
+  getsentry/junior#3060, and getsentry/junior#2567 track it.
 - A stopped Conversation still starts a Turn for Events other than Watch
   Events, and for a person's message sent before the stop. This breaks "one
   stop stops the whole tree". getsentry/junior#2888 tracks it.
-- With an Agent invocation, the default, a stopped parent's message still
-  starts work and ends the child's stop. This breaks "a stopped parent
-  gives no new work".
+- By default, a stopped parent's message still starts work and ends the
+  child's stop. This breaks "a stopped parent gives no new work".
+  getsentry/junior#3435 tracks it.
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
-- A parent does not archive its child agents when their work is done. Only
-  `archiveAgent` can do it, for a Thread only, and no instruction tells the
-  agent to use it. This breaks "a parent manages the lifecycle of its child
-  agents".
+- A parent does not archive its child agents when their work is done. This
+  breaks "a parent manages the lifecycle of its child agents".
 - For some child messages, Junior reads the sender from the message id.
   This breaks "a message id is an opaque key". Step 7 of
   getsentry/junior#3060 removes it.
