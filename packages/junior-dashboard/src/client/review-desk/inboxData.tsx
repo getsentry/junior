@@ -88,6 +88,7 @@ export type InboxFeedPages = {
 function useBuildInboxData(input: {
   conversations: Conversation[];
   feed: InboxFeedPages;
+  feedReadThrough: string | undefined;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
@@ -353,18 +354,8 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
-    /**
-     * The oldest activity in the loaded feed pages. The feed reads newest
-     * activity first, so each later page is older.
-     */
-    feedOldestSeenAt: conversations.reduce<string | undefined>(
-      (oldest, conversation) =>
-        oldest === undefined ||
-        Date.parse(conversation.lastSeenAt) < Date.parse(oldest)
-          ? conversation.lastSeenAt
-          : oldest,
-      undefined,
-    ),
+    /** How far back the feed has read (`joinConversationFeedPages`). */
+    feedReadThrough: input.feedReadThrough,
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),
@@ -417,6 +408,7 @@ export function InboxDataProvider(props: {
   const { conversations, feed } = useInboxConversations();
   const value = useBuildInboxData({
     conversations,
+    feedReadThrough: feed.data?.readThrough,
     // A failed feed page waits for Try again, as the other lists do. A list
     // end can still ask for more after the failure renders.
     feed: scrollPages({

@@ -493,8 +493,8 @@ export function InboxList(props: {
   // until then.
   const feedDone =
     Boolean(inboxStream?.full) &&
-    data.feedOldestSeenAt !== undefined &&
-    timeSectionAt(data.feedOldestSeenAt, nowMs) === "earlier";
+    data.feedReadThrough !== undefined &&
+    timeSectionAt(data.feedReadThrough, nowMs) === "earlier";
   const pages: InboxFeedPages[] =
     view === "inbox"
       ? feedDone
@@ -524,10 +524,12 @@ export function InboxList(props: {
     hidden > 0 ||
     (failed.length === 0 && pages.some((source) => source.hasMore));
   const loadingMore = pages.some((source) => source.loadingMore);
-  // Earlier left rows out, so the Inbox ends with where they are.
+  // Earlier left rows out, so the Inbox ends with where they are. After a
+  // failed page, Try again shows instead: rows may still be missing.
   const older =
     ready &&
     !more &&
+    failed.length === 0 &&
     Boolean(inboxStream?.cut || (feedDone && data.feed.hasMore));
   // The trigger asks again whenever rows arrive or show.
   const progress = [
