@@ -14,7 +14,7 @@ import { getAgentInvocationResultMessageId } from "./ids";
 import {
   hasAgentInvocationReply,
   listChildMessages,
-  readChildMessageSender,
+  readChildMessageSenders,
   type ChildMessage,
 } from "./child-message";
 import { readChildConversationSender } from "./child-input";
@@ -270,11 +270,9 @@ async function hasOpenChildWork(
   // An unread reply or result from a child that no Agent invocation names
   // waits. One from a child with a row counts as on `main`.
   const work = await getConversationWorkState({ conversationId });
-  for (const message of work?.messages ?? []) {
-    const sender = await readChildMessageSender(message);
-    if (sender && !sender.agentInvocationId) {
-      return true;
-    }
+  const senders = await readChildMessageSenders(work?.messages ?? []);
+  if (senders.some((sender) => sender && !sender.agentInvocationId)) {
+    return true;
   }
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.

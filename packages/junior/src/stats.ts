@@ -52,14 +52,22 @@ export async function addStats(
         juniorStats.metric,
         juniorStats.name,
       ],
-      set: { count: sql`${juniorStats.count} + excluded.count` },
+      set: {
+        count: sql`${juniorStats.count} + excluded.${sql.identifier(juniorStats.count.name)}`,
+      },
     });
 }
 
 /** Read daily counters inside an inclusive UTC date range. */
 export async function readStats(start: string, end: string): Promise<Stat[]> {
   return await getDb()
-    .select()
+    .select({
+      count: juniorStats.count,
+      date: juniorStats.date,
+      metric: juniorStats.metric,
+      name: juniorStats.name,
+      namespace: juniorStats.namespace,
+    })
     .from(juniorStats)
     .where(and(gte(juniorStats.date, start), lte(juniorStats.date, end)))
     .orderBy(

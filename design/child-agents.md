@@ -53,7 +53,8 @@ child chooses to report reaches the parent.
   or still has no answer after one reminder, tells its parent `failed`. A
   Thread keeps its failure.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
-  levels of child agents can start their own. With 0, only a root can.
+  levels of child agents can start their own. The default is 1, so a
+  root's child can start children. With 0, only a root can.
 - A message id is an opaque key. Who sent a message, and what it means,
   come from its stored fields.
 - People decide when a Thread is done. An agent cannot archive a Thread

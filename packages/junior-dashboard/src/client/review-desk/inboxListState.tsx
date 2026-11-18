@@ -11,7 +11,14 @@ import {
 } from "react";
 import { useLocation } from "react-router";
 
-import { parseInboxView, type InboxView } from "./inboxModel";
+import { isInboxView, paneRowForPath } from "../components/layout/paneRows";
+import { useConversationOrigin } from "./conversationOrigin";
+import {
+  inboxViewOfPath,
+  inboxViewPath,
+  parseInboxView,
+  type InboxView,
+} from "./inboxModel";
 
 /** How many rows of a stream show before the reader scrolls for more. */
 const INBOX_PAGE_SIZE = 25;
@@ -26,10 +33,13 @@ type ListPlace = { expandedKey: string; loaded: number };
 type LinkedItems = { closed?: string; open?: string };
 
 type InboxListValue = {
+  inFlightExpanded: readonly [boolean, (expanded: boolean) => void];
   linkedItems: readonly [
     LinkedItems,
     (update: (current: LinkedItems) => LinkedItems) => void,
   ];
+  /** The Inbox view that opened the Conversation that shows, if any. */
+  origin: InboxView | undefined;
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
   /** Places by list, so `/` and `/?view=inbox` share the Inbox's. */
@@ -50,14 +60,23 @@ const NEW_PLACE: ListPlace = { expandedKey: "", loaded: INBOX_PAGE_SIZE };
  * Keep the place of each Inbox list for the session: its entry, scroll
  * position, expanded row, how many rows it shows, the older feed pages it
  * loaded, and the items that links added. Opening a Conversation replaces the list, and Back brings it
- * back as it was.
+ * back as it was. The pane's In flight list stays expanded the same way.
  */
 export function InboxListProvider(props: { children: ReactNode }) {
   const [places, setPlaces] = useState<
     Readonly<Partial<Record<InboxView, ListPlace>>>
   >({});
   const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
+  const [inFlightExpanded, setInFlightExpanded] = useState(false);
   const [returnPath, setReturnPath] = useState("/");
+  const location = useLocation();
+  // The Inbox view of the page shown last, if it was one. Plugin pages are
+  // not Inbox views, so the row needs no nav items.
+  const [lastView, setLastView] = useState<InboxView>();
+  const origin = useConversationOrigin(location, lastView);
+  const row = paneRowForPath(location, [], origin);
+  const view = isInboxView(row) ? row : undefined;
+  if (view !== lastView) setLastView(view);
   const composerShown = useRef(false);
   const showComposer = useCallback(() => {
     const first = !composerShown.current;
@@ -85,7 +104,9 @@ export function InboxListProvider(props: { children: ReactNode }) {
   );
   const value = useMemo(
     () => ({
+      inFlightExpanded: [inFlightExpanded, setInFlightExpanded] as const,
       linkedItems: [linkedItems, setLinkedItems] as const,
+      origin,
       places,
       returnPath,
       scroll,
@@ -93,7 +114,16 @@ export function InboxListProvider(props: { children: ReactNode }) {
       setReturnPath,
       showComposer,
     }),
-    [linkedItems, places, returnPath, scroll, setPlace, showComposer],
+    [
+      inFlightExpanded,
+      linkedItems,
+      origin,
+      places,
+      returnPath,
+      scroll,
+      setPlace,
+      showComposer,
+    ],
   );
   return (
     <InboxListContext.Provider value={value}>
@@ -162,9 +192,22 @@ export function useInboxListState(ready: boolean) {
   };
 }
 
-/** The Inbox list that Back returns to: the last one shown, or the Inbox. */
+/**
+ * The Inbox list that Back from a Conversation or the composer returns to:
+ * the view that opened it, as the pane marks it, where the reader left
+ * that list. Without an origin, such as a direct link, it is Conversations.
+ */
 export function useInboxReturnPath(): string {
-  return useInboxListContext().returnPath;
+  const { origin, returnPath } = useInboxListContext();
+  const view = origin ?? "conversations";
+  return inboxViewOfPath(returnPath) === view
+    ? returnPath
+    : inboxViewPath(view);
+}
+
+/** The Inbox view that opened the Conversation that shows, if any. */
+export function useInboxConversationOrigin(): InboxView | undefined {
+  return useInboxListContext().origin;
 }
 
 /**
@@ -184,6 +227,14 @@ export function useInboxReturnHere(path: string | undefined) {
  */
 export function useLinkedInboxItems() {
   return useInboxListContext().linkedItems;
+}
+
+/**
+ * Whether the pane lists every in-flight Conversation, for the session. The
+ * pane remounts when a row opens its Conversation, and the list stays open.
+ */
+export function useInFlightExpanded() {
+  return useInboxListContext().inFlightExpanded;
 }
 
 /**

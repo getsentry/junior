@@ -9,6 +9,7 @@ import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
 import type { InboxBundle } from "./reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /** One open code change, with the pull request asks that name it. */
 export type PullRequestChangeRow = {
@@ -158,7 +159,7 @@ export function PullRequestChange(props: {
           "flex min-w-0 items-center justify-between gap-4 px-4 py-2.5 font-sans",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-dashboard-text">
+        <div className="flex min-w-0 items-center gap-2.5 font-display text-base font-medium text-dashboard-text">
           <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
           {change.url ? (
             <a
@@ -167,11 +168,15 @@ export function PullRequestChange(props: {
               rel="noreferrer"
               target="_blank"
             >
-              <span className="truncate">{title}</span>
+              <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+                {title}
+              </span>
               <ArrowUpRight aria-hidden="true" className="shrink-0" size={14} />
             </a>
           ) : (
-            <span className="truncate">{title}</span>
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {title}
+            </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-4 text-xs text-dashboard-text-muted">

@@ -15,8 +15,9 @@ import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { answerLine } from "./reviewItemFormat";
+import { answerLine, reviewItemText } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /** The answer, or the reason that the item closed. */
 function outcomeOf(item: ReviewItemPayload): string | undefined {
@@ -38,7 +39,9 @@ function DoneRow(props: {
     : "An agent";
   const outcome = outcomeOf(item);
   const text =
-    item.kind === "notice" || !item.request ? item.body : item.request.question;
+    item.kind === "notice" || !item.request
+      ? reviewItemText(item)
+      : item.request.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
@@ -56,15 +59,24 @@ function DoneRow(props: {
       >
         <Icon
           aria-hidden="true"
-          className="mt-[0.2rem] size-3.5 text-dashboard-text-faint"
+          className="mt-[0.25rem] size-3.5 text-dashboard-text-faint"
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
+          <span
+            className={cn(
+              fadeOverflowClass,
+              "font-display text-base font-medium leading-snug text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {item.title}
           </span>
           <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-dashboard-text-muted">
             {outcome ? (
-              <span className="min-w-0 truncate text-dashboard-text">
+              <span
+                className={cn(fadeOverflowClass, "text-dashboard-text")}
+                ref={fadeWhenOverflowing}
+              >
                 {outcome}
               </span>
             ) : null}
@@ -76,7 +88,7 @@ function DoneRow(props: {
         </span>
         <span className="flex items-center gap-1.5 pt-0.5 text-xs tabular-nums text-dashboard-text-faint">
           {dismissed ? (
-            <span className="rounded-full border border-dashboard-border px-1.5 font-medium text-dashboard-text-muted">
+            <span className="font-medium text-dashboard-text-muted">
               Dismissed
             </span>
           ) : null}
@@ -91,7 +103,10 @@ function DoneRow(props: {
           role="region"
         >
           <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border pb-3">
-            <span className="min-w-0 truncate text-dashboard-text-muted">
+            <span
+              className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+              ref={fadeWhenOverflowing}
+            >
               {props.title}
             </span>
             <Link
@@ -108,7 +123,6 @@ function DoneRow(props: {
             <DisplayText text={text} />
             {item.subject ? (
               <ReviewItemSubjectPreview
-                body={text}
                 conversationId={item.addedByConversationId}
                 subject={item.subject}
               />

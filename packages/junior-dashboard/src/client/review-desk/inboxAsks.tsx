@@ -3,9 +3,10 @@ import { objectPresentation } from "@sentry/junior-plugin-api";
 import { objectToneClass } from "../components/ObjectIcon";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { AskKindIcon, askLook } from "./askKind";
+import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import { itemNeedsViewer } from "./reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 
@@ -108,23 +109,29 @@ export function askPills(
   );
 }
 
-/** One ask pill. The icon carries the kind, so the words name only what it is about. */
+/**
+ * One ask pill: plain text with no fill or frame. The icon carries the kind,
+ * so the words name only what it is about. An ask that waits on the viewer
+ * reads in the full text color.
+ */
 export function Pill(props: { pill: AskPill }) {
   const { pill } = props;
-  const look = askLook(pill.kind);
   return (
     <span
       className={cn(
-        "inline-flex h-5 max-w-60 shrink-0 items-center gap-1 rounded-full px-1.5 text-2xs leading-none whitespace-nowrap",
-        pill.strong
-          ? cn(look?.tint ?? "bg-dashboard-fill-soft", "text-dashboard-text")
-          : "border border-dashboard-border text-dashboard-text-muted",
+        "inline-flex h-5 min-w-0 max-w-60 items-center gap-1 text-xs leading-none whitespace-nowrap",
+        pill.strong ? "text-dashboard-text" : "text-dashboard-text-muted",
       )}
       data-ask-pill={pill.kind}
     >
       <AskKindIcon className="size-3" kind={pill.kind} />
       {pill.label ? (
-        <span className="min-w-0 truncate font-medium">{pill.label}</span>
+        <span
+          className={cn(fadeOverflowClass, "font-medium")}
+          ref={fadeWhenOverflowing}
+        >
+          {pill.label}
+        </span>
       ) : null}
       {pill.ref ? (
         <span

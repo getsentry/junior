@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -667,8 +666,8 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
-  const routes = await Promise.all(
-    messages.map((message) => routeChildInput(message, latest, stoppedAtMs)),
+  const routes = await mapBounded(messages, (message) =>
+    routeChildInput(message, latest, stoppedAtMs),
   );
   if (!routes.includes("agent invocation")) {
     return undefined;
@@ -729,7 +728,9 @@ async function startAgentInvocationsForChildInput(
     if (parentMessage) {
       // A parent message to a child with an open Agent invocation queues
       // behind it, as `messageAgent` does with a row.
+      // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
       await enqueueAgentInvocation(
+        // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
         await createAgentInvocationFromLatest({
           input: message.input.text.trim(),
           invocationId: getAgentInvocationIdForMessage(
@@ -749,10 +750,12 @@ async function startAgentInvocationsForChildInput(
     }
     const input = inputs[index]!;
     // Only an agent invocation sends a result.
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const { invocation: source } = await getChildAgentInputSender(
       message,
       input,
     );
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
       invocationId:
@@ -772,6 +775,7 @@ async function startAgentInvocationsForChildInput(
           }
         : undefined),
     });
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     await enqueueAgentInvocation(invocation, {
       ...options,
       eventMeta: eventBatchMessageMeta([message]),
@@ -912,69 +916,60 @@ export async function withAgentInvocationResultActors(
         getConversationStoppedAtMs(conversationId),
       ])
     : [undefined, undefined];
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const batch = await Promise.all(
-    work.batch.map((entry) =>
-      limit(async () => {
-        // A parent message from the stored parent runs as the Actor of the
-        // parent's Turn, with its grants and text, as on an Agent invocation.
-        const parentMessage = readParentMessage(entry.message);
-        if (parentMessage) {
-          if (
-            (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-            "dropped"
-          ) {
-            logDroppedParentMessage(entry.message, parentMessage);
-            return undefined;
-          }
-          const text = await parentMessageText(entry.message, parentMessage);
-          return {
-            ...entry,
-            actor: parentMessage.actor,
-            ...(parentMessage.credentialContext
-              ? { credentialContext: parentMessage.credentialContext }
-              : undefined),
-            message: {
-              ...entry.message,
-              input: { ...entry.message.input, text },
-            },
-          };
+  const batch = await mapBounded(work.batch, async (entry) => {
+    // A parent message from the stored parent runs as the Actor of the
+    // parent's Turn, with its grants and text, as on an Agent invocation.
+    const parentMessage = readParentMessage(entry.message);
+    if (parentMessage) {
+      if (
+        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+        "dropped"
+      ) {
+        logDroppedParentMessage(entry.message, parentMessage);
+        return undefined;
+      }
+      const text = await parentMessageText(entry.message, parentMessage);
+      return {
+        ...entry,
+        actor: parentMessage.actor,
+        ...(parentMessage.credentialContext
+          ? { credentialContext: parentMessage.credentialContext }
+          : undefined),
+        message: {
+          ...entry.message,
+          input: { ...entry.message.input, text },
+        },
+      };
+    }
+    const input = childAgentInput(entry.message);
+    if (!input) {
+      return entry;
+    }
+    if (
+      (await routeChildInput(entry.message, latest, stoppedAtMs)) === "dropped"
+    ) {
+      return undefined;
+    }
+    const { invocation } = await getChildAgentInputSender(entry.message, input);
+    // A child that no agent invocation names sends its Turn's Actor with
+    // the input. The author id must match either Actor.
+    const actor =
+      invocation?.actor ??
+      senderActorFromMetadata(entry.message.input.metadata);
+    if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
+      return { ...entry, actor: EVENT_SYSTEM_ACTOR };
+    }
+    // Only a result continues the work of the Turn that spawned the child,
+    // so only a result keeps that Turn's grants, such as a timer owner's. A
+    // reply or message runs as the Actor only.
+    return input.kind === "result" && invocation?.credentialContext
+      ? {
+          ...entry,
+          actor,
+          credentialContext: invocation.credentialContext,
         }
-        const input = childAgentInput(entry.message);
-        if (!input) {
-          return entry;
-        }
-        if (
-          (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-          "dropped"
-        ) {
-          return undefined;
-        }
-        const { invocation } = await getChildAgentInputSender(
-          entry.message,
-          input,
-        );
-        // A child that no agent invocation names sends its Turn's Actor with
-        // the input. The author id must match either Actor.
-        const actor =
-          invocation?.actor ??
-          senderActorFromMetadata(entry.message.input.metadata);
-        if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
-          return { ...entry, actor: EVENT_SYSTEM_ACTOR };
-        }
-        // Only a result continues the work of the Turn that spawned the child,
-        // so only a result keeps that Turn's grants, such as a timer owner's. A
-        // reply or message runs as the Actor only.
-        return input.kind === "result" && invocation?.credentialContext
-          ? {
-              ...entry,
-              actor,
-              credentialContext: invocation.credentialContext,
-            }
-          : { ...entry, actor };
-      }),
-    ),
-  );
+      : { ...entry, actor };
+  });
   const kept = batch.filter((entry) => entry !== undefined);
   return kept.length > 0 ? { kind: "mailbox", batch: kept } : undefined;
 }

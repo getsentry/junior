@@ -41,6 +41,7 @@ export async function listChannelMessages(input: {
   let cursor = input.cursor;
   let pages = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (messages.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - messages.length));
@@ -66,6 +67,7 @@ export async function listChannelMessages(input: {
       break;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     messages: messages.slice(0, targetLimit),
@@ -95,6 +97,7 @@ export async function listThreadReplies(input: {
   let cursor: string | undefined;
   let pages = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (replies.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - replies.length));
@@ -127,6 +130,7 @@ export async function listThreadReplies(input: {
       break;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return replies.slice(0, targetLimit);
 }
@@ -215,6 +219,7 @@ export async function isConversationMember(
 ): Promise<boolean> {
   const client = getSlackClient();
   let cursor: string | undefined;
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   for (let page = 0; page < MAX_MEMBER_PAGES; page += 1) {
     const response = await withSlackRetries(
       () =>
@@ -230,6 +235,7 @@ export async function isConversationMember(
     cursor = response.response_metadata?.next_cursor || undefined;
     if (!cursor) return false;
   }
+  /* oxlint-enable no-await-in-loop */
   return false;
 }
 

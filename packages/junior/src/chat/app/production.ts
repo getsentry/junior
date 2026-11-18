@@ -13,7 +13,6 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
-import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createConversationWork,
@@ -49,17 +48,12 @@ export function getProductionSlackAdapter(): SlackAdapter {
   return productionSlackAdapter;
 }
 
-/** Return the production conversation store for current config. */
-export function getProductionConversationStore(): ConversationStore {
-  return getConversationStore();
-}
-
 /** Create production-backed services for Slack webhook ingress. */
 export function createProductionSlackWebhookServices(options: {
   queue: ConversationWorkQueue;
   services?: JuniorRuntimeServiceOverrides;
 }): SlackWebhookServices {
-  const conversationStore = getProductionConversationStore();
+  const conversationStore = getConversationStore();
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
     // Webhook ingress only starts and refreshes assistant threads. Turns run
@@ -84,7 +78,7 @@ export function createProductionConversationWorkOptions(options: {
   services?: JuniorRuntimeServiceOverrides;
   waitUntil: (task: Promise<unknown>) => void;
 }): ConversationWorkCallbackOptions {
-  const conversationStore = getProductionConversationStore();
+  const conversationStore = getConversationStore();
   return createConversationWork({
     agentRunner: options.agentRunner,
     conversationStore,

@@ -24,7 +24,7 @@ import {
   type ConversationSnapshot,
 } from "../conversations/queries";
 import { conversationDetailTitle } from "../format";
-import { fetchDashboardJson, post } from "../http";
+import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
 
 /** Prefix of every Review item read, for refreshes after a change. */
@@ -61,7 +61,11 @@ export function reviewItemQueryKey(id: string | undefined) {
   return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
 }
 
-const REVIEW_ITEM_COLLECTIONS = ["count", "list", "waiting-conversations"];
+const REVIEW_ITEM_COLLECTIONS = [
+  "count",
+  "list",
+  "waiting-conversations",
+] as const;
 
 /**
  * Refresh the Review item reads that a change to known items moves: the
@@ -125,16 +129,57 @@ export function useReviewItemData(
   placeholder?: ReviewItemPayload,
 ) {
   return useQuery({
+    ...reviewItemQuery(id),
     enabled: Boolean(id),
     placeholderData: placeholder,
+  });
+}
+
+function reviewItemQuery(id: string | undefined) {
+  return {
     queryKey: reviewItemQueryKey(id),
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       fetchDashboardJson(
         reviewItemSchema,
         `/api/review-items/${encodeURIComponent(id!)}`,
         signal,
       ),
     retry: false,
+  };
+}
+
+/** What one item's own read says now, or `pending` while it reads. */
+type ReviewItemState = ReviewItemPayload | "closed" | "pending";
+
+function reviewItemStates(
+  reads: {
+    data?: ReviewItemPayload;
+    error: Error | null;
+    isFetching: boolean;
+  }[],
+): ReviewItemState[] {
+  return reads.map((read) => {
+    if (read.isFetching) return "pending";
+    if (read.data) return read.data.status === "open" ? read.data : "closed";
+    // A missing item is gone. Another failure says nothing.
+    return read.error instanceof DashboardApiError && read.error.status === 404
+      ? "closed"
+      : "pending";
+  });
+}
+
+/**
+ * Read each item again by itself when the caller first asks about it,
+ * and say whether it is open, closed, or still reading. A list read holds
+ * only its loaded pages, so an item that leaves it may still be open.
+ */
+export function useReviewItemStates(ids: readonly string[]): ReviewItemState[] {
+  return useQueries({
+    queries: ids.map((id) => ({
+      ...reviewItemQuery(id),
+      refetchOnMount: "always" as const,
+    })),
+    combine: reviewItemStates,
   });
 }
 

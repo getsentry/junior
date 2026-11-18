@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import type { Context } from "@earendil-works/pi-ai/compat";
+import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import {
   disconnectStateAdapter,
   getStateAdapter,
@@ -33,5 +35,42 @@ describe("batched Redis state values", () => {
 
     await setStateValues(state, [{ key: batched, value: { seq: 2 } }], 60_000);
     await expect(state.get(batched)).resolves.toEqual({ seq: 2 });
+  });
+
+  it("stores the images of a cache warming snapshot in one batch", async () => {
+    const state = getStateAdapter();
+    const conversationId = `conversation-${randomUUID()}`;
+    const image = {
+      type: "image" as const,
+      data: "aW1n",
+      mimeType: "image/png",
+    };
+    const context: Context = {
+      messages: [
+        {
+          role: "user",
+          content: [image, { type: "text", text: "Look." }, image],
+          timestamp: 1,
+        },
+        {
+          role: "user",
+          content: [{ ...image, data: "b3RoZXI=" }],
+          timestamp: 2,
+        },
+      ],
+    };
+
+    await expect(
+      saveSnapshot(
+        state,
+        conversationId,
+        `snapshot:${conversationId}`,
+        context,
+        60_000,
+      ),
+    ).resolves.toMatchObject({ imageCount: 2 });
+    await expect(
+      loadSnapshot(state, conversationId, `snapshot:${conversationId}`),
+    ).resolves.toEqual(context);
   });
 });

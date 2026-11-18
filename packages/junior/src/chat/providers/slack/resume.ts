@@ -529,6 +529,7 @@ async function resumeSlackTurnInContext(
         if (outcomes) {
           for (const outcome of outcomes) {
             slackMessageTs.push(
+              // oxlint-disable-next-line no-await-in-loop -- Post to one destination at a time, so a failed post stops the rest.
               ...(await sendSlackReply({
                 cards,
                 channelId: outcome.destination.channelId,

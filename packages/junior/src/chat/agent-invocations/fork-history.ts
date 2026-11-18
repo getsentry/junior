@@ -16,7 +16,7 @@ export const FORK_INSTRUCTIONS =
  * result. A model request with an unanswered tool call fails, and the parent
  * can commit its history in the middle of a tool round.
  */
-export function forkHistoryFrom(
+function forkHistoryFrom(
   messages: readonly PiMessage[],
   parentToolCallId: string | undefined,
 ): PiMessage[] {

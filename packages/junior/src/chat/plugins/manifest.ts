@@ -344,6 +344,9 @@ const manifestSourceSchema = z
         error: "must be an object",
       })
       .optional(),
+    "tools-send-no-credential": z
+      .boolean({ error: "must be a boolean" })
+      .optional(),
   })
   .passthrough();
 
@@ -371,6 +374,7 @@ function manifestConfigPatch(
   setDefined(result, "api-headers", config.apiHeaders);
   setDefined(result, "command-env", config.commandEnv);
   setDefined(result, "env-vars", config.envVars);
+  setDefined(result, "tools-send-no-credential", config.toolsSendNoCredential);
 
   if (config.credentials !== undefined) {
     if (!config.credentials) {
@@ -1325,6 +1329,9 @@ function parseManifestSource(
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
     ...(accounts ? { accounts } : undefined),
+    ...(data["tools-send-no-credential"]
+      ? { toolsSendNoCredential: true }
+      : undefined),
   };
 
   if (data.oauth) {

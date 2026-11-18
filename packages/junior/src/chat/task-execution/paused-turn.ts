@@ -62,6 +62,7 @@ import {
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
+  recordFailedDispatchTurn,
   type PausedTurnRequest,
   type PausedTurns,
 } from "@/chat/task-execution/turn-wake";
@@ -385,30 +386,7 @@ async function failPausedTurn(args: {
   });
   if (!failed) return;
 
-  if (failed.dispatchId) {
-    try {
-      const routing = await resolveTurnResumeRouting({
-        conversationId: args.conversationId,
-        dispatchId: failed.dispatchId,
-      });
-      await recordTurnSummary({
-        conversationId: args.conversationId,
-        destination: routing.destination,
-        dispatchId: failed.dispatchId,
-        dispatchOutcome: "failed",
-        turnId: failed.turnId,
-        sliceId: failed.sliceId,
-        source: routing.source,
-        state: "failed",
-        surface: failed.surface,
-      });
-    } catch (error) {
-      logException(error, "agent.continue.dispatch_failure_summary.failed", {
-        "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.summary.turnId,
-      });
-    }
-  }
+  await recordFailedDispatchTurn(failed);
 }
 
 /**
@@ -904,6 +882,7 @@ async function runNextPausedTurnInContext(
     summaries = await listTurnSummaries(conversationId);
   }
 
+  /* oxlint-disable no-await-in-loop -- Run the first paused Turn that can resume, and stop there. */
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
@@ -947,6 +926,7 @@ async function runNextPausedTurnInContext(
       errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   return false;
 }

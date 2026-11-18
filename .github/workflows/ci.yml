@@ -11,8 +11,10 @@ on:
       - releases/**
       - release-*
       - auto-release/**
+      # Integration branch for the rewritten core agent loop.
+      - core-next
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -404,6 +406,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter "@sentry/junior-dashboard..." run build
+      # Reads the client build above, so it does not build again.
+      - run: pnpm dashboard-bundle-size:check
       - run: pnpm --filter @sentry/junior-dashboard test:coverage
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}

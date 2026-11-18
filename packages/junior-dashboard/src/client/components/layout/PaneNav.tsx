@@ -29,6 +29,7 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
+import { useInboxConversationOrigin } from "../../review-desk/inboxListState";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
@@ -149,7 +150,8 @@ export function PaneNavProvider(props: {
   // Remember where each row was, so going back reopens its selection, its
   // search, and (through `scroll`) its list position.
   const [lastRow, setLastRow] = useState<PaneRow>("inbox");
-  const row = paneRowForPath(location, props.navItems, lastRow);
+  const origin = useInboxConversationOrigin();
+  const row = paneRowForPath(location, props.navItems, origin);
   const here = `${location.pathname}${location.search}`;
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},

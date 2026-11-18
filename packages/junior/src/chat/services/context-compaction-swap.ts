@@ -154,6 +154,7 @@ async function waitForRunningSummary(
   signal: AbortSignal | undefined,
 ): Promise<LatestBackgroundCompaction | undefined> {
   let latest: LatestBackgroundCompaction | undefined = request;
+  /* oxlint-disable no-await-in-loop -- Poll until the summary changes or the wait ends. */
   while (latest?.event.seq === request.event.seq && Date.now() < waitUntilMs) {
     await sleep(
       Math.min(RUNNING_SUMMARY_POLL_MS, waitUntilMs - Date.now()),
@@ -162,6 +163,7 @@ async function waitForRunningSummary(
     );
     latest = await loadLatestBackgroundCompaction(conversationId);
   }
+  /* oxlint-enable no-await-in-loop */
   return latest;
 }
 

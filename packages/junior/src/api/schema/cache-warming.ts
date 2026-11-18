@@ -56,25 +56,23 @@ export const cacheWarmingSavingsReportSchema = z
     days: z.array(
       cacheWarmingSavingsSchema.extend({
         date: z.string(),
+        /** Saved less warmup cost. */
+        netSavingsUsd: z.number(),
         /**
-         * Saved less warmup cost. Null on a day filled from history, which
-         * has no warmup calls, so its warmup cost is unknown.
+         * Filled from history: hits count only when a recorded warmup call
+         * reached the return, and the warm state split is unknown.
          */
-        netSavingsUsd: z.number().nullable(),
+        history: z.boolean(),
       }),
     ),
     totals: cacheWarmingSavingsSchema.extend({
-      /** Net savings of the days with known warmup cost. */
       netSavingsUsd: z.number(),
-      /** Oracle savings of the days with known warmup cost. */
-      knownCostOracleSavingsUsd: z.number().nonnegative(),
-      /**
-       * Net savings over oracle savings of the days with known warmup cost.
-       * Null with no oracle savings on those days.
-       */
+      /** Oracle savings of the days with live counters. */
+      liveOracleSavingsUsd: z.number().nonnegative(),
+      /** Net savings over oracle savings. Null with no oracle savings. */
       effectiveness: z.number().nullable(),
-      /** Days filled from history, with unknown warmup cost. */
-      unknownCostDays: z.number().int().nonnegative(),
+      /** Days filled from history. The totals include them. */
+      historyDays: z.number().int().nonnegative(),
     }),
   })
   .strict();

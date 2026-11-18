@@ -43,7 +43,7 @@ async function getConnectedState(
 }
 
 /** Initialize the Slack adapter against the repository state adapter. */
-export async function ensureSlackAdapterInitialized(args: {
+async function ensureSlackAdapterInitialized(args: {
   adapter: SlackAdapter;
   state?: StateAdapter | undefined;
 }): Promise<void> {

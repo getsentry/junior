@@ -111,8 +111,3 @@ export function conversationRangeColumns() {
     ),
   };
 }
-
-/** Count distinct UTC activity dates without loading conversation timestamps into the app. */
-export function conversationActiveDaysColumn() {
-  return sql<number>`COUNT(DISTINCT (${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC')::date)::integer`;
-}

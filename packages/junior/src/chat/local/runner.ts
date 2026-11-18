@@ -399,11 +399,14 @@ async function runLocalAgentTurnInContext(
         );
       }
       completeAuthPauseTurn({ conversation, sessionId: turnId });
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await persistThreadStateById(input.conversationId, {
         conversation,
         sandboxRef,
       });
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await deps.authorization.wait();
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await recordAuthorizationCompleted({
         conversationId: input.conversationId,
         kind: pendingAuth.kind,
@@ -417,7 +420,9 @@ async function runLocalAgentTurnInContext(
       });
       // Resuming after authorization starts the next durable session slice.
       completionSliceId += 1;
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       outcome = await runAgent(
+        // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
         await loadLocalPiMessages({
           conversationId: input.conversationId,
         }),

@@ -160,6 +160,7 @@ export async function sendSlackReply(args: {
       isFinalChunk && args.replyAttribution
         ? `${accessibleText}\n\n${escapeSlackMrkdwnText(formatReplyAttribution(args.replyAttribution))}`
         : accessibleText;
+    // oxlint-disable-next-line no-await-in-loop -- Post reply chunks in order; the first one can set the thread root.
     const response = await postSlackMessage({
       channelId: args.channelId,
       threadTs,

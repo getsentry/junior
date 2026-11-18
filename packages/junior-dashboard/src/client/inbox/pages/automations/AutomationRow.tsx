@@ -36,6 +36,7 @@ import { AutomationRunStrip } from "../../../pages/automations/AutomationRunStri
 import { automationProblemSummary } from "../../../pages/automations/AutomationStatus";
 import { useAutomationLifecycle } from "../../../pages/automations/useAutomationLifecycle";
 import { formatRelativeTime, formatRuntime } from "../../../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;
@@ -70,7 +71,6 @@ export function AutomationRow(props: {
   const problem = automationProblemSummary(automation);
   const inactive =
     automation.status === "paused" || automation.status === "completed";
-  const Icon = automation.kind === "scheduled" ? CalendarClock : Zap;
   const ref = useRef<HTMLLIElement>(null);
   useAnimatedHeight(ref, String(props.expanded));
   const regionId = `automation-row-${automation.id}`;
@@ -100,17 +100,11 @@ export function AutomationRow(props: {
           <TriangleAlert
             aria-hidden="true"
             className={cn(
-              "col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center",
+              "col-start-1 row-start-1 mt-[0.25rem] size-3.5 justify-self-center",
               PROBLEM_TONE_CLASS[problem.tone],
             )}
           />
-        ) : (
-          <Icon
-            aria-hidden="true"
-            className="col-start-1 row-start-1 mt-[0.2rem] size-3.5 justify-self-center text-dashboard-text-muted"
-            strokeWidth={1.9}
-          />
-        )}
+        ) : null}
         <div
           className={cn(
             "col-start-2 row-start-1 grid min-w-0 gap-1",
@@ -119,11 +113,13 @@ export function AutomationRow(props: {
         >
           <Link
             aria-label={`Open automation: ${automation.title}`}
-            className="min-w-0 truncate rounded-md text-sm leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="flex min-w-0 rounded-md font-display text-base leading-snug font-medium text-dashboard-text no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             title={automation.title}
             to={to}
           >
-            {automation.title}
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {automation.title}
+            </span>
           </Link>
           <AutomationTriggerLine automation={automation} />
           {problem ? (
@@ -133,7 +129,14 @@ export function AutomationRow(props: {
                 PROBLEM_TONE_CLASS[problem.tone],
               )}
             >
-              <span className="min-w-0 md:truncate" title={problem.message}>
+              <span
+                className={cn(
+                  fadeOverflowClass,
+                  "max-md:overflow-visible max-md:whitespace-normal",
+                )}
+                ref={fadeWhenOverflowing}
+                title={problem.message}
+              >
                 <span className="first-letter:uppercase">
                   {problem.message}
                 </span>
@@ -164,7 +167,10 @@ export function AutomationRow(props: {
               name={automation.createdBy}
               size="list"
             />
-            <span className="max-w-28 truncate">
+            <span
+              className={cn(fadeOverflowClass, "max-w-28")}
+              ref={fadeWhenOverflowing}
+            >
               {automation.ownedByViewer ? "You" : automation.createdBy}
             </span>
           </span>
@@ -249,7 +255,7 @@ function AutomationRowDetail(props: {
               name={automation.createdBy}
               size="list"
             />
-            <span className="truncate">
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
               {automation.ownedByViewer ? "You" : automation.createdBy}
             </span>
           </span>
@@ -264,7 +270,9 @@ function AutomationRowDetail(props: {
                 size={12}
               />
             ) : null}
-            <span className="truncate">{automation.destination.label}</span>
+            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+              {automation.destination.label}
+            </span>
           </span>
         </DetailFact>
       </dl>
@@ -393,7 +401,8 @@ function AutomationTriggerLine({
         size={13}
       />
       <span
-        className="min-w-0 truncate"
+        className={fadeOverflowClass}
+        ref={fadeWhenOverflowing}
         title={
           automation.kind === "scheduled"
             ? automationScheduleLabel(automation)
@@ -414,7 +423,8 @@ function AutomationTriggerLine({
         />
       ) : null}
       <span
-        className="min-w-0 max-w-[45%] shrink-0 truncate"
+        className={cn(fadeOverflowClass, "max-w-[45%] shrink-0")}
+        ref={fadeWhenOverflowing}
         title={automation.destination.label}
       >
         {automation.destination.label}

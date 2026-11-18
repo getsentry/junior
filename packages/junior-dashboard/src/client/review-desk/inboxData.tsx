@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -10,13 +11,14 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import type { InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useLinkedConversationTitles,
   useReviewItemData,
+  useReviewItemStates,
   useReviewItemsData,
 } from "./queries";
 import {
@@ -104,13 +106,56 @@ function useBuildInboxData(input: {
     (id: string) => setLinkedItems((current) => ({ ...current, open: id })),
     [setLinkedItems],
   );
-  const list = useMemo(
+  // The items of the open Inbox row, as the list last showed them. When a
+  // read shows them closed, as when an agent or a Watch closes them, they
+  // stay until the row leaves as it does on Dismiss.
+  const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
+  const holdOpenRow = useCallback(
+    (items: readonly ReviewItemPayload[]) =>
+      setOpenRow((current) =>
+        current.length === items.length &&
+        current.every((item, index) => item === items[index])
+          ? current
+          : items,
+      ),
+    [],
+  );
+  const read = useMemo(
     () =>
       linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
         ? [...loaded, linked]
         : loaded,
     [linked, loaded],
   );
+  // Before the first read, no item has left it.
+  const missing = useMemo(
+    () =>
+      itemsQuery.data
+        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        : [],
+    [itemsQuery.data, openRow, read],
+  );
+  // An item can leave the loaded pages and still be open, so each one's
+  // own read says whether it closed. Until then, it stays.
+  const states = useReviewItemStates(missing.map((item) => item.id));
+  const closedElsewhere = useMemo(
+    () =>
+      // A row with an item still open stays, without the closed ones.
+      missing.length === openRow.length &&
+      states.every((state) => state === "closed")
+        ? missing
+        : [],
+    [missing, openRow, states],
+  );
+  const list = useMemo(() => {
+    const held = missing.flatMap((item, index) => {
+      const state = states[index] ?? "pending";
+      if (state === "pending") return [item];
+      if (state !== "closed") return [state];
+      return closedElsewhere.length > 0 ? [item] : [];
+    });
+    return held.length > 0 ? [...read, ...held] : read;
+  }, [closedElsewhere, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -144,53 +189,69 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
-  const live = list.filter((item) => !sweeper.isSwept(item.id));
+  // A notice about the subject of an ask shows on that ask's row instead,
+  // and sleeps and wakes with it.
+  const { folded: foldedNotices, shown } = foldNotices(
+    list.filter((item) => !sweeper.isSwept(item.id)),
+  );
+  // A Conversation sleeps when the row snoozed for it, in To do (its asks)
+  // or in Conversations (its items), still has the same newest item.
   const sleepingConversations = new Set(
-    inboxBundles(live)
+    [
+      ...inboxBundles(shown),
+      ...inboxBundles(shown.filter((item) => item.kind === "action")),
+    ]
       .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
       .map((bundle) => bundle.conversationId),
   );
   const asleep = (item: ReviewItemPayload) =>
     sleepingConversations.has(item.addedByConversationId) ||
     snoozes.sleeps(item.id, item.id);
-  const awake = live.filter((item) => !asleep(item));
+  const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
 
-  const bundles = inboxBundles(awake);
-  const bundleByConversation = new Map(
-    bundles.map((bundle) => [bundle.conversationId, bundle]),
-  );
-  // To do holds what names the viewer. Asks for Everyone are up for grabs.
+  // To do holds the asks that name the viewer. Asks for Everyone are up for
+  // grabs, and notices are FYI.
+  const asks = awake.filter((item) => item.kind === "action");
   const todoRows = inboxBundles(
-    awake.filter((item) => !itemUpForGrabs(item)),
+    asks.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
-  const grabRows = inboxBundles(awake.filter(itemUpForGrabs));
-  const snoozedRows = inboxBundles(live.filter(asleep));
+  const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
+  const snoozedRows = inboxBundles(shown.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
-  // activity. A Conversation outside the loaded feed joins when it has
-  // open items.
-  const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map((conversation): ConversationRow => ({
-      bundle: bundleByConversation.get(conversation.id),
-      conversation,
-      conversationId: conversation.id,
-      time: activityAt(conversation),
-    })),
-    bundles
-      .filter((bundle) => !conversationById.has(bundle.conversationId))
-      .map((bundle): ConversationRow => ({
-        bundle,
-        conversationId: bundle.conversationId,
-        time: bundle.newest.createdAt,
+  // activity, with its items. A Conversation outside the loaded feed joins
+  // when it has open items.
+  const rowsByTime = (bundles: InboxBundle[]) => {
+    const bundleByConversation = new Map(
+      bundles.map((bundle) => [bundle.conversationId, bundle]),
+    );
+    return withRowsByTime(
+      pinnedFirst(conversations).map((conversation): ConversationRow => ({
+        bundle: bundleByConversation.get(conversation.id),
+        conversation,
+        conversationId: conversation.id,
+        time: activityAt(conversation),
       })),
-  );
+      bundles
+        .filter((bundle) => !conversationById.has(bundle.conversationId))
+        .map((bundle): ConversationRow => ({
+          bundle,
+          conversationId: bundle.conversationId,
+          time: bundle.newest.createdAt,
+        })),
+    );
+  };
+  const conversationRows = rowsByTime(inboxBundles(awake));
+  // The Inbox's own stream leaves notices to its FYI list.
+  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
-  // In flight: every pin, each one click away, and running Conversations in
-  // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
-  // pin with them, then the other pins in the viewer's order.
+  // In flight: every pin and every running Conversation. Running rows come
+  // first, a running pin with them, then the other pins in the viewer's
+  // order. Collapsed, every pin shows, each one click away, and running
+  // Conversations fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
@@ -198,8 +259,8 @@ function useBuildInboxData(input: {
     (conversation) =>
       conversation.status === "active" && !conversation.pinnedAt,
   );
-  const inFlight = [
-    ...running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+  const inFlightFor = (unpinnedRunning: Conversation[]) => [
+    ...unpinnedRunning,
     ...pinned.filter((conversation) => conversation.status === "active"),
     ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
@@ -219,14 +280,25 @@ function useBuildInboxData(input: {
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     awake,
+    /** The open row's items, held after a read shows them all closed. */
+    closedElsewhere,
     conversationById,
     conversationRows,
     counts,
     feed,
+    /** The notices that fold into each ask's row, by the ask's id. */
+    foldedNotices,
+    fyiRows: fyiRows(awake),
+    holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inFlight,
-    inFlightCount: running.length + pinned.length,
+    inboxStreamRows,
+    /** Every in-flight Conversation, in pane order. */
+    inFlight: inFlightFor(running),
+    /** Collapsed In flight: every pin, and running rows up to the limit. */
+    inFlightCollapsed: inFlightFor(
+      running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+    ),
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
     itemPages: scrollPages(itemsQuery),
