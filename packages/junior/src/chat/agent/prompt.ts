@@ -611,8 +611,6 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  /** Skills that the person or the Automation named; the model loads them. */
-  invokedSkillNames: readonly string[];
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -701,7 +699,6 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        invokedSkillNames: args.invokedSkillNames,
         // Only changes that others made after the plan version that history
         // shows. The model's own changes are in its tool results.
         planDelta: planItems

@@ -834,7 +834,6 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      invokedSkillNames,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,

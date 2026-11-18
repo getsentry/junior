@@ -14,7 +14,6 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import { agentInvocationInputText } from "@/chat/agent-invocations/work";
 import { instructionForInputs } from "@/chat/agent/prompt";
-import { buildTurnContextPrompt } from "@/chat/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 
 const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;
@@ -181,27 +180,5 @@ describe("restoreTurnSkills", () => {
     } finally {
       await fs.rm(root, { force: true, recursive: true });
     }
-  });
-});
-
-describe("invoked skills in the Turn context", () => {
-  it("lists the skills that the person named, without their instructions", () => {
-    const context = buildTurnContextPrompt({
-      includeSessionContext: false,
-      invokedSkillNames: ["triage", "release"],
-    });
-
-    expect(context).toContain(
-      ["<invoked-skills>", "- triage", "- release", "</invoked-skills>"].join(
-        "\n",
-      ),
-    );
-    expect(context).not.toContain("<skill>");
-    expect(
-      buildTurnContextPrompt({
-        includeSessionContext: false,
-        invokedSkillNames: [],
-      }),
-    ).toBeNull();
   });
 });

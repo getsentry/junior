@@ -786,8 +786,6 @@ type TurnContextPromptInput = {
   /** From `renderPlanDelta`: plan changes that others made. */
   planDelta?: string | null;
   disabledTools?: DisabledToolPromptContext[];
-  /** Skills that the person named with `$name` this Turn. */
-  invokedSkillNames?: readonly string[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
@@ -879,14 +877,6 @@ export function buildTurnContextPrompt(
         escapeTagTextAndQuotes(params.askerTimezone),
       )
     : null;
-  const invokedSkills = params.invokedSkillNames?.length
-    ? renderTagBlock(
-        REQUEST_CONTEXT_SECTION_TAG.invokedSkills,
-        params.invokedSkillNames
-          .map((name) => `- ${escapeTagTextAndQuotes(name)}`)
-          .join("\n"),
-      )
-    : null;
   const turnInput = buildTurnInputSection(params.turnInput);
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
@@ -899,7 +889,6 @@ export function buildTurnContextPrompt(
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
-    !invokedSkills &&
     !turnInput
   ) {
     return null;
@@ -912,7 +901,6 @@ export function buildTurnContextPrompt(
     disabledTools,
     userCustomization,
     askerTimezone,
-    invokedSkills,
     turnInput,
     includeSessionContext
       ? buildContextSection({

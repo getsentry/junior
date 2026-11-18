@@ -37,6 +37,5 @@ export const REQUEST_CONTEXT_SECTION_TAG = {
   disabledTools: "disabled-tools",
   userCustomization: "user-customization",
   askerTimezone: "asker-timezone",
-  invokedSkills: "invoked-skills",
   turnInput: "turn-input",
 } as const;
