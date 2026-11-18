@@ -391,6 +391,7 @@ async function responseTextWithinLimit(
   let bytes = 0;
   try {
     while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
       const { done, value } = await reader.read();
       if (done) {
         break;
@@ -400,6 +401,7 @@ async function responseTextWithinLimit(
       }
       bytes += value.byteLength;
       if (bytes > limit) {
+        // oxlint-disable-next-line no-await-in-loop -- This runs once, and then the loop stops.
         await reader.cancel().catch(() => undefined);
         return undefined;
       }
@@ -739,6 +741,7 @@ export async function executeCredentialedEgressRequest(input: {
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 
+  /* oxlint-disable no-await-in-loop -- The loop sends the request again only after a 403, and each step waits on the step before. */
   while (true) {
     const headers = requestHeaders(
       request,
@@ -924,4 +927,5 @@ export async function executeCredentialedEgressRequest(input: {
       }),
     };
   }
+  /* oxlint-enable no-await-in-loop */
 }

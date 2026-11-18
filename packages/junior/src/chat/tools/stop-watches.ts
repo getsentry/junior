@@ -74,6 +74,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         for (const { watch } of await listOwnedWatches(
           context.conversationId,
         )) {
+          // oxlint-disable-next-line no-await-in-loop -- Each stop takes the shared timer index lock, so stop one watch at a time.
           const stopped = await stopOwnedWatch({
             conversationId: context.conversationId,
             watch,

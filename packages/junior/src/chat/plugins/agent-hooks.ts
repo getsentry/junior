@@ -32,6 +32,7 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -104,6 +105,7 @@ import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -566,23 +568,52 @@ export function applyPluginFormatMarkdown(
   return transformed;
 }
 
+type PluginHookOutcome<T> =
+  | { error: unknown; plugin: PluginRegistration }
+  | { plugin: PluginRegistration; value: T };
+
+/**
+ * Run one hook of each plugin at once. `start` gives the call for a plugin,
+ * or nothing when the plugin has no such hook. The outcomes keep plugin
+ * order, so budgets and output order do not depend on which hook ends first.
+ */
+async function runPluginHooksAtOnce<T>(
+  plugins: readonly PluginRegistration[],
+  start: (plugin: PluginRegistration) => (() => Promise<T> | T) | undefined,
+): Promise<PluginHookOutcome<T>[]> {
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  return await Promise.all(
+    plugins.flatMap((plugin) => {
+      const run = start(plugin);
+      return run
+        ? [
+            limit(run).then(
+              (value): PluginHookOutcome<T> => ({ plugin, value }),
+              (error: unknown): PluginHookOutcome<T> => ({ error, plugin }),
+            ),
+          ]
+        : [];
+    }),
+  );
+}
+
 /** Collect stable plugin prompt contributions for the static system prompt. */
 export async function getPluginSystemPromptContributions(
   platform: Platform,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const pluginContributions = await hook({
-        ...systemPromptPluginContext(plugin),
-        platform,
-      });
+      if ("error" in outcome) throw outcome.error;
+      const pluginContributions = outcome.value;
       const result =
         systemPromptMessageArraySchema.safeParse(pluginContributions);
       if (!result.success) {
@@ -642,26 +673,31 @@ export async function getPluginUserPromptContributions(args: {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
     const hook = plugin.hooks?.userPrompt;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook &&
+      (() =>
+        withPluginHookSpan(
+          plugin.manifest.name,
+          "userPrompt",
+          async (setSpanAttributes) =>
+            await hook({
+              ...invocationPluginContext(
+                plugin,
+                args.context,
+                setSpanAttributes,
+                args.turnId,
+              ),
+            }),
+        ))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const rawResult = await withPluginHookSpan(
-        pluginName,
-        "userPrompt",
-        async (setSpanAttributes) =>
-          await hook({
-            ...invocationPluginContext(
-              plugin,
-              args.context,
-              setSpanAttributes,
-              args.turnId,
-            ),
-          }),
-      );
+      if ("error" in outcome) throw outcome.error;
+      const rawResult = outcome.value;
       if (rawResult === undefined) {
         continue;
       }
@@ -1616,20 +1652,27 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
-    const pluginName = plugin.manifest.name;
-    const hook = plugin.hooks?.operationalReport;
-    if (!hook) {
-      continue;
-    }
+  const outcomes = await runPluginHooksAtOnce(
+    [...coreTaskRegistrations(), ...getPlugins()],
+    (plugin) => {
+      const hook = plugin.hooks?.operationalReport;
+      return (
+        hook &&
+        (() =>
+          hook({
+            ...basePluginContext(plugin),
+            eventStats: createPluginConversationEventStats(plugin, () => nowMs),
+            nowMs,
+            state: pluginReadState(createPluginState(plugin.manifest.name)),
+          }))
+      );
+    },
+  );
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const state = createPluginState(pluginName);
-      const report = await hook({
-        ...basePluginContext(plugin),
-        eventStats: createPluginConversationEventStats(plugin, () => nowMs),
-        nowMs,
-        state: pluginReadState(state),
-      });
+      if ("error" in outcome) throw outcome.error;
+      const report = outcome.value;
       if (!report) {
         continue;
       }
@@ -1657,21 +1700,25 @@ export async function getPluginProfileReports(args: {
   viewer: User;
 }): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
     const hook = plugin.hooks?.profileReport;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook &&
+      (() =>
+        hook({
+          ...basePluginContext(plugin),
+          nowMs: args.nowMs,
+          state: pluginReadState(createPluginState(plugin.manifest.name)),
+          subject: args.subject,
+          viewer: args.viewer,
+        }))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const state = createPluginState(pluginName);
-      const report = await hook({
-        ...basePluginContext(plugin),
-        nowMs: args.nowMs,
-        state: pluginReadState(state),
-        subject: args.subject,
-        viewer: args.viewer,
-      });
+      if ("error" in outcome) throw outcome.error;
+      const report = outcome.value;
       if (!report) {
         continue;
       }
@@ -1746,6 +1793,7 @@ export function createPluginHookRunner(
             })
           : undefined;
         try {
+          // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
           const result = await hook({
             ...basePluginContext(plugin),
             ...(tool.conversationId
@@ -1763,6 +1811,7 @@ export function createPluginHookRunner(
           });
           if (result && tool.conversationId) {
             cards.push(
+              // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
               ...(await saveObjectAnnotations(
                 tool.conversationId,
                 plugin.manifest.name,
@@ -1826,6 +1875,7 @@ export function createPluginHookRunner(
             repo: repo.repo,
           }));
         if (selected.length === 0) continue;
+        // oxlint-disable-next-line no-await-in-loop -- Plugins prepare the same sandbox, so one runs at a time.
         const finalize = await hook({
           ...basePluginContext(plugin),
           repos: selected,
@@ -1834,6 +1884,7 @@ export function createPluginHookRunner(
         if (finalize) finalizers.push(finalize);
       }
       return async () => {
+        // oxlint-disable-next-line no-await-in-loop -- Finish workspaces in the order that plugins prepared them.
         for (const finalize of finalizers) await finalize();
       };
     },
@@ -1848,6 +1899,7 @@ export function createPluginHookRunner(
         logInfo("agent.plugin.sandbox_preparation.started", {
           "app.plugin.name": pluginName,
         });
+        // oxlint-disable-next-line no-await-in-loop -- Plugins prepare the same sandbox, so one runs at a time.
         await withPluginHookSpan(
           pluginName,
           "sandboxPrepare",
@@ -1875,6 +1927,7 @@ export function createPluginHookRunner(
         }
         let replacement: Record<string, unknown> | undefined;
         let blocked: PluginToolDeniedError | ToolInputError | undefined;
+        // oxlint-disable-next-line no-await-in-loop -- Each hook gets the arguments that the hook before it replaced.
         await withPluginHookSpan(
           pluginName,
           "beforeToolExecute",

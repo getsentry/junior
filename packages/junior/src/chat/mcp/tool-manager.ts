@@ -15,6 +15,7 @@ import {
   type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import {
   logAudit,
   logWarn,
@@ -33,6 +34,7 @@ import {
   estimateTextTokens,
   textCharsForTokens,
 } from "@/chat/services/token-estimate";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
@@ -456,19 +458,17 @@ export class McpToolManager {
   }
 
   async close(): Promise<void> {
-    let firstError: unknown;
-
-    for (const client of [
-      ...this.clientsByProvider.values(),
-      ...this.actorClientsByProvider.values(),
-      ...this.forgottenClients,
-    ]) {
-      try {
-        await client.close();
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
+    const limit = pLimit(FAN_OUT_CONCURRENCY);
+    const closed = await Promise.allSettled(
+      [
+        ...this.clientsByProvider.values(),
+        ...this.actorClientsByProvider.values(),
+        ...this.forgottenClients,
+      ].map((client) => limit(() => client.close())),
+    );
+    const firstError: unknown = closed.find(
+      (result) => result.status === "rejected",
+    )?.reason;
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();

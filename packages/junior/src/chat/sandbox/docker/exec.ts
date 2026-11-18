@@ -90,10 +90,12 @@ async function demux(
 
 async function waitForExit(execId: string): Promise<number> {
   for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the command ends.
     const inspect = await dockerJson<ExecInspect>({
       path: `/exec/${execId}/json`,
     });
     if (!inspect.Running) return inspect.ExitCode ?? -1;
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next exit check.
     await sleep(EXIT_POLL_MS);
   }
 }
@@ -269,6 +271,7 @@ export async function waitForDetachedCommand(
 }> {
   for (;;) {
     signal.throwIfAborted();
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the command ends.
     const exit = await readCommandFile(containerId, id, "exit", signal);
     if (exit !== null) {
       return {
@@ -279,6 +282,7 @@ export async function waitForDetachedCommand(
           (await readCommandFile(containerId, id, "stderr")) ?? "",
       };
     }
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next exit check.
     await sleep(EXIT_POLL_MS, signal);
   }
 }

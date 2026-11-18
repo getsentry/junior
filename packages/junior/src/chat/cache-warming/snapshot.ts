@@ -30,6 +30,8 @@ import type {
   Message,
   TextContent,
 } from "@earendil-works/pi-ai/compat";
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { KEY_PREFIX, type ConnectedState } from "./request";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
@@ -178,11 +180,22 @@ export async function loadSnapshot(
   const context = JSON.parse(
     (await zstdDecompress(Buffer.from(snapshot, "base64"))).toString("utf8"),
   ) as Context;
-  for (const part of context.messages.flatMap(imageParts)) {
-    if (!part.data.startsWith(IMAGE_REF_PREFIX)) continue;
-    const sha256 = part.data.slice(IMAGE_REF_PREFIX.length);
-    const data = await state.get<string>(imageKey(conversationId, sha256));
-    if (data === null) {
+  const parts = context.messages
+    .flatMap(imageParts)
+    .filter((part) => part.data.startsWith(IMAGE_REF_PREFIX));
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const images = await Promise.all(
+    parts.map((part) =>
+      limit(() =>
+        state.get<string>(
+          imageKey(conversationId, part.data.slice(IMAGE_REF_PREFIX.length)),
+        ),
+      ),
+    ),
+  );
+  for (const [index, part] of parts.entries()) {
+    const data = images[index];
+    if (data === null || data === undefined) {
       return "image_missing";
     }
     part.data = data;

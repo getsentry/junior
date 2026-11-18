@@ -108,6 +108,7 @@ export async function runAfterToolExecuteHooks(args: {
     });
     let denial: string | undefined;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- A denial stops the hooks after it, and an abort skips them.
       await withPluginHookSpan(
         pluginName,
         "afterToolExecute",
