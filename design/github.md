@@ -49,6 +49,6 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
-- Junior can still upload a file to GitHub with the requester's account.
+- Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
