@@ -97,6 +97,12 @@ export const juniorTurnInbox = pgTable(
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     // The source's id for the input, such as a Slack event id.
     idempotencyKey: text("idempotency_key").notNull(),
+    // The trace of the source request, so the Turn that takes the input
+    // continues it.
+    traceContext: jsonb("trace_context").$type<{
+      sentryTrace: string;
+      baggage?: string;
+    }>(),
     turnId: uuid("turn_id").references(() => juniorTurns.id),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
