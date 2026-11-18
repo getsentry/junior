@@ -189,19 +189,25 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
-  const live = list.filter((item) => !sweeper.isSwept(item.id));
+  // A notice about the subject of an ask shows on that ask's row instead,
+  // and sleeps and wakes with it.
+  const { folded: foldedNotices, shown } = foldNotices(
+    list.filter((item) => !sweeper.isSwept(item.id)),
+  );
+  // A Conversation sleeps when the row snoozed for it, in To do (its asks)
+  // or in Conversations (its items), still has the same newest item.
   const sleepingConversations = new Set(
-    inboxBundles(live)
+    [
+      ...inboxBundles(shown),
+      ...inboxBundles(shown.filter((item) => item.kind === "action")),
+    ]
       .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
       .map((bundle) => bundle.conversationId),
   );
   const asleep = (item: ReviewItemPayload) =>
     sleepingConversations.has(item.addedByConversationId) ||
     snoozes.sleeps(item.id, item.id);
-  // A notice about the subject of an ask shows on that ask's row instead.
-  const { folded: foldedNotices, shown: awake } = foldNotices(
-    live.filter((item) => !asleep(item)),
-  );
+  const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
@@ -213,7 +219,7 @@ function useBuildInboxData(input: {
     asks.filter((item) => !itemUpForGrabs(item)),
   ).filter((bundle) => bundle.needsYou);
   const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
-  const snoozedRows = inboxBundles(live.filter(asleep));
+  const snoozedRows = inboxBundles(shown.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity, with its items. A Conversation outside the loaded feed joins

@@ -93,6 +93,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(asks.getByRole("region", { name: card })).toBeVisible();
   });
 
+  test("a snoozed ask sleeps with the newer notice folded into it", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [pinReview, pinConflict] });
+    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const asks = todo.getByRole("region", { name: /: asks$/ });
+    await asks.getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "3 hours" }).click();
+    // The row leaves To do, and its notice does not move to FYI.
+    await expect(rowHead(todo, "Package release and self-update")).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("region", { name: "FYI" })).toHaveCount(0);
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Snoozed/ })
+      .click();
+    await expect(
+      rowHead(page, "Package release and self-update"),
+    ).toBeVisible();
+  });
+
   test("a lone notice is FYI: out of To do and its count, and it snoozes", async ({
     dashboard,
     page,
