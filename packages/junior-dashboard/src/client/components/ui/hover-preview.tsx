@@ -89,7 +89,8 @@ export function HoverPreview(props: {
               "aria-expanded": allowed && open,
               "aria-haspopup": "dialog" as const,
               onClick: (event: MouseEvent) => {
-                if (!touch || (allowed && open)) return;
+                // With previews gated, a tap follows the link: no card can open.
+                if (!touch || !allowed || open) return;
                 event.preventDefault();
                 setOpen(true);
               },
