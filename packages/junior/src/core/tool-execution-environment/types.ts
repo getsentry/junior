@@ -1,3 +1,5 @@
+import type { ExecOptions, ExecResult } from "@/core/sandbox/types";
+
 /**
  * The machine where a tool runs commands and reads and writes files. A Vercel
  * Sandbox, a Docker container, and the local machine each implement it. Tools
@@ -32,41 +34,4 @@ export type ToolExecutionEnvironment = {
     content: Uint8Array,
     signal: AbortSignal,
   ): Promise<void>;
-};
-
-/** Options for one `exec` call. */
-export type ExecOptions = {
-  signal: AbortSignal;
-  /** Directory to start in. Defaults to `cwd`. */
-  cwd?: string;
-  /**
-   * Variables to add to the command's environment. Never put credentials or
-   * other secrets here: every process in the environment, including code the
-   * model writes, can read them, and they can end up in output and traces.
-   * Credentialed requests go through the host egress proxy instead.
-   */
-  env?: Record<string, string>;
-  timeoutMs?: number;
-  /**
-   * Gets each chunk of output when it arrives, in arrival order across stdout
-   * and stderr. The environment does not keep the output, so the caller keeps
-   * only what it needs. The command never waits for this callback.
-   */
-  onOutputChunk(chunk: OutputChunk): void;
-};
-
-/**
- * One piece of a command's output as text. Each stream is decoded as UTF-8 on
- * its own, so a character split across chunks is kept. Vercel Sandbox sends
- * output only as text, so a command whose output is binary writes it to a
- * file, and the caller reads the file.
- */
-export type OutputChunk = {
-  stream: "stdout" | "stderr";
-  text: string;
-};
-
-/** How a command exited. The output went to `onOutputChunk`. */
-export type ExecResult = {
-  exitCode: number;
 };
