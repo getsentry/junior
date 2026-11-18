@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -21,6 +22,9 @@ import {
   juniorIdentities,
   juniorReviewItemConversations,
   juniorReviewItems,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -75,6 +79,46 @@ async function setVisibility(
     .update(juniorDestinations)
     .set({ visibility })
     .where(eq(juniorDestinations.id, destinationId));
+}
+
+/** Add a Turn that took one input, as the Turn engine writes them. */
+async function seedTurn(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<string> {
+  await executor
+    .db()
+    .insert(juniorIdentities)
+    .values({
+      createdAt: new Date(BASE_MS),
+      id: "identity:turn-actor",
+      kind: "user",
+      provider: "slack",
+      providerSubjectId: "U-turn",
+      providerTenantId: "T1",
+      updatedAt: new Date(BASE_MS),
+    })
+    .onConflictDoNothing();
+  const turnId = randomUUID();
+  await executor.db().insert(juniorTurns).values({
+    id: turnId,
+    conversationId,
+    actorIdentityId: "identity:turn-actor",
+    state: "queued",
+  });
+  await executor
+    .db()
+    .insert(juniorTurnInbox)
+    .values({
+      id: randomUUID(),
+      conversationId,
+      kind: "message",
+      actorIdentityId: "identity:turn-actor",
+      payload: { text: "private input" },
+      idempotencyKey: `slack-event:${conversationId}`,
+      turnId,
+    });
+  return turnId;
 }
 
 describe("retention purge job", () => {
@@ -326,6 +370,24 @@ describe("retention purge job", () => {
         updatedAt: new Date(BASE_MS),
       });
 
+    const childTurnId = await seedTurn(fixture.sql, "child");
+    await fixture.sql
+      .db()
+      .insert(juniorTurnOutbox)
+      .values({
+        id: randomUUID(),
+        conversationId: "child",
+        turnId: childTurnId,
+        eventSeq: 0,
+        location: {
+          id: "location:C123",
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        state: "pending",
+      });
+
     // The child is never a purge candidate on its own: it rides the root.
     const result = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 30 * DAY_MS,
@@ -344,6 +406,15 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorAgentInvocations),
     ).resolves.toEqual([]);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnOutbox),
+    ).resolves.toEqual([]);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnInbox),
+    ).resolves.toEqual([]);
+    await expect(fixture.sql.db().select().from(juniorTurns)).resolves.toEqual(
+      [],
+    );
   });
 
   it("uses the freshest activity in the tree for selection and destructive recheck", async () => {
@@ -461,6 +532,29 @@ describe("retention purge job", () => {
 
     expect(result.purged).toBe(1);
     expect(await eventCount(fixture.sql, "remaining-child")).toBe(0);
+  });
+
+  it("selects and purges a tree whose remaining content is only a Turn input", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "turn-root",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS,
+      withContent: false,
+    });
+    await seedTurn(fixture.sql, "turn-root");
+
+    const result = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+
+    expect(result.purged).toBe(1);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnInbox),
+    ).resolves.toEqual([]);
+    await expect(fixture.sql.db().select().from(juniorTurns)).resolves.toEqual(
+      [],
+    );
   });
 
   it("selects and purges a tree whose remaining content is only an agent binding", async () => {

@@ -12,6 +12,8 @@ import {
   juniorAgentBindings,
   juniorAgentInvocations,
   juniorReviewItems,
+  juniorTurnInbox,
+  juniorTurns,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
@@ -134,6 +136,14 @@ export async function selectExpiredRoots(
         select 1 from junior_plan_items plan_items
         where plan_items.conversation_id = tree.conversation_id
       )
+      or exists (
+        select 1 from junior_turns turns
+        where turns.conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_turn_inbox inbox
+        where inbox.conversation_id = tree.conversation_id
+      )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
         and (
@@ -196,7 +206,8 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. Plan items go with the transcript.
+ * conversations keep only safe metadata. Plan items, Turns, and Turn inputs
+ * and deliveries go with the transcript.
  * Non-public content also loses its Briefs and the Review items that it
  * added. The metadata rows themselves survive.
  */
@@ -301,11 +312,21 @@ export async function purgeConversationTree(
               return { purged: false, conversations: 0 };
             }
           }
+          // The outbox rows go with their events.
           await executor
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
           await deleteMessageLinks(executor, ids);
+          // Inbox rows hold message text. They refer to Turns, so they go first.
+          await executor
+            .db()
+            .delete(juniorTurnInbox)
+            .where(inArray(juniorTurnInbox.conversationId, ids));
+          await executor
+            .db()
+            .delete(juniorTurns)
+            .where(inArray(juniorTurns.conversationId, ids));
           await executor
             .db()
             .delete(juniorAgentInvocations)
