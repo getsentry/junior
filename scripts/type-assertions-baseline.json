@@ -168,7 +168,7 @@
   "packages/junior/src/chat/sandbox/sandbox.ts": 10,
   "packages/junior/src/chat/sandbox/session.ts": 1,
   "packages/junior/src/chat/sandbox/skill-sandbox.ts": 1,
-  "packages/junior/src/chat/sandbox/skill-sync.ts": 3,
+  "packages/junior/src/chat/sandbox/skill-sync.ts": 2,
   "packages/junior/src/chat/sentry-payload-filter.ts": 1,
   "packages/junior/src/chat/services/automated-turn-limit.ts": 1,
   "packages/junior/src/chat/services/context-compaction-marker.ts": 4,

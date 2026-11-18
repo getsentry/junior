@@ -11,8 +11,10 @@ on:
       - releases/**
       - release-*
       - auto-release/**
+      # Integration branch for the rewritten core agent loop.
+      - core-next
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

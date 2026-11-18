@@ -103,6 +103,7 @@ async function shrinkImage(
       fit: "inside",
       withoutEnlargement: true,
     });
+    // oxlint-disable-next-line no-await-in-loop -- Try a smaller edge only when the one before is too large.
     const { data, info } = await (
       hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
     ).toBuffer({ resolveWithObject: true });
@@ -145,6 +146,7 @@ async function fitImagesToRequest(images: InputImage[]): Promise<{
       remainingBytes -= image.data.byteLength;
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each share uses the bytes that the images before it left.
     const smaller = await shrinkImage(image, share);
     fitted[index] = smaller.image;
     remainingBytes -= smaller.image.data.byteLength;
