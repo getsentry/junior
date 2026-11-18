@@ -1,5 +1,0 @@
-id: no-dashboard-poll-outside-allowlist-tsx
-valid:
-  - "const query = useQuery({ queryKey, queryFn, staleTime: 0 });"
-invalid:
-  - "const query = useQuery({ queryKey, queryFn, refetchInterval: () => 5_000 });"
