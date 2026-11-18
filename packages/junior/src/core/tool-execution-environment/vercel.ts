@@ -61,11 +61,11 @@ function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
   return {
     cwd: session.cwd,
     exec: (argv, options) =>
-      mapStoppedToUnavailable(id, () => exec(session, argv, options)),
+      callOrThrowUnavailable(id, () => exec(session, argv, options)),
     readFile: (path, signal) =>
-      mapStoppedToUnavailable(id, () => readFile(session, path, signal)),
+      callOrThrowUnavailable(id, () => readFile(session, path, signal)),
     writeFile: (path, content, signal) =>
-      mapStoppedToUnavailable(id, () =>
+      callOrThrowUnavailable(id, () =>
         session.writeFiles([{ path, content }], { signal }),
       ),
   };
@@ -73,7 +73,7 @@ function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
 
 // Callers own the lifecycle and must not import the Vercel SDK, so a stopped
 // session becomes the one provider-neutral error that tells them to resume.
-async function mapStoppedToUnavailable<T>(
+async function callOrThrowUnavailable<T>(
   id: string,
   operation: () => Promise<T>,
 ): Promise<T> {
