@@ -1,5 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import pLimit from "p-limit";
 import type { AgentDurability } from "@/chat/agent/types";
 import {
   Message,
@@ -64,7 +63,7 @@ import {
 } from "@/chat/task-execution/attempt-selection";
 import type { TurnRecord } from "@/chat/task-execution/checkpoint";
 import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 // Slack authors that one backfill looks up at once.
 const SLACK_AUTHOR_LOOKUP_CONCURRENCY = 5;
@@ -503,7 +502,6 @@ export async function clearSlackPendingReactions(args: {
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const clear = async (record: InboundMessage) => {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
@@ -531,10 +529,9 @@ export async function clearSlackPendingReactions(args: {
       });
     }
   };
-  await Promise.all(
-    args.messages
-      .filter((record) => record.source === "slack")
-      .map((record) => limit(() => clear(record))),
+  await mapBounded(
+    args.messages.filter((record) => record.source === "slack"),
+    clear,
   );
 }
 
@@ -591,33 +588,32 @@ async function bindSlackActorIdentities(args: {
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
 
-  const limit = pLimit(SLACK_AUTHOR_LOOKUP_CONCURRENCY);
-  await Promise.all(
-    [...byAuthorId].map(([authorId, messages]) =>
-      limit(async () => {
-        const profile = await lookupSlackUser(args.teamId, authorId);
-        await Promise.all(
-          messages.map((message) =>
-            ensureSlackMessageActorIdentity(
-              message,
-              args.teamId,
-              async () => profile,
-            ),
+  await mapBounded(
+    [...byAuthorId],
+    async ([authorId, messages]) => {
+      const profile = await lookupSlackUser(args.teamId, authorId);
+      await Promise.all(
+        messages.map((message) =>
+          ensureSlackMessageActorIdentity(
+            message,
+            args.teamId,
+            async () => profile,
           ),
+        ),
+      );
+      if (profile && messages.some(getMessageAuthorIdentityId)) {
+        // Ingress resolved the Identity without a profile lookup. Save the
+        // profile names on it. Message writes never saved the email.
+        await resolveActorIdentityId(
+          getSqlExecutor(),
+          createSlackActor(args.teamId, authorId, {
+            fullName: profile.fullName,
+            userName: profile.userName,
+          }),
         );
-        if (profile && messages.some(getMessageAuthorIdentityId)) {
-          // Ingress resolved the Identity without a profile lookup. Save the
-          // profile names on it. Message writes never saved the email.
-          await resolveActorIdentityId(
-            getSqlExecutor(),
-            createSlackActor(args.teamId, authorId, {
-              fullName: profile.fullName,
-              userName: profile.userName,
-            }),
-          );
-        }
-      }),
-    ),
+      }
+    },
+    SLACK_AUTHOR_LOOKUP_CONCURRENCY,
   );
 }
 

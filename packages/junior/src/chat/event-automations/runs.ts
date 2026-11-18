@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import pLimit from "p-limit";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -14,7 +13,7 @@ import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 /**
  * Record a dispatched event automation run with the Automation version it ran,
@@ -66,10 +65,7 @@ export async function settleEventAutomationRuns(
         eq(juniorAutomationRuns.status, "running"),
       ),
     );
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const dispatches = await Promise.all(
-    runs.map((run) => limit(() => getDispatchRecord(run.id))),
-  );
+  const dispatches = await mapBounded(runs, (run) => getDispatchRecord(run.id));
   for (const [index, run] of runs.entries()) {
     const dispatch = dispatches[index];
     const status = dispatch?.status ?? "failed";

@@ -30,10 +30,10 @@ const MAGNIFY_STORAGE_KEY = "junior:inbox:magnify";
 
 /**
  * Edit the browser-only choice to magnify the Inbox card under the pointer.
- * On by default, so people opt out.
+ * Off by default, so people opt in.
  */
 export function useInboxMagnify() {
-  return useLocalStorage<boolean>(MAGNIFY_STORAGE_KEY, true);
+  return useLocalStorage<boolean>(MAGNIFY_STORAGE_KEY, false);
 }
 
 /**

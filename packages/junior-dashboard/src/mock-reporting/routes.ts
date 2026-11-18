@@ -490,18 +490,26 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
-    if ("event" in query.data || "turn" in query.data) {
+    if (
+      "event" in query.data ||
+      "message" in query.data ||
+      "turn" in query.data
+    ) {
       const around = readMockConversationEventsAround(
         params.data.conversationId,
         "event" in query.data
           ? { event: query.data.event }
-          : { turn: query.data.turn },
+          : "message" in query.data
+            ? { message: query.data.message }
+            : { turn: query.data.turn },
       );
       return around === "turn-not-found"
         ? errorResponse("Turn not found.", 404)
-        : around
-          ? jsonResponse(conversationEventPageSchema, around)
-          : errorResponse("Conversation not found.", 404);
+        : around === "message-not-found"
+          ? errorResponse("Message not found.", 404)
+          : around
+            ? jsonResponse(conversationEventPageSchema, around)
+            : errorResponse("Conversation not found.", 404);
     }
     // Mock details fit one page and have no unread cursor, so mock history
     // pages only backward from cursors.

@@ -148,6 +148,7 @@
       "files": ["src/**"],
       "rules": {
         "junior/bounded-fan-out": "error",
+        "junior/prefer-map-bounded": "error",
         "no-await-in-loop": "error"
       }
     },

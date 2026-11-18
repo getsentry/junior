@@ -11,7 +11,6 @@
  */
 import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
-import pLimit from "p-limit";
 import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
@@ -180,7 +179,7 @@ import {
   recordToolBatch,
   toolBatchSpanAttributes,
 } from "@/chat/agent/tool-batch";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 // Past a turn limit, a gated Turn gets this many failed answer calls before
@@ -485,11 +484,8 @@ async function executeAgentRunInPrivacyContext(
     if (!mcpToolManager) {
       return;
     }
-    const limit = pLimit(FAN_OUT_CONCURRENCY);
-    await Promise.all(
-      mcpToolManager
-        .getActiveProviders()
-        .map((provider) => limit(() => recordConnectedMcpProvider(provider))),
+    await mapBounded(mcpToolManager.getActiveProviders(), (provider) =>
+      recordConnectedMcpProvider(provider),
     );
   };
   try {

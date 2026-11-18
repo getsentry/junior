@@ -7,7 +7,6 @@
  * `conversation:by-activity` supports legacy SQL import only; SQL owns durable
  * conversation metadata in configured runtime.
  */
-import pLimit from "p-limit";
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
@@ -25,7 +24,7 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import {
   normalizeMessageSenders,
   withMessageSenders,
@@ -2762,24 +2761,19 @@ export async function listConversationsByActivity(
     offset: args.offset,
     order: "desc",
   });
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const reads = await Promise.all(
-    entries.map((entry) =>
-      limit(async () => {
-        try {
-          return {
-            conversation: await readConversation(state, entry.conversationId),
-            entry,
-          };
-        } catch (error) {
-          if (!(error instanceof InvalidConversationRecordError)) {
-            throw error;
-          }
-          return { conversation: undefined, entry, invalid: true };
-        }
-      }),
-    ),
-  );
+  const reads = await mapBounded(entries, async (entry) => {
+    try {
+      return {
+        conversation: await readConversation(state, entry.conversationId),
+        entry,
+      };
+    } catch (error) {
+      if (!(error instanceof InvalidConversationRecordError)) {
+        throw error;
+      }
+      return { conversation: undefined, entry, invalid: true };
+    }
+  });
   const conversations: ConversationExecutionState[] = [];
   for (const read of reads) {
     if (read.conversation) {

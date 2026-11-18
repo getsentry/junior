@@ -9,14 +9,13 @@ import {
   type EventMatch,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import pLimit from "p-limit";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -644,17 +643,15 @@ export async function collectEventMatchKeys(input: {
   const identifiers = new Set(
     input.identifiers.map((value) => value.trim()).filter(Boolean),
   );
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const recordsByIdentifier = await Promise.all(
-    [...identifiers].map((identifier) =>
-      limit(async () => {
-        const ids = await readSubscriptionIdIndex(
-          state,
-          resourceIndexKey(input.namespace, identifier),
-        );
-        return { identifier, records: await readSubscriptions(state, ids) };
-      }),
-    ),
+  const recordsByIdentifier = await mapBounded(
+    identifiers,
+    async (identifier) => {
+      const ids = await readSubscriptionIdIndex(
+        state,
+        resourceIndexKey(input.namespace, identifier),
+      );
+      return { identifier, records: await readSubscriptions(state, ids) };
+    },
   );
   for (const { identifier, records } of recordsByIdentifier) {
     for (const record of records) {

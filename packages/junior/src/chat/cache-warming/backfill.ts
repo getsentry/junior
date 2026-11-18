@@ -35,7 +35,6 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import pLimit from "p-limit";
 import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -50,7 +49,7 @@ import {
   juniorConversationEvents,
   juniorConversations,
 } from "@/db/schema";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -647,14 +646,11 @@ export async function backfillCacheWarmingGaps(args: {
       // Check before the scan, so live gaps that arrive during the scan do
       // not stop the fill. A list that has gaps now has live gaps, or gaps
       // from a run that failed while it wrote. Both are kept as they are.
-      const limit = pLimit(FAN_OUT_CONCURRENCY);
       const segments = [...BACKFILL_SEGMENTS];
-      const gapCounts = await Promise.all(
-        segments.map((segment) =>
-          limit(
-            async () => (await state.getList(segmentGapsKey(segment))).length,
-          ),
-        ),
+      const gapCounts = await mapBounded(
+        segments,
+        async (segment) =>
+          (await state.getList(segmentGapsKey(segment))).length,
       );
       const emptySegments = new Set(
         segments.filter((_segment, index) => gapCounts[index] === 0),

@@ -270,7 +270,7 @@ describe("conversation event list API", () => {
     expect(around.events.map((event) => event.seq)).toEqual(seqs(226, 150));
   });
 
-  it("opens the page around a linked event or Turn", async () => {
+  it("opens the page around a linked event, Turn, or Message", async () => {
     const conversationId = "local:test:linked-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
@@ -307,6 +307,11 @@ describe("conversation event list API", () => {
     // A Turn link opens at the event that started the Turn.
     const turnPage = await readPage("turn=turn-linked");
     expect(turnPage.events.map((event) => event.seq)).toEqual([9, 10, 11, 12]);
+    // A Message link opens at the event that stored the Message.
+    const messagePage = await readPage("message=later-2");
+    expect(messagePage.events.map((event) => event.seq)).toEqual([
+      12, 13, 14, 15,
+    ]);
 
     const missingTurn = await app.request(
       `http://localhost/api/conversations/${conversationId}/events?turn=turn-missing`,
@@ -315,6 +320,10 @@ describe("conversation event list API", () => {
     expect(apiErrorSchema.parse(await missingTurn.json())).toEqual({
       error: "Turn not found.",
     });
+    const missingMessage = await app.request(
+      `http://localhost/api/conversations/${conversationId}/events?message=message-missing`,
+    );
+    expect(missingMessage.status).toBe(404);
   });
 
   it("keeps recorded models and call usage across page boundaries", async () => {

@@ -1,7 +1,7 @@
-import pLimit from "p-limit";
 import { AwsClient } from "aws4fetch";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { rangeHeader, type AttachmentStorage } from "./storage";
+import { mapBounded } from "@/chat/fan-out";
 
 // S3 objects that one delete removes at once.
 const S3_DELETE_CONCURRENCY = 8;
@@ -172,21 +172,20 @@ export function createS3AttachmentStorage(
       return response.body;
     },
     async delete(keys) {
-      const limit = pLimit(S3_DELETE_CONCURRENCY);
-      await Promise.all(
-        keys.map((key) =>
-          limit(async () => {
-            const response = await client.fetch(objectUrl(config, key), {
-              method: "DELETE",
-            });
-            // S3 returns 204 for a missing key. Some local servers return 404.
-            if (response.status === 404) {
-              await drain(response);
-              return;
-            }
-            await expectOk(response, "delete");
-          }),
-        ),
+      await mapBounded(
+        keys,
+        async (key) => {
+          const response = await client.fetch(objectUrl(config, key), {
+            method: "DELETE",
+          });
+          // S3 returns 204 for a missing key. Some local servers return 404.
+          if (response.status === 404) {
+            await drain(response);
+            return;
+          }
+          await expectOk(response, "delete");
+        },
+        S3_DELETE_CONCURRENCY,
       );
     },
   };
