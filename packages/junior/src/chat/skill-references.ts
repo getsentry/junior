@@ -13,7 +13,6 @@ function isCommonEnvironmentVariable(name: string): boolean {
     "TMP",
     "TMPDIR",
     "USER",
-    "XDG_CONFIG_HOME",
   ].includes(name.toUpperCase());
 }
 
@@ -28,10 +27,13 @@ export function skillReferences(
 ): string[] {
   const isSkill = (name: string) =>
     availableSkills.some((skill) => skill.name === name);
-  // Any non-word character can come before `$`, so `$name` also matches
-  // after a tag, such as `<instructions>$name` in an Automation run, or in
-  // Slack code. A word before it, such as `US$5`, is not a reference.
-  const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
+  // Any character but a letter, digit, or `$` can come before `$`: a tag,
+  // such as `<instructions>$name`, Slack code, or Slack italics
+  // (`_$name_`). `US$5` is not a reference. The name must end where the
+  // reference ends, so `$BETA_TOKEN` or `$weather-lookup-v2` does not
+  // reference `beta` or `weather-lookup`. A closing `_` can follow.
+  const dollarPattern =
+    /(?<![a-z0-9$])\$([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9]|[-_][a-z0-9])/gi;
   // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
   const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
   const matches = (pattern: RegExp) =>

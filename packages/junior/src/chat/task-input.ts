@@ -207,6 +207,28 @@ function authorMessageLines(
   ];
 }
 
+const TASK_INSTRUCTIONS_OPEN = "<instructions>";
+const TASK_INSTRUCTIONS_CLOSE = "</instructions>";
+
+/**
+ * Return the `<instructions>` text of a `renderTaskInput` task, without its
+ * tag. Event text comes after the instructions and has its `<` escaped, so
+ * it cannot add or end this tag.
+ */
+export function readTaskInstructions(text: string): string | undefined {
+  if (!text.startsWith("<task>") && !text.startsWith("<task ")) {
+    return undefined;
+  }
+  const start = text.indexOf(TASK_INSTRUCTIONS_OPEN);
+  const end = start < 0 ? -1 : text.indexOf(TASK_INSTRUCTIONS_CLOSE, start);
+  if (end < 0) {
+    return undefined;
+  }
+  return text
+    .slice(start + TASK_INSTRUCTIONS_OPEN.length, end)
+    .replaceAll("&lt;/", "</");
+}
+
 /**
  * Render agent input for a task run.
  *

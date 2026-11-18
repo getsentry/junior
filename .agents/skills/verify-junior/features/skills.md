@@ -1,6 +1,6 @@
 # Skills
 
-A user runs a skill by writing `$name` in a message. Junior uses that skill in the same Turn. One message can name more than one skill, and Junior uses each one. A manual-only skill (`disable-model-invocation: true`, or `policy.allow_implicit_invocation: false` in a Codex `agents/openai.yaml`) is never used on its own. Junior uses it only when the message names it, or when a skill that Junior loaded in that Turn names it. Junior still accepts the older `/name` form. Plain words such as "use the <name> skill" do not unlock a manual-only skill. The Skills section of the System Plugins page lists every skill and marks manual-only skills "Manual only".
+A user runs a skill by writing `$name` in a message. Junior uses that skill in the same Turn. One message can name more than one skill, and Junior uses each one. A manual-only skill (`disable-model-invocation: true`, or `policy.allow_implicit_invocation: false` in a Codex `agents/openai.yaml`) is never used on its own. Junior uses it only when a person's message names it, or when a skill that Junior loaded in that Turn names it. Junior still accepts the older `/name` form. Plain words such as "use the <name> skill" do not unlock a manual-only skill. The Skills section of the System Plugins page lists every skill and marks manual-only skills "Manual only".
 
 ## Sub-features
 

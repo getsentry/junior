@@ -1,10 +1,15 @@
 /** Run-scoped skill discovery and explicit invocation. */
+import type { AgentRun } from "@/chat/agent/types";
+import type { Actor } from "@sentry/junior-plugin-api";
+import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { logInfo } from "@/chat/logging";
 import { skillReferences } from "@/chat/skill-references";
 import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { readTaskInstructions } from "@/chat/task-input";
 
 let startupDiscoveryLogged = false;
 
@@ -90,11 +95,43 @@ export async function discoverRunSkills(args: {
   return availableSkills;
 }
 
-function lastLoadedSkillName(
-  messages: readonly PiMessage[],
-): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index] as {
+/**
+ * Return the text whose skill references unlock skills in this Run: the
+ * person's own input, or the instructions of an Automation run. Text that no
+ * person wrote for this Run, such as Event text, an agent result, a parent
+ * agent task, or a plugin dispatch, unlocks nothing.
+ */
+export function skillInvocationText(
+  run: Pick<AgentRun, "dispatch" | "instruction">,
+  actor: Actor | undefined,
+): string {
+  if (run.dispatch) {
+    return dispatchInstructionsInvokeSkills(run.dispatch)
+      ? (readTaskInstructions(run.instruction.text) ?? "")
+      : "";
+  }
+  const provenance =
+    run.instruction.provenance ?? instructionProvenanceFor(actor);
+  if (
+    provenance.authority !== "instruction" ||
+    !provenance.actor ||
+    provenance.actor.platform === "system"
+  ) {
+    return "";
+  }
+  return (
+    run.instruction.inputs ?? [
+      { kind: "person" as const, text: run.instruction.text },
+    ]
+  )
+    .filter((input) => input.kind === "person")
+    .map((input) => input.text)
+    .join("\n\n");
+}
+
+function loadedSkillNames(messages: readonly PiMessage[]): string[] {
+  return messages.flatMap((entry) => {
+    const message = entry as {
       details?: unknown;
       isError?: unknown;
       role?: unknown;
@@ -106,23 +143,22 @@ function lastLoadedSkillName(
       message.toolName !== "loadSkill" ||
       message.isError === true
     ) {
-      continue;
+      return [];
     }
     const details = message.details;
     const skillName =
       details && typeof details === "object" && "skill_name" in details
         ? (details as { skill_name?: unknown }).skill_name
         : message.skill_name;
-    if (typeof skillName === "string" && skillName.trim()) {
-      return skillName;
-    }
-  }
-  return undefined;
+    return typeof skillName === "string" && skillName.trim() ? [skillName] : [];
+  });
 }
 
 /**
- * Load the first invoked skill, or recover the last skill loaded in a resumed
- * turn. The other invoked skills stay loadable for the model.
+ * Load the first invoked skill. A resumed slice also restores every skill
+ * that loaded earlier in this Turn, so the skills those reference stay
+ * loadable. Skills from earlier Turns are never restored. Returns the
+ * invoked skill, or else the last restored one.
  */
 export async function loadRunSkill(args: {
   activeSkills: Skill[];
@@ -131,15 +167,23 @@ export async function loadRunSkill(args: {
   resumed: boolean;
   skillSandbox: SkillSandbox;
 }): Promise<Skill | null> {
-  const skillName =
-    args.invokedSkills[0]?.name ??
-    (args.resumed ? lastLoadedSkillName(args.currentTurnMessages) : undefined);
-  if (!skillName) {
-    return null;
+  const invokedName = args.invokedSkills[0]?.name;
+  const names = [
+    ...new Set([
+      ...(invokedName ? [invokedName] : []),
+      ...(args.resumed ? loadedSkillNames(args.currentTurnMessages) : []),
+    ]),
+  ];
+  const loaded = await Promise.all(
+    names.map((name) => args.skillSandbox.loadSkill(name)),
+  );
+  for (const skill of loaded) {
+    if (skill) {
+      upsertActiveSkill(args.activeSkills, skill);
+    }
   }
-  const loadedSkill = await args.skillSandbox.loadSkill(skillName);
-  if (loadedSkill) {
-    upsertActiveSkill(args.activeSkills, loadedSkill);
+  if (invokedName) {
+    return loaded[0] ?? null;
   }
-  return loadedSkill;
+  return loaded.filter((skill) => skill !== null).at(-1) ?? null;
 }

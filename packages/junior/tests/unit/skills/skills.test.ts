@@ -160,6 +160,10 @@ describe("skills", () => {
       parseSkillInvocations("run `$brief` github: octocat", stubSkills),
     ).toEqual(["brief"]);
     expect(parseSkillInvocations("costs US$brief", stubSkills)).toEqual([]);
+    // Slack italics wrap the reference in `_`.
+    expect(parseSkillInvocations("run _$brief_ now", stubSkills)).toEqual([
+      "brief",
+    ]);
   });
 
   it("ignores environment variables and paths", () => {
@@ -174,6 +178,13 @@ describe("skills", () => {
         ...stubSkills,
         { name: "home", description: "Home", skillPath: "/tmp/home" },
       ]),
+    ).toEqual([]);
+    // A skill name at the start of a longer variable name is not a reference.
+    expect(
+      parseSkillInvocations("export $BRIEF_TOKEN and $SUM_API_KEY", stubSkills),
+    ).toEqual([]);
+    expect(
+      parseSkillInvocations("$weather-lookup-v2 for SF", stubSkills),
     ).toEqual([]);
     expect(
       parseSkillInvocations("read /tmp/notes.md then /brief", stubSkills),
@@ -259,7 +270,12 @@ describe("skills", () => {
       );
     };
 
-    for (const name of ["codex-manual", "codex-implicit", "plain"]) {
+    for (const name of [
+      "codex-manual",
+      "codex-implicit",
+      "codex-unreadable",
+      "plain",
+    ]) {
       await writeSkillFile(tempRoot, name, [
         "---",
         `name: ${name}`,
@@ -278,16 +294,28 @@ describe("skills", () => {
       "  allow_implicit_invocation: true",
     ]);
 
+    // A directory in place of the file cannot be read. The frontmatter
+    // decides, and the skill stays.
+    await fs.mkdir(
+      path.join(tempRoot, "codex-unreadable", "agents", "openai.yaml"),
+      { recursive: true },
+    );
+
     resetSkillDiscoveryCache();
     process.env["SKILL_DIRS"] = tempRoot;
 
     try {
+      const discovered = await discoverSkills();
+      expect(discovered.map((skill) => skill.name)).toContain(
+        "codex-unreadable",
+      );
       const manual = (await discoverSkills())
         .filter((skill) => skill.disableModelInvocation)
         .map((skill) => skill.name);
       expect(manual).toContain("codex-manual");
       expect(manual).not.toContain("codex-implicit");
       expect(manual).not.toContain("plain");
+      expect(manual).not.toContain("codex-unreadable");
 
       const skills = await discoverSkills();
       const [loaded] = await loadSkillsByName(["codex-manual"], skills);

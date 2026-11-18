@@ -148,6 +148,7 @@ import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   discoverRunSkills,
   loadRunSkill,
+  skillInvocationText,
   unloadedManualSkillNames,
 } from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
@@ -518,7 +519,7 @@ async function executeAgentRunInPrivacyContext(
     const dispatchSkill = run.dispatch?.skill;
     const invokedSkillNames = dispatchSkill
       ? [dispatchSkill]
-      : parseSkillInvocations(userInput, availableSkills);
+      : parseSkillInvocations(skillInvocationText(run, actor), availableSkills);
     const invokedSkills = invokedSkillNames.flatMap(
       (name) => findSkillByName(name, availableSkills) ?? [],
     );

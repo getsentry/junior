@@ -332,25 +332,20 @@ const openAiSkillPolicySchema = z.object({
     .optional(),
 });
 
-async function openAiImplicitInvocationDisabled(
-  skillDir: string,
-): Promise<boolean> {
-  const policyFile = path.join(skillDir, "agents", "openai.yaml");
-  let raw: string;
-  try {
-    raw = await fs.readFile(policyFile, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
+/**
+ * Return whether the text of a skill's `agents/openai.yaml` makes the skill
+ * manual-only. Invalid YAML leaves the skill model-invocable.
+ */
+export function openAiPolicyDisablesImplicitInvocation(
+  raw: string,
+  filePath: string,
+): boolean {
   let parsed: unknown;
   try {
     parsed = parseYaml(raw);
   } catch (error) {
     logWarn("skill.openai_yaml.invalid", {
-      "file.path": policyFile,
+      "file.path": filePath,
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
@@ -359,6 +354,30 @@ async function openAiImplicitInvocationDisabled(
   return (
     result.success && result.data.policy?.allow_implicit_invocation === false
   );
+}
+
+async function openAiImplicitInvocationDisabled(
+  skillDir: string,
+): Promise<boolean> {
+  const policyFile = path.join(skillDir, "agents", "openai.yaml");
+  let raw: string;
+  try {
+    raw = await fs.readFile(policyFile, "utf8");
+  } catch (error) {
+    // An unreadable file, such as a directory, is the same as invalid YAML:
+    // the frontmatter decides.
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      logWarn("skill.openai_yaml.invalid", {
+        "file.path": policyFile,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+    }
+    return false;
+  }
+  return openAiPolicyDisablesImplicitInvocation(raw, policyFile);
 }
 
 async function readSkillDirectory(
