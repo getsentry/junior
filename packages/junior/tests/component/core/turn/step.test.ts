@@ -247,4 +247,39 @@ describe("runStep", () => {
 
     expect(result).toEqual({ outcome: "failed", error: "overloaded" });
   });
+  it("throws instead of returning results when the step is aborted", async () => {
+    const stopped = new Error("lease lost");
+    const duringModel = new AbortController();
+    const duringTools = new AbortController();
+    const slow = tool("slow", {
+      replay: "safe",
+      execute: () => {
+        duringTools.abort(stopped);
+        return Promise.reject(new Error("aborted"));
+      },
+    });
+
+    const modelStep = runStep(
+      stepInput({
+        messages: [user],
+        signal: duringModel.signal,
+        complete: () => {
+          duringModel.abort(stopped);
+          return Promise.resolve(
+            fauxAssistantMessage([], { stopReason: "aborted" }),
+          );
+        },
+      }),
+    );
+    const toolStep = runStep(
+      stepInput({
+        messages: [user, replyWithCalls("slow")],
+        tools: [slow],
+        signal: duringTools.signal,
+      }),
+    );
+
+    await expect(modelStep).rejects.toBe(stopped);
+    await expect(toolStep).rejects.toBe(stopped);
+  });
 });

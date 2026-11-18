@@ -131,6 +131,11 @@ async function runToolCalls(
   const results = await Promise.all(
     pending.calls.map((call) => runToolCall(call, pending.truncated, input)),
   );
+  // An aborted tool returns an error result. Those results must not reach the
+  // history, so the step throws as it does for an aborted model request.
+  if (input.signal.aborted) {
+    throw input.signal.reason;
+  }
   return {
     outcome: results.every(({ result }) => result.endsTurn === true)
       ? "completed"
