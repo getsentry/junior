@@ -16,6 +16,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   }
 
+  // The magnifier is off until the viewer turns it on.
+  async function magnify(page: Page) {
+    await page.addInitScript(() =>
+      localStorage.setItem("junior:inbox:magnify", "true"),
+    );
+  }
+
   function todoRows(page: Page): Locator {
     return page
       .getByRole("region", { name: "To do" })
@@ -69,6 +76,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
@@ -86,6 +94,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.clock.install();
     await page.goto(`${dashboard.baseURL}/`);
@@ -95,7 +104,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => transform(row)).toMatch(/^scale\(/);
   });
 
-  test("the magnifier grows rows in both densities, and its setting turns it off", async ({
+  test("the magnifier is off until its setting turns it on, and grows rows in both densities", async ({
     dashboard,
     page,
   }) => {
@@ -104,6 +113,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect.poll(() => transform(row)).toMatch(/^scale\(/);
       return Number(/^scale\(([\d.]+)/.exec(await transform(row))![1]);
     };
+    for (const density of ["comfortable", "compact"]) {
+      await page.goto(`${dashboard.baseURL}/`);
+      await page.evaluate(
+        (value) => localStorage.setItem("junior:density", value),
+        density,
+      );
+      await page.reload();
+      const row = await restOnFirstRow(page);
+      await page.clock.runFor(PAST_REST_MS);
+      expect(await transform(row)).toBe("");
+    }
+
+    await page.goto(`${dashboard.baseURL}/settings`);
+    const setting = page.getByRole("checkbox", {
+      name: "Magnify the row under the pointer",
+    });
+    await expect(setting).not.toBeChecked();
+    await setting.check();
     // Compact rows grow too, less than comfortable ones.
     await page.goto(`${dashboard.baseURL}/`);
     const compact = await scale(await restOnFirstRow(page));
@@ -114,21 +141,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await page.reload();
     expect(await scale(await restOnFirstRow(page))).toBeGreaterThan(compact);
-
-    await page.goto(`${dashboard.baseURL}/settings`);
-    await page
-      .getByRole("checkbox", { name: "Magnify the row under the pointer" })
-      .uncheck();
-    for (const density of ["comfortable", "compact"]) {
-      await page.evaluate(
-        (value) => localStorage.setItem("junior:density", value),
-        density,
-      );
-      await page.goto(`${dashboard.baseURL}/`);
-      const row = await restOnFirstRow(page);
-      await page.clock.runFor(PAST_REST_MS);
-      expect(await transform(row)).toBe("");
-    }
   });
 
   test("rows never grow or expand under reduced motion", async ({
@@ -136,6 +148,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
@@ -332,6 +345,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await magnify(page);
     await comfortable(page);
     await page.addInitScript(() =>
       localStorage.setItem("junior:hover-expand", "everywhere"),
