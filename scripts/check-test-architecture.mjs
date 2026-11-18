@@ -113,6 +113,10 @@ const AGENT_TEST_RULES = [
       "tests must not fake the model; run the real agent through the agent test fixture",
     pattern:
       /\bvi\.(?:doMock|mock)\(\s*["'](?:@earendil-works\/pi-agent-core|@\/chat\/pi\/client)["']|\bclass\s+MockAgent\b|\b(?:createFauxCore|fauxAssistantMessage)\b|\b(?:completeDecision|completeObject|completeText)\s*:|\bhttp\.\w+\(\s*["'`]https:\/\/ai-gateway\.vercel\.sh/g,
+    // `runStep` takes the model as a `complete` argument. Its edge cases, such
+    // as a cut-off reply, a provider error, or an abort, cannot come from a
+    // real model on demand. See policies/testing.md.
+    exclude: ["packages/junior/tests/component/core/turn/step.test.ts"],
   },
   {
     id: "runtime-config-mutation",
