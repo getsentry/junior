@@ -254,15 +254,15 @@ export function UserInputForm(props: {
   });
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
+  // A docked form has no note, so it neither shows nor sends a saved one,
+  // and keeps it saved for the full form.
   const [draft] = useState(() =>
     props.draft
       ? { other: props.draft.other ?? "", values: props.draft.values }
       : readAnswerDraft(props.requestId),
   );
   const [values, setValues] = useState(draft.values);
-  // A docked form has no note field. A note saved in the full form stays out
-  // of sight there, but it still counts as unsent and goes with the answer.
-  const [other, setOther] = useState(draft.other);
+  const [other, setOther] = useState(props.docked ? "" : draft.other);
   // Only Other… puts saved answers of a button request in a form, so a saved
   // draft opens it again. A failed draft with no note was a button pick.
   const [writeOther, setWriteOther] = useState(
@@ -317,11 +317,7 @@ export function UserInputForm(props: {
   /** Send one button choice as the whole answer. */
   function pick(fieldId: string, label: string) {
     setPicked(label);
-    void send({
-      ...(other ? { other } : undefined),
-      requestId: props.requestId,
-      values: { [fieldId]: [label] },
-    });
+    void send({ requestId: props.requestId, values: { [fieldId]: [label] } });
   }
 
   const answer: UserInputAnswer = {
@@ -333,11 +329,8 @@ export function UserInputForm(props: {
   const answeredCount = Object.keys(normalized.values).length;
   const fieldCount = props.request.fields.length;
   // A button answer sends on click, so only the form can hold unsent input.
-  // A docked form shows buttons for a draft saved in the full form too.
   const unsent =
-    (!buttonField || Boolean(props.docked)) &&
-    !sending &&
-    !isEmptyUserInputAnswer(normalized);
+    !buttonField && !sending && !isEmptyUserInputAnswer(normalized);
   const onUnsentChange = props.onUnsentChange;
   useEffect(() => {
     onUnsentChange?.(unsent);
