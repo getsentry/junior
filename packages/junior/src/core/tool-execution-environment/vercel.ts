@@ -1,5 +1,5 @@
 import { APIError, Sandbox, StreamError } from "@vercel/sandbox";
-import type { Command, Session } from "@vercel/sandbox";
+import type { Session } from "@vercel/sandbox";
 import * as z from "zod";
 import {
   ToolExecutionEnvironmentUnavailableError,
@@ -9,7 +9,6 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
-import { setActiveSpanAttributes } from "@/core/telemetry";
 
 // Vercel enforces this after our own timer, so a command still stops when
 // this process dies, but our timer fires first and the call throws.
@@ -19,8 +18,8 @@ const VERCEL_TIMEOUT_BACKSTOP_MS = 5_000;
  * Manages Vercel Sandboxes. The environment id is the sandbox name. Sandboxes
  * are persistent, so `resume` gets the files back after a stop.
  */
-export function createVercelToolExecutionEnvironmentManager(): ToolExecutionEnvironmentManager {
-  return {
+export const vercelToolExecutionEnvironmentManager: ToolExecutionEnvironmentManager =
+  {
     async create(input: CreateToolExecutionEnvironmentInput, signal) {
       const params = {
         name: input.id,
@@ -53,20 +52,20 @@ export function createVercelToolExecutionEnvironmentManager(): ToolExecutionEnvi
       }
     },
   };
-}
 
 // Bound to one session, not to the Sandbox: the Sandbox object starts a
 // stopped session again by itself, and a restart must be visible to the
 // caller because it loses running processes.
 function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
-  // Lets a trace be matched to the Vercel session that ran it.
-  setActiveSpanAttributes({ "app.sandbox.session_id": session.sessionId });
   return {
     cwd: session.cwd,
     exec: (argv, options) =>
       callOrThrowUnavailable(id, () => exec(session, argv, options)),
     readFile: (path, signal) =>
-      callOrThrowUnavailable(id, () => readFile(session, path, signal)),
+      callOrThrowUnavailable(id, async () => {
+        const stream = await session.readFile({ path }, { signal });
+        return stream ? toWebStream(stream) : undefined;
+      }),
     writeFile: (path, content, signal) =>
       callOrThrowUnavailable(id, () =>
         session.writeFiles([{ path, content }], { signal }),
@@ -88,15 +87,6 @@ async function callOrThrowUnavailable<T>(
     }
     throw error;
   }
-}
-
-async function readFile(
-  session: Session,
-  path: string,
-  signal: AbortSignal,
-): Promise<ReadableStream<Uint8Array> | undefined> {
-  const stream = await session.readFile({ path }, { signal });
-  return stream ? toWebStream(stream) : undefined;
 }
 
 async function exec(
@@ -129,25 +119,16 @@ async function exec(
   });
 
   try {
-    const [, finished] = await Promise.all([
-      forwardOutput(command, signal, options.onOutputChunk),
-      command.wait({ signal }),
-    ]);
+    // The log stream ends when the command exits, so wait() returns at once.
+    for await (const line of command.logs({ signal })) {
+      options.onOutputChunk({ stream: line.stream, text: line.data });
+    }
+    const finished = await command.wait({ signal });
     return { exitCode: finished.exitCode };
   } catch (error) {
     if (!signal.aborted) throw error;
     await command.kill("SIGKILL");
     throw signal.reason;
-  }
-}
-
-async function forwardOutput(
-  command: Command,
-  signal: AbortSignal,
-  onOutputChunk: ExecOptions["onOutputChunk"],
-): Promise<void> {
-  for await (const line of command.logs({ signal })) {
-    onOutputChunk({ stream: line.stream, text: line.data });
   }
 }
 
