@@ -106,12 +106,13 @@ type PendingToolCalls = {
  */
 function collectPendingToolCalls(messages: Message[]): PendingToolCalls {
   const answered = new Set<string>();
-  for (const message of [...messages].reverse()) {
-    if (message.role === "toolResult") {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "toolResult") {
       answered.add(message.toolCallId);
       continue;
     }
-    if (message.role !== "assistant") {
+    if (message?.role !== "assistant") {
       return { calls: [], truncated: false };
     }
     return {
