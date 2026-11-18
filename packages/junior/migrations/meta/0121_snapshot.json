@@ -1,5 +1,5 @@
 {
-  "id": "bdd8dd40-12da-4b9b-be6d-a2e586908099",
+  "id": "5e7c9024-a129-4cf3-b3cf-8c2b7ba32640",
   "prevId": "34cce82d-1d27-40a7-97e1-77ca1fdda317",
   "version": "7",
   "dialect": "postgresql",
@@ -5687,7 +5687,7 @@
         },
         "junior_turns_lease_check": {
           "name": "junior_turns_lease_check",
-          "value": "(\"junior_turns\".\"state\" = 'running') = (\"junior_turns\".\"lease_owner\" is not null and \"junior_turns\".\"lease_expires_at\" is not null)"
+          "value": "(\"junior_turns\".\"state\" = 'running') = (\"junior_turns\".\"lease_owner\" is not null) and (\"junior_turns\".\"state\" = 'running') = (\"junior_turns\".\"lease_expires_at\" is not null)"
         },
         "junior_turns_ended_check": {
           "name": "junior_turns_ended_check",

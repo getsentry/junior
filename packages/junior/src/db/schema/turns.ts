@@ -56,7 +56,7 @@ export const juniorTurns = pgTable(
     // A lease exists exactly while a step runs.
     check(
       "junior_turns_lease_check",
-      sql`(${table.state} = 'running') = (${table.leaseOwner} is not null and ${table.leaseExpiresAt} is not null)`,
+      sql`(${table.state} = 'running') = (${table.leaseOwner} is not null) and (${table.state} = 'running') = (${table.leaseExpiresAt} is not null)`,
     ),
     check(
       "junior_turns_ended_check",
