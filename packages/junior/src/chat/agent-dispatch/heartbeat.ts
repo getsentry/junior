@@ -14,6 +14,7 @@ import {
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
+import { mapBounded } from "@/chat/fan-out";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -77,6 +78,7 @@ async function runPluginHeartbeats(args: {
   showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   let count = 0;
+  /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
@@ -118,6 +120,7 @@ async function runPluginHeartbeats(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -134,6 +137,7 @@ export async function recoverPendingDispatchMailboxAppends(args: {
     0,
     DISPATCH_MAILBOX_APPEND_LIMIT,
   );
+  /* oxlint-disable no-await-in-loop -- Each confirm takes the shared pending-append index lock, which does not wait. */
   for (const id of ids) {
     try {
       const dispatch = await getDispatchRecord(id);
@@ -159,6 +163,30 @@ export async function recoverPendingDispatchMailboxAppends(args: {
       });
     }
   }
+  /* oxlint-enable no-await-in-loop */
+}
+
+/**
+ * Run `work` for each item. Items for one mailbox run one at a time in list
+ * order, so its appends keep that order. Different mailboxes run at once.
+ */
+async function runPerMailbox<T>(
+  items: readonly T[],
+  mailboxOf: (item: T) => string,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  const byMailbox = new Map<string, T[]>();
+  for (const item of items) {
+    const mailbox = mailboxOf(item);
+    byMailbox.set(mailbox, [...(byMailbox.get(mailbox) ?? []), item]);
+  }
+  await mapBounded([...byMailbox.values()], async (group) => {
+    /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
+    for (const item of group) {
+      await work(item);
+    }
+    /* oxlint-enable no-await-in-loop */
+  });
 }
 
 /** Repair invocation creation that stopped before its idempotent mailbox append. */
@@ -169,18 +197,23 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   const invocations = await listPendingAgentInvocationMailboxAppends(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
-  for (const invocation of invocations) {
-    try {
-      await enqueueAgentInvocation(invocation, {
-        nowMs: args.nowMs,
-        queue: args.conversationWorkQueue,
-      });
-    } catch (error) {
-      logException(error, "agent.invocation.mailbox.append_recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
-    }
-  }
+  // The list is in creation order, and each append goes to the child.
+  await runPerMailbox(
+    invocations,
+    (invocation) => invocation.childConversationId,
+    async (invocation) => {
+      try {
+        await enqueueAgentInvocation(invocation, {
+          nowMs: args.nowMs,
+          queue: args.conversationWorkQueue,
+        });
+      } catch (error) {
+        logException(error, "agent.invocation.mailbox.append_recovery.failed", {
+          "app.agent.invocation_id": invocation.invocationId,
+        });
+      }
+    },
+  );
 }
 
 /** Repair terminal agent invocation results that never reached their parent. */
@@ -191,19 +224,25 @@ export async function recoverPendingAgentInvocationResults(args: {
   const invocations = await listPendingAgentInvocationResults(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
-  for (const invocation of invocations) {
-    try {
-      await recordSubagentEnded(invocation);
-      await enqueueAgentInvocationResult(invocation, {
-        nowMs: args.nowMs,
-        queue: args.conversationWorkQueue,
-      });
-    } catch (error) {
-      logException(error, "agent.invocation.result.recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
-    }
-  }
+  // The list is in the order that the invocations ended, and each result
+  // goes to the parent.
+  await runPerMailbox(
+    invocations,
+    (invocation) => invocation.parentConversationId,
+    async (invocation) => {
+      try {
+        await recordSubagentEnded(invocation);
+        await enqueueAgentInvocationResult(invocation, {
+          nowMs: args.nowMs,
+          queue: args.conversationWorkQueue,
+        });
+      } catch (error) {
+        logException(error, "agent.invocation.result.recovery.failed", {
+          "app.agent.invocation_id": invocation.invocationId,
+        });
+      }
+    },
+  );
 }
 
 /** Run the core heartbeat phases. */

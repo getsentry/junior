@@ -343,25 +343,23 @@ export async function syncGitHubPullRequestActions(args: {
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {
-  const limit = pLimit(PULL_REQUEST_SYNC_CONCURRENCY);
-  await Promise.all(
-    args.targets.map((target) =>
-      limit(async () => {
-        try {
-          await syncOne(args, target);
-        } catch (error) {
-          logFailOpenFailure(
-            args.log,
-            "GitHub pull request action failed",
-            error,
-            {
-              deliveryId: args.deliveryId,
-              number: target.number,
-              repository: target.repositoryFullName,
-            },
-          );
-        }
-      }),
-    ),
+  await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(
+    args.targets,
+    async (target) => {
+      try {
+        await syncOne(args, target);
+      } catch (error) {
+        logFailOpenFailure(
+          args.log,
+          "GitHub pull request action failed",
+          error,
+          {
+            deliveryId: args.deliveryId,
+            number: target.number,
+            repository: target.repositoryFullName,
+          },
+        );
+      }
+    },
   );
 }

@@ -339,6 +339,7 @@ export async function claimDueScheduledRun(
       .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
 
     for (const row of rows) {
+      // oxlint-disable-next-line no-await-in-loop -- Statements in one transaction run one at a time.
       const run = await withScheduledAutomationLock(
         tx,
         row.id,

@@ -333,7 +333,6 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     {
       detail: "shared across the workspace",
       label: "Total active",
-      tone: "text-dashboard-accent-text",
       value: stats.active.toLocaleString("en-US"),
     },
     {
@@ -352,12 +351,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
           <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             {item.label}
           </div>
-          <div
-            className={cn(
-              "mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text",
-              item.tone,
-            )}
-          >
+          <div className="mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text">
             {item.value}
           </div>
           <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">

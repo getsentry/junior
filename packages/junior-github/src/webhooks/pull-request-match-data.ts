@@ -126,18 +126,15 @@ async function withJuniorOpeners(
     repositoryFullName: context.repositoryFullName,
   });
   const logins = new Map<string, string | undefined>();
-  const limit = pLimit(LOGIN_LOAD_CONCURRENCY);
-  await Promise.all(
-    [...new Set([...openers.values()].map((opener) => opener.identityId))].map(
-      (identityId) =>
-        limit(async () => {
-          try {
-            logins.set(identityId, await context.loadGitHubLogin?.(identityId));
-          } catch (error) {
-            logFailure(context, "opener", error);
-          }
-        }),
-    ),
+  await pLimit(LOGIN_LOAD_CONCURRENCY).map(
+    [...new Set([...openers.values()].map((opener) => opener.identityId))],
+    async (identityId) => {
+      try {
+        logins.set(identityId, await context.loadGitHubLogin?.(identityId));
+      } catch (error) {
+        logFailure(context, "opener", error);
+      }
+    },
   );
   return events.map((event) => {
     const number = botNumber(event);

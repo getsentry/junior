@@ -109,6 +109,7 @@ export async function handleSlackInteractivePayload(args: {
     return;
   }
 
+  /* oxlint-disable no-await-in-loop -- Handle clicks in the order Slack sent them. */
   for (const action of args.payload.actions ?? []) {
     const click = parseSlackReviewItemClick(action);
     if (click) {
@@ -127,6 +128,7 @@ export async function handleSlackInteractivePayload(args: {
       return;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   const continueHere = args.payload.actions?.find(
     (candidate) => candidate.action_id === SLACK_CONTINUE_HERE_ACTION_ID,

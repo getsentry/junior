@@ -158,7 +158,7 @@ export function PullRequestChange(props: {
           "flex min-w-0 items-center justify-between gap-4 px-4 py-2.5 font-sans",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-dashboard-text">
+        <div className="flex min-w-0 items-center gap-2.5 font-display text-base font-medium text-dashboard-text">
           <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
           {change.url ? (
             <a

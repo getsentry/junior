@@ -134,6 +134,7 @@ export async function ingestEventAutomations(
   const author = await resolveEventAuthor(event);
   let dispatched = 0;
   const errors: unknown[] = [];
+  /* oxlint-disable no-await-in-loop -- Each dispatch takes the shared pending-append index lock, which does not wait. */
   for (const task of tasks) {
     try {
       const skill = task.task.kind === "skill" ? task.task.skill : undefined;
@@ -234,6 +235,7 @@ export async function ingestEventAutomations(
       errors.push(error);
     }
   }
+  /* oxlint-enable no-await-in-loop */
   if (errors.length > 0) {
     throw new AggregateError(
       errors,

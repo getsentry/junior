@@ -1904,6 +1904,14 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
             "- No change blocks the next release.",
             "",
             "I will flag it in the weekly summary if the trend changes.",
+            // The newest reply links two web pages, one with a long title,
+            // so the Inbox row shows them as lines that must not overlap.
+            ...(turn === 23
+              ? [
+                  "",
+                  "The tax cache is https://code.example.com/acme/checkout/pull/5378, and https://news.example.com/checkout-4-2-session-tax-cache covers it.",
+                ]
+              : []),
           ].join("\n"),
         },
       ),
@@ -3495,8 +3503,8 @@ function mockEarlierEvents(
  */
 export function readMockConversationEventsAround(
   conversationId: string,
-  link: { event: number } | { turn: string },
-): ConversationEventPage | "turn-not-found" | undefined {
+  link: { event: number } | { message: string } | { turn: string },
+): ConversationEventPage | "message-not-found" | "turn-not-found" | undefined {
   const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
@@ -3513,7 +3521,20 @@ export function readMockConversationEventsAround(
     return "turn-not-found";
   }
   const earlier = mockEarlierEvents(conversation);
-  if ("event" in link && earlier.some(({ seq }) => seq === link.event)) {
+  const linked = ({ data, seq }: ConversationReportEvent) =>
+    "event" in link
+      ? seq === link.event
+      : "message" in link &&
+        data.type === "message" &&
+        data.messageId === link.message;
+  if (
+    "message" in link &&
+    !earlier.some(linked) &&
+    !conversation.events.some(linked)
+  ) {
+    return "message-not-found";
+  }
+  if (earlier.some(linked)) {
     return {
       events: [...earlier, ...conversation.events],
       eventHistory: conversation.eventHistory,
