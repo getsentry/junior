@@ -2,7 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
-import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -291,7 +291,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ height: 800, width: 1280 });
     await mockReviewItems(page, { open: [rollout] });
     await page.goto(dashboard.baseURL);
-    await rowHead(page, "Investigate checkout latency").click();
+    await expandRow(rowHead(page, "Investigate checkout latency"));
     await page.getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(

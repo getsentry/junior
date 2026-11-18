@@ -19,7 +19,6 @@ import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "../../components/layout/navIcons";
 import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { DensitySwitcher } from "../../conversations/conversationDensity";
-import { HoverExpandSwitcher } from "../../review-desk/hoverExpand";
 import {
   Avatar,
   AvatarFallback,
@@ -435,7 +434,6 @@ export function ProfileMenu({
         </button>
         <ThemeSwitcher className="px-3 py-2" />
         <DensitySwitcher className="px-3 py-2" />
-        <HoverExpandSwitcher className="px-3 py-2" />
         {feedbackDialog}
       </nav>
     );
@@ -539,7 +537,6 @@ export function ProfileMenu({
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher menu />
           <DensitySwitcher menu />
-          <HoverExpandSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}
