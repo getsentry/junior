@@ -74,11 +74,6 @@ export function snoozeChoicesAt(nowMs: number): SnoozeChoice[] {
   );
 }
 
-/** A snooze until a time that the viewer picked. */
-export function snoozeUntil(untilMs: number): SnoozeChoice {
-  return { label: "Custom", untilMs: () => untilMs };
-}
-
 function useStoredSnoozes() {
   return useLocalStorage<Record<string, Snooze>>(STORAGE_KEY, {});
 }
@@ -137,12 +132,12 @@ export function useInboxSnoozes(nowMs: number) {
       snooze.newestItemId === newestItemId
     );
   };
-  const snooze = (bundle: InboxBundle, choice: SnoozeChoice) =>
+  const snooze = (bundle: InboxBundle, untilMs: number) =>
     setSnoozes({
       ...snoozes,
       [bundle.key]: {
         newestItemId: bundle.newest.id,
-        untilMs: choice.untilMs(nowMs),
+        untilMs,
       },
     });
   /** Wake the row and every key in it: its Conversation and its items. */

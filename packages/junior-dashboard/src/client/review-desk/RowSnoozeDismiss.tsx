@@ -16,12 +16,7 @@ import {
 } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
-import {
-  atLocalHour,
-  type SnoozeChoice,
-  snoozeChoicesAt,
-  snoozeUntil,
-} from "./inboxSnooze";
+import { atLocalHour, snoozeChoicesAt } from "./inboxSnooze";
 
 const MENU_ROW_CLASS =
   "flex cursor-pointer items-baseline justify-between gap-3 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
@@ -51,7 +46,8 @@ function localInputValue(ms: number): string {
  */
 export function RowSnoozeButton(props: {
   onOpenChange(open: boolean): void;
-  onSnooze(choice: SnoozeChoice): void;
+  /** Called with the wake time that the picked row shows. */
+  onSnooze(untilMs: number): void;
   open: boolean;
 }) {
   const [custom, setCustom] = useState(false);
@@ -65,7 +61,7 @@ export function RowSnoozeButton(props: {
     const index = Number(event.key) - 1;
     if (!Number.isInteger(index) || index < 0) return;
     const choice = choices[index];
-    if (choice) props.onSnooze(choice);
+    if (choice) props.onSnooze(choice.untilMs(nowMs));
     else if (index === choices.length) setCustom(true);
     else return;
     event.preventDefault();
@@ -116,7 +112,7 @@ export function RowSnoozeButton(props: {
                 aria-keyshortcuts={String(index + 1)}
                 className={MENU_ROW_CLASS}
                 key={choice.label}
-                onClick={() => props.onSnooze(choice)}
+                onClick={() => props.onSnooze(choice.untilMs(nowMs))}
                 type="button"
               >
                 {choice.label}
@@ -145,7 +141,7 @@ export function RowSnoozeButton(props: {
 function CustomSnooze(props: {
   nowMs: number;
   onBack(): void;
-  onSnooze(choice: SnoozeChoice): void;
+  onSnooze(untilMs: number): void;
 }) {
   const id = useId();
   const [value, setValue] = useState(() =>
@@ -162,7 +158,7 @@ function CustomSnooze(props: {
         const untilMs = new Date(value).getTime();
         if (Number.isNaN(untilMs)) setError("Pick a date and time.");
         else if (untilMs <= Date.now()) setError("Pick a time in the future.");
-        else props.onSnooze(snoozeUntil(untilMs));
+        else props.onSnooze(untilMs);
       }}
     >
       <Label className="text-xs text-muted-foreground" htmlFor={`${id}-at`}>
