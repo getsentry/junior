@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import {
   type PluginEgress,
   type PluginToolOutput,
@@ -447,10 +448,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         .filter((reaction) => FEEDBACK_REACTION_CONTENTS.has(reaction.content));
 
       // Feedback reactions are a small fixed set, so remove them at once.
-      const deleteResponses = await Promise.all(
-        botReactions
-          .filter((stale) => stale.content !== targetContent)
-          .map((stale) => reactions.remove(stale)),
+      const deleteResponses = await pLimit(FEEDBACK_REACTION_CONTENTS.size).map(
+        botReactions.filter((stale) => stale.content !== targetContent),
+        (stale) => reactions.remove(stale),
       );
       for (const deleteResponse of deleteResponses) {
         if (failed(deleteResponse) && deleteResponse.status !== 404) {

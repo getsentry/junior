@@ -82,7 +82,6 @@ export function ConversationThreads(props: {
     <DetailsCard
       action={action}
       count={threads.length}
-      flat
       label="Threads"
       title="Threads"
     >
@@ -120,7 +119,6 @@ export function ConversationTasks(props: {
     <DetailsCard
       action={action}
       count={tasks.length}
-      flat
       label="Tasks"
       title="Tasks"
     >

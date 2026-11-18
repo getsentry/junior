@@ -35,6 +35,10 @@
     {
       "name": "query-invalidation",
       "specifier": "./oxlint/query-invalidation.ts"
+    },
+    {
+      "name": "radius",
+      "specifier": "./oxlint/radius.ts"
     }
   ],
   "ignorePatterns": [
@@ -150,6 +154,12 @@
         "junior/bounded-fan-out": "error",
         "junior/prefer-map-bounded": "error",
         "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "rules": {
+        "radius/no-large-radius": "error"
       }
     },
     {

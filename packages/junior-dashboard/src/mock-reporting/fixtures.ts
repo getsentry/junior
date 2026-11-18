@@ -3592,40 +3592,9 @@ export function readMockConversationStats(): ConversationStatsReport {
     const lastSeenAtMs = Date.parse(summary.lastSeenAt);
     return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
   });
-  const total = statsItem("All conversations");
-  const actorItems = new Map<string, ConversationStatsItem>();
-  const locationItems = new Map<string, ConversationStatsItem>();
-  for (const summary of summaries) {
-    addSummary(total, summary);
-    const actorName = actorLabel(summary.actorIdentity);
-    const actorItem = actorItems.get(actorName) ?? statsItem(actorName);
-    addSummary(actorItem, summary);
-    actorItems.set(actorName, actorItem);
-    const place = locationLabel(summary);
-    const locationItem = locationItems.get(place) ?? statsItem(place);
-    addSummary(locationItem, summary);
-    locationItems.set(place, locationItem);
-  }
-  const inputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.inputTokens ?? 0),
-    0,
-  );
-  const cachedInputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.cachedInputTokens ?? 0),
-    0,
-  );
   return {
-    active: total.active,
-    actors: [...actorItems.values()],
-    ...(cachedInputTokens ? { cachedInputTokens } : undefined),
-    conversations: total.conversations,
-    costUsd: total.costUsd,
-    durationMs: total.durationMs,
-    failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
-    ...(inputTokens ? { inputTokens } : undefined),
-    locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     ...(() => {
       const metricHours = conversationMetricHours(nowMs, summaries);
@@ -3639,7 +3608,6 @@ export function readMockConversationStats(): ConversationStatsReport {
       };
     })(),
     source: "conversation_index",
-    tokens: total.tokens,
     ...windowBounds(nowMs),
   };
 }

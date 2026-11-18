@@ -1,6 +1,7 @@
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { reviewItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import pLimit from "p-limit";
 import {
   createContext,
   useCallback,
@@ -18,18 +19,23 @@ import { post } from "../http";
 import { invalidateReviewItemCollections, reviewItemQueryKey } from "./queries";
 
 const UNDO_MS = 6_000;
+// Dismiss requests that one sweep sends at once.
+const SWEEP_REQUESTS = 8;
 
 /** Close swept items, refresh the inbox, and return the ids that stay open. */
 async function commitSweep(
   queryClient: QueryClient,
   items: ReviewItemPayload[],
 ): Promise<string[]> {
+  const limit = pLimit(SWEEP_REQUESTS);
   const results = await Promise.allSettled(
     items.map((item) =>
-      post(
-        reviewItemSchema,
-        `/api/review-items/${encodeURIComponent(item.id)}/actions`,
-        { action: "dismiss" },
+      limit(() =>
+        post(
+          reviewItemSchema,
+          `/api/review-items/${encodeURIComponent(item.id)}/actions`,
+          { action: "dismiss" },
+        ),
       ),
     ),
   );

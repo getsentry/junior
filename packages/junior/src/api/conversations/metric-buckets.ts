@@ -9,19 +9,12 @@ export interface ConversationMetricBucket {
   value: number;
 }
 
-/** Sum all Conversation metrics into UTC day or hour buckets. */
+/** Sum all Conversation metrics into UTC hour buckets. */
 export async function readConversationMetricBuckets(
   db: JuniorDatabase,
-  options: {
-    bucket: "day" | "hour";
-    start: Date;
-    end: Date;
-  },
+  options: { start: Date; end: Date },
 ): Promise<ConversationMetricBucket[]> {
-  const date =
-    options.bucket === "day"
-      ? sql<string>`to_char(${juniorConversationMetrics.occurredAt} at time zone 'UTC', 'YYYY-MM-DD')`
-      : sql<string>`to_char(${juniorConversationMetrics.occurredAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const date = sql<string>`to_char(${juniorConversationMetrics.occurredAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
   return await db
     .select({
       date,

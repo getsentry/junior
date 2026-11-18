@@ -1,4 +1,5 @@
 import { LockKeyhole } from "lucide-react";
+import { cn, dashboardIconTileClass } from "../../styles";
 import type { ConversationStatsItem } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
@@ -9,7 +10,7 @@ export function PrivateActivityCard(props: { item: ConversationStatsItem }) {
   return (
     <Card className="opacity-80" padding="sm">
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 max-sm:grid-cols-[auto_minmax(0,1fr)]">
-        <span className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+        <span className={cn(dashboardIconTileClass, "size-9")}>
           <LockKeyhole aria-hidden="true" size={15} />
         </span>
         <div className="min-w-0">

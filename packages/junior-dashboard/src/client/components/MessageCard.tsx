@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@dashboard/lib/utils";
+import { dashboardMessageCardClass } from "../styles";
 import { Item, ItemContent, ItemMedia } from "./ui/item";
 
 /**
@@ -16,7 +17,8 @@ export function MessageCard({
     <section
       {...props}
       className={cn(
-        "w-full min-w-0 overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel font-sans text-sm text-dashboard-text",
+        "w-full min-w-0 overflow-hidden font-sans text-sm text-dashboard-text",
+        dashboardMessageCardClass,
         className,
       )}
     />

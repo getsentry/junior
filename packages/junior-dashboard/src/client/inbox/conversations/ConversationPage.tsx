@@ -720,6 +720,7 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               agentTree={conversationDetail?.agentTree}
+              autoArchive={conversationDetail?.autoArchive}
               brief={conversationDetail?.brief}
               contextTags={conversationContextTags(conversation)}
               cost={conversationCost(conversation, conversationDetail, "below")}

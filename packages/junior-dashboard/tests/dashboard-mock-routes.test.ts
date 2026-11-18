@@ -197,20 +197,27 @@ describe("dashboard canonical-event mock routes", () => {
       new Request("http://localhost/api/conversations/stats"),
     );
     const statsBody = (await stats.json()) as {
-      conversations: number;
-      costUsd?: number;
-      durationMs: number;
+      metricDays: Array<{
+        conversations: number;
+        costUsd?: number;
+        durationMs: number;
+      }>;
       windowEnd: string;
       windowStart: string;
     };
-    expect(statsBody.conversations).toBe(allConversations.length);
-    expect(statsBody.durationMs).toBe(
+    const statsDays = statsBody.metricDays;
+    expect(statsDays.reduce((sum, day) => sum + day.conversations, 0)).toBe(
+      allConversations.length,
+    );
+    expect(statsDays.reduce((sum, day) => sum + day.durationMs, 0)).toBe(
       allConversations.reduce(
         (sum, conversation) => sum + conversation.cumulativeDurationMs,
         0,
       ),
     );
-    expect(statsBody.costUsd).toBeGreaterThan(0);
+    expect(
+      statsDays.reduce((sum, day) => sum + (day.costUsd ?? 0), 0),
+    ).toBeGreaterThan(0);
     expect(statsBody.windowEnd).toBe(NOW);
     expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 

@@ -348,7 +348,8 @@ function WorkChip(props: { work: Annotation }) {
     </>
   );
   const className =
-    "inline-flex min-w-0 max-w-48 shrink-0 items-baseline rounded-sm font-sans text-xs no-underline";
+    // A chip alone on its line shrinks and truncates its title.
+    "inline-flex min-w-0 max-w-48 items-baseline rounded-sm font-sans text-xs no-underline";
   return work.url ? (
     <a
       className={cn(
@@ -401,7 +402,7 @@ export function InboxLinkedWorkChips(props: { annotations: Annotation[] }) {
     <span
       aria-label="Linked work"
       // It takes what the pills leave of their line.
-      className="flex min-w-32 flex-1 basis-0 items-center gap-1"
+      className="flex min-w-20 flex-1 basis-0 items-center gap-1"
       role="group"
     >
       <WorkChipLine annotations={props.annotations} />
