@@ -19,7 +19,7 @@ async function routeSkills(page: Page) {
         },
         {
           name: "self-update",
-          description: "Update this app to the latest Junior release.",
+          description: `Update this app to the latest Junior release. ${"Read the release notes, bump the package, run the checks, and open a pull request. ".repeat(6)}`,
           pluginProvider: "github",
         },
       ],
@@ -63,7 +63,10 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await screenshot(page, "composer-skill-details", { view: "desktop" });
   await composer.press("ArrowDown");
   await expect(active).toHaveAccessibleDescription(/^From the github plugin/);
-  await composer.press("ArrowUp");
+  // A pointer that rests on a row makes it active.
+  await skills.getByRole("gridcell", { name: /^\$diff-quality/ }).hover();
+  await expect(active).toContainText("$diff-quality");
+  await composer.press("ArrowDown");
 
   const drawer = page.getByRole("dialog", { name: "$release-check" });
   const closeDrawer = drawer.getByRole("button", {
@@ -121,7 +124,37 @@ test.describe("on a touch screen", () => {
     await drawer
       .getByRole("button", { name: "Close $release-check", exact: true })
       .tap();
+    // Expanding a row scrolls its View full skill button into the menu.
+    await page.getByRole("button", { name: "Details for $self-update" }).tap();
+    await expect(
+      page.getByRole("button", { name: "View full skill" }),
+    ).toBeInViewport({ ratio: 1 });
     await row.tap();
     await expect(composer).toHaveValue("$release-check ");
   });
+});
+
+test("Esc closes the menu, not the question docked above it @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:question-qa")}`,
+  );
+  const question = page.getByRole("region", {
+    name: "Question: Approve the payments-v42 rollout",
+  });
+  await expect(question).toBeVisible();
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  // Type, so the caret is where a person leaves it.
+  await composer.pressSequentially("$");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(skills).toBeVisible();
+  await composer.press("Escape");
+  await expect(skills).toBeHidden();
+  await expect(question).toBeVisible();
 });

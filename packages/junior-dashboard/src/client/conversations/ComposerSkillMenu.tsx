@@ -37,6 +37,10 @@ export function useComposerSkillMenu(
   const [token, setToken] = useState<SkillToken>();
   const [placement, setPlacement] = useState<MenuPlacement>();
   const [activeIndex, setActiveIndex] = useState(0);
+  // A row becomes active after the pointer rests on it. Each move restarts
+  // the wait, so a diagonal move to the details pane keeps the row.
+  const hoverTimer = useRef<number>(undefined);
+  const cancelHover = () => window.clearTimeout(hoverTimer.current);
   // Escape closes the menu until the caret leaves that reference.
   const [dismissedStart, setDismissedStart] = useState<number>();
   // Fetch the skill list on the first `$`, not on every composer mount.
@@ -61,14 +65,30 @@ export function useComposerSkillMenu(
     return () => window.removeEventListener("resize", place);
   }, [open, textareaRef]);
 
+  const activeCell = open ? cellId(active) : undefined;
   useEffect(() => {
-    if (!open) return;
-    document
-      .getElementById(cellId(active))
-      ?.scrollIntoView({ block: "nearest" });
-  });
+    if (activeCell) {
+      document.getElementById(activeCell)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeCell, token?.query]);
 
-  const close = () => setToken(undefined);
+  // Show an expanded row down to its View full skill button. It runs after
+  // the active row scroll, so a long description does not hide the button.
+  const expandedPanel = expanded
+    ? `${cellId(rows.findIndex((row) => row.skill.name === expanded))}-panel`
+    : undefined;
+  useEffect(() => {
+    if (!expandedPanel) return;
+    document
+      .getElementById(expandedPanel)
+      ?.querySelector("button")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [expandedPanel]);
+
+  const close = () => {
+    cancelHover();
+    setToken(undefined);
+  };
   // A tap on the menu blurs the textarea before its click lands, and a
   // scrollbar drag blurs it too. Keep the menu open while a press in it
   // runs. Mobile browsers fire the blur after `pointerup`, so the click
@@ -153,8 +173,10 @@ export function useComposerSkillMenu(
   /** Handle menu keys. Returns true when the key belonged to the menu. */
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!open || event.nativeEvent.isComposing) return false;
-    const move = (delta: number) =>
+    const move = (delta: number) => {
+      cancelHover();
       setActiveIndex((active + delta + rows.length) % rows.length);
+    };
     switch (event.key) {
       case "ArrowDown":
         move(1);
@@ -193,8 +215,10 @@ export function useComposerSkillMenu(
     <>
       {open && placement
         ? createPortal(
+            // At `@lg` (32rem) the menu puts a fixed-width list beside the
+            // details pane. Narrower, rows expand in place.
             <div
-              className="fixed z-50 flex overflow-hidden rounded-lg border border-input bg-secondary shadow-lg"
+              className="@container fixed z-50 flex overflow-hidden rounded-lg border border-input bg-secondary shadow-lg"
               ref={menuRef}
               style={placement}
               // Keep focus and the caret in the textarea on desktop.
@@ -214,8 +238,9 @@ export function useComposerSkillMenu(
               {/* A grid, not a listbox: narrow rows hold real buttons. */}
               <div
                 aria-label="Skills"
-                className="thin-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5 md:w-[45%] md:flex-none"
+                className="thin-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5 @lg:w-56 @lg:flex-none"
                 id={gridId}
+                onMouseLeave={cancelHover}
                 role="grid"
               >
                 {rows.map((row, index) => (
@@ -229,19 +254,28 @@ export function useComposerSkillMenu(
                     expanded={expanded === row.skill.name}
                     id={cellId(index)}
                     key={row.skill.name}
-                    onHover={() => setActiveIndex(index)}
+                    onHover={() => {
+                      cancelHover();
+                      if (index === active) return;
+                      hoverTimer.current = window.setTimeout(
+                        () => setActiveIndex(index),
+                        HOVER_DWELL_MS,
+                      );
+                    }}
                     onSelect={() => insert(row.skill.name)}
-                    onToggle={() =>
+                    onToggle={() => {
+                      cancelHover();
+                      setActiveIndex(index);
                       setExpanded((name) =>
                         name === row.skill.name ? undefined : row.skill.name,
-                      )
-                    }
+                      );
+                    }}
                     onView={() => view(row.skill.name)}
                     row={row}
                   />
                 ))}
               </div>
-              <div className="thin-scrollbar hidden min-w-0 flex-1 overflow-y-auto overscroll-contain border-l border-input p-3 md:block">
+              <div className="hidden min-w-0 flex-1 flex-col border-l border-input p-3 @lg:flex">
                 <SkillDetails
                   id={detailsId}
                   onView={() => view(rows[active]!.skill.name)}
@@ -274,6 +308,8 @@ type MenuPlacement = {
   top?: number;
   bottom?: number;
 };
+
+const HOVER_DWELL_MS = 120;
 
 // In rem, converted with the root font size: the free space is in px.
 const MENU_MAX_REM = 20;
@@ -334,13 +370,13 @@ function SkillRow(props: {
           "flex items-center rounded-md font-sans text-sm text-foreground select-none",
           props.active && "bg-dashboard-fill-hover",
         )}
-        onMouseMove={props.active ? undefined : props.onHover}
+        onMouseMove={props.onHover}
         role="row"
       >
         <div
           aria-describedby={props.describedBy}
           aria-selected={props.active}
-          className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-3 px-2.5 md:min-h-0 md:py-1.5"
+          className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-3 px-2.5 @lg:min-h-0 @lg:py-1.5"
           id={props.id}
           onClick={props.onSelect}
           role="gridcell"
@@ -352,7 +388,7 @@ function SkillRow(props: {
           {skill.disableModelInvocation ? <ManualOnlyBadge /> : null}
         </div>
         {/* The details pane takes this role on wide screens. */}
-        <div className="md:hidden" role="gridcell">
+        <div className="@lg:hidden" role="gridcell">
           <button
             aria-controls={panelId}
             aria-expanded={props.expanded}
@@ -372,7 +408,7 @@ function SkillRow(props: {
         </div>
       </div>
       {props.expanded ? (
-        <div className="px-2.5 pt-1 pb-2.5 md:hidden" id={panelId} role="row">
+        <div className="px-2.5 pt-1 pb-2.5 @lg:hidden" id={panelId} role="row">
           <div className="grid gap-2.5" role="gridcell">
             <p className="m-0 text-sm [overflow-wrap:anywhere] text-dashboard-text-muted">
               {skill.description}
@@ -385,7 +421,10 @@ function SkillRow(props: {
   );
 }
 
-/** Describe one skill: name, source, the full description, and a way in. */
+/**
+ * Describe one skill: name, source, the full description, and a way in. A
+ * long description scrolls, so View full skill stays in sight.
+ */
 function SkillDetails(props: {
   children?: ReactNode;
   id: string;
@@ -394,7 +433,7 @@ function SkillDetails(props: {
 }) {
   const { skill } = props;
   return (
-    <div className="flex min-h-full flex-col gap-1 font-sans">
+    <div className="flex min-h-0 flex-1 flex-col gap-1 font-sans">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm font-semibold [overflow-wrap:anywhere] text-foreground">
           {skillLabel(skill.name)}
@@ -408,12 +447,12 @@ function SkillDetails(props: {
         {skillSource(skill)}
       </div>
       <p
-        className="m-0 mt-1 text-sm [overflow-wrap:anywhere] text-foreground"
+        className="thin-scrollbar m-0 mt-1 min-h-0 overflow-y-auto overscroll-contain text-sm [overflow-wrap:anywhere] text-foreground"
         id={`${props.id}-description`}
       >
         {skill.description}
       </p>
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-3">
+      <div className="mt-auto flex shrink-0 flex-wrap items-center justify-between gap-3 pt-3">
         <ViewSkillButton onView={props.onView} />
         {props.children}
       </div>
