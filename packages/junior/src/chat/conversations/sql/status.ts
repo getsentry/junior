@@ -3,6 +3,7 @@ import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import { reviewItemNeedsInput } from "@/chat/review-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
+import { conversationKindSql } from "./conversation-row";
 import {
   juniorConversationBriefs,
   juniorConversationEvents,
@@ -153,7 +154,7 @@ function conversationWaitsOnStarterSql(
   );
   const unreadAnswer = sql`${replySeq} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
   return sql<boolean>`(${conversation.stoppedAt} is null
-    and coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'root' else 'task' end) <> 'task'
+    and ${conversationKindSql(conversation)} <> 'task'
     and not ${conversationIsActiveSql(conversation)}
     and (
       ${conversationTurnFailedSql(conversation)}
