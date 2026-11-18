@@ -131,6 +131,11 @@ export function useReviewItemData(
   });
 }
 
+/** Read the saved copy of one Review item, such as an action's result. */
+export function useSavedReviewItem(id: string): ReviewItemPayload | undefined {
+  return useQuery({ ...reviewItemQuery(id), enabled: false }).data;
+}
+
 function reviewItemQuery(id: string | undefined) {
   return {
     queryKey: reviewItemQueryKey(id),

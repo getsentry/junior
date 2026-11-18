@@ -11,7 +11,14 @@ type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 
 const PLURALS: Record<string, string> = {
   Approval: "Approvals",
+  FYI: "FYIs",
   Question: "Questions",
+};
+
+// The kind of a pull request ask in short words, before its change's title.
+const PULL_REQUEST_KIND_WORDS: Record<string, string> = {
+  "Ready to merge": "Ready to merge",
+  "Review requested": "Review",
 };
 
 /**
@@ -22,6 +29,8 @@ export type AskPill = {
   count: number;
   key: string;
   kind: string;
+  /** The kind in words before `label`, when `label` names something else. */
+  kindLabel?: string;
   /** The full name, such as "Review requested #91: Pin the release train". */
   name: string;
   /** The change's number, such as #91, in its status color. */
@@ -83,6 +92,7 @@ export function askPills(
         count: 1,
         key,
         kind,
+        kindLabel: PULL_REQUEST_KIND_WORDS[kind],
         name: change.title ? `${key}: ${change.title}` : key,
         label: change.title,
         ref: { number, tone: change.tone },
@@ -99,8 +109,7 @@ export function askPills(
       kind,
       name,
       strong,
-      // An FYI asks nothing, so its icon is enough.
-      label: kind === "FYI" ? (count > 1 ? String(count) : undefined) : name,
+      label: name,
     });
   }
   return [...pills.values()].sort(
@@ -109,9 +118,9 @@ export function askPills(
 }
 
 /**
- * One ask pill: plain text with no fill or frame. The icon carries the kind,
- * so the words name only what it is about. An ask that waits on the viewer
- * reads in the full text color.
+ * One ask pill: plain text with no fill or frame. The kind shows in words
+ * next to its icon, quiet, then what it is about. An ask that waits on the
+ * viewer reads in the full text color.
  */
 export function Pill(props: { pill: AskPill }) {
   const { pill } = props;
@@ -124,6 +133,11 @@ export function Pill(props: { pill: AskPill }) {
       data-ask-pill={pill.kind}
     >
       <AskKindIcon className="size-3" kind={pill.kind} />
+      {pill.kindLabel ? (
+        <span className="shrink-0 text-dashboard-text-muted">
+          {pill.kindLabel}
+        </span>
+      ) : null}
       {pill.label ? (
         <span className="min-w-0 truncate font-medium">{pill.label}</span>
       ) : null}

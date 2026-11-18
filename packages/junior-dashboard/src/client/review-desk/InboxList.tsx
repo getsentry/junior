@@ -1,5 +1,5 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { CheckCheck } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
@@ -41,6 +41,7 @@ import {
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
+  fyiCount,
   INBOX_VIEW_LABELS,
   inboxViewPath,
   itemRowSubtitle,
@@ -63,23 +64,23 @@ import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
-/** Clear the notices and FYI items in some rows. Asks stay. */
+/** Dismiss the FYIs in some rows. Asks stay. */
 function SweepControl(props: {
   clear: number;
   onSweep(): void;
   scope: string;
 }) {
   if (props.clear === 0) return null;
+  const label = `Dismiss ${fyiCount(props.clear)}`;
   return (
     <Button
-      aria-label={`Clear ${props.clear} in ${props.scope}`}
+      aria-label={`${label} in ${props.scope}`}
       className="h-6 gap-1 px-1.5 text-xs"
       onClick={props.onSweep}
-      title="Mark notices and FYI items done. Questions and approvals stay."
       variant="ghost"
     >
-      <CheckCheck aria-hidden="true" className="size-3.5" />
-      Clear {props.clear}
+      <X aria-hidden="true" className="size-3.5" />
+      {label}
     </Button>
   );
 }
@@ -343,6 +344,7 @@ export function InboxList(props: {
   const bundleRow = (
     row: InboxBundle,
     options: {
+      answered?: string;
       conversation?: Conversation;
       drag?: PinnedRowDrag;
       itemRow?: boolean;
@@ -359,6 +361,7 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     return (
       <InboxRow
+        answered={options.answered}
         bundle={row}
         conversation={
           options.conversation ?? data.conversationById.get(row.conversationId)
@@ -403,8 +406,12 @@ export function InboxList(props: {
   };
   const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
     const key = `conversation:${row.conversationId}`;
+    const answered = row.conversation
+      ? data.answerOf(row.conversation)
+      : undefined;
     if (row.bundle)
       return bundleRow(row.bundle, {
+        answered,
         conversation: row.conversation,
         drag,
         key,
@@ -412,6 +419,7 @@ export function InboxList(props: {
       });
     return (
       <InboxRow
+        answered={answered}
         conversation={row.conversation}
         conversationId={row.conversationId}
         drag={drag}

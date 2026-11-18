@@ -9,8 +9,9 @@ import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useReviewItemAction } from "./queries";
-import { answerRows } from "./reviewItemFormat";
+import { useInboxUi } from "../uiShell";
+import { useReviewItemAction, useSavedReviewItem } from "./queries";
+import { answerRows, viewerAnswerLine } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 
@@ -80,12 +81,28 @@ export function ReviewItemActions(props: {
   take?: string | false;
 }) {
   const { item } = props;
+  const inbox = useInboxUi();
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
+  const [submitted, setSubmitted] = useState(false);
   const [unsent, setUnsent] = useState(false);
   useReportUnsentAnswer(item, unsent);
+  // An Inbox row shows its items as the list read them until it leaves, so
+  // the saved answer shows here, where it was given.
+  const saved = useSavedReviewItem(item.id);
+  const answered =
+    inbox && submitted && saved && saved.status !== "open"
+      ? viewerAnswerLine(saved)
+      : undefined;
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
+  if (answered) {
+    return (
+      <p className="m-0 text-sm text-dashboard-text-muted" role="status">
+        {answered}
+      </p>
+    );
+  }
   if (!item.canAct) {
     return (
       <p className="m-0 text-sm text-dashboard-text-muted">
@@ -96,9 +113,11 @@ export function ReviewItemActions(props: {
 
   async function run(body: ReviewItemActionBody) {
     setError(undefined);
+    setSubmitted(body.action === "submit");
     try {
       await action.mutateAsync({ body, id: item.id });
     } catch (failure) {
+      setSubmitted(false);
       setError(actionError(failure));
       throw failure;
     }

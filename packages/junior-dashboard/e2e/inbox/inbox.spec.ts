@@ -206,7 +206,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
-  test("a sweep clears only FYI items, with an Undo", async ({
+  test("a sweep dismisses only FYI items, with an Undo", async ({
     dashboard,
     page,
   }) => {
@@ -228,10 +228,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // Each section clears its own rows. In To do, the notice in the
-    // question's row goes; the question stays.
-    await page.getByRole("button", { name: "Clear 1 in To do" }).click();
-    await expect(page.getByText("Cleared 1 item")).toBeVisible();
+    // Each section dismisses its own FYIs and says so. In To do, the notice
+    // in the question's row goes; the question stays.
+    await page.getByRole("button", { name: "Dismiss 1 FYI in To do" }).click();
+    await expect(page.getByText("Dismissed 1 FYI")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -242,26 +242,27 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Clear 1 in To do" }),
+      page.getByRole("button", { name: "Dismiss 1 FYI in To do" }),
     ).toBeVisible();
-    // Only section headers clear. No label says "need you".
-    await expect(page.getByRole("button", { name: /^Clear/ })).toHaveText(
-      Array(await page.getByRole("button", { name: /^Clear/ }).count()).fill(
-        /^Clear \d+$/,
-      ),
+    // Only section headers sweep. No label says "need you".
+    const sweeps = page.getByRole("button", { name: /^Dismiss \d+ FYIs? in / });
+    await expect(sweeps).toHaveText(
+      Array(await sweeps.count()).fill(/^Dismiss \d+ FYIs?$/),
     );
     await expect(page.getByText(/\bneeds? you\b/i)).toHaveCount(0);
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page
+      .getByRole("button", { name: /^Dismiss \d+ FYIs? in Today$/ })
+      .click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
     expect(actions.map((action) => action.id)).not.toContain(teamAsk.id);
   });
 
-  test("Undo after a Clear works from an open Conversation and other tabs", async ({
+  test("Undo after a sweep works from an open Conversation and other tabs", async ({
     dashboard,
     page,
   }) => {
@@ -271,10 +272,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const clearToday = page.getByRole("button", {
-      name: /^Clear \d+ in Today$/,
+      name: /^Dismiss \d+ FYIs? in Today$/,
     });
     await clearToday.click();
-    await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
+    await expect(page.getByText(/^Dismissed \d+ FYIs?$/)).toBeVisible();
     await expect(clearToday).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
@@ -316,9 +317,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       })
       .getByRole("button", { name: "FYI" });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page
+      .getByRole("button", { name: /^Dismiss \d+ FYIs? in Today$/ })
+      .click();
     await expect(digestFyi).toHaveCount(0);
-    await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
+    await expect(page.getByText(/^Could not dismiss \d+ FYIs?$/)).toBeVisible({
       timeout: 10_000,
     });
     await expect(digestFyi).toBeVisible();
@@ -378,7 +381,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const details = page.getByRole("region", {
       name: "Weekly project summary: attention",
     });
-    await expect(details).toContainText("Blocked: GitHub access expired.");
+    // The header says why it is blocked, so the card does not say it again.
+    await expect(
+      todo.getByRole("button", { name: /Weekly project summary/ }),
+    ).toContainText("Blocked · GitHub access expired.");
+    await expect(details).not.toContainText("GitHub access expired.");
+    await expect(details.getByText("Why", { exact: true })).toHaveCount(0);
     const waiting = Number(
       (await badge.getAttribute("aria-label"))!.replace(/\D/g, ""),
     );

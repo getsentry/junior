@@ -149,6 +149,24 @@ export function answerLine(
     .join(" · ");
 }
 
+/**
+ * Say what the viewer answered, such as "You answered Hold", so a row shows
+ * it in place of the ask. An answer with no choice, only text, is "You
+ * replied".
+ */
+export function viewerAnswerLine(
+  item: Pick<ReviewItemPayload, "answer" | "request">,
+): string | undefined {
+  if (!item.request || !item.answer) return undefined;
+  const { values } = normalizeUserInputAnswer(item.request, item.answer);
+  const choices = item.request.fields.flatMap((field) =>
+    field.kind === "text" ? [] : (values[field.id] ?? []),
+  );
+  return choices.length > 0
+    ? `You answered ${choices.join(", ")}`
+    : "You replied";
+}
+
 /** The open Review items of the inbox, in the groups and order it shows. */
 export type InboxGroups = {
   fyi: ReviewItemPayload[];

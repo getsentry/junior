@@ -230,6 +230,8 @@ function rowConversationPath(props: InboxRowProps): string {
 }
 
 type InboxRowProps = {
+  /** What the viewer answered, such as "You answered Hold": the summary. */
+  answered?: string;
   bundle?: InboxBundle;
   conversation?: Conversation;
   conversationId: string;
@@ -534,7 +536,11 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const summary = props.itemTitle ? undefined : rowSummary(conversation);
+  const found = props.itemTitle ? undefined : rowSummary(conversation);
+  // The viewer's answer replaces the line that asked for it.
+  const summary = props.answered
+    ? { mentions: undefined, status: found?.status, text: props.answered }
+    : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
@@ -903,7 +909,6 @@ function ExpandedActions(props: {
           open={props.snoozeMenuOpen}
         />
       ) : null}
-      {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
         <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
       ) : null}
