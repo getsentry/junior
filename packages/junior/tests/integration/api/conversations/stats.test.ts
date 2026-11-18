@@ -6,6 +6,8 @@ import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { cacheKeyPrefix } from "@/chat/state/cache";
 import { juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
@@ -528,8 +530,21 @@ describe("conversation stats API", () => {
     try {
       await migrateSchema(fixture.sql);
       await addConversation(1);
-      const first = await readStats();
-      expect(first.metricDays.at(-1)?.conversations).toBe(1);
+      // An entry from an older report shape is reloaded once.
+      const state = getStateAdapter();
+      await state.connect();
+      await state.set(
+        `${cacheKeyPrefix("core")}conversation-stats`,
+        { value: { refreshAtMs: 0, report: { totals: {} } } },
+        60_000,
+      );
+      const reloaded = await measureSql(() =>
+        Promise.all([readStats(), readStats()]),
+      );
+      expect(reloaded.sql.statements).toBe(5);
+      const [first] = reloaded.result;
+      expect(reloaded.result).toEqual([first, first]);
+      expect(first?.metricDays.at(-1)?.conversations).toBe(1);
 
       await addConversation(2);
       vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
