@@ -1,7 +1,4 @@
-import type {
-  ExecOptions,
-  ExecResult,
-} from "@/core/tool-execution-environment";
+import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment";
 
 /**
  * Starts sandboxes and finds them again. A sandbox lives longer than one
@@ -36,27 +33,8 @@ export type CreateSandboxInput = {
  * its own: when the sandbox stops, every call throws `SandboxUnavailableError`,
  * and the caller calls `resume` to get a new handle.
  */
-export type Sandbox = {
+export type Sandbox = ToolExecutionEnvironment & {
   readonly id: string;
-  /** Absolute directory where commands start and relative paths resolve. */
-  readonly cwd: string;
-  /**
-   * Runs `argv[0]` with the rest of `argv` as its arguments, without a shell,
-   * and waits for it to exit. A non-zero exit code is a result, not a throw.
-   * A timeout or an abort throws.
-   */
-  exec(argv: readonly string[], options: ExecOptions): Promise<ExecResult>;
-  /** Returns the bytes of a file as a stream, or `undefined` when it is missing. */
-  readFile(
-    path: string,
-    signal: AbortSignal,
-  ): Promise<ReadableStream<Uint8Array> | undefined>;
-  /** Creates or replaces a file, and creates its missing parent directories. */
-  writeFile(
-    path: string,
-    content: Uint8Array,
-    signal: AbortSignal,
-  ): Promise<void>;
 };
 
 /** The running sandbox behind a handle is gone. Call `resume`. */
