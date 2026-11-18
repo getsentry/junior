@@ -14,7 +14,6 @@ export type InboxCardActions = {
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
-  pending: boolean;
   snoozeMenuOpen: boolean;
 };
 
@@ -74,11 +73,7 @@ export function RowQuickActions(props: {
       ) : null}
       {/* Dismiss is the main action, so it goes right-most. */}
       {!props.expanded && actions.onDismiss ? (
-        <RowDismissButton
-          compact
-          disabled={actions.pending}
-          onClick={actions.onDismiss}
-        />
+        <RowDismissButton compact onClick={actions.onDismiss} />
       ) : null}
     </>
   );

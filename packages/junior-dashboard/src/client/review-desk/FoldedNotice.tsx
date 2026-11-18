@@ -1,5 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type {
+  ReviewItemActionBody,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 
 import {
   Collapsible,
@@ -16,9 +19,13 @@ import { reviewItemText } from "./reviewItemFormat";
 
 /**
  * A notice about the item's subject, as one quiet line in the item's card.
- * It opens to the notice's text and its own Dismiss.
+ * It opens to the notice's text and its own Dismiss. `onAction` takes the
+ * Dismiss in place of its own action, as `ReviewItemActions` says.
  */
-export function FoldedNotice(props: { notice: ReviewItemPayload }) {
+export function FoldedNotice(props: {
+  notice: ReviewItemPayload;
+  onAction?(body: ReviewItemActionBody): Promise<void>;
+}) {
   const { notice } = props;
   return (
     <Collapsible
@@ -44,7 +51,7 @@ export function FoldedNotice(props: { notice: ReviewItemPayload }) {
             text={reviewItemText(notice)}
           />
         </ReviewItemObjects>
-        <ReviewItemActions item={notice} />
+        <ReviewItemActions item={notice} onAction={props.onAction} />
       </CollapsibleContent>
     </Collapsible>
   );

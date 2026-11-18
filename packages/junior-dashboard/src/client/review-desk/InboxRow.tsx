@@ -17,6 +17,7 @@ import {
 import { Link, useHref, useNavigate } from "react-router";
 import type {
   OwnedObjectAnnotation,
+  ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -121,9 +122,10 @@ function RowItem(props: {
   item: ReviewItemPayload;
   /** Notices about the item's subject (`foldNotices`). */
   notices: readonly ReviewItemPayload[];
+  onAction?: InboxRowProps["onItemAction"];
   take?: string;
 }) {
-  const { actions, item } = props;
+  const { actions, item, onAction } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
   // The card's own Snooze and Dismiss: they act on this item only.
@@ -137,10 +139,7 @@ function RowItem(props: {
         />
       ) : null}
       {actions.onDismiss ? (
-        <RowDismissButton
-          disabled={actions.pending}
-          onClick={actions.onDismiss}
-        />
+        <RowDismissButton onClick={actions.onDismiss} />
       ) : null}
     </>
   ) : undefined;
@@ -208,7 +207,11 @@ function RowItem(props: {
         ) : null}
       </ReviewItemObjects>
       {props.notices.map((notice) => (
-        <FoldedNotice key={notice.id} notice={notice} />
+        <FoldedNotice
+          key={notice.id}
+          notice={notice}
+          onAction={onAction ? (body) => onAction(notice, body) : undefined}
+        />
       ))}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
@@ -217,6 +220,7 @@ function RowItem(props: {
         dismiss={!cardActions}
         extra={cardActions}
         item={item}
+        onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
     </section>
@@ -247,6 +251,11 @@ type InboxRowProps = {
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
+  /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
+  onItemAction?(
+    item: ReviewItemPayload,
+    body: ReviewItemActionBody,
+  ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(untilMs: number): void;
@@ -847,6 +856,7 @@ function InboxRowBody(
               item={item}
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
+              onAction={props.onItemAction}
               take={props.take}
             />
           ))}
@@ -926,7 +936,16 @@ function ExpandedActions(props: {
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
 function ExpandedPin(props: { conversation: Conversation }) {
-  const pin = usePinConversation(props.conversation.id);
+  const { clearActionError, showActionError } = useConversationActionToasts();
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinning) =>
+      showActionError(
+        props.conversation,
+        pinning ? "Could not pin" : "Could not unpin",
+        () => pin.mutate(pinning),
+      ),
+    onSuccess: () => clearActionError(props.conversation),
+  });
   const pinned = Boolean(props.conversation.pinnedAt);
   return (
     <Button

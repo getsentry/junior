@@ -1,4 +1,5 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 
 /** One duration and easing for a card's height, as it opens, grows, or leaves. */
 const HEIGHT_MS = 200;
@@ -98,28 +99,36 @@ function listRows(scroller: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Put a row away, as Dismiss or Snooze does: it leaves with its height,
- * then `work` takes it out. When the row was open, the next row opens in
- * its place, or the row before it at the end of the list, so the reader
- * keeps going. In a stack, a row of the same stack opens first, also past
- * its fold. A row that `work` keeps, as when it fails, opens again.
+ * Put a row away, as Dismiss or Snooze does. When the row was open, the
+ * next row opens in its place at once, or the row before it at the end of
+ * the list, so the reader keeps going. In a stack, a row of the same stack
+ * opens first, also past its fold. The row leaves with its height, then
+ * `release` lets it go. A row that stays after `release`, as a Conversation
+ * row without its asks, shows its card again. Returns the key of the row
+ * that opened, if one did.
  */
 export function useLeaveRow(
   scroller: RefObject<HTMLElement | null>,
   expandedKey: string,
   setExpandedKey: (key: string) => void,
 ) {
+  // A Retry calls a leave from an earlier render. Read the open row now.
+  const expanded = useRef(expandedKey);
+  expanded.current = expandedKey;
   /** `passing` names rows that go with this one, so none of them opens. */
   return (
     key: string,
-    work: () => Promise<void> | void,
+    release: () => void,
     passing: ReadonlySet<string> = new Set(),
-  ) => {
+  ): string | undefined => {
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
     const at = rows.findIndex((row) => row.dataset["inboxRow"] === key);
     const card = rows[at];
-    if (!card) return void work();
+    if (!card) {
+      release();
+      return undefined;
+    }
     const stays = (row: HTMLElement) =>
       !passing.has(row.dataset["inboxRow"] ?? "");
     // A row of a stack goes to a row of its own stack first.
@@ -127,38 +136,41 @@ export function useLeaveRow(
     const near = (row: HTMLElement) => stays(row) && !!stack?.contains(row);
     const after = rows.slice(at + 1);
     const before = rows.slice(0, at).reverse();
-    const next = (
-      after.find(near) ??
-      before.find(near) ??
-      after.find(stays) ??
-      before.find(stays)
-    )?.dataset["inboxRow"];
-    const wasOpen = expandedKey === key;
-    void (async () => {
-      await leaveCard(card);
-      if (wasOpen) setExpandedKey(next ?? "");
-      await work();
+    const next =
+      (
+        after.find(near) ??
+        before.find(near) ??
+        after.find(stays) ??
+        before.find(stays)
+      )?.dataset["inboxRow"] ?? "";
+    const opened = expanded.current === key ? next : undefined;
+    if (opened !== undefined) setExpandedKey(opened);
+    void leaveCard(card).then(() => {
+      // The row goes now, before its shut card shows again.
+      flushSync(release);
       if (card.isConnected) restoreCard(card);
-    })();
+    });
+    return opened;
   };
 }
 
 /**
- * Put one card of an open stack away, as its Dismiss or Snooze does: it
- * leaves with its height, then `work` takes it out, and the next card of the
- * same stack takes focus, or the card before it at the end. The last card
- * leaves with its row (`leaveRow`), so the next stack opens. A card that
- * `work` keeps, as when it fails, comes back.
+ * Put one card of an open row away, as its Dismiss or Snooze does: it
+ * leaves with its height, then `release` lets it go, and the next card of
+ * the row takes focus, or the card before it at the end. The last card
+ * leaves with its row (`leaveRow`), so the next row opens. A card that
+ * stays after `release`, as when its action failed, comes back. Returns the
+ * key of the row that opened, if one did.
  */
 export function useLeaveCard(
   scroller: RefObject<HTMLElement | null>,
-  leaveRow: (
-    key: string,
-    work: () => Promise<void> | void,
-    passing?: ReadonlySet<string>,
-  ) => void,
+  leaveRow: ReturnType<typeof useLeaveRow>,
 ) {
-  return (key: string, itemId: string, work: () => Promise<void> | void) => {
+  return (
+    key: string,
+    itemId: string,
+    release: () => void,
+  ): string | undefined => {
     const area = scroller.current;
     const row = area
       ? listRows(area).find(
@@ -170,14 +182,48 @@ export function useLeaveCard(
       : [];
     const at = cards.findIndex((card) => card.dataset["inboxCard"] === itemId);
     const card = cards[at];
-    if (!card || cards.length === 1) return leaveRow(key, work);
+    // A card that does not show, as a folded notice, has no motion.
+    if (!card) {
+      release();
+      return undefined;
+    }
+    if (cards.length === 1) return leaveRow(key, release);
     const next = cards[at + 1] ?? cards[at - 1];
-    void (async () => {
-      await leaveCard(card);
-      await work();
+    void leaveCard(card).then(() => {
+      flushSync(release);
       if (card.isConnected) return restoreCard(card);
       next?.focus({ preventScroll: true });
       next?.scrollIntoView({ block: "nearest" });
-    })();
+    });
+    return undefined;
   };
+}
+
+/**
+ * After a failed action brings a row back, scroll it into view when it is
+ * near the part of the list that shows. A row far away stays there. The
+ * row can take a few frames to render again.
+ */
+export function showReturnedRow(
+  scroller: HTMLElement,
+  key: string,
+  frames = 10,
+) {
+  const row = scroller.querySelector(`li[data-inbox-row="${CSS.escape(key)}"]`);
+  if (!row) {
+    if (frames > 0) {
+      requestAnimationFrame(() => showReturnedRow(scroller, key, frames - 1));
+    }
+    return;
+  }
+  const area = scroller.getBoundingClientRect();
+  const box = row.getBoundingClientRect();
+  const near =
+    box.bottom > area.top - area.height && box.top < area.bottom + area.height;
+  if (near) {
+    row.scrollIntoView({
+      behavior: reducedMotion() ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }
 }

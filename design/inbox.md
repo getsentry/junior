@@ -57,6 +57,8 @@ Actions:
   the item as done. None of them act on the other rows of the stack.
 - A row that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other rows stay.
+- A row's own action applies before the server answers. When it fails, only
+  that row comes back, and a toast offers Retry.
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.

@@ -218,13 +218,11 @@ function CustomSnooze(props: {
 export function RowDismissButton(props: {
   /** A row's quick action: smaller, and only its icon on a narrow screen. */
   compact?: boolean;
-  disabled?: boolean;
   onClick(): void;
 }) {
   return (
     <Button
       className={props.compact ? COMPACT_BUTTON_CLASS : undefined}
-      disabled={props.disabled}
       onClick={props.onClick}
       variant="outline"
     >
