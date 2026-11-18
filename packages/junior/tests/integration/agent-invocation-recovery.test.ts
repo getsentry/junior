@@ -55,6 +55,7 @@ describe("agent invocation mailbox recovery", () => {
       // alpha's second append must.
       const inner = createConversationWorkQueueTestAdapter();
       const releaseAlpha = deferred();
+      const alphaHeld = deferred();
       const betaSent = deferred();
       const sent: string[] = [];
       let heldAlpha = false;
@@ -69,6 +70,7 @@ describe("agent invocation mailbox recovery", () => {
             !heldAlpha
           ) {
             heldAlpha = true;
+            alphaHeld.resolve();
             await releaseAlpha.promise;
           }
           return await inner.send(message, options);
@@ -79,19 +81,15 @@ describe("agent invocation mailbox recovery", () => {
         conversationWorkQueue: queue,
         nowMs: 3_000,
       });
-      await betaSent.promise;
-      expect(sent).toEqual([
-        alpha.childConversationId,
-        beta.childConversationId,
-      ]);
+      // The two mailboxes can reach the queue in either order.
+      await Promise.all([alphaHeld.promise, betaSent.promise]);
+      const alphaSends = () =>
+        sent.filter((id) => id === alpha.childConversationId).length;
+      expect(alphaSends()).toBe(1);
       releaseAlpha.resolve();
       await recovery;
 
-      expect(sent).toEqual([
-        alpha.childConversationId,
-        beta.childConversationId,
-        alpha.childConversationId,
-      ]);
+      expect(alphaSends()).toBe(2);
       const alphaWork = await getConversationWorkState({
         conversationId: alpha.childConversationId,
         state,
