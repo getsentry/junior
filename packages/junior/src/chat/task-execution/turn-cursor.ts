@@ -49,6 +49,8 @@ import type {
   ConversationStore,
 } from "@/chat/conversations/store";
 import { withSpan } from "@/chat/logging";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "./turn-membership";
 import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
@@ -232,6 +234,11 @@ interface StoredTurnRecord extends Omit<
   /** Redis field kept for deployed workers that still read publishExternally. */
   publishExternally?: boolean | undefined;
   /**
+   * Redis field kept for deployed workers that still find the Turn start with
+   * it. Current workers use the Turn's `turn_started` event.
+   */
+  turnStartSeq?: number | undefined;
+  /**
    * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
    */
@@ -305,6 +312,7 @@ const storedTurnRecordSchema = z
     lastProgressAtMs: nonNegativeNumberSchema,
     resumeReason: turnPauseReasonSchema.optional(),
     publishExternally: z.boolean().optional(),
+    turnStartSeq: seqCursorSchema.optional(),
     source: sourceSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     turnId: z.string().min(1),
@@ -647,6 +655,7 @@ function buildStoredRecord(args: {
   surface?: AgentTurnSurface | undefined;
   resumeReason?: TurnPauseReason | undefined;
   publishExternally?: boolean | undefined;
+  turnStartSeq?: number | undefined;
   source?: Source | undefined;
   errorMessage?: string | undefined;
   resumedFromSliceId?: number | undefined;
@@ -680,6 +689,7 @@ function buildStoredRecord(args: {
       historyVersion: args.historyVersion,
       resumeReason: args.resumeReason,
       publishExternally: args.publishExternally,
+      turnStartSeq: args.turnStartSeq,
       source: args.source,
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
@@ -834,6 +844,7 @@ async function writeTurnState(
         historyVersion: parsed.historyVersion,
         resumeReason: args.existing.resumeReason,
         publishExternally: parsed.publishExternally,
+        turnStartSeq: parsed.turnStartSeq,
         source: args.existing.source,
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
@@ -971,6 +982,23 @@ async function upsertTurnRecordLocked(
           turnSource?.kind === "slack" ||
           turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
+  // TODO(dcramer): Remove the stored turnStartSeq field one release after
+  // Turn membership moved to the `turn_started` seq. A deployed worker reads
+  // it as the seq before the Turn's first message, and sends the prompt
+  // again without it, so write it once the record holds a Turn message.
+  const turnStart = await loadTurnStart(args.conversationId, args.turnId);
+  const turnStartSeq =
+    turnStart &&
+    savedTurnMessages(
+      {
+        piMessageProvenance: commit.provenance,
+        piMessageSeqs: commit.messageSeqs,
+        piMessages: commit.messages,
+      },
+      turnStart,
+    ).length > 0
+      ? turnStart.seq
+      : undefined;
 
   const turnActor = existingRecord?.actor ?? args.actor;
   // The Turn keeps the Identity of its starting Actor. An event Turn runs as
@@ -1030,6 +1058,7 @@ async function upsertTurnRecordLocked(
         lastProgressAtMs: args.lastProgressAtMs,
         resumeReason: args.resumeReason,
         publishExternally,
+        turnStartSeq,
         source: args.source ?? existingRecord?.source,
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,

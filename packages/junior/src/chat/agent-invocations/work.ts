@@ -57,7 +57,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurn } from "./thread-turn";
 import { agentTypeInstructions } from "./agent-types";
-import { FORK_INSTRUCTIONS, loadForkHistory } from "./fork-history";
+import { commitForkHistory, FORK_INSTRUCTIONS } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -792,6 +792,12 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
+      // A fork starts with the parent's history. Commit it before the Turn
+      // starts, so it is not part of the Turn. Later agent invocations read
+      // it from the child's own Conversation.
+      if (invocation.fork) {
+        await commitForkHistory(invocation);
+      }
       await lifecycle.start({
         conversationId: invocation.childConversationId,
         createdAtMs: invocation.createdAtMs,
@@ -809,12 +815,7 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // A fork starts with the parent's history. Later agent invocations
-      // read it from the child's own Conversation.
-      history =
-        invocation.fork && projection.messages.length === 0
-          ? await loadForkHistory(invocation)
-          : projection.messages;
+      history = projection.messages;
       location = child?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {

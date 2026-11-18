@@ -605,6 +605,7 @@ async function executeAgentRunInPrivacyContext(
       startedAtMs: replyStartedAtMs,
       surface,
       turnStart,
+      history: input.piMessages,
     });
     const runResume = resume;
     const recordParentToolExecutionStart = async (event: {

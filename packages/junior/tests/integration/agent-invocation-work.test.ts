@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as z from "zod";
-import { createApp, defineJuniorPlugins } from "@/app";
+import { createApp } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
@@ -48,12 +47,7 @@ import {
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import {
-  createEventSource,
-  defineJuniorPlugin,
-  definePluginTool,
-  pluginToolOutputSchema,
-} from "@sentry/junior-plugin-api";
+import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   destination,
@@ -67,7 +61,9 @@ import {
   loadMessageEvents,
   loadTurnEvents,
   loadSubagentEvents,
+  prepareForkParentHistory,
   prepareSummarizedHistory,
+  upkeepPlugins,
 } from "../fixtures/agent-invocations";
 import { recordTurnStart } from "../fixtures/turn-start";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
@@ -653,6 +649,13 @@ describe("agent invocation conversation work", () => {
       expected: resumed,
     },
     {
+      // The fork history holds the parent's answer, but not this Turn's.
+      name: "a fork child",
+      fork: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
       name: "a stopped child",
       stopBeforeWake: true,
       runs: 1,
@@ -674,43 +677,14 @@ describe("agent invocation conversation work", () => {
     async ({
       earlierAnswer = false,
       expected,
+      fork = false,
       failedResumes = 0,
       runs,
       stopBeforeWake = false,
     }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
-      await createApp({
-        plugins: defineJuniorPlugins([
-          defineJuniorPlugin({
-            manifest: {
-              name: "upkeep",
-              displayName: "Upkeep",
-              description: "Upkeep test tools",
-            },
-            hooks: {
-              tools: () => ({
-                markDone: definePluginTool({
-                  // The tool checks in code that its effect is safe, so action
-                  // review does not run, also in a child agent.
-                  approvalMode: "approve",
-                  exposure: "direct",
-                  annotations: {
-                    destructiveHint: true,
-                    idempotentHint: true,
-                    openWorldHint: true,
-                    readOnlyHint: false,
-                  },
-                  description: "Mark one item done.",
-                  inputSchema: z.object({ itemId: z.string() }),
-                  outputSchema: pluginToolOutputSchema,
-                  execute: markDone,
-                }),
-              }),
-            },
-          }),
-        ]),
-      });
+      await createApp({ plugins: upkeepPlugins(markDone) });
       const { conversationStore, fixture } = await prepareParentConversation();
       const agentRunner = createModelAgentRunner(
         createModelStream([
@@ -737,6 +711,9 @@ describe("agent invocation conversation work", () => {
           {
             ...invocationInput,
             idempotencyKey: "resume-1",
+            ...(fork
+              ? { fork, parentToolCallId: await prepareForkParentHistory() }
+              : undefined),
           },
           { conversationStore, queue, state },
         );
