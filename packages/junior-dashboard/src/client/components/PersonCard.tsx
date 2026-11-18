@@ -11,6 +11,7 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { ObjectCard } from "../conversations/ObjectCard";
 import { peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
+import { InlineError } from "./InlineError";
 import type { Person } from "../person";
 import { formatRelativeTime, formatTime } from "../time";
 
@@ -129,12 +130,12 @@ function PersonActivity(props: { activity: PersonCardReport["activity"] }) {
 /**
  * The card of one person: their person object card, the same one a link to
  * their People page shows, the pull requests they merged most recently, and
- * their recent activity in the Conversations the viewer may read. It loads when it opens. `actions` holds buttons for
- * this person, such as an invite.
+ * their recent activity in the Conversations the viewer may read. It loads
+ * when it opens. `actions` holds buttons for this person, such as an invite.
  */
 export function PersonCard(props: { actions?: ReactNode; person: Person }) {
   const email = props.person.email?.toLowerCase();
-  const { data, isPending } = useQuery({
+  const { data, isError, isPending } = useQuery({
     queryKey: ["person-card", email],
     queryFn: () =>
       fetchDashboardJson(
@@ -157,6 +158,9 @@ export function PersonCard(props: { actions?: ReactNode; person: Person }) {
           <p className="m-0 text-xs text-dashboard-text-muted">
             Loading recent activity…
           </p>
+        ) : null}
+        {isError ? (
+          <InlineError>Could not load recent activity.</InlineError>
         ) : null}
         {data ? (
           <>

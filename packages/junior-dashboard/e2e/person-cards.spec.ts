@@ -147,6 +147,27 @@ test("a person card loads only when it opens", async ({ dashboard, page }) => {
   expect(reads).toHaveLength(1);
 });
 
+test("a person card says when its activity fails to load", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.route(/\/api\/people\/[^/]+\/card$/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      status: 500,
+      body: JSON.stringify({ error: "Card failed." }),
+    }),
+  );
+  await openConversation(page, dashboard.baseURL);
+  await page.getByRole("link", { name: "@Avery Chen" }).first().hover();
+  const card = personCard(page, "Avery Chen");
+  await expect(card.getByText("Could not load recent activity.")).toBeVisible();
+  await expect(
+    card.getByRole("region", { name: "Recent activity" }),
+  ).toHaveCount(0);
+});
+
 test("a raw Slack id in a Review item question shows the person", async ({
   dashboard,
   page,
