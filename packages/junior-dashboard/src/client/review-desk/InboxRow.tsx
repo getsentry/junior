@@ -173,7 +173,11 @@ function RowItem(props: {
         ) : null}
       </ReviewItemObjects>
       {props.notices.map((notice) => (
-        <FoldedNotice key={notice.id} notice={notice} />
+        <FoldedNotice
+          key={notice.id}
+          notice={notice}
+          onAction={onAction ? (body) => onAction(notice, body) : undefined}
+        />
       ))}
       {/* The row's bar holds Dismiss. A card on its own, as in a
           Conversation, keeps its own. */}

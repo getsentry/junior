@@ -7,6 +7,8 @@ import {
   digest,
   license,
   mockReviewItems,
+  pinConflict,
+  pinReview,
   prReview,
   rollout,
 } from "./inbox-fixture";
@@ -301,13 +303,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await page.goto(`${dashboard.baseURL}/`);
     const digestFyi = page
-      .getByRole("listitem")
-      .filter({
-        has: page.getByRole("link", { name: /Daily operations digest/ }),
-      })
-      .getByRole("button", { name: "FYI" });
+      .getByRole("region", { name: "FYI" })
+      .locator("[data-inbox-row]")
+      .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
+    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     const toast = page
       .locator('[data-slot="toast"]')
@@ -323,5 +323,47 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => sent.length).toBe(2);
     await expect(toast).toHaveCount(0);
     await expect(digestFyi).toHaveCount(0);
+  });
+
+  test("a folded notice's Dismiss applies at once, and comes back with Retry when it fails", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [pinReview, pinConflict] });
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    let fails = true;
+    const sent: string[] = [];
+    await page.route(
+      `**/api/review-items/${pinConflict.id}/actions`,
+      async (route) => {
+        sent.push(pinConflict.id);
+        if (!fails) return route.fallback();
+        await answered;
+        await route.fulfill({ json: { error: "Failed" }, status: 500 });
+      },
+    );
+    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    const asks = page.getByRole("region", { name: /: asks$/ });
+    const conflict = asks.getByRole("region", { name: pinConflict.title });
+    await conflict.getByRole("button", { name: "Merge conflict" }).click();
+    await conflict.getByRole("button", { name: "Dismiss" }).click();
+    await expect.poll(() => sent).toEqual([pinConflict.id]);
+    await expect(conflict).toHaveCount(0);
+
+    answer();
+    const toast = page
+      .locator('[data-slot="toast"]')
+      .filter({ hasText: "Could not dismiss" });
+    await expect(toast).toBeVisible();
+    await expect(asks.locator("[data-folded-notice]")).toHaveText(
+      "Merge conflict",
+    );
+
+    fails = false;
+    await toast.getByRole("button", { name: "Retry" }).click();
+    await expect(asks.locator("[data-folded-notice]")).toHaveCount(0);
+    await expect.poll(() => sent).toHaveLength(2);
+    await expect(asks.locator("[data-folded-notice]")).toHaveCount(0);
   });
 });
