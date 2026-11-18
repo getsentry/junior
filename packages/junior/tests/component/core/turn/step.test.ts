@@ -220,8 +220,8 @@ describe("runStep", () => {
     };
     const tools = [
       tool("read", { replay: "safe", execute: record("read") }),
-      tool("send", { replay: "unsafe", execute: record("send") }),
-      tool("done", { replay: "unsafe", execute: record("done") }),
+      tool("send", { replay: "never", execute: record("send") }),
+      tool("done", { replay: "never", execute: record("done") }),
     ];
     const saved: Message = {
       role: "toolResult",
