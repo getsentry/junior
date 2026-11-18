@@ -14,6 +14,7 @@ import { toWebStream } from "@/core/tool-execution-environment/web-stream";
 // Vercel enforces this after our own timer, so a command still stops when
 // this process dies, but our timer fires first and the call throws.
 const VERCEL_TIMEOUT_BACKSTOP_MS = 5_000;
+const KILL_TIMEOUT_MS = 10_000;
 
 /**
  * Vercel API credentials. The SDK reads only `VERCEL_OIDC_TOKEN` from the
@@ -148,9 +149,12 @@ async function exec(
     const finished = await command.wait({ signal });
     return { exitCode: finished.exitCode };
   } catch (error) {
-    if (!signal.aborted) throw error;
-    await command.kill("SIGKILL");
-    throw signal.reason;
+    // Any failure kills the command, so it never outlives exec. The kill is
+    // cleanup: its own failure never replaces the error that ended exec.
+    await command
+      .kill("SIGKILL", { abortSignal: AbortSignal.timeout(KILL_TIMEOUT_MS) })
+      .catch(() => {});
+    throw signal.aborted ? signal.reason : error;
   }
 }
 

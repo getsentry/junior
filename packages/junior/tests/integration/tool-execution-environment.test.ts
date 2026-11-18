@@ -125,6 +125,25 @@ function describeManagerContract(
       );
 
       it(
+        "kills a command when onOutputChunk throws and throws that error",
+        async ({ expect }) => {
+          const { environment } = await createEnvironment();
+          const failure = new Error("consumer failed");
+
+          await expect(
+            environment.exec(["sh", "-c", "echo ready; exec sleep 61"], {
+              signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+              onOutputChunk: () => {
+                throw failure;
+              },
+            }),
+          ).rejects.toBe(failure);
+          expect(await isRunning(environment, ["sleep", "61"])).toBe(false);
+        },
+        TEST_TIMEOUT_MS,
+      );
+
+      it(
         "runs argv without a shell, in the given cwd, with the given env",
         async ({ expect }) => {
           const { environment } = await createEnvironment();

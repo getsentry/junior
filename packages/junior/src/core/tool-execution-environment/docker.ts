@@ -236,18 +236,39 @@ async function exec(
     await forwardOutput(stream, options.onOutputChunk);
     return { exitCode: await exitCodeOf(created.Id, signal) };
   } catch (error) {
-    if (!signal.aborted) throw error;
-    await exec(
-      id,
-      [
-        "sh",
-        "-c",
-        `[ -f ${groupFile} ] && kill -9 -"$(cat ${groupFile})"; rm -f ${groupFile}; true`,
-      ],
-      { signal: AbortSignal.timeout(KILL_TIMEOUT_MS), onOutputChunk: () => {} },
-    );
-    throw signal.reason;
+    // Any failure kills the command, so it never outlives exec. The kill is
+    // cleanup: its own failure never replaces the error that ended exec.
+    await killGroup(id, groupFile).catch(() => {});
+    throw signal.aborted ? signal.reason : error;
   }
+}
+
+// Kills the process group that the exec wrapper saved. It does not go
+// through exec, so a failed kill never starts another kill.
+async function killGroup(id: string, groupFile: string): Promise<void> {
+  const signal = AbortSignal.timeout(KILL_TIMEOUT_MS);
+  const created = await requestJson(
+    {
+      method: "POST",
+      path: `/containers/${id}/exec`,
+      body: {
+        Cmd: [
+          "sh",
+          "-c",
+          `[ -f ${groupFile} ] && kill -9 -"$(cat ${groupFile})"; rm -f ${groupFile}; true`,
+        ],
+      },
+      signal,
+    },
+    idSchema,
+  );
+  // Without Detach, start returns when the kill has run.
+  await dockerRequest({
+    method: "POST",
+    path: `/exec/${created.Id}/start`,
+    body: { Detach: false, Tty: false },
+    signal,
+  });
 }
 
 // Docker sends both streams on one connection, each frame behind an 8-byte
