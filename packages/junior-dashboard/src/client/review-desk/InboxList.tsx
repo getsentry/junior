@@ -61,7 +61,11 @@ import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import type { InboxBundle } from "./reviewItemFormat";
+import {
+  itemNeedsViewer,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -195,6 +199,17 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
+  // In the Inbox, an ask that waits on someone else gets no row, so its
+  // link does not replace the item that an earlier link kept.
+  const linkedGetsRow =
+    !linked.data ||
+    view !== "inbox" ||
+    linked.data.kind === "notice" ||
+    itemUpForGrabs(linked.data) ||
+    itemNeedsViewer(linked.data) ||
+    data.todoRows.some(
+      (row) => row.conversationId === linked.data?.rootConversationId,
+    );
   // Stream rows show a page at a time, so a linked row can be past them.
   const linkedStreamIndex =
     linkedOpen && linkedRowKey?.startsWith("conversation:")
@@ -260,7 +275,7 @@ export function InboxList(props: {
     if (linked.data.status === "open") {
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
-      if (includedId !== linkedId) includeItem(linkedId);
+      if (linkedGetsRow && includedId !== linkedId) includeItem(linkedId);
       else void navigate(listPath, { replace: true });
     } else if (view === "done") {
       const closedId = linked.data.id;
@@ -277,6 +292,7 @@ export function InboxList(props: {
     includedId,
     linked.data,
     linked.error,
+    linkedGetsRow,
     linkedId,
     linkedLoaded,
     linkedRowKey,
