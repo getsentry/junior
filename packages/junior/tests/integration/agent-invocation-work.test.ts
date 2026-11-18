@@ -67,7 +67,11 @@ import {
   loadMessageEvents,
   loadTurnEvents,
   loadSubagentEvents,
+  prepareSummarizedHistory,
 } from "../fixtures/agent-invocations";
+import { recordTurnStart } from "../fixtures/turn-start";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 
 describe("agent invocation conversation work", () => {
   afterEach(async () => {
@@ -641,6 +645,14 @@ describe("agent invocation conversation work", () => {
       expected: resumed,
     },
     {
+      // The swap keeps the earlier Turn's answer after the mark. It belongs
+      // to that Turn, so the resumed slice still calls the model.
+      name: "a child that swapped in a summary at Turn start",
+      earlierAnswer: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
       name: "a stopped child",
       stopBeforeWake: true,
       runs: 1,
@@ -659,7 +671,13 @@ describe("agent invocation conversation work", () => {
     },
   ])(
     "gives the wake after a yielded child invocation for $name to that invocation",
-    async ({ expected, failedResumes = 0, runs, stopBeforeWake = false }) => {
+    async ({
+      earlierAnswer = false,
+      expected,
+      failedResumes = 0,
+      runs,
+      stopBeforeWake = false,
+    }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
       await createApp({
@@ -723,6 +741,9 @@ describe("agent invocation conversation work", () => {
           { conversationStore, queue, state },
         );
         const { childConversationId } = created;
+        if (earlierAnswer) {
+          await prepareSummarizedHistory(childConversationId);
+        }
         // Child results also wake the parent. This test runs only the child.
         const processChild = async (softYieldAfterMs?: number) =>
           await processConversationQueueMessage(
@@ -742,12 +763,9 @@ describe("agent invocation conversation work", () => {
         });
         const { invocationId } =
           (await getActiveAgentInvocationForConversation(childConversationId))!;
-        await expect(
-          getTurnRecord(
-            childConversationId,
-            getAgentInvocationTurnId(invocationId),
-          ),
-        ).resolves.toMatchObject({
+        const turnId = getAgentInvocationTurnId(invocationId);
+        const paused = (await getTurnRecord(childConversationId, turnId))!;
+        expect(paused).toMatchObject({
           state: "paused",
           resumeReason: "yield",
           source: { kind: "agent_invocation" },
@@ -758,6 +776,12 @@ describe("agent invocation conversation work", () => {
             }),
           ]),
         });
+        // The paused Turn has no answer yet. An earlier Turn's answer is
+        // below its start.
+        const turnStart = await loadTurnStart(childConversationId, turnId);
+        expect(
+          savedTurnMessages(paused, turnStart).map(({ message }) => message),
+        ).not.toContainEqual(expect.objectContaining({ toolName: "reply" }));
         if (stopBeforeWake) {
           // The stop request outlives the paused run. The stopped agent
           // invocation takes the resume wake and does not run again.
@@ -902,6 +926,10 @@ describe("agent invocation conversation work", () => {
           },
           { conversationStore, queue, state },
         );
+        await recordTurnStart(
+          created.childConversationId,
+          getAgentInvocationTurnId(created.invocationId),
+        );
         await upsertTurnRecord({
           actor: invocationInput.actor,
           conversationId: created.childConversationId,
@@ -933,7 +961,6 @@ describe("agent invocation conversation work", () => {
             ...tail,
           ] as PiMessage[],
           turnId: getAgentInvocationTurnId(created.invocationId),
-          turnStartMessageIndex: 0,
           sliceId: 1,
           source: { kind: "agent_invocation" },
           state: "completed",
@@ -954,6 +981,9 @@ describe("agent invocation conversation work", () => {
         await expect(
           loadTurnEvents(created.childConversationId),
         ).resolves.toEqual([
+          expect.objectContaining({
+            data: expect.objectContaining({ type: "turn_started" }),
+          }),
           expect.objectContaining({
             data: expect.objectContaining({
               outcome: turnOutcome,

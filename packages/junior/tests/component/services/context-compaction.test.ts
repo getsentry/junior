@@ -366,7 +366,7 @@ describe("context compaction projection reset", () => {
             instruction,
             agents,
           ],
-          turnStartMessageIndex: earlierTurns.length,
+          isTurnMessage: (_messages, index) => index >= earlierTurns.length,
         },
         async () => ({ summary: "Short summary." }),
       );

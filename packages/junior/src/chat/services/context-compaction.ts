@@ -111,8 +111,10 @@ export interface ActiveContextCompactionArgs {
   requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal | undefined;
-  /** Index in the runtime context messages where the current Turn starts. */
-  turnStartMessageIndex?: number | undefined;
+  /** True when the runtime context message at `index` belongs to this Turn. */
+  isTurnMessage?:
+    | ((messages: readonly PiMessage[], index: number) => boolean)
+    | undefined;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
@@ -361,17 +363,19 @@ function runtimeContextMessage(
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
-  turnStartMessageIndex: number | undefined,
+  isTurnMessage:
+    | ((messages: readonly PiMessage[], index: number) => boolean)
+    | undefined,
   timestamp?: number,
 ): PiMessage | undefined {
-  if (turnStartMessageIndex === undefined) {
+  if (!isTurnMessage) {
     return runtimeContextMessage(retainRuntimeTurnContext(messages), timestamp);
   }
   const earlierContext = retainRuntimeTurnContext(
-    messages.slice(0, turnStartMessageIndex),
+    messages.filter((_, index) => !isTurnMessage(messages, index)),
   );
   const turnContext = retainRuntimeTurnContext(
-    messages.slice(turnStartMessageIndex),
+    messages.filter((_, index) => isTurnMessage(messages, index)),
   );
   const sessionContext = turnContext.some((message) =>
     userMessageContent(message).map(textPart).some(isSessionTurnContext),
@@ -819,7 +823,7 @@ async function compactActiveAboveThreshold(
   )?.timestamp;
   const contextMessage = turnRuntimeContextMessage(
     args.runtimeContextMessages ?? args.piMessages,
-    args.turnStartMessageIndex,
+    args.isTurnMessage,
     typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
   );
   const contextEntries = contextMessage

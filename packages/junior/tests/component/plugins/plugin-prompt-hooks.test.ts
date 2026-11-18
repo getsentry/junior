@@ -139,6 +139,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -341,6 +342,7 @@ describe("plugin prompt hook composition", () => {
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     };
+    await recordTurnStart(request.conversationId, turnId);
     await expect(
       executeAgentRun({
         ...request,
@@ -467,6 +469,10 @@ describe("plugin prompt hook composition", () => {
   });
 
   it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
+    await recordTurnStart(
+      LOCAL_DESTINATION.conversationId,
+      "turn-plugin-prompt-resume-after-prompt",
+    );
     await upsertTurnRecord({
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-resume-after-prompt",
@@ -479,7 +485,6 @@ describe("plugin prompt hook composition", () => {
           timestamp: Date.now(),
         },
       ] as never,
-      turnStartMessageIndex: 0,
       resumeReason: "timeout",
       errorMessage: "timed out",
     });

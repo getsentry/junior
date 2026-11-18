@@ -145,6 +145,8 @@ import {
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
@@ -526,7 +528,10 @@ async function executeAgentRunInPrivacyContext(
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
-    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
+    const [checkpoint, turnStart] = await Promise.all([
+      loadTurnCheckpoint({ conversationId, turnId }),
+      loadTurnStart(conversationId, turnId),
+    ]);
     const resumedFromSessionRecord = checkpoint.resumed;
     const currentSliceId = checkpoint.sliceId;
     const existingSessionRecord = checkpoint.record;
@@ -554,25 +559,17 @@ async function executeAgentRunInPrivacyContext(
     ];
     const runActors = (): Actor[] =>
       instructionActors(committedInstructionProvenance);
-    const turnStartMessageIndex = existingSessionRecord?.turnStartMessageIndex;
-    const currentTurnMessages =
-      turnStartMessageIndex !== undefined
-        ? (existingSessionRecord?.piMessages.slice(turnStartMessageIndex) ?? [])
-        : [];
-    const currentTurnProvenance =
-      turnStartMessageIndex !== undefined
-        ? (existingSessionRecord?.piMessageProvenance?.slice(
-            turnStartMessageIndex,
-          ) ?? [])
-        : [];
-    const guardianIntentParts =
-      currentTurnMessages.flatMap((message, index) => {
-        if (!isRequesterInstruction(currentTurnProvenance[index])) {
-          return [];
-        }
-        const text = getUserMessageInstructionText(message);
-        return text ? [text] : [];
-      }) ?? [];
+    const savedTurn = existingSessionRecord
+      ? savedTurnMessages(existingSessionRecord, turnStart)
+      : [];
+    const currentTurnMessages = savedTurn.map(({ message }) => message);
+    const guardianIntentParts = savedTurn.flatMap(({ message, provenance }) => {
+      if (!isRequesterInstruction(provenance)) {
+        return [];
+      }
+      const text = getUserMessageInstructionText(message);
+      return text ? [text] : [];
+    });
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
       // Bare @mentions are normal Slack "continue this thread" nudges. After
       // bot-mention strip the instruction is empty; keep a non-blank marker so
@@ -607,6 +604,7 @@ async function executeAgentRunInPrivacyContext(
       checkpoint,
       startedAtMs: replyStartedAtMs,
       surface,
+      turnStart,
     });
     const runResume = resume;
     const recordParentToolExecutionStart = async (event: {
@@ -694,9 +692,7 @@ async function executeAgentRunInPrivacyContext(
     const promptTurnContextPromise = loadPromptTurnContext({
       context: createPromptHookContext({ actor, run, userInput }),
       currentActor: actor,
-      existingSessionPiMessages: existingSessionRecord?.piMessages,
-      existingTurnStartMessageIndex:
-        existingSessionRecord?.turnStartMessageIndex,
+      existingTurnMessages: currentTurnMessages,
       resumedFromSessionRecord,
       turnId,
       userContentParts,
@@ -828,8 +824,7 @@ async function executeAgentRunInPrivacyContext(
       contextContentParts,
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
-      existingTurnStartMessageIndex:
-        existingSessionRecord?.turnStartMessageIndex,
+      existingTurnMessages: currentTurnMessages,
       explicitSkill,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
@@ -910,8 +905,9 @@ async function executeAgentRunInPrivacyContext(
                 ],
               }
             : undefined),
+          isTurnMessage: (runtimeMessages, index) =>
+            runResume.isTurnMessageAt(runtimeMessages, index),
           signal: hookSignal,
-          turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
         async (summaryMessages, summarySignal) =>
           await requestContextSummary(
@@ -932,16 +928,7 @@ async function executeAgentRunInPrivacyContext(
         usageSinceCurrentBoundary(messages),
       );
       const replacement = [...compaction.piMessages];
-      // The whole replacement belongs to this Turn. Set the Turn start first,
-      // so the checkpoint does not keep an index into the old history.
-      const previousTurnStartMessageIndex = runResume.turnStartMessageIndex;
-      runResume.setTurnStartMessageIndex(0);
-      try {
-        await runResume.requireDurableInputCheckpoint(replacement);
-      } catch (error) {
-        runResume.setTurnStartMessageIndex(previousTurnStartMessageIndex);
-        throw error;
-      }
+      await runResume.requireDurableInputCheckpoint(replacement);
       setAgentHistory(replacement);
       nextInputAfterReplacement.replaced(
         mode,
@@ -1347,23 +1334,13 @@ async function executeAgentRunInPrivacyContext(
     });
 
     let newMessages: PiMessage[] = [];
-    // A resumed slice can prompt again, which moves the live Turn start, so
-    // read the answer from the saved start. A slice from before saved Turn
-    // starts reads only its own messages.
-    const turnStartIndex = () =>
-      existingSessionRecord?.turnStartMessageIndex ??
-      runResume.turnStartMessageIndex ??
-      runResume.beforeMessageCount;
-    const turnMessages = () => currentAgentMessages().slice(turnStartIndex());
+    const turnMessages = () => runResume.turnMessages(currentAgentMessages());
     try {
       if (resumedFromSessionRecord) {
         setAgentHistory(
           shouldPromptAgent
             ? promptHistoryMessages
             : existingSessionRecord!.piMessages,
-        );
-        runResume.setTurnStartMessageIndex(
-          existingSessionRecord!.turnStartMessageIndex,
         );
         // Timeout/retry parking needs a durable baseline even when the first
         // mid-run checkpoint fails. Without this, an empty safe boundary can
@@ -1372,15 +1349,11 @@ async function executeAgentRunInPrivacyContext(
       } else if (promptHistoryMessages.length > 0) {
         setAgentHistory(promptHistoryMessages);
       }
-      // The sections message goes before the Turn start, so the messages of
-      // the Turn stay its context and prompt. The input checkpoint saves it.
+      // The input checkpoint saves the sections message.
       if (sectionsMessage) {
         setAgentHistory([...currentAgentMessages(), sectionsMessage]);
       }
       runResume.setBeforeMessageCount(currentAgentMessages().length);
-      if (shouldPromptAgent) {
-        runResume.setTurnStartMessageIndex(currentAgentMessages().length);
-      }
 
       const authPauseOutcome = await withSpan(
         `invoke_agent ${botConfig.userName}`,
@@ -1639,10 +1612,7 @@ async function executeAgentRunInPrivacyContext(
                 answerReminderUsed ||
                 failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
                   ? undefined
-                  : remindMissingAnswer(
-                      currentAgentMessages(),
-                      turnStartIndex(),
-                    );
+                  : remindMissingAnswer(currentAgentMessages(), turnMessages());
               if (answerReminder) {
                 answerReminderUsed = true;
                 setAgentHistory(answerReminder);

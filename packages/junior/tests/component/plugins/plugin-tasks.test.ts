@@ -175,51 +175,59 @@ describe("plugin background tasks", () => {
       destination: runDestination,
       source: "internal",
     });
+    const piMessages = testPiMessages([
+      {
+        role: "user",
+        content: "Remember that stale prior turn data must not leak.",
+      },
+      {
+        role: "toolResult",
+        toolName: "createMemory",
+        isError: false,
+        content: "saved prior memory",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nRelevant memories must not leak.\n</runtime-turn-context>",
+          },
+          {
+            type: "text",
+            text: "I prefer pull request summaries with test evidence.",
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolName: "searchDocs",
+        isError: false,
+        output: "Incident runbooks live in Notion.",
+      },
+      {
+        role: "assistant",
+        content: "Understood.",
+      },
+    ]);
+    // The first two messages are an earlier Turn.
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    await commitMessages({
+      conversationId: runConversationId,
+      messages: piMessages.slice(0, 2),
+    });
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: runDestination,
-      piMessages: testPiMessages([
-        {
-          role: "user",
-          content: "Remember that stale prior turn data must not leak.",
-        },
-        {
-          role: "toolResult",
-          toolName: "createMemory",
-          isError: false,
-          content: "saved prior memory",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "<runtime-turn-context>\nRelevant memories must not leak.\n</runtime-turn-context>",
-            },
-            {
-              type: "text",
-              text: "I prefer pull request summaries with test evidence.",
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolName: "searchDocs",
-          isError: false,
-          output: "Incident runbooks live in Notion.",
-        },
-        {
-          role: "assistant",
-          content: "Understood.",
-        },
-      ]),
+      piMessages,
       turnId: runSessionId,
       sliceId: 1,
       source: runSource,
       actor: runActor,
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 2,
     });
     expect(await getTurnRecord(runConversationId, runSessionId)).toBeDefined();
 
@@ -317,6 +325,8 @@ describe("plugin background tasks", () => {
       "</current-instruction>",
     ].join("\n");
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -338,7 +348,6 @@ describe("plugin background tasks", () => {
       },
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
@@ -438,6 +447,8 @@ describe("plugin background tasks", () => {
       },
     ]);
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -451,7 +462,6 @@ describe("plugin background tasks", () => {
       actor: runActor,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
@@ -542,6 +552,8 @@ describe("plugin background tasks", () => {
     });
 
     vi.useFakeTimers({ now: completionMs });
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -555,7 +567,6 @@ describe("plugin background tasks", () => {
       actor: alice,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
     expect(
       await getTurnRecord(slackConversationId, slackSessionId),
@@ -636,6 +647,8 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(runConversationId, runSessionId);
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -648,7 +661,6 @@ describe("plugin background tasks", () => {
       source: runSource,
       state: "completed",
       surface: "internal",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(
@@ -739,6 +751,8 @@ describe("plugin background tasks", () => {
       }),
     });
 
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
+    await recordTurnStart(slackConversationId, slackSessionId);
     await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -752,7 +766,6 @@ describe("plugin background tasks", () => {
       actor: runActor,
       state: "completed",
       surface: "slack",
-      turnStartMessageIndex: 0,
     });
 
     await scheduleSessionCompletedPluginTasks(

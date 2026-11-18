@@ -14,7 +14,6 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       value: "providerRetry",
     },
     compactionState: {
-      checkpointTurnStartMessageIndex: undefined as number | undefined,
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
@@ -269,13 +268,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         if (!(await this.endTurn(this.state.messages.at(-2), [toolResult]))) {
           return {};
         }
-        // The compaction checkpoint is the resume point if this slice stops.
-        compactionState.checkpointTurnStartMessageIndex = (
-          await turnSessionState.getTurnRecord(
-            "conversation-active-compaction",
-            "turn-active-compaction",
-          )
-        )?.turnStartMessageIndex;
         compactionState.nextProviderContextText = JSON.stringify(
           this.state.messages,
         );
@@ -684,6 +676,7 @@ import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/task-execution/turn-cursor";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -724,7 +717,6 @@ describe("agent run continuation", () => {
     counters.abortCalls = 0;
     counters.continueCalls = 0;
     counters.promptCalls = 0;
-    compactionState.checkpointTurnStartMessageIndex = undefined;
     compactionState.nextProviderContextChars = 0;
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
@@ -780,7 +772,6 @@ describe("agent run continuation", () => {
 
     expect(result.text).toBe("Finished the requested edit.");
     expect(compactionState.summaryCalls).toBe(1);
-    expect(compactionState.checkpointTurnStartMessageIndex).toBe(0);
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
     expect(compactionState.nextProviderContextText).toContain(
       "Make a large generated-file edit.",
@@ -1055,8 +1046,6 @@ describe("agent run continuation", () => {
       "slack:C123:1712345.0001",
       "turn-steering",
     );
-    // Two earlier messages and the capability sections come first.
-    expect(sessionRecord?.turnStartMessageIndex).toBe(3);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
@@ -1339,6 +1328,7 @@ describe("agent run continuation", () => {
         },
       },
     ] as PiMessage[];
+    await recordTurnStart(conversationId, turnId);
     await turnSessionState.upsertTurnRecord({
       conversationId,
       turnId: turnId,
@@ -1347,7 +1337,6 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: messages,
-      turnStartMessageIndex: 0,
       resumeReason: "yield",
       errorMessage: "Agent turn yielded at a safe boundary",
     });
@@ -1497,6 +1486,7 @@ describe("agent run continuation", () => {
       content: [{ type: "text", text: renderCurrentInstruction("help me") }],
       timestamp: 5,
     } satisfies PiMessage;
+    await recordTurnStart(conversationId, sessionId);
     await turnSessionState.upsertTurnRecord({
       conversationId,
       turnId: sessionId,
@@ -1505,7 +1495,6 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: [checkpointedPrompt],
-      turnStartMessageIndex: 0,
     });
 
     const reply = finalReply(

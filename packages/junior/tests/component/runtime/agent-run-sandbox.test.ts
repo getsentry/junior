@@ -10,7 +10,7 @@ const {
   sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
   sessionRecordResumed,
-  sessionRecordTurnStartMessageIndex,
+  sessionRecordTurnStart,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
@@ -37,8 +37,8 @@ const {
   sessionRecordResumed: {
     value: false,
   },
-  sessionRecordTurnStartMessageIndex: {
-    value: undefined as number | undefined,
+  sessionRecordTurnStart: {
+    value: undefined as { createdAtMs: number; seq: number } | undefined,
   },
   selectedThinkingLevels: {
     value: [] as unknown[],
@@ -294,6 +294,13 @@ vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
 }));
 
+vi.mock("@/chat/conversations/turn-lifecycle", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/chat/conversations/turn-lifecycle")
+  >()),
+  loadTurnStart: async () => sessionRecordTurnStart.value,
+}));
+
 vi.mock("@/chat/task-execution/checkpoint", () => ({
   continuableMessages: (messages: unknown[]) => messages,
   loadTurnCheckpoint: async () => ({
@@ -304,12 +311,9 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
         ? {
             piMessages: [...sessionRecordPiMessages.value],
             piMessageProvenance: [...sessionRecordPiMessageProvenance.value],
-            ...(sessionRecordTurnStartMessageIndex.value !== undefined
-              ? {
-                  turnStartMessageIndex:
-                    sessionRecordTurnStartMessageIndex.value,
-                }
-              : undefined),
+            piMessageSeqs: sessionRecordPiMessages.value.map(
+              (_, index) => index + 1,
+            ),
           }
         : undefined,
   }),
@@ -561,7 +565,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
     sessionRecordResumed.value = false;
-    sessionRecordTurnStartMessageIndex.value = undefined;
+    sessionRecordTurnStart.value = undefined;
     selectedThinkingLevels.value = [];
   });
 
@@ -608,7 +612,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
   it("keeps restored AGENTS context when no sandbox is available", async () => {
     sessionRecordResumed.value = true;
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       {
         role: "user",
@@ -636,7 +640,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
   it("removes restored AGENTS context when the repository is gone", async () => {
     repositoryInstructionsAvailable.value = false;
     sessionRecordResumed.value = true;
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       {
         role: "user",
@@ -686,7 +690,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
       ],
       timestamp: 5,
     };
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       checkpointedContext,
       checkpointedInstruction,

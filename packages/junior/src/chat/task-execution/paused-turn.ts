@@ -22,7 +22,11 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getTurnAuthorization } from "./authorized-turn";
-import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import {
+  getTurnLifecycle,
+  loadTurnStart,
+} from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 import {
   completeTurnRecord,
   abandonTurnRecord,
@@ -567,10 +571,10 @@ async function runPausedTurnInContext(
         const source = routing.source;
         const routingDestination = routing.destination;
 
-        const turnMessages =
-          activeTurn.turnStartMessageIndex === undefined
-            ? []
-            : activeTurn.piMessages.slice(activeTurn.turnStartMessageIndex);
+        const turnMessages = savedTurnMessages(
+          activeTurn,
+          await loadTurnStart(payload.conversationId, payload.turnId),
+        ).map(({ message }) => message);
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "failed",
         ): Promise<void> => {

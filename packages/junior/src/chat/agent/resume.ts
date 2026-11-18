@@ -39,6 +39,8 @@ import {
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import type { TurnStart } from "@/chat/conversations/turn-lifecycle";
+import { isTurnMessage } from "@/chat/task-execution/turn-membership";
 
 interface ResumeStateArgs {
   channelName?: string | undefined;
@@ -54,6 +56,7 @@ interface ResumeStateArgs {
   checkpoint: TurnCheckpoint;
   startedAtMs: number;
   surface: AgentTurnSurface;
+  turnStart?: TurnStart | undefined;
 }
 
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
@@ -101,7 +104,16 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
-  let turnStartMessageIndex: number | undefined;
+  // Event seq and provenance of the committed prefix of the agent messages.
+  let committed: {
+    seqs: number[];
+    provenance: ConversationMessageProvenance[];
+  } = args.checkpoint.resumed
+    ? {
+        seqs: args.checkpoint.record.piMessageSeqs,
+        provenance: args.checkpoint.record.piMessageProvenance,
+      }
+    : { seqs: [], provenance: [] };
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
@@ -145,12 +157,31 @@ export function createResumeState(args: ResumeStateArgs) {
     get timedOut(): boolean {
       return timedOut;
     },
-    /** Index in the agent messages where the current Turn starts. */
-    get turnStartMessageIndex(): number | undefined {
-      return turnStartMessageIndex;
+    /**
+     * True when the agent message at `index` belongs to this Turn. A
+     * committed message belongs to it by its seq. A message that is not
+     * committed yet belongs to it when this slice added it. Without a
+     * `turn_started` event, only the messages that this slice added belong
+     * to it.
+     */
+    isTurnMessageAt(messages: readonly PiMessage[], index: number): boolean {
+      const seq = committed.seqs[index];
+      const message = messages[index];
+      if (!args.turnStart || seq === undefined || !message) {
+        return index >= beforeMessageCount;
+      }
+      return isTurnMessage(
+        args.turnStart,
+        seq,
+        message,
+        committed.provenance[index],
+      );
     },
-    setTurnStartMessageIndex(index: number | undefined): void {
-      turnStartMessageIndex = index;
+    /** The agent messages that belong to this Turn. */
+    turnMessages(messages: readonly PiMessage[]): PiMessage[] {
+      return messages.filter((_, index) =>
+        this.isTurnMessageAt(messages, index),
+      );
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
@@ -177,6 +208,11 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
+      // A resumed slice can drop a trailing prompt that it sends again.
+      committed = {
+        seqs: committed.seqs.slice(0, messages.length),
+        provenance: committed.provenance.slice(0, messages.length),
+      };
       latestSafeBoundaryMessages = [...messages];
       resumeMessages = [...messages];
     },
@@ -217,11 +253,14 @@ export function createResumeState(args: ResumeStateArgs) {
         messages,
         trailingMessageProvenance,
         turnContexts: turnContexts.length > 0 ? turnContexts : undefined,
-        turnStartMessageIndex,
       });
       if (!saved) {
         return false;
       }
+      committed = {
+        seqs: saved.piMessageSeqs,
+        provenance: saved.piMessageProvenance,
+      };
       latestSafeBoundaryMessages = [...messages];
       // Writing the same boundary does not count as progress.
       const persistedKey = boundaryKey(continuableMessages(messages, messages));

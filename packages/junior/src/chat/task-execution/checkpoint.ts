@@ -100,7 +100,6 @@ interface TurnCheckpointWrite {
   dispatchOutcome?: AgentDispatchOutcome | undefined;
   source?: Source | undefined;
   surface?: AgentTurnSurface | undefined;
-  turnStartMessageIndex?: number | undefined;
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
@@ -234,8 +233,6 @@ function sharedWrite(
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceContext: latest?.traceContext ?? traceContext,
-      turnStartMessageIndex:
-        args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,

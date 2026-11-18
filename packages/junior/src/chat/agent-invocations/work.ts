@@ -470,7 +470,7 @@ async function projectTerminalTurn(
       return undefined;
     }
   }
-  const end = savedTurnEnd(turn);
+  const end = await savedTurnEnd(turn);
   if (!end) {
     return undefined;
   }

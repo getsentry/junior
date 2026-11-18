@@ -139,7 +139,6 @@ function runInputCheckpoint(run: AgentRun) {
     source: run.source!,
     surface: run.surface,
     turnId: run.turnId,
-    turnStartMessageIndex: history.length,
   };
 }
 

@@ -696,6 +696,7 @@ import {
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -860,6 +861,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       threadTs: "1712345.0001",
       turnId: "turn-1",
     });
+    await recordTurnStart(context.conversationId, context.turnId);
 
     const firstError = await executeAgentRun(context);
 
@@ -1303,7 +1305,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       state: "paused",
       resumeReason: "auth",
     });
-    expect(pausedSessionRecord?.turnStartMessageIndex).toBeUndefined();
     expect(pausedSessionRecord?.piMessages).toHaveLength(2);
     expect(pausedSessionRecord?.piMessages[0]).toMatchObject({
       role: "user",
@@ -1600,6 +1601,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       threadTs: "1712345.0004",
       turnId: "turn-4",
     });
+    await recordTurnStart(context.conversationId, context.turnId);
 
     const firstError = await executeAgentRun(context);
 

@@ -138,6 +138,7 @@ export type AgentDispatchOutcome = "blocked" | "completed" | "failed";
 interface ConversationMessageProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
+  seqs: number[];
 }
 
 export interface TurnRecord {
@@ -173,6 +174,8 @@ export interface TurnRecord {
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
+  /** Event seq of each message in `piMessages`. */
+  piMessageSeqs: number[];
   /**
    * Event-store projection this record was read from. Absent on records that
    * a write returns. A checkpoint passes it so its commit reads only later
@@ -197,7 +200,6 @@ export interface TurnRecord {
   surface?: AgentTurnSurface | undefined;
   /** Trace of the first saved slice. Resumed slices continue it. */
   traceContext?: TraceContext | undefined;
-  turnStartMessageIndex?: number | undefined;
   updatedAtMs: number;
 }
 
@@ -225,7 +227,7 @@ interface StoredTurnRecord extends Omit<
   | "cumulativeUsage"
   | "piMessages"
   | "piMessageProvenance"
-  | "turnStartMessageIndex"
+  | "piMessageSeqs"
 > {
   /** Redis field kept for deployed workers that still read publishExternally. */
   publishExternally?: boolean | undefined;
@@ -236,11 +238,6 @@ interface StoredTurnRecord extends Omit<
   committedSeq: number;
   /** History version that owns `committedSeq`. */
   historyVersion?: number | undefined;
-  /**
-   * `seq` boundary where this turn's fresh prompt starts: the seq of the last
-   * projected message before the prompt, or -1 when the turn starts the epoch.
-   */
-  turnStartSeq?: number | undefined;
   /**
    * Old cursors can contain model context that SQL did not retain. Parse the
    * field so those cursors remain readable, but do not add it back during
@@ -323,7 +320,6 @@ const storedTurnRecordSchema = z
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnLimitWrappedUp: z.boolean().optional(),
     lostWorkerResumeCount: z.number().int().nonnegative().optional(),
-    turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
   .strip() satisfies z.ZodType<StoredTurnRecord>;
@@ -489,7 +485,6 @@ interface ConversationRuntimeMetrics {
 function materializeTurnRecord(
   stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
-  turnStartMessageIndex?: number,
   runtimeMetrics?: ConversationRuntimeMetrics,
 ): TurnRecord {
   return {
@@ -505,6 +500,7 @@ function materializeTurnRecord(
     updatedAtMs: stored.updatedAtMs,
     piMessages: piProjection.messages,
     piMessageProvenance: piProjection.provenance,
+    piMessageSeqs: piProjection.seqs,
     actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
@@ -524,7 +520,6 @@ function materializeTurnRecord(
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
       traceContext: stored.traceContext,
-      turnStartMessageIndex,
     }),
   };
 }
@@ -598,11 +593,6 @@ async function materializeStoredTurnRecord(
         await eventStore.loadCurrentHistory(conversationId),
       )
     : pinnedProjection;
-  const turnStartMessageIndex = followsReplacement
-    ? 0
-    : parsed.turnStartSeq === undefined
-      ? undefined
-      : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
   const conversationStore = getConversationStore();
   const conversation = await conversationStore.get({ conversationId });
@@ -611,16 +601,11 @@ async function materializeStoredTurnRecord(
     conversation,
     turnId,
   );
-  const record = materializeTurnRecord(
-    parsed,
-    piProjection,
-    turnStartMessageIndex,
-    {
-      channelName: conversation?.channelName,
-      cumulativeDurationMs: executionMetrics?.durationMs,
-      cumulativeUsage: executionMetrics?.usage,
-    },
-  );
+  const record = materializeTurnRecord(parsed, piProjection, {
+    channelName: conversation?.channelName,
+    cumulativeDurationMs: executionMetrics?.durationMs,
+    cumulativeUsage: executionMetrics?.usage,
+  });
   return followsReplacement
     ? record
     : { ...record, storedProjection: pinnedProjection };
@@ -669,7 +654,6 @@ function buildStoredRecord(args: {
   cumulativeToolCallCount?: number | undefined;
   turnLimitWrappedUp?: boolean | undefined;
   lostWorkerResumeCount?: number | undefined;
-  turnStartSeq?: number | undefined;
 }): StoredTurnRecord {
   const nowMs = Date.now();
   return {
@@ -701,7 +685,6 @@ function buildStoredRecord(args: {
       resumedFromSliceId: args.resumedFromSliceId,
       surface: args.surface,
       traceContext: args.traceContext,
-      turnStartSeq: args.turnStartSeq,
     }),
   };
 }
@@ -714,6 +697,7 @@ async function setStoredRecord(args: {
   destinationVisibility?: ConversationPrivacy | undefined;
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
+  piMessageSeqs: number[];
   record: StoredTurnRecord;
   /** Channel + execution metrics written beside the Redis resume cursor. */
   runtimeMetrics: {
@@ -726,7 +710,6 @@ async function setStoredRecord(args: {
   ttlMs: number;
   /** Recovery index TTL override; defaults to the resume window. */
   indexTtlMs?: number;
-  turnStartMessageIndex?: number | undefined;
   fence: () => Promise<void>;
 }): Promise<TurnRecord> {
   const stateAdapter = getStateAdapter();
@@ -766,8 +749,8 @@ async function setStoredRecord(args: {
     {
       messages: [...args.piMessages],
       provenance: [...args.piMessageProvenance],
+      seqs: [...args.piMessageSeqs],
     },
-    args.turnStartMessageIndex,
     args.runtimeMetrics,
   );
 }
@@ -820,6 +803,7 @@ async function writeTurnState(
     fence: args.fence,
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
+    piMessageSeqs: args.existing.piMessageSeqs,
     ttlMs: turnCursorTtlMs(args.state),
     runtimeMetrics: {
       cumulativeDurationMs: args.existing.cumulativeDurationMs,
@@ -828,9 +812,6 @@ async function writeTurnState(
         cumulativeUsage: args.existing.cumulativeUsage,
       }),
     },
-    ...definedProps({
-      turnStartMessageIndex: args.existing.turnStartMessageIndex,
-    }),
     record: buildStoredRecord({
       actor: args.existing.actor,
       conversationId: args.existing.conversationId,
@@ -858,7 +839,6 @@ async function writeTurnState(
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
         traceContext: args.existing.traceContext,
-        turnStartSeq: parsed.turnStartSeq,
       }),
     }),
   });
@@ -902,7 +882,6 @@ export async function upsertTurnRecord(args: {
   resumedFromSliceId?: number | undefined;
   traceContext?: TraceContext | undefined;
   turnContexts?: PluginTurnContext[] | undefined;
-  turnStartMessageIndex?: number | undefined;
   ttlMs?: number;
 }): Promise<TurnRecord> {
   return await withTurnCursorMutation(
@@ -978,21 +957,6 @@ async function upsertTurnRecordLocked(
         }
       : undefined),
   });
-  const durableTurnStartMessageIndex = args.turnStartMessageIndex;
-  // Flip the caller's message-index cursor into a durable seq reference: the
-  // seq of the last committed message before the turn's fresh prompt.
-  const turnStartSeq =
-    durableTurnStartMessageIndex === undefined
-      ? existingRecord?.turnStartSeq
-      : durableTurnStartMessageIndex <= 0
-        ? -1
-        : (commit.messageSeqs[durableTurnStartMessageIndex - 1] ??
-          commit.committedSeq);
-  const turnStartMessageIndex =
-    durableTurnStartMessageIndex ??
-    (turnStartSeq === undefined
-      ? undefined
-      : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
   // TODO(dcramer): Remove the stored publishExternally field after no deployed
   // Turn cursor reader requires it. Current workers ignore the field.
@@ -1026,6 +990,7 @@ async function upsertTurnRecordLocked(
     source: args.source,
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
+    piMessageSeqs: commit.messageSeqs,
     ttlMs,
     // Checkpoint commit also updates conversation execution metrics in SQL.
     // Channel/duration/usage are not Redis resume-cursor fields.
@@ -1038,7 +1003,6 @@ async function upsertTurnRecordLocked(
     // Pass through only an explicit override so indexes stay on the resume window
     // by default even when the record takes a short terminal TTL.
     ...definedProps({ indexTtlMs: args.ttlMs }),
-    turnStartMessageIndex,
     record: buildStoredRecord({
       actor: turnActor,
       conversationId: args.conversationId,
@@ -1073,7 +1037,6 @@ async function upsertTurnRecordLocked(
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
         traceContext: args.traceContext ?? existingRecord?.traceContext,
-        turnStartSeq,
       }),
     }),
   });

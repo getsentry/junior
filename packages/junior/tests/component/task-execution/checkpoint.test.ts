@@ -359,7 +359,6 @@ describe("turn checkpoint", () => {
       turnId: "turn-tool-call-total",
       sliceId: 1,
       state: "running",
-      turnStartMessageIndex: 0,
     });
 
     const redisRecord = set.mock.calls.at(-1)?.[1];
@@ -370,7 +369,6 @@ describe("turn checkpoint", () => {
       getTurnRecord("local:tool-call-total", "turn-tool-call-total"),
     ).resolves.toMatchObject({
       cumulativeToolCallCount: 42,
-      turnStartMessageIndex: 0,
     });
   });
 
@@ -984,10 +982,15 @@ describe("turn checkpoint", () => {
   });
 
   it("persists turn transcript scope and actor in the event log", async () => {
-    const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const { loadConversationProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
+    const { loadTurnStart } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { savedTurnMessages } =
+      await import("@/chat/task-execution/turn-membership");
+    const { recordTurnStart } = await import("../../fixtures/turn-start");
 
     const previousQuestion: PiMessage = {
       role: "user",
@@ -1000,6 +1003,11 @@ describe("turn checkpoint", () => {
       timestamp: 2,
     } as PiMessage;
 
+    await commitMessages({
+      conversationId: "conversation-turn-scope",
+      messages: [previousQuestion],
+    });
+    await recordTurnStart("conversation-turn-scope", "turn-scope");
     await upsertTurnRecord({
       conversationId: "conversation-turn-scope",
       turnId: "turn-scope",
@@ -1012,7 +1020,6 @@ describe("turn checkpoint", () => {
         userId: "U123",
         userName: "alice",
       },
-      turnStartMessageIndex: 1,
     });
     await upsertTurnRecord({
       conversationId: "conversation-turn-scope",
@@ -1024,9 +1031,14 @@ describe("turn checkpoint", () => {
 
     const scoped = await getTurnRecord("conversation-turn-scope", "turn-scope");
     expect(scoped).toMatchObject({
-      turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
+    expect(
+      savedTurnMessages(
+        scoped!,
+        await loadTurnStart("conversation-turn-scope", "turn-scope"),
+      ).map(({ message }) => message),
+    ).toEqual([currentQuestion]);
     expect(scoped).toMatchObject({ actor: SLACK_ACTOR });
     const projection = await loadConversationProjection({
       conversationId: "conversation-turn-scope",
@@ -1041,8 +1053,6 @@ describe("turn checkpoint", () => {
       userId: "U123",
       userName: "alice",
     });
-    const summaries = await listTurnSummaries("conversation-turn-scope");
-    expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
   });
 
   it("persists and materializes per-message provenance aligned to piMessages", async () => {
@@ -2118,7 +2128,6 @@ describe("turn checkpoint", () => {
       resumed: true,
       record: {
         piMessages: [replacementSummary],
-        turnStartMessageIndex: 0,
       },
     });
   });
