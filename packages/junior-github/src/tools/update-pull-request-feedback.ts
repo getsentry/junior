@@ -14,6 +14,7 @@ import {
   REMOVE_REVIEW_REACTION,
   REVIEW_REACTIONS,
 } from "../graphql-documents.js";
+import { loadLatestReviews } from "../pull-request-reviews.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
   type GitHubApiResponse,
@@ -375,10 +376,11 @@ async function reviewBodyReactions(
 }
 
 /**
- * Ask the reviewer who requested changes to review again. GitHub stops asking
- * a reviewer once they review, so the fixed pull request would not wait on
- * them. The request is optional, so a failure is logged and does not fail the
- * tool.
+ * Ask the reviewer who requested changes to review again, while their latest
+ * review still requests changes. GitHub stops asking a reviewer once they
+ * review, so the fixed pull request would not wait on them. A reviewer who
+ * approved since then is not asked. The request is optional, so a failure is
+ * logged and does not fail the tool.
  */
 async function requestReviewAgain(
   ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
@@ -389,16 +391,34 @@ async function requestReviewAgain(
     repo: `${input.owner}/${input.name}`,
   };
   try {
-    const response = await githubApi(ctx.egress, {
-      operation: "github.pull.request_reviewers",
-      method: "POST",
-      path: `${repoPath(input)}/pulls/${input.pullRequest}/requested_reviewers`,
-      body: { reviewers: [input.reviewer] },
+    const pullPath = `${repoPath(input)}/pulls/${input.pullRequest}`;
+    let rejectedStatus: number | undefined;
+    const latest = await loadLatestReviews(async (query) => {
+      const page = await githubApi(ctx.egress, {
+        operation: "github.pull.review.list",
+        path: `${pullPath}/reviews?${query}`,
+      });
+      // An empty page ends the read.
+      if (page.ok) return page.body;
+      rejectedStatus = page.status;
+      return [];
     });
-    if (!response.ok) {
+    if (
+      rejectedStatus === undefined &&
+      latest.get(input.reviewer.toLowerCase())?.state === "CHANGES_REQUESTED"
+    ) {
+      const response = await githubApi(ctx.egress, {
+        operation: "github.pull.request_reviewers",
+        method: "POST",
+        path: `${pullPath}/requested_reviewers`,
+        body: { reviewers: [input.reviewer] },
+      });
+      if (!response.ok) rejectedStatus = response.status;
+    }
+    if (rejectedStatus !== undefined) {
       ctx.log.warn(
         "github.pull_request.request_reviewers_after_feedback.rejected",
-        { ...fields, status: response.status },
+        { ...fields, status: rejectedStatus },
       );
     }
   } catch (error) {
@@ -438,7 +458,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Addressed on a review that requested changes also asks its reviewer to review again. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Addressed on a change request asks its reviewer to review again, unless they approved since. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
