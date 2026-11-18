@@ -1,7 +1,6 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationListItem,
@@ -51,13 +50,10 @@ import {
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
 import { PageEnd, RetryRow } from "./PageEnd";
+import { useInboxRowActs } from "./inboxRowActs";
 import { useLeaveRow } from "./rowMotion";
 import { InboxEmptyState, InboxSection } from "./InboxSection";
-import {
-  useReviewItemAction,
-  useReviewItemData,
-  useReviewItemsData,
-} from "./queries";
+import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import { itemUpForGrabs, type InboxBundle } from "./reviewItemFormat";
 
@@ -124,7 +120,6 @@ export function InboxList(props: {
   const state = useInboxListState(ready);
   const { view } = state;
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
-  const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
   const done = useReviewItemsData({
     closed: true,
@@ -161,6 +156,12 @@ export function InboxList(props: {
     state.expandedKey,
     state.setExpandedKey,
   );
+  const act = useInboxRowActs({
+    holdLeaving: data.holdLeaving,
+    leave,
+    scroller: state.scroller,
+    setExpandedKey: state.setExpandedKey,
+  });
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
   const grabIds = new Set(data.grabRows.map((row) => row.conversationId));
@@ -324,19 +325,6 @@ export function InboxList(props: {
       scope={scope}
     />
   );
-  const markDone = async (bundle: InboxBundle) => {
-    for (const item of bundle.items) {
-      if (item.status !== "open" || !item.canAct) continue;
-      // oxlint-disable-next-line no-await-in-loop -- Stop at the first dismiss that fails.
-      const closed = await action
-        .mutateAsync({ body: { action: "dismiss" }, id: item.id })
-        .then(
-          () => true,
-          () => false,
-        );
-      if (!closed) return;
-    }
-  };
 
   // The items of each row that this render shows, by row key.
   const rowItems = new Map<string, readonly ReviewItemPayload[]>();
@@ -357,6 +345,8 @@ export function InboxList(props: {
   ) => {
     const key = options.key ?? row.key;
     rowItems.set(key, row.items);
+    const title = titleOf(row.conversationId) ?? row.newest.title;
+    const acted = { items: row.items, key, title };
     return (
       <InboxRow
         bundle={row}
@@ -364,7 +354,6 @@ export function InboxList(props: {
           options.conversation ?? data.conversationById.get(row.conversationId)
         }
         conversationId={row.conversationId}
-        donePending={action.isPending}
         drag={options.drag}
         expanded={state.expandedKey === key}
         itemTitle={options.itemRow ? row.newest.title : undefined}
@@ -379,7 +368,14 @@ export function InboxList(props: {
             : undefined
         }
         key={key}
-        onDone={() => leave(key, () => markDone(row))}
+        onDone={() =>
+          void act(
+            acted,
+            row.items.filter((item) => item.status === "open" && item.canAct),
+            { action: "dismiss" },
+          ).catch(() => {})
+        }
+        onItemAction={(item, body) => act(acted, [item], body)}
         onSnooze={
           options.snoozed
             ? undefined
@@ -388,7 +384,11 @@ export function InboxList(props: {
                 leave(key, () => snoozes.snooze(row, choice));
               }
         }
-        onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
+        onWake={
+          options.snoozed
+            ? () => leave(key, () => snoozes.wake(row))
+            : undefined
+        }
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
         onToggle={() => toggle(key)}
         rowKey={key}
@@ -397,7 +397,7 @@ export function InboxList(props: {
         snoozeMenuOpen={snoozeKey === key}
         take={options.take}
         time={options.time ?? row.waitingSince}
-        title={titleOf(row.conversationId) ?? row.newest.title}
+        title={title}
       />
     );
   };
@@ -756,10 +756,13 @@ export function InboxList(props: {
     openItems.every((item) => closedElsewhere.includes(item))
       ? expandedKey
       : undefined;
-  // The row goes at once, before `leave` restores its shut card.
-  const leaveClosed = useEffectEvent((key: string) =>
-    leave(key, () => flushSync(() => holdOpenRow([]))),
-  );
+  // The next row opens at once, so the open row's hold moves to the
+  // leaving hold, which keeps the row until its motion ends.
+  const { holdLeaving } = data;
+  const leaveClosed = useEffectEvent((key: string) => {
+    holdLeaving(openItems, true);
+    leave(key, () => holdLeaving(openItems, false));
+  });
   useEffect(() => {
     if (closedKey) leaveClosed(closedKey);
   }, [closedKey]);
@@ -801,11 +804,6 @@ export function InboxList(props: {
           // the scroll area's edge.
           style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
-          {action.isError ? (
-            <InlineError className="py-2">
-              Could not close every item. Try again.
-            </InlineError>
-          ) : null}
           <InboxFocusProvider focus={focus.focus}>
             <InboxPreviewGate>{body}</InboxPreviewGate>
           </InboxFocusProvider>

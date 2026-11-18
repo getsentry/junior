@@ -10,6 +10,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
+  ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -104,9 +105,10 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  onAction?: InboxRowProps["onItemAction"];
   take?: string;
 }) {
-  const { item } = props;
+  const { item, onAction } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
   return (
@@ -158,6 +160,7 @@ function RowItem(props: {
       <ReviewItemActions
         dismiss={!props.done}
         item={item}
+        onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
     </section>
@@ -229,7 +232,6 @@ type InboxRowProps = {
   bundle?: InboxBundle;
   conversation?: Conversation;
   conversationId: string;
-  donePending?: boolean;
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
@@ -238,6 +240,11 @@ type InboxRowProps = {
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
   onDone?(): void;
+  /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
+  onItemAction?(
+    item: ReviewItemPayload,
+    body: ReviewItemActionBody,
+  ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(choice: SnoozeChoice): void;
@@ -810,6 +817,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              onAction={props.onItemAction}
               take={props.take}
             />
           ))}
@@ -832,7 +840,6 @@ function rowActions(props: InboxRowProps) {
     <ExpandedActions
       canDone={rowCanDone(props)}
       conversation={props.conversation}
-      donePending={props.donePending}
       onDone={props.onDone}
       onSnooze={props.onSnooze}
       onSnoozeMenu={props.onSnoozeMenu}
@@ -847,7 +854,6 @@ function ExpandedActions(props: {
   canDone: boolean;
   conversation?: Conversation;
   openPath: string;
-  donePending?: boolean;
   onDone?(): void;
   onSnooze?(choice: SnoozeChoice): void;
   onSnoozeMenu(open: boolean): void;
@@ -881,7 +887,7 @@ function ExpandedActions(props: {
       ) : null}
       {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
-        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
+        <RowDismissButton onClick={props.onDone} />
       ) : null}
     </div>
   );
@@ -889,7 +895,16 @@ function ExpandedActions(props: {
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
 function ExpandedPin(props: { conversation: Conversation }) {
-  const pin = usePinConversation(props.conversation.id);
+  const { clearActionError, showActionError } = useConversationActionToasts();
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinning) =>
+      showActionError(
+        props.conversation,
+        pinning ? "Could not pin" : "Could not unpin",
+        () => pin.mutate(pinning),
+      ),
+    onSuccess: () => clearActionError(props.conversation),
+  });
   const pinned = Boolean(props.conversation.pinnedAt);
   return (
     <Button

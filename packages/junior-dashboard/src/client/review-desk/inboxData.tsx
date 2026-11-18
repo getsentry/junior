@@ -16,6 +16,7 @@ import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
+  useClosingReviewItemIds,
   useLinkedConversationTitles,
   useReviewItemData,
   useReviewItemStates,
@@ -120,20 +121,46 @@ function useBuildInboxData(input: {
       ),
     [],
   );
-  const read = useMemo(
-    () =>
-      linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
-        ? [...loaded, linked]
-        : loaded,
-    [linked, loaded],
+  // The items of rows that leave, held until their motion ends, by id.
+  const [leaving, setLeaving] = useState<
+    ReadonlyMap<string, ReviewItemPayload>
+  >(() => new Map());
+  const holdLeaving = useCallback(
+    (items: readonly ReviewItemPayload[], held: boolean) =>
+      setLeaving((current) => {
+        const next = new Map(current);
+        for (const item of items) {
+          if (held) next.set(item.id, item);
+          else next.delete(item.id);
+        }
+        return next;
+      }),
+    [],
   );
-  // Before the first read, no item has left it.
+  // The viewer's actions in flight already took their items out. A read
+  // that the server answered before an action lands has them still open.
+  const closing = useClosingReviewItemIds();
+  const read = useMemo(() => {
+    const open = loaded.filter((item) => !closing.has(item.id));
+    return linked?.status === "open" &&
+      !closing.has(linked.id) &&
+      !open.some((item) => item.id === linked.id)
+      ? [...open, linked]
+      : open;
+  }, [closing, linked, loaded]);
+  // Before the first read, no item has left it. The viewer's own actions
+  // did not close an item elsewhere.
   const missing = useMemo(
     () =>
       itemsQuery.data
-        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        ? openRow.filter(
+            (item) =>
+              !read.some((open) => open.id === item.id) &&
+              !closing.has(item.id) &&
+              !leaving.has(item.id),
+          )
         : [],
-    [itemsQuery.data, openRow, read],
+    [closing, itemsQuery.data, leaving, openRow, read],
   );
   // An item can leave the loaded pages and still be open, so each one's
   // own read says whether it closed. Until then, it stays.
@@ -154,8 +181,12 @@ function useBuildInboxData(input: {
       if (state !== "closed") return [state];
       return closedElsewhere.length > 0 ? [item] : [];
     });
-    return held.length > 0 ? [...read, ...held] : read;
-  }, [closedElsewhere, missing, read, states]);
+    const shown = new Set([...read, ...held].map((item) => item.id));
+    const left = [...leaving.values()].filter((item) => !shown.has(item.id));
+    return held.length > 0 || left.length > 0
+      ? [...read, ...held, ...left]
+      : read;
+  }, [closedElsewhere, leaving, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -270,6 +301,8 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
+    /** Keep a row's items while it leaves, after a read drops them. */
+    holdLeaving,
     holdOpenRow,
     includedId: linkedId,
     includeItem,

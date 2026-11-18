@@ -56,12 +56,9 @@ export function RowSnoozeButton(props: {
  * Dismiss an Inbox row: the main action of its action bar, so it goes
  * right-most.
  */
-export function RowDismissButton(props: {
-  disabled?: boolean;
-  onClick(): void;
-}) {
+export function RowDismissButton(props: { onClick(): void }) {
   return (
-    <Button disabled={props.disabled} onClick={props.onClick} variant="outline">
+    <Button onClick={props.onClick} variant="outline">
       <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
       Dismiss
     </Button>

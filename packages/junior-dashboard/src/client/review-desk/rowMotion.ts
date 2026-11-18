@@ -1,4 +1,5 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 
 /** One duration and easing for a card's height, as it opens, grows, or leaves. */
 const HEIGHT_MS = 200;
@@ -98,29 +99,64 @@ function listRows(scroller: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Put a row away, as Dismiss or Snooze does: it leaves with its height,
- * then `work` takes it out. When the row was open, the next row opens in
- * its place, or the row before it at the end of the list, so the reader
- * keeps going. A row that `work` keeps, as when it fails, opens again.
+ * Put a row away, as Dismiss or Snooze does. When the row was open, the
+ * next row opens in its place at once, or the row before it at the end of
+ * the list, so the reader keeps going. The row leaves with its height, then
+ * `release` lets it go. A row that stays after `release`, as a Conversation
+ * row without its asks, shows its card again. Returns the key of the row
+ * that opened, if one did.
  */
 export function useLeaveRow(
   scroller: RefObject<HTMLElement | null>,
   expandedKey: string,
   setExpandedKey: (key: string) => void,
 ) {
-  return (key: string, work: () => Promise<void> | void) => {
+  return (key: string, release: () => void): string | undefined => {
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
     const at = rows.findIndex((row) => row.dataset["inboxRow"] === key);
     const card = rows[at];
-    if (!card) return void work();
-    const next = (rows[at + 1] ?? rows[at - 1])?.dataset["inboxRow"];
-    const wasOpen = expandedKey === key;
-    void (async () => {
-      await leaveCard(card);
-      if (wasOpen) setExpandedKey(next ?? "");
-      await work();
+    if (!card) {
+      release();
+      return undefined;
+    }
+    const next = (rows[at + 1] ?? rows[at - 1])?.dataset["inboxRow"] ?? "";
+    const opened = expandedKey === key ? next : undefined;
+    if (opened !== undefined) setExpandedKey(opened);
+    void leaveCard(card).then(() => {
+      // The row goes now, before its shut card shows again.
+      flushSync(release);
       if (card.isConnected) restoreCard(card);
-    })();
+    });
+    return opened;
   };
+}
+
+/**
+ * After a failed action brings a row back, scroll it into view when it is
+ * near the part of the list that shows. A row far away stays there. The
+ * row can take a few frames to render again.
+ */
+export function showReturnedRow(
+  scroller: HTMLElement,
+  key: string,
+  frames = 10,
+) {
+  const row = scroller.querySelector(`li[data-inbox-row="${CSS.escape(key)}"]`);
+  if (!row) {
+    if (frames > 0) {
+      requestAnimationFrame(() => showReturnedRow(scroller, key, frames - 1));
+    }
+    return;
+  }
+  const area = scroller.getBoundingClientRect();
+  const box = row.getBoundingClientRect();
+  const near =
+    box.bottom > area.top - area.height && box.top < area.bottom + area.height;
+  if (near) {
+    row.scrollIntoView({
+      behavior: reducedMotion() ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }
 }
