@@ -263,9 +263,10 @@ function useBuildInboxData(input: {
       })),
   );
 
-  // In flight: every pin, each one click away, and running Conversations in
-  // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
-  // pin with them, then the other pins in the viewer's order.
+  // In flight: every pin and every running Conversation. Running rows come
+  // first, a running pin with them, then the other pins in the viewer's
+  // order. Collapsed, every pin shows, each one click away, and running
+  // Conversations fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
@@ -273,8 +274,8 @@ function useBuildInboxData(input: {
     (conversation) =>
       conversation.status === "active" && !conversation.pinnedAt,
   );
-  const inFlight = [
-    ...running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+  const inFlightFor = (unpinnedRunning: Conversation[]) => [
+    ...unpinnedRunning,
     ...pinned.filter((conversation) => conversation.status === "active"),
     ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
@@ -303,8 +304,12 @@ function useBuildInboxData(input: {
     holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inFlight,
-    inFlightCount: running.length + pinned.length,
+    /** Every in-flight Conversation, in pane order. */
+    inFlight: inFlightFor(running),
+    /** Collapsed In flight: every pin, and running rows up to the limit. */
+    inFlightCollapsed: inFlightFor(
+      running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+    ),
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
     itemPages: scrollPages(itemsQuery),

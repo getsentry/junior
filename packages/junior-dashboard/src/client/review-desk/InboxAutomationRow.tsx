@@ -20,6 +20,7 @@ import { automationAttentionGroup } from "./inboxModel";
 import type { SnoozeChoice } from "./snoozeChoices";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
+import { fadeTextClass } from "../textFade";
 
 const LAST_RUN_LABELS = {
   blocked: "blocked",
@@ -112,7 +113,12 @@ export function InboxAutomationRow(props: {
           className="col-start-2 row-start-1 grid min-w-0 gap-1"
           data-inbox-slot="title"
         >
-          <span className="truncate font-display text-base font-medium leading-snug text-dashboard-text">
+          <span
+            className={cn(
+              fadeTextClass,
+              "font-display text-base font-medium leading-snug text-dashboard-text",
+            )}
+          >
             {automation.title}
           </span>
           {comfortable ? null : (

@@ -30,7 +30,7 @@ import {
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../searchParams";
-import { cn } from "../../styles";
+import { cn, dashboardIconTileClass } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
@@ -470,7 +470,7 @@ function OverviewBreakdownRow(props: {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-bg-elevated px-3 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+      <div className={cn(dashboardIconTileClass, "size-9")}>
         <Icon aria-hidden="true" size={15} />
       </div>
       <div className="min-w-0 flex-1">
