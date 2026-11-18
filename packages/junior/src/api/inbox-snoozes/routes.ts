@@ -29,21 +29,13 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const { wakeAt, ...subject } = context.req.valid("json");
       try {
-        const snooze = await createViewerSnooze(context.get("viewer"), {
+        const reviewItemIds = await createViewerSnooze(context.get("viewer"), {
           subject,
           wakeAtMs: Date.parse(wakeAt),
         });
         return jsonResponse(
           inboxSnoozeSchema,
-          {
-            conversationId: snooze.conversationId,
-            createdAt: snooze.createdAt.toISOString(),
-            id: snooze.id,
-            ...(snooze.reviewItemId
-              ? { reviewItemId: snooze.reviewItemId }
-              : undefined),
-            wakeAt: new Date(snooze.wakeAtMs).toISOString(),
-          },
+          { reviewItemIds },
           { status: 201 },
         );
       } catch (error) {

@@ -38,7 +38,7 @@ import {
   getReviewItem,
   insertReviewItem,
 } from "@/chat/review-items/store";
-import { snoozeInboxRow, unsnoozeInboxRow } from "@/chat/inbox-snoozes/store";
+import { snoozeInboxItems, unsnoozeInboxRow } from "@/chat/inbox-snoozes/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -229,7 +229,7 @@ describe("retention purge job", () => {
     ).toBeUndefined();
   });
 
-  it("deletes snoozes 30 days after they were made, once they are not active", async () => {
+  it("deletes snoozes 30 days after they were made, once they end", async () => {
     const dest = await seedDestination(fixture.sql, "public");
     await seedConversation(fixture.sql, {
       conversationId: "snoozed",
@@ -258,35 +258,35 @@ describe("retention purge job", () => {
       title: "Rollout paused",
       visibility: "public",
     });
-    const snooze = async (nowMs: number, reviewItemId?: string) => {
-      const subject = {
-        conversationId: "snoozed",
-        ...(reviewItemId ? { reviewItemId } : undefined),
-      };
-      const created = await snoozeInboxRow(fixture.sql.db(), {
+    const snooze = async (nowMs: number) => {
+      const [id] = await snoozeInboxItems(fixture.sql.db(), {
         nowMs,
-        subject,
+        reviewItemIds: [item!.id],
+        rootConversationId: "snoozed",
+        timerId: `inbox-snooze:${nowMs}`,
         userId: "user:snoozer",
-        wakeAtMs: nowMs + 365 * DAY_MS,
       });
-      return { id: created.id, subject };
+      return id!;
     };
-    const undo = (subject: { conversationId: string }) =>
-      unsnoozeInboxRow(fixture.sql.db(), { subject, userId: "user:snoozer" });
-    const old = await snooze(BASE_MS);
-    await undo(old.subject);
+    const wake = () =>
+      unsnoozeInboxRow(fixture.sql.db(), {
+        rootConversationId: "snoozed",
+        userId: "user:snoozer",
+      });
+    await snooze(BASE_MS);
+    await wake();
     const recent = await snooze(BASE_MS + 20 * DAY_MS);
-    await undo(recent.subject);
-    const oldActive = await snooze(BASE_MS, item!.id);
+    await wake();
+    const oldSnoozed = await snooze(BASE_MS);
 
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 31 * DAY_MS });
     const left = await fixture.sql
       .db()
       .select({ id: juniorInboxSnoozes.id })
       .from(juniorInboxSnoozes);
-    // An active snooze stays until it wakes.
+    // A snoozed item stays snoozed until it wakes.
     expect(left.map((row) => row.id).sort()).toEqual(
-      [oldActive.id, recent.id].sort(),
+      [oldSnoozed, recent].sort(),
     );
   });
 

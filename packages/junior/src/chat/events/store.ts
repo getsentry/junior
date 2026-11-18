@@ -12,7 +12,7 @@ import * as z from "zod";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { updateTimerIndex } from "@/chat/events/timer-index";
+import { TIMER_WATCH_INDEX, updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { mapBounded } from "@/chat/fan-out";
@@ -487,7 +487,11 @@ export async function createTimerWatch(input: {
           [id],
           ttlUntil(expiresAtMs, nowMs),
         );
-        await updateTimerIndex(state, { kind: "add", id, atMs: firesAtMs });
+        await updateTimerIndex(state, TIMER_WATCH_INDEX, {
+          kind: "add",
+          id,
+          atMs: firesAtMs,
+        });
         await state.set(
           subscriptionKey(id),
           record,
@@ -505,13 +509,19 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
   await state.connect();
   const watches: Watch[] = [];
   /* oxlint-disable no-await-in-loop -- A stale entry updates the timer index, whose lock does not wait. */
-  for (const id of await updateTimerIndex(state, { kind: "claim", nowMs })) {
+  for (const id of await updateTimerIndex(state, TIMER_WATCH_INDEX, {
+    kind: "claim",
+    nowMs,
+  })) {
     await withSubscriptionLock(state, id, async () => {
       const watch = parseSubscription(await state.get(subscriptionKey(id)));
       if (watch && activeAt(watch, nowMs) && watch.firesAtMs !== undefined) {
         if (watch.firesAtMs <= nowMs) watches.push(watch);
       } else {
-        await updateTimerIndex(state, { kind: "remove", id });
+        await updateTimerIndex(state, TIMER_WATCH_INDEX, {
+          kind: "remove",
+          id,
+        });
       }
     });
   }
@@ -597,7 +607,10 @@ export async function cancelWatch(input: {
       nowMs,
     );
     if (current.firesAtMs !== undefined)
-      await updateTimerIndex(state, { kind: "remove", id: input.id });
+      await updateTimerIndex(state, TIMER_WATCH_INDEX, {
+        kind: "remove",
+        id: input.id,
+      });
     return next;
   });
 }
@@ -770,7 +783,10 @@ export async function deliverWatch(input: {
         );
       }
       if (input.terminal && current.firesAtMs !== undefined) {
-        await updateTimerIndex(state, { kind: "remove", id: current.id });
+        await updateTimerIndex(state, TIMER_WATCH_INDEX, {
+          kind: "remove",
+          id: current.id,
+        });
       }
       return delivered;
     },
