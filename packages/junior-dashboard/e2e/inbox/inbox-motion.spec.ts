@@ -1,6 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
+import { audit, license, mockReviewItems, prReview } from "./inbox-fixture";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -436,4 +438,91 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toHaveAttribute("data-expanded", "true");
     });
   }
+
+  // Three asks in To do, each in its own Conversation, oldest first. The
+  // test closes them on the server, as an agent or a Watch does, and the
+  // viewer comes back to the tab after the reads went stale, so the Inbox
+  // reads its asks again.
+  async function closableAsks(page: Page) {
+    const asks = [
+      { ...prReview, createdAt: "2026-08-07T08:00:00.000Z" },
+      {
+        ...license,
+        addedByConversationId: "slack:CLICENSE:1770003600.000400",
+        createdAt: "2026-08-07T08:10:00.000Z",
+      },
+      {
+        ...audit,
+        addedByConversationId: "slack:CAUDIT:1770003600.000500",
+        createdAt: "2026-08-07T08:20:00.000Z",
+      },
+    ];
+    const open = [...asks];
+    const actions = await mockReviewItems(page, { open });
+    let nowMs = NOW_MS;
+    return {
+      actions,
+      async closeAndRefocus(index: number) {
+        open.splice(open.indexOf(asks[index]!), 1);
+        nowMs += 60_000;
+        await page.clock.setFixedTime(nowMs);
+        const read = page.waitForResponse(
+          (response) =>
+            response.request().method() === "GET" &&
+            new URL(response.url()).pathname === "/api/review-items",
+        );
+        await page.evaluate(() =>
+          window.dispatchEvent(new Event("visibilitychange")),
+        );
+        await read;
+      },
+      row: (index: number) =>
+        page.locator(
+          `li[data-inbox-row="todo:${asks[index]!.addedByConversationId}"]`,
+        ),
+    };
+  }
+
+  for (const motion of ["no-preference", "reduce"] as const) {
+    test(`an open row that closes elsewhere leaves as on Dismiss (${motion} motion)`, async ({
+      dashboard,
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: motion });
+      const asks = await closableAsks(page);
+      await page.goto(`${dashboard.baseURL}/`);
+      await asks
+        .row(0)
+        .locator('a[aria-controls^="inbox-row-"]')
+        .first()
+        .click();
+      await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+      await asks.closeAndRefocus(0);
+      await expect(asks.row(1)).toHaveAttribute("data-expanded", "true");
+      await expect(asks.row(0)).toHaveCount(0);
+      // The item is already closed, so the Inbox sends nothing.
+      expect(asks.actions).toEqual([]);
+    });
+  }
+
+  test("a row that closes elsewhere while shut leaves without moving the open row", async ({
+    dashboard,
+    page,
+  }) => {
+    const asks = await closableAsks(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    await asks.row(0).locator('a[aria-controls^="inbox-row-"]').first().click();
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+    await asks.closeAndRefocus(1);
+    await expect(asks.row(1)).toHaveCount(0);
+    await expect(asks.row(0)).toHaveAttribute("data-expanded", "true");
+
+    // The row that left is out of the order too: the open row's next is
+    // the one after it.
+    await asks.closeAndRefocus(0);
+    await expect(asks.row(2)).toHaveAttribute("data-expanded", "true");
+    expect(asks.actions).toEqual([]);
+  });
 });

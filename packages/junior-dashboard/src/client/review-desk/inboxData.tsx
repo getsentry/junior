@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -104,12 +105,39 @@ function useBuildInboxData(input: {
     (id: string) => setLinkedItems((current) => ({ ...current, open: id })),
     [setLinkedItems],
   );
-  const list = useMemo(
+  // The items of the open Inbox row, as the list last showed them. When a
+  // read shows them closed, as when an agent or a Watch closes them, they
+  // stay until the row leaves as it does on Dismiss.
+  const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
+  const holdOpenRow = useCallback(
+    (items: readonly ReviewItemPayload[]) =>
+      setOpenRow((current) =>
+        current.length === items.length &&
+        current.every((item, index) => item === items[index])
+          ? current
+          : items,
+      ),
+    [],
+  );
+  const read = useMemo(
     () =>
       linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
         ? [...loaded, linked]
         : loaded,
     [linked, loaded],
+  );
+  const closedElsewhere = useMemo(() => {
+    // Before the first read, no item has closed.
+    if (!itemsQuery.data) return [];
+    const closed = openRow.filter(
+      (item) => !read.some((open) => open.id === item.id),
+    );
+    // A row with an item still open stays, without the closed ones.
+    return closed.length === openRow.length ? closed : [];
+  }, [itemsQuery.data, openRow, read]);
+  const list = useMemo(
+    () => (closedElsewhere.length > 0 ? [...read, ...closedElsewhere] : read),
+    [closedElsewhere, read],
   );
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
@@ -219,10 +247,13 @@ function useBuildInboxData(input: {
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     awake,
+    /** The open row's items, held after a read shows them all closed. */
+    closedElsewhere,
     conversationById,
     conversationRows,
     counts,
     feed,
+    holdOpenRow,
     includedId: linkedId,
     includeItem,
     inFlight,
