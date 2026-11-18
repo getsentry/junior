@@ -198,8 +198,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const title = (text: string) =>
       page
-        .locator("li[data-inbox-row]")
-        .locator('a[aria-controls^="inbox-row-"]')
+        .locator("li[data-inbox-row] [data-inbox-head]")
         .getByText(text, { exact: true })
         .first();
     await expect(title(long)).toHaveAttribute("data-overflow");
