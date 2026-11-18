@@ -253,6 +253,7 @@ async function recordAnswer(
   conversationId: string,
   n: number,
   createdAtMs = Date.now(),
+  source?: "slack",
 ): Promise<void> {
   await getConversationEventStore().append(conversationId, [
     {
@@ -261,6 +262,7 @@ async function recordAnswer(
         messageId: `${conversationId}:answer-${n}`,
         role: "assistant",
         text: "It shipped.",
+        ...(source ? { meta: { source } } : undefined),
       },
       createdAtMs,
     },
@@ -527,12 +529,29 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
-  it("counts an answer delivered to Slack as read", async () => {
+  it("counts an answer that Slack accepted as read", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000250",
     );
+    await recordAnswer(conversationId, 1, Date.now(), "slack");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // A paused root keeps its reply out of Slack, so the starter must read it.
+    await recordAnswer(conversationId, 2);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+  });
+
+  it("does not wait on a read when the root has no starter", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-no-starter",
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({ actorIdentityId: null })
+      .where(eq(juniorConversations.conversationId, conversationId));
     await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("done");
   });
