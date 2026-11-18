@@ -657,22 +657,25 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
-    // A new turn starts with no active skill. A resumed turn recovers only its
-    // last successful loadSkill result, never skill state from older turns.
-    const explicitSkill = await loadRunSkill({
+    // A new turn starts with no active skill. A resumed turn recovers the
+    // skills loaded earlier in this Turn, never skill state from older turns.
+    const runSkill = await loadRunSkill({
       activeSkills,
       currentTurnMessages,
       invokedSkills,
       resumed: resumedFromSessionRecord,
       skillSandbox,
     });
-    const explicitSkillLoadableNames = explicitSkill
-      ? unloadedManualSkillNames(
-          availableSkills,
-          invokedSkillNames,
-          activeSkills,
-        )
-      : [];
+    const explicitSkill = runSkill
+      ? {
+          skill: runSkill,
+          loadableSkillNames: unloadedManualSkillNames(
+            availableSkills,
+            invokedSkillNames,
+            activeSkills,
+          ),
+        }
+      : null;
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, userContentParts } = buildPromptInput({
       instruction: run.instruction,
@@ -842,7 +845,6 @@ async function executeAgentRunInPrivacyContext(
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       explicitSkill,
-      explicitSkillLoadableNames,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,

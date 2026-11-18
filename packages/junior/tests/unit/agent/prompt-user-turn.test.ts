@@ -10,15 +10,15 @@ import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 describe("buildUserTurnText", () => {
   it("renders an explicitly selected skill as loaded instructions", () => {
     expect(
-      renderExplicitSkillInstructions(
-        {
+      renderExplicitSkillInstructions({
+        skill: {
           name: "weather-lookup",
           description: "Weather lookup",
           skillPath: "/host/skills/weather-lookup/SKILL.md",
           body: "Use the weather source.",
         },
-        [],
-      ),
+        loadableSkillNames: [],
+      }),
     ).toBe(
       [
         "<skill>",
@@ -34,15 +34,15 @@ describe("buildUserTurnText", () => {
 
   it("names the manual-only skills that the explicit skill makes loadable", () => {
     expect(
-      renderExplicitSkillInstructions(
-        {
+      renderExplicitSkillInstructions({
+        skill: {
           name: "launch-review",
           description: "Launch review",
           skillPath: "/host/skills/launch-review/SKILL.md",
           body: "Run $launch-checks.",
         },
-        ["launch-checks", "weather-lookup"],
-      ),
+        loadableSkillNames: ["launch-checks", "weather-lookup"],
+      }),
     ).toContain(
       [
         "<loadable_skills>launch-checks, weather-lookup</loadable_skills>",
