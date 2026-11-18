@@ -592,13 +592,11 @@ async function bindSlackActorIdentities(args: {
     [...byAuthorId],
     async ([authorId, messages]) => {
       const profile = await lookupSlackUser(args.teamId, authorId);
-      await Promise.all(
-        messages.map((message) =>
-          ensureSlackMessageActorIdentity(
-            message,
-            args.teamId,
-            async () => profile,
-          ),
+      await mapBounded(messages, (message) =>
+        ensureSlackMessageActorIdentity(
+          message,
+          args.teamId,
+          async () => profile,
         ),
       );
       if (profile && messages.some(getMessageAuthorIdentityId)) {

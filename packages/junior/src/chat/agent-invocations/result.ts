@@ -642,8 +642,8 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
-  const routes = await Promise.all(
-    messages.map((message) => routeChildInput(message, latest, stoppedAtMs)),
+  const routes = await mapBounded(messages, (message) =>
+    routeChildInput(message, latest, stoppedAtMs),
   );
   if (!routes.includes("agent invocation")) {
     return undefined;

@@ -42,7 +42,7 @@ import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
-  inboxStreamRows,
+  capEarlier,
   inboxViewPath,
   itemRowSubtitle,
   sweepOf,
@@ -175,8 +175,8 @@ export function InboxList(props: {
   // The Inbox ends after a few rows of Earlier. Conversations lists all.
   const inboxStream =
     view === "inbox"
-      ? inboxStreamRows(
-          data.conversationRows.filter(
+      ? capEarlier(
+          data.inboxStreamRows.filter(
             (row) =>
               !todoIds.has(row.conversationId) &&
               !grabIds.has(row.conversationId),
@@ -217,11 +217,16 @@ export function InboxList(props: {
       return doneItems.some((item) => item.id === linkedId)
         ? linkedId
         : undefined;
-    const item = data.awake.find((open) => open.id === linkedId);
+    // A notice folded into an ask's row opens that row.
+    const hostId = [...data.foldedNotices].find(([, notices]) =>
+      notices.some((notice) => notice.id === linkedId),
+    )?.[0];
+    const item = data.awake.find((open) => open.id === (hostId ?? linkedId));
     if (!item) return undefined;
     if (view === "prs" || view === "decisions") return item.id;
     const conversationId = item.addedByConversationId;
     if (view !== "inbox") return `conversation:${conversationId}`;
+    if (item.kind === "notice") return `fyi:${item.id}`;
     if (itemUpForGrabs(item) && grabIds.has(conversationId))
       return `grabs:${conversationId}`;
     return todoIds.has(conversationId)
@@ -251,9 +256,18 @@ export function InboxList(props: {
     const current = new URLSearchParams(window.location.search).get("item");
     if (current !== linkedId) return;
     if (linkedRowKey) {
-      // A collapsed To do has no rows, so a link into it opens it first.
+      // A collapsed To do or FYI has no rows, so a link into it opens it
+      // first.
       if (linkedRowKey.startsWith("todo:") && todoCollapsed) {
         setTodoCollapsed(false);
+        return;
+      }
+      if (linkedRowKey.startsWith("fyi:") && collapsed.has("fyi")) {
+        setCollapsed((current) => {
+          const next = new Set(current);
+          next.delete("fyi");
+          return next;
+        });
         return;
       }
       if (expandedKey !== linkedRowKey) {
@@ -302,6 +316,7 @@ export function InboxList(props: {
       });
     }
   }, [
+    collapsed,
     expandedKey,
     includeItem,
     includedId,
@@ -374,6 +389,7 @@ export function InboxList(props: {
         donePending={action.isPending}
         drag={options.drag}
         expanded={state.expandedKey === key}
+        foldedNotices={data.foldedNotices}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
           options.itemRow
@@ -650,6 +666,18 @@ export function InboxList(props: {
         >
           {data.grabRows.map((row) =>
             bundleRow(row, { key: `grabs:${row.key}`, take: "I'll take it" }),
+          )}
+        </InboxSection>
+        {/* Notices wait on no one: one quiet row each, after the asks. */}
+        <InboxSection
+          action={sweepControl(data.fyiRows, "FYI")}
+          collapsed={collapsed.has("fyi")}
+          count={data.fyiRows.length}
+          label="FYI"
+          onToggle={() => toggleSection("fyi")}
+        >
+          {data.fyiRows.map((row) =>
+            bundleRow(row, { itemRow: true, key: `fyi:${row.key}` }),
           )}
         </InboxSection>
         {automationsError}

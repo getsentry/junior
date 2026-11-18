@@ -862,6 +862,13 @@
       "when": 1794995536190,
       "tag": "0122_automation_rollout_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1795012788195,
+      "tag": "0123_cache_warming_history_reset",
+      "breakpoints": true
     }
   ]
 }

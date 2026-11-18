@@ -28,7 +28,9 @@ export function legacyWebActorUserId(email: string): string {
 }
 
 /** Return every web Actor id that names this User, the User id first. */
-export function webActorUserIds(user: Pick<User, "email" | "id">): string[] {
+export function webActorUserIds(
+  user: Pick<User, "email" | "id">,
+): [string, string] {
   return [user.id, legacyWebActorUserId(user.email)];
 }
 
