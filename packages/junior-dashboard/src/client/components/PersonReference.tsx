@@ -46,13 +46,15 @@ function PersonPhoto(props: {
   );
 }
 
-// `vertical-align: middle` centres the photo on the x-height of the name at
-// any font size. A baseline offset hung an initial below the line: the
-// baseline of an initial is the baseline of its letter, not its bottom.
+// The photo centres on the ink of an `@` in the name's font, so a mention
+// and a plain name line up the same way. `vertical-align: middle` puts it on
+// half the x-height, which in Inter sits 0.1em below the centre of `@`; the
+// transform lifts it by that much without changing the line height. A
+// baseline offset does not work: the baseline of an initial is its letter.
 function InlinePhoto(props: { person: Person }) {
   return (
     <PersonPhoto
-      className="mr-1 inline-grid size-[1em] align-middle"
+      className="mr-1 inline-grid size-[1em] -translate-y-[0.1em] align-middle"
       initialClassName="text-[0.6em]"
       person={props.person}
     />
