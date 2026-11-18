@@ -12,6 +12,7 @@ import {
   type ToolCall,
   type ToolResultMessage,
 } from "@earendil-works/pi-ai";
+import { withSpan } from "@/core/telemetry";
 import type { ToolDefinition, ToolResult } from "@/core/tool";
 import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
@@ -144,46 +145,85 @@ async function runToolCalls(
   };
 }
 
+type ToolCallStatus =
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "not_found"
+  | "invalid_arguments"
+  | "replay_skipped"
+  | "truncated";
+
+type ToolCallRun = { status: ToolCallStatus; result: ToolResult };
+
 type ToolCallOutcome = { call: ToolCall; result: ToolResult };
 
-async function runToolCall(
+function runToolCall(
   call: ToolCall,
   truncated: boolean,
   input: StepInput,
 ): Promise<ToolCallOutcome> {
+  return withSpan(
+    "gen_ai.execute_tool",
+    {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": call.name,
+      "gen_ai.tool.call.id": call.id,
+      "gen_ai.tool.type": "function",
+    },
+    async (span) => {
+      const { status, result } = await executeToolCall(call, truncated, input);
+      span.setAttribute("app.tool_call.outcome", status);
+      return { call, result };
+    },
+  );
+}
+
+async function executeToolCall(
+  call: ToolCall,
+  truncated: boolean,
+  input: StepInput,
+): Promise<ToolCallRun> {
   if (truncated) {
-    return errorOutcome(
-      call,
+    return errorRun(
+      "truncated",
       `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
     );
   }
   const tool = input.tools.find((candidate) => candidate.name === call.name);
   if (!tool) {
-    return errorOutcome(call, `Tool ${call.name} not found`);
+    return errorRun("not_found", `Tool ${call.name} not found`);
   }
   if (input.replay && tool.replay === "unsafe") {
-    return errorOutcome(
-      call,
+    return errorRun(
+      "replay_skipped",
       "This call was interrupted before its result was saved, so it may have run. Check its effect before you call it again.",
     );
   }
-  // A validation error and a throw from the tool are both results the model
-  // can react to.
+  let args: unknown;
   try {
-    const args: unknown = validateToolArguments(tool, call);
-    if (!isJsonObject(args)) {
-      return errorOutcome(call, "Tool arguments must be a JSON object");
-    }
+    args = validateToolArguments(tool, call);
+  } catch (error) {
+    return errorRun("invalid_arguments", errorText(error));
+  }
+  if (!isJsonObject(args)) {
+    return errorRun(
+      "invalid_arguments",
+      "Tool arguments must be a JSON object",
+    );
+  }
+  // A throw from the tool is a result the model can react to.
+  try {
     const result = await tool.execute(args, {
       callId: call.id,
       signal: input.signal,
       environment: input.environment,
     });
-    return { call, result };
+    return { status: result.isError ? "failed" : "completed", result };
   } catch (error) {
-    return errorOutcome(
-      call,
-      error instanceof Error ? error.message : String(error),
+    return errorRun(
+      input.signal.aborted ? "aborted" : "failed",
+      errorText(error),
     );
   }
 }
@@ -193,9 +233,13 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function errorOutcome(call: ToolCall, text: string): ToolCallOutcome {
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function errorRun(status: ToolCallStatus, text: string): ToolCallRun {
   return {
-    call,
+    status,
     result: { content: [{ type: "text", text }], isError: true },
   };
 }
