@@ -90,7 +90,6 @@ export type InboxFeedPages = {
 function useBuildInboxData(input: {
   conversations: Conversation[];
   feed: InboxFeedPages;
-  feedReadThrough: string | undefined;
   /** The asks need a signed-in viewer. Without one, only Conversations show. */
   signedIn: boolean;
 }) {
@@ -291,8 +290,6 @@ function useBuildInboxData(input: {
     );
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
-  // The Inbox's own stream leaves notices to its FYI list.
-  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every running Conversation. Running rows come
   // first, a running pin with them, then the other pins in the viewer's
@@ -361,6 +358,8 @@ function useBuildInboxData(input: {
     answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
+    /** The Automations that need attention are in, so To do is complete. */
+    automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
     /** The open row's items, held after a read shows them all closed. */
     closedElsewhere,
@@ -368,8 +367,6 @@ function useBuildInboxData(input: {
     conversationRows,
     counts,
     feed,
-    /** How far back the feed has read (`joinConversationFeedPages`). */
-    feedReadThrough: input.feedReadThrough,
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),
@@ -378,7 +375,6 @@ function useBuildInboxData(input: {
     holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(running),
     /** Collapsed In flight: every pin, and running rows up to the limit. */
@@ -422,7 +418,6 @@ export function InboxDataProvider(props: {
   const { conversations, feed } = useInboxConversations();
   const value = useBuildInboxData({
     conversations,
-    feedReadThrough: feed.data?.readThrough,
     // A failed feed page waits for Try again, as the other lists do. A list
     // end can still ask for more after the failure renders.
     feed: scrollPages({
