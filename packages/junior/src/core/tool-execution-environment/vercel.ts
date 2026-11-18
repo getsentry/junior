@@ -1,6 +1,6 @@
-import { Readable } from "node:stream";
 import { APIError, Sandbox, StreamError } from "@vercel/sandbox";
 import type { Session } from "@vercel/sandbox";
+import * as z from "zod";
 import {
   ToolExecutionEnvironmentUnavailableError,
   type CreateToolExecutionEnvironmentInput,
@@ -77,10 +77,7 @@ function toEnvironment(id: string, session: Session): ToolExecutionEnvironment {
     readFile: (path, signal) =>
       call(async () => {
         const stream = await session.readFile({ path }, { signal });
-        if (!stream) return undefined;
-        return Readable.toWeb(
-          Readable.from(stream),
-        ) as ReadableStream<Uint8Array>;
+        return stream ? toWebStream(stream) : undefined;
       }),
     writeFile: (path, content, signal) =>
       call(() => session.writeFiles([{ path, content }], { signal })),
@@ -133,6 +130,8 @@ async function exec(
   }
 }
 
+const apiErrorBody = z.object({ error: z.object({ code: z.string() }) });
+
 // The same checks the SDK uses before it restarts a session by itself
 // (`withResume` in @vercel/sandbox). A StreamError means the session stopped
 // while output was streaming.
@@ -140,10 +139,34 @@ function isStopped(error: unknown): boolean {
   if (error instanceof StreamError) return true;
   if (!(error instanceof APIError)) return false;
   if (error.response.status === 410) return true;
-  const code = (error.json as { error?: { code?: string } } | undefined)?.error
-    ?.code;
+  const code = apiErrorBody.safeParse(error.json).data?.error.code;
   return (
     error.response.status === 422 &&
     (code === "sandbox_stopping" || code === "sandbox_snapshotting")
   );
+}
+
+// The SDK returns a Node stream whose chunks are typed as strings or Buffers.
+// Cancelling the web stream ends the iterator, which destroys the Node stream.
+function toWebStream(
+  stream: NodeJS.ReadableStream,
+): ReadableStream<Uint8Array> {
+  const chunks = stream[Symbol.asyncIterator]();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await chunks.next();
+      if (next.done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(
+        typeof next.value === "string"
+          ? new TextEncoder().encode(next.value)
+          : next.value,
+      );
+    },
+    async cancel() {
+      await chunks.return?.();
+    },
+  });
 }
