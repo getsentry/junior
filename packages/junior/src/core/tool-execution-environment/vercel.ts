@@ -15,13 +15,27 @@ import {
 const VERCEL_TIMEOUT_BACKSTOP_MS = 5_000;
 
 /**
- * Manages Vercel Sandboxes. The environment id is the sandbox name. Sandboxes
- * are persistent, so `resume` gets the files back after a stop.
+ * Vercel API credentials. The SDK reads only `VERCEL_OIDC_TOKEN` from the
+ * environment by itself, so a caller with a token passes it here.
  */
-export const vercelToolExecutionEnvironmentManager: ToolExecutionEnvironmentManager =
-  {
+export type VercelCredentials = {
+  token: string;
+  teamId: string;
+  projectId: string;
+};
+
+/**
+ * Manages Vercel Sandboxes. The environment id is the sandbox name. Sandboxes
+ * are persistent, so `resume` gets the files back after a stop. Without
+ * `credentials`, the SDK uses its own OIDC auth.
+ */
+export function createVercelToolExecutionEnvironmentManager(
+  credentials?: VercelCredentials,
+): ToolExecutionEnvironmentManager {
+  return {
     async create(input: CreateToolExecutionEnvironmentInput, signal) {
       const params = {
+        ...credentials,
         name: input.id,
         persistent: true,
         timeout: input.timeoutMs,
@@ -42,7 +56,12 @@ export const vercelToolExecutionEnvironmentManager: ToolExecutionEnvironmentMana
 
     async resume(id, signal) {
       try {
-        const sandbox = await Sandbox.get({ name: id, resume: true, signal });
+        const sandbox = await Sandbox.get({
+          ...credentials,
+          name: id,
+          resume: true,
+          signal,
+        });
         return toEnvironment(id, sandbox.currentSession());
       } catch (error) {
         if (error instanceof APIError && error.response.status === 404) {
@@ -52,6 +71,7 @@ export const vercelToolExecutionEnvironmentManager: ToolExecutionEnvironmentMana
       }
     },
   };
+}
 
 // Bound to one session, not to the Sandbox: the Sandbox object starts a
 // stopped session again by itself, and a restart must be visible to the
