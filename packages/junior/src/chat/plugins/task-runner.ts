@@ -5,7 +5,6 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
-import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -61,6 +60,7 @@ import {
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import { mapBounded } from "@/chat/fan-out";
 
 // Plugin task messages that one run sends at once.
 const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
@@ -495,13 +495,12 @@ export async function scheduleSessionCompletedPluginTasks(
     params: coreParams,
     plugin: plugin.manifest.name,
   }));
-  const limit = pLimit(PLUGIN_MESSAGE_SEND_CONCURRENCY);
-  await Promise.all(
-    messages.map((message) =>
-      limit(async () => {
-        await send(message);
-      }),
-    ),
+  await mapBounded(
+    messages,
+    async (message) => {
+      await send(message);
+    },
+    PLUGIN_MESSAGE_SEND_CONCURRENCY,
   );
 }
 

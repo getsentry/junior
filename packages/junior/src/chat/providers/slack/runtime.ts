@@ -8,7 +8,6 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   getSubscribedReplyPreflightDecision,
@@ -68,7 +67,7 @@ import {
   getTurnLifecycle,
   type FailConversationTurnInput,
 } from "@/chat/conversations/turn-lifecycle";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -616,25 +615,23 @@ export function createSlackTurnRuntime<
     messages: SteeringCandidateMessage[];
     thread: Thread;
   }): Promise<SteeringMessageSelection> => {
-    const limit = pLimit(FAN_OUT_CONCURRENCY);
-    const selected: SteeringMessageDecision[] = await Promise.all(
-      args.messages.map((candidate) =>
-        limit(async () => {
-          const decision = await decideSteeringMessage(
-            args.thread,
-            candidate,
-            args.conversationContext,
-            args.conversationId,
-          );
-          return {
-            context: decision.context,
-            decision: decision.decision,
-            inboundMessageId: candidate.inboundMessageId,
-            message: candidate.message,
-            text: decision.text,
-          };
-        }),
-      ),
+    const selected: SteeringMessageDecision[] = await mapBounded(
+      args.messages,
+      async (candidate) => {
+        const decision = await decideSteeringMessage(
+          args.thread,
+          candidate,
+          args.conversationContext,
+          args.conversationId,
+        );
+        return {
+          context: decision.context,
+          decision: decision.decision,
+          inboundMessageId: candidate.inboundMessageId,
+          message: candidate.message,
+          text: decision.text,
+        };
+      },
     );
     if (selected.some((message) => message.decision.shouldUnsubscribe)) {
       return {

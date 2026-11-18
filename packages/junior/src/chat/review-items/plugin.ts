@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type {
   PluginReviewItems,
   PluginReviewNotice,
@@ -28,18 +27,16 @@ async function assigneeUserIds(
   identityIds: readonly string[],
   conversationId: string,
 ): Promise<string[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const userIds = await Promise.all(
-    [...new Set(identityIds)].map((identityId) =>
-      limit(async () => {
-        const user = (await readIdentityByIdFromSql(db, identityId))?.user;
-        if (!user) return [];
-        const access = (
-          await readConversationAccessFromSql(db, [conversationId], user)
-        ).get(conversationId);
-        return access?.isParticipant ? [user.id] : [];
-      }),
-    ),
+  const userIds = await mapBounded(
+    [...new Set(identityIds)],
+    async (identityId) => {
+      const user = (await readIdentityByIdFromSql(db, identityId))?.user;
+      if (!user) return [];
+      const access = (
+        await readConversationAccessFromSql(db, [conversationId], user)
+      ).get(conversationId);
+      return access?.isParticipant ? [user.id] : [];
+    },
   );
   return userIds.flat();
 }

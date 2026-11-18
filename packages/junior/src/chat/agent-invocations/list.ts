@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
 import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -449,20 +449,18 @@ async function listAnsweredLoopChildren(
   if (children.length === 0 || parentMessages.length === 0) {
     return [];
   }
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const answered = await Promise.all(
-    children.map(({ childConversationId }) =>
-      limit(async () => {
-        const turnIds = await listOpenLoopTurnIds(childConversationId);
-        return parentMessages.some(
-          ({ sender }) =>
-            sender.conversationId === childConversationId &&
-            turnIds.includes(sender.turnId),
-        )
-          ? childConversationId
-          : undefined;
-      }),
-    ),
+  const answered = await mapBounded(
+    children,
+    async ({ childConversationId }) => {
+      const turnIds = await listOpenLoopTurnIds(childConversationId);
+      return parentMessages.some(
+        ({ sender }) =>
+          sender.conversationId === childConversationId &&
+          turnIds.includes(sender.turnId),
+      )
+        ? childConversationId
+        : undefined;
+    },
   );
   return answered.filter((id) => id !== undefined);
 }
