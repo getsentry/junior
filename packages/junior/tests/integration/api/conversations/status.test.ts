@@ -1,319 +1,37 @@
-import { eq, max } from "drizzle-orm";
-import { Hono } from "hono";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createJuniorApi } from "@/api";
-import type { JuniorApiEnv } from "@/api/route";
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
-  conversationFeedSchema,
 } from "@/api/schema";
-import {
-  appendAndEnqueueWebMessage,
-  createAndEnqueueConversation,
-} from "@/chat/conversations/web-input";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getDb,
-} from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { getDb } from "@/chat/db";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
-import type { ConversationStore } from "@/chat/conversations/store";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
-import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
-import {
-  cancelWatch,
-  createTimerWatch,
-  createWatch,
-} from "@/chat/events/store";
-import {
-  juniorConversationBriefs,
-  juniorConversationEvents,
-  juniorConversations,
-  juniorReviewItems,
-} from "@/db/schema";
+import { juniorConversations, juniorReviewItems } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
-import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
-import type { BriefOutcomeStatus } from "@/chat/briefs/schema";
 import {
   closeConversationFixture,
   webTestActor,
 } from "../../../fixtures/conversation";
 import {
-  createConversationWorkHarness,
-  createConversationWorkQueueTestAdapter,
-} from "../../../fixtures/conversation-work";
-
-const SLACK_VIEWER = {
-  email: webTestActor.email,
-  slackUserId: "UALICE",
-  teamId: "TSTATUS",
-};
-
-const SLACK_DESTINATION = {
-  platform: "slack" as const,
-  channelId: "CSTATUS",
-  teamId: "TSTATUS",
-};
-
-const REQUEST = {
-  question: "Ship the release now?",
-  fields: [
-    {
-      id: "decision",
-      kind: "choice" as const,
-      label: "Decision",
-      options: [{ label: "Ship" }, { label: "Wait" }],
-    },
-  ],
-};
-
-const ACTION_ITEM = {
-  kind: "action",
-  title: "Ship the release?",
-  body: "The release is ready.",
-  assignees: [webTestActor.email],
-  request: REQUEST,
-};
-
-// Injected fault: the agent runner throws on each delivery, so the final
-// attempt fails the Turn.
-const failingAgentRunner: AgentRunner = {
-  run: async () => {
-    throw new Error("model exploded");
-  },
-};
-
-/** The newest Event seq of the Conversation. */
-async function lastSeq(conversationId: string): Promise<number> {
-  const [row] = await getDb()
-    .select({ seq: max(juniorConversationEvents.seq) })
-    .from(juniorConversationEvents)
-    .where(eq(juniorConversationEvents.conversationId, conversationId));
-  return row?.seq ?? -1;
-}
-
-/** Store a Brief that covers every Event so far. */
-async function recordBrief(
-  conversationId: string,
-  version: number,
-  status: BriefOutcomeStatus,
-): Promise<void> {
-  await getDb()
-    .insert(juniorConversationBriefs)
-    .values({
-      conversationId,
-      version,
-      turnId: `brief-turn-${version}`,
-      throughSeq: await lastSeq(conversationId),
-      content: conversationBriefFixture({ status }),
-      searchText: "stored brief",
-      modelId: "test-model",
-    });
-}
-
-/** Store a Message by the root's actor that starts no Turn. */
-async function recordStarterMessage(conversationId: string): Promise<void> {
-  const [root] = await getDb()
-    .select({ actorIdentityId: juniorConversations.actorIdentityId })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, conversationId));
-  const seq = (await lastSeq(conversationId)) + 1;
-  await getDb()
-    .insert(juniorConversationEvents)
-    .values({
-      actorIdentityId: root!.actorIdentityId,
-      conversationId,
-      createdAt: new Date(),
-      historyVersion: 1,
-      payload: {
-        type: "message",
-        messageId: `${conversationId}:later`,
-        role: "user",
-        text: "Thanks.",
-      },
-      seq,
-      type: "message",
-    });
-}
-
-function detailPath(conversationId: string): string {
-  return `/api/conversations/${encodeURIComponent(conversationId)}`;
-}
-
-/** Wire Conversation work and the dashboard API as the web test viewer. */
-async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
-  const work = await createConversationWorkHarness(agentRunner);
-  const viewer = await resolveViewerUser(webTestActor.email);
-  if (!viewer) throw new Error("Expected the web test viewer");
-  const actor = { ...webTestActor, userId: viewer.id };
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi({ conversationWorkQueue: work.queue }));
-  const conversationStore = getConversationStore();
-  const services = { conversationStore, queue: work.queue, state: work.state };
-  const request = async (path: string, init?: RequestInit) =>
-    await app.request(`http://localhost${path}`, init);
-  const detail = async (conversationId: string) => {
-    const response = await request(detailPath(conversationId));
-    expect(response.status).toBe(200);
-    return conversationDetailReportSchema.parse(await response.json());
-  };
-  return {
-    ...work,
-    conversationStore,
-    /** Run queued work, with redeliveries, until the queue is empty. */
-    drain: async () => {
-      for (let i = 0; i < 12 && work.queue.hasQueuedMessages(); i += 1) {
-        await work.process(work.queue.takeMessage());
-      }
-    },
-    request,
-    start: async (idempotencyKey: string) =>
-      (
-        await createAndEnqueueConversation(
-          { actor, idempotencyKey, message: "Check the release." },
-          services,
-        )
-      ).conversationId,
-    send: async (conversationId: string, idempotencyKey: string) =>
-      await appendAndEnqueueWebMessage(
-        { actor, conversationId, idempotencyKey, message: "Try again." },
-        services,
-      ),
-    detail,
-    status: async (conversationId: string) =>
-      (await detail(conversationId)).status,
-    feedTurnActive: async (conversationId: string) => {
-      const response = await request("/api/conversations");
-      return conversationFeedSchema
-        .parse(await response.json())
-        .conversations.find(
-          (conversation) => conversation.conversationId === conversationId,
-        )?.turnActive;
-    },
-    tree: async (conversationId: string) => {
-      const response = await request(detailPath(conversationId));
-      expect(response.status).toBe(200);
-      const { treeState, watching } = conversationDetailReportSchema.parse(
-        await response.json(),
-      );
-      return { treeState, watching };
-    },
-    feedTree: async (conversationId: string) => {
-      const response = await request("/api/conversations");
-      const row = conversationFeedSchema
-        .parse(await response.json())
-        .conversations.find(
-          (conversation) => conversation.conversationId === conversationId,
-        );
-      return row && { treeState: row.treeState, watching: row.watching };
-    },
-    feedStatus: async (conversationId: string) => {
-      const response = await request("/api/conversations");
-      return conversationFeedSchema
-        .parse(await response.json())
-        .conversations.find(
-          (conversation) => conversation.conversationId === conversationId,
-        )?.status;
-    },
-  };
-}
-
-/** Record an idle public Slack Conversation that the web test viewer is in. */
-async function recordSlackRoot(
-  conversationStore: ConversationStore,
-  threadTs: string,
-): Promise<string> {
-  const conversationId = `slack:CSTATUS:${threadTs}`;
-  await conversationStore.recordActivity({
-    actor: { platform: "slack", ...SLACK_VIEWER },
-    conversationId,
-    destination: SLACK_DESTINATION,
-    nowMs: Date.now(),
-    sessionSource: createSlackSource({
-      channelId: SLACK_DESTINATION.channelId,
-      teamId: SLACK_DESTINATION.teamId,
-      threadTs,
-      visibility: "public",
-    }),
-    source: "slack",
-    visibility: "public",
-  });
-  return conversationId;
-}
-
-/** Record a dashboard root, which has no Location, started by the viewer. */
-async function recordDashboardRoot(
-  conversationStore: ConversationStore,
-  conversationId: string,
-  starter: {
-    email: string;
-    slackUserId: string;
-    teamId: string;
-  } = SLACK_VIEWER,
-): Promise<string> {
-  await conversationStore.recordActivity({
-    actor: { platform: "slack", ...starter },
-    conversationId,
-    destination: { platform: "local", conversationId },
-    nowMs: Date.now(),
-    source: "local",
-    visibility: "public",
-  });
-  return conversationId;
-}
-
-/** Record one assistant reply. */
-async function recordAnswer(
-  conversationId: string,
-  n: number,
-  createdAtMs = Date.now(),
-): Promise<void> {
-  await getConversationEventStore().append(conversationId, [
-    {
-      data: {
-        type: "message",
-        messageId: `${conversationId}:answer-${n}`,
-        role: "assistant",
-        text: "It shipped.",
-      },
-      createdAtMs,
-    },
-  ]);
-}
-
-/** Add one Review item as the agent of `conversationId` does. */
-async function addItem(
-  conversationId: string,
-  input: Record<string, unknown>,
-): Promise<string> {
-  const tool = createAddReviewItemTool(
-    {
-      conversationId,
-      resolveActorIdentity: async () => undefined,
-      source: { kind: "scheduled_automation" },
-    },
-    createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
-  );
-  const result = await (tool as any).execute(
-    (tool as any).prepareArguments(input),
-    {},
-  );
-  return result.item.id;
-}
+  SLACK_VIEWER,
+  SLACK_DESTINATION,
+  REQUEST,
+  ACTION_ITEM,
+  failingAgentRunner,
+  lastSeq,
+  recordBrief,
+  recordStarterMessage,
+  detailPath,
+  createStatusFixture,
+  recordSlackRoot,
+  recordDashboardRoot,
+  recordAnswer,
+  addItem,
+} from "../../../fixtures/conversation-status";
 
 describe("conversation status", () => {
   afterEach(async () => {
@@ -555,12 +273,29 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   });
 
-  it("counts an answer delivered to Slack as read", async () => {
+  it("counts an answer that Slack accepted as read", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000250",
     );
+    await recordAnswer(conversationId, 1, Date.now(), "slack");
+    await expect(fixture.status(conversationId)).resolves.toBe("done");
+    // A paused root keeps its reply out of Slack, so the starter must read it.
+    await recordAnswer(conversationId, 2);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+  });
+
+  it("does not wait on a read when the root has no starter", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-no-starter",
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({ actorIdentityId: null })
+      .where(eq(juniorConversations.conversationId, conversationId));
     await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("done");
   });
@@ -681,312 +416,3 @@ describe("conversation status", () => {
 });
 
 /** Watch one Vercel deployment from `conversationId`. */
-async function watchDeployment(conversationId: string) {
-  return await createWatch({
-    conversationId,
-    events: ["deployment.succeeded"],
-    expiresAtMs: Date.now() + 3_600_000,
-    identifier: "prj_junior:production",
-    intent: "Report deploy results.",
-    label: "Vercel deployment junior-prod",
-    namespace: "vercel",
-    resourceType: "deployment",
-  });
-}
-
-const DONE = { treeState: "done", watching: false };
-
-describe("conversation tree state", () => {
-  afterEach(async () => {
-    await closeConversationFixture();
-  });
-
-  it("orders needs_you over working over watching across the whole tree", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordSlackRoot(
-      fixture.conversationStore,
-      "1700000000.000400",
-    );
-    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
-
-    await watchDeployment(conversationId);
-    await expect(fixture.tree(conversationId)).resolves.toEqual({
-      treeState: "done",
-      watching: true,
-    });
-
-    const args = {
-      conversationStore: fixture.conversationStore,
-      destination: SLACK_DESTINATION,
-      parentConversationId: conversationId,
-      queue: fixture.queue,
-      state: fixture.state,
-    };
-    const running = await startRunningChildAgent({
-      ...args,
-      idempotencyKey: "tree-running-child",
-    });
-    // The parent's own status stays done; its tree works.
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-    await expect(fixture.tree(conversationId)).resolves.toEqual({
-      treeState: "working",
-      watching: true,
-    });
-    await expect(
-      fixture.tree(running.invocation.childConversationId),
-    ).resolves.toEqual({ treeState: "working", watching: false });
-
-    const asking = await spawnChildAgent({
-      ...args,
-      idempotencyKey: "tree-asking-child",
-    });
-    fixture.queue.takeMessageFor(asking.childConversationId);
-    // An item for another person is not shown to the viewer.
-    const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertReviewItem(getDb(), {
-      addedByConversationId: asking.childConversationId,
-      assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-      body: "Bob decides.",
-      conversationIds: [asking.childConversationId],
-      dedupeKey: "for-other",
-      kind: "action",
-      nowMs: Date.now(),
-      request: REQUEST,
-      title: "Bob's call",
-      visibility: "public",
-    });
-    await expect(fixture.status(asking.childConversationId)).resolves.toBe(
-      "needs_input",
-    );
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "working",
-    });
-    await closeReviewItem(getDb(), {
-      id: forOther!.id,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-
-    // An item for Everyone needs the viewer too.
-    const everyone = await addItem(asking.childConversationId, {
-      ...ACTION_ITEM,
-      assignees: ["everyone"],
-    });
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-    await closeReviewItem(getDb(), {
-      id: everyone,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "working",
-    });
-
-    const item = await addItem(asking.childConversationId, ACTION_ITEM);
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-    await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-    await expect(fixture.tree(asking.childConversationId)).resolves.toEqual({
-      treeState: "needs_you",
-      watching: false,
-    });
-
-    await closeReviewItem(getDb(), {
-      id: item,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-    await expect(fixture.feedTree(conversationId)).resolves.toEqual({
-      treeState: "working",
-      watching: true,
-    });
-  });
-
-  it("needs the viewer for their own sign-in waits anywhere in the tree", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordSlackRoot(
-      fixture.conversationStore,
-      "1700000000.000450",
-    );
-    const childConversationId = "agent:tree-sign-in-child";
-    await fixture.conversationStore.createChild({
-      childConversationId,
-      kind: "task",
-      parentConversationId: conversationId,
-    });
-    const signIn = (actorId: string, authorizationId: string) =>
-      recordAuthorizationRequested({
-        actorId,
-        authorizationId,
-        conversationId: childConversationId,
-        delivery: "private_link_sent",
-        kind: "mcp",
-        provider: "notion",
-      });
-    await signIn("UBOB", "tree-sign-in-bob");
-    await expect(fixture.status(childConversationId)).resolves.toBe(
-      "needs_input",
-    );
-    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
-    // The request names the viewer by their Slack user id.
-    await signIn(SLACK_VIEWER.slackUserId, "tree-sign-in-viewer");
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-  });
-
-  it("needs the starter only for the Conversation's own wait on them", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordDashboardRoot(
-      fixture.conversationStore,
-      "local:web:tree-answer",
-    );
-    const threadId = "agent:tree-answer-thread";
-    await fixture.conversationStore.createChild({
-      childConversationId: threadId,
-      kind: "thread",
-      parentConversationId: conversationId,
-    });
-    // A Thread's unread answer waits on the starter in the Thread only.
-    await recordAnswer(threadId, 1);
-    await expect(fixture.tree(threadId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
-    await recordAnswer(conversationId, 1);
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-
-    // An answer that another person has not read is not shown.
-    const other = await recordDashboardRoot(
-      fixture.conversationStore,
-      "local:web:tree-answer-bob",
-      { email: "bob@example.com", slackUserId: "UBOB", teamId: "TSTATUS" },
-    );
-    await recordAnswer(other, 1);
-    await expect(fixture.status(other)).resolves.toBe("needs_input");
-    await expect(fixture.tree(other)).resolves.toEqual(DONE);
-  });
-
-  it("watches while a pending Timer alone waits, until it ends", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordSlackRoot(
-      fixture.conversationStore,
-      "1700000000.000500",
-    );
-    const childConversationId = "agent:tree-timer-child";
-    await fixture.conversationStore.createChild({
-      childConversationId,
-      kind: "task",
-      parentConversationId: conversationId,
-      title: "Check the deployment later",
-    });
-    const timer = await createTimerWatch({
-      afterMs: 600_000,
-      conversationId: childConversationId,
-      intent: "Check the deployment.",
-      toolCallId: "tree-timer",
-    });
-    const watching = { treeState: "done", watching: true };
-    // A Timer is not work, so the shared status stays done.
-    await expect(fixture.status(childConversationId)).resolves.toBe("done");
-    await expect(fixture.tree(conversationId)).resolves.toEqual(watching);
-    await expect(fixture.feedTree(conversationId)).resolves.toEqual(watching);
-    await expect(fixture.tree(childConversationId)).resolves.toEqual(watching);
-
-    await cancelWatch({ conversationId: childConversationId, id: timer.id });
-    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
-
-    // A stop in the tree ends its Watches, so the feed token moves.
-    await createTimerWatch({
-      afterMs: 600_000,
-      conversationId: childConversationId,
-      intent: "Check the deployment again.",
-      toolCallId: "tree-timer-again",
-    });
-    const feedToken = async () => {
-      const response = await fixture.request("/api/versions");
-      return ((await response.json()) as { conversations: string })
-        .conversations;
-    };
-    const beforeStop = await feedToken();
-    const childStopped = await fixture.request(
-      `${detailPath(childConversationId)}/stop`,
-      { method: "POST" },
-    );
-    expect(childStopped.status).toBe(200);
-    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
-    expect(await feedToken()).not.toBe(beforeStop);
-
-    // A stopped Conversation starts no Turn for its Watches.
-    await watchDeployment(conversationId);
-    await expect(fixture.tree(conversationId)).resolves.toEqual(watching);
-    const stopped = await fixture.request(
-      `${detailPath(conversationId)}/stop`,
-      { method: "POST" },
-    );
-    expect(stopped.status).toBe(200);
-    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
-  });
-
-  it("reads the tree state of a feed page and a detail in one statement", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordSlackRoot(
-      fixture.conversationStore,
-      "1700000000.000600",
-    );
-    await recordSlackRoot(fixture.conversationStore, "1700000000.000700");
-    const addChildren = async (childIds: string[]) => {
-      for (const childConversationId of childIds) {
-        await fixture.conversationStore.createChild({
-          childConversationId,
-          kind: "task",
-          parentConversationId: conversationId,
-        });
-      }
-    };
-    // The feed and the detail keep one budget however big the tree grows.
-    const expectBudget = async (tree: {
-      treeState: string;
-      watching: boolean;
-    }) => {
-      const feed = await expectSqlBudget(
-        () => fixture.request("/api/conversations"),
-        { statements: 20, serialRounds: 5 },
-      );
-      const row = conversationFeedSchema
-        .parse(await feed.json())
-        .conversations.find((row) => row.conversationId === conversationId);
-      expect({ treeState: row?.treeState, watching: row?.watching }).toEqual(
-        tree,
-      );
-      const detail = await expectSqlBudget(
-        () => fixture.request(detailPath(conversationId)),
-        { statements: 20, serialRounds: 5 },
-      );
-      const report = conversationDetailReportSchema.parse(await detail.json());
-      expect({
-        treeState: report.treeState,
-        watching: report.watching,
-      }).toEqual(tree);
-    };
-
-    await addChildren(["agent:tree-budget-a"]);
-    await watchDeployment("agent:tree-budget-a");
-    await expectBudget({ treeState: "done", watching: true });
-    await addChildren([
-      "agent:tree-budget-b",
-      "agent:tree-budget-c",
-      "agent:tree-budget-d",
-    ]);
-    await addItem("agent:tree-budget-d", ACTION_ITEM);
-    await expectBudget({ treeState: "needs_you", watching: true });
-  });
-});

@@ -104,8 +104,9 @@ function conversationStarterUserIdSql(
  * - The latest assistant Message is an answer that the starter has not
  *   read. It is an answer when the latest Brief is `answered` or does not
  *   cover it. A `done` Brief that covers it needs no read. The starter read
- *   it when a root delivered it to its Slack Location, when the starter
+ *   it when Slack accepted it for a root's Location, when the starter
  *   wrote a later Message, or when their dashboard read position reaches it.
+ *   With no starter, nobody reads it, so an answer does not wait.
  */
 function conversationWaitsOnStarterSql(
   conversation: ConversationStatusColumns,
@@ -126,16 +127,25 @@ function conversationWaitsOnStarterSql(
   // Transcript order, the order of read positions, is `seq`, not time.
   // Reads `junior_conversation_events_message_role_idx` and sorts the
   // Conversation's assistant Messages by `seq`.
-  const replySeq = sql`(select ${juniorConversationEvents.seq} from ${juniorConversationEvents} where ${and(
-    eq(juniorConversationEvents.conversationId, id),
-    eq(juniorConversationEvents.type, "message"),
-    sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-  )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
+  const latestReply = (column: SQL) =>
+    sql`(select ${column} from ${juniorConversationEvents} where ${and(
+      eq(juniorConversationEvents.conversationId, id),
+      eq(juniorConversationEvents.type, "message"),
+      sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
+    )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
+  const replySeq = latestReply(sql`${juniorConversationEvents.seq}`);
+  // `slack` only when Slack accepted the Message. A paused root's reply
+  // has no Slack source.
+  const replySource = latestReply(
+    sql`${juniorConversationEvents.payload}->'meta'->>'source'`,
+  );
   const starterUserId = conversationStarterUserIdSql(conversation);
   const readByStarter = or(
     and(
       sql`${conversation.parentConversationId} is null`,
       sql`${conversation.location} is not null`,
+      // A null source must read false: `not (null)` is null, not true.
+      sql`coalesce(${replySource} = 'slack', false)`,
     ),
     sql`exists (select 1 from ${juniorConversationEvents} join ${juniorIdentities} as ${replyReader} on ${eq(
       replyReader.id,
@@ -152,7 +162,8 @@ function conversationWaitsOnStarterSql(
       gte(juniorConversationReadPositions.lastReadSeq, replySeq),
     )})`,
   );
-  const unreadAnswer = sql`${replySeq} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
+  // With no starter, nobody can read the answer, so nothing waits on it.
+  const unreadAnswer = sql`${replySeq} is not null and ${starterUserId} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
   return sql<boolean>`(${conversation.stoppedAt} is null
     and ${conversationKindSql(conversation)} <> 'task'
     and not ${conversationIsActiveSql(conversation)}
