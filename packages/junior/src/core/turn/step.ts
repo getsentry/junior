@@ -50,7 +50,7 @@ export type StepResult =
 
 /** Runs one step of a Turn: the pending tool calls if there are any, else one model request. */
 export async function runStep(input: StepInput): Promise<StepResult> {
-  const pending = pendingToolCalls(input.messages);
+  const pending = collectPendingToolCalls(input.messages);
   if (pending.calls.length > 0) {
     return runToolCalls(pending, input);
   }
@@ -104,7 +104,7 @@ type PendingToolCalls = {
  * The tool calls of the last reply that have no result yet. Only tool results
  * may follow the reply. Any other message means the reply has no open calls.
  */
-function pendingToolCalls(messages: Message[]): PendingToolCalls {
+function collectPendingToolCalls(messages: Message[]): PendingToolCalls {
   const answered = new Set<string>();
   for (const message of [...messages].reverse()) {
     if (message.role === "toolResult") {
