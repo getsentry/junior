@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -7,7 +6,7 @@ import {
   listChildMessages,
 } from "@/chat/agent-invocations/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import {
   readMessageCardRefs,
   removedCardSchema,
@@ -91,16 +90,11 @@ async function selectChildResultCards(
     execution?.messageSenders ?? {},
   );
   messages.reverse();
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
   // The child records its terminal Turn event before it reports the result.
-  const terminals = await Promise.all(
-    messages.map(({ sender }) =>
-      limit(() =>
-        events.loadByIdempotencyKey(
-          sender.conversationId,
-          `turn:${sender.turnId}:terminal`,
-        ),
-      ),
+  const terminals = await mapBounded(messages, ({ sender }) =>
+    events.loadByIdempotencyKey(
+      sender.conversationId,
+      `turn:${sender.turnId}:terminal`,
     ),
   );
   for (const [index, message] of messages.entries()) {

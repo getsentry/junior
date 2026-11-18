@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebClient } from "@slack/web-api";
 import type { KnownBlock, SectionBlock } from "@slack/types";
-import pLimit from "p-limit";
 import { readConnectedOAuthTokens } from "@/chat/credentials/connections";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
@@ -14,7 +13,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { botConfig, getRuntimeMetadata } from "@/chat/config";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 interface HomeView {
   type: "home";
@@ -109,21 +108,16 @@ export async function buildHomeView(
   const descriptionText = loadDescriptionText();
   const skillsSummaryText = await buildSkillsSummaryText();
   const providers = pluginCatalogRuntime.getProviders();
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const connections = await Promise.all(
-    providers.map((plugin) =>
-      limit(async () => {
-        const tokens = await readConnectedOAuthTokens(
-          userId,
-          plugin,
-          userTokenStore,
-        );
-        const connected =
-          Boolean(tokens) || (await hasConnectedMcpAccount(userId, plugin));
-        return { connected, plugin, tokens };
-      }),
-    ),
-  );
+  const connections = await mapBounded(providers, async (plugin) => {
+    const tokens = await readConnectedOAuthTokens(
+      userId,
+      plugin,
+      userTokenStore,
+    );
+    const connected =
+      Boolean(tokens) || (await hasConnectedMcpAccount(userId, plugin));
+    return { connected, plugin, tokens };
+  });
   const connectedSections: SectionBlock[] = [];
 
   for (const { connected, plugin, tokens } of connections) {
