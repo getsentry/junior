@@ -35,6 +35,7 @@ async function mockLongConversation(
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     status: "done",
+    turnActive: false,
     surface: "internal",
   };
   const state = {

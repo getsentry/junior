@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
 import { objectPresentation } from "@sentry/junior-plugin-api";
@@ -674,7 +675,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "working";
+  const live = conversationTurnIsActive(detail, conversation);
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -703,8 +704,7 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live =
-    (props.detail?.status ?? props.conversation.status) === "working";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

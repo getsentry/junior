@@ -17,6 +17,7 @@ export type ReportingConversationRow = {
   destinationId: string | null;
   durationMs: number;
   email: string | null;
+  executionStatus: (typeof juniorConversations.$inferSelect)["executionStatus"];
   executionUpdatedAt: Date | null;
   fullName: string | null;
   handle: string | null;
@@ -97,6 +98,7 @@ export function summaryFromRow(
     lastActivityAtMs: row.lastActivityAt.getTime(),
     updatedAtMs: row.updatedAt.getTime(),
     execution: {
+      status: row.executionStatus,
       ...(row.executionUpdatedAt
         ? { updatedAtMs: row.executionUpdatedAt.getTime() }
         : undefined),

@@ -325,6 +325,7 @@ export async function recentActorRows(email: string) {
       destinationId: juniorDestinations.id,
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
+      executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,

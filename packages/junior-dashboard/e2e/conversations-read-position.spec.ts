@@ -434,6 +434,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
     startedAt: generatedAt,
     // Active Conversations poll every 2s, so new events reach the page.
     status: "working",
+    turnActive: true,
     surface: "internal",
   };
   let latestSeq = 139;

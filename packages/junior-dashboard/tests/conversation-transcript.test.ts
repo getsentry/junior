@@ -51,6 +51,7 @@ function detail(): ConversationDetailReport {
     sentryConversationUrl: "https://sentry.example/conversation-1",
     startedAt: generatedAt,
     status: "working",
+    turnActive: true,
     surface: "internal",
   };
 }

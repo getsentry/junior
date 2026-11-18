@@ -737,6 +737,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         page.getByText("Message 0", { exact: true }),
       ).toBeInViewport();
       report.status = "working";
+      report.turnActive = true;
       report.events.push({
         seq: 42,
         createdAt: report.lastSeenAt,

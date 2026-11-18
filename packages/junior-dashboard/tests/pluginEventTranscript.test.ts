@@ -39,6 +39,7 @@ function conversation(
     lastSeenAt: "2026-01-01T00:00:00.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
     status: "done",
+    turnActive: false,
     surface: "internal",
   };
 }

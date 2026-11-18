@@ -17,6 +17,7 @@ function conversation(id: string, lastSeenAt: string): Conversation {
     lastSeenAt,
     startedAt: lastSeenAt,
     status: "done",
+    turnActive: false,
     surface: "internal",
   };
 }

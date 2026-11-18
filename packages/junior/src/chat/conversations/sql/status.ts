@@ -23,15 +23,31 @@ export interface ConversationStatusColumns {
   stoppedAt: AnyPgColumn;
 }
 
-/**
- * SQL: a Turn of the Conversation is queued or running. Execution is
- * pending, running, or paused for another execution slice.
- */
+// Execution is pending, running, or paused for another execution slice.
+// TODO(dcramer): Drop awaiting_resume with the store reader's alias for it.
+const ACTIVE_EXECUTION_STATUSES = [
+  "pending",
+  "running",
+  "paused",
+  "awaiting_resume",
+];
+
+/** SQL: a Turn of the Conversation is queued or running. */
 export function conversationIsActiveSql(
   conversation: Pick<ConversationStatusColumns, "executionStatus">,
 ): SQL<boolean> {
-  // TODO(dcramer): Drop awaiting_resume with the store reader's alias for it.
-  return sql<boolean>`${conversation.executionStatus} in ('pending', 'running', 'paused', 'awaiting_resume')`;
+  return sql<boolean>`${conversation.executionStatus} in (${sql.raw(
+    ACTIVE_EXECUTION_STATUSES.map((status) => `'${status}'`).join(", "),
+  )})`;
+}
+
+/**
+ * Whether a Turn is queued or running, for a row that is already read. It
+ * matches `conversationIsActiveSql`. Live views poll on it; `status` can
+ * read `needs_input` meanwhile.
+ */
+export function executionIsActive(executionStatus: string): boolean {
+  return ACTIVE_EXECUTION_STATUSES.includes(executionStatus);
 }
 
 /**

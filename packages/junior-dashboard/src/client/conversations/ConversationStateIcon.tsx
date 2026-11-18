@@ -15,18 +15,18 @@ export type ConversationDisplayState =
  * Pick one state for a Conversation row. When more than one applies:
  * `needs_you` > `working` > `watching` > `pinned`. A `done` tree shows
  * nothing. A row without a tree state, such as a Thread row, works while
- * its own status is `working`.
+ * its own Turn is queued or running.
  */
 export function conversationDisplayState(
   conversation: Pick<
     Conversation,
-    "pinnedAt" | "status" | "treeState" | "watching"
+    "pinnedAt" | "treeState" | "turnActive" | "watching"
   >,
 ): ConversationDisplayState | undefined {
   const tree = conversation.treeState;
   if (tree === "needs_you") return "needs_you";
   if (tree === "working") return "working";
-  if (!tree && conversation.status === "working") return "working";
+  if (!tree && conversation.turnActive) return "working";
   if (conversation.watching) return "watching";
   return conversation.pinnedAt ? "pinned" : undefined;
 }

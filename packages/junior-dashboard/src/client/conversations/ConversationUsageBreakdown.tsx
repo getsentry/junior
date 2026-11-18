@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
@@ -277,8 +278,7 @@ export function ConversationUsageBreakdown(props: {
   const formatMaybeCost = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCost(value);
   const activeModelId = liveModelId(props.detail);
-  const live =
-    (props.detail?.status ?? props.conversation.status) === "working";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const aggregateTokenTypes = tokenTypeParts(
     modelTokens ? undefined : savedTokens,
     modelCost ? undefined : savedCost,

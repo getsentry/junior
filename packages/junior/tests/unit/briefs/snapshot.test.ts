@@ -17,6 +17,7 @@ const detail: ConversationDetailReport = {
   isParticipant: true,
   visibility: "public",
   status: "done",
+  turnActive: false,
   startedAt: "2026-01-01T00:00:00.000Z",
   lastSeenAt: "2026-01-01T00:00:04.000Z",
   lastProgressAt: "2026-01-01T00:00:04.000Z",

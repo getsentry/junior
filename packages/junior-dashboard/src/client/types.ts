@@ -204,6 +204,8 @@ export type Conversation = {
   treeState?: ConversationSummaryReport["treeState"] | undefined;
   /** A Conversation in the tree watches for an Event or a Timer. */
   watching?: boolean | undefined;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;

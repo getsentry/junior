@@ -270,6 +270,7 @@ test("starts and continues conversations from the dashboard", async ({
           isParticipant: true,
           previousCursor: undefined,
           status: "working",
+          turnActive: true,
         }),
       });
     },
@@ -507,6 +508,7 @@ test("hands web and external messages from queue to history without gaps", async
         eventHistory: { status: "available" },
         isParticipant: true,
         status: active ? "working" : "done",
+        turnActive: active,
         events: [
           ...detail.events,
           ...committed.map((message, index) => ({
@@ -835,6 +837,7 @@ test("keeps details closed on a home send after the reader closed them", async (
           isParticipant: true,
           previousCursor: undefined,
           status: "working",
+          turnActive: true,
         }),
       });
     },

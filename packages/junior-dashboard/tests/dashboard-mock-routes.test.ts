@@ -51,6 +51,7 @@ describe("dashboard canonical-event mock routes", () => {
       lastSeenAt,
       startedAt,
       status: "done",
+      turnActive: false,
       surface: "slack",
     });
     const summaries = [

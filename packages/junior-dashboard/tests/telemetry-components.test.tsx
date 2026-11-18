@@ -100,6 +100,7 @@ function conversation(
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
     status: "done",
+    turnActive: false,
     surface: "internal",
     ...overrides,
   };
@@ -762,7 +763,7 @@ describe("dashboard canonical-event components", () => {
             state: "started",
           }),
         ],
-        { status: "working" },
+        { status: "working", turnActive: true },
       ),
     );
     const failedClient = conversationQueryClient();
@@ -777,6 +778,29 @@ describe("dashboard canonical-event components", () => {
     expect(activeHtml).not.toContain(">active</span>");
     expect(activeHtml).toContain("Assistant is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
+    expect(failedHtml).not.toContain("Assistant is thinking…");
+  });
+
+  it("shows thinking for a running Turn whose Conversation needs input", () => {
+    const client = conversationQueryClient();
+    client.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
+      conversation(
+        [
+          event(0, {
+            type: "turn_lifecycle",
+            turnId: "turn-1",
+            state: "started",
+          }),
+        ],
+        // An open action item outranks the running Turn in `status`.
+        { status: "needs_input", turnActive: true },
+      ),
+    );
+
+    expect(renderConversationPageWithClient(client)).toContain(
+      "Assistant is thinking…",
+    );
   });
 
   it("labels linked object types for assistive technology without guessing from URLs", () => {
@@ -1468,6 +1492,7 @@ describe("dashboard canonical-event components", () => {
           },
           startedAt: "2026-01-02T00:00:00.000Z",
           status: "done",
+          turnActive: false,
           surface: "slack",
         },
       ],
@@ -1637,6 +1662,7 @@ describe("dashboard canonical-event components", () => {
           lastSeenAt: "2026-01-05T00:00:00.000Z",
           startedAt: "2026-01-05T00:00:00.000Z",
           status: "done",
+          turnActive: false,
           surface: "slack",
         },
       ],
@@ -2092,6 +2118,7 @@ describe("dashboard canonical-event components", () => {
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "done",
+      turnActive: false,
       surface: "slack",
     };
     const detail = conversation(

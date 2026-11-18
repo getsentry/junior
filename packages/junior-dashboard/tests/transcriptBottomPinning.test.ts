@@ -24,6 +24,7 @@ function activeTurn(
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
     status: "working",
+    turnActive: true,
     surface: "slack",
     displayTitle: "Conversation",
     generatedAt: "2026-01-01T00:00:10.000Z",

@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type { ComponentType } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -62,8 +63,8 @@ export type ConversationMenu = {
         | "deliveryPaused"
         | "isParticipant"
         | "sentryConversationUrl"
-        | "status"
         | "subscribed"
+        | "turnActive"
       >
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
@@ -100,9 +101,7 @@ export function useConversationMenuItems(
   const participant = Boolean(
     conversation && (detail?.isParticipant ?? conversation.isParticipant),
   );
-  const live = detail
-    ? detail.status === "working"
-    : conversation && conversation.status === "working";
+  const live = conversationTurnIsActive(detail, conversation);
 
   const conversationItems: ConversationMenuItem[] = [
     {

@@ -27,6 +27,7 @@ function detail(
     lastSeenAt: new Date(0).toISOString(),
     startedAt: new Date(0).toISOString(),
     status: "working",
+    turnActive: true,
     surface: "api",
     visibility: "public",
   };

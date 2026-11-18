@@ -273,6 +273,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             isParticipant: true,
             previousCursor: undefined,
             status: "working",
+            turnActive: true,
           }),
         });
       },
@@ -514,6 +515,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           eventHistory: { status: "available" },
           isParticipant: true,
           status: active ? "working" : "done",
+          turnActive: active,
           events: [
             ...detail.events,
             ...committed.map((message, index) => ({
@@ -854,6 +856,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             isParticipant: true,
             previousCursor: undefined,
             status: "working",
+            turnActive: true,
           }),
         });
       },

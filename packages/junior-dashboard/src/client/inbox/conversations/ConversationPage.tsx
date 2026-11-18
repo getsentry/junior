@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "../../conversations/turnActivity";
 import { Bot } from "lucide-react";
 import {
   useCallback,
@@ -460,7 +461,7 @@ export function ConversationPage(props: {
       ? undefined
       : transcript?.events.find((event) => event.seq === selectedEventSeq);
   // History and mailbox use the same deferred server snapshot.
-  const live = (detail.data ?? conversation)?.status === "working";
+  const live = conversationTurnIsActive(detail.data, conversation);
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
