@@ -146,7 +146,7 @@ function conversationWaitsOnStarterSql(
   );
   const unreadAnswer = sql`${replySeq} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
   return sql<boolean>`(${conversation.stoppedAt} is null
-    and coalesce(${conversation.kind}, 'root') <> 'task'
+    and coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'root' else 'task' end) <> 'task'
     and not ${conversationIsActiveSql(conversation)}
     and (
       ${conversationTurnFailedSql(conversation)}
