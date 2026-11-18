@@ -1,4 +1,9 @@
 import { ArrowRight, Inbox } from "lucide-react";
+import {
+  cn,
+  dashboardIconTileClass,
+  dashboardMessageCardClass,
+} from "../../styles";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
@@ -11,6 +16,8 @@ import {
   inboxItemPath,
   reviewItemStatusLabel,
 } from "../../review-desk/reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { cn } from "../../styles";
 
 /**
  * Show one Review item as a card: its title, status, description, and the
@@ -24,12 +31,15 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
   return (
     <section
       aria-label={`Review item: ${item.title}`}
-      className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel font-sans text-sm text-dashboard-text"
+      className={cn(
+        "my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden font-sans text-sm text-dashboard-text",
+        dashboardMessageCardClass,
+      )}
     >
       <header className="flex items-start gap-3 px-4 pb-3 pt-4 md:px-5">
         <span
           aria-hidden="true"
-          className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted"
+          className={cn(dashboardIconTileClass, "size-9")}
         >
           <Inbox size={18} />
         </span>
@@ -65,7 +75,10 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
           Open in the Inbox
           <ArrowRight aria-hidden="true" size={14} />
         </Link>
-        <span className="min-w-0 truncate text-dashboard-text-muted">
+        <span
+          className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+          ref={fadeWhenOverflowing}
+        >
           {assigned ? `Assigned to ${assigneeLabel(item)}` : "Unassigned"}
         </span>
       </footer>

@@ -47,7 +47,7 @@ import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
 import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
-import { cn } from "../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
@@ -80,6 +80,7 @@ import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 
@@ -133,7 +134,13 @@ function RowItem(props: {
         {/* An item row's head already names the ask. A Conversation row's
             head names the Conversation, so each ask keeps its title. */}
         {props.headTitled ? null : (
-          <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
+          <h4
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {item.title}
           </h4>
         )}
@@ -376,7 +383,7 @@ function ConversationInboxRow(
         <ContextMenuTrigger
           {...prefetch}
           {...drag?.listeners}
-          className="group relative min-w-0 rounded-xl"
+          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
           onKeyDown={drag?.onKeyDown}
           ref={drag?.setNodeRef}
         >
@@ -580,7 +587,8 @@ function InboxRowBody(
     <>
       <div
         className={cn(
-          "relative rounded-xl",
+          "relative",
+          dashboardSurfaceRadiusClass,
           props.selected && "bg-dashboard-fill-soft",
           props.expanded && "rounded-b-none",
         )}
@@ -679,12 +687,18 @@ function InboxRowBody(
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className="min-w-0 truncate">
+                  <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                     {props.itemTitle ?? props.title}
                   </span>
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
-                  <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                  <span
+                    className={cn(
+                      fadeOverflowClass,
+                      "text-xs text-dashboard-text-muted",
+                    )}
+                    ref={fadeWhenOverflowing}
+                  >
                     {props.itemSubtitle}
                   </span>
                 ) : null}
@@ -708,7 +722,9 @@ function InboxRowBody(
                           aria-controls={controls}
                           aria-expanded={props.expanded}
                           aria-label={pill.name}
-                          className="shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                          // A pill alone on its line shrinks and truncates
+                          // its label, so a narrow row never cuts it off.
+                          className="flex min-w-0 max-w-full cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                           key={pill.key}
                           onClick={props.onToggle}
                           title={pill.name}
